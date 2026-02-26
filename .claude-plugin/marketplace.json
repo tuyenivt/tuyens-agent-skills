@@ -87,6 +87,17 @@
         "url": "https://github.com/tuyenivt"
       },
       "tags": ["node", "typescript", "nestjs", "express", "prisma", "typeorm"]
+    },
+    {
+      "name": "go",
+      "source": "./plugins/go",
+      "description": "9 skills and 3 agents for Go/Gin development. Requires core plugin.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": ["go", "gin", "gorm", "sqlx", "golang-migrate"]
     }
   ]
 }
