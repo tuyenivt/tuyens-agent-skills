@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Directory of tuyens agent skills",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: java, kotlin, python, rails, node, and go.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -47,13 +47,20 @@
     {
       "name": "kotlin",
       "source": "./plugins/kotlin",
-      "description": "5 skills and 1 agent for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires core and java plugin",
+      "description": "5 skills and 1 agent for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires core and java plugins.",
       "version": "1.0.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
       },
-      "tags": ["kotlin", "spring-boot", "gradle", "coroutines", "testing"]
+      "tags": [
+        "kotlin",
+        "spring-boot",
+        "gradle",
+        "coroutines",
+        "mockk",
+        "kotest"
+      ]
     },
     {
       "name": "python",
@@ -64,7 +71,7 @@
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
       },
-      "tags": ["python", "sqlalchemy", "alembic", "celery", "testing"]
+      "tags": ["python", "fastapi", "django", "sqlalchemy", "alembic", "celery"]
     },
     {
       "name": "rails",
@@ -75,7 +82,7 @@
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
       },
-      "tags": ["ruby", "rails", "activerecord", "rspec", "sidekiq", "testing"]
+      "tags": ["ruby", "rails", "activerecord", "rspec", "sidekiq"]
     },
     {
       "name": "node",
@@ -86,7 +93,16 @@
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
       },
-      "tags": ["node", "typescript", "nestjs", "express", "prisma", "typeorm"]
+      "tags": [
+        "node",
+        "typescript",
+        "nestjs",
+        "express",
+        "prisma",
+        "typeorm",
+        "jest",
+        "supertest"
+      ]
     },
     {
       "name": "go",

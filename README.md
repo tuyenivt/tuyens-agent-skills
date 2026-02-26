@@ -1,6 +1,6 @@
-# Tuyen's Agent Skills
+# Tuyen's Plugins Directory
 
-// TODO: need add desc
+Single marketplace repository for Claude Code plugins: `java`, `kotlin`, `python`, `rails`, `node`, and `go`.
 
 ## Add Marketplace
 
@@ -8,19 +8,42 @@
 /plugin marketplace add tuyenivt/tuyens-agent-skills
 ```
 
-## Plugins
+## Installation Order
 
-There are currently plugins for specific stacks - but the core works with **any** stack:
+Install plugins in dependency order:
 
-| Plugin                   | Stack                                   |
-| ------------------------ | --------------------------------------- |
-| [core](plugins/core)     | Common and required for others          |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+             |
-| [kotlin](plugins/kotlin) | Kotlin 2.0+ / Spring Boot 3.5+          |
-| [python](plugins/python) | Python / FastAPI / Django               |
-| [rails](plugins/rails)   | Ruby / Rails 7+/8                       |
-| [node](plugins/node)     | Node.js / TypeScript / NestJS / Express |
-| [go](plugins/go)         | Go / Gin                                |
+```bash
+/plugin install core@tuyens-agent-skills
+```
+
+Then install one or more stack plugins:
+
+```bash
+/plugin install java@tuyens-agent-skills
+/plugin install kotlin@tuyens-agent-skills   # requires core + java
+/plugin install python@tuyens-agent-skills
+/plugin install rails@tuyens-agent-skills
+/plugin install node@tuyens-agent-skills
+/plugin install go@tuyens-agent-skills
+```
+
+## Plugin Catalog
+
+| Plugin                   | Focus                                                          | Includes                                      |
+| ------------------------ | -------------------------------------------------------------- | --------------------------------------------- |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 42 skills (14 workflow + 28 atomic)           |
+| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                          |
+| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `core` + `java`) |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 10 skills + 3 agents                          |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 9 skills + 3 agents                           |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 3 agents                          |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 3 agents                           |
+
+## Notes
+
+- `core` is required by all language plugins.
+- `kotlin` is intentionally a thin companion plugin and depends on `java`.
+- Each plugin folder has its own README with stack-specific usage and examples.
 
 ## License
 
