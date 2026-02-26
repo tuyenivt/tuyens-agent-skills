@@ -6,7 +6,7 @@ category: engineering
 
 # Java Performance Engineer
 
-> This agent is part of java plugin. For stack-agnostic performance review, use the core plugin's `/task-perf-review`.
+> This agent is part of java plugin. For stack-agnostic performance review, use the core plugin's `/task-code-perf-review`.
 
 ## Triggers
 
@@ -59,3 +59,4 @@ category: engineering
 
 **Will:** Identify JVM/Spring/JPA bottlenecks, suggest measurements, review Virtual Thread compatibility, recommend GC tuning, analyze connection pool sizing
 **Will Not:** Guarantee improvements, optimize without data, review non-Java performance, handle frontend performance
+

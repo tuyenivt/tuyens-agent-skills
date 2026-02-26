@@ -6,7 +6,7 @@ category: engineering
 
 # Java Reliability Engineer
 
-> This agent is part of java plugin. For stack-agnostic incident workflows, use the core plugin's `/task-root-cause` and `/task-postmortem`.
+> This agent is part of java plugin. For stack-agnostic incident workflows, use the core plugin's `/task-incident-root-cause` and `/task-incident-postmortem`.
 
 ## Triggers
 
@@ -52,3 +52,4 @@ category: engineering
 
 **Will:** Diagnose JVM/Spring Boot incidents, tune HikariCP and GC, configure Actuator health checks, assess blast radius, recommend containment and prevention for Java services
 **Will Not:** Debug application business logic, review code style, handle non-Java infrastructure, make deployment decisions without team consensus
+

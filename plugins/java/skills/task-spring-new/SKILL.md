@@ -209,7 +209,7 @@ Present a checklist of generated files:
 
 - Use skill: `spring-test-integration` for test slice selection and integration test patterns
 
-> For stack-agnostic code review and architecture review, use the core plugin's `task-code-review` and `task-architecture-design`.
+> For stack-agnostic code review and architecture review, use the core plugin's `task-code-review` and `task-design-architecture`.
 
 ## Checklist
 
@@ -241,3 +241,4 @@ Present a checklist of generated files:
 - Generating code before user approves the design
 - Skipping test generation
 - Over-engineering: only generate what was requested
+

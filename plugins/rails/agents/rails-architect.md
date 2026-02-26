@@ -33,4 +33,5 @@ rails-testing-patterns, rails-security-patterns, rails-sidekiq-patterns,
 rails-service-objects
 
 For stack-agnostic code review and ops, use core plugin's
-/task-code-review, /task-postmortem, /task-root-cause.
+/task-code-review, /task-incident-postmortem, /task-incident-root-cause.
+

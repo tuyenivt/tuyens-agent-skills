@@ -1,5 +1,5 @@
 ---
-name: task-api-design
+name: task-design-api
 description: REST API contract design and review. Auto-detects project stack from CLAUDE.md and adapts API patterns to the detected language and framework.
 metadata:
   category: architecture
@@ -213,13 +213,13 @@ Use the detected ecosystem's standard approach for defining request/response sch
 
 **Related Workflows:**
 
-- Use skill: `task-architecture-design` for broader system architecture beyond API contracts
+- Use skill: `task-design-architecture` for broader system architecture beyond API contracts
 - Use skill: `task-code-review-advanced` for reviewing implementation against this API spec
 
 ## Avoid
 
 - Generating controller, service, or repository implementation code
-- Designing internal architecture (that belongs to `task-architecture-design`)
+- Designing internal architecture (that belongs to `task-design-architecture`)
 - Ignoring backward compatibility for existing APIs
 - Inconsistent error formats across endpoints
 - Missing pagination on collection endpoints
@@ -227,3 +227,4 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - Designing endpoints without stating auth requirements
 - Generic advice without context-specific reasoning
 - Applying API conventions from one framework to another
+

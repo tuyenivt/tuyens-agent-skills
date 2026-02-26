@@ -38,7 +38,7 @@ Before starting the analysis, ask the user which scope they need:
 | -------- | -------------------------------------------------------------- |
 | Core     | Phases 1-8 only (risk, compatibility, rollout, rollback, etc.) |
 | + Review | Core + delegate to skill: `task-code-review-advanced`          |
-| + Perf   | Core + delegate to skill: `task-perf-review`                   |
+| + Perf   | Core + delegate to skill: `task-code-perf-review`              |
 | Full     | Core + Review + Performance                                    |
 
 Default: **Core** (if the user doesn't specify, run Core only).
@@ -368,7 +368,7 @@ Soak time:
 **Delegated Workflows (optional scope):**
 
 - Use skill: `task-code-review-advanced` for code quality assessment (scope: +review or full)
-- Use skill: `task-perf-review` for performance analysis (scope: +perf or full)
+- Use skill: `task-code-perf-review` for performance analysis (scope: +perf or full)
 
 ### Sub-Skills Defined for This Workflow
 

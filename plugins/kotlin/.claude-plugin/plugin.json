@@ -1,6 +1,6 @@
 {
   "name": "kotlin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Claude Code plugin for Kotlin + Spring Boot. Adds Kotlin idioms, coroutines, data classes, and Kotlin testing on top of java plugin. Install core + java plugins first.",
   "author": {
     "name": "Tuyen"

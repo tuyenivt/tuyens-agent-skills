@@ -1,6 +1,6 @@
 ---
 name: task-spring-debug
-description: Developer-level debugging workflow. Paste a stack trace, error log, or describe unexpected behavior. Analyzes the error, identifies root cause in your codebase, suggests a fix with code, and explains why it happened. For developer debugging, not production incident analysis (use task-root-cause for incidents).
+description: Developer-level debugging workflow. Paste a stack trace, error log, or describe unexpected behavior. Analyzes the error, identifies root cause in your codebase, suggests a fix with code, and explains why it happened. For developer debugging, not production incident analysis (use task-incident-root-cause for incidents).
 metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]
@@ -18,7 +18,7 @@ Daily developer debugging: paste an error, get a fix. This is not incident respo
 - **Explain why, not just what** — root cause understanding prevents repeat bugs
 - **Minimal fix** — smallest correct change, aligned with project patterns
 
-For production incident analysis with containment and blast radius assessment, use `task-root-cause` instead.
+For production incident analysis with containment and blast radius assessment, use `task-incident-root-cause` instead.
 
 ## When to Use
 
@@ -188,5 +188,6 @@ Identify the error category to guide investigation:
 - Use skill: `spring-exception-handling` for error handling and propagation patterns
 - Use skill: `java-gradle-build-optimization` for build and dependency errors
 
-> For stack-agnostic debugging workflows, use the core plugin's `task-root-cause`.
+> For stack-agnostic debugging workflows, use the core plugin's `task-incident-root-cause`.
 ```
+

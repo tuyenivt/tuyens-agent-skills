@@ -76,24 +76,23 @@ The core detects your project's tech stack automatically:
 
 ## Workflow Skills
 
-14 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+13 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                       | Description                                                                                          |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `task-api-design`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                     |
-| `task-architecture-design`  | Staff-level architecture design proposal for new features and systems                                |
+| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                     |
+| `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                |
+| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                               |
 | `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.      |
 | `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                        |
 | `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Auto-detects stack.                       |
+| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.       |
 | `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack. |
 | `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.           |
 | `task-docs-generate`        | Documentation generation (README, API docs, ADRs) for any stack                                      |
-| `task-perf-review`          | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.       |
-| `task-postmortem`           | Staff-level postmortem for systemic learning and prevention                                          |
-| `task-pr-prepare`           | PR preparation with commit messages, description, and pre-submit validation. Auto-detects stack.     |
 | `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                 |
-| `task-risk-analysis`        | Staff-level proactive engineering risk assessment for proposed changes                               |
-| `task-root-cause`           | Staff-level incident root cause analysis with containment and prevention                             |
+| `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                          |
+| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                             |
 
 ## Atomic Skills
 
@@ -191,7 +190,7 @@ Scope options — asks interactively if not specified:
 **Performance review:**
 
 ```
-/task-perf-review
+/task-code-perf-review
 [paste code or file path]
 ```
 
@@ -207,6 +206,6 @@ Traffic expectation: 500 RPS steady state
 **Incident root cause analysis:**
 
 ```
-/task-root-cause
+/task-incident-root-cause
 [paste stack trace, logs, or error message]
 ```

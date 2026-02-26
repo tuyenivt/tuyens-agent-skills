@@ -16,7 +16,7 @@ user-invocable: false
 - Before implementation, when classifying risk domains for a proposed change
 - When evaluating architecture proposals, migration plans, or refactor plans that do not yet have a PR
 - When `pr-risk-analysis` is insufficient because no code diff exists yet
-- As the first step in `task-risk-analysis` to frame the risk assessment
+- As the first step in `task-design-risk-analysis` to frame the risk assessment
 
 ## Rules
 
@@ -98,3 +98,4 @@ Why bad: Ignores integration context, does not identify shared state, does not c
 - Conflating code quality concerns with systemic risk domains
 - Classifying as Low when multiple medium-severity domains are triggered
 - Using this skill as a replacement for `pr-risk-analysis` when a code diff exists -- use both for complete coverage
+

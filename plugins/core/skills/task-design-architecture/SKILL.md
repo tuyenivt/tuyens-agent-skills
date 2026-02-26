@@ -1,5 +1,5 @@
 ---
-name: task-architecture-design
+name: task-design-architecture
 description: Staff-level architecture design proposal for new features and systems
 metadata:
   category: architecture
@@ -70,7 +70,7 @@ Capture:
 
 Use skill: `engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
 
-If this design is triggered by an incident or failure pattern, reference outputs from skill: `task-root-cause` or skill: `task-postmortem` to incorporate lessons learned.
+If this design is triggered by an incident or failure pattern, reference outputs from skill: `task-incident-root-cause` or skill: `task-incident-postmortem` to incorporate lessons learned.
 
 ### 2. System Context and Boundary Definition
 
@@ -466,10 +466,10 @@ Feature Flags:
 
 **Related Workflows:**
 
-- Use skill: `task-root-cause` for incorporating incident lessons into design
-- Use skill: `task-postmortem` for incorporating postmortem findings into design
+- Use skill: `task-incident-root-cause` for incorporating incident lessons into design
+- Use skill: `task-incident-postmortem` for incorporating postmortem findings into design
 - Use skill: `task-code-review-advanced` for reviewing implementation against this design
-- Use skill: `task-perf-review` for deep performance review of implementation
+- Use skill: `task-code-perf-review` for deep performance review of implementation
 
 ### Sub-Skills Defined for This Workflow
 
@@ -482,3 +482,4 @@ Feature Flags:
 | `release-safety`             | Rollout, rollback, and deployment risk patterns                    |
 | `dependency-impact-analysis` | Deployment ordering and dependency change impact assessment        |
 | `concurrency-model`          | Concurrency risk assessment and thread safety patterns             |
+

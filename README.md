@@ -31,7 +31,7 @@ Then install one or more stack plugins:
 
 | Plugin                   | Focus                                                          | Includes                                      |
 | ------------------------ | -------------------------------------------------------------- | --------------------------------------------- |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 42 skills (14 workflow + 28 atomic)           |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 41 skills (13 workflow + 28 atomic)           |
 | [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                          |
 | [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `core` + `java`) |
 | [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 10 skills + 3 agents                          |

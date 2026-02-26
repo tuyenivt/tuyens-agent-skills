@@ -1,5 +1,5 @@
 ---
-name: task-perf-review
+name: task-code-perf-review
 description: Performance review for backend and frontend. Auto-detects project stack from CLAUDE.md and adapts performance checks to the detected language and framework.
 metadata:
   category: review
@@ -185,3 +185,4 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 - Adding complexity for marginal gains
 - Caching without an invalidation strategy
 - Applying performance patterns from one stack to another
+

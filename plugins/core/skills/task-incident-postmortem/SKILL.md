@@ -1,5 +1,5 @@
 ---
-name: task-postmortem
+name: task-incident-postmortem
 description: Staff-level postmortem for systemic learning and prevention
 metadata:
   category: ops
@@ -21,7 +21,7 @@ Staff-level postmortem that converts incident data into systemic improvements:
 
 This skill runs AFTER an incident has been resolved and root cause analysis is complete. It focuses on prevention and structural reinforcement, not debugging.
 
-Use skill: `task-root-cause` for active incident investigation and root cause analysis.
+Use skill: `task-incident-root-cause` for active incident investigation and root cause analysis.
 
 ## When to Use
 
@@ -36,7 +36,7 @@ Use skill: `task-root-cause` for active incident investigation and root cause an
 | Input                   | Required | Description                                               |
 | ----------------------- | -------- | --------------------------------------------------------- |
 | Incident summary        | Yes      | What happened, severity, duration, user impact            |
-| Root cause analysis     | Yes      | Output from root cause investigation or `task-root-cause` |
+| Root cause analysis     | Yes      | Output from root cause investigation or `task-incident-root-cause` |
 | Timeline                | No       | Sequence of events from detection to resolution           |
 | Logs or metrics summary | No       | Key signals observed during the incident                  |
 | Recent PR diff          | No       | Changes deployed before the incident                      |
@@ -318,7 +318,7 @@ Contributing Factors:
 
 **Related Workflow:**
 
-- Use skill: `task-root-cause` for active incident investigation (run before this skill)
+- Use skill: `task-incident-root-cause` for active incident investigation (run before this skill)
 
 ### Sub-Skills Defined for This Workflow
 
@@ -326,3 +326,4 @@ Contributing Factors:
 | ------------------------ | -------------------------------------------------------------------------------- |
 | `review-gap-analysis`    | Analyze why existing review processes did not catch the failure                  |
 | `engineering-governance` | Engineering process, governance, guardrail improvements, and incident prevention |
+

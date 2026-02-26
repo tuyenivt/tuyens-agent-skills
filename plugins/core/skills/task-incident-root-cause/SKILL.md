@@ -1,5 +1,5 @@
 ---
-name: task-root-cause
+name: task-incident-root-cause
 description: Staff-level incident root cause analysis with containment and prevention
 metadata:
   category: ops
@@ -245,3 +245,4 @@ Verification Steps:
 | `failure-propagation-analysis` | Trace cascading failure paths across system boundaries  |
 | `root-cause-hypothesis`        | Generate ranked hypotheses with confidence and evidence |
 | `engineering-governance`       | Systemic prevention and governance strategies           |
+

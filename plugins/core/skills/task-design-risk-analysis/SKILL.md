@@ -1,5 +1,5 @@
 ---
-name: task-risk-analysis
+name: task-design-risk-analysis
 description: Staff-level proactive engineering risk assessment for proposed changes
 metadata:
   category: ops
@@ -322,8 +322,8 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 **Related Workflows:**
 
 - Use skill: `task-code-review-advanced` for code quality assessment (separate concern)
-- Use skill: `task-root-cause` for incorporating incident lessons into risk analysis
-- Use skill: `task-postmortem` for incorporating postmortem findings into risk analysis
+- Use skill: `task-incident-root-cause` for incorporating incident lessons into risk analysis
+- Use skill: `task-incident-postmortem` for incorporating postmortem findings into risk analysis
 - Use skill: `task-release-plan` for detailed release planning after risk assessment
 
 ### Sub-Skills Defined for This Workflow
@@ -331,3 +331,4 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 | Skill                        | Purpose                                                            |
 | ---------------------------- | ------------------------------------------------------------------ |
 | `change-risk-classification` | Pre-implementation risk domain classification for proposed changes |
+

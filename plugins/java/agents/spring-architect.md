@@ -6,7 +6,7 @@ category: engineering
 
 # Spring Architect
 
-> This agent is part of java plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review`, `task-postmortem`, etc.
+> This agent is part of java plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review`, `task-incident-postmortem`, etc.
 
 ## Triggers
 
@@ -126,3 +126,4 @@ Each step delegates to the appropriate atomic skills in sequence. Present the de
 
 **Will:** Design APIs, optimize queries, review architecture, ensure Virtual Thread safety, generate migrations, configure security, optimize builds, generate tests, identify performance bottlenecks, review JVM/Spring performance
 **Will Not:** Handle frontend, make business decisions, deploy infrastructure, optimize without data
+

@@ -20,7 +20,7 @@ metadata:
 | Scope      | What runs                                          |
 | ---------- | -------------------------------------------------- |
 | Basic      | Correctness, readability, maintainability, testing |
-| + Perf     | Basic + delegate to skill: `task-perf-review`      |
+| + Perf     | Basic + delegate to skill: `task-code-perf-review` |
 | + Security | Basic + delegate to skill: `task-code-secure`      |
 | Full       | Basic + Performance + Security                     |
 
@@ -89,7 +89,7 @@ If the detected stack is unfamiliar, apply the universal review criteria from St
 
 ### Step 4 — Delegate (if scope includes)
 
-- **+Perf**: delegate to `task-perf-review`
+- **+Perf**: delegate to `task-code-perf-review`
 - **+Security**: delegate to `task-code-secure`
 
 ## Feedback Labels

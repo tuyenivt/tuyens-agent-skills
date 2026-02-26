@@ -31,7 +31,7 @@ Staff-level code review that prioritizes system risk over style:
 | Scope      | What runs                                                                      |
 | ---------- | ------------------------------------------------------------------------------ |
 | Core       | Phases A–E only (risk, correctness, architecture, AI quality, maintainability) |
-| + Perf     | Core + delegate to skill: `task-perf-review`                                   |
+| + Perf     | Core + delegate to skill: `task-code-perf-review`                              |
 | + Security | Core + delegate to skill: `task-code-secure`                                   |
 | Full       | Core + Performance + Security                                                  |
 
@@ -155,7 +155,7 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 Correctness and Safety: `resiliency`, `api-guidelines`
 Architecture and Quality: `coding-standards`, `observability`, `architecture-guardrail`, `complexity-review`
 Risk Assessment: `pr-risk-analysis`, `blast-radius-analysis`
-Delegated Reviews: `task-perf-review`, `task-code-secure`
+Delegated Reviews: `task-code-perf-review`, `task-code-secure`
 
 ## Avoid
 
