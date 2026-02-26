@@ -1,5 +1,5 @@
 ---
-name: task-implement-feature
+name: task-spring-implement-feature
 description: End-to-end Spring Boot feature implementation workflow. Generates entity, repository, service, controller, DTO records, Flyway migration, and tests (unit + integration). Orchestrates multiple atomic skills into a complete, production-ready feature.
 metadata:
   category: backend

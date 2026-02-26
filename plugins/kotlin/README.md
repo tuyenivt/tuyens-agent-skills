@@ -68,7 +68,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 | Skill               | Description                                                                           | Delegates to Java plugin                                       |
 | ------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `task-kotlin-new`   | Create a new Kotlin + Spring Boot resource (entity, DTOs, service, controller, tests) | `db-migration-safety` for Flyway, test slices from Java plugin |
-| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)      | `task-debug` for Java/Spring errors                            |
+| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)      | `task-spring-debug` for Java/Spring errors                     |
 
 ### Total: 1 agent + 5 skills (intentionally small — this is a companion plugin)
 
@@ -81,5 +81,5 @@ core   (base patterns, git, code quality)
 ```
 
 The Kotlin plugin **never duplicates** Java plugin content. It references Java plugin skills
-by name (e.g., `jpa-performance`, `transaction`, `db-migration-safety`, `task-debug`) and
+by name (e.g., `jpa-performance`, `transaction`, `db-migration-safety`, `task-spring-debug`) and
 adds only the Kotlin-specific layer on top.

@@ -45,11 +45,11 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPR
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill                    | Purpose                                                                          |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| `task-spring-new`        | Create Spring Boot endpoint (controller + service + repository + DTOs)           |
-| `task-implement-feature` | End-to-end Spring Boot feature implementation (entity + migration + API + tests) |
-| `task-debug`             | Developer debugging workflow (paste stack trace, get fix)                        |
+| Skill                           | Purpose                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| `task-spring-new`               | Create Spring Boot endpoint (controller + service + repository + DTOs)           |
+| `task-spring-implement-feature` | End-to-end Spring Boot feature implementation (entity + migration + API + tests) |
+| `task-spring-debug`             | Developer debugging workflow (paste stack trace, get fix)                        |
 
 ## Atomic Skills (Reusable Patterns)
 
@@ -94,7 +94,7 @@ Operations: CRUD with pagination
 **Implement full feature (entity + migration + API + tests):**
 
 ```
-/task-implement-feature
+/task-spring-implement-feature
 Feature: Order with payment tracking
 Package: com.example.order
 Operations: CRUD, approve, cancel
@@ -104,7 +104,7 @@ Relationships: ManyToOne to Customer
 **Debug a stack trace:**
 
 ```
-/task-debug
+/task-spring-debug
 [paste stack trace or error message]
 ```
 

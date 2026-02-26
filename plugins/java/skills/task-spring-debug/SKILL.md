@@ -1,5 +1,5 @@
 ---
-name: task-debug
+name: task-spring-debug
 description: Developer-level debugging workflow. Paste a stack trace, error log, or describe unexpected behavior. Analyzes the error, identifies root cause in your codebase, suggests a fix with code, and explains why it happened. For developer debugging, not production incident analysis (use task-root-cause for incidents).
 metadata:
   category: backend

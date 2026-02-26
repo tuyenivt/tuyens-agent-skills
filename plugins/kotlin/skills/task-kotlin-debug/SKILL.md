@@ -15,7 +15,7 @@ STEP 2 — CLASSIFY (Kotlin-specific errors on top of Java ones):
 - kotlin-allopen "Entity class is final" → missing allopen plugin config
 - "Suspension functions can only be called within coroutine body" → missing suspend/runBlocking
 - MockK "no answer found" → missing every { } stub
-- For all Java/Spring errors: same classification as Java plugin's task-debug
+- For all Java/Spring errors: same classification as Java plugin's task-spring-debug
 
 STEP 3 — LOCATE
 
