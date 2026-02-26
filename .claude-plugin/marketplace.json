@@ -25,6 +25,24 @@
         "code-review",
         "architecture"
       ]
+    },
+    {
+      "name": "java",
+      "source": "./plugins/java",
+      "description": "12 skills and 8 agents for Java 21+ / Spring Boot 3.5+ development. Requires core plugin.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "java",
+        "spring-boot",
+        "jpa",
+        "gradle",
+        "virtual-threads",
+        "testing"
+      ]
     }
   ]
 }

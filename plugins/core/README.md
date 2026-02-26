@@ -1,4 +1,4 @@
-# Core
+# Tuyen's Agent Skills - Core
 
 Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from CLAUDE.md (falls back to file-based detection) and adapts universal engineering principles to the detected ecosystem.
 
