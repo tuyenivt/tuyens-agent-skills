@@ -43,6 +43,17 @@
         "virtual-threads",
         "testing"
       ]
+    },
+    {
+      "name": "kotlin",
+      "source": "./plugins/kotlin",
+      "description": "5 skills and 1 agent for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires core and java plugin",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": ["kotlin", "spring-boot", "gradle", "coroutines", "testing"]
     }
   ]
 }
