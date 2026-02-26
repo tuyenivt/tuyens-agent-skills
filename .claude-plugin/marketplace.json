@@ -76,6 +76,17 @@
         "url": "https://github.com/tuyenivt"
       },
       "tags": ["ruby", "rails", "activerecord", "rspec", "sidekiq", "testing"]
+    },
+    {
+      "name": "node",
+      "source": "./plugins/node",
+      "description": "10 skills and 3 agents for Node.js/TypeScript development. Requires core plugin.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": ["node", "typescript", "nestjs", "express", "prisma", "typeorm"]
     }
   ]
 }
