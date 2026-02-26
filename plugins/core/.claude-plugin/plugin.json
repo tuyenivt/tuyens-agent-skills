@@ -1,0 +1,9 @@
+{
+  "name": "core",
+  "version": "1.0.0",
+  "description": "Stack-agnostic core plugin: ops, governance, and framework-aware workflows for any tech stack. Auto-detects project stack from CLAUDE.md.",
+  "author": {
+    "name": "Tuyen"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,30 @@
+{
+  "name": "tuyens-agent-skills",
+  "description": "Directory of tuyens agent skills",
+  "owner": {
+    "name": "Tuyen",
+    "contact": "github.com/tuyenivt"
+  },
+  "plugins": [
+    {
+      "name": "core",
+      "source": "./plugins/core",
+      "description": "42 skills (14 workflow + 28 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "multi-stack",
+        "stack-agnostic",
+        "ops",
+        "governance",
+        "review",
+        "core",
+        "code-review",
+        "architecture"
+      ]
+    }
+  ]
+}
