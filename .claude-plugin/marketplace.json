@@ -54,6 +54,17 @@
         "url": "https://github.com/tuyenivt"
       },
       "tags": ["kotlin", "spring-boot", "gradle", "coroutines", "testing"]
+    },
+    {
+      "name": "python",
+      "source": "./plugins/python",
+      "description": "10 skills and 3 agents for Python 3.11+ / FastAPI / Django development. Requires core plugin.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": ["python", "sqlalchemy", "alembic", "celery", "testing"]
     }
   ]
 }
