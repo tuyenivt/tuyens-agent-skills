@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Java / Spring Boot
 
-Claude Code plugin for Java 21+ / Spring Boot 3.5+ development. 8 agents, 12 skills (3 workflow + 9 atomic).
+Claude Code plugin for Java 21+ / Spring Boot 3.5+ development. 8 agents, 11 skills (2 workflow + 9 atomic).
 
 > React support has been removed. This plugin focuses exclusively on Java/Spring Boot. For stack-agnostic code review, architecture, ops, and governance skills, install `core`.
 
@@ -45,11 +45,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPR
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill                           | Purpose                                                                          |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| `task-spring-new`               | Create Spring Boot endpoint (controller + service + repository + DTOs)           |
-| `task-spring-implement-feature` | End-to-end Spring Boot feature implementation (entity + migration + API + tests) |
-| `task-spring-debug`             | Developer debugging workflow (paste stack trace, get fix)                        |
+| Skill               | Purpose                                                                          |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `task-spring-new`   | End-to-end Spring Boot feature implementation (entity + migration + API + tests) |
+| `task-spring-debug` | Developer debugging workflow (paste stack trace, get fix)                        |
 
 ## Atomic Skills (Reusable Patterns)
 
@@ -82,19 +81,10 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 ## Usage Examples
 
-**Create Spring Boot endpoint:**
-
-```
-/task-spring-new
-Resource: Order
-Package: com.example.order
-Operations: CRUD with pagination
-```
-
 **Implement full feature (entity + migration + API + tests):**
 
 ```
-/task-spring-implement-feature
+/task-spring-new
 Feature: Order with payment tracking
 Package: com.example.order
 Operations: CRUD, approve, cancel

@@ -108,11 +108,11 @@ if (obj instanceof String s) { use(s); }
 
 ## Feature Implementation Workflow
 
-This agent is the designated orchestrator for `task-spring-new` and `task-spring-implement-feature`. When invoked for end-to-end feature implementation, follow the 8-step workflow defined in `task-spring-implement-feature`:
+This agent is the designated orchestrator for `task-spring-new`. When invoked for end-to-end feature implementation, follow the 8-step workflow defined in `task-spring-new`:
 
 1. Gather Requirements → 2. Design → 3. Entity + Migration → 4. Repository → 5. Service → 6. Controller → 7. Tests → 8. Validate
 
-Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-spring-implement-feature` for full details.
+Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-spring-new` for full details.
 
 ## Principles
 

@@ -48,11 +48,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 
 ## Workflow Skills
 
-| Skill                       | Description                                                                                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-go-new`               | Create a new Go/Gin resource endpoint. Generates model, repository, service, handler, routes, migration, and tests.                            |
-| `task-go-implement-feature` | End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
-| `task-go-debug`             | Debug Go errors. Paste a panic stack trace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix. |
+| Skill           | Description                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-go-new`   | End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
+| `task-go-debug` | Debug Go errors. Paste a panic stack trace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix. |
 
 ## Atomic Skills
 
@@ -67,23 +66,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 
 ## Usage Examples
 
-### Create a new resource endpoint
-
-```
-> task-go-new
-
-Resource name: Order
-Fields: Total float64, Status string, CustomerID uint
-Data access: GORM
-Operations: full CRUD
-
-→ Generates migration, model, repository, service, handler, routes, and tests
-```
-
 ### Implement a feature end-to-end
 
 ```
-> task-go-implement-feature
+> task-go-new
 
 Feature: Add payment processing with webhook endpoint
 - Creates migration for payments table

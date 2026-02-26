@@ -1,63 +1,30 @@
 ---
 name: task-rails-new
-description: "Create a new Rails resource. Generates migration, model, service object, controller, serializer, routes, FactoryBot factory, and RSpec tests (model + request specs). Full CRUD with pagination."
+description: "End-to-end Rails feature implementation. Generates migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests from a feature description."
 agent: rails-architect
 ---
 
-STEP 1 — GATHER (interactive):
+STEP 1 — GATHER: feature description, affected models, external integrations, background jobs, auth rules
 
-- Resource name (singular: Order, Payment)
-- Attributes with types (total:decimal, status:string, customer:references)
-- Associations (belongs_to, has_many)
-- Operations: full CRUD or subset
-- API-only or full-stack?
-- Background jobs needed?
+STEP 2 — DESIGN: propose models/migrations/services/controllers/routes/jobs, present for approval
+  Load: rails-activerecord-patterns, rails-service-objects
 
-STEP 2 — MIGRATION:
-Load skill: rails-migration-safety
+STEP 3 — DATABASE: load rails-migration-safety, generate migrations
 
-- Generate migration with indexes on foreign keys, status columns
-- Add DB-level constraints (NOT NULL, check constraints)
+STEP 4 — MODELS: generate/update with associations and validations
 
-STEP 3 — MODEL:
-Load skill: rails-activerecord-patterns
+STEP 5 — SERVICES: load rails-service-objects, generate service objects
+  If Sidekiq needed: load rails-sidekiq-patterns
 
-- Validations mirroring DB constraints
-- Associations with proper dependent options
-- Scopes for common queries
-- enum with Rails 7+ syntax
+STEP 6 — CONTROLLERS: strong params, pagination, delegate to services
 
-STEP 4 — SERVICE OBJECT:
-Load skill: rails-service-objects
+STEP 7 — SERIALIZERS: response shaping
 
-- Create{Resource} service
-- Result object pattern
+STEP 8 — SECURITY: load rails-security-patterns, Pundit policies
 
-STEP 5 — CONTROLLER:
+STEP 9 — TESTS: load rails-testing-patterns
+  Model specs, service specs, request specs, factory with traits, Sidekiq job specs
 
-- Strong parameters
-- Pagination (Pagy preferred)
-- Delegates to service objects
-- API-only: JSON responses
+STEP 10 — VALIDATE: bundle exec rspec && bundle exec rubocop
 
-STEP 6 — SERIALIZER:
-
-- Only expose necessary fields
-- Nested associations opt-in
-
-STEP 7 — ROUTES:
-
-- resources :orders under /api/v1 namespace (API) or root (full-stack)
-
-STEP 8 — TESTS:
-Load skill: rails-testing-patterns
-
-- FactoryBot factory with traits
-- Model spec: validations, associations, scopes
-- Request spec: all endpoints, error cases, auth
-- Service spec: success/failure paths
-
-STEP 9 — VALIDATE:
-bundle exec rspec && bundle exec rubocop
-
-OUTPUT: file checklist with paths
+OUTPUT: file list, endpoint summary, test count

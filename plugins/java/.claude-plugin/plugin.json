@@ -1,6 +1,6 @@
 {
   "name": "java",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Claude Code plugin for Java 21+ / Spring Boot 3.5+ development. JPA, Gradle, Virtual Threads. Designed to work with core plugin.",
   "author": {
     "name": "Tuyen"

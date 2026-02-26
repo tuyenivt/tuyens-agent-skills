@@ -49,11 +49,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 
 ## Workflow Skills
 
-| Skill                          | Description                                                                                                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-rails-new`               | Create a new Rails resource. Generates migration, model, service object, controller, serializer, routes, FactoryBot factory, and RSpec tests.                    |
-| `task-rails-implement-feature` | End-to-end Rails feature implementation. Generates migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests.          |
-| `task-rails-debug`             | Debug Rails errors. Paste a stack trace, Rails log, Sidekiq error, or RSpec failure. Classifies, identifies root cause, suggests fix, and recommends prevention. |
+| Skill              | Description                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-rails-new`   | End-to-end Rails feature implementation. Generates migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests.          |
+| `task-rails-debug` | Debug Rails errors. Paste a stack trace, Rails log, Sidekiq error, or RSpec failure. Classifies, identifies root cause, suggests fix, and recommends prevention. |
 
 ## Atomic Skills
 
@@ -68,22 +67,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 
 ## Usage Examples
 
-### Create a new resource
-
-```
-/task-rails-new
-> Resource: Order
-> Attributes: total:decimal, status:string, customer:references
-> Operations: full CRUD
-> API-only: yes
-```
-
-Generates: migration, model, service object, controller, serializer, routes, factory, model spec, request spec.
-
 ### Implement a feature
 
 ```
-/task-rails-implement-feature
+/task-rails-new
 > Feature: Add order fulfillment workflow
 > Models: Order, Fulfillment, ShipmentTracking
 > Background jobs: yes (notify warehouse, send tracking email)

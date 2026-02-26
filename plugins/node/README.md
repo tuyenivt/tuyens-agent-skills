@@ -54,21 +54,12 @@ ORM selection can be overridden by declaring it in your project's `CLAUDE.md`.
 
 Workflow skills orchestrate multi-step tasks using the `node-architect` agent.
 
-| Skill                         | Description                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------- |
-| `task-node-new`               | Create a new resource: module/router, controller, service, DTOs, data model, migration, and tests |
-| `task-node-implement-feature` | End-to-end feature implementation across all layers with comprehensive tests                      |
-| `task-node-debug`             | Debug errors from stack traces, test failures, build errors, and runtime issues                   |
+| Skill             | Description                                                                     |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `task-node-new`   | End-to-end feature implementation across all layers with comprehensive tests    |
+| `task-node-debug` | Debug errors from stack traces, test failures, build errors, and runtime issues |
 
 ### Usage Examples
-
-**Create a new resource:**
-
-```
-Create an Orders resource with fields: customerId, items, total, status
-```
-
-→ Detects NestJS/Express, generates all layers, runs build + test + lint.
 
 **Implement a feature:**
 

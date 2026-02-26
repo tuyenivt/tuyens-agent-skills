@@ -1,52 +1,23 @@
 ---
 name: task-go-new
-description: "Create a new Go/Gin resource endpoint. Generates model, repository (GORM or sqlx), service, handler, route registration, golang-migrate migration, and table-driven tests."
+description: "End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests from a feature description."
 agent: go-architect
 ---
 
-STEP 1 — GATHER (interactive):
+STEP 1 — GATHER: feature, affected packages, external deps, concurrency needs
 
-- Resource name (Order, Payment)
-- Fields with Go types (Total float64, Status string, CustomerID uint)
-- Data access: GORM, sqlx, or both
-- Operations: full CRUD or subset
-- Concurrency needs? (background processing)
+STEP 2 — DESIGN: propose structure, interfaces, data flow. Load go-gin-patterns, go-data-access. Present for approval.
 
-STEP 2 — MIGRATION:
-Load skill: go-migration-safety
+STEP 3 — DATABASE: load go-migration-safety, generate migrations
 
-- Generate {version}_create_{table}.up.sql and .down.sql
+STEP 4 — DATA LAYER: repository interface + impl (GORM and/or sqlx)
 
-STEP 3 — MODEL:
-Go struct with GORM tags or sqlx db tags based on choice
+STEP 5 — BUSINESS LOGIC: service with constructor injection, error wrapping (load go-error-handling). If goroutines: load go-concurrency.
 
-STEP 4 — REPOSITORY:
-Load skill: go-data-access
+STEP 6 — HTTP LAYER: Gin handlers, middleware, routes
 
-- Interface definition in service package (accept interfaces)
-- Implementation in repository package (return structs)
+STEP 7 — TESTS: load go-testing-patterns. Table-driven + httptest + testcontainers.
 
-STEP 5 — SERVICE:
-Load skill: go-error-handling
+STEP 8 — VALIDATE: go build, go test -race, go vet
 
-- Business logic, constructor injection, error wrapping
-
-STEP 6 — HANDLER:
-Load skill: go-gin-patterns
-
-- Gin handlers with binding/validation, consistent response format
-
-STEP 7 — ROUTES:
-Register in router group under /api/v1
-
-STEP 8 — TESTS:
-Load skill: go-testing-patterns
-
-- Table-driven service tests
-- httptest handler tests
-- testcontainers-go repository tests (if integration)
-
-STEP 9 — VALIDATE:
-go build ./... && go test -race ./... && go vet ./...
-
-OUTPUT: file checklist in standard project layout
+OUTPUT: file list, endpoint summary, test count

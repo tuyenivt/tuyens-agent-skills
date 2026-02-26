@@ -65,10 +65,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 
 ### Workflow skills (2)
 
-| Skill               | Description                                                                           | Delegates to Java plugin                                       |
-| ------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `task-kotlin-new`   | Create a new Kotlin + Spring Boot resource (entity, DTOs, service, controller, tests) | `db-migration-safety` for Flyway, test slices from Java plugin |
-| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)      | `task-spring-debug` for Java/Spring errors                     |
+| Skill               | Description                                                                                                       | Delegates to Java plugin                                              |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (requirements, design, code, migration, tests, validation) | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
+| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)                                  | `task-spring-debug` for Java/Spring errors                            |
 
 ### Total: 1 agent + 5 skills (intentionally small — this is a companion plugin)
 

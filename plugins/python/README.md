@@ -34,11 +34,10 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USER
 
 ## Workflow Skills
 
-| Skill                         | Agent            | Description                                                                           |
-| ----------------------------- | ---------------- | ------------------------------------------------------------------------------------- |
-| task-python-new               | python-architect | Create a new API resource (model, repo, service, endpoint, schemas, migration, tests) |
-| task-python-implement-feature | python-architect | End-to-end feature implementation across all layers                                   |
-| task-python-debug             | python-architect | Debug tracebacks, logs, Celery errors, and test failures                              |
+| Skill             | Agent            | Description                                              |
+| ----------------- | ---------------- | -------------------------------------------------------- |
+| task-python-new   | python-architect | End-to-end feature implementation across all layers      |
+| task-python-debug | python-architect | Debug tracebacks, logs, Celery errors, and test failures |
 
 ## Atomic Skills (internal, not user-invocable)
 
