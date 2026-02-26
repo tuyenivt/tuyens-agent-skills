@@ -1,0 +1,9 @@
+{
+  "name": "rails",
+  "version": "1.0.0",
+  "description": "Claude Code plugin for Ruby on Rails 7+/8. RSpec, Sidekiq, ActiveRecord, PostgreSQL. Works with core plugin.",
+  "author": {
+    "name": "Tuyen"
+  },
+  "license": "MIT"
+}

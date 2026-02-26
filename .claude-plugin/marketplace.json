@@ -65,6 +65,17 @@
         "url": "https://github.com/tuyenivt"
       },
       "tags": ["python", "sqlalchemy", "alembic", "celery", "testing"]
+    },
+    {
+      "name": "rails",
+      "source": "./plugins/rails",
+      "description": "9 skills and 3 agents for Ruby on Rails 7+/8 development. Requires core plugin.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": ["ruby", "rails", "activerecord", "rspec", "sidekiq", "testing"]
     }
   ]
 }
