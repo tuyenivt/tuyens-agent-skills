@@ -7,8 +7,8 @@ Claude Code plugin for Java 21+ / Spring Boot 3.5+ development. 8 agents, 11 ski
 ## Installation
 
 ```bash
-/plugin install core@tuyens-agent-skills
-/plugin install java@tuyens-agent-skills
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install java@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex
@@ -114,4 +114,3 @@ The following workflows are provided by `core` (install separately):
 - `/task-release-plan` — Production release planning
 - `/task-design-risk-analysis` — Proactive risk assessment
 - `/task-design-architecture` — Architecture design proposal
-

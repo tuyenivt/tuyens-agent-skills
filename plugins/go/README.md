@@ -21,9 +21,9 @@ Claude Code plugin for Go/Gin development.
 
 Install the core plugin first, then the Go plugin:
 
-```
-/plugin install core@tuyens-agent-skills
-/plugin install go@tuyens-agent-skills
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install go@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

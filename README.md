@@ -2,31 +2,75 @@
 
 Single marketplace repository for Claude Code plugins: `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
 
-## Add Marketplace
+## Recommended: Project-Scoped Installation
+
+**Install at the project (repo) level, not at the user level.**
+
+Each project should only load the skills it actually needs. Installing all plugins globally at user scope unnecessarily bloats every Claude Code session with skills for stacks you're not using, wasting context window space and making the skill picker noisy.
+
+The right pattern: **one marketplace add per machine, then per-project plugin installs.**
+
+### Step 1 — Add the marketplace once (user scope, done once per machine)
 
 ```bash
-/plugin marketplace add tuyenivt/tuyens-agent-skills
+claude plugin marketplace add tuyenivt/tuyens-agent-skills
 ```
 
-## Installation Order
+### Step 2 — Install only the relevant plugins inside each project (project scope)
 
-Install plugins in dependency order:
+Run these commands from your project root. Claude Code will store the selection in the project's local settings, so only those skills load when you open that project.
+
+**Java / Spring Boot project:**
 
 ```bash
-/plugin install core@tuyens-agent-skills
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install java@tuyens-agent-skills --scope project
 ```
 
-Then install one or more stack plugins:
+**Kotlin / Spring Boot project:**
 
 ```bash
-/plugin install java@tuyens-agent-skills
-/plugin install kotlin@tuyens-agent-skills   # requires core + java
-/plugin install python@tuyens-agent-skills
-/plugin install rails@tuyens-agent-skills
-/plugin install node@tuyens-agent-skills
-/plugin install go@tuyens-agent-skills
-/plugin install dotnet@tuyens-agent-skills
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install java@tuyens-agent-skills --scope project
+claude plugin install kotlin@tuyens-agent-skills --scope project
 ```
+
+**Python / FastAPI or Django project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install python@tuyens-agent-skills --scope project
+```
+
+**Ruby on Rails project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install rails@tuyens-agent-skills --scope project
+```
+
+**Node.js / TypeScript project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install node@tuyens-agent-skills --scope project
+```
+
+**Go project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install go@tuyens-agent-skills --scope project
+```
+
+**.NET / ASP.NET Core project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install dotnet@tuyens-agent-skills --scope project
+```
+
+> `core` is always required — it provides the stack-agnostic workflow and governance skills used by all language plugins.
 
 ## Optional: Share Skills Between Claude Code and Codex
 
@@ -65,16 +109,16 @@ Each plugin contains two types of skills:
 
 ## Plugin Catalog
 
-| Plugin                   | Focus                                                          | Includes                                      |
-| ------------------------ | -------------------------------------------------------------- | --------------------------------------------- |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 41 skills (13 workflow + 28 atomic)           |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                          |
-| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `core` + `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 10 skills + 3 agents                          |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 9 skills + 3 agents                           |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 3 agents                          |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 3 agents                           |
-| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 8 agents                          |
+| Plugin                   | Focus                                                          | Includes                             |
+| ------------------------ | -------------------------------------------------------------- | ------------------------------------ |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 41 skills                            |
+| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                 |
+| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `java`) |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 10 skills + 3 agents                 |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 9 skills + 3 agents                  |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 3 agents                 |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 3 agents                  |
+| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 8 agents                 |
 
 ## Notes
 

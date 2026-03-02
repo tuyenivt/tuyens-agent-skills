@@ -7,8 +7,8 @@ Claude Code plugin for .NET 8 LTS / ASP.NET Core Web API development. 8 agents, 
 ## Installation
 
 ```bash
-/plugin install core@tuyens-agent-skills
-/plugin install dotnet@tuyens-agent-skills
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install dotnet@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

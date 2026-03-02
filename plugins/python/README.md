@@ -15,9 +15,9 @@ Claude Code plugin for Python development.
 
 Install the core plugin first, then this plugin:
 
-```
-/plugin install core@tuyens-agent-skills
-/plugin install python@tuyens-agent-skills
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install python@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

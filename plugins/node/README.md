@@ -14,9 +14,9 @@ Claude Code plugin for Node.js/TypeScript development.
 
 Install the core plugin first, then the Node plugin:
 
-```
-/plugin install core@tuyens-agent-skills
-/plugin install node@tuyens-agent-skills
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install node@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

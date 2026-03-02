@@ -5,8 +5,7 @@ Stack-agnostic Claude Code core plugin providing ops, governance, and framework-
 ## Installation
 
 ```bash
-# Install
-/plugin install core@tuyens-agent-skills
+claude plugin install core@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

@@ -22,9 +22,9 @@ Claude Code plugin for Ruby on Rails projects.
 
 Install the core plugin first, then the Rails plugin:
 
-```
-/plugin install core@tuyens-agent-skills
-/plugin install rails@tuyens-agent-skills
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install rails@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex

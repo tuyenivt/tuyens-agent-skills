@@ -16,10 +16,10 @@ Spring Boot ecosystem provided by the Java plugin.
 
 All three plugins are required, installed in order:
 
-```
-/plugin install core@tuyens-agent-skills
-/plugin install java@tuyens-agent-skills
-/plugin install kotlin@tuyens-agent-skills
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install java@tuyens-agent-skills --scope project
+claude plugin install kotlin@tuyens-agent-skills --scope project
 ```
 
 ## Optional: Share Skills Between Claude Code and Codex
