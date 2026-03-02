@@ -54,6 +54,15 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/dotnet/skills"
 ```
 
+## How Skills Work
+
+Each plugin contains two types of skills:
+
+- **Workflow skills** (`task-*`, `user-invocable: true`): End-to-end task flows invoked as slash commands (e.g., `/task-code-review`). These are the skills you interact with directly.
+- **Atomic skills** (`user-invocable: false`): Focused, single-concern patterns that are hidden from the slash menu. They are composed automatically by workflow skills or triggered by your prompt — you never call them directly.
+
+> Use only workflow skills (`task-*`) as slash commands. Atomic skills run behind the scenes.
+
 ## Plugin Catalog
 
 | Plugin                   | Focus                                                          | Includes                                      |
