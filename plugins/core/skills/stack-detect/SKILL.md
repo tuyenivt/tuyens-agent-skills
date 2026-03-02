@@ -1,6 +1,6 @@
 ---
 name: stack-detect
-description: Detect project tech stack by reading CLAUDE.md. Extracts any declared language, framework, build tool, database, and test framework as key-value pairs. Stack-agnostic — works with any ecosystem.
+description: Detect project tech stack by reading CLAUDE.md, AGENTS.md, or GEMINI.md. Extracts any declared language, framework, build tool, database, and test framework as key-value pairs. Stack-agnostic — works with any ecosystem.
 user-invocable: false
 ---
 
@@ -14,11 +14,18 @@ This skill does NOT maintain a list of supported stacks. It passes through whate
 
 ## Detection Procedure
 
-### Step 1 — Read CLAUDE.md
+### Step 1 — Read agent instruction file (primary)
 
-1. Read the project's CLAUDE.md file (check `./CLAUDE.md`, then `.claude/CLAUDE.md`)
-2. Find any section about the tech stack — headings containing "stack", "technology", "tech", "requirements", "tools", or key-value lines like `Language:`, `Framework:`, `Build:`, `Database:`, `ORM:`, `Test:`
-3. Extract ALL declared properties as-is. Do not validate against a known list.
+Check for agent instruction files in this priority order. Use the **first one found** that contains stack information:
+
+1. `./CLAUDE.md` or `.claude/CLAUDE.md` — Claude Code convention
+2. `./AGENTS.md` — OpenAI Codex / multi-agent convention
+3. `./GEMINI.md` — Google Gemini convention
+
+For whichever file is found first:
+
+1. Find any section about the tech stack — headings containing "stack", "technology", "tech", "requirements", "tools", or key-value lines like `Language:`, `Framework:`, `Build:`, `Database:`, `ORM:`, `Test:`
+2. Extract ALL declared properties as-is. Do not validate against a known list.
 
 Examples of what to extract:
 
@@ -33,7 +40,7 @@ Whatever the user declares, that's what we use. The output is a structured bag o
 
 ### Step 2 — File-Based Fallback
 
-If CLAUDE.md has no stack section, fall back to file-based detection. This is a **best-effort heuristic** and is explicitly **non-exhaustive**:
+If no agent instruction file contains a stack section, fall back to file-based detection. This is a **best-effort heuristic** and is explicitly **non-exhaustive**:
 
 | Marker File(s)                                  | Detected Ecosystem                |
 | ----------------------------------------------- | --------------------------------- |
@@ -47,7 +54,7 @@ If CLAUDE.md has no stack section, fall back to file-based detection. This is a 
 | `*.csproj` / `*.sln`                            | .NET ecosystem                    |
 | `Makefile`                                      | Check further — could be anything |
 
-If nothing matches: language = "unknown". Warn the user to add stack info to CLAUDE.md for better results.
+If nothing matches: language = "unknown". Warn the user to add stack info to their agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) for better results.
 
 ### Step 3 — Output
 
@@ -59,14 +66,14 @@ Detected stack:
   Database: {as declared or detected}
   Test framework: {as declared or detected}
   ORM: {as declared or detected}
-  Additional: {any other properties found in CLAUDE.md}
-Source: CLAUDE.md | file-detection | unknown
+  Additional: {any other properties found in the instruction file}
+Source: CLAUDE.md | AGENTS.md | GEMINI.md | file-detection | unknown
 ```
 
 ## Rules
 
 - Never guess — if a field cannot be determined, use `unknown`
-- CLAUDE.md is the authoritative source; file-based detection is a fallback only
+- Agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md) are the authoritative source; file-based detection is a last-resort fallback only
 - Do not prompt the user for stack information — detect silently
 - If multiple languages are present (e.g., backend + frontend), report the primary backend language as `language` and note the frontend separately
 - Cache the result mentally for the duration of the conversation — do not re-detect on every skill invocation
@@ -100,6 +107,6 @@ If the detected stack is unfamiliar:
 
 - Do not hard-code stack assumptions — always detect first
 - Do not fail loudly if detection is inconclusive — degrade gracefully to `unknown`
-- Do not read every file in the project to detect the stack — check CLAUDE.md and a small set of marker files only
+- Do not read every file in the project to detect the stack — check agent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md) and a small set of marker files only
 - Do not maintain a fixed enum of valid languages or frameworks — any value is valid
 - Do not validate or reject unfamiliar stack values

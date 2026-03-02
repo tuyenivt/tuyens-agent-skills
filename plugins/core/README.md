@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Core
 
-Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from CLAUDE.md (falls back to file-based detection) and adapts universal engineering principles to the detected ecosystem.
+Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from your agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) and adapts universal engineering principles to the detected ecosystem.
 
 ## Installation
 
@@ -27,12 +27,16 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPR
 
 ## Stack Detection
 
-The core detects your project's tech stack automatically:
+The core detects your project's tech stack automatically, in this priority order:
 
-1. **CLAUDE.md (primary)**: Reads key-value pairs from any "Tech Stack" or similar section. Whatever you declare, the plugin uses — it does not validate against a fixed list.
-2. **File-based fallback**: If CLAUDE.md has no stack section, the plugin uses a best-effort heuristic based on marker files (`build.gradle`, `Gemfile`, `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `mix.exs`, `*.csproj`, etc.).
+1. **CLAUDE.md (primary)**: Checks `./CLAUDE.md` or `.claude/CLAUDE.md`. Reads key-value pairs from any "Tech Stack" or similar section.
+2. **AGENTS.md**: Checked if CLAUDE.md has no stack section. OpenAI Codex / multi-agent convention.
+3. **GEMINI.md**: Checked if neither CLAUDE.md nor AGENTS.md has a stack section. Google Gemini convention.
+4. **File-based fallback**: If no agent instruction file contains a stack section, uses a best-effort heuristic based on marker files (`build.gradle`, `Gemfile`, `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `mix.exs`, `*.csproj`, etc.).
 
-### Example CLAUDE.md entries (any stack works):
+Whatever you declare in your instruction file, the plugin uses — it does not validate against a fixed list.
+
+### Example entries (any stack works):
 
 ```markdown
 ## Tech Stack
@@ -100,9 +104,9 @@ The core detects your project's tech stack automatically:
 
 ### Core Utility
 
-| Skill          | Description                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `stack-detect` | Detect project tech stack by reading CLAUDE.md — extracts any declared properties as key-value pairs. Stack-agnostic. |
+| Skill          | Description                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stack-detect` | Detect project tech stack by reading CLAUDE.md, AGENTS.md, or GEMINI.md — extracts any declared properties as key-value pairs. Stack-agnostic. |
 
 ### Architecture
 
