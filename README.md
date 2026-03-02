@@ -82,6 +82,11 @@ Each plugin contains two types of skills:
 - `kotlin` is intentionally a thin companion plugin and depends on `java`.
 - Each plugin folder has its own README with stack-specific usage and examples.
 
+## Optional: Claude Code Settings Template
+
+- A `settings.template.json` is provided at `.claude/settings.template.json` as a starting point for your local Claude Code settings.
+- Copy it to `~/.claude/settings.json` (or merge into your existing one) to get recommended defaults for working with these plugins.
+
 ## License
 
 MIT
