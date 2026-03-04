@@ -1,6 +1,6 @@
 ---
 name: concurrency-model
-description: Concurrency patterns adapted to the detected project stack — threading models, synchronization primitives, and safe concurrency practices.
+description: Concurrency patterns adapted to the detected project stack - threading models, synchronization primitives, and safe concurrency practices.
 metadata:
   category: architecture
   tags: [concurrency, threading, parallelism, multi-stack]
@@ -21,10 +21,10 @@ user-invocable: false
 ## Universal Principles
 
 - Prefer the concurrency primitive native to the detected stack
-- Shared mutable state is dangerous in every language — minimize it
+- Shared mutable state is dangerous in every language - minimize it
 - Always define cancellation/timeout boundaries for concurrent work
 - Test concurrent code under contention, not just happy path
-- Unbounded concurrency is a resource leak — always limit parallelism
+- Unbounded concurrency is a resource leak - always limit parallelism
 
 ---
 

@@ -19,9 +19,9 @@ user-invocable: false
 ## Rules
 
 - Use MassTransit for inter-service async messaging; use Hangfire for scheduled/delayed single-service jobs
-- Always implement `IConsumer<T>` — never subscribe to raw broker events in application code
+- Always implement `IConsumer<T>` - never subscribe to raw broker events in application code
 - Use the **transactional outbox** (`MassTransit.EntityFrameworkCore`) to guarantee at-least-once delivery
-- Consumers must be idempotent — messages can be redelivered
+- Consumers must be idempotent - messages can be redelivered
 - Configure retry policies and dead-letter queues for every consumer
 - Hangfire jobs must be idempotent; use `DisableConcurrentExecution` for non-idempotent jobs
 
@@ -83,5 +83,5 @@ RecurringJob.AddOrUpdate<IReportGenerationService>(
 - Publishing events directly in the domain layer (use domain events + outbox instead)
 - Fire-and-forget `Task.Run` for background work that must be reliable
 - Consumers that are not idempotent
-- Long-running synchronous work inside a consumer — offload to Hangfire if needed
+- Long-running synchronous work inside a consumer - offload to Hangfire if needed
 - Missing dead-letter queue configuration (messages are silently dropped)

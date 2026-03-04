@@ -33,7 +33,7 @@ The core detects your project's tech stack automatically, in this priority order
 3. **GEMINI.md**: Checked if neither CLAUDE.md nor AGENTS.md has a stack section. Google Gemini convention.
 4. **File-based fallback**: If no agent instruction file contains a stack section, uses a best-effort heuristic based on marker files (`build.gradle`, `Gemfile`, `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `mix.exs`, `*.csproj`, etc.).
 
-Whatever you declare in your instruction file, the plugin uses — it does not validate against a fixed list.
+Whatever you declare in your instruction file, the plugin uses - it does not validate against a fixed list.
 
 ### Example entries (any stack works):
 
@@ -105,13 +105,13 @@ Whatever you declare in your instruction file, the plugin uses — it does not v
 
 | Skill          | Description                                                                                                                                    |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stack-detect` | Detect project tech stack by reading CLAUDE.md, AGENTS.md, or GEMINI.md — extracts any declared properties as key-value pairs. Stack-agnostic. |
+| `stack-detect` | Detect project tech stack by reading CLAUDE.md, AGENTS.md, or GEMINI.md - extracts any declared properties as key-value pairs. Stack-agnostic. |
 
 ### Architecture
 
 | Skill                       | Description                                                                                              |
 | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `concurrency-model`         | Concurrency patterns adapted to the detected stack — threading models, synchronization, safe concurrency |
+| `concurrency-model`         | Concurrency patterns adapted to the detected stack - threading models, synchronization, safe concurrency |
 | `data-consistency-modeling` | Consistency strategy selection across data boundaries                                                    |
 | `system-boundary-design`    | Formal boundary modeling for module and service decomposition                                            |
 | `tradeoff-analysis`         | Structured architectural decision and trade-off documentation                                            |
@@ -120,7 +120,7 @@ Whatever you declare in your instruction file, the plugin uses — it does not v
 
 | Skill                  | Description                                                                             |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| `caching`              | Caching patterns — strategy, invalidation, anti-patterns. Adapts to detected ecosystem. |
+| `caching`              | Caching patterns - strategy, invalidation, anti-patterns. Adapts to detected ecosystem. |
 | `capacity-modeling`    | Throughput estimation, scaling analysis, and bottleneck prediction                      |
 | `db-indexing`          | Database index strategy and query optimization                                          |
 | `payload-optimization` | API response size and serialization efficiency. Adapts to detected ecosystem.           |
@@ -135,9 +135,9 @@ Whatever you declare in your instruction file, the plugin uses — it does not v
 | `failure-propagation-analysis`    | Trace failure propagation paths across service and system boundaries                                |
 | `observability`                   | Structured logging, metrics, and distributed tracing. Adapts to detected ecosystem.                 |
 | `release-safety`                  | Rollout, rollback, and deployment risk patterns                                                     |
-| `resiliency`                      | Resilience patterns — circuit breakers, retries, timeouts, bulkheads. Adapts to detected ecosystem. |
+| `resiliency`                      | Resilience patterns - circuit breakers, retries, timeouts, bulkheads. Adapts to detected ecosystem. |
 | `root-cause-hypothesis`           | Generate ranked root cause hypotheses with confidence levels and evidence                           |
-| `safe-file-operations`            | Cross-platform shell operations — always use Unix/bash commands, never Windows commands             |
+| `safe-file-operations`            | Cross-platform shell operations - always use Unix/bash commands, never Windows commands             |
 
 ### Integration
 
@@ -149,12 +149,12 @@ Whatever you declare in your instruction file, the plugin uses — it does not v
 
 | Skill                        | Description                                                                                                |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `api-guidelines`             | REST API design — resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem. |
+| `api-guidelines`             | REST API design - resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem. |
 | `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                              |
 | `blast-radius-analysis`      | Failure propagation and change impact scope assessment                                                     |
 | `change-risk-classification` | Pre-implementation risk domain classification for proposed changes                                         |
-| `coding-standards`           | Coding conventions adapted to the detected stack — naming, structure, anti-patterns                        |
-| `complexity-review`          | Complexity assessment — cyclomatic complexity, cognitive load, abstraction depth                           |
+| `coding-standards`           | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                        |
+| `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                           |
 | `engineering-governance`     | Engineering process, governance improvement, and guardrail evolution for incident prevention               |
 | `pr-risk-analysis`           | Lightweight heuristic PR risk classification based on change signals                                       |
 | `review-gap-analysis`        | Analyze why existing review processes failed to catch a production failure                                 |
@@ -175,7 +175,7 @@ Whatever you declare in your instruction file, the plugin uses — it does not v
 [paste code or file path]
 ```
 
-Scope options — asks interactively if not specified:
+Scope options - asks interactively if not specified:
 
 ```
 /task-code-review-advanced +perf      # Core + performance review

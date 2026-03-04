@@ -6,12 +6,12 @@ user-invocable: false
 
 ## Test Type Hierarchy
 
-1. **Model specs** — fastest, test validations, scopes, methods
-2. **Request specs** — test full HTTP stack (replaces controller specs)
-3. **System specs** — browser-driven, test user flows (Capybara)
-4. **Service specs** — test business logic in isolation
+1. **Model specs** - fastest, test validations, scopes, methods
+2. **Request specs** - test full HTTP stack (replaces controller specs)
+3. **System specs** - browser-driven, test user flows (Capybara)
+4. **Service specs** - test business logic in isolation
 
-**NEVER use controller specs** — they're deprecated. Use request specs instead.
+**NEVER use controller specs** - they're deprecated. Use request specs instead.
 
 ## Model Specs
 
@@ -110,13 +110,13 @@ FactoryBot.define do
   end
 end
 
-# ✅ build_stubbed — fastest, no DB hit
+# ✅ build_stubbed - fastest, no DB hit
 order = build_stubbed(:order)
 
-# ✅ build — in-memory, no DB
+# ✅ build - in-memory, no DB
 order = build(:order)
 
-# create — hits DB, use only when needed
+# create - hits DB, use only when needed
 order = create(:order, :active, :with_line_items)
 ```
 
@@ -150,7 +150,7 @@ end
 ```ruby
 # spec/support/sidekiq.rb
 require "sidekiq/testing"
-Sidekiq::Testing.fake! # default — jobs are pushed to array
+Sidekiq::Testing.fake! # default - jobs are pushed to array
 
 # spec/jobs/process_order_job_spec.rb
 RSpec.describe ProcessOrderJob, type: :job do
@@ -203,19 +203,19 @@ it_behaves_like "a paginated endpoint"
 ## let vs let!
 
 ```ruby
-# let — lazy evaluated (only when referenced)
+# let - lazy evaluated (only when referenced)
 let(:user) { create(:user) }
 
-# let! — eager evaluated (runs before each example)
+# let! - eager evaluated (runs before each example)
 # Use when the record must exist even if not referenced
 let!(:admin) { create(:user, :admin) }
 ```
 
 ## Anti-Patterns
 
-- ❌ Fixtures — use FactoryBot instead (more flexible, explicit)
-- ❌ Testing private methods — test through public interface
-- ❌ `sleep` in tests — use `have_enqueued_job` or Sidekiq::Testing
-- ❌ Mystery guests — make test data explicit, not hidden in shared setup
-- ❌ Excessive mocking — mock boundaries (external APIs), not internal code
-- ❌ Controller specs — use request specs (full stack, more realistic)
+- ❌ Fixtures - use FactoryBot instead (more flexible, explicit)
+- ❌ Testing private methods - test through public interface
+- ❌ `sleep` in tests - use `have_enqueued_job` or Sidekiq::Testing
+- ❌ Mystery guests - make test data explicit, not hidden in shared setup
+- ❌ Excessive mocking - mock boundaries (external APIs), not internal code
+- ❌ Controller specs - use request specs (full stack, more realistic)

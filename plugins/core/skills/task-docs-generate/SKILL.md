@@ -18,18 +18,18 @@ metadata:
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Focus Areas
+### Step 2 - Focus Areas
 
 - **Audience**: Who is reading, what they need
 - **Purpose**: What readers will accomplish
 - **Examples**: Working, tested examples
 - **Maintenance**: Can it be kept updated
 
-### Step 3 — Documentation Types
+### Step 3 - Documentation Types
 
 #### README
 
@@ -104,7 +104,7 @@ Positive and negative results.
 | Status | Description |
 ```
 
-### Step 4 — Stack-Specific Documentation Patterns
+### Step 4 - Stack-Specific Documentation Patterns
 
 After loading stack-detect, apply documentation patterns appropriate to the detected ecosystem:
 

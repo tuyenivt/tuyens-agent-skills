@@ -19,11 +19,11 @@ user-invocable: false
 
 ## Rules
 
-- Use `SecurityFilterChain` as `@Bean` — never extend `WebSecurityConfigurerAdapter` (removed in Spring Security 6)
-- Use `requestMatchers()` API — never `antMatchers()` (removed)
-- Use `@EnableMethodSecurity` — never `@EnableGlobalMethodSecurity` (deprecated)
+- Use `SecurityFilterChain` as `@Bean` - never extend `WebSecurityConfigurerAdapter` (removed in Spring Security 6)
+- Use `requestMatchers()` API - never `antMatchers()` (removed)
+- Use `@EnableMethodSecurity` - never `@EnableGlobalMethodSecurity` (deprecated)
 - STATELESS APIs must disable CSRF and sessions
-- Never store JWT in localStorage — use HttpOnly cookie or Authorization header from memory
+- Never store JWT in localStorage - use HttpOnly cookie or Authorization header from memory
 - Never use wildcard CORS origins (`*`) in production
 - Constructor injection only (`@RequiredArgsConstructor`)
 - Externalize security configuration (issuer URIs, allowed origins) via `@Value` or `@ConfigurationProperties`
@@ -231,14 +231,14 @@ http.cors(cors -> cors.configurationSource(corsConfigurationSource(allowedOrigin
 
 ### CSRF Handling
 
-STATELESS APIs — disable CSRF (no session to protect):
+STATELESS APIs - disable CSRF (no session to protect):
 
 ```java
 http.csrf(AbstractHttpConfigurer::disable)
     .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
 ```
 
-Stateful apps — CookieCsrfTokenRepository for SPA (XSRF-TOKEN cookie + X-XSRF-TOKEN header):
+Stateful apps - CookieCsrfTokenRepository for SPA (XSRF-TOKEN cookie + X-XSRF-TOKEN header):
 
 ```java
 http.csrf(csrf -> csrf
@@ -325,11 +325,11 @@ class SecurityIntegrationTest {
 
 ## Avoid
 
-- ❌ `WebSecurityConfigurerAdapter` — removed in Spring Security 6
-- ❌ `antMatchers()` — replaced by `requestMatchers()`
-- ❌ `@EnableGlobalMethodSecurity` — replaced by `@EnableMethodSecurity`
-- ❌ `@Secured` — limited; prefer `@PreAuthorize` with SpEL
+- ❌ `WebSecurityConfigurerAdapter` - removed in Spring Security 6
+- ❌ `antMatchers()` - replaced by `requestMatchers()`
+- ❌ `@EnableGlobalMethodSecurity` - replaced by `@EnableMethodSecurity`
+- ❌ `@Secured` - limited; prefer `@PreAuthorize` with SpEL
 - ❌ Disabling CSRF on stateful (session-based) applications
-- ❌ Storing JWT in `localStorage` — vulnerable to XSS; use HttpOnly cookie or keep in memory
-- ❌ Wildcard CORS origins (`*`) in production — specify exact origins
-- ❌ Hardcoded secrets or issuer URIs — externalize to configuration
+- ❌ Storing JWT in `localStorage` - vulnerable to XSS; use HttpOnly cookie or keep in memory
+- ❌ Wildcard CORS origins (`*`) in production - specify exact origins
+- ❌ Hardcoded secrets or issuer URIs - externalize to configuration

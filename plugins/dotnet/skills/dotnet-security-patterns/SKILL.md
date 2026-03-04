@@ -18,11 +18,11 @@ user-invocable: false
 
 ## Rules
 
-- Every endpoint must have an explicit auth rule — `[Authorize]` or `[AllowAnonymous]`; never rely on "default deny"
+- Every endpoint must have an explicit auth rule - `[Authorize]` or `[AllowAnonymous]`; never rely on "default deny"
 - Use policy-based authorization over role strings in business logic
-- Store secrets in environment variables or a vault — never in `appsettings.json`
+- Store secrets in environment variables or a vault - never in `appsettings.json`
 - Enable HTTPS redirection and HSTS in production
-- Validate JWT issuer, audience, and signing key — reject tokens with `none` algorithm
+- Validate JWT issuer, audience, and signing key - reject tokens with `none` algorithm
 - Use `FluentValidation` + `[ApiController]` for input validation to prevent injection
 - Set `SameSite=Strict` or `Lax` for cookies; set `HttpOnly` and `Secure` flags
 

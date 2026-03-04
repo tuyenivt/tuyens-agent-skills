@@ -17,7 +17,7 @@ category: engineering
 ## Focus Areas
 
 - **Health Checks**: `IHealthCheck` implementations, `/health/live`, `/health/ready` endpoints, ASP.NET Core health check middleware
-- **Resilience**: Polly v8 `ResiliencePipeline` — retry, circuit-breaker, timeout, fallback, rate limiter
+- **Resilience**: Polly v8 `ResiliencePipeline` - retry, circuit-breaker, timeout, fallback, rate limiter
 - **Logging**: Serilog with structured properties, correlation IDs (`X-Correlation-Id`), log level tuning, sink configuration (Seq, Elasticsearch, Application Insights)
 - **Observability**: OpenTelemetry traces, `Activity` spans, `Meter` metrics, `ILogger` enrichment
 - **Database Resilience**: EF Core connection resiliency (`EnableRetryOnFailure`), Polly on raw Dapper connections

@@ -7,16 +7,16 @@ metadata:
   type: workflow
 ---
 
-# Code Review — Staff Edition
+# Code Review - Staff Edition
 
 ## Purpose
 
 Staff-level code review that prioritizes system risk over style:
 
-- Risk-based evaluation — assess blast radius and cross-module impact before line-level feedback
-- Architecture boundary protection — detect coupling, layer violations, and structural drift early
-- Maintainability control — catch over-abstraction, verbosity inflation, and premature generalization
-- High-signal findings only — no nitpicking, no trivial formatting comments
+- Risk-based evaluation - assess blast radius and cross-module impact before line-level feedback
+- Architecture boundary protection - detect coupling, layer violations, and structural drift early
+- Maintainability control - catch over-abstraction, verbosity inflation, and premature generalization
+- High-signal findings only - no nitpicking, no trivial formatting comments
 
 ## When to Use
 
@@ -39,17 +39,17 @@ Default: Core. If invoked with an explicit scope argument (e.g., `/task-code-rev
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Phase A — PR Risk Snapshot (run first)
+### Phase A - PR Risk Snapshot (run first)
 
 - Use skill: `pr-risk-analysis` to evaluate cross-cutting risk signals
 - Use skill: `blast-radius-analysis` to assess failure propagation scope
 - Output risk level and blast radius before proceeding to findings
 
-### Phase B — Correctness and Safety
+### Phase B - Correctness and Safety
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, unsafe shared state mutation, transaction boundary correctness.
 
@@ -62,18 +62,18 @@ After loading stack-detect, apply correctness checks specific to the detected ec
 
 Use skill: `resiliency`, `api-guidelines`
 
-### Phase C — Architecture Guardrails
+### Phase C - Architecture Guardrails
 
 Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, bypassing abstractions, boundary erosion, architectural drift.
 
-Apply the layering conventions of the detected framework — presentation → service → data access — using the ecosystem's standard patterns.
+Apply the layering conventions of the detected framework - presentation → service → data access - using the ecosystem's standard patterns.
 
-### Phase D — AI-Generated Code Quality Control
+### Phase D - AI-Generated Code Quality Control
 
 Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
 Key signals: over-abstraction, premature generalization, redundant mapping layers, unnecessary boilerplate, pattern inflation.
 
-### Phase E — Maintainability and Clarity
+### Phase E - Maintainability and Clarity
 
 Naming that obscures intent, mixed responsibilities, large unreviewable chunks, complex logic without explanation.
 Use skill: `coding-standards`, `observability`
@@ -163,5 +163,5 @@ Delegated Reviews: `task-code-perf-review`, `task-code-secure`
 - Blocking on personal preference
 - Reviewing without understanding module context
 - Running performance or security sub-workflows when user requested Core scope only
-- Commenting on every file — focus on systemic issues
+- Commenting on every file - focus on systemic issues
 - Applying framework conventions from a different stack

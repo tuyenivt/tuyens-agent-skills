@@ -9,7 +9,7 @@ Cover:
 1. MODULE ARCHITECTURE:
    - One module per bounded context: OrdersModule, PaymentsModule
    - Explicit imports/exports: only export what other modules need
-   - Global modules (@Global) sparingly — only for truly cross-cutting services
+   - Global modules (@Global) sparingly - only for truly cross-cutting services
    - Dynamic modules for configurable providers (e.g., DatabaseModule.forRoot(config))
 
 2. DEPENDENCY INJECTION:

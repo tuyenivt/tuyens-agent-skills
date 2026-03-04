@@ -1,6 +1,6 @@
 ---
 name: caching
-description: Caching patterns — cache strategy, invalidation, and anti-patterns. Auto-detects project stack and adapts caching guidance to the detected ecosystem.
+description: Caching patterns - cache strategy, invalidation, and anti-patterns. Auto-detects project stack and adapts caching guidance to the detected ecosystem.
 metadata:
   category: ops
   tags: [caching, performance, redis, multi-stack]
@@ -20,11 +20,11 @@ user-invocable: false
 
 ## Universal Principles (All Stacks)
 
-- Cache reads, not writes — cache should reflect source of truth
-- Every cache entry must have a TTL — no indefinite caching
+- Cache reads, not writes - cache should reflect source of truth
+- Every cache entry must have a TTL - no indefinite caching
 - Define an invalidation strategy before adding a cache
 - Cache DTOs / response objects, never ORM entities or mutable objects
-- Monitor cache hit rate — below 80% means the cache may not be effective
+- Monitor cache hit rate - below 80% means the cache may not be effective
 - Consider thundering herd on cache eviction (use cache stampede protection)
 
 ---
@@ -33,7 +33,7 @@ user-invocable: false
 
 ### Cache-Aside (Lazy Loading)
 
-The most common pattern — application checks cache first, falls back to source:
+The most common pattern - application checks cache first, falls back to source:
 
 1. Check cache for key
 2. On hit: return cached value
@@ -41,7 +41,7 @@ The most common pattern — application checks cache first, falls back to source
 
 ### Write-Through
 
-Write to cache and source simultaneously — ensures cache is always fresh but adds write latency.
+Write to cache and source simultaneously - ensures cache is always fresh but adds write latency.
 
 ### Cache Invalidation
 

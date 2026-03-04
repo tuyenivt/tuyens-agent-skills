@@ -1,6 +1,6 @@
 ---
 name: resiliency
-description: Resilience patterns — circuit breakers, retries, timeouts, bulkheads. Auto-detects project stack and adapts patterns to the detected ecosystem.
+description: Resilience patterns - circuit breakers, retries, timeouts, bulkheads. Auto-detects project stack and adapts patterns to the detected ecosystem.
 metadata:
   category: ops
   tags: [resilience, circuit-breaker, retry, timeout, multi-stack]
@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Universal Principles (All Stacks)
 
-- Every external call must have a timeout — no unbounded waits
+- Every external call must have a timeout - no unbounded waits
 - Retries must use exponential backoff with jitter
 - Circuit breakers must define open/half-open/closed thresholds
 - Bulkhead isolation for independent failure domains
@@ -52,7 +52,7 @@ For transient failures only (5xx, timeouts, connection errors):
 - Exponential backoff: start at 500ms, multiply by 2, cap at a reasonable maximum
 - Add jitter to prevent thundering herd
 - Never retry non-idempotent operations without idempotency keys
-- Never retry client errors (400, 401, 403) — these will not succeed on retry
+- Never retry client errors (400, 401, 403) - these will not succeed on retry
 
 ### Timeout
 
@@ -85,5 +85,5 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 - External calls without timeouts (unbounded resource consumption)
 - Retrying non-idempotent operations without safety guarantees
 - Circuit breakers without monitoring (you need to know when they trip)
-- Retrying on non-transient errors (400, 401, 403 — these won't succeed on retry)
+- Retrying on non-transient errors (400, 401, 403 - these won't succeed on retry)
 - Fallbacks that silently swallow errors without logging or alerting

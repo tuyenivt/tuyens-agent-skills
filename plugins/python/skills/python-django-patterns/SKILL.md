@@ -57,7 +57,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 ## 2. QUERYSET OPTIMIZATION
 
-- select_related (FK, OneToOne — SQL JOIN) vs prefetch_related (M2M, reverse FK — 2 queries)
+- select_related (FK, OneToOne - SQL JOIN) vs prefetch_related (M2M, reverse FK - 2 queries)
 - only() and defer() for partial field loading
 - values() and values_list() to avoid model instantiation
 - exists() over count() > 0

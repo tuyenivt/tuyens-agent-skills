@@ -4,7 +4,7 @@ description: "End-to-end Kotlin + Spring Boot feature implementation workflow. D
 agent: kotlin-architect
 ---
 
-STEP 1 — GATHER REQUIREMENTS (MANDATORY)
+STEP 1 - GATHER REQUIREMENTS (MANDATORY)
 
 Collect and confirm:
 
@@ -17,7 +17,7 @@ Collect and confirm:
 
 Do not continue until requirements are complete.
 
-STEP 2 — DESIGN (MANDATORY APPROVAL GATE)
+STEP 2 - DESIGN (MANDATORY APPROVAL GATE)
 
 Propose and wait for approval:
 
@@ -29,7 +29,7 @@ Propose and wait for approval:
 
 Only generate code after user approves design.
 
-STEP 3 — ENTITY + MIGRATION
+STEP 3 - ENTITY + MIGRATION
 
 Generate:
 
@@ -42,7 +42,7 @@ Rules:
 - Use skill: `spring-db-migration-safety` for zero-downtime migration safety
 - Entity changes must always include migration
 
-STEP 4 — REPOSITORY
+STEP 4 - REPOSITORY
 
 Generate Spring Data repository and custom queries as needed.
 
@@ -52,7 +52,7 @@ Rules:
 - Add pageable methods when listing/filtering is required
 - Use suspend repository APIs only when project conventions require it
 
-STEP 5 — SERVICE
+STEP 5 - SERVICE
 
 Generate service with business rules and mapping.
 
@@ -64,7 +64,7 @@ Rules:
 - Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation
 - No `synchronized` blocks
 
-STEP 6 — CONTROLLER + DTO
+STEP 6 - CONTROLLER + DTO
 
 Generate:
 
@@ -77,12 +77,12 @@ Rules:
 - Never return entities directly
 - Keep API contract stable and explicit
 
-STEP 7 — ERROR HANDLING + SECURITY CHECK
+STEP 7 - ERROR HANDLING + SECURITY CHECK
 
 - Apply consistent error mapping via Java plugin conventions
 - Confirm endpoint auth requirements are explicit before finalizing
 
-STEP 8 — TESTS
+STEP 8 - TESTS
 
 Generate all three layers:
 
@@ -92,13 +92,13 @@ Generate all three layers:
 
 Use skill: `kotlin-testing-patterns` and Java plugin test slice conventions.
 
-STEP 9 — VALIDATE
+STEP 9 - VALIDATE
 
 Run:
 
 `./gradlew compileKotlin compileTestKotlin test`
 
-STEP 10 — OUTPUT SUMMARY
+STEP 10 - OUTPUT SUMMARY
 
 Provide:
 

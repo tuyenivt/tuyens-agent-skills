@@ -36,7 +36,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USER
 - **C# 12 Patterns**: Records for DTOs, primary constructors, collection expressions
 - **EF Core + Dapper**: N+1 prevention, `AsNoTracking()` for reads, Dapper for complex queries
 - **EF Core Migrations**: Zero-downtime DDL, expand-then-contract patterns
-- **FluentValidation**: All request validation — no data annotation clutter on DTOs
+- **FluentValidation**: All request validation - no data annotation clutter on DTOs
 - **ASP.NET Core Security**: JWT bearer auth, policy-based authorization, Problem Details errors
 - **Resilience**: Polly v8 resilience pipelines for external HTTP calls
 - **Messaging**: MassTransit consumers, transactional outbox, Hangfire background jobs
@@ -104,15 +104,15 @@ Relationships: ManyToOne to Customer
 
 The following workflows are provided by `core` (install separately):
 
-- `/task-code-review` — Framework-agnostic code review
-- `/task-code-review-advanced` — Staff-level review with risk assessment
-- `/task-code-secure` — Security review
-- `/task-code-test` — Test strategy
-- `/task-code-refactor` — Refactoring plan
-- `/task-code-perf-review` — Performance review
-- `/task-docs-generate` — Documentation generation
-- `/task-incident-root-cause` — Incident root cause analysis
-- `/task-incident-postmortem` — Post-incident postmortem
-- `/task-release-plan` — Production release planning
-- `/task-design-risk-analysis` — Proactive risk assessment
-- `/task-design-architecture` — Architecture design proposal
+- `/task-code-review` - Framework-agnostic code review
+- `/task-code-review-advanced` - Staff-level review with risk assessment
+- `/task-code-secure` - Security review
+- `/task-code-test` - Test strategy
+- `/task-code-refactor` - Refactoring plan
+- `/task-code-perf-review` - Performance review
+- `/task-docs-generate` - Documentation generation
+- `/task-incident-root-cause` - Incident root cause analysis
+- `/task-incident-postmortem` - Post-incident postmortem
+- `/task-release-plan` - Production release planning
+- `/task-design-risk-analysis` - Proactive risk assessment
+- `/task-design-architecture` - Architecture design proposal

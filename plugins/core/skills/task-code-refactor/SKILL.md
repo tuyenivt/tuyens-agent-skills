@@ -18,11 +18,11 @@ metadata:
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Identify Smells (All Stacks)
+### Step 2 - Identify Smells (All Stacks)
 
 | Smell                    | Risk   |
 | ------------------------ | ------ |
@@ -32,7 +32,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 | Feature Envy             | Low    |
 | Long Parameter List      | Low    |
 
-### Step 3 — Framework-Specific Smells
+### Step 3 - Framework-Specific Smells
 
 After loading stack-detect, identify smells specific to the detected ecosystem. Common categories include:
 
@@ -63,7 +63,7 @@ After loading stack-detect, identify smells specific to the detected ecosystem. 
 
 If the detected stack is unfamiliar, apply the universal smells from Step 2.
 
-### Step 4 — Safe Refactoring Steps
+### Step 4 - Safe Refactoring Steps
 
 1. Ensure tests exist
 2. Commit current state
@@ -72,7 +72,7 @@ If the detected stack is unfamiliar, apply the universal smells from Step 2.
 5. Commit
 6. Repeat
 
-### Step 5 — Common Refactorings
+### Step 5 - Common Refactorings
 
 | Smell        | Refactoring      |
 | ------------ | ---------------- |

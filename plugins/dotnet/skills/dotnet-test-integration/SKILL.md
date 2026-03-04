@@ -28,8 +28,8 @@ user-invocable: false
 ## Rules
 
 - Use `IClassFixture<T>` for shared expensive setup (e.g., Testcontainers database)
-- Use `NSubstitute` or `Moq` for application-layer unit tests — never spin up infrastructure
-- Generate test data with `Bogus` `Faker<T>` — avoid hand-crafted magic strings
+- Use `NSubstitute` or `Moq` for application-layer unit tests - never spin up infrastructure
+- Generate test data with `Bogus` `Faker<T>` - avoid hand-crafted magic strings
 - Every test follows Arrange / Act / Assert structure with clear naming: `Method_Scenario_ExpectedResult`
 - Prefer `WebApplicationFactory` over mocking the HTTP layer for API tests
 - Use `respawn` to reset database state between tests (not `DeleteAsync` on every table)
@@ -91,7 +91,7 @@ public sealed class OrderFaker : Faker<Order>
 
 ## Avoid
 
-- `Thread.Sleep` in tests — use `await Task.Delay` or proper async assertions
+- `Thread.Sleep` in tests - use `await Task.Delay` or proper async assertions
 - Shared mutable state between tests (test isolation)
-- Testing implementation details — test observable behaviour
-- Hardcoded connection strings — read from `IConfiguration` or Testcontainers
+- Testing implementation details - test observable behaviour
+- Hardcoded connection strings - read from `IConfiguration` or Testcontainers

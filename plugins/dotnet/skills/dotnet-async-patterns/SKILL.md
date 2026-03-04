@@ -18,11 +18,11 @@ user-invocable: false
 
 ## Rules
 
-- Every async method must accept and propagate `CancellationToken` — no `default` except at top-level entry points
-- Never use `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()` — always `await`
+- Every async method must accept and propagate `CancellationToken` - no `default` except at top-level entry points
+- Never use `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()` - always `await`
 - Never use `async void` except in event handlers; use `async Task` instead
 - Prefer `Task.WhenAll()` for independent parallel async operations
-- Use `IHostedService` / `BackgroundService` for long-running background work — not `Task.Run` in controllers
+- Use `IHostedService` / `BackgroundService` for long-running background work - not `Task.Run` in controllers
 - Register background services with `AddHostedService<T>()`
 - Use `Channel<T>` or MassTransit for producer/consumer patterns; avoid shared `ConcurrentQueue` with polling
 
@@ -63,5 +63,5 @@ public sealed class OutboxProcessorService(IServiceScopeFactory scopeFactory, IL
 - `async void` methods (unhandled exceptions crash the process)
 - Blocking async code with `.Result` or `.Wait()`
 - Fire-and-forget `Task.Run` inside request handlers
-- Ignoring `OperationCanceledException` — let it propagate or handle gracefully
+- Ignoring `OperationCanceledException` - let it propagate or handle gracefully
 - Capturing `HttpContext` in background work (it's request-scoped)

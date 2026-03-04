@@ -8,7 +8,7 @@ user-invocable: false
 
 - Tasks must be idempotent (safe to retry)
 - Pass IDs and simple types, NEVER pass ORM objects or complex state
-- Keep tasks small and focused — one responsibility
+- Keep tasks small and focused - one responsibility
 - bind=True for access to self (self.retry, self.request.id)
 
 ```python
@@ -16,7 +16,7 @@ from app.core.celery import celery_app
 
 @celery_app.task(bind=True, max_retries=3)
 def process_order(self, order_id: int) -> None:
-    """Process a single order. Idempotent — safe to retry."""
+    """Process a single order. Idempotent - safe to retry."""
     order = OrderRepository.get_by_id(order_id)  # sync DB call in Celery worker
     if order is None:
         return  # already processed or deleted
@@ -82,7 +82,7 @@ task_routes = {
 - chain() for sequential: chain(fetch.s(url), parse.s(), store.s())
 - group() for parallel: group(process.s(item) for item in items)
 - chord() for fan-out/fan-in: chord(group, callback)
-- Use sparingly — complex chains are hard to debug
+- Use sparingly - complex chains are hard to debug
 
 ```python
 from celery import chain, group, chord

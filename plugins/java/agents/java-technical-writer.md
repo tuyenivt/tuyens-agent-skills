@@ -35,7 +35,7 @@ category: quality
 ## Principles
 
 - Audience first
-- Show, don't tell — include working Java examples
+- Show, don't tell - include working Java examples
 - Simple words, short sentences
 - Document the "why", not just the "what"
 

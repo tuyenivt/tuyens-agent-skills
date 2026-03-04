@@ -7,7 +7,7 @@ user-invocable: false
 ## 1. ASYNC FUNDAMENTALS
 
 - async def for I/O-bound operations (DB, HTTP, file)
-- await for every async call — never forget
+- await for every async call - never forget
 - asyncio.gather() for concurrent I/O: await asyncio.gather(fetch_a(), fetch_b())
 - asyncio.create_task() for fire-and-forget within request scope (with care)
 
@@ -97,7 +97,7 @@ async with asyncio.timeout(5.0):
 ```
 
 ```python
-# TaskGroup (Python 3.11+) — structured concurrency
+# TaskGroup (Python 3.11+) - structured concurrency
 async with asyncio.TaskGroup() as tg:
     task_a = tg.create_task(operation_a())
     task_b = tg.create_task(operation_b())

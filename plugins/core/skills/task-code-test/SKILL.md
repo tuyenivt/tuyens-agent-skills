@@ -19,11 +19,11 @@ metadata:
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Testing Pyramid (All Stacks)
+### Step 2 - Testing Pyramid (All Stacks)
 
 ```
     /\      E2E (few)
@@ -31,7 +31,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
   /----\    Unit (many)
 ```
 
-### Step 3 — Framework-Specific Test Patterns
+### Step 3 - Framework-Specific Test Patterns
 
 After loading stack-detect, apply test patterns using the idioms of the detected ecosystem:
 
@@ -62,7 +62,7 @@ After loading stack-detect, apply test patterns using the idioms of the detected
 
 If the detected stack is unfamiliar, apply the universal testing pyramid and Arrange-Act-Assert pattern.
 
-### Step 4 — Frontend (React)
+### Step 4 - Frontend (React)
 
 **Component Test:**
 
@@ -124,7 +124,7 @@ After loading stack-detect, verify the ecosystem's specific testing best practic
 - Every test must have a clear purpose
 - Use Arrange-Act-Assert consistently
 - No test interdependencies
-- Do not aim for 100% coverage as a goal — focus on business value
+- Do not aim for 100% coverage as a goal - focus on business value
 - Consider maintenance cost of each test
 
 ## Output

@@ -27,12 +27,12 @@ category: quality
 - [ ] Using Records for DTOs (not classes)
 - [ ] Pattern matching where applicable (Java 21+)
 - [ ] No `synchronized` blocks (Virtual Thread compatibility)
-- [ ] Constructor injection — use `@RequiredArgsConstructor` if Lombok available
+- [ ] Constructor injection - use `@RequiredArgsConstructor` if Lombok available
 - [ ] `@Slf4j` for logging if Lombok available
 - [ ] Avoid `ResponseEntity` unless multiple status codes/response types in same method
 - [ ] Use `var` when type is obvious (constructors, literals, factory methods)
 - [ ] `@Transactional(readOnly = true)` as default on service classes
-- [ ] No JPA entities exposed in API responses — always map to DTOs
+- [ ] No JPA entities exposed in API responses - always map to DTOs
 - [ ] Proper fetch strategies (no eager loading by default)
 - [ ] `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
 

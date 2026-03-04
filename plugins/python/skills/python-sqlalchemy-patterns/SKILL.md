@@ -62,9 +62,9 @@ async def get_pending_orders(session: AsyncSession) -> list[Order]:
 
 ## 3. N+1 PREVENTION
 
-- selectinload(Order.items) — separate SELECT IN query (default choice)
-- joinedload(Order.customer) — LEFT JOIN (for single-valued relationships)
-- subqueryload — for complex nested relationships
+- selectinload(Order.items) - separate SELECT IN query (default choice)
+- joinedload(Order.customer) - LEFT JOIN (for single-valued relationships)
+- subqueryload - for complex nested relationships
 - lazy="raise" on relationships to catch N+1 in development
 
 ```python
@@ -138,7 +138,7 @@ engine = create_async_engine(
 
 ## 6. ANTI-PATTERNS
 
-- ❌ session.query() (1.x style — use select())
+- ❌ session.query() (1.x style - use select())
 - ❌ Column() (use mapped_column())
 - ❌ Forgetting to load relationships (causes N+1 or lazy load errors in async)
 - ❌ Long-lived sessions (create per request, close after)

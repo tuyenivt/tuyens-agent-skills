@@ -7,20 +7,20 @@ user-invocable: false
 ## 1. N+1 Prevention
 
 ```ruby
-# ❌ N+1 — fires a query per order
+# ❌ N+1 - fires a query per order
 users = User.all
 users.each { |u| puts u.orders.count }
 
-# ✅ includes — eager loads with separate query
+# ✅ includes - eager loads with separate query
 users = User.includes(:orders).all
 
-# ✅ preload — always separate queries (safe with complex scopes)
+# ✅ preload - always separate queries (safe with complex scopes)
 users = User.preload(:orders).all
 
-# ✅ eager_load — LEFT OUTER JOIN (needed for WHERE on association)
+# ✅ eager_load - LEFT OUTER JOIN (needed for WHERE on association)
 users = User.eager_load(:orders).where(orders: { status: :active })
 
-# ✅ strict_loading! — raise if lazy loading happens
+# ✅ strict_loading! - raise if lazy loading happens
 user = User.strict_loading!.first
 user.orders # => ActiveRecord::StrictLoadingViolationError
 
@@ -29,7 +29,7 @@ user.orders # => ActiveRecord::StrictLoadingViolationError
 config.active_record.strict_loading_by_default = true
 ```
 
-**Bullet gem** — detects N+1 in development:
+**Bullet gem** - detects N+1 in development:
 
 ```ruby
 # Gemfile
@@ -55,7 +55,7 @@ class Order < ApplicationRecord
   scope :with_active_customers, -> { joins(:customer).merge(Customer.active) }
 end
 
-# ❌ NEVER use default_scope — it infects every query and is hard to undo
+# ❌ NEVER use default_scope - it infects every query and is hard to undo
 ```
 
 ## 3. Associations
@@ -78,25 +78,25 @@ class Order < ApplicationRecord
   has_many :line_items, dependent: :destroy
   has_many :products, through: :line_items
 
-  # Polymorphic — use sparingly, consider STI or dedicated tables
+  # Polymorphic - use sparingly, consider STI or dedicated tables
   has_many :comments, as: :commentable
 end
 ```
 
 **Dependent options:**
 
-- `dependent: :destroy` — runs callbacks (safe, slower)
-- `dependent: :delete_all` — skips callbacks (fast, no cascade)
-- `dependent: :nullify` — sets FK to NULL
-- `dependent: :restrict_with_error` — prevents deletion
+- `dependent: :destroy` - runs callbacks (safe, slower)
+- `dependent: :delete_all` - skips callbacks (fast, no cascade)
+- `dependent: :nullify` - sets FK to NULL
+- `dependent: :restrict_with_error` - prevents deletion
 
 ## 4. Query Optimization
 
 ```ruby
-# ✅ select — only load needed columns
+# ✅ select - only load needed columns
 User.select(:id, :name, :email)
 
-# ✅ pluck — returns raw arrays, no AR objects
+# ✅ pluck - returns raw arrays, no AR objects
 User.where(active: true).pluck(:email)
 # => ["a@b.com", "c@d.com"]
 
@@ -144,7 +144,7 @@ Order.where("metadata @> ?", { source: "web" }.to_json)
 add_column :users, :tags, :string, array: true, default: []
 User.where("'admin' = ANY(tags)")
 
-# Partial indexes — index only relevant rows
+# Partial indexes - index only relevant rows
 add_index :orders, :created_at, where: "status = 'active'", name: "idx_active_orders"
 
 # EXPLAIN ANALYZE in console
@@ -153,9 +153,9 @@ ActiveRecord::Base.connection.execute("EXPLAIN ANALYZE SELECT * FROM orders WHER
 
 ## 7. Anti-Patterns
 
-- ❌ `default_scope` — infects all queries, use explicit scopes
-- ❌ N+1 in serializers — always preload associations before serializing
-- ❌ `.all.each` — loads entire table into memory, use `find_each`
-- ❌ Callbacks for business logic — use service objects instead
-- ❌ `update_attribute` — skips validations, use `update!`
-- ❌ String interpolation in queries — SQL injection risk, use parameterized queries
+- ❌ `default_scope` - infects all queries, use explicit scopes
+- ❌ N+1 in serializers - always preload associations before serializing
+- ❌ `.all.each` - loads entire table into memory, use `find_each`
+- ❌ Callbacks for business logic - use service objects instead
+- ❌ `update_attribute` - skips validations, use `update!`
+- ❌ String interpolation in queries - SQL injection risk, use parameterized queries

@@ -7,7 +7,7 @@ user-invocable: false
 ## ALEMBIC (FastAPI/SQLAlchemy)
 
 - Auto-generation: `alembic revision --autogenerate -m "description"`
-- Review every auto-generated migration — never trust blindly
+- Review every auto-generated migration - never trust blindly
 - Zero-downtime DDL: same universal rules (nullable first, CONCURRENTLY indexes,
   never rename columns directly)
 - Separate data migrations from schema migrations (use separate revision)
@@ -17,7 +17,7 @@ user-invocable: false
 - Online migration for large tables: batch updates in a Celery task
 
 ```python
-# Schema migration — add nullable column first
+# Schema migration - add nullable column first
 def upgrade():
     op.add_column("orders", sa.Column("tracking_number", sa.String(100), nullable=True))
 
@@ -26,7 +26,7 @@ def downgrade():
 ```
 
 ```python
-# Separate data migration — backfill in batches
+# Separate data migration - backfill in batches
 def upgrade():
     conn = op.get_bind()
     while True:

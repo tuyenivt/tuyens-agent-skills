@@ -30,7 +30,7 @@ Cover:
    - include: { items: true } for eager loading relations
    - select: { id: true, total: true } for partial field loading
    - Fluent API: order.items() for lazy relation loading (avoid in loops)
-   - Prisma Client generates optimized queries — trust it, but verify with logging
+   - Prisma Client generates optimized queries - trust it, but verify with logging
 
 4. CONNECTION POOLING:
    - datasource db { url = env("DATABASE_URL") }
@@ -38,10 +38,10 @@ Cover:
    - For serverless: use Prisma Accelerate or PgBouncer
 
 5. MIGRATIONS:
-   - prisma migrate dev — development
-   - prisma migrate deploy — production (CI/CD)
-   - prisma migrate reset — for testing
-   - prisma db push — for prototyping only, NOT production
+   - prisma migrate dev - development
+   - prisma migrate deploy - production (CI/CD)
+   - prisma migrate reset - for testing
+   - prisma db push - for prototyping only, NOT production
 
 6. ANTI-PATTERNS:
    - ❌ prisma db push in production (no migration history)

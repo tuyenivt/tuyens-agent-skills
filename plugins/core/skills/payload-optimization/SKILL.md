@@ -26,7 +26,7 @@ user-invocable: false
 - Use compression (gzip) when applicable
 - Maintain stable response schema
 - Avoid breaking changes in contracts
-- Never expose ORM entities / model objects directly — always use response DTOs / serializers / structs
+- Never expose ORM entities / model objects directly - always use response DTOs / serializers / structs
 
 ---
 
@@ -37,10 +37,10 @@ user-invocable: false
 The universal pattern for avoiding over-fetching:
 
 ```
-// Bad — returning the full entity/model with all fields
+// Bad - returning the full entity/model with all fields
 GET /orders/{id} → return entity directly (exposes all columns + internal fields)
 
-// Good — returning only the fields the client needs
+// Good - returning only the fields the client needs
 GET /orders/{id} → return shaped response with selected fields only
 ```
 

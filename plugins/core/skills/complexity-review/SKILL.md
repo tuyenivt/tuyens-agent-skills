@@ -1,6 +1,6 @@
 ---
 name: complexity-review
-description: Complexity assessment — cyclomatic complexity, cognitive load, abstraction depth. Auto-detects project stack and adapts thresholds to the detected ecosystem.
+description: Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth. Auto-detects project stack and adapts thresholds to the detected ecosystem.
 metadata:
   category: governance
   tags: [complexity, review, maintainability, multi-stack]
@@ -22,7 +22,7 @@ user-invocable: false
 - Flag methods/functions with cyclomatic complexity > 10
 - Flag files/classes with > 300 lines (indicates SRP violation)
 - Flag call chains deeper than 3 levels of abstraction
-- Complexity must justify itself — simple problems deserve simple solutions
+- Complexity must justify itself - simple problems deserve simple solutions
 - Prefer flat control flow over deeply nested conditionals
 
 ---
@@ -67,7 +67,7 @@ If the detected stack is unfamiliar, apply the universal thresholds above and re
 
 ## Avoid (All Stacks)
 
-- Complexity metrics as absolute rules — context matters
+- Complexity metrics as absolute rules - context matters
 - Refactoring stable, well-tested code solely to reduce metrics
 - Premature abstraction to "reduce complexity" (adds indirection complexity)
 - Ignoring cognitive complexity in favor of only cyclomatic complexity

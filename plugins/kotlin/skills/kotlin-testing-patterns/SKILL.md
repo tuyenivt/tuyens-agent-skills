@@ -7,7 +7,7 @@ user-invocable: false
 Cover:
 
 1. MOCKK (preferred over Mockito for Kotlin):
-   - mockk<MyService>() — works with final classes (no need for open)
+   - mockk<MyService>() - works with final classes (no need for open)
    - every { service.findOrder(any()) } returns order
    - coEvery { service.findOrder(any()) } returns order (for suspend functions)
    - verify { service.save(any()) }

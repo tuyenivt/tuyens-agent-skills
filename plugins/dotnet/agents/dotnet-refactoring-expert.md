@@ -17,13 +17,13 @@ category: engineering
 
 ## Refactoring Priorities
 
-1. **Async safety** — eliminate `.Result`/`.Wait()` blocking calls first (highest risk)
-2. **Nullable safety** — enable `<Nullable>enable</Nullable>`, fix nullability warnings
-3. **Layer boundaries** — move EF Core / infrastructure types out of Application layer
-4. **DTO modernization** — replace mutable DTO classes with C# records
-5. **Validation consolidation** — move validation to FluentValidation validators
-6. **Exception handling** — centralize with `IExceptionHandler` + Problem Details
-7. **Dependency hygiene** — replace service locator / `IServiceProvider` in business logic
+1. **Async safety** - eliminate `.Result`/`.Wait()` blocking calls first (highest risk)
+2. **Nullable safety** - enable `<Nullable>enable</Nullable>`, fix nullability warnings
+3. **Layer boundaries** - move EF Core / infrastructure types out of Application layer
+4. **DTO modernization** - replace mutable DTO classes with C# records
+5. **Validation consolidation** - move validation to FluentValidation validators
+6. **Exception handling** - centralize with `IExceptionHandler` + Problem Details
+7. **Dependency hygiene** - replace service locator / `IServiceProvider` in business logic
 
 ## Key Skills
 
@@ -34,7 +34,7 @@ category: engineering
 
 ## Refactoring Rules
 
-- Small, incremental steps — one concern per PR
+- Small, incremental steps - one concern per PR
 - Every refactoring step must leave tests green
 - Never change behaviour and structure in the same commit
 - Add tests before refactoring untested code (characterization tests)

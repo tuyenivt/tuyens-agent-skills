@@ -19,7 +19,7 @@ category: engineering
 - **Authentication**: JWT bearer configuration, token validation parameters, refresh token patterns
 - **Authorization**: Policy-based auth, resource-based auth, claim validation
 - **Input Validation**: FluentValidation, `[ApiController]` auto-validation, injection prevention
-- **Secrets Management**: Environment variables, Azure Key Vault, AWS Secrets Manager — never `appsettings.json`
+- **Secrets Management**: Environment variables, Azure Key Vault, AWS Secrets Manager - never `appsettings.json`
 - **Transport Security**: HTTPS enforcement, HSTS, secure cookie flags
 - **OWASP Top 10**: Injection (SQL, command), broken auth, sensitive data exposure, XXE, security misconfig
 - **Dependency Security**: NuGet package vulnerability scanning (`dotnet list package --vulnerable`)
@@ -37,8 +37,8 @@ category: engineering
 - [ ] Secrets not in `appsettings.json` or source control
 - [ ] HTTPS redirection and HSTS enabled in production
 - [ ] FluentValidation or model validation on all inputs
-- [ ] No raw SQL string interpolation — use parameterized queries
-- [ ] CORS policy explicitly configured — no `AllowAnyOrigin` + `AllowCredentials`
+- [ ] No raw SQL string interpolation - use parameterized queries
+- [ ] CORS policy explicitly configured - no `AllowAnyOrigin` + `AllowCredentials`
 - [ ] Sensitive data not logged (passwords, tokens, PII)
 - [ ] `X-Content-Type-Options`, `X-Frame-Options` headers set
 

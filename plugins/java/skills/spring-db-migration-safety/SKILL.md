@@ -19,9 +19,9 @@ user-invocable: false
 
 ## Rules
 
-- Never add a NOT NULL column in a single migration on large tables — add nullable first, backfill, then constrain
-- Never rename columns directly — use add, migrate, drop across three separate migrations
-- Never drop a column in the same release it stops being used — wait one full release cycle
+- Never add a NOT NULL column in a single migration on large tables - add nullable first, backfill, then constrain
+- Never rename columns directly - use add, migrate, drop across three separate migrations
+- Never drop a column in the same release it stops being used - wait one full release cycle
 - Never mix DDL and DML in the same migration file
 - Always create indexes non-blocking (CONCURRENTLY for Postgres, ALGORITHM=INPLACE for MySQL)
 - Never use `spring.jpa.hibernate.ddl-auto=update` outside local development
@@ -32,14 +32,14 @@ user-invocable: false
 
 ### 1. Zero-Downtime DDL Rules
 
-Bad — adds NOT NULL column in one step, locks table on large datasets:
+Bad - adds NOT NULL column in one step, locks table on large datasets:
 
 ```sql
 -- V20250213_1000__add_status_to_orders.sql
 ALTER TABLE orders ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'PENDING';
 ```
 
-Good — three-migration sequence:
+Good - three-migration sequence:
 
 ```sql
 -- Migration 1: add nullable column
@@ -55,13 +55,13 @@ UPDATE orders SET status = 'PENDING' WHERE status IS NULL;
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
-Bad — direct column rename locks table and breaks running app code:
+Bad - direct column rename locks table and breaks running app code:
 
 ```sql
 ALTER TABLE orders RENAME COLUMN customer_ref TO customer_id;
 ```
 
-Good — expand-then-contract across three migrations:
+Good - expand-then-contract across three migrations:
 
 ```sql
 -- Migration 1: add new column
@@ -74,13 +74,13 @@ UPDATE orders SET customer_id = customer_ref;
 ALTER TABLE orders DROP COLUMN customer_ref;
 ```
 
-Bad — index creation locks the table:
+Bad - index creation locks the table:
 
 ```sql
 CREATE INDEX idx_orders_customer ON orders(customer_id);
 ```
 
-Good — non-blocking index creation:
+Good - non-blocking index creation:
 
 ```sql
 -- Postgres
@@ -174,7 +174,7 @@ Changeset ID pattern: `{ticket}-{sequence}`
 </changeSet>
 ```
 
-Always include a rollback block — never omit it for non-auto-reversible changes:
+Always include a rollback block - never omit it for non-auto-reversible changes:
 
 ```xml
 <!-- Bad: no rollback -->
@@ -231,7 +231,7 @@ class MigrationIntegrityTest {
 Separate, smaller connection pool during migrations:
 
 ```yaml
-# application-migration.yml — activate only during migration phase
+# application-migration.yml - activate only during migration phase
 spring:
   datasource:
     hikari:
@@ -248,7 +248,7 @@ spring:
     hibernate:
       ddl-auto: update
 
-# Good — all environments beyond local
+# Good - all environments beyond local
 spring:
   jpa:
     hibernate:
@@ -283,7 +283,7 @@ public class OrderService {
 }
 ```
 
-Dependency ordering in CI/CD — shared schema migrations run first:
+Dependency ordering in CI/CD - shared schema migrations run first:
 
 ```
 1. shared-schema service  -> applies core DDL
@@ -303,7 +303,7 @@ Backward-compatibility rule: every migration applied in release N must be safe t
 
 ## Avoid
 
-- `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` in a single migration on large tables — locks the table
+- `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` in a single migration on large tables - locks the table
 - Data migrations (DML) mixed with schema changes (DDL) in the same file
 - `spring.jpa.hibernate.ddl-auto=update` in any environment beyond local dev
 - Migrations that read environment variables or application state at execution time

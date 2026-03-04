@@ -30,11 +30,11 @@ This skill produces an API specification. It does not generate implementation co
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Intake
+### Step 2 - Intake
 
 Classify the input:
 
@@ -57,7 +57,7 @@ For new designs, clarify:
 - Who consumes this API (internal service, public client, mobile app)
 - Any existing API conventions in the project
 
-### Step 3 — Design / Review
+### Step 3 - Design / Review
 
 Use skill: `api-guidelines`
 
@@ -113,7 +113,7 @@ Default page size: 20, max: 100
 }
 ```
 
-### Step 4 — Framework-Specific Patterns
+### Step 4 - Framework-Specific Patterns
 
 After loading stack-detect, apply API implementation patterns appropriate to the detected ecosystem:
 
@@ -124,7 +124,7 @@ After loading stack-detect, apply API implementation patterns appropriate to the
 
 If the detected stack is unfamiliar, apply the universal API design rules from Step 3 and recommend the user consult their framework's documentation.
 
-### Step 5 — Backward Compatibility Check
+### Step 5 - Backward Compatibility Check
 
 Use skill: `backward-compatibility-analysis`
 
@@ -148,7 +148,7 @@ For each breaking change found:
 - State what breaks and for which consumers
 - Propose a migration path (versioning, deprecation period, dual-write)
 
-### Step 6 — Security Review
+### Step 6 - Security Review
 
 For each endpoint, verify:
 
@@ -158,7 +158,7 @@ For each endpoint, verify:
 - **Input validation** -- all request bodies and parameters validated
 - **Sensitive data** -- no passwords, tokens, or PII in URLs or logs
 
-### Step 7 — Output
+### Step 7 - Output
 
 **Endpoint Table:**
 
@@ -227,4 +227,3 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - Designing endpoints without stating auth requirements
 - Generic advice without context-specific reasoning
 - Applying API conventions from one framework to another
-

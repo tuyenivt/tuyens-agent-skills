@@ -18,7 +18,7 @@ category: quality
 
 ## Focus Areas
 
-- **Test Slices** — ALWAYS determine the correct slice first:
+- **Test Slices** - ALWAYS determine the correct slice first:
   - Repository tests → `@DataJpaTest` + Testcontainers (NEVER H2)
   - Controller tests → `@WebMvcTest` + MockMvc
   - Service tests → plain JUnit 5 + Mockito (no Spring context unless wiring needed)

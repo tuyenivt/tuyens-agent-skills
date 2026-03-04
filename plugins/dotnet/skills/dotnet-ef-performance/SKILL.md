@@ -29,7 +29,7 @@ user-invocable: false
 
 ## Pattern
 
-Bad — causes N+1 queries:
+Bad - causes N+1 queries:
 
 ```csharp
 var orders = await _context.Orders.ToListAsync();
@@ -39,7 +39,7 @@ foreach (var order in orders)
 }
 ```
 
-Good — explicit include prevents N+1:
+Good - explicit include prevents N+1:
 
 ```csharp
 var orders = await _context.Orders
@@ -49,7 +49,7 @@ var orders = await _context.Orders
     .ToListAsync(cancellationToken);
 ```
 
-Good — Dapper for complex read:
+Good - Dapper for complex read:
 
 ```csharp
 var sql = "SELECT o.Id, c.Name FROM Orders o JOIN Customers c ON c.Id = o.CustomerId WHERE o.Status = @Status";
@@ -60,5 +60,5 @@ var results = await _connection.QueryAsync<OrderSummaryDto>(sql, new { Status = 
 
 - `Include()` chains without `AsNoTracking()` on read paths
 - Loading entire entity graphs when only a few columns are needed
-- Lazy loading (disabled by default — keep it disabled)
+- Lazy loading (disabled by default - keep it disabled)
 - Calling `SaveChangesAsync()` inside a loop

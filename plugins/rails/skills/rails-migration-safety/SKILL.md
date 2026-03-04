@@ -112,10 +112,10 @@ end
 
 ## 3. Conventions
 
-- **One structural change per migration** — don't mix adding columns with adding indexes
-- **Always reversible** — use `change` method or explicit `up`/`down`
-- **Separate data migrations** from schema migrations — use maintenance_tasks or a `db/data_migrate/` pattern
-- **Timestamps** — always include `timestamps` on new tables
+- **One structural change per migration** - don't mix adding columns with adding indexes
+- **Always reversible** - use `change` method or explicit `up`/`down`
+- **Separate data migrations** from schema migrations - use maintenance_tasks or a `db/data_migrate/` pattern
+- **Timestamps** - always include `timestamps` on new tables
 
 ```ruby
 class CreateOrders < ActiveRecord::Migration[7.1]
@@ -182,7 +182,7 @@ end
 
 ## 6. Rollback
 
-- Every migration MUST be reversible — test with `rails db:rollback`
+- Every migration MUST be reversible - test with `rails db:rollback`
 - Add rollback testing to CI: `rails db:migrate && rails db:rollback && rails db:migrate`
 - Use `reversible` block for complex cases:
 
@@ -197,9 +197,9 @@ end
 
 ## 7. Anti-Patterns
 
-- ❌ Data changes in schema migrations — use separate data migrations
-- ❌ `remove_column` without `ignored_columns` first — causes errors on deploy
-- ❌ Non-concurrent index on large tables — locks the table
-- ❌ Changing column type directly — use add/backfill/remove pattern
-- ❌ Running migrations in a transaction with CONCURRENTLY — they're incompatible
+- ❌ Data changes in schema migrations - use separate data migrations
+- ❌ `remove_column` without `ignored_columns` first - causes errors on deploy
+- ❌ Non-concurrent index on large tables - locks the table
+- ❌ Changing column type directly - use add/backfill/remove pattern
+- ❌ Running migrations in a transaction with CONCURRENTLY - they're incompatible
 - ❌ Irreversible migrations without explicit `raise ActiveRecord::IrreversibleMigration`

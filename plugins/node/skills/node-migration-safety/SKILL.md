@@ -12,17 +12,17 @@ PRISMA MIGRATIONS (NestJS):
 - prisma migrate deploy: production (applies only, no generation)
 - Review every generated migration in prisma/migrations/
 - Custom SQL in migration.sql for: CONCURRENTLY indexes, partial indexes, data backfill
-- Rollback: Prisma has no built-in down migration — plan forward-only migrations
+- Rollback: Prisma has no built-in down migration - plan forward-only migrations
   that are backward-compatible, or use manual SQL down scripts
 - prisma migrate reset: for test environments only
 - CI: run prisma migrate deploy in pipeline
 
 TYPEORM MIGRATIONS (Express):
 
-- typeorm migration:generate — generates from entity diff
-- typeorm migration:create — creates empty migration for custom SQL
-- typeorm migration:run — applies pending
-- typeorm migration:revert — reverts last applied
+- typeorm migration:generate - generates from entity diff
+- typeorm migration:create - creates empty migration for custom SQL
+- typeorm migration:run - applies pending
+- typeorm migration:revert - reverts last applied
 - ALWAYS review generated migrations
 - synchronize: NEVER true in production
 

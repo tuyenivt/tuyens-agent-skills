@@ -27,7 +27,7 @@ user-invocable: false
 
 ## Pattern
 
-### Layer Violations — Universal Principles
+### Layer Violations - Universal Principles
 
 Common layer violations regardless of framework:
 
@@ -50,7 +50,7 @@ Presentation (Controllers/Handlers) → Service/Business Logic → Data Access (
 After loading stack-detect, apply layer violation detection using the idioms of the detected stack. For example:
 
 - In frameworks with annotation-based architectures (e.g., Spring), controllers should delegate to service classes, not access repositories directly
-- In MVC frameworks (e.g., Rails, Django, Phoenix), controllers/actions should be thin — business logic belongs in service objects or model methods
+- In MVC frameworks (e.g., Rails, Django, Phoenix), controllers/actions should be thin - business logic belongs in service objects or model methods
 - In handler-based architectures (e.g., Go HTTP frameworks, Express), handlers should delegate to service packages, not perform business logic or direct DB access
 - Framework-specific violations (e.g., fat controllers, business logic in callbacks, circular package imports) should be detected based on the conventions of the detected ecosystem
 
@@ -102,4 +102,4 @@ Compare change patterns against established conventions:
 - Flagging intentional architectural decisions as violations
 - Enforcing a specific architecture style not established in the project
 - Treating all coupling as equally harmful
-- Missing the forest for the trees — one structural violation matters more than many style issues
+- Missing the forest for the trees - one structural violation matters more than many style issues

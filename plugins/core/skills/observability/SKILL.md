@@ -34,10 +34,10 @@ user-invocable: false
 Every ecosystem has a recommended structured logging approach. The universal pattern is:
 
 ```
-// Bad — unstructured, missing context
+// Bad - unstructured, missing context
 log("User processed: " + userId)
 
-// Good — structured with context
+// Good - structured with context
 log({
   message: "User processed",
   userId: user.id,

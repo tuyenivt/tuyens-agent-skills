@@ -25,7 +25,7 @@ user-invocable: false
 - Breaking changes require an expand-contract migration plan with explicit transition period
 - Event schema changes must maintain backward compatibility for at least one consumer release cycle
 - Database schema changes must be compatible with both current and previous code versions during rolling deployment
-- Do not assume consumers deserialize leniently — verify
+- Do not assume consumers deserialize leniently - verify
 
 ## Pattern
 
@@ -54,8 +54,8 @@ After loading stack-detect, apply compatibility checks using the idioms of the d
 
 - **DTO/response changes**: Adding fields to response objects is generally safe; removing or renaming breaks clients. The specific mechanism varies by framework (records, serializers, structs, schemas).
 - **Input validation changes**: Making a previously optional field required is a breaking change in any framework's validation layer.
-- **Data layer changes**: Entity/model changes must be paired with the ecosystem's migration tool — never use auto-schema-update in production.
-- **Internal event changes**: Event schema changes within the application affect all subscribers/listeners — assess impact within the detected framework's event system.
+- **Data layer changes**: Entity/model changes must be paired with the ecosystem's migration tool - never use auto-schema-update in production.
+- **Internal event changes**: Event schema changes within the application affect all subscribers/listeners - assess impact within the detected framework's event system.
 - **Module/package interface changes**: Renaming or removing public APIs (exported functions, public methods, interface methods) is breaking. In some ecosystems (e.g., Go modules), module path changes require major version bumps.
 
 If the detected stack is unfamiliar, apply the universal compatibility matrix above and recommend the user verify against their framework's serialization and migration documentation.
@@ -64,11 +64,11 @@ If the detected stack is unfamiliar, apply the universal compatibility matrix ab
 
 When a change modifies data storage or event format:
 
-1. **Identify transition period** — time window where old and new versions coexist
-2. **Dual-write needed?** — must the new code write both old and new format?
-3. **Dual-read needed?** — must the new code read both old and new format?
-4. **Backfill needed?** — must existing data be migrated to the new format?
-5. **Cleanup needed?** — when and how to remove old format support?
+1. **Identify transition period** - time window where old and new versions coexist
+2. **Dual-write needed?** - must the new code write both old and new format?
+3. **Dual-read needed?** - must the new code read both old and new format?
+4. **Backfill needed?** - must existing data be migrated to the new format?
+5. **Cleanup needed?** - when and how to remove old format support?
 
 ### Good: Explicit compatibility assessment with migration plan
 

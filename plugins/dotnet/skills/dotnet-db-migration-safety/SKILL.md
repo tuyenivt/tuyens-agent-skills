@@ -17,17 +17,17 @@ user-invocable: false
 
 ## Rules
 
-- Never rename columns or tables in a single migration — use expand-then-contract
+- Never rename columns or tables in a single migration - use expand-then-contract
 - Always apply migrations out-of-band (not on app startup in production)
-- Make all new columns nullable or with a default value — never NOT NULL without a default
+- Make all new columns nullable or with a default value - never NOT NULL without a default
 - Keep migrations small and focused: one concern per migration
 - Test migrations against a copy of the production schema before deploying
-- Never delete a migration that has been applied to any environment — add a new revert migration instead
+- Never delete a migration that has been applied to any environment - add a new revert migration instead
 - Use `migrationBuilder.Sql()` for data migrations; keep them idempotent
 
 ## Expand-Then-Contract Pattern
 
-**Phase 1 — Expand** (deploy with old + new code both working):
+**Phase 1 - Expand** (deploy with old + new code both working):
 
 ```csharp
 migrationBuilder.AddColumn<string>(
@@ -36,7 +36,7 @@ migrationBuilder.AddColumn<string>(
     nullable: true);       // nullable while backfill happens
 ```
 
-**Phase 2 — Backfill** (data migration, separate migration file):
+**Phase 2 - Backfill** (data migration, separate migration file):
 
 ```csharp
 migrationBuilder.Sql(@"
@@ -44,7 +44,7 @@ migrationBuilder.Sql(@"
 ");
 ```
 
-**Phase 3 — Contract** (after old code is fully retired):
+**Phase 3 - Contract** (after old code is fully retired):
 
 ```csharp
 migrationBuilder.AlterColumn<string>(

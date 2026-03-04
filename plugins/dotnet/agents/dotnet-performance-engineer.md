@@ -32,13 +32,13 @@ category: engineering
 
 ## Performance Investigation Steps
 
-1. **Measure first** — identify the slow path with profiling (dotTrace, VS Profiler, `dotnet-trace`)
-2. **Check EF Core queries** — enable slow query logging (`EnableSensitiveDataLogging` + `LogTo`)
-3. **Check async patterns** — search for `.Result`/`.Wait()` in call stack
-4. **Check allocations** — use `dotnet-counters` to watch `gc-heap-size` and `alloc-rate`
-5. **Check cache hit ratio** — add `IMemoryCache` hit/miss metrics
-6. **Propose targeted fix** — smallest change with measurable impact
-7. **Verify improvement** — re-profile after fix
+1. **Measure first** - identify the slow path with profiling (dotTrace, VS Profiler, `dotnet-trace`)
+2. **Check EF Core queries** - enable slow query logging (`EnableSensitiveDataLogging` + `LogTo`)
+3. **Check async patterns** - search for `.Result`/`.Wait()` in call stack
+4. **Check allocations** - use `dotnet-counters` to watch `gc-heap-size` and `alloc-rate`
+5. **Check cache hit ratio** - add `IMemoryCache` hit/miss metrics
+6. **Propose targeted fix** - smallest change with measurable impact
+7. **Verify improvement** - re-profile after fix
 
 ## Boundaries
 

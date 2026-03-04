@@ -16,10 +16,10 @@ class OrdersController < ApplicationController
 end
 
 # ❌ NEVER: params.permit! or params.to_unsafe_h
-# ❌ NEVER: permit(:id) — attackers can change record IDs
+# ❌ NEVER: permit(:id) - attackers can change record IDs
 ```
 
-## 2. Authentication — Devise + JWT
+## 2. Authentication - Devise + JWT
 
 ```ruby
 # Gemfile
@@ -42,7 +42,7 @@ config.jwt do |jwt|
 end
 ```
 
-## 3. Authorization — Pundit
+## 3. Authorization - Pundit
 
 ```ruby
 # app/policies/order_policy.rb
@@ -96,7 +96,7 @@ end
 
 # API-only: skip CSRF (use token auth instead)
 class Api::BaseController < ActionController::API
-  # No CSRF needed — stateless token auth
+  # No CSRF needed - stateless token auth
 end
 
 # ❌ NEVER: skip_before_action :verify_authenticity_token globally
@@ -106,9 +106,9 @@ end
 
 ```ruby
 # Rails auto-escapes output in ERB by default
-<%= user.name %> # ✅ Safe — auto-escaped
+<%= user.name %> # ✅ Safe - auto-escaped
 
-# ❌ Dangerous — only use for trusted content
+# ❌ Dangerous - only use for trusted content
 <%= raw user.bio %>
 <%= user.bio.html_safe %>
 
@@ -140,7 +140,7 @@ User.where("name LIKE ?", "%#{User.sanitize_sql_like(params[:q])}%")
 User.where("email = '#{params[:email]}'") # SQL INJECTION!
 ```
 
-## 7. Rate Limiting — Rack::Attack
+## 7. Rate Limiting - Rack::Attack
 
 ```ruby
 # Gemfile
@@ -184,7 +184,7 @@ EDITOR=vim rails credentials:edit --environment production
 
 - ❌ `skip_before_action :verify_authenticity_token` globally
 - ❌ String interpolation in `where` clauses
-- ❌ `params.permit!` — allows mass assignment of any attribute
+- ❌ `params.permit!` - allows mass assignment of any attribute
 - ❌ Hardcoded secrets in source code
 - ❌ Missing authorization checks (`authorize` / `policy_scope`)
 - ❌ `html_safe` on user-provided content

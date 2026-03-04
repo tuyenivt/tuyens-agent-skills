@@ -187,9 +187,9 @@ end
 
 ## Anti-Patterns
 
-- ❌ Wrapper around a single ActiveRecord method — just call the method directly
-- ❌ God services — >100 lines means you need to decompose
-- ❌ Services that only call other services — unnecessary indirection
+- ❌ Wrapper around a single ActiveRecord method - just call the method directly
+- ❌ God services - >100 lines means you need to decompose
+- ❌ Services that only call other services - unnecessary indirection
 - ❌ Services without a clear single responsibility
-- ❌ Using service objects for simple CRUD — controllers handle that fine
-- ❌ Returning raw exceptions — use Result objects for expected failures
+- ❌ Using service objects for simple CRUD - controllers handle that fine
+- ❌ Returning raw exceptions - use Result objects for expected failures

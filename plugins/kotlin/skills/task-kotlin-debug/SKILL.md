@@ -4,9 +4,9 @@ description: "Debug Kotlin + Spring Boot errors. Handles Kotlin-specific issues:
 agent: kotlin-architect
 ---
 
-STEP 1 — INTAKE: stack trace, test failure, build error
+STEP 1 - INTAKE: stack trace, test failure, build error
 
-STEP 2 — CLASSIFY (Kotlin-specific errors on top of Java ones):
+STEP 2 - CLASSIFY (Kotlin-specific errors on top of Java ones):
 
 - KotlinNullPointerException → !! on null, trace the null
 - UninitializedPropertyAccessException → lateinit not initialized, check DI
@@ -17,12 +17,12 @@ STEP 2 — CLASSIFY (Kotlin-specific errors on top of Java ones):
 - MockK "no answer found" → missing every { } stub
 - For all Java/Spring errors: same classification as Java plugin's task-spring-debug
 
-STEP 3 — LOCATE
+STEP 3 - LOCATE
 
-STEP 4 — ROOT CAUSE
+STEP 4 - ROOT CAUSE
 
-STEP 5 — FIX
+STEP 5 - FIX
 
-STEP 6 — PREVENTION
+STEP 6 - PREVENTION
 
 OUTPUT: 🐛 → 📍 → 🔧 → 🛡️

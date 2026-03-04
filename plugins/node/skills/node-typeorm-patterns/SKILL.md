@@ -27,8 +27,8 @@ Cover:
    - QueryRunner for manual transaction control
 
 5. MIGRATIONS:
-   - typeorm migration:generate — auto-generates from entity diff
-   - typeorm migration:run — applies pending
+   - typeorm migration:generate - auto-generates from entity diff
+   - typeorm migration:run - applies pending
    - Always review generated migrations
    - Same zero-downtime rules as core
 

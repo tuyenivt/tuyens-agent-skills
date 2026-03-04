@@ -18,11 +18,11 @@ metadata:
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — OWASP Quick Check (All Stacks)
+### Step 2 - OWASP Quick Check (All Stacks)
 
 | Risk                      | Check                                                 |
 | ------------------------- | ----------------------------------------------------- |
@@ -33,7 +33,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 | SSRF                      | Validate/allowlist external URLs                      |
 | XSS                       | Output encoding, no raw HTML injection                |
 
-### Step 3 — Framework-Specific Security Review
+### Step 3 - Framework-Specific Security Review
 
 After loading stack-detect, apply security checks specific to the detected ecosystem:
 
@@ -48,7 +48,7 @@ After loading stack-detect, apply security checks specific to the detected ecosy
 **Input Validation:**
 
 - Verify the framework's standard validation mechanism is applied to all user input
-- No raw SQL concatenation — use parameterized queries or the ORM's query builder
+- No raw SQL concatenation - use parameterized queries or the ORM's query builder
 - Validate and sanitize all user-provided data before use
 
 **Common Vulnerability Patterns:**
@@ -62,7 +62,7 @@ After loading stack-detect, apply security checks specific to the detected ecosy
 
 If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and recommend the user consult their framework's security documentation.
 
-### Step 4 — Data Protection (All Stacks)
+### Step 4 - Data Protection (All Stacks)
 
 - Sensitive data not logged (passwords, tokens, PII)
 - Encryption for sensitive fields at rest

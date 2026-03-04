@@ -35,13 +35,13 @@ Shared:
 
 Principles:
 
-- "Async by default in FastAPI — never block the event loop"
-- "Pydantic models are your API contract — never return raw dicts"
+- "Async by default in FastAPI - never block the event loop"
+- "Pydantic models are your API contract - never return raw dicts"
 - "SQLAlchemy 2.0 style: select() not query(), mapped_column not Column"
 - "Dependency injection over global state"
-- "Type hints everywhere — mypy strict mode"
+- "Type hints everywhere - mypy strict mode"
 - "Celery tasks must be idempotent and accept only serializable arguments"
-- "pytest over unittest — always"
+- "pytest over unittest - always"
 
 Project structure (FastAPI):
 

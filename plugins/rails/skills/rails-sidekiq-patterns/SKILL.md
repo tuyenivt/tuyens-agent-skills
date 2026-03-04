@@ -64,10 +64,10 @@ end
 
 **Queue guidelines:**
 
-- `critical` — payments, auth, time-sensitive
-- `default` — standard business logic
-- `mailers` — email delivery
-- `low` — reports, analytics, cleanup
+- `critical` - payments, auth, time-sensitive
+- `default` - standard business logic
+- `mailers` - email delivery
+- `low` - reports, analytics, cleanup
 
 ## 4. Retry Options
 
@@ -102,10 +102,10 @@ class SyncExternalDataJob
     resource = Resource.find(resource_id)
     ExternalApi.sync(resource)
   rescue ExternalApi::RateLimitError => e
-    # Known error — retry with delay
+    # Known error - retry with delay
     self.class.perform_in(e.retry_after, resource_id)
   rescue ExternalApi::NotFoundError
-    # Known error — don't retry
+    # Known error - don't retry
     resource.update!(sync_status: :not_found)
   # Unknown errors propagate → Sidekiq retries automatically
   end
@@ -116,7 +116,7 @@ end
 
 - Rescue known errors, handle explicitly
 - Let unknown errors propagate for Sidekiq retry
-- Never rescue `Exception` — catch `StandardError` subclasses
+- Never rescue `Exception` - catch `StandardError` subclasses
 
 ## 6. Batch Processing
 
@@ -185,9 +185,9 @@ Sidekiq::Queue.new("default").latency # in seconds
 
 ## Anti-Patterns
 
-- ❌ Passing AR objects as arguments — use IDs
-- ❌ Jobs > 30 minutes — break into smaller jobs or use batches
-- ❌ Request context in jobs — no `current_user`, `session`, `request`
-- ❌ Non-idempotent jobs — always design for safe re-execution
-- ❌ Catching all exceptions silently — let Sidekiq handle retries
-- ❌ Inline execution in production — `Sidekiq::Testing.inline!` is for tests only
+- ❌ Passing AR objects as arguments - use IDs
+- ❌ Jobs > 30 minutes - break into smaller jobs or use batches
+- ❌ Request context in jobs - no `current_user`, `session`, `request`
+- ❌ Non-idempotent jobs - always design for safe re-execution
+- ❌ Catching all exceptions silently - let Sidekiq handle retries
+- ❌ Inline execution in production - `Sidekiq::Testing.inline!` is for tests only

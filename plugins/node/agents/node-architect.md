@@ -39,7 +39,7 @@ Principles:
 - "Every injectable has an interface for testing"
 - "Prisma schema is the source of truth for NestJS data models"
 - "TypeORM entities define the schema for Express projects"
-- "Never use `any` — use `unknown` and narrow with type guards"
+- "Never use `any` - use `unknown` and narrow with type guards"
 
 Project structure (NestJS):
 

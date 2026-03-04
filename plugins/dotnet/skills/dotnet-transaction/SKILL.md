@@ -17,12 +17,12 @@ user-invocable: false
 
 ## Rules
 
-- One `SaveChangesAsync()` per use-case — avoid partial saves
+- One `SaveChangesAsync()` per use-case - avoid partial saves
 - Wrap multi-step writes in `IDbContextTransaction` only when needed
 - Keep transactions short: fetch data outside the transaction, write inside
 - Never share a single `DbContext` across parallel async operations
 - Use `IUnitOfWork` abstraction in Clean Architecture to decouple services from EF Core
-- Register `DbContext` with `AddDbContext` (scoped lifetime) — never singleton
+- Register `DbContext` with `AddDbContext` (scoped lifetime) - never singleton
 
 ## Pattern
 

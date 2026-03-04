@@ -1,6 +1,6 @@
 ---
 name: api-guidelines
-description: REST API design — resource naming, HTTP methods, error handling, pagination. Auto-detects project stack and adapts API patterns to the detected ecosystem.
+description: REST API design - resource naming, HTTP methods, error handling, pagination. Auto-detects project stack and adapts API patterns to the detected ecosystem.
 metadata:
   category: governance
   tags: [api, rest, http, conventions, multi-stack]
@@ -24,9 +24,9 @@ user-invocable: false
 - Return appropriate HTTP status codes: 200, 201, 204, 400, 401, 403, 404, 409, 422, 500
 - Error responses follow RFC 9457 (Problem Details): `type`, `title`, `status`, `detail`, `instance`
 - Never expose internal IDs, stack traces, or implementation details in error responses
-- Paginate all collection endpoints — never return unbounded lists
+- Paginate all collection endpoints - never return unbounded lists
 - Version APIs when making breaking changes (`/v1/`, `/v2/` or header-based)
-- Never expose ORM entities / model objects directly in responses — always use DTOs / serializers / response structs
+- Never expose ORM entities / model objects directly in responses - always use DTOs / serializers / response structs
 
 ---
 
@@ -40,7 +40,7 @@ user-invocable: false
 
 ### Response Shaping
 
-- Always use dedicated response objects (DTOs, serializers, response structs) — never return ORM/model objects directly
+- Always use dedicated response objects (DTOs, serializers, response structs) - never return ORM/model objects directly
 - Use projection queries to fetch only needed fields from the data layer
 - Paginate collection endpoints with consistent pagination metadata
 

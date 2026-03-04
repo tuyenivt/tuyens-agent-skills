@@ -17,7 +17,7 @@ user-invocable: false
 
 ## Rules
 
-- Use `IExceptionHandler` (ASP.NET Core 8+) or `UseExceptionHandler` middleware — never try/catch in controllers
+- Use `IExceptionHandler` (ASP.NET Core 8+) or `UseExceptionHandler` middleware - never try/catch in controllers
 - Always return RFC 7807 Problem Details (`application/problem+json`) for error responses
 - Define a domain exception hierarchy: `DomainException` → `NotFoundException`, `ConflictException`, `ValidationException`
 - Map domain exceptions to HTTP status codes in one place (the exception handler)

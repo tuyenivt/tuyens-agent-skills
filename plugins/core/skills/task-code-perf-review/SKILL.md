@@ -19,11 +19,11 @@ metadata:
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Database Performance (All Backend Stacks)
+### Step 2 - Database Performance (All Backend Stacks)
 
 - [ ] N+1 queries detected and resolved
 - [ ] Missing indexes on WHERE/ORDER BY columns
@@ -33,7 +33,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - [ ] Query timeout configured
 - [ ] Batch operations for bulk inserts/updates
 
-### Step 3 — Framework-Specific Backend Review
+### Step 3 - Framework-Specific Backend Review
 
 After loading stack-detect, apply performance checks specific to the detected ecosystem:
 
@@ -71,7 +71,7 @@ After loading stack-detect, apply performance checks specific to the detected ec
 
 If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
 
-### Step 4 — Frontend (React)
+### Step 4 - Frontend (React)
 
 **Rendering:**
 
@@ -92,7 +92,7 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 - [ ] No lazy loading
 - [ ] Large bundle
 
-### Step 5 — Caching Strategy (All Stacks)
+### Step 5 - Caching Strategy (All Stacks)
 
 - [ ] Cache-aside pattern for read-heavy data
 - [ ] Cache invalidation strategy defined
@@ -100,14 +100,14 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 - [ ] Cache key design (avoid collisions)
 - [ ] Local cache vs distributed cache decision
 
-### Step 6 — Stateless Design (All Stacks)
+### Step 6 - Stateless Design (All Stacks)
 
 - [ ] No server-side session state (use JWT/tokens)
 - [ ] Externalized session if needed (Redis)
 - [ ] No static mutable state
 - [ ] Idempotent operations where possible
 
-### Step 7 — Observability (All Stacks)
+### Step 7 - Observability (All Stacks)
 
 - [ ] Structured logging (JSON format)
 - [ ] Correlation ID propagation
@@ -185,4 +185,3 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 - Adding complexity for marginal gains
 - Caching without an invalidation strategy
 - Applying performance patterns from one stack to another
-

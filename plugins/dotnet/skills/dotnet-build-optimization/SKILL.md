@@ -20,7 +20,7 @@ user-invocable: false
 
 - Use **NuGet Central Package Management** (`Directory.Packages.props`) for all package versions
 - Use `Directory.Build.props` to share common properties (nullable, warnings as errors, target framework)
-- Enable build incremental compilation — avoid `dotnet clean` in CI unless cache is invalid
+- Enable build incremental compilation - avoid `dotnet clean` in CI unless cache is invalid
 - Pin exact package versions in `Directory.Packages.props`; never float versions (`*` or `1.0.*`)
 - Split solution into focused projects: `Domain`, `Application`, `Infrastructure`, `Api`, `Tests`
 - Use `<Nullable>enable</Nullable>` and `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` globally

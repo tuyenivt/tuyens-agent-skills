@@ -28,11 +28,11 @@ Default: **Basic** (if the user doesn't specify, run Basic only).
 
 ## Workflow
 
-### Step 1 — Detect Stack
+### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 — Review (All Stacks)
+### Step 2 - Review (All Stacks)
 
 **Correctness:**
 
@@ -57,7 +57,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - Appropriate coverage
 - Edge cases tested
 
-### Step 3 — Framework-Specific Checks
+### Step 3 - Framework-Specific Checks
 
 After loading stack-detect, apply framework-specific review criteria based on the detected ecosystem. Key areas to check:
 
@@ -71,7 +71,7 @@ After loading stack-detect, apply framework-specific review criteria based on th
 
 - Layering follows the framework's recommended architecture (controllers/handlers → services → data access)
 - Dependency injection uses the framework's standard mechanism
-- Response shaping uses proper DTOs/serializers — ORM entities are not exposed in API responses
+- Response shaping uses proper DTOs/serializers - ORM entities are not exposed in API responses
 - The framework's validation mechanism is used for input validation
 
 **Concurrency Safety:**
@@ -87,7 +87,7 @@ After loading stack-detect, apply framework-specific review criteria based on th
 
 If the detected stack is unfamiliar, apply the universal review criteria from Step 2 and note that framework-specific checks could not be applied.
 
-### Step 4 — Delegate (if scope includes)
+### Step 4 - Delegate (if scope includes)
 
 - **+Perf**: delegate to `task-code-perf-review`
 - **+Security**: delegate to `task-code-secure`
@@ -100,7 +100,7 @@ If the detected stack is unfamiliar, apply the universal review criteria from St
 | [Suggestion] | Would improve | No       |
 | [Question]   | Need clarity  | Clarify  |
 | [Nitpick]    | Minor         | No       |
-| [Praise]     | Done well     | —        |
+| [Praise]     | Done well     | -        |
 
 ## Rules
 

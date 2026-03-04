@@ -24,7 +24,7 @@ user-invocable: false
 - Enable parallel execution and build cache by default
 - Use convention plugins instead of `allprojects {}` / `subprojects {}`
 - Apply Spring Boot plugin only to application modules, never library modules
-- Minimize `api()` dependency scope — prefer `implementation()`
+- Minimize `api()` dependency scope - prefer `implementation()`
 - Commit Gradle wrapper files (`gradlew`, `gradle-wrapper.jar`) to version control
 
 ## Pattern
@@ -128,7 +128,7 @@ plugins {
     `java-library`
 }
 
-// No Spring Boot plugin — this is a library module
+// No Spring Boot plugin - this is a library module
 dependencies {
     api(libs.spring.boot.starter.data.jpa) // api() only when types leak into public API
     implementation(libs.spring.boot.starter.web) // implementation() for internal usage
@@ -139,16 +139,16 @@ dependencies {
 
 | Scope              | When to Use                                                  |
 | ------------------ | ------------------------------------------------------------ |
-| `implementation()` | Default — dependency is internal to the module               |
+| `implementation()` | Default - dependency is internal to the module               |
 | `api()`            | Only when dependency types appear in the module's public API |
 
-Bad — leaks all transitive dependencies:
+Bad - leaks all transitive dependencies:
 
 ```kotlin
 api(project(":infrastructure")) // Exposes everything from infrastructure
 ```
 
-Good — minimal exposure:
+Good - minimal exposure:
 
 ```kotlin
 implementation(project(":infrastructure")) // Only this module sees infrastructure types
@@ -238,15 +238,15 @@ CI cache directories:
     key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
 ```
 
-Use `--no-daemon` in CI — daemon wastes memory in ephemeral runners.
+Use `--no-daemon` in CI - daemon wastes memory in ephemeral runners.
 
 ## Avoid
 
-- ❌ Groovy DSL (`.gradle`) for new projects — use Kotlin DSL (`.gradle.kts`)
-- ❌ `allprojects {}` / `subprojects {}` blocks — use convention plugins in `build-logic/`
-- ❌ Force-resolving all configurations at configuration time — delays build startup
+- ❌ Groovy DSL (`.gradle`) for new projects - use Kotlin DSL (`.gradle.kts`)
+- ❌ `allprojects {}` / `subprojects {}` blocks - use convention plugins in `build-logic/`
+- ❌ Force-resolving all configurations at configuration time - delays build startup
 - ❌ Publishing internal modules as JARs when `project()` dependency suffices
-- ❌ Applying Spring Boot plugin to library modules — only application modules need `bootJar`
-- ❌ Using `api()` by default — prefer `implementation()`, use `api()` only for public API types
-- ❌ Running CI builds with Gradle daemon — use `--no-daemon` for ephemeral runners
-- ❌ Hardcoding dependency versions in `build.gradle.kts` — centralize in version catalog
+- ❌ Applying Spring Boot plugin to library modules - only application modules need `bootJar`
+- ❌ Using `api()` by default - prefer `implementation()`, use `api()` only for public API types
+- ❌ Running CI builds with Gradle daemon - use `--no-daemon` for ephemeral runners
+- ❌ Hardcoding dependency versions in `build.gradle.kts` - centralize in version catalog

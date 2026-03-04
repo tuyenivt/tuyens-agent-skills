@@ -19,15 +19,15 @@ user-invocable: false
 
 ## Rules
 
-- Never use `@SpringBootTest` when a slice test suffices — it's 10x slower
-- Use Testcontainers with the real database — never H2 for integration tests
+- Never use `@SpringBootTest` when a slice test suffices - it's 10x slower
+- Use Testcontainers with the real database - never H2 for integration tests
 - Use `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
 - Constructor injection with manual mocks over `@MockitoBean` when no Spring context needed
 - AssertJ fluent assertions over JUnit `assertEquals`
-- `@ActiveProfiles("test")` — always explicit, never rely on default
+- `@ActiveProfiles("test")` - always explicit, never rely on default
 - Test-specific `@Configuration` classes belong in `src/test/java`, never in `src/main/java`
-- Never use `Thread.sleep()` in async tests — use Awaitility
-- Never use `@DirtiesContext` — redesign the test instead
+- Never use `Thread.sleep()` in async tests - use Awaitility
+- Never use `@DirtiesContext` - redesign the test instead
 
 ## Pattern
 
@@ -43,7 +43,7 @@ Full integration       → @SpringBootTest + Testcontainers + WebTestClient
 
 ### @DataJpaTest with Testcontainers
 
-Good — `@ServiceConnection` (Spring Boot 3.1+) auto-configures datasource:
+Good - `@ServiceConnection` (Spring Boot 3.1+) auto-configures datasource:
 
 ```java
 @Testcontainers
@@ -69,7 +69,7 @@ class OrderRepositoryTest {
 }
 ```
 
-### @WebMvcTest — Controller Slice
+### @WebMvcTest - Controller Slice
 
 ```java
 @WebMvcTest(OrderController.class)
@@ -92,7 +92,7 @@ class OrderControllerTest {
 }
 ```
 
-### Service Layer — Plain JUnit 5 (No Spring Context)
+### Service Layer - Plain JUnit 5 (No Spring Context)
 
 ```java
 class OrderServiceTest {
@@ -175,7 +175,7 @@ public class OrderTestFixtures {
 }
 ```
 
-Bad — duplicated `@BeforeEach` setup:
+Bad - duplicated `@BeforeEach` setup:
 
 ```java
 @BeforeEach
@@ -188,7 +188,7 @@ void setUp() {
 }
 ```
 
-Good — shared fixture via `@TestConfiguration`:
+Good - shared fixture via `@TestConfiguration`:
 
 ```java
 @TestConfiguration
@@ -202,7 +202,7 @@ class TestFixtureConfig {
 
 ### Mockito in Virtual Thread Context
 
-Mockito is safe with Virtual Threads — no thread-local issues. For async/Virtual Thread tests, use Awaitility:
+Mockito is safe with Virtual Threads - no thread-local issues. For async/Virtual Thread tests, use Awaitility:
 
 ```java
 @Test
@@ -218,7 +218,7 @@ void shouldProcessOrderAsync() {
 }
 ```
 
-Bad — blocks test unreliably:
+Bad - blocks test unreliably:
 
 ```java
 orderService.processAsync(orderId);
@@ -300,7 +300,7 @@ class OrderIntegrationTest extends AbstractIntegrationTest {
 - `@SpringBootTest` for everything (slow, flaky)
 - H2 for integration tests (use Testcontainers with real DB)
 - `Thread.sleep()` in async tests (use Awaitility)
-- `@DirtiesContext` (kills test speed — redesign the test instead)
+- `@DirtiesContext` (kills test speed - redesign the test instead)
 - Testing implementation details (verify behavior, not method calls)
-- `@MockBean` (deprecated since Spring Boot 3.4.0 — use `@MockitoBean`)
+- `@MockBean` (deprecated since Spring Boot 3.4.0 - use `@MockitoBean`)
 - `@DynamicPropertySource` when `@ServiceConnection` is available (Spring Boot 3.1+)

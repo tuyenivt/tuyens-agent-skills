@@ -45,7 +45,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 | Virtual Threads           | Coroutines + Virtual Thread interop        |
 | Java records for DTOs     | Kotlin data classes for DTOs               |
 | Transaction management    | Coroutine-aware @Transactional             |
-| Flyway migration safety   | (same — delegates to Java plugin)          |
+| Flyway migration safety   | (same - delegates to Java plugin)          |
 
 ## Plugin contents
 
@@ -70,7 +70,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 | `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (requirements, design, code, migration, tests, validation) | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
 | `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)                                  | `task-spring-debug` for Java/Spring errors                            |
 
-### Total: 1 agent + 5 skills (intentionally small — this is a companion plugin)
+### Total: 1 agent + 5 skills (intentionally small - this is a companion plugin)
 
 ## Dependency relationship
 

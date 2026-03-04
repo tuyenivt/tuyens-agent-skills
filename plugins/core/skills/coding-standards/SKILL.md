@@ -21,8 +21,8 @@ user-invocable: false
 
 - No emojis in code, logs, comments, commit messages, or documentation
 - Follow the naming conventions of the detected language (do not mix styles)
-- Prefer explicit over clever — readability over brevity
-- One responsibility per file/class/module — no god objects
+- Prefer explicit over clever - readability over brevity
+- One responsibility per file/class/module - no god objects
 
 ---
 
@@ -37,14 +37,14 @@ Every language has established naming conventions. Apply the conventions of the 
 ## Dependency Management
 
 - Prefer the dependency injection pattern native to the detected framework
-- Avoid tight coupling to concrete implementations — depend on abstractions where the framework supports it
+- Avoid tight coupling to concrete implementations - depend on abstractions where the framework supports it
 - Follow the detected framework's conventions for organizing dependencies and configuration
 
 ## Layering and Structure
 
 - Follow the layered architecture pattern established in the project
-- Presentation layer should be thin — delegate business logic to service/domain layer
-- Do not expose data layer entities directly in API responses — use response shaping appropriate to the framework (DTOs, serializers, response structs, etc.)
+- Presentation layer should be thin - delegate business logic to service/domain layer
+- Do not expose data layer entities directly in API responses - use response shaping appropriate to the framework (DTOs, serializers, response structs, etc.)
 
 ## Anti-Pattern Detection
 
@@ -64,5 +64,5 @@ If the detected stack is unfamiliar, apply the universal rules above and recomme
 - Mixing naming conventions from different languages
 - God classes / modules with > 300 lines
 - Magic numbers without named constants
-- Dead code left in "just in case" — delete it
+- Dead code left in "just in case" - delete it
 - Comments that restate the code instead of explaining why

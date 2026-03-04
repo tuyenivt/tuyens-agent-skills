@@ -13,7 +13,7 @@ sqlx (performance-critical queries), golang-migrate, clean architecture
 Principles:
 
 - "Accept interfaces, return structs"
-- "Errors are values — handle every one, wrap with context"
+- "Errors are values - handle every one, wrap with context"
 - "Context flows through every function boundary"
 - "No goroutine without an owner"
 - "Small interfaces: 1-2 methods"

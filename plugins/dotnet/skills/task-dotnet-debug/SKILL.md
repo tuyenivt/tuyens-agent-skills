@@ -23,7 +23,7 @@ metadata:
 
 ## Implementation
 
-### Step 1 — Collect Input
+### Step 1 - Collect Input
 
 Ask the user for (if not already provided):
 
@@ -34,7 +34,7 @@ Ask the user for (if not already provided):
 
 Do not guess root cause without at least a stack trace or concrete error description.
 
-### Step 2 — Classify the Error
+### Step 2 - Classify the Error
 
 Identify the error category:
 
@@ -49,7 +49,7 @@ Identify the error category:
 | **Test Failure**        | xUnit assertion failures, Testcontainers startup errors                       |
 | **Build / Compilation** | `CS` error codes, nullable warnings, missing package references               |
 
-### Step 3 — Locate Root Cause
+### Step 3 - Locate Root Cause
 
 Read the relevant files in the codebase to confirm the root cause:
 
@@ -61,13 +61,13 @@ Read the relevant files in the codebase to confirm the root cause:
 
 State the root cause clearly before proposing a fix.
 
-### Step 4 — Propose Fix
+### Step 4 - Propose Fix
 
 Provide:
 
-1. **Root cause explanation** — why the error occurs (1-3 sentences)
-2. **Code fix** — minimal, targeted change with before/after diff
-3. **Verification steps** — how to confirm the fix works
+1. **Root cause explanation** - why the error occurs (1-3 sentences)
+2. **Code fix** - minimal, targeted change with before/after diff
+3. **Verification steps** - how to confirm the fix works
 
 For EF Core issues, use skill: `dotnet-ef-performance`
 For transaction/save errors, use skill: `dotnet-transaction`
@@ -75,7 +75,7 @@ For DI/startup issues, check service lifetime mismatches (singleton capturing sc
 For async issues, use skill: `dotnet-async-patterns`
 For auth issues, use skill: `dotnet-security-patterns`
 
-### Step 5 — Prevent Recurrence
+### Step 5 - Prevent Recurrence
 
 Suggest one concrete guardrail to prevent the same class of error:
 
@@ -125,6 +125,6 @@ Suggest one concrete guardrail to prevent the same class of error:
 
 - Proposing a fix without reading the relevant code in the codebase
 - Suggesting broad rewrites when a targeted fix suffices
-- Adding defensive null checks everywhere — identify the actual null source
+- Adding defensive null checks everywhere - identify the actual null source
 - Recommending `.ConfigureAwait(false)` as a blanket fix without understanding the context
 ```
