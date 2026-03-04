@@ -79,23 +79,24 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-13 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+14 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
-| Skill                       | Description                                                                                          |
-| --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                     |
-| `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                |
-| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                               |
-| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.      |
-| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                        |
-| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Auto-detects stack.                       |
-| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.       |
-| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack. |
-| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.           |
-| `task-docs-generate`        | Documentation generation (README, API docs, ADRs) for any stack                                      |
-| `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                 |
-| `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                          |
-| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                             |
+| Skill                       | Description                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs. |
+| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                 |
+| `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                            |
+| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                                           |
+| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                  |
+| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                                    |
+| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Auto-detects stack.                                   |
+| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.                   |
+| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.             |
+| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                       |
+| `task-docs-generate`        | Documentation generation (README, API docs, ADRs) for any stack                                                  |
+| `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                             |
+| `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                                      |
+| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                         |
 
 ## Atomic Skills
 
@@ -195,6 +196,19 @@ Scope options - asks interactively if not specified:
 ```
 /task-code-perf-review
 [paste code or file path]
+```
+
+**Generate PR description from diff:**
+
+```
+/task-pr-create
+```
+
+Auto-reads `git diff main...HEAD` and commit messages. Produces title, summary, risk level, test plan, and linked tickets/ADRs.
+
+```
+/task-pr-create
+Branch: feature/PROJ-123-add-payment-flow
 ```
 
 **Production release planning:**
