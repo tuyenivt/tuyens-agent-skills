@@ -46,6 +46,8 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 | `rails-architect`            | Ruby on Rails architect for Rails 7+/8, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions. |
 | `rails-tech-lead`            | Rails tech lead for code review, architecture decisions, and engineering standards. Reviews Rails code for conventions, performance, security, and test coverage.                |
 | `rails-reliability-engineer` | Rails reliability engineer for incident analysis in Rails/Sidekiq/PostgreSQL environments. Debugging, postmortem, release planning.                                              |
+| `rails-security-engineer`    | OWASP Top 10 for Rails, Devise/JWT auth review, Pundit authorization audit, strong parameters, dependency vulnerability scan.                                                    |
+| `rails-performance-engineer` | ActiveRecord N+1 detection, query tuning, Sidekiq throughput, caching strategy, profiling with rack-mini-profiler.                                                               |
 
 ## Workflow Skills
 

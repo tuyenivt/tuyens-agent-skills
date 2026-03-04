@@ -53,11 +53,13 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USER
 
 ## Agents
 
-| Agent                       | Model  | Description                                                                                     |
-| --------------------------- | ------ | ----------------------------------------------------------------------------------------------- |
-| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure |
-| python-tech-lead            | sonnet | Code review for Pythonic patterns, type safety, async correctness, test coverage                |
-| python-reliability-engineer | sonnet | Incident analysis for FastAPI/Django/Celery/PostgreSQL production environments                  |
+| Agent                       | Model  | Description                                                                                      |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure  |
+| python-tech-lead            | sonnet | Code review for Pythonic patterns, type safety, async correctness, test coverage                 |
+| python-reliability-engineer | sonnet | Incident analysis for FastAPI/Django/Celery/PostgreSQL production environments                   |
+| python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan |
+| python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling              |
 
 ## Framework Detection
 
@@ -65,7 +67,7 @@ FastAPI is the **primary** framework. Django/DRF is supported as secondary.
 
 Skills detect which framework is in use by checking:
 
-1. **CLAUDE.md** — explicit framework declaration takes priority
+1. **CLAUDE.md** - explicit framework declaration takes priority
 2. **File detection** (fallback):
    - `main.py` + `fastapi` imports → FastAPI
    - `manage.py` + `settings.py` → Django

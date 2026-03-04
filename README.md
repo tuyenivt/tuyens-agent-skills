@@ -10,13 +10,13 @@ Each project should only load the skills it actually needs. Installing all plugi
 
 The right pattern: **one marketplace add per machine, then per-project plugin installs.**
 
-### Step 1 — Add the marketplace once (user scope, done once per machine)
+### Step 1 - Add the marketplace once (user scope, done once per machine)
 
 ```bash
 claude plugin marketplace add tuyenivt/tuyens-agent-skills
 ```
 
-### Step 2 — Install only the relevant plugins inside each project (project scope)
+### Step 2 - Install only the relevant plugins inside each project (project scope)
 
 Run these commands from your project root. Claude Code will store the selection in the project's local settings, so only those skills load when you open that project.
 
@@ -70,7 +70,7 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install dotnet@tuyens-agent-skills --scope project
 ```
 
-> `core` is always required — it provides the stack-agnostic workflow and governance skills used by all language plugins.
+> `core` is always required - it provides the stack-agnostic workflow and governance skills used by all language plugins.
 
 ## Optional: Share Skills Between Claude Code and Codex
 
@@ -103,7 +103,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USER
 Each plugin contains two types of skills:
 
 - **Workflow skills** (`task-*`, `user-invocable: true`): End-to-end task flows invoked as slash commands (e.g., `/task-code-review`). These are the skills you interact with directly.
-- **Atomic skills** (`user-invocable: false`): Focused, single-concern patterns that are hidden from the slash menu. They are composed automatically by workflow skills or triggered by your prompt — you never call them directly.
+- **Atomic skills** (`user-invocable: false`): Focused, single-concern patterns that are hidden from the slash menu. They are composed automatically by workflow skills or triggered by your prompt - you never call them directly.
 
 > Use only workflow skills (`task-*`) as slash commands. Atomic skills run behind the scenes.
 
@@ -114,10 +114,10 @@ Each plugin contains two types of skills:
 | [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 41 skills                            |
 | [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 11 skills + 8 agents                 |
 | [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 3 agents                  |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 3 agents                  |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 9 skills + 3 agents                  |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 8 skills + 3 agents                  |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 5 agents                  |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 5 agents                  |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 9 skills + 5 agents                  |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 8 skills + 5 agents                  |
 | [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 8 agents                 |
 
 ## Notes

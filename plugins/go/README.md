@@ -45,6 +45,8 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 | `go-architect`            | Go architect for Gin, GORM/sqlx, clean architecture, and production Go patterns. Designs features, structures projects, makes architecture decisions. |
 | `go-tech-lead`            | Go tech lead for code review and engineering standards. Reviews for idiomatic Go, error handling, concurrency safety, and performance.                |
 | `go-reliability-engineer` | Go reliability engineer for incident analysis in Go/Gin/PostgreSQL environments. pprof profiling, goroutine leak detection, connection pool tuning.   |
+| `go-security-engineer`    | OWASP Top 10 for Go, JWT/Gin auth middleware review, input validation, govulncheck dependency scanning.                                               |
+| `go-performance-engineer` | Goroutine leak detection, GORM/sqlx query tuning, pprof profiling, memory allocation analysis, connection pool sizing.                                |
 
 ## Workflow Skills
 
