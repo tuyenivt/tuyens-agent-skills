@@ -13,7 +13,7 @@ plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
     skills/      # 41 skills: 13 workflow (task-*) + 28 atomic
   java/          # Java 21+ / Spring Boot 3.5+
-    skills/      # 11 skills (2 workflow + 9 atomic)
+    skills/      # 12 skills (2 workflow + 10 atomic)
     agents/      # 8 agent definitions
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
     skills/      # 11 skills (2 workflow + 9 atomic)
@@ -24,8 +24,10 @@ plugins/
   rails/         # Ruby on Rails 7+/8
     agents/      # 5 agent definitions
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
+    skills/      # 10 skills (2 workflow + 8 atomic)
     agents/      # 5 agent definitions
   go/            # Go 1.25+ / Gin / GORM+sqlx
+    skills/      # 9 skills (2 workflow + 7 atomic)
     agents/      # 5 agent definitions
 ```
 

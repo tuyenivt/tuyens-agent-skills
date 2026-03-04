@@ -4,9 +4,9 @@ description: "Debug Go errors. Paste a panic stack trace, error log, or describe
 agent: go-architect
 ---
 
-STEP 1 — INTAKE: panic trace, error log, test failure
+STEP 1 - INTAKE: panic trace, error log, test failure
 
-STEP 2 — CLASSIFY:
+STEP 2 - CLASSIFY:
 
 - panic: nil dereference → trace the nil
 - context.DeadlineExceeded → timeout config
@@ -15,14 +15,17 @@ STEP 2 — CLASSIFY:
 - data race (-race flag) → concurrent access, missing mutex
 - goroutine leak (NumGoroutine growing) → context not cancelled
 - Build error → module/import/type issue
+- Asynq task stuck in retry loop → load go-messaging-patterns, check idempotency and error classification
+- Asynq worker not processing → Redis connectivity, queue name mismatch, handler not registered
+- Kafka consumer lag growing → consumer group offset issue, handler error causing reprocess loop
 
-STEP 3 — LOCATE: read stack trace, open source at goroutine creation point
+STEP 3 - LOCATE: read stack trace, open source at goroutine creation point
 
-STEP 4 — ROOT CAUSE: WHY, confidence level
+STEP 4 - ROOT CAUSE: WHY, confidence level
 
-STEP 5 — FIX: minimal before/after
+STEP 5 - FIX: minimal before/after
 
-STEP 6 — PREVENTION: test, vet check, race detector
+STEP 6 - PREVENTION: test, vet check, race detector
 
 - Prefer sync.WaitGroup.Go over manual Add/Done when possible
 - Run go vet (especially waitgroup + hostport analyzers)

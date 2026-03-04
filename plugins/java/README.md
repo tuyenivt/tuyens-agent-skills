@@ -54,17 +54,18 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 9 atomic skills provide focused, reusable Java/Spring Boot patterns. These are hidden from the slash menu (`user-invocable: false`) and referenced by workflow skills and agents.
 
-| Skill                            | Purpose                                            |
-| -------------------------------- | -------------------------------------------------- |
-| `spring-jpa-performance`         | JPA optimization and N+1 prevention                |
-| `spring-transaction`             | Spring `@Transactional` scope and propagation      |
-| `spring-exception-handling`      | Centralized `@RestControllerAdvice` error handling |
-| `spring-async-processing`        | Spring `@Async` with Virtual Threads               |
-| `spring-db-migration-safety`     | Flyway/Liquibase zero-downtime DDL patterns        |
-| `spring-test-integration`        | `@DataJpaTest`, `@WebMvcTest`, Testcontainers      |
-| `spring-security-patterns`       | Spring Security 6.x configuration                  |
-| `java-gradle-build-optimization` | Gradle build performance and multi-module setup    |
-| `spring-websocket`               | Spring WebSocket and STOMP messaging               |
+| Skill                            | Purpose                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `spring-jpa-performance`         | JPA optimization and N+1 prevention                                     |
+| `spring-transaction`             | Spring `@Transactional` scope and propagation                           |
+| `spring-exception-handling`      | Centralized `@RestControllerAdvice` error handling                      |
+| `spring-async-processing`        | Spring `@Async` with Virtual Threads                                    |
+| `spring-db-migration-safety`     | Flyway/Liquibase zero-downtime DDL patterns                             |
+| `spring-test-integration`        | `@DataJpaTest`, `@WebMvcTest`, Testcontainers                           |
+| `spring-security-patterns`       | Spring Security 6.x configuration                                       |
+| `java-gradle-build-optimization` | Gradle build performance and multi-module setup                         |
+| `spring-websocket`               | Spring WebSocket and STOMP messaging                                    |
+| `spring-messaging-patterns`      | Spring Kafka, RabbitMQ, transactional outbox, Spring Application Events |
 
 ## Agents
 
@@ -102,15 +103,15 @@ Relationships: ManyToOne to Customer
 
 The following workflows are provided by `core` (install separately):
 
-- `/task-code-review` — Framework-agnostic code review
-- `/task-code-review-advanced` — Staff-level review with risk assessment
-- `/task-code-secure` — Security review
-- `/task-code-test` — Test strategy
-- `/task-code-refactor` — Refactoring plan
-- `/task-code-perf-review` — Performance review
-- `/task-docs-generate` — Documentation generation
-- `/task-incident-root-cause` — Incident root cause analysis
-- `/task-incident-postmortem` — Post-incident postmortem
-- `/task-release-plan` — Production release planning
-- `/task-design-risk-analysis` — Proactive risk assessment
-- `/task-design-architecture` — Architecture design proposal
+- `/task-code-review` - Framework-agnostic code review
+- `/task-code-review-advanced` - Staff-level review with risk assessment
+- `/task-code-secure` - Security review
+- `/task-code-test` - Test strategy
+- `/task-code-refactor` - Refactoring plan
+- `/task-code-perf-review` - Performance review
+- `/task-docs-generate` - Documentation generation
+- `/task-incident-root-cause` - Incident root cause analysis
+- `/task-incident-postmortem` - Post-incident postmortem
+- `/task-release-plan` - Production release planning
+- `/task-design-risk-analysis` - Proactive risk assessment
+- `/task-design-architecture` - Architecture design proposal

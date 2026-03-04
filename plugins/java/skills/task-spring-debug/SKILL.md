@@ -7,16 +7,16 @@ metadata:
   type: workflow
 ---
 
-# Debug — Developer Debugging Workflow
+# Debug - Developer Debugging Workflow
 
 ## Purpose
 
-Daily developer debugging: paste an error, get a fix. This is not incident response — it's "here's a stack trace, help me fix it" work.
+Daily developer debugging: paste an error, get a fix. This is not incident response - it's "here's a stack trace, help me fix it" work.
 
-- **Understand the error** — classify it before jumping to code
-- **Trace through your codebase** — follow the call chain to the actual bug
-- **Explain why, not just what** — root cause understanding prevents repeat bugs
-- **Minimal fix** — smallest correct change, aligned with project patterns
+- **Understand the error** - classify it before jumping to code
+- **Trace through your codebase** - follow the call chain to the actual bug
+- **Explain why, not just what** - root cause understanding prevents repeat bugs
+- **Minimal fix** - smallest correct change, aligned with project patterns
 
 For production incident analysis with containment and blast radius assessment, use `task-incident-root-cause` instead.
 
@@ -42,16 +42,16 @@ For production incident analysis with containment and blast radius assessment, u
 ## Rules
 
 - Always classify the error before reading code
-- Show the exact code change needed — no vague suggestions
+- Show the exact code change needed - no vague suggestions
 - Explain WHY the error happened, not just how to fix it
-- Prefer minimal fixes over refactors — fix the bug, don't redesign
+- Prefer minimal fixes over refactors - fix the bug, don't redesign
 - If confidence is LOW, say so and state what additional info would help
 - Do not suggest unrelated improvements or style changes
 - Reference atomic skills only when the fix involves a pattern they cover
 
 ## Workflow
 
-### Step 1 — Intake
+### Step 1 - Intake
 
 Accept one or more of:
 
@@ -63,7 +63,7 @@ Accept one or more of:
 
 If the input is ambiguous, ask one clarifying question before proceeding.
 
-### Step 2 — Classify the Error
+### Step 2 - Classify the Error
 
 Identify the error category to guide investigation:
 
@@ -73,45 +73,48 @@ Identify the error category to guide investigation:
 
 | Exception                         | Likely Cause                         | Load Skill                              |
 | --------------------------------- | ------------------------------------ | --------------------------------------- |
-| `NullPointerException`            | Null reference in call chain         | —                                       |
+| `NullPointerException`            | Null reference in call chain         | -                                       |
 | `LazyInitializationException`     | JPA session/transaction scope issue  | Use skill: `spring-jpa-performance`     |
 | `DataIntegrityViolationException` | DB constraint violation              | Use skill: `spring-db-migration-safety` |
-| `HttpMessageNotReadableException` | JSON deserialization failure         | —                                       |
+| `HttpMessageNotReadableException` | JSON deserialization failure         | -                                       |
 | `TransactionSystemException`      | Nested exception in `@Transactional` | Use skill: `spring-transaction`         |
-| `NoSuchBeanDefinitionException`   | Spring context wiring issue          | —                                       |
-| Virtual Thread pinning            | `synchronized` block in VT context   | —                                       |
+| `NoSuchBeanDefinitionException`   | Spring context wiring issue          | -                                       |
+| Virtual Thread pinning            | `synchronized` block in VT context   | -                                       |
+| Kafka consumer lag / DLT messages | Consumer error, redelivery loop      | Use skill: `spring-messaging-patterns`  |
+| RabbitMQ DLQ / unacked messages   | Consumer throwing, no DLQ config     | Use skill: `spring-messaging-patterns`  |
+| Outbox event not published        | Scheduled publisher or TX issue      | Use skill: `spring-messaging-patterns`  |
 
 **Test failure** → analyze assertion mismatch, check test setup and mocks
 
 **Build failure** → Gradle configuration or dependency issue → Use skill: `java-gradle-build-optimization`
 
-### Step 3 — Locate in Codebase
+### Step 3 - Locate in Codebase
 
 1. Read the stack trace to identify the **source file and line number**
 2. Open the file and surrounding context (~50 lines above and below)
 3. Trace the call chain from entry point: **controller → service → repository**
 4. Identify which layer the bug is in (Controller | Service | Repository | Configuration | Build)
 
-### Step 4 — Root Cause Analysis
+### Step 4 - Root Cause Analysis
 
 - Explain **WHY** this error occurred, not just what happened
 - Reference the **specific code** that causes the issue
 - If it's a pattern violation (not just a one-off bug), name the pattern
 - Rate confidence:
-  - **HIGH** — certain, evidence is clear
-  - **MEDIUM** — likely, but alternative causes exist
-  - **LOW** — need more info to confirm
+  - **HIGH** - certain, evidence is clear
+  - **MEDIUM** - likely, but alternative causes exist
+  - **LOW** - need more info to confirm
 
-### Step 5 — Propose Fix
+### Step 5 - Propose Fix
 
 - Show the **exact code change** needed (before → after)
 - If multiple fixes are possible, rank by:
-  1. Correctness — does it actually fix the bug?
-  2. Minimal change surface — smallest diff that's correct
-  3. Alignment with project patterns — follows existing conventions
+  1. Correctness - does it actually fix the bug?
+  2. Minimal change surface - smallest diff that's correct
+  3. Alignment with project patterns - follows existing conventions
 - Explain any trade-offs between alternatives
 
-### Step 6 — Prevent Recurrence
+### Step 6 - Prevent Recurrence
 
 - Suggest a **test that would have caught this bug**
 - If it's a pattern violation, reference the relevant atomic skill
@@ -163,7 +166,7 @@ Identify the error category to guide investigation:
 
 ### Output Constraints
 
-- Keep the analysis focused — one bug, one fix
+- Keep the analysis focused - one bug, one fix
 - Omit Prevention section if the fix is trivial (e.g., typo, missing import)
 - If confidence is LOW, add a **Needs Clarification** section listing what info would help
 - No code style commentary unrelated to the bug
@@ -187,7 +190,7 @@ Identify the error category to guide investigation:
 - Use skill: `spring-db-migration-safety` for constraint violation and migration issues
 - Use skill: `spring-exception-handling` for error handling and propagation patterns
 - Use skill: `java-gradle-build-optimization` for build and dependency errors
+- Use skill: `spring-messaging-patterns` for Kafka consumer lag, DLT failures, RabbitMQ DLQ issues, and outbox publishing failures
 
 > For stack-agnostic debugging workflows, use the core plugin's `task-incident-root-cause`.
 ```
-

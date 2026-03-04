@@ -81,15 +81,16 @@ PrismaClientKnownRequestError P2002: Unique constraint failed on "email"
 
 Atomic skills are loaded by workflow skills and agents (not directly invocable).
 
-| Skill                      | Description                                                                                                |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `node-nestjs-patterns`     | NestJS patterns: modules, DI, controllers, guards, interceptors, pipes, exception filters, validation      |
-| `node-express-patterns`    | Express patterns: router organization, middleware chain, error handling, async wrapper, request validation |
-| `node-prisma-patterns`     | Prisma ORM for NestJS: schema design, migrations, N+1 prevention, transactions, connection pooling         |
-| `node-typeorm-patterns`    | TypeORM for Express: entity definition, repository pattern, query builder, migrations, transactions        |
-| `node-testing-patterns`    | Jest testing: NestJS TestingModule, Supertest e2e, Testcontainers, mocking, database testing               |
-| `node-typescript-patterns` | TypeScript strict mode: generics, discriminated unions, type guards, utility types, no `any`               |
-| `node-migration-safety`    | Safe migrations: Prisma migrate + TypeORM migrations, zero-downtime DDL, CI validation                     |
+| Skill                      | Description                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `node-nestjs-patterns`     | NestJS patterns: modules, DI, controllers, guards, interceptors, pipes, exception filters, validation        |
+| `node-express-patterns`    | Express patterns: router organization, middleware chain, error handling, async wrapper, request validation   |
+| `node-prisma-patterns`     | Prisma ORM for NestJS: schema design, migrations, N+1 prevention, transactions, connection pooling           |
+| `node-typeorm-patterns`    | TypeORM for Express: entity definition, repository pattern, query builder, migrations, transactions          |
+| `node-testing-patterns`    | Jest testing: NestJS TestingModule, Supertest e2e, Testcontainers, mocking, database testing                 |
+| `node-typescript-patterns` | TypeScript strict mode: generics, discriminated unions, type guards, utility types, no `any`                 |
+| `node-migration-safety`    | Safe migrations: Prisma migrate + TypeORM migrations, zero-downtime DDL, CI validation                       |
+| `node-bullmq-patterns`     | BullMQ background jobs: job design, idempotency, retry strategy, queue routing, worker lifecycle, monitoring |
 
 ## Agents
 

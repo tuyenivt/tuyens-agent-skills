@@ -4,9 +4,9 @@ description: "Debug Node.js/TypeScript errors. Paste a stack trace, test failure
 agent: node-architect
 ---
 
-STEP 1 — INTAKE: stack trace, Jest failure, build error, runtime error
+STEP 1 - INTAKE: stack trace, Jest failure, build error, runtime error
 
-STEP 2 — CLASSIFY:
+STEP 2 - CLASSIFY:
 
 - TypeError: Cannot read properties of undefined → null/undefined access
 - PrismaClientKnownRequestError (P2002) → unique constraint violation
@@ -18,13 +18,16 @@ STEP 2 — CLASSIFY:
 - Cannot find module → missing dependency, wrong import path
 - Circular dependency detected (NestJS) → forwardRef or refactor modules
 - ERR_UNHANDLED_REJECTION → unhandled promise rejection, add catch
+- BullMQ job stuck in failed state → load node-bullmq-patterns, check retry/backoff config
+- BullMQ worker not processing → Redis connectivity, worker not registered, missing processor
+- Job data missing or undefined → passing entity instead of ID, check serialization
 
-STEP 3 — LOCATE: read stack trace, open source, trace call chain
+STEP 3 - LOCATE: read stack trace, open source, trace call chain
 
-STEP 4 — ROOT CAUSE: WHY. Confidence level.
+STEP 4 - ROOT CAUSE: WHY. Confidence level.
 
-STEP 5 — FIX: before/after, minimal change
+STEP 5 - FIX: before/after, minimal change
 
-STEP 6 — PREVENTION: Jest test, stricter types, lint rule
+STEP 6 - PREVENTION: Jest test, stricter types, lint rule
 
 OUTPUT: root cause → location → fix → prevention

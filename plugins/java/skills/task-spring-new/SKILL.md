@@ -18,11 +18,11 @@ metadata:
 
 ## Rules
 
-- Constructor injection only — use `@RequiredArgsConstructor` (Lombok); never `@Autowired` fields
+- Constructor injection only - use `@RequiredArgsConstructor` (Lombok); never `@Autowired` fields
 - Records for all DTOs (Java 21+); classes for JPA entities
 - `@Transactional(readOnly = true)` as default on service classes
-- Never expose JPA entities in API responses — always map to DTO records
-- No `synchronized` blocks — breaks Virtual Threads; use `ReentrantLock` if needed
+- Never expose JPA entities in API responses - always map to DTO records
+- No `synchronized` blocks - breaks Virtual Threads; use `ReentrantLock` if needed
 - Connection pool sizing: 10–40 (optimized for Virtual Threads)
 - Use `var` for local variables when type is obvious
 - Use `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
@@ -33,71 +33,73 @@ metadata:
 
 ## Implementation
 
-### Step 1 — Gather Requirements
+### Step 1 - Gather Requirements
 
 **Interactive.** Ask the user for:
 
-- **Feature name / resource** — e.g., "Order", "Payment", "Notification"
-- **Package base** — e.g., `com.example.order`
-- **Operations needed** — CRUD, specific operations (approve, cancel), event-driven
-- **Relationships to existing entities** — OneToMany, ManyToOne, ManyToMany, or none
-- **Business rules / validation constraints** — e.g., "amount must be positive", "status transitions"
-- **API visibility** — public, internal, or admin-only (affects security annotations)
+- **Feature name / resource** - e.g., "Order", "Payment", "Notification"
+- **Package base** - e.g., `com.example.order`
+- **Operations needed** - CRUD, specific operations (approve, cancel), event-driven
+- **Async messaging** - Kafka producer/consumer, RabbitMQ, background jobs, or none
+- **Relationships to existing entities** - OneToMany, ManyToOne, ManyToMany, or none
+- **Business rules / validation constraints** - e.g., "amount must be positive", "status transitions"
+- **API visibility** - public, internal, or admin-only (affects security annotations)
 
 Do not proceed until all required inputs are confirmed.
 
-### Step 2 — Design
+### Step 2 - Design
 
 Propose to the user:
 
-- **Endpoints** — HTTP method, URI, request/response DTOs, status codes
-- **DTOs** — record definitions with validation annotations
-- **Entity fields** — column types, constraints, relationships
-- **Service methods** — business operations, transaction boundaries
+- **Endpoints** - HTTP method, URI, request/response DTOs, status codes
+- **DTOs** - record definitions with validation annotations
+- **Entity fields** - column types, constraints, relationships
+- **Service methods** - business operations, transaction boundaries
 
 **Present the design and wait for user approval before proceeding.**
 
-### Step 3 — Generate Entity + Migration
+### Step 3 - Generate Entity + Migration
 
 Create the JPA entity class and corresponding Flyway migration.
 
-Use skill: `spring-jpa-performance` — N+1 prevention, fetch strategy (`LAZY` by default)
-Use skill: `spring-db-migration-safety` — safe DDL patterns, zero-downtime migrations
+Use skill: `spring-jpa-performance` - N+1 prevention, fetch strategy (`LAZY` by default)
+Use skill: `spring-db-migration-safety` - safe DDL patterns, zero-downtime migrations
 
 Generate:
 
-- **Entity** — `src/main/java/.../entity/{Name}.java`
+- **Entity** - `src/main/java/.../entity/{Name}.java`
   - `@Entity`, `@Table`, proper column annotations
   - Audit fields (`createdAt`, `updatedAt`) with `@CreationTimestamp`, `@UpdateTimestamp`
   - Relationships with correct cascade and fetch settings
-- **Migration** — `src/main/resources/db/migration/V{timestamp}__create_{table_name}.sql`
+- **Migration** - `src/main/resources/db/migration/V{timestamp}__create_{table_name}.sql`
   - If relationships exist, generate join table migrations separately
   - Include indexes for foreign keys and frequently queried columns
 
-### Step 4 — Generate Repository
+### Step 4 - Generate Repository
 
 Create the Spring Data JPA repository interface.
 
-Use skill: `spring-jpa-performance` — optimal query patterns, projection usage
+Use skill: `spring-jpa-performance` - optimal query patterns, projection usage
 
 Generate:
 
-- **Repository** — `src/main/java/.../repository/{Name}Repository.java`
+- **Repository** - `src/main/java/.../repository/{Name}Repository.java`
   - Extend `JpaRepository<{Name}, Long>`
   - Custom query methods using `@Query` with JPQL (not native SQL) where possible
   - `Specification`-based dynamic queries if filtering is needed
   - Pagination support via `Page<>` return types
 
-### Step 5 — Generate Service
+### Step 5 - Generate Service
 
 Create the service class with business logic.
 
-Use skill: `spring-transaction` — `@Transactional` boundaries, read-only defaults
-Use skill: `spring-exception-handling` — business exception hierarchy, consistent error responses
+Use skill: `spring-transaction` - `@Transactional` boundaries, read-only defaults
+Use skill: `spring-exception-handling` - business exception hierarchy, consistent error responses
+If feature requires async messaging, background jobs, or event-driven side effects: Use skill: `spring-messaging-patterns` - Kafka producer/consumer, RabbitMQ, transactional outbox, Spring Application Events
 
 Generate:
 
-- **Service** — `src/main/java/.../service/{Name}Service.java`
+- **Service** - `src/main/java/.../service/{Name}Service.java`
   - `@Service`, `@Transactional(readOnly = true)`, `@RequiredArgsConstructor`, `@Slf4j`
   - `@Transactional` (read-write) only on mutating methods
   - Entity ↔ DTO mapping methods (private, in-class or via dedicated mapper)
@@ -105,45 +107,45 @@ Generate:
   - Virtual Thread-safe: no `synchronized`, no thread-local state
   - Business exceptions extending a common base (e.g., `ResourceNotFoundException`)
 
-### Step 6 — Generate Controller
+### Step 6 - Generate Controller
 
 Create the REST controller with proper HTTP semantics.
 
-Use skill: `api-guidelines` — consistent response format, URI conventions
-Use skill: `spring-exception-handling` — `@RestControllerAdvice` mapping
+Use skill: `api-guidelines` - consistent response format, URI conventions
+Use skill: `spring-exception-handling` - `@RestControllerAdvice` mapping
 
 Generate:
 
-- **Controller** — `src/main/java/.../controller/{Name}Controller.java`
+- **Controller** - `src/main/java/.../controller/{Name}Controller.java`
   - `@RestController`, `@RequestMapping("/api/v1/{resources}")`, `@RequiredArgsConstructor`, `@Slf4j`
   - `@ResponseStatus` instead of `ResponseEntity` when a single status code suffices
   - `@Valid @RequestBody` on create/update endpoints
   - `Pageable` parameter for list endpoints
   - Proper HTTP status codes: `201 CREATED` for POST, `204 NO_CONTENT` for DELETE
-- **Request DTO** — `src/main/java/.../dto/{Name}Request.java` (record with validation)
-- **Response DTO** — `src/main/java/.../dto/{Name}Response.java` (record)
+- **Request DTO** - `src/main/java/.../dto/{Name}Request.java` (record with validation)
+- **Response DTO** - `src/main/java/.../dto/{Name}Response.java` (record)
 
-### Step 7 — Generate Tests
+### Step 7 - Generate Tests
 
-Use skill: `spring-test-integration` — select correct test slice for each layer
+Use skill: `spring-test-integration` - select correct test slice for each layer
 
 Generate:
 
-- **Unit test** — `src/test/java/.../service/{Name}ServiceTest.java`
+- **Unit test** - `src/test/java/.../service/{Name}ServiceTest.java`
   - `@ExtendWith(MockitoExtension.class)`
   - Mock repository with `@Mock`, inject service with `@InjectMocks`
   - Test happy path, not-found, validation, and business rule scenarios
   - Use `@MockitoBean` not `@MockBean`
-- **Integration test** — `src/test/java/.../repository/{Name}RepositoryTest.java`
+- **Integration test** - `src/test/java/.../repository/{Name}RepositoryTest.java`
   - `@DataJpaTest` with Testcontainers for real database
   - Test custom queries, pagination, relationship loading
-- **API test** — `src/test/java/.../controller/{Name}ControllerTest.java`
+- **API test** - `src/test/java/.../controller/{Name}ControllerTest.java`
   - `@WebMvcTest({Name}Controller.class)`
   - MockMvc with `@MockitoBean` for service
   - Test request validation, response format, HTTP status codes, error responses
-- **Test fixtures** — builder pattern or static factory methods for test data
+- **Test fixtures** - builder pattern or static factory methods for test data
 
-### Step 8 — Validate
+### Step 8 - Validate
 
 Run compilation and final checks.
 
@@ -204,6 +206,7 @@ Present a checklist of generated files:
 **Business logic:**
 
 - Use skill: `spring-exception-handling` for business exception hierarchy and `@RestControllerAdvice`
+- Use skill: `spring-messaging-patterns` for Kafka/RabbitMQ producers/consumers, transactional outbox, and Spring Application Events (if async messaging required)
 
 **Testing:**
 
@@ -241,4 +244,3 @@ Present a checklist of generated files:
 - Generating code before user approves the design
 - Skipping test generation
 - Over-engineering: only generate what was requested
-

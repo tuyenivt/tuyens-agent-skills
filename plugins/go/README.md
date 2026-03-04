@@ -57,14 +57,15 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 
 ## Atomic Skills
 
-| Skill                 | Description                                                                                                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `go-error-handling`   | Go error patterns: explicit returns, wrapping with `%w`, sentinel errors, custom error types, `errors.Is/As`, Gin error middleware.                |
-| `go-gin-patterns`     | Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, graceful shutdown. |
-| `go-data-access`      | Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling.                           |
-| `go-migration-safety` | Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, embedding in Go binary.                 |
-| `go-testing-patterns` | Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify, interface mocking, benchmarks, synctest.    |
-| `go-concurrency`      | Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, `WaitGroup.Go`.             |
+| Skill                   | Description                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `go-error-handling`     | Go error patterns: explicit returns, wrapping with `%w`, sentinel errors, custom error types, `errors.Is/As`, Gin error middleware.                |
+| `go-gin-patterns`       | Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, graceful shutdown. |
+| `go-data-access`        | Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling.                           |
+| `go-migration-safety`   | Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, embedding in Go binary.                 |
+| `go-testing-patterns`   | Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify, interface mocking, benchmarks, synctest.    |
+| `go-concurrency`        | Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, `WaitGroup.Go`.             |
+| `go-messaging-patterns` | Background jobs with Asynq, Kafka consumers with franz-go, and in-process worker pools.                                                            |
 
 ## Usage Examples
 

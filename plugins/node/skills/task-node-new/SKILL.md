@@ -4,23 +4,23 @@ description: "End-to-end Node.js/TypeScript feature implementation. Detects Nest
 agent: node-architect
 ---
 
-STEP 1 — DETECT FRAMEWORK + ORM
+STEP 1 - DETECT FRAMEWORK + ORM
 
-STEP 2 — GATHER: feature description, affected modules, external integrations
+STEP 2 - GATHER: feature description, affected modules, external integrations
 
-STEP 3 — DESIGN: propose module structure, interfaces, data flow. Present for approval.
+STEP 3 - DESIGN: propose module structure, interfaces, data flow. Present for approval.
 
-STEP 4 — DATA MODEL: Prisma schema or TypeORM entity + migration (load node-migration-safety)
+STEP 4 - DATA MODEL: Prisma schema or TypeORM entity + migration (load node-migration-safety)
 
-STEP 5 — SERVICE LAYER: business logic with proper typing (load node-typescript-patterns)
+STEP 5 - SERVICE LAYER: business logic with proper typing (load node-typescript-patterns). If feature requires background jobs or async task processing: load node-bullmq-patterns.
 
-STEP 6 — API LAYER:
+STEP 6 - API LAYER:
 
 - NestJS: module + controller + guards + DTOs (load node-nestjs-patterns)
 - Express: router + controller + middleware (load node-express-patterns)
 
-STEP 7 — TESTS: load node-testing-patterns, comprehensive coverage
+STEP 7 - TESTS: load node-testing-patterns, comprehensive coverage
 
-STEP 8 — VALIDATE: build + test + lint + typecheck
+STEP 8 - VALIDATE: build + test + lint + typecheck
 
 OUTPUT: file list, endpoint summary, test count
