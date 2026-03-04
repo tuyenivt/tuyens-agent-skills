@@ -1,6 +1,6 @@
 ---
 name: safe-file-operations
-description: Cross-platform shell operations - always use Unix/bash commands, never Windows commands
+description: Cross-platform shell operations - always use Unix/bash commands (including Git Bash on Windows), never cmd.exe or PowerShell
 metadata:
   category: ops
   tags: [file-operations, git, cross-platform, bash, safety, shell]
@@ -21,9 +21,9 @@ user-invocable: false
 
 ## Golden Rule
 
-> **Always use Unix/Linux bash commands. Never use Windows-specific commands.**
+> **Always use Unix/bash commands - they work on macOS, Linux, and Windows via Git Bash.**
 >
-> Most developers use bash or Git Bash. Git Bash is the common denominator across all platforms. Every command you run must work in a standard bash shell.
+> Git Bash (bundled with Git for Windows) is the common denominator. Never use `cmd.exe` or PowerShell equivalents - they break on every non-Windows environment. Every command you write must run unchanged in a standard bash shell.
 
 ## Rules
 
