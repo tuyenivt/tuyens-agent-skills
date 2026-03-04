@@ -112,12 +112,12 @@ Each plugin contains two types of skills:
 | Plugin                   | Focus                                                          | Includes                             |
 | ------------------------ | -------------------------------------------------------------- | ------------------------------------ |
 | [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 41 skills                            |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                 |
+| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 11 skills + 8 agents                 |
 | [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 10 skills + 3 agents                 |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 9 skills + 3 agents                  |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 3 agents                 |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 3 agents                  |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 3 agents                  |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 3 agents                  |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 9 skills + 3 agents                  |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 8 skills + 3 agents                  |
 | [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 8 agents                 |
 
 ## Notes

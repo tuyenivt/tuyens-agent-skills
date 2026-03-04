@@ -23,7 +23,6 @@ plugins/
   rails/         # Ruby on Rails 7+/8
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.
