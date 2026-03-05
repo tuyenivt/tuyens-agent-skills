@@ -68,6 +68,10 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 Many core workflow skills begin with `Use skill: stack-detect`, which reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is the primary mechanism by which skills adapt their output to different ecosystems.
 
+## Writing Conventions
+
+- Always use `-` (hyphen-minus) instead of `-` (em dash) in all Markdown files.
+
 ## Key Design Principles
 
 - **Atomic vs workflow separation**: Atomic skills are focused single-concern patterns; workflow skills (`task-*`) orchestrate them into end-to-end user-facing flows.
@@ -90,7 +94,7 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 
 ## Post-Change Checklist
 
-After any change that affects plugin content (skills, agents, structure, conventions) - **excluding README-only updates** - review and update the following:
+After any change that affects plugin content (skills, agents, structure, conventions) - **excluding changes that only touch `CLAUDE.md` or `README.md` files** - review and update the following:
 
 1. **`CLAUDE.md`**: Update if the change affects repository structure, conventions, naming rules, design principles, or workflow guidance documented here.
 2. **Root `README.md` and affected plugin `README.md`**: Reflect any added/removed/renamed skills, agents, or structural changes.

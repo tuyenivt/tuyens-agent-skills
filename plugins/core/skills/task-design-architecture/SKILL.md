@@ -420,6 +420,41 @@ Feature Flags:
 - No trivial detail inflation
 - Optimize for implementation team clarity and AI code generation guidance
 
+## Success Criteria
+
+A well-executed architecture design passes all of these. Use as a self-check before presenting for staff/principal review.
+
+### Completeness
+
+- [ ] Every module boundary has a stated responsibility and data ownership
+- [ ] Every component lists its primary failure mode
+- [ ] Every boundary states its failure isolation guarantee
+- [ ] Every significant decision has at least one rejected alternative with a reason
+- [ ] At least one negative trade-off is documented per decision - not just benefits
+- [ ] Consistency model stated for each data boundary, including partial failure behavior
+- [ ] Rollback strategy exists for the deployment
+
+### Clarity
+
+- [ ] A new team member could implement the design without asking what the modules are responsible for
+- [ ] It is clear which components own which data - no ambiguous shared ownership
+- [ ] The communication model (sync vs async) is explicit for every interaction
+- [ ] Failure modes are concrete scenarios, not generic ("service unavailable")
+
+### Risk Coverage
+
+- [ ] The highest-blast-radius failure scenario has a mitigation strategy
+- [ ] Retry amplification and backpressure risk have been assessed
+- [ ] At least one SLO candidate is identified in the observability plan
+- [ ] Capacity bottleneck prediction identifies which component saturates first
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The design is grounded in stated requirements - no hypothetical future scope
+- [ ] Constraints that conflict are made explicit with resolution options proposed
+- [ ] Guardrails are concrete rules, not general principles ("keep layers separate")
+- [ ] The design can be reviewed against during implementation - drift is detectable
+
 ## Avoid
 
 - Generating implementation code or class-level design
@@ -482,4 +517,3 @@ Feature Flags:
 | `release-safety`             | Rollout, rollback, and deployment risk patterns                    |
 | `dependency-impact-analysis` | Deployment ordering and dependency change impact assessment        |
 | `concurrency-model`          | Concurrency risk assessment and thread safety patterns             |
-

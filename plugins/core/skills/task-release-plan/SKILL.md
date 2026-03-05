@@ -321,6 +321,39 @@ Soak time:
 - Prioritize by blast radius containment potential
 - Optimize for token efficiency and deployment readiness
 
+## Success Criteria
+
+A well-executed release plan passes all of these. Use as a self-check before presenting for tech lead sign-off.
+
+### Completeness
+
+- [ ] Risk level and blast radius are explicitly classified (not implied)
+- [ ] A rollback plan exists - code, DB, and feature flag dimensions addressed
+- [ ] Rollback trigger is a specific, observable condition - not "if something goes wrong"
+- [ ] Observability readiness is verified, not assumed - missing signals are called out
+- [ ] Every breaking change (API, event, schema) has a migration plan, not just a flag
+
+### Correctness
+
+- [ ] DB migration order follows the expand-contract rule - additive before destructive
+- [ ] Rollout strategy matches the risk level - high-risk changes are not deployed as rolling updates
+- [ ] Promotion criteria are measurable signals, not time-based ("wait 30 minutes and hope")
+- [ ] Backward compatibility is validated for the rolling deployment window, not just after full rollout
+
+### Risk Coverage
+
+- [ ] The highest-risk change in the release is identified and drives the rollout strategy
+- [ ] A "no rollback feasible" scenario is acknowledged if it exists - forward-fix plan provided
+- [ ] Load test requirement is stated if the change introduces a new hot path
+- [ ] Consumer notification need is identified if downstream services are affected
+
+### Staff-Level Signal (for tech lead sign-off)
+
+- [ ] The plan answers "what happens if we need to roll back in 10 minutes?" concretely
+- [ ] Systemic risks are called out in Staff-Level Risk Notes - not just per-change risks
+- [ ] Any gap in observability coverage has a concrete remediation, not a TODO
+- [ ] The plan could be handed to an on-call engineer at 2am and followed without clarification
+
 ## Avoid
 
 - Generic deployment checklists without risk-specific analysis
