@@ -79,10 +79,11 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-14 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+15 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                       | Description                                                                                                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots. |
 | `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs. |
 | `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                 |
 | `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                            |
@@ -196,6 +197,20 @@ Scope options - asks interactively if not specified:
 ```
 /task-code-perf-review
 [paste code or file path]
+```
+
+**Onboard to a new codebase:**
+
+```
+/task-onboard-codebase
+```
+
+Reads the repo, detects stack, maps architecture and modules, extracts the team's actual patterns, and surfaces tech debt hotspots and operational gaps.
+
+```
+/task-onboard-codebase
+Focus: payments module
+Known pain points: checkout flow is slow and poorly tested
 ```
 
 **Generate PR description from diff:**

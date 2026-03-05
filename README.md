@@ -111,7 +111,7 @@ Each plugin contains two types of skills:
 
 | Plugin                   | Focus                                                          | Includes                             |
 | ------------------------ | -------------------------------------------------------------- | ------------------------------------ |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 42 skills                            |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 43 skills                            |
 | [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                 |
 | [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `java`) |
 | [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 5 agents                  |
