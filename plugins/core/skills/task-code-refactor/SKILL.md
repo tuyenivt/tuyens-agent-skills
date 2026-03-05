@@ -130,6 +130,31 @@ If the detected stack is unfamiliar, apply the universal smells from Step 2.
 [How to revert]
 ```
 
+## Success Criteria
+
+A well-executed refactoring plan passes all of these. Use as a self-check before starting the refactoring.
+
+### Safety
+
+- [ ] Test coverage for the target area is assessed before any refactoring step is proposed
+- [ ] Each step is independently committable and verifiable - no multi-step atomic changes
+- [ ] A rollback path exists for each step (git revert is sufficient if steps are small and isolated)
+- [ ] No behavior change is mixed with structural change in any single step
+
+### Completeness
+
+- [ ] Smells are identified from both the universal list and framework-specific patterns for the detected stack
+- [ ] Risk assessment covers test coverage, complexity, and dependency scope
+- [ ] Cross-module or shared-code impact is explicitly assessed before proposing any step that touches boundaries
+- [ ] Prerequisites (tests to add, branch to create) are listed before the step-by-step plan
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The plan is ordered by risk reduction - highest-risk smells addressed after safety is established
+- [ ] Any step touching shared code or public APIs is flagged as requiring review before execution
+- [ ] The refactoring scope is bounded - no scope creep into unrelated areas
+- [ ] A senior engineer could hand this plan to a junior and expect safe execution
+
 ## Avoid
 
 - Refactoring without test coverage

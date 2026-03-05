@@ -234,6 +234,32 @@ Revisit this decision if:
 
 - Use skill: `tradeoff-analysis` for structured trade-off evaluation of alternatives
 
+## Success Criteria
+
+A well-written ADR passes all of these. Use as a self-check before committing the file.
+
+### Completeness
+
+- [ ] At least one rejected alternative is documented - not just the chosen option
+- [ ] Every alternative (including chosen) states both what it provides and what it costs
+- [ ] Consequences section contains at least one negative or trade-off item
+- [ ] Review trigger is a specific, observable condition - not "when needed" or "periodically"
+- [ ] Sequence number is correct and does not conflict with existing ADRs
+
+### Clarity
+
+- [ ] Context describes the situation that forced the decision - not the decision itself
+- [ ] Decision is a single clear statement with stated scope
+- [ ] A new engineer reading this ADR could understand why this approach was chosen over the alternatives
+- [ ] Reversibility is stated for each option - so future engineers can assess the cost of changing course
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The ADR captures the trade-off, not just the rationale - what was sacrificed is explicit
+- [ ] The review trigger would actually cause someone to revisit this decision - it's concrete and observable
+- [ ] If this supersedes an existing ADR, the superseded ADR's status update is noted as a follow-up
+- [ ] The ADR could stand alone without the PR or ticket - context is self-contained
+
 ## Avoid
 
 - ADRs that document only the chosen option without alternatives

@@ -106,6 +106,31 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and reco
 - Use skill: `idempotency` for replay attack prevention
 - Use skill: `api-guidelines` for API security conventions
 
+## Success Criteria
+
+A well-executed security review passes all of these. Use as a self-check before presenting findings.
+
+### Completeness
+
+- [ ] All OWASP Quick Check items are assessed - none skipped without stated reason
+- [ ] Authentication and authorization are verified for every endpoint or entry point in scope
+- [ ] Framework-specific security checks for the detected stack are applied
+- [ ] Data protection (logging, encryption, secrets) is reviewed
+
+### Signal Quality
+
+- [ ] Every Critical or High finding includes an attack scenario - not just "this is a vulnerability"
+- [ ] Every finding includes a specific remediation - not generic advice ("validate inputs")
+- [ ] Findings are ordered Critical > High > Medium > Low - no mixing
+- [ ] No false positives from applying security patterns of a different stack
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] A developer reading the findings could prioritize which to fix first without asking questions
+- [ ] Critical findings are not buried - they appear before High findings
+- [ ] Security posture is summarized - an overall assessment, not just a list of findings
+- [ ] Missing authentication or broken access control on any in-scope endpoint is treated as Critical
+
 ## Avoid
 
 - Ignoring framework-specific security features

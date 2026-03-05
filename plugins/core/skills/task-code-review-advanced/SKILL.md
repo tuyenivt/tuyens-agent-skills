@@ -157,6 +157,32 @@ Architecture and Quality: `coding-standards`, `observability`, `architecture-gua
 Risk Assessment: `pr-risk-analysis`, `blast-radius-analysis`
 Delegated Reviews: `task-code-perf-review`, `task-code-secure`
 
+## Success Criteria
+
+A well-executed code review passes all of these. Use as a self-check before posting findings.
+
+### Completeness
+
+- [ ] Risk level and blast radius are stated before any line-level findings
+- [ ] Every Blocker finding states a system risk, not just a code observation
+- [ ] Architecture boundary and coupling impact are assessed, even if no violations found
+- [ ] AI-generated code quality is evaluated for over-abstraction and verbosity inflation
+- [ ] Framework-specific signals for the detected stack have been applied
+
+### Signal Quality
+
+- [ ] All findings are ordered Blocker > High > Suggestion - no mixing of severity
+- [ ] No findings are purely stylistic where no project standard exists
+- [ ] Each High finding states concrete impact, not just "this is bad"
+- [ ] Suggestions are genuine improvements, not personal preference
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The review assesses the change as a system impact, not file-by-file in isolation
+- [ ] Architecture notes are present if any coupling, boundary, or drift issue was found
+- [ ] Key Takeaways convey systemic risk, not a list of individual findings
+- [ ] A reviewer reading only the Summary can make an Approve / Request Changes decision
+
 ## Avoid
 
 - Nitpicking style when no project standard exists

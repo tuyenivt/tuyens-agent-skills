@@ -172,6 +172,31 @@ Identify the error category to guide investigation:
 - No code style commentary unrelated to the bug
 - No suggestions for unrelated improvements
 
+## Success Criteria
+
+A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+
+### Completeness
+
+- [ ] Error is classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line - not just the exception type
+- [ ] A concrete before/after code fix is provided - no vague suggestions
+- [ ] A test that would catch this bug is suggested (unless the fix is trivial)
+
+### Correctness
+
+- [ ] The fix addresses the root cause, not the symptom
+- [ ] Confidence level is stated - LOW confidence includes what additional info would help
+- [ ] The fix does not violate Spring Boot constraints (no `synchronized`, no `@Autowired`, no `@MockBean`)
+- [ ] The fix is minimal - it doesn't refactor unrelated code
+
+### Staff-Level Signal
+
+- [ ] The "why" is explained - a developer reading this understands how to avoid this class of bug
+- [ ] If the same bug pattern could exist elsewhere, other occurrences are identified
+- [ ] Framework-specific atomic skills are referenced when the fix involves a known pattern
+- [ ] Incident response concerns are not mixed in - this is developer debugging, not blast radius analysis
+
 ## Avoid
 
 - Generic debugging advice ("add more logging", "set a breakpoint")

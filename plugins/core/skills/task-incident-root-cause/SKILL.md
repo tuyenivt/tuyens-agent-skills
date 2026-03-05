@@ -210,6 +210,32 @@ Verification Steps:
 - No code style commentary
 - Optimize for token efficiency and on-call readability
 
+## Success Criteria
+
+A well-executed root cause analysis passes all of these. Use as a self-check before presenting findings to the team.
+
+### Completeness
+
+- [ ] Blast radius is explicitly classified (Narrow / Moderate / Wide / Critical) before hypothesis
+- [ ] At least one immediate containment action is recommended before any diagnosis
+- [ ] Every hypothesis cites observable evidence - not inference without signals
+- [ ] At least one concrete verification step exists per hypothesis
+- [ ] Observability gaps are identified and each has a concrete remediation
+
+### Accuracy
+
+- [ ] The primary hypothesis addresses a failure class, not just the symptom
+- [ ] Triggering change (deploy, config, PR) is identified if evidence exists
+- [ ] Failure propagation path traces from origin to observed impact
+- [ ] Secondary suspects are listed if confidence in primary is below 80%
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The output could be handed to an on-call engineer and acted on without clarification
+- [ ] Systemic prevention actions address the failure class, not just this instance
+- [ ] Each prevention action has an assigned priority (immediate / next sprint / quarterly)
+- [ ] Key Takeaways convey system-level insights, not a summary of the timeline
+
 ## Avoid
 
 - Treating symptoms as root causes
@@ -245,4 +271,3 @@ Verification Steps:
 | `failure-propagation-analysis` | Trace cascading failure paths across system boundaries  |
 | `root-cause-hypothesis`        | Generate ranked hypotheses with confidence and evidence |
 | `engineering-governance`       | Systemic prevention and governance strategies           |
-

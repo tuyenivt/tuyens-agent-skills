@@ -234,6 +234,33 @@ Present a checklist of generated files:
 - [ ] Compilation verified (`compileJava compileTestJava`)
 - [ ] Summary presented to user
 
+## Success Criteria
+
+A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
+
+### Completeness
+
+- [ ] Requirements were gathered and confirmed before any code was generated
+- [ ] Design was proposed and user-approved before proceeding to code generation
+- [ ] All layers generated: entity, migration, repository, service, controller, DTOs, tests
+- [ ] Compilation verified with `./gradlew compileJava compileTestJava`
+
+### Spring Boot Correctness
+
+- [ ] No JPA entities exposed in API responses - all responses use DTO records
+- [ ] Constructor injection only - no `@Autowired` field injection
+- [ ] No `synchronized` blocks - Virtual Thread compatible
+- [ ] `@MockitoBean` used in tests - not deprecated `@MockBean`
+- [ ] `@Transactional(readOnly = true)` is the service class default; read-write only on mutating methods
+- [ ] All three test layers present: unit (`@ExtendWith`), integration (`@DataJpaTest`), API (`@WebMvcTest`)
+
+### Staff-Level Signal
+
+- [ ] Flyway migration includes indexes for foreign keys and frequently queried columns
+- [ ] List endpoints use pagination via `Pageable`
+- [ ] Business exceptions extend a common base class - not raw `RuntimeException`
+- [ ] Summary presented to user with file paths, endpoints, and test count
+
 ## Avoid
 
 - Exposing JPA entities in API responses

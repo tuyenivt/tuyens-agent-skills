@@ -33,16 +33,16 @@ Use skill: `task-incident-root-cause` for active incident investigation and root
 
 ## Inputs
 
-| Input                   | Required | Description                                               |
-| ----------------------- | -------- | --------------------------------------------------------- |
-| Incident summary        | Yes      | What happened, severity, duration, user impact            |
+| Input                   | Required | Description                                                        |
+| ----------------------- | -------- | ------------------------------------------------------------------ |
+| Incident summary        | Yes      | What happened, severity, duration, user impact                     |
 | Root cause analysis     | Yes      | Output from root cause investigation or `task-incident-root-cause` |
-| Timeline                | No       | Sequence of events from detection to resolution           |
-| Logs or metrics summary | No       | Key signals observed during the incident                  |
-| Recent PR diff          | No       | Changes deployed before the incident                      |
-| Deployment context      | No       | Deploy timestamp, version, environment details            |
-| Containment actions     | No       | What was done to stop the bleeding                        |
-| Business impact         | No       | Revenue, SLA, customer trust, regulatory implications     |
+| Timeline                | No       | Sequence of events from detection to resolution                    |
+| Logs or metrics summary | No       | Key signals observed during the incident                           |
+| Recent PR diff          | No       | Changes deployed before the incident                               |
+| Deployment context      | No       | Deploy timestamp, version, environment details                     |
+| Containment actions     | No       | What was done to stop the bleeding                                 |
+| Business impact         | No       | Revenue, SLA, customer trust, regulatory implications              |
 
 Handle partial inputs gracefully. When input is missing, state what additional data would strengthen the analysis.
 
@@ -279,6 +279,32 @@ Contributing Factors:
 - Prioritize high-leverage structural changes over trivial suggestions
 - Optimize for token efficiency and long-term organizational value
 
+## Success Criteria
+
+A well-executed postmortem passes all of these. Use as a self-check before presenting to stakeholders.
+
+### Completeness
+
+- [ ] Failure pattern is classified by type and system layer - not just described narratively
+- [ ] Systemic weaknesses are identified beyond the immediate failure (boundary, coupling, shared state)
+- [ ] Guardrail and review gaps explain why existing safeguards did not prevent this
+- [ ] Every observability gap has a concrete recommended addition with threshold or trigger
+- [ ] At least one new enforceable guardrail is produced, not just a process wish
+
+### Prevention Quality
+
+- [ ] Every recommendation addresses a failure class, not just this specific incident
+- [ ] Architecture reinforcement actions are prioritized - not an unbounded wishlist
+- [ ] Guardrails are concrete and enforceable (lint rule, checklist item, CI gate) - not vague principles
+- [ ] Governance improvements are scoped with a specific owner category (review, CI, deployment)
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The postmortem answers "why did our system allow this category of failure?" not just "what happened"
+- [ ] New guardrails table contains at least one item that can be implemented in the next sprint
+- [ ] Staff-Level Takeaways convey structural insights the team should carry forward
+- [ ] No blame or individual attribution in any section
+
 ## Avoid
 
 - Blaming individuals or teams
@@ -326,4 +352,3 @@ Contributing Factors:
 | ------------------------ | -------------------------------------------------------------------------------- |
 | `review-gap-analysis`    | Analyze why existing review processes did not catch the failure                  |
 | `engineering-governance` | Engineering process, governance, guardrail improvements, and incident prevention |
-

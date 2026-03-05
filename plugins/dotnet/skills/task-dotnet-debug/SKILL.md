@@ -121,6 +121,30 @@ Suggest one concrete guardrail to prevent the same class of error:
 
 ```
 
+## Success Criteria
+
+A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+
+### Completeness
+
+- [ ] Error is classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line - not just the exception type
+- [ ] A concrete before/after code fix is provided - no vague suggestions
+- [ ] Verification steps tell the developer exactly how to confirm the fix works
+
+### Correctness
+
+- [ ] The fix addresses the root cause, not the symptom
+- [ ] The fix is minimal - it doesn't rewrite unrelated code
+- [ ] Framework-specific skills are referenced when the fix involves a known pattern (EF Core, async, auth)
+- [ ] One concrete prevention guardrail is included
+
+### Staff-Level Signal
+
+- [ ] The "why" is explained - a developer reading this understands how to avoid this class of error
+- [ ] Async fixes are context-specific - `.ConfigureAwait(false)` is not applied as a blanket solution
+- [ ] Production incident concerns are not mixed in - this is developer debugging, not blast radius analysis
+
 ## Avoid
 
 - Proposing a fix without reading the relevant code in the codebase

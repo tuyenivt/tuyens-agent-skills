@@ -145,6 +145,31 @@ After loading stack-detect, verify the ecosystem's specific testing best practic
 [Test cases to add with framework-specific scaffolds]
 ```
 
+## Success Criteria
+
+A well-executed test review or strategy passes all of these. Use as a self-check before presenting.
+
+### Completeness
+
+- [ ] Test pyramid balance is assessed - unit, integration, and E2E split is evaluated
+- [ ] Framework-specific test patterns for the detected stack are applied
+- [ ] Coverage gaps table lists specific areas and their priority - not a generic coverage percentage goal
+- [ ] Error paths and edge cases are checked, not just the happy path
+
+### Quality
+
+- [ ] Recommended tests describe behavior, not implementation details
+- [ ] Every recommended test scaffold uses the detected stack's current framework and idioms
+- [ ] Test isolation is verified - no shared state between tests
+- [ ] Test names describe the behavior being verified, not the method being called
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The highest-value test gaps are identified and prioritized - not an exhaustive list of everything missing
+- [ ] Integration test coverage of critical business flows is explicitly assessed
+- [ ] The review distinguishes between test quantity and test quality - coverage % is not the sole signal
+- [ ] Any deprecated test utilities or annotations in the detected stack are flagged
+
 ## Avoid
 
 - Testing implementation details instead of behavior

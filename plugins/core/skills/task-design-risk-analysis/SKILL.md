@@ -275,6 +275,32 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 - Prioritize by blast radius containment potential
 - Optimize for token efficiency and decision readiness
 
+## Success Criteria
+
+A well-executed risk analysis passes all of these. Use as a self-check before presenting for staff sign-off.
+
+### Completeness
+
+- [ ] Risk domains are classified (primary and secondary) before any mitigation is recommended
+- [ ] Blast radius is explicitly classified (Narrow / Moderate / Wide / Critical)
+- [ ] Consistency and transaction risk is assessed for any data-touching change
+- [ ] Deployment and rollback risk is assessed - including rollback complexity classification
+- [ ] Observability readiness is evaluated - gaps are listed with concrete additions
+
+### Correctness
+
+- [ ] Risk level reflects the actual change scope - not defaulting to Medium for everything
+- [ ] Every mitigation recommendation references the specific risk domain it addresses
+- [ ] "No rollback feasible" scenarios are explicitly called out if they exist
+- [ ] Confidence level is stated in the Staff-Level Assessment - with what data would increase it
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The analysis answers "what fails silently if this goes wrong?" - not just "what could go wrong"
+- [ ] Staff-Level Assessment states whether a design doc, ADR, or staged rollout is required
+- [ ] Systemic risks are separated from implementation risks - not a single undifferentiated list
+- [ ] A tech lead could use this analysis to decide whether to proceed, gate, or redesign the change
+
 ## Avoid
 
 - Code review or performance commentary (use dedicated skills)
@@ -331,4 +357,3 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 | Skill                        | Purpose                                                            |
 | ---------------------------- | ------------------------------------------------------------------ |
 | `change-risk-classification` | Pre-implementation risk domain classification for proposed changes |
-

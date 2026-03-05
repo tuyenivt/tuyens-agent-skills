@@ -152,6 +152,31 @@ If the detected stack is unfamiliar, apply generic documentation templates and r
 - [ ] No jargon without explanation
 - [ ] Can be maintained alongside code changes
 
+## Success Criteria
+
+A well-generated documentation output passes all of these. Use as a self-check before presenting.
+
+### Completeness
+
+- [ ] Audience and purpose are identified before any content is written
+- [ ] Every code or command example is real and runnable - not invented or approximate
+- [ ] Stack-detected toolchain is reflected in Quick Start commands and contributor setup
+- [ ] For runbooks: Steps, Verification, and Rollback sections are all present
+
+### Quality
+
+- [ ] No marketing language or filler ("powerful", "seamlessly", "robust")
+- [ ] No documentation of self-evident code - comments add meaning the code doesn't convey
+- [ ] Jargon is either avoided or explained inline for the stated audience
+- [ ] Documentation can be maintained alongside code - it doesn't duplicate what the code already expresses
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] A new team member could use the README to run the project locally without asking anyone
+- [ ] API docs include error responses, not just the happy path
+- [ ] Runbooks are actionable at 2am by an on-call engineer who didn't write the service
+- [ ] ADR requests are redirected to `/task-adr-create` - not handled here
+
 ## Avoid
 
 - Documentation without seeing the code first

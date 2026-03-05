@@ -216,6 +216,33 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - Use skill: `task-design-architecture` for broader system architecture beyond API contracts
 - Use skill: `task-code-review-advanced` for reviewing implementation against this API spec
 
+## Success Criteria
+
+A well-executed API design or review passes all of these. Use as a self-check before presenting for implementation.
+
+### Completeness
+
+- [ ] Every endpoint in the endpoint table has auth requirements stated - no blanks
+- [ ] Every collection endpoint has pagination defined
+- [ ] Error format follows RFC 9457 consistently across all endpoints
+- [ ] Request and response schemas are defined for every endpoint - no "TBD" fields
+- [ ] For reviews: every breaking change is explicitly flagged with a migration path
+
+### Correctness
+
+- [ ] HTTP methods match their semantics (POST creates, PUT replaces, PATCH updates, DELETE removes)
+- [ ] Success status codes are correct (201 for POST, 204 for DELETE, 200 otherwise)
+- [ ] URL paths use plural nouns and no verbs
+- [ ] Field naming follows the detected stack's convention (camelCase or snake_case) consistently
+- [ ] No ORM entity types leak into response schemas
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] A consumer team could implement a client from this spec without asking questions
+- [ ] Backward compatibility impact is assessed - safe and breaking changes are separated
+- [ ] Security requirements (auth mechanism, authorization model) are explicit per endpoint
+- [ ] No implementation code is included - this is a contract specification, not an implementation
+
 ## Avoid
 
 - Generating controller, service, or repository implementation code

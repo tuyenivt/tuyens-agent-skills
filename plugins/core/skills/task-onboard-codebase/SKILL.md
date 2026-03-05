@@ -300,6 +300,31 @@ Use skill: `observability` to assess whether the observability setup is sufficie
 - Use skill: `coding-standards` for pattern comparison against detected stack conventions
 - Use skill: `observability` for operational observability assessment
 
+## Success Criteria
+
+A well-executed onboarding report passes all of these. Use as a self-check before presenting the report.
+
+### Accuracy
+
+- [ ] Every file path, module name, and technology cited is observed - nothing invented
+- [ ] Stack table distinguishes declared (from CLAUDE.md) from inferred (from file presence)
+- [ ] Architecture classification cites specific file paths as evidence - not inferred from project type alone
+- [ ] Patterns table references real file paths for each pattern - not invented examples
+
+### Completeness
+
+- [ ] All 7 workflow steps are covered: stack, structure, architecture, modules, patterns, tech debt, ops
+- [ ] At least one primary request/event flow is traced through the layers
+- [ ] Tech debt findings are ordered High > Medium > Low and include location, signal, and risk
+- [ ] Onboarding Recommendations are limited to 5 items and prioritized by day-one impact
+
+### Staff-Level Signal (for senior engineer use)
+
+- [ ] A new senior engineer could read this report and make their first PR safely without asking the team
+- [ ] Risk hotspots are actionable - each states what breaks if you change that area
+- [ ] Operational context is sufficient to run the service locally and understand the deploy pipeline
+- [ ] The report identifies the most important thing to learn in the first week
+
 ## Avoid
 
 - Inventing architecture descriptions without reading actual files

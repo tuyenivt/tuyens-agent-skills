@@ -32,3 +32,27 @@ STEP 6 - PREVENTION: test, vet check, race detector
 - For flaky async tests, replace time.Sleep with testing/synctest
 
 OUTPUT: 🐛 → 📍 → 🔧 → 🛡️
+
+## Success Criteria
+
+A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+
+### Completeness
+
+- [ ] Error is classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line
+- [ ] A concrete before/after code fix is provided - no vague suggestions
+- [ ] A prevention step is included (test, `go vet` check, or race detector guidance)
+
+### Correctness
+
+- [ ] The fix addresses the root cause, not the symptom
+- [ ] Confidence level is stated - LOW confidence lists what additional info would help
+- [ ] The fix is minimal - no unrelated refactoring
+- [ ] Go idioms are preserved - errors wrapped with `%w`, no global state introduced
+
+### Staff-Level Signal
+
+- [ ] The "why" is explained - a developer understands how to avoid this class of bug
+- [ ] For concurrency bugs, `go test -race` is referenced as the verification step
+- [ ] For goroutine leaks, the fix includes the cancellation or completion path, not just the symptom fix

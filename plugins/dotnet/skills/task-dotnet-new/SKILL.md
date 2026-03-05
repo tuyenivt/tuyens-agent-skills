@@ -236,6 +236,35 @@ Present a checklist of generated files:
 - [ ] Build verified (`dotnet build`)
 - [ ] Summary presented to user
 
+## Success Criteria
+
+A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
+
+### Completeness
+
+- [ ] Requirements were gathered and confirmed before any code was generated
+- [ ] Design was proposed and user-approved before proceeding to code generation
+- [ ] All layers generated: entity, EF config, migration, repository (interface + impl), application layer, controller, tests
+- [ ] Build verified with `dotnet build` and `dotnet test`
+
+### .NET Correctness
+
+- [ ] No EF Core entities exposed in API responses - all responses use DTO records
+- [ ] Constructor injection throughout - no `new` on dependencies
+- [ ] FluentValidation used for all request validation - no `[Required]` data annotations
+- [ ] `CancellationToken` propagated to all async methods
+- [ ] Single `SaveChangesAsync()` per handler - no partial write risk
+- [ ] Explicit `[Authorize]` or `[AllowAnonymous]` on every controller action
+- [ ] Clean Architecture layers respected: Application does not reference Infrastructure directly
+- [ ] All three test layers present: unit (handler), repository (Testcontainers), API (WebApplicationFactory)
+
+### Staff-Level Signal
+
+- [ ] EF Core migration includes indexes for foreign keys and frequently queried columns
+- [ ] List endpoints use pagination via `PagedResult<T>`
+- [ ] Domain exceptions extend a typed base - not raw `Exception`
+- [ ] Summary presented to user with file paths, endpoints, and test count
+
 ## Avoid
 
 - Exposing EF Core entities in API responses

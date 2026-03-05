@@ -178,6 +178,31 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 [Prioritized with trade-offs]
 ```
 
+## Success Criteria
+
+A well-executed performance review passes all of these. Use as a self-check before presenting findings.
+
+### Completeness
+
+- [ ] Database performance checks are applied - N+1, missing indexes, over-fetching, connection pool
+- [ ] Framework-specific checks for the detected stack are applied (concurrency, ORM, caching)
+- [ ] Every Critical or High finding includes a concrete measurement path - not just "profile this"
+- [ ] Caching opportunities include both what to cache and an invalidation strategy
+
+### Signal Quality
+
+- [ ] Findings are ordered Critical > High > Medium - no severity mixing
+- [ ] Every finding states expected impact - not just "this is slow"
+- [ ] No findings for non-critical paths without profiling evidence to justify them
+- [ ] Recommendations state the trade-off (complexity added vs performance gained)
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] The "measure first" principle is upheld - optimization recommendations cite the bottleneck evidence
+- [ ] The highest-impact finding is clearly identified and presented first
+- [ ] Observability gaps are called out if the affected path lacks the metrics needed to validate improvements
+- [ ] No performance patterns from a different stack are applied to the detected stack
+
 ## Avoid
 
 - Optimizing without profiling data

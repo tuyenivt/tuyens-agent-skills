@@ -171,6 +171,32 @@ Related: #[PR number or branch]
 - Use skill: `stack-detect` for test command and ecosystem language
 - Use skill: `pr-risk-analysis` for risk classification from diff signals
 
+## Success Criteria
+
+A well-generated PR description passes all of these. Use as a self-check before presenting the description.
+
+### Completeness
+
+- [ ] Title is imperative, under 72 characters, and uses a valid type prefix
+- [ ] Summary explains the _why_ (motivation) - not a re-description of the diff
+- [ ] Risk classification appears before the test plan and includes a rationale
+- [ ] Test plan contains at least one runnable command for the detected stack
+- [ ] Checklist items are specific to this PR - no inapplicable empty boxes
+
+### Accuracy
+
+- [ ] No ticket IDs, ADR titles, or PR references were invented - all from git context
+- [ ] Risk classification uses pr-risk-analysis signals - not gut feel
+- [ ] Linked Context section is omitted if no references were found in git context
+- [ ] Total description is under 400 words - concise enough for reviewers to read, not file
+
+### Staff-Level Signal (for tech lead review)
+
+- [ ] A reviewer can determine Approve / Request Changes from the Summary and Risk alone
+- [ ] High or Critical risk PRs have a rationale that explains the specific system impact
+- [ ] Migration steps are included in the test plan if a DB migration is in the diff
+- [ ] The description orients reviewers to what matters - it does not duplicate the diff
+
 ## Avoid
 
 - Titles that start with "This PR..." or are longer than 72 characters

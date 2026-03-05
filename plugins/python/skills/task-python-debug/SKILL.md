@@ -27,3 +27,27 @@ STEP 4 - ROOT CAUSE: explain WHY. Confidence: HIGH/MEDIUM/LOW
 STEP 5 - FIX: before/after code, minimal change
 
 STEP 6 - PREVENTION: pytest test, type hint, linting rule
+
+## Success Criteria
+
+A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+
+### Completeness
+
+- [ ] Error is classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line from the traceback
+- [ ] A concrete before/after code fix is provided - no vague suggestions
+- [ ] A prevention step is included (pytest test, type hint, or linting rule)
+
+### Correctness
+
+- [ ] The fix addresses the root cause, not the symptom
+- [ ] Confidence level is stated (HIGH / MEDIUM / LOW) - LOW lists what additional info would help
+- [ ] The fix is minimal - no unrelated refactoring
+- [ ] Async/sync mixing is addressed at the architectural level - not just patched with `asyncio.run()`
+
+### Staff-Level Signal
+
+- [ ] The "why" is explained - a developer understands how to avoid this class of bug
+- [ ] For Celery issues, retry config and idempotency are addressed alongside the immediate fix
+- [ ] For SQLAlchemy connection issues, pool configuration is checked, not just the query

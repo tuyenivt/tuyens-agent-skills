@@ -24,3 +24,29 @@ STEP 7 - TESTS: load node-testing-patterns, comprehensive coverage
 STEP 8 - VALIDATE: build + test + lint + typecheck
 
 OUTPUT: file list, endpoint summary, test count
+
+## Success Criteria
+
+A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
+
+### Completeness
+
+- [ ] Framework detected (NestJS or Express) before any code generated
+- [ ] Requirements gathered and design approved before code generation
+- [ ] All layers generated: data model/migration, service, controller/routes, DTOs, tests
+- [ ] Validated with build, test, lint, and typecheck
+
+### Node.js Correctness
+
+- [ ] No ORM entities exposed in API responses - DTOs/serializers used for all responses
+- [ ] All async operations are properly awaited - no unhandled promise rejections
+- [ ] TypeScript types are explicit - no implicit `any`
+- [ ] NestJS: `@UseGuards` / `@Roles` applied; Express: middleware chain is explicit
+- [ ] Jest tests cover happy path, validation errors, and not-found scenarios
+
+### Staff-Level Signal
+
+- [ ] Migration includes indexes for foreign keys and filter columns
+- [ ] List endpoints include pagination
+- [ ] If BullMQ used, job idempotency and retry config are included
+- [ ] File list, endpoint summary, and test count presented to user
