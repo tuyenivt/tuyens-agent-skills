@@ -79,12 +79,13 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-15 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+16 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                       | Description                                                                                                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots. |
 | `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs. |
+| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.  |
 | `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                 |
 | `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                            |
 | `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                                           |
@@ -94,7 +95,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.                   |
 | `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.             |
 | `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                       |
-| `task-docs-generate`        | Documentation generation (README, API docs, ADRs) for any stack                                                  |
+| `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                              |
 | `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                             |
 | `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                                      |
 | `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                         |
@@ -197,6 +198,15 @@ Scope options - asks interactively if not specified:
 ```
 /task-code-perf-review
 [paste code or file path]
+```
+
+**Write an Architecture Decision Record:**
+
+```
+/task-adr-create
+Decision: Use the transactional outbox pattern for event publishing
+Context: We're losing events when the app crashes after DB write but before publishing to Kafka
+Alternatives: Two-phase commit, direct publish inside transaction, CDC with Debezium
 ```
 
 **Onboard to a new codebase:**

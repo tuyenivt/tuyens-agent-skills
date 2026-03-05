@@ -1,20 +1,24 @@
 ---
 name: task-docs-generate
-description: Documentation generation (README, API docs, ADRs) for any stack. Auto-detects project stack from CLAUDE.md and adapts documentation patterns to the detected ecosystem.
+description: Documentation generation (README, API docs, code comments, runbooks) for any stack. Auto-detects project stack from CLAUDE.md and adapts documentation patterns to the detected ecosystem.
 metadata:
   category: review
-  tags: [documentation, readme, api-docs, adr, multi-stack]
+  tags: [documentation, readme, api-docs, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Documentation Generator
 
+> For Architecture Decision Records, use `/task-adr-create` instead - it produces a complete, trade-off-documented ADR with alternatives analysis.
+
 ## When to Use
 
-- Documentation creation (README, API docs, ADR)
-- Documentation review and improvement
-- Code comments and doc generation
-- Runbooks and guides
+- README creation or improvement
+- API endpoint documentation
+- Code comments and inline doc generation
+- Runbooks and operational guides
+- Contributor setup guides
 
 ## Workflow
 
@@ -59,28 +63,6 @@ Examples.
 | Property | Description | Default |
 ```
 
-#### ADR
-
-```markdown
-# ADR-NNN: Title
-
-## Status
-
-Proposed | Accepted | Deprecated
-
-## Context
-
-What is the issue?
-
-## Decision
-
-What did we decide?
-
-## Consequences
-
-Positive and negative results.
-```
-
 #### API Docs
 
 ```markdown
@@ -102,6 +84,33 @@ Positive and negative results.
 ## Errors
 
 | Status | Description |
+```
+
+#### Runbook
+
+```markdown
+# Runbook: [Service or Operation Name]
+
+## Purpose
+
+[What this runbook covers and when to use it]
+
+## Prerequisites
+
+[Access, tools, or context required]
+
+## Steps
+
+1. [Step with exact command or action]
+2. [Step]
+
+## Verification
+
+[How to confirm the operation succeeded]
+
+## Rollback
+
+[How to undo if something goes wrong]
 ```
 
 ### Step 4 - Stack-Specific Documentation Patterns
@@ -133,6 +142,7 @@ If the detected stack is unfamiliar, apply generic documentation templates and r
 - Structure information clearly with progressive disclosure
 - Provide working examples for every concept
 - Keep documentation maintainable and close to the code
+- For ADRs, redirect to `/task-adr-create`
 
 ## Checklist
 
@@ -149,3 +159,4 @@ If the detected stack is unfamiliar, apply generic documentation templates and r
 - Documenting obvious code (self-documenting is better)
 - Stale examples that no longer work
 - Applying documentation conventions from one stack to another
+- Writing ADRs here - use `/task-adr-create` for decision records
