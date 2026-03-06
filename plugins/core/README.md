@@ -79,29 +79,32 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-19 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+22 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
-| Skill                       | Description                                                                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.         |
-| `task-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.     |
-| `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                  |
-| `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                  |
-| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                   |
-| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                  |
-| `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                                             |
-| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                                                            |
-| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                   |
-| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                                                     |
-| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Auto-detects stack.                                                    |
-| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.                                    |
-| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                              |
-| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                        |
-| `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                                               |
-| `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                                              |
-| `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                                                       |
-| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                                          |
-| `task-skill-feedback`       | Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations. |
+| Skill                       | Description                                                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                            |
+| `task-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                        |
+| `task-scope-breakdown`      | Break an epic or feature into implementable tasks with effort sizing, dependency ordering, hidden complexity signals, and scope creep risk flags.    |
+| `task-code-explain`         | Explain a specific file, function, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants.                 |
+| `task-migration-plan`       | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment. |
+| `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                                     |
+| `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                     |
+| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                      |
+| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                     |
+| `task-design-architecture`  | Staff-level architecture design proposal for new features and systems                                                                                |
+| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment for proposed changes                                                                               |
+| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                      |
+| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                                                                        |
+| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Auto-detects stack.                                                                       |
+| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.                                                       |
+| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                 |
+| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                           |
+| `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                                                                  |
+| `task-release-plan`         | Staff-level production release planning with rollout safety and blast radius control                                                                 |
+| `task-incident-postmortem`  | Staff-level postmortem for systemic learning and prevention                                                                                          |
+| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                                                             |
+| `task-skill-feedback`       | Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations.                    |
 
 ## Atomic Skills
 
@@ -192,23 +195,29 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-incident-postmortem`  | `failure-classification`, `concurrency-model`, `data-consistency-modeling`, `resiliency`, `db-indexing`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `review-gap-analysis`, `engineering-governance`, `observability`, `idempotency`, `coding-standards`                                                                                                                                        |
 | `task-incident-root-cause`  | `failure-classification`, `blast-radius-analysis`, `failure-propagation-analysis`, `concurrency-model`, `data-consistency-modeling`, `db-indexing`, `resiliency`, `observability`, `root-cause-hypothesis`, `architecture-guardrail`, `engineering-governance`                                                                                                                                                              |
 | `task-skill-feedback`       | _(none - self-contained)_                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `task-scope-breakdown`      | `stack-detect`, `change-risk-classification`, `backward-compatibility-analysis`, `dependency-impact-analysis`, `blast-radius-analysis`                                                                                                                                                                                                                                                                                      |
+| `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                                                                                                                                                                                                                                                                          |
+| `task-migration-plan`       | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`                                                                                                                                                                                                                                                      |
 
 ### Atomic → Used By (Reuse Count)
 
 Atomics used by the most workflows - highest customization leverage:
 
-| Atomic Skill             | Used By                                                                                                                                                                                                                                                     | Count |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `stack-detect`           | all except `task-incident-postmortem`, `task-incident-root-cause`, `task-adr-create`                                                                                                                                                                        | 15    |
-| `observability`          | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause` | 10    |
-| `resiliency`             | `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                          | 9     |
-| `architecture-guardrail` | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-incident-postmortem`, `task-incident-root-cause`                                             | 8     |
-| `concurrency-model`      | `task-design-architecture`, `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                  | 7     |
-| `coding-standards`       | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate`, `task-incident-postmortem`                                                                                          | 7     |
-| `api-guidelines`         | `task-design-api`, `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`, `task-release-plan`                                                                                                         | 7     |
-| `engineering-governance` | `task-design-architecture`, `task-design-risk-analysis`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                                                        | 5     |
-| `blast-radius-analysis`  | `task-design-architecture`, `task-design-risk-analysis`, `task-code-review-advanced`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                           | 6     |
-| `failure-classification` | `task-design-architecture`, `task-design-risk-analysis`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                                                        | 5     |
+| Atomic Skill                      | Used By                                                                                                                                                                                                                                                     | Count |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| `stack-detect`                    | all except `task-incident-postmortem`, `task-incident-root-cause`, `task-adr-create`, `task-migration-plan`                                                                                                                                                 | 17    |
+| `observability`                   | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause` | 10    |
+| `resiliency`                      | `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                          | 9     |
+| `architecture-guardrail`          | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-incident-postmortem`, `task-incident-root-cause`, `task-code-explain`                        | 9     |
+| `blast-radius-analysis`           | `task-design-architecture`, `task-design-risk-analysis`, `task-code-review-advanced`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`, `task-scope-breakdown`, `task-migration-plan`                                            | 8     |
+| `concurrency-model`               | `task-design-architecture`, `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`, `task-code-explain`                                                             | 8     |
+| `coding-standards`                | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate`, `task-incident-postmortem`                                                                                          | 7     |
+| `api-guidelines`                  | `task-design-api`, `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`, `task-release-plan`                                                                                                         | 7     |
+| `backward-compatibility-analysis` | `task-design-api`, `task-design-risk-analysis`, `task-release-plan`, `task-scope-breakdown`, `task-migration-plan`                                                                                                                                          | 5     |
+| `dependency-impact-analysis`      | `task-design-architecture`, `task-release-plan`, `task-scope-breakdown`, `task-migration-plan`                                                                                                                                                              | 4     |
+| `change-risk-classification`      | `task-design-risk-analysis`, `task-scope-breakdown`, `task-migration-plan`                                                                                                                                                                                  | 3     |
+| `engineering-governance`          | `task-design-architecture`, `task-design-risk-analysis`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                                                        | 5     |
+| `failure-classification`          | `task-design-architecture`, `task-design-risk-analysis`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                                                                                                                        | 5     |
 
 ## Usage Examples
 
