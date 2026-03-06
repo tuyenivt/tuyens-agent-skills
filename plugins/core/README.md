@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Core
 
-Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from your agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) and adapts universal engineering principles to the detected ecosystem.
+Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from your agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) and adapts universal engineering principles to the detected ecosystem. Includes a universal `task-feature-implement` entry point that delegates to stack-specific feature workflows.
 
 ## Installation
 
@@ -79,10 +79,11 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-17 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+18 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                       | Description                                                                                                                       |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.         |
 | `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                  |
 | `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                  |
 | `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                   |
@@ -171,6 +172,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 | Workflow                    | Atomic Skills Used                                                                                                                                                                                                                                                                                                                                                                                                          |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                                                                                                                                                                |
 | `task-onboard-codebase`     | `stack-detect`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`                                                                                                                                                                                                                                                                                                                          |
 | `task-pr-create`            | `stack-detect`, `pr-risk-analysis`                                                                                                                                                                                                                                                                                                                                                                                          |
 | `task-adr-create`           | `tradeoff-analysis`                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -195,7 +197,7 @@ Atomics used by the most workflows - highest customization leverage:
 
 | Atomic Skill             | Used By                                                                                                                                                                                                                                                     | Count |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `stack-detect`           | all except `task-incident-postmortem`, `task-incident-root-cause`, `task-adr-create`                                                                                                                                                                        | 13    |
+| `stack-detect`           | all except `task-incident-postmortem`, `task-incident-root-cause`, `task-adr-create`                                                                                                                                                                        | 14    |
 | `observability`          | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause` | 10    |
 | `resiliency`             | `task-design-architecture`, `task-design-risk-analysis`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`, `task-release-plan`, `task-incident-postmortem`, `task-incident-root-cause`                          | 9     |
 | `architecture-guardrail` | `task-onboard-codebase`, `task-design-architecture`, `task-design-risk-analysis`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-incident-postmortem`, `task-incident-root-cause`                                             | 8     |

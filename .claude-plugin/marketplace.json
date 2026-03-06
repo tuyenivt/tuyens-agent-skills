@@ -9,8 +9,8 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "45 skills (17 workflow + 28 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
       "version": "1.11.0",
+      "description": "46 skills (18 workflow + 28 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
