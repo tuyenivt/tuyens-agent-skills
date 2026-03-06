@@ -62,24 +62,57 @@ After loading stack-detect, apply test patterns using the idioms of the detected
 
 If the detected stack is unfamiliar, apply the universal testing pyramid and Arrange-Act-Assert pattern.
 
-### Step 4 - Frontend (React)
+### Step 4 - Test Boundary Guidance
 
-**Component Test:**
+Before writing or recommending tests, determine what deserves each layer:
 
-- Test user interactions with Testing Library
-- Verify loading/error states
-- Use accessibility-first query selectors
+**What belongs in unit tests:**
 
-**Hook Test:**
+- Pure functions and domain logic with no I/O
+- Validation rules and business rules with many branches
+- Error handling and edge cases in isolation
+- Anything that would be slow or brittle if integration-tested
 
-- Use renderHook for custom hook testing
+**What belongs in integration tests:**
 
-### React Query Priority
+- Database queries - verify real SQL executes correctly against a real schema
+- HTTP endpoints - verify routing, serialization, and status codes end to end
+- External service clients - verify request/response mapping (use contract tests or stubs)
+- Authentication and authorization logic - verify the whole filter/middleware chain
 
-1. `getByRole` - Accessible
-2. `getByLabelText` - Forms
-3. `getByText` - Content
-4. `getByTestId` - Last resort
+**What belongs in E2E tests:**
+
+- Critical business flows (checkout, login, data export) only
+- Flows that span multiple services or UI + API together
+- Keep this layer small - each test is expensive to write and maintain
+
+**The "test or not" decision:**
+
+- If it's a framework behavior (e.g., Spring autowiring, Rails routing), don't test it - trust the framework
+- If it's configuration you wrote, test that configuration works
+- If a bug could only be caught at a higher layer, write the test there - not at both layers
+
+### Step 5 - Contract Testing (for service-to-service APIs)
+
+When the detected stack involves multiple services or the project exposes/consumes HTTP/messaging APIs:
+
+**Consumer-Driven Contracts:**
+
+- The API consumer defines the contract (what fields and status codes it depends on)
+- The API provider verifies it satisfies all consumer contracts before deploy
+- Recommended tooling: Pact (most stacks), Spring Cloud Contract (Java)
+
+**When contract tests are mandatory:**
+
+- Any HTTP API consumed by a team that deploys independently
+- Event/message schemas where producers and consumers deploy separately
+- Any shared client library that other services import
+
+**Minimum contract test coverage:**
+
+- Happy path: expected request shape gets expected response shape
+- Provider error: consumer handles 4xx/5xx gracefully
+- Schema evolution: consumer tolerates new fields (Postel's law)
 
 ## Universal Checklist
 
@@ -100,12 +133,12 @@ After loading stack-detect, verify the ecosystem's specific testing best practic
 - [ ] Test data setup uses the ecosystem's recommended approach
 - [ ] Parallel test execution is enabled where safe
 
-## Frontend-Specific Checklist
+## Contract Testing Checklist
 
-- [ ] User interactions tested
-- [ ] Loading/error states verified
-- [ ] Accessibility assertions
-- [ ] No implementation details tested
+- [ ] Service-to-service APIs have consumer-driven contracts or stub-verified tests
+- [ ] Message/event schemas are tested for producer-consumer compatibility
+- [ ] Consumer tolerates additive schema changes (new optional fields don't break it)
+- [ ] Provider CI verifies contracts before deploy
 
 ## Key Skills Reference
 
@@ -132,17 +165,33 @@ After loading stack-detect, verify the ecosystem's specific testing best practic
 ```markdown
 ## Assessment
 
-**Coverage:** [X%]
-**Pyramid Balance:** [status]
 **Stack Detected:** [language / framework]
+**Coverage:** [X% or "not measured"]
+**Pyramid Balance:** [unit-heavy / balanced / integration-heavy / inverted]
+**Contract Testing:** [present / absent / not applicable]
+
+## Test Boundary Analysis
+
+| Layer       | Current State  | Recommendation          |
+| ----------- | -------------- | ----------------------- |
+| Unit        | [count/status] | [what to add or remove] |
+| Integration | [count/status] | [what to add or remove] |
+| E2E         | [count/status] | [what to add or remove] |
+| Contract    | [count/status] | [what to add or remove] |
 
 ## Gaps
 
-| Area | Missing Tests | Priority |
+| Area   | Missing Tests    | Layer                     | Priority     |
+| ------ | ---------------- | ------------------------- | ------------ |
+| [area] | [what's missing] | Unit/Integration/Contract | High/Med/Low |
 
 ## Recommended Tests
 
-[Test cases to add with framework-specific scaffolds]
+[Test cases to add with framework-specific scaffolds - describe behavior, not method names]
+
+## What NOT to Test
+
+[Framework behaviors, configuration that can't be misconfigured, implementation details that should be free to change]
 ```
 
 ## Success Criteria
@@ -169,6 +218,8 @@ A well-executed test review or strategy passes all of these. Use as a self-check
 - [ ] Integration test coverage of critical business flows is explicitly assessed
 - [ ] The review distinguishes between test quantity and test quality - coverage % is not the sole signal
 - [ ] Any deprecated test utilities or annotations in the detected stack are flagged
+- [ ] "What not to test" guidance is provided - over-testing is as much a problem as under-testing
+- [ ] Contract testing is assessed for any multi-service boundary in scope
 
 ## Avoid
 

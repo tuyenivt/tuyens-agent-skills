@@ -33,7 +33,23 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - **Examples**: Working, tested examples
 - **Maintenance**: Can it be kept updated
 
-### Step 3 - Documentation Types
+### Step 3 - Documentation Debt Signals
+
+Before writing documentation, assess the current state. Documentation debt is often the riskiest kind because it erodes team velocity silently.
+
+| Signal                                        | Severity | Action                                      |
+| --------------------------------------------- | -------- | ------------------------------------------- |
+| README describes a setup that no longer works | High     | Fix first - new contributors are blocked    |
+| API docs missing for public endpoints         | High     | Add before the next consumer onboards       |
+| No runbook for on-call scenarios              | High     | On-call engineers debug blind               |
+| Code comments describe _what_, not _why_      | Medium   | Rewrite to document intent and decisions    |
+| Architecture docs don't match current design  | Medium   | Update or add ADR explaining the divergence |
+| Changelog absent or stale                     | Medium   | Consumers can't evaluate upgrade risk       |
+| No contributor setup guide                    | Low      | Slows onboarding; fix before next hire      |
+
+Surface the top debt items before generating new documentation. Fixing stale docs is higher-value than adding new ones.
+
+### Step 4 - Documentation Types
 
 #### README
 
@@ -88,32 +104,85 @@ Examples.
 
 #### Runbook
 
+A runbook is an operational procedure for an on-call engineer responding to an alert at 2am. Write for someone who knows the system exists but didn't build it.
+
 ```markdown
 # Runbook: [Service or Operation Name]
 
 ## Purpose
 
-[What this runbook covers and when to use it]
+[What this runbook covers and when to use it - be specific: "High error rate on /api/orders", not "Orders service issues"]
 
 ## Prerequisites
 
-[Access, tools, or context required]
+[Access, tools, and credentials required. Include where to get access if not obvious.]
+
+## Symptoms
+
+[What the alert or incident looks like. Log lines, metrics, error messages.]
 
 ## Steps
 
-1. [Step with exact command or action]
+1. [Step with exact command or action - no ambiguous instructions]
 2. [Step]
 
 ## Verification
 
-[How to confirm the operation succeeded]
+[How to confirm the operation succeeded - specific metric, log line, or health check]
 
 ## Rollback
 
 [How to undo if something goes wrong]
+
+## Escalation
+
+[Who to page if this runbook doesn't resolve the issue]
 ```
 
-### Step 4 - Stack-Specific Documentation Patterns
+**Runbook quality bar:** An on-call engineer with no context on this service should be able to execute this runbook without asking anyone. If any step requires tribal knowledge, document that knowledge inline.
+
+#### API Changelog
+
+For public or consumed APIs, generate a changelog entry per version or release:
+
+```markdown
+## [v2.1.0] - [date]
+
+### Added
+
+- `GET /api/v2/users/{id}/preferences` - Returns user preference settings
+
+### Changed
+
+- `POST /api/v2/orders` - `address` field is now an object `{street, city, country}` instead of a string. Old string format accepted until [deprecation date].
+
+### Deprecated
+
+- `GET /api/v1/users` - Use `GET /api/v2/users` instead. v1 removed [date].
+
+### Breaking Changes
+
+- [None] or [explicit list - breaking changes require a version bump and migration guide]
+```
+
+#### Document the Why (Inline Architecture Comments)
+
+Code comments should document decisions, not restate code. The "why" is what rots fastest and is hardest to reconstruct later.
+
+**When to add inline architectural comments:**
+
+- Non-obvious algorithm choices ("We use exponential backoff here because this endpoint rate-limits at 10 req/s under load")
+- Intentional workarounds ("This null check exists because [external API] returns null instead of 404 for [edge case] - see issue #1234")
+- Constraint explanations ("Cannot use async here - [library] requires synchronous access to its internal state")
+- Historical context ("This was split from [OtherClass] in 2024 to resolve [problem] - do not re-merge without revisiting [concern]")
+
+**When NOT to add comments:**
+
+- When the code is self-explanatory (`// increment counter` above `count++`)
+- When a better name would make the comment unnecessary
+- When the comment just restates the type signature
+
+### Step 6 - Stack-Specific Documentation Patterns
 
 After loading stack-detect, apply documentation patterns appropriate to the detected ecosystem:
 
@@ -174,7 +243,10 @@ A well-generated documentation output passes all of these. Use as a self-check b
 
 - [ ] A new team member could use the README to run the project locally without asking anyone
 - [ ] API docs include error responses, not just the happy path
-- [ ] Runbooks are actionable at 2am by an on-call engineer who didn't write the service
+- [ ] Runbooks are actionable at 2am by an on-call engineer who didn't write the service - no tribal knowledge required
+- [ ] Documentation debt signals are surfaced before new docs are written
+- [ ] API changelog entries distinguish additive changes from breaking changes clearly
+- [ ] Inline comments document decisions and constraints, not what the code does
 - [ ] ADR requests are redirected to `/task-adr-create` - not handled here
 
 ## Avoid

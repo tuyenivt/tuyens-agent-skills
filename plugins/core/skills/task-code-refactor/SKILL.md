@@ -16,6 +16,15 @@ metadata:
 - Safe refactoring planning
 - Code quality improvement
 
+## Inputs
+
+| Input                 | Required    | Description                                                                                               |
+| --------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| Target scope          | Yes         | File, class, module, or path to refactor                                                                  |
+| Goal                  | Yes         | What the refactoring should achieve (e.g., reduce complexity, extract service layer, improve testability) |
+| Test coverage status  | Recommended | Whether tests exist and pass for the target area                                                          |
+| Shared/public surface | Recommended | Whether the target is used across module or team boundaries                                               |
+
 ## Workflow
 
 ### Step 1 - Detect Stack
@@ -24,13 +33,17 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 2 - Identify Smells (All Stacks)
 
-| Smell                    | Risk   |
-| ------------------------ | ------ |
-| Long Method (>20 lines)  | Medium |
-| Large Class (>200 lines) | High   |
-| Duplicate Code           | Medium |
-| Feature Envy             | Low    |
-| Long Parameter List      | Low    |
+Use judgment - these are signals, not hard rules. A 25-line method with a clear single responsibility is fine; a 10-line method doing three things is not.
+
+| Smell               | Signal                                                      | Risk   |
+| ------------------- | ----------------------------------------------------------- | ------ |
+| Long Method         | Difficult to name, test, or understand in one reading       | Medium |
+| Large Class         | Multiple responsibilities, hard to mock in tests            | High   |
+| Duplicate Code      | Same logic copy-pasted; diverges silently under change      | Medium |
+| Feature Envy        | Method more interested in another class's data than its own | Low    |
+| Long Parameter List | >3-4 params; callers must look up meaning of each           | Low    |
+| Divergent Change    | One class changed for many unrelated reasons                | High   |
+| Shotgun Surgery     | One change requires many small edits across classes         | High   |
 
 ### Step 3 - Framework-Specific Smells
 
@@ -63,7 +76,33 @@ After loading stack-detect, identify smells specific to the detected ecosystem. 
 
 If the detected stack is unfamiliar, apply the universal smells from Step 2.
 
-### Step 4 - Safe Refactoring Steps
+### Step 4 - Cross-Module and Shared-Code Assessment
+
+Before proposing any refactoring step, assess boundary impact:
+
+**Is the target used across module boundaries?**
+
+- If yes, treat any signature or behavior change as a breaking change requiring coordination
+- Check for callers outside the current package/module/namespace
+- Flag shared utilities, base classes, or interfaces - changes cascade silently
+
+**Is the target part of a public API or published contract?**
+
+- HTTP endpoints, SDK methods, events, and database schemas are public contracts
+- Refactoring these requires backward-compatibility analysis - use skill: `backward-compatibility-analysis`
+
+**What is the blast radius?**
+
+- Use skill: `blast-radius-analysis` to estimate how many callers, tests, and deployments are affected
+- A refactoring touching shared infrastructure (logging, auth, caching) has higher blast radius than a leaf class
+
+**Rules for cross-module refactoring:**
+
+- Propose an interface/facade before removing or renaming shared code
+- Never rename public symbols without a deprecation alias step first
+- Add tests at the boundary before moving code across module lines
+
+### Step 5 - Safe Refactoring Steps
 
 1. Ensure tests exist
 2. Commit current state
@@ -72,20 +111,24 @@ If the detected stack is unfamiliar, apply the universal smells from Step 2.
 5. Commit
 6. Repeat
 
-### Step 5 - Common Refactorings
+### Step 6 - Common Refactorings
 
-| Smell        | Refactoring      |
-| ------------ | ---------------- |
-| Long Method  | Extract Method   |
-| Large Class  | Extract Class    |
-| Duplication  | Extract, Pull Up |
-| Feature Envy | Move Method      |
+| Smell            | Refactoring            | Cross-Module Risk         |
+| ---------------- | ---------------------- | ------------------------- |
+| Long Method      | Extract Method         | Low (private scope)       |
+| Large Class      | Extract Class          | Medium (new interface)    |
+| Duplication      | Extract, Pull Up       | Medium-High (shared code) |
+| Feature Envy     | Move Method            | Medium (changes callers)  |
+| Divergent Change | Split into two classes | High (public boundary)    |
+| Shotgun Surgery  | Inline and consolidate | High (many callers)       |
 
 ## Key Skills Reference
 
 - Use skill: `coding-standards` for style and structure guidelines
 - Use skill: `concurrency-model` for thread-safety during refactoring
 - Use skill: `architecture-guardrail` for layer violation detection
+- Use skill: `blast-radius-analysis` for shared-code scope assessment
+- Use skill: `backward-compatibility-analysis` for public API or contract changes
 
 ## Rules
 
@@ -102,15 +145,22 @@ If the detected stack is unfamiliar, apply the universal smells from Step 2.
 ## Current State
 
 **Stack Detected:** [language / framework]
-[Description of issues]
+**Refactoring Goal:** [what this achieves]
+[Description of issues and smells identified]
 
 ## Risk Assessment
 
-| Factor        | Status         |
-| ------------- | -------------- |
-| Test Coverage | Safe/Warn/Risk |
-| Complexity    | Safe/Warn/Risk |
-| Dependencies  | Safe/Warn/Risk |
+| Factor          | Status         | Notes                            |
+| --------------- | -------------- | -------------------------------- |
+| Test Coverage   | Safe/Warn/Risk | [coverage in target area]        |
+| Complexity      | Safe/Warn/Risk | [cognitive complexity of target] |
+| Dependencies    | Safe/Warn/Risk | [internal vs. cross-module]      |
+| Blast Radius    | Safe/Warn/Risk | [number of callers affected]     |
+| Public Contract | Safe/Warn/Risk | [API/interface exposure]         |
+
+## Cross-Module Impact
+
+[Which modules or teams are affected. "None" if scope is fully internal.]
 
 ## Step-by-Step Plan
 
@@ -118,16 +168,18 @@ If the detected stack is unfamiliar, apply the universal smells from Step 2.
 
 - What: [change]
 - Risk: Low/Medium/High
-- Tests: [verify]
+- Cross-module: Yes/No - [impact if yes]
+- Tests: [how to verify behavior is preserved]
 
 ## Prerequisites
 
 - [ ] Add tests for [area]
 - [ ] Create branch
+- [ ] Notify [team/owner] if cross-module changes are planned
 
 ## Rollback
 
-[How to revert]
+[How to revert each step]
 ```
 
 ## Success Criteria
