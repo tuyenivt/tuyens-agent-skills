@@ -47,6 +47,9 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 | `go-reliability-engineer` | Go reliability engineer for incident analysis in Go/Gin/PostgreSQL environments. pprof profiling, goroutine leak detection, connection pool tuning.   |
 | `go-security-engineer`    | OWASP Top 10 for Go, JWT/Gin auth middleware review, input validation, govulncheck dependency scanning.                                               |
 | `go-performance-engineer` | Goroutine leak detection, GORM/sqlx query tuning, pprof profiling, memory allocation analysis, connection pool sizing.                                |
+| `go-refactoring-expert`   | Systematic Go code improvement: interface extraction, error handling modernization, goroutine leak fixes, global state elimination.                   |
+| `go-technical-writer`     | godoc comments, swaggo/swag OpenAPI annotations, ADRs, and runbooks for Go/Gin services.                                                              |
+| `go-test-engineer`        | Table-driven test strategies, httptest, Testcontainers, gomock, and `go test -race` discipline for Go/Gin services.                                   |
 
 ## Workflow Skills
 

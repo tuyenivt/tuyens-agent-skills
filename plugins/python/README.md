@@ -53,13 +53,16 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USER
 
 ## Agents
 
-| Agent                       | Model  | Description                                                                                      |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure  |
-| python-tech-lead            | sonnet | Code review for Pythonic patterns, type safety, async correctness, test coverage                 |
-| python-reliability-engineer | sonnet | Incident analysis for FastAPI/Django/Celery/PostgreSQL production environments                   |
-| python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan |
-| python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling              |
+| Agent                        | Model  | Description                                                                                      |
+| ---------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| python-architect             | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure  |
+| python-tech-lead             | sonnet | Code review for Pythonic patterns, type safety, async correctness, test coverage                 |
+| python-reliability-engineer  | sonnet | Incident analysis for FastAPI/Django/Celery/PostgreSQL production environments                   |
+| python-security-engineer     | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan |
+| python-performance-engineer  | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling              |
+| python-refactoring-expert    | sonnet | Systematic Python code improvement: async safety, Pydantic v2 migration, layer boundary cleanup  |
+| python-technical-writer      | sonnet | Docstrings (Google style), FastAPI OpenAPI annotations, ADRs, and runbooks for Python services   |
+| python-test-engineer         | sonnet | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design  |
 
 ## Framework Detection
 

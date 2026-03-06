@@ -20,15 +20,15 @@ plugins/
     agents/      # 8 agent definitions
   kotlin/        # Thin companion to java plugin (requires core + java)
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
-    agents/      # 5 agent definitions
+    agents/      # 8 agent definitions
   rails/         # Ruby on Rails 7+/8
-    agents/      # 5 agent definitions
+    agents/      # 8 agent definitions
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
     skills/      # 10 skills (2 workflow + 8 atomic)
-    agents/      # 5 agent definitions
+    agents/      # 8 agent definitions
   go/            # Go 1.25+ / Gin / GORM+sqlx
     skills/      # 9 skills (2 workflow + 7 atomic)
-    agents/      # 5 agent definitions
+    agents/      # 8 agent definitions
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.

@@ -48,6 +48,9 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 | `rails-reliability-engineer` | Rails reliability engineer for incident analysis in Rails/Sidekiq/PostgreSQL environments. Debugging, postmortem, release planning.                                              |
 | `rails-security-engineer`    | OWASP Top 10 for Rails, Devise/JWT auth review, Pundit authorization audit, strong parameters, dependency vulnerability scan.                                                    |
 | `rails-performance-engineer` | ActiveRecord N+1 detection, query tuning, Sidekiq throughput, caching strategy, profiling with rack-mini-profiler.                                                               |
+| `rails-refactoring-expert`   | Systematic Rails code improvement: fat model/controller diet, service object extraction, ActiveRecord hygiene, callback elimination.                                             |
+| `rails-technical-writer`     | YARD docs, OpenAPI (rswag), ADRs, and runbooks for Rails/Sidekiq services.                                                                                                       |
+| `rails-test-engineer`        | RSpec strategies, FactoryBot fixtures, Shoulda-matchers, Sidekiq testing, VCR/WebMock, and test pyramid design.                                                                  |
 
 ## Workflow Skills
 
