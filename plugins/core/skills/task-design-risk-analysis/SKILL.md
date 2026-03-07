@@ -5,6 +5,7 @@ metadata:
   category: ops
   tags: [risk-analysis, blast-radius, safety, architecture, deployment, prevention]
   type: workflow
+user-invocable: true
 ---
 
 # Risk Analysis -- Staff Edition

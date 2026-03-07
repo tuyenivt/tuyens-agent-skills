@@ -5,6 +5,7 @@ metadata:
   category: ops
   tags: [release, deployment, rollout, rollback, safety, blast-radius]
   type: workflow
+user-invocable: true
 ---
 
 # Release Plan -- Staff Edition
@@ -422,49 +423,6 @@ A well-executed release plan passes all of these. Use as a self-check before pre
 - Ignoring AI-generated code velocity as a contributor to hidden coupling
 - Treating all releases as equal risk regardless of change scope
 - Proposing overly conservative rollout for genuinely low-risk changes
-
-## Key Skills Reference
-
-### Existing Skills Reused
-
-**Risk and Impact Assessment:**
-
-- Use skill: `pr-risk-analysis` for change signal-based risk classification
-- Use skill: `blast-radius-analysis` for failure propagation and impact scope
-- Use skill: `failure-classification` for susceptible failure type identification
-- Use skill: `failure-propagation-analysis` for cascading failure path analysis
-
-**Compatibility and Contracts:**
-
-- Use skill: `api-guidelines` for API contract standards
-- Use skill: `data-consistency-modeling` for consistency strategy across data boundaries
-- Use skill: `idempotency` for retry safety during transition periods
-
-**Database and Performance:**
-
-- Use skill: `db-indexing` for index impact assessment
-- Use skill: `caching` for cache pressure and invalidation impact
-- Use skill: `capacity-modeling` for throughput estimation and bottleneck prediction
-- Use skill: `concurrency-model` for concurrency risk assessment
-
-**Deployment and Operations:**
-
-- Use skill: `release-safety` for rollout, rollback, and feature flag patterns
-- Use skill: `dependency-impact-analysis` for deployment ordering and dependency impact
-- Use skill: `resiliency` for circuit breaker and timeout patterns
-- Use skill: `observability` for logging, metrics, and tracing readiness
-- Use skill: `engineering-governance` for prevention strategies
-
-**Delegated Workflows (optional scope):**
-
-- Use skill: `task-code-review-advanced` for code quality assessment (scope: +review or full)
-- Use skill: `task-code-perf-review` for performance analysis (scope: +perf or full)
-
-### Sub-Skills Defined for This Workflow
-
-| Skill                             | Purpose                                                         |
-| --------------------------------- | --------------------------------------------------------------- |
-| `backward-compatibility-analysis` | API, event, and data contract backward compatibility assessment |
 
 ## After This Skill
 

@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [refactoring, code-quality, technical-debt, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Code Refactor

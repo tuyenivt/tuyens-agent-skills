@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Code Secure

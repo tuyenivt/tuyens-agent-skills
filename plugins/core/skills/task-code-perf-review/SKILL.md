@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Performance Review
@@ -94,11 +95,15 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 
 ### Step 5 - Caching Strategy (All Stacks)
 
-- [ ] Cache-aside pattern for read-heavy data
+Use skill: `caching` for cache strategy patterns.
+
+Verify:
+
+- [ ] Cache-aside pattern applied for read-heavy data
 - [ ] Cache invalidation strategy defined
 - [ ] TTL configured appropriately
-- [ ] Cache key design (avoid collisions)
-- [ ] Local cache vs distributed cache decision
+- [ ] Cache key design avoids collisions
+- [ ] Local cache vs distributed cache decision made explicitly
 
 ### Step 6 - Stateless Design (All Stacks)
 
@@ -109,11 +114,14 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 
 ### Step 7 - Observability (All Stacks)
 
-- [ ] Structured logging (JSON format)
-- [ ] Correlation ID propagation
-- [ ] Key operation logging (entry/exit/errors)
-- [ ] Metrics for custom operations
-- [ ] Health indicators for dependencies
+Use skill: `observability` for metrics and monitoring patterns.
+
+Verify:
+
+- [ ] Structured logging in place for affected paths
+- [ ] Correlation ID propagation across service boundaries
+- [ ] Metrics instrumented for custom operations
+- [ ] Health indicators exist for critical dependencies
 
 ## Key Skills Reference
 

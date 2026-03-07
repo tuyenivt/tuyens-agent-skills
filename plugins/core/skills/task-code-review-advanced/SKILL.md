@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [code-review, pull-request, risk-assessment, architecture, ai-quality, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Code Review - Staff Edition
@@ -173,13 +174,6 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 - Never block on personal preference
 - Default to Core scope
 - Do not apply conventions from one stack to another
-
-## Key Skills Reference
-
-Correctness and Safety: `resiliency`, `api-guidelines`
-Architecture and Quality: `coding-standards`, `observability`, `architecture-guardrail`, `complexity-review`
-Risk Assessment: `pr-risk-analysis`, `blast-radius-analysis`
-Delegated Reviews: `task-code-perf-review`, `task-code-secure`
 
 ## Success Criteria
 

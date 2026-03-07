@@ -5,6 +5,7 @@ metadata:
   category: ops
   tags: [incident, root-cause, on-call, reliability, containment]
   type: workflow
+user-invocable: true
 ---
 
 # Root Cause Analysis -- Staff Edition
@@ -245,32 +246,6 @@ A well-executed root cause analysis passes all of these. Use as a self-check bef
 - Prevention that only fixes this specific instance
 - Verbose explanations under incident pressure
 - Ignoring AI-generated code as a contributing factor to architectural drift
-
-## Key Skills Reference
-
-### Existing Skills Reused
-
-**Failure Analysis:**
-
-- Use skill: `resiliency` for timeout, retry, and circuit breaker patterns
-- Use skill: `data-consistency-modeling` for data consistency issues
-- Use skill: `db-indexing` for query performance and N+1 detection
-- Use skill: `concurrency-model` for concurrency and thread safety issues
-- Use skill: `observability` for logging, metrics, and tracing gaps
-
-**Architecture and Prevention:**
-
-- Use skill: `blast-radius-analysis` for impact scope assessment
-- Use skill: `architecture-guardrail` for boundary violation detection
-
-### Sub-Skills Defined for This Workflow
-
-| Skill                          | Purpose                                                 |
-| ------------------------------ | ------------------------------------------------------- |
-| `failure-classification`       | Classify failures by type, mechanism, and system layer  |
-| `failure-propagation-analysis` | Trace cascading failure paths across system boundaries  |
-| `root-cause-hypothesis`        | Generate ranked hypotheses with confidence and evidence |
-| `engineering-governance`       | Systemic prevention and governance strategies           |
 
 ## After This Skill
 

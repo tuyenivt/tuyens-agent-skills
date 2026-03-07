@@ -170,9 +170,9 @@ Surface the three to five most important things the incoming engineer must know 
 
 ## Open Alerts
 
-| Alert        | System    | Status             | Action Needed          |
-| ------------ | --------- | ------------------ | ---------------------- | ----------- | ---------- |
-| {Alert name} | {Service} | Known / Unexpected | {None - expected noise | Watch for X | Page if Y} |
+| Alert        | System    | Status             | Action Needed                                             |
+| ------------ | --------- | ------------------ | --------------------------------------------------------- |
+| {Alert name} | {Service} | Known / Unexpected | None (expected noise) / Watch for X / Page if Y           |
 
 ---
 

@@ -5,6 +5,7 @@ metadata:
   category: architecture
   tags: [api, rest, api-design, contract, specification, review, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # API Contract Design & Review

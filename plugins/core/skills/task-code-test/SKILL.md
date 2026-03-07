@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [testing, test-strategy, unit-test, integration-test, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Code Test

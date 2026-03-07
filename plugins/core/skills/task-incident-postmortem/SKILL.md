@@ -5,6 +5,7 @@ metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]
   type: workflow
+user-invocable: true
 ---
 
 # Postmortem -- Staff Edition

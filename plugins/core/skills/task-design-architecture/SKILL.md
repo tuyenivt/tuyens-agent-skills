@@ -5,6 +5,7 @@ metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]
   type: workflow
+user-invocable: true
 ---
 
 # Architecture Design -- Staff Edition

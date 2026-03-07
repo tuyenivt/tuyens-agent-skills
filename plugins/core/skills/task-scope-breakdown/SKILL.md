@@ -153,6 +153,25 @@ Totals:
 - Nice-to-have tasks: count, aggregate size
 - Risk-reduction tasks: count, aggregate size
 
+### Step 5 - Scope Creep and Risk Flags
+
+Flag scope and risk issues at feature level:
+
+**Scope creep risks:**
+
+- Tasks that are nice-to-have but may be assumed as must-have by stakeholders
+- Work discovered during complexity scan that wasn't in the original requirements
+- Tasks with XL size that should be a separate epic
+
+**Hidden risks:**
+
+- Any task on the critical path that is L or XL
+- Data tasks with rollback complexity (data written cannot be easily undone)
+- Integration tasks blocked on external teams or third-party APIs
+- Tasks where the complexity signals are unclear (needs spike / discovery task)
+
+For each flag, recommend: proceed as-is / de-scope / add spike / split epic.
+
 ### Step 6 - Sprint Fit (sprint-fit mode only)
 
 **Skip this step if sprint-fit mode was not activated.**
@@ -207,25 +226,6 @@ Flag:
 - Over-capacity sprints (must de-scope or extend timeline)
 - Must-have tasks that exceed total sprint budget (epic must be split or timeline extended)
 - Nice-to-have tasks deferred if capacity is tight
-
-### Step 5 - Scope Creep and Risk Flags
-
-Flag scope and risk issues at feature level:
-
-**Scope creep risks:**
-
-- Tasks that are nice-to-have but may be assumed as must-have by stakeholders
-- Work discovered during complexity scan that wasn't in the original requirements
-- Tasks with XL size that should be a separate epic
-
-**Hidden risks:**
-
-- Any task on the critical path that is L or XL
-- Data tasks with rollback complexity (data written cannot be easily undone)
-- Integration tasks blocked on external teams or third-party APIs
-- Tasks where the complexity signals are unclear (needs spike / discovery task)
-
-For each flag, recommend: proceed as-is / de-scope / add spike / split epic.
 
 ## Output
 

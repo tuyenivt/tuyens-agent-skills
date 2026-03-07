@@ -5,6 +5,7 @@ metadata:
   category: review
   tags: [code-review, pull-request, quality, multi-stack]
   type: workflow
+user-invocable: true
 ---
 
 # Code Review
