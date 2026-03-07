@@ -408,3 +408,7 @@ A well-executed release plan passes all of these. Use as a self-check before pre
 | Skill                             | Purpose                                                         |
 | --------------------------------- | --------------------------------------------------------------- |
 | `backward-compatibility-analysis` | API, event, and data contract backward compatibility assessment |
+
+## After This Skill
+
+If the output needed significant adjustment - rollback plan was incomplete, blast radius was off, or a key risk was missed - run `/task-skill-feedback` to log what changed and why.

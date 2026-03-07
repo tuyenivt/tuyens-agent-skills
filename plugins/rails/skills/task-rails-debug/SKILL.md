@@ -51,3 +51,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] The "why" is explained - a developer understands how to avoid this class of bug
 - [ ] For `PG::LockNotAvailable`, the migration safety pattern is referenced alongside the fix
 - [ ] For Sidekiq failures, job idempotency and retry state are checked, not just the error message
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, Rails conventions were bypassed in the fix, or Sidekiq idempotency was ignored - run `/task-skill-feedback` to log what changed and why.

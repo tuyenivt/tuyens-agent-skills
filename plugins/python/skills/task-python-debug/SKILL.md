@@ -51,3 +51,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] The "why" is explained - a developer understands how to avoid this class of bug
 - [ ] For Celery issues, retry config and idempotency are addressed alongside the immediate fix
 - [ ] For SQLAlchemy connection issues, pool configuration is checked, not just the query
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, async/sync mixing was patched instead of fixed, or the wrong framework's patterns were applied - run `/task-skill-feedback` to log what changed and why.

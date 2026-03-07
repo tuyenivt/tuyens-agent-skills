@@ -55,3 +55,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] The "why" is explained - a developer understands how to avoid this class of bug
 - [ ] For circular dependency errors, the fix resolves the structure - not just applies `forwardRef`
 - [ ] For BullMQ issues, job idempotency and retry config are addressed alongside the immediate fix
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, TypeScript types were incorrectly diagnosed, or NestJS DI constraints were missed - run `/task-skill-feedback` to log what changed and why.

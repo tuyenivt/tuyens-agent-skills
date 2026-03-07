@@ -378,3 +378,7 @@ A well-executed migration plan passes all of these.
 - Use skill: `release-safety` for deploy ordering across migration phases
 - Use skill: `dependency-impact-analysis` for multi-service deployment coordination
 - Use skill: `blast-radius-analysis` for rollback failure impact assessment
+
+## After This Skill
+
+If the output needed significant adjustment - lock risk was underestimated, expand-contract phasing was wrong, or rollback procedures were missing - run `/task-skill-feedback` to log what changed and why.

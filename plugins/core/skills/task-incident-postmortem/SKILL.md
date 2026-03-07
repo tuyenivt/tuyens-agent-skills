@@ -352,3 +352,7 @@ A well-executed postmortem passes all of these. Use as a self-check before prese
 | ------------------------ | -------------------------------------------------------------------------------- |
 | `review-gap-analysis`    | Analyze why existing review processes did not catch the failure                  |
 | `engineering-governance` | Engineering process, governance, guardrail improvements, and incident prevention |
+
+## After This Skill
+
+If the output needed significant adjustment - guardrails were too vague, failure pattern was mislabeled, or action items were not actionable - run `/task-skill-feedback` to log what changed and why.

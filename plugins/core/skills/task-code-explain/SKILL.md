@@ -252,3 +252,7 @@ A well-executed explanation passes all of these.
 - Use skill: `architecture-guardrail` for layer boundary context
 - Use skill: `concurrency-model` for concurrency gotcha analysis
 - Use skill: `complexity-review` for design intent assessment (deep only)
+
+## After This Skill
+
+If the output needed significant adjustment - explanation was at the wrong depth, gotchas were missed, or framework context was wrong - run `/task-skill-feedback` to log what changed and why.

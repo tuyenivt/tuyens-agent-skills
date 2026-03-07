@@ -53,3 +53,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - [ ] List endpoints include pagination (Kaminari or Pagy)
 - [ ] If Sidekiq used, job idempotency is included
 - [ ] File list, endpoint summary, and test count presented to user
+
+## After This Skill
+
+If the output needed significant adjustment - business logic ended up in controllers or models, Pundit policies were missing, or serializers were skipped - run `/task-skill-feedback` to log what changed and why.

@@ -50,3 +50,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - [ ] List endpoints include pagination
 - [ ] If BullMQ used, job idempotency and retry config are included
 - [ ] File list, endpoint summary, and test count presented to user
+
+## After This Skill
+
+If the output needed significant adjustment - wrong framework detected, ORM entities exposed in responses, or unhandled promise rejections introduced - run `/task-skill-feedback` to log what changed and why.

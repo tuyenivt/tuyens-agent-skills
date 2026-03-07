@@ -271,3 +271,7 @@ A well-executed root cause analysis passes all of these. Use as a self-check bef
 | `failure-propagation-analysis` | Trace cascading failure paths across system boundaries  |
 | `root-cause-hypothesis`        | Generate ranked hypotheses with confidence and evidence |
 | `engineering-governance`       | Systemic prevention and governance strategies           |
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, blast radius was underestimated, or prevention actions were too generic - run `/task-skill-feedback` to log what changed and why.

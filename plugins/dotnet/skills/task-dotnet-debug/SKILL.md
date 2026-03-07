@@ -151,4 +151,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - Suggesting broad rewrites when a targeted fix suffices
 - Adding defensive null checks everywhere - identify the actual null source
 - Recommending `.ConfigureAwait(false)` as a blanket fix without understanding the context
-```
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, async context was misread, or .NET-specific constraints were missed - run `/task-skill-feedback` to log what changed and why.

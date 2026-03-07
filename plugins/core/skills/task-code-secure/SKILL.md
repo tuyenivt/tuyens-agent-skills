@@ -138,3 +138,7 @@ A well-executed security review passes all of these. Use as a self-check before 
 - Disabling security features for convenience
 - Logging sensitive data (passwords, tokens, PII)
 - Applying security patterns from one framework to another
+
+## After This Skill
+
+If the output needed significant adjustment - vulnerabilities were missed, severity was miscalibrated, or remediations were too generic - run `/task-skill-feedback` to log what changed and why.

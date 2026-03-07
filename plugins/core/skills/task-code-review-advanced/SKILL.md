@@ -191,3 +191,7 @@ A well-executed code review passes all of these. Use as a self-check before post
 - Running performance or security sub-workflows when user requested Core scope only
 - Commenting on every file - focus on systemic issues
 - Applying framework conventions from a different stack
+
+## After This Skill
+
+If the output needed significant adjustment - risk level was miscalibrated, architecture notes missed real violations, or findings were off-target - run `/task-skill-feedback` to log what changed and why.

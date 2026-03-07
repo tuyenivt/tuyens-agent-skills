@@ -284,3 +284,7 @@ A well-executed scope breakdown passes all of these.
 - Use skill: `backward-compatibility-analysis` for contract and schema compatibility work
 - Use skill: `dependency-impact-analysis` for deployment ordering of infrastructure tasks
 - Use skill: `blast-radius-analysis` for rollback risk assessment per task
+
+## After This Skill
+
+If the output needed significant adjustment - tasks were wrong-sized, hidden complexity was missed, or the dependency order was off - run `/task-skill-feedback` to log what changed and why.

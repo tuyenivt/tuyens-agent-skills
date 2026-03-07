@@ -101,3 +101,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - This skill is a dispatcher. The depth and quality of the output depends on the delegated stack workflow.
 - For polyglot monorepos, detect the primary backend stack and note any secondary stacks.
 - If the user wants to skip stack detection (e.g., in a context where it always fails), they can invoke the stack-specific workflow directly.
+
+## After This Skill
+
+If the output needed significant adjustment - wrong stack detected, design was off, or key layers were missed - run `/task-skill-feedback` to log what changed and why.

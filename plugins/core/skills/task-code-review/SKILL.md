@@ -177,3 +177,7 @@ A well-executed code review passes all of these. Use as a self-check before post
 - Blocking on personal preference
 - Reviewing without understanding context
 - Applying conventions from one stack to another
+
+## After This Skill
+
+If the output needed significant adjustment - findings were off-target, the wrong scope ran, or the assessment missed key context - run `/task-skill-feedback` to log what changed and why.

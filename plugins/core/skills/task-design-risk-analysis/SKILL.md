@@ -357,3 +357,7 @@ A well-executed risk analysis passes all of these. Use as a self-check before pr
 | Skill                        | Purpose                                                            |
 | ---------------------------- | ------------------------------------------------------------------ |
 | `change-risk-classification` | Pre-implementation risk domain classification for proposed changes |
+
+## After This Skill
+
+If the output needed significant adjustment - risk domains were wrong, mitigation strategies were too generic, or key failure paths were missed - run `/task-skill-feedback` to log what changed and why.

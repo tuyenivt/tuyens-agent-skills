@@ -51,3 +51,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] For coroutine issues, the fix addresses the coroutine scope or context - not just the exception
 - [ ] For kotlin-jpa / allopen plugin errors, the Gradle plugin configuration is checked as the root cause
 - [ ] For MockK errors, the stub is corrected with proper `coEvery` / `coVerify` usage for suspend functions
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, `!!` was introduced as a fix, or coroutine scope was not properly addressed - run `/task-skill-feedback` to log what changed and why.

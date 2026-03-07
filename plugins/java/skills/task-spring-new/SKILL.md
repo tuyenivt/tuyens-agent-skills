@@ -271,3 +271,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - Generating code before user approves the design
 - Skipping test generation
 - Over-engineering: only generate what was requested
+
+## After This Skill
+
+If the output needed significant adjustment - wrong layering, missing test layer, or Spring Boot constraints violated - run `/task-skill-feedback` to log what changed and why.

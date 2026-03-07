@@ -214,3 +214,7 @@ A well-executed refactoring plan passes all of these. Use as a self-check before
 - Large, multi-step changes in a single commit
 - Refactoring code you don't understand
 - Applying framework conventions from a different stack
+
+## After This Skill
+
+If the output needed significant adjustment - smells were misidentified, steps were unsafe to execute atomically, or cross-module impact was missed - run `/task-skill-feedback` to log what changed and why.

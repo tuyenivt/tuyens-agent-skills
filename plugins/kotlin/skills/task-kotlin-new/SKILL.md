@@ -132,3 +132,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - [ ] List endpoints use pagination via `Pageable`
 - [ ] Kotlin-JPA and allopen plugins are assumed present - their absence is flagged if relevant
 - [ ] Files created, endpoints delivered, and tests added by layer presented to user
+
+## After This Skill
+
+If the output needed significant adjustment - data class used for JPA entity, blocking calls mixed with coroutines, or MockK not used for unit tests - run `/task-skill-feedback` to log what changed and why.

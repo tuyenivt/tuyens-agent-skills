@@ -120,3 +120,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] For concurrency bugs, the fix includes the synchronization or isolation mechanism, not just the symptom
 - [ ] For connection/pool issues, configuration is checked alongside the immediate error
 - [ ] For regressions, "what changed recently?" is asked if no other root cause is identified
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, the fix didn't address the real issue, or the wrong stack workflow ran - run `/task-skill-feedback` to log what changed and why.

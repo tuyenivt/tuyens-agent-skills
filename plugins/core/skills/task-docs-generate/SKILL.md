@@ -257,3 +257,7 @@ A well-generated documentation output passes all of these. Use as a self-check b
 - Stale examples that no longer work
 - Applying documentation conventions from one stack to another
 - Writing ADRs here - use `/task-adr-create` for decision records
+
+## After This Skill
+
+If the output needed significant adjustment - wrong doc type generated, examples were stale, or key sections were missing - run `/task-skill-feedback` to log what changed and why.

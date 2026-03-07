@@ -254,3 +254,7 @@ A well-executed API design or review passes all of these. Use as a self-check be
 - Designing endpoints without stating auth requirements
 - Generic advice without context-specific reasoning
 - Applying API conventions from one framework to another
+
+## After This Skill
+
+If the output needed significant adjustment - resource naming was off, backward compatibility was missed, or the contract didn't match the stack's conventions - run `/task-skill-feedback` to log what changed and why.

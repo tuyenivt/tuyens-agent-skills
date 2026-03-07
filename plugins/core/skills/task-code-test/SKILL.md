@@ -228,3 +228,7 @@ A well-executed test review or strategy passes all of these. Use as a self-check
 - Over-mocking (test nothing meaningful)
 - Ignoring test maintenance cost
 - Applying test patterns from one framework to another
+
+## After This Skill
+
+If the output needed significant adjustment - wrong test strategy recommended, coverage gaps were missed, or scaffolds used outdated patterns for the stack - run `/task-skill-feedback` to log what changed and why.

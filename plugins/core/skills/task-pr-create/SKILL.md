@@ -205,3 +205,7 @@ A well-generated PR description passes all of these. Use as a self-check before 
 - Invented or placeholder ticket/ADR references
 - Including the Linked Context section when nothing was found in git context
 - Recommending the user submit or push - this skill only writes the description
+
+## After This Skill
+
+If the output needed significant adjustment - title was wrong, risk was miscalibrated, or the summary missed the motivation - run `/task-skill-feedback` to log what changed and why.

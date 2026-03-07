@@ -333,3 +333,7 @@ A well-executed onboarding report passes all of these. Use as a self-check befor
 - Conflating tech debt with code style - focus on structural risk and operational fragility
 - Generic advice ("add more tests", "improve logging") without citing specific observed gaps
 - Treating absence of a file as a problem without checking if it exists elsewhere
+
+## After This Skill
+
+If the output needed significant adjustment - architecture was misread, key patterns were missed, or tech debt hotspots were wrong - run `/task-skill-feedback` to log what changed and why.

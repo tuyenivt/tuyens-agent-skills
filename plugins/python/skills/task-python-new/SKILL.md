@@ -54,3 +54,7 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - [ ] List endpoints include pagination
 - [ ] If Celery used, retry config and error classification are included
 - [ ] File list, endpoint summary, and test count presented to user
+
+## After This Skill
+
+If the output needed significant adjustment - wrong framework detected, raw ORM objects returned in responses, or async/sync mixing introduced - run `/task-skill-feedback` to log what changed and why.

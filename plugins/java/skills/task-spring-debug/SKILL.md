@@ -218,4 +218,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - Use skill: `spring-messaging-patterns` for Kafka consumer lag, DLT failures, RabbitMQ DLQ issues, and outbox publishing failures
 
 > For stack-agnostic debugging workflows, use the core plugin's `task-incident-root-cause`.
-```
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, the fix violated Spring Boot constraints, or the wrong atomic skill was used - run `/task-skill-feedback` to log what changed and why.

@@ -56,3 +56,7 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - [ ] The "why" is explained - a developer understands how to avoid this class of bug
 - [ ] For concurrency bugs, `go test -race` is referenced as the verification step
 - [ ] For goroutine leaks, the fix includes the cancellation or completion path, not just the symptom fix
+
+## After This Skill
+
+If the output needed significant adjustment - root cause was wrong, Go idioms were violated in the fix, or a goroutine leak was missed - run `/task-skill-feedback` to log what changed and why.

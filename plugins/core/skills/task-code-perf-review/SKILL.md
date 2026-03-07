@@ -210,3 +210,7 @@ A well-executed performance review passes all of these. Use as a self-check befo
 - Adding complexity for marginal gains
 - Caching without an invalidation strategy
 - Applying performance patterns from one stack to another
+
+## After This Skill
+
+If the output needed significant adjustment - wrong bottlenecks identified, caching advice lacked invalidation strategy, or stack-specific patterns were missed - run `/task-skill-feedback` to log what changed and why.

@@ -517,3 +517,7 @@ A well-executed architecture design passes all of these. Use as a self-check bef
 | `release-safety`             | Rollout, rollback, and deployment risk patterns                    |
 | `dependency-impact-analysis` | Deployment ordering and dependency change impact assessment        |
 | `concurrency-model`          | Concurrency risk assessment and thread safety patterns             |
+
+## After This Skill
+
+If the output needed significant adjustment - boundaries were wrong, failure modes were missed, or trade-offs were not captured - run `/task-skill-feedback` to log what changed and why.

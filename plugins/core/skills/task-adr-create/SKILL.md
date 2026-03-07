@@ -268,3 +268,7 @@ A well-written ADR passes all of these. Use as a self-check before committing th
 - Implementing or scaffolding the decision in code
 - Numbering conflicts - always check the existing ADR directory first
 - Writing ADRs for purely local or stylistic decisions that have no cross-cutting impact
+
+## After This Skill
+
+If the output needed significant adjustment - alternatives were incomplete, consequences missed real costs, or the review trigger was too vague - run `/task-skill-feedback` to log what changed and why.
