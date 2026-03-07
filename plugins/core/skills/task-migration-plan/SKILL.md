@@ -1,6 +1,6 @@
 ---
 name: task-migration-plan
-description: Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, data backfill estimation, and lock risk assessment for schema and data changes.
+description: Safe database migration strategy - zero-downtime sequencing, expand-contract, rollback plan, data backfill estimation, and lock risk assessment. Plans the migration strategy only - not for writing migration files (use task-spring-new / task-dotnet-new for scaffolding).
 metadata:
   category: data
   tags: [migration, database, schema, zero-downtime, rollback, expand-contract]

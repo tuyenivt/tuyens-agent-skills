@@ -1,6 +1,6 @@
 ---
 name: task-code-review-advanced
-description: Staff-level system-aware code review with risk assessment. Auto-detects project stack from CLAUDE.md and adapts review criteria to the detected language and framework.
+description: Staff-level code review for high-risk PRs or AI-generated code - blast radius, architecture boundaries, cross-module impact. Use when a basic review is not enough. Not a substitute for task-code-review on routine PRs.
 metadata:
   category: review
   tags: [code-review, pull-request, risk-assessment, architecture, ai-quality, multi-stack]

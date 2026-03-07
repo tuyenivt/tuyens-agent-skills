@@ -1,6 +1,6 @@
 ---
 name: db-indexing
-description: Database index strategy and query optimization
+description: Database index strategy and query optimization - when to add indexes, composite index column ordering, covering indexes, partial indexes. Called by workflow skills - not for general SQL help.
 metadata:
   category: performance
   tags: [database, indexing, queries, optimization]

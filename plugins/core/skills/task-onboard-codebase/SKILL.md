@@ -1,6 +1,6 @@
 ---
 name: task-onboard-codebase
-description: Senior engineer onboarding to a new codebase. Detects stack, maps architecture, identifies key patterns and conventions, surfaces tech debt and risk hotspots.
+description: Senior engineer onboarding to a whole codebase or large subsystem. Detects stack, maps architecture, identifies key patterns and conventions, surfaces tech debt and risk hotspots. Not for explaining a single file or function - use task-code-explain for that.
 metadata:
   category: workflow
   tags: [onboarding, architecture, tech-debt, codebase-analysis, patterns, multi-stack]

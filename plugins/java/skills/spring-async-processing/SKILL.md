@@ -1,6 +1,6 @@
 ---
 name: spring-async-processing
-description: Non-blocking side effects and event handling patterns
+description: Spring @Async, ApplicationEvent, @TransactionalEventListener, and @Scheduled patterns. Virtual Thread integration for Spring Boot 3.5+. Not for messaging (see spring-messaging-patterns).
 metadata:
   category: backend
   tags: [async, threading, events, idempotency]

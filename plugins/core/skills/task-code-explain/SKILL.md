@@ -1,6 +1,6 @@
 ---
 name: task-code-explain
-description: Explain a specific file, function, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants. Lighter than codebase onboarding, heavier than just reading.
+description: Explain a single file, function, class, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants. Not for broken code (use task-debug) and not for whole-codebase mapping (use task-onboard-codebase).
 metadata:
   category: code
   tags: [explanation, code-understanding, onboarding, review, debugging]

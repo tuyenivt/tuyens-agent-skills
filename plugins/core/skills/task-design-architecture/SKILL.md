@@ -1,6 +1,6 @@
 ---
 name: task-design-architecture
-description: Staff-level architecture design proposal for new features and systems
+description: System design proposal with boundary modeling, failure modes, data model, and trade-offs. For pre-implementation design, not task planning (use task-scope-breakdown for that).
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]

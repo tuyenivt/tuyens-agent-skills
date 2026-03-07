@@ -1,6 +1,6 @@
 ---
 name: spring-transaction
-description: Transaction scope and propagation management
+description: Spring @Transactional scope, propagation levels, and common pitfalls - read-only optimization, nested transaction boundaries, LazyInitializationException prevention.
 metadata:
   category: backend
   tags: [transactions, database, spring, consistency]

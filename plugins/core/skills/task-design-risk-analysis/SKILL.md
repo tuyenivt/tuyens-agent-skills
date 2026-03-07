@@ -1,6 +1,6 @@
 ---
 name: task-design-risk-analysis
-description: Staff-level proactive engineering risk assessment for proposed changes
+description: Pre-implementation risk assessment for proposed changes - before code exists. Classifies risk domains, blast radius, and deployment safety. Not for reviewing actual code (use task-code-review-advanced for post-implementation review).
 metadata:
   category: ops
   tags: [risk-analysis, blast-radius, safety, architecture, deployment, prevention]

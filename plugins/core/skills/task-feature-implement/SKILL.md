@@ -1,6 +1,6 @@
 ---
 name: task-feature-implement
-description: Universal feature implementation entry point. Detects your project stack and delegates to the appropriate stack-specific workflow (task-spring-new, task-go-new, task-python-new, etc.).
+description: Universal feature implementation entry point. Detects your project stack and delegates to the appropriate stack-specific workflow (task-spring-new, task-go-new, task-python-new, etc.). Not for bug fixes (use task-debug) or refactoring (use task-code-refactor).
 metadata:
   category: backend
   tags: [feature, implementation, scaffold, stack-agnostic]

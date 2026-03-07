@@ -1,6 +1,6 @@
 ---
 name: blast-radius-analysis
-description: Failure propagation and change impact scope assessment
+description: Scope of a proposed change - what breaks if this goes wrong, which modules and services are affected. Not for tracing an existing live failure (use failure-propagation-analysis for that).
 metadata:
   category: review
   tags: [blast-radius, impact-analysis, change-scope]

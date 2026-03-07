@@ -1,6 +1,6 @@
 ---
 name: task-scope-breakdown
-description: Break an epic or feature into implementable tasks with effort sizing, dependency ordering, hidden complexity signals, and scope creep risk flags.
+description: Task planning and effort sizing for an epic or feature - implementable tasks, dependency ordering, T-shirt sizing, and scope creep risk flags. Not a substitute for system design (use task-design-architecture for that).
 metadata:
   category: planning
   tags: [planning, estimation, task-breakdown, scope, complexity]

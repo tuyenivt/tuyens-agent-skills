@@ -1,6 +1,6 @@
 ---
 name: spring-exception-handling
-description: Centralized exception handling with proper HTTP mapping
+description: Spring Boot @ControllerAdvice and ProblemDetail (RFC 7807) - domain exception hierarchy, HTTP status mapping, and error response consistency.
 metadata:
   category: backend
   tags: [error-handling, rest, http, controller]

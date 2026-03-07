@@ -1,6 +1,6 @@
 ---
 name: task-pr-create
-description: Generate a production-ready PR description from git diff. Writes title, summary, risk level, test plan, and links to related tickets or ADRs.
+description: Generate a production-ready PR description from git diff. Writes title, summary, risk level, test plan, and links to related tickets or ADRs. Not for code review. Does not create the PR via CLI - generates the description text only.
 metadata:
   category: workflow
   tags: [pull-request, pr-description, git, collaboration, documentation]

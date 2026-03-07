@@ -1,6 +1,6 @@
 ---
 name: spring-jpa-performance
-description: JPA query optimization and N+1 prevention
+description: JPA/Hibernate-specific performance - N+1 detection with fetch joins and entity graphs, batch size tuning, projection queries, second-level cache strategy. For index-level optimization, see db-indexing.
 metadata:
   category: backend
   tags: [jpa, hibernate, performance, queries]
