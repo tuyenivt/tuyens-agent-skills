@@ -9,8 +9,8 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "50 skills (22 workflow + 28 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
-      "version": "1.18.0",
+      "description": "54 skills (26 workflow + 28 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -29,8 +29,8 @@
     {
       "name": "java",
       "source": "./plugins/java",
-      "description": "11 skills and 8 agents for Java 21+ / Spring Boot 3.5+ development. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "12 skills and 11 agents for Java 21+ / Spring Boot 3.5+ development. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -47,8 +47,8 @@
     {
       "name": "kotlin",
       "source": "./plugins/kotlin",
-      "description": "5 skills and 1 agent for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires core and java plugins.",
-      "version": "1.18.0",
+      "description": "5 skills and 4 agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires core and java plugins.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -65,8 +65,8 @@
     {
       "name": "python",
       "source": "./plugins/python",
-      "description": "9 skills and 8 agents for Python 3.11+ / FastAPI / Django development. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "9 skills and 11 agents for Python 3.11+ / FastAPI / Django development. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -76,8 +76,8 @@
     {
       "name": "rails",
       "source": "./plugins/rails",
-      "description": "8 skills and 8 agents for Ruby on Rails 7+/8 development. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "8 skills and 11 agents for Ruby on Rails 7+/8 development. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -87,8 +87,8 @@
     {
       "name": "node",
       "source": "./plugins/node",
-      "description": "10 skills and 8 agents for Node.js/TypeScript development. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "10 skills and 11 agents for Node.js/TypeScript development. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -107,8 +107,8 @@
     {
       "name": "go",
       "source": "./plugins/go",
-      "description": "9 skills and 8 agents for Go/Gin development. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "9 skills and 11 agents for Go/Gin development. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -118,8 +118,8 @@
     {
       "name": "dotnet",
       "source": "./plugins/dotnet",
-      "description": "11 skills and 8 agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture. Requires core plugin.",
-      "version": "1.18.0",
+      "description": "11 skills and 11 agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture. Requires core plugin.",
+      "version": "1.19.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"

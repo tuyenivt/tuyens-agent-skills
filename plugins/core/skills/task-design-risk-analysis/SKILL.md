@@ -33,6 +33,26 @@ This skill runs BEFORE implementation or merge. It focuses on systemic and opera
 - When evaluating an architecture proposal for hidden risk
 - When a deployment plan needs risk sign-off
 
+## Depth Levels
+
+| Depth      | When to Use                                                         | What Produces                                               |
+| ---------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `quick`    | Pre-PR sanity check or "is this risky?" fast assessment             | Risk matrix only - domains, blast radius, top 3 mitigations |
+| `standard` | Default - full pre-implementation risk assessment                   | All 7 sections                                              |
+| `deep`     | High-risk change, cross-service redesign, or post-incident redesign | All 7 sections + cascading failure simulation               |
+
+**Quick depth produces:**
+
+- Risk classification (primary domains + overall level)
+- Blast radius (Narrow / Moderate / Wide / Critical)
+- Top 3 mitigations with specific references to risk domains
+
+**Deep depth adds (on top of standard):**
+
+- Cascading failure simulation: walk through the worst-case failure scenario end-to-end, step by step, to identify gaps in containment and detection
+
+Default: `standard`. Use `quick` when the user asks for "risk check" or "is this safe?" before writing code. Use `deep` for cross-service changes, post-incident redesigns, or changes to auth/payment/data core paths.
+
 ## Inputs
 
 | Input                     | Required | Description                                                         |
@@ -263,6 +283,23 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 - Should require design doc? Yes | No
 - Should require ADR? Yes | No
 - Should require staged rollout? Yes | No
+
+## Cascading Failure Simulation (deep only)
+
+Walk through the worst-case failure scenario for this change end-to-end:
+
+**Scenario**: {The most likely or highest-impact failure this change introduces}
+
+1. {Trigger}: {What starts the failure - e.g., "payment-gateway timeout"}
+2. {Propagation}: {What is affected next and how}
+3. {Amplification}: {What shared resource or coupling makes it worse}
+4. {User impact}: {What users experience}
+5. {Detection}: {How long before the team knows - and what signal fires}
+6. {Containment}: {What stops further spread - or why nothing does}
+7. {Recovery}: {How the system returns to normal}
+
+**Gap identified**: {What this simulation revealed about missing containment, detection, or recovery}
+**Recommendation**: {Specific change to add before this code ships to address the gap}
 ```
 
 ### Output Constraints

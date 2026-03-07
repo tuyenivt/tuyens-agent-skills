@@ -50,6 +50,9 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROF
 | `go-refactoring-expert`   | Systematic Go code improvement: interface extraction, error handling modernization, goroutine leak fixes, global state elimination.                   |
 | `go-technical-writer`     | godoc comments, swaggo/swag OpenAPI annotations, ADRs, and runbooks for Go/Gin services.                                                              |
 | `go-test-engineer`        | Table-driven test strategies, httptest, Testcontainers, gomock, and `go test -race` discipline for Go/Gin services.                                   |
+| `go-code-reviewer`        | Persistent reviewer with session context - tracks recurring patterns and idiomatic Go compliance across PRs.                                          |
+| `go-sprint-planner`       | Sprint allocation for Go features with GORM/Asynq/Kafka complexity awareness and dependency sequencing.                                               |
+| `go-incident-commander`   | Orchestrates incident response, postmortem, and follow-up tracking for Go/Gin systems.                                                                |
 
 ## Workflow Skills
 

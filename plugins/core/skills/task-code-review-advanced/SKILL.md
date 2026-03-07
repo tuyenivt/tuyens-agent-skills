@@ -26,16 +26,40 @@ Staff-level code review that prioritizes system risk over style:
 - Architecture drift detection
 - Pre-merge risk assessment
 
+## Depth Levels
+
+| Depth      | When to Use                                                               | What Runs                                                    |
+| ---------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `quick`    | "Is this safe to merge?" - fast risk snapshot for time-constrained review | Risk snapshot + top 3 findings only (Phases A and B summary) |
+| `standard` | Default - full staff-level review for high-risk or AI-generated PRs       | Phases A-E                                                   |
+| `deep`     | Architectural PRs, post-incident change review, or Principal sign-off     | Phases A-E + historical pattern matching + cross-PR context  |
+
+**Quick depth produces:**
+
+- Risk level and blast radius (2-3 sentences)
+- Top 3 findings only (Blockers first, then Highs)
+- Approve / Request Changes / Discuss recommendation
+
+**Deep depth adds (on top of standard):**
+
+- Historical pattern matching: does this change repeat a pattern that caused past incidents?
+- Cross-PR context: any known concurrent PRs that interact with this change?
+- Architecture evolution note: does this PR move the architecture in the right or wrong direction over time?
+
+Default: `standard`. Use `quick` when user asks for "quick review", "sanity check", or "is this safe?". Use `deep` when user asks for "full review", "architecture review", or "Principal sign-off".
+
 ## Scope
 
 | Scope      | What runs                                                                      |
 | ---------- | ------------------------------------------------------------------------------ |
-| Core       | Phases A–E only (risk, correctness, architecture, AI quality, maintainability) |
+| Core       | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
 | + Perf     | Core + delegate to skill: `task-code-perf-review`                              |
 | + Security | Core + delegate to skill: `task-code-secure`                                   |
 | Full       | Core + Performance + Security                                                  |
 
 Default: Core. If invoked with an explicit scope argument (e.g., `/task-code-review-advanced +perf`), skip the question and use that scope directly.
+
+Depth and scope are independent. Example: `quick` depth with `+security` scope = risk snapshot + security findings only.
 
 ## Workflow
 

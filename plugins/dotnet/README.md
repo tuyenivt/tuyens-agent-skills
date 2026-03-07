@@ -70,16 +70,19 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 ## Agents
 
-| Agent                         | Focus                                                        |
-| ----------------------------- | ------------------------------------------------------------ |
-| `dotnet-architect`            | ASP.NET Core architecture, EF Core, Clean Architecture, APIs |
-| `dotnet-tech-lead`            | .NET code review, async safety, layer boundary enforcement   |
-| `dotnet-test-engineer`        | xUnit, Testcontainers, WebApplicationFactory, Bogus          |
-| `dotnet-security-engineer`    | JWT auth, policy-based authz, OWASP for .NET                 |
-| `dotnet-performance-engineer` | EF Core optimization, async patterns, caching, profiling     |
-| `dotnet-reliability-engineer` | Health checks, Polly, Serilog, incident response             |
-| `dotnet-refactoring-expert`   | Clean Architecture migration, async modernization, tech debt |
-| `dotnet-technical-writer`     | OpenAPI/Swagger, XML docs, ADRs, README, runbooks            |
+| Agent                         | Focus                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `dotnet-architect`            | ASP.NET Core architecture, EF Core, Clean Architecture, APIs                                |
+| `dotnet-tech-lead`            | .NET code review, async safety, layer boundary enforcement                                  |
+| `dotnet-test-engineer`        | xUnit, Testcontainers, WebApplicationFactory, Bogus                                         |
+| `dotnet-security-engineer`    | JWT auth, policy-based authz, OWASP for .NET                                                |
+| `dotnet-performance-engineer` | EF Core optimization, async patterns, caching, profiling                                    |
+| `dotnet-reliability-engineer` | Health checks, Polly, Serilog, incident response                                            |
+| `dotnet-refactoring-expert`   | Clean Architecture migration, async modernization, tech debt                                |
+| `dotnet-technical-writer`     | OpenAPI/Swagger, XML docs, ADRs, README, runbooks                                           |
+| `dotnet-code-reviewer`        | Persistent reviewer with session context - tracks async void, CancellationToken, and EF N+1 |
+| `dotnet-sprint-planner`       | Sprint allocation for .NET features with EF Core migration and MassTransit complexity       |
+| `dotnet-incident-commander`   | Orchestrates incident response, postmortem, and follow-up tracking for ASP.NET Core systems |
 
 ## Usage Examples
 

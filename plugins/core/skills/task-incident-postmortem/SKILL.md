@@ -31,6 +31,28 @@ Use skill: `task-incident-root-cause` for active incident investigation and root
 - Strengthening engineering guardrails after a failure
 - Architecture reinforcement planning after a production event
 
+## Depth Levels
+
+| Depth      | When to Use                                                              | What Runs                                               |
+| ---------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `quick`    | SEV3 or low-impact incident needing a brief written record               | Timeline + 3 action items only - no systemic analysis   |
+| `standard` | Default - SEV1/SEV2 or any incident requiring team learning              | All 8 sections                                          |
+| `deep`     | Major incident, recurring failure class, or cross-team systemic analysis | All 8 sections + pattern analysis across past incidents |
+
+**Quick depth produces:**
+
+- Incident summary (what happened, impact, duration)
+- Root cause (one paragraph)
+- 3 action items with owners and due dates
+
+**Deep depth adds (on top of standard):**
+
+- Pattern analysis: is this failure class recurring? How many times in the last 6 months?
+- Cross-system analysis: which other services have the same structural weakness?
+- Long-term systemic recommendation: if this class recurs, what architectural change eliminates it?
+
+Default: `standard`. Use `quick` for minor incidents or when stakeholders need a brief written record. Use `deep` for incidents that represent systemic risk or have recurred.
+
 ## Inputs
 
 | Input                   | Required | Description                                                        |
@@ -43,6 +65,7 @@ Use skill: `task-incident-root-cause` for active incident investigation and root
 | Deployment context      | No       | Deploy timestamp, version, environment details                     |
 | Containment actions     | No       | What was done to stop the bleeding                                 |
 | Business impact         | No       | Revenue, SLA, customer trust, regulatory implications              |
+| Past incident history   | No       | Required for `deep` depth - prior incidents of the same class      |
 
 Handle partial inputs gracefully. When input is missing, state what additional data would strengthen the analysis.
 
@@ -267,6 +290,27 @@ Contributing Factors:
 ## Staff-Level Takeaways
 
 - 3-5 systemic insights focused on prevention, not this specific incident.
+
+## Pattern Analysis (deep only)
+
+### Recurrence Check
+
+- Has this failure class occurred before? {Yes - N times in last 6 months | No | Unknown}
+- Previous incidents: {list with dates and severity, or "none on record"}
+- Pattern: {Is this random, triggered by deploys, triggered by traffic spikes, or cyclical?}
+
+### Cross-System Weakness
+
+- Which other services or components have the same structural weakness as identified in Section 3?
+- Recommended proactive assessment: {where to look for the same failure class before it triggers}
+
+### Long-Term Elimination
+
+If this failure class recurs, what architectural change eliminates it permanently?
+
+- Option A: {architectural change} - Effort: {S/M/L/XL} - Risk: {Low/Medium/High}
+- Option B: {alternative} - Effort: - Risk:
+- Recommended: {which option and why}
 ```
 
 ### Output Constraints

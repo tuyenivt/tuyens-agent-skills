@@ -11,24 +11,25 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 50 skills: 22 workflow (task-*) + 28 atomic
+    skills/      # 54 skills: 26 workflow (task-*) + 28 atomic
   java/          # Java 21+ / Spring Boot 3.5+
     skills/      # 12 skills (2 workflow + 10 atomic)
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
     skills/      # 11 skills (2 workflow + 9 atomic)
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
   kotlin/        # Thin companion to java plugin (requires core + java)
+    agents/      # 4 agent definitions
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
   rails/         # Ruby on Rails 7+/8
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
     skills/      # 10 skills (2 workflow + 8 atomic)
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
   go/            # Go 1.25+ / Gin / GORM+sqlx
     skills/      # 9 skills (2 workflow + 7 atomic)
-    agents/      # 8 agent definitions
+    agents/      # 11 agent definitions
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.

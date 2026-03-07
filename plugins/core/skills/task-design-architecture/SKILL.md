@@ -31,16 +31,39 @@ This skill produces a structured design proposal. It does not generate implement
 
 ## Inputs
 
-| Input                  | Required | Description                                                |
-| ---------------------- | -------- | ---------------------------------------------------------- |
-| Feature requirements   | Yes      | What the system must do                                    |
-| Business context       | No       | Business objective, success criteria, priority             |
-| Existing system sketch | No       | Current architecture, services, and data stores            |
-| Constraints            | No       | Performance, compliance, timeline, legacy, team capacity   |
-| Traffic assumptions    | No       | Expected request volume, growth projections, burst profile |
-| Integration needs      | No       | External APIs, third-party services, event sources         |
+| Input                  | Required | Description                                                       |
+| ---------------------- | -------- | ----------------------------------------------------------------- |
+| Feature requirements   | Yes      | What the system must do                                           |
+| Business context       | No       | Business objective, success criteria, priority                    |
+| Existing system sketch | No       | Current architecture, services, and data stores                   |
+| Constraints            | No       | Performance, compliance, timeline, legacy, team capacity          |
+| Traffic assumptions    | No       | Expected request volume, growth projections, burst profile        |
+| Integration needs      | No       | External APIs, third-party services, event sources                |
+| Depth                  | No       | `quick`, `standard` (default), or `deep` - see Depth Levels below |
 
 Handle partial inputs gracefully. When input is missing, state assumptions explicitly and flag what additional context would strengthen the design.
+
+## Depth Levels
+
+| Depth      | When to Use                                                                      | Sections Produced                                      |
+| ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `quick`    | Early ideation, async review, or "is this direction sensible?" check             | Problem framing + boundaries + top 1-2 trade-offs only |
+| `standard` | Default - pre-implementation design for Staff/Principal sign-off                 | All 10 sections                                        |
+| `deep`     | Large cross-team changes, capacity-sensitive systems, or post-incident redesigns | All 10 sections + capacity model + failure simulation  |
+
+**Quick depth produces:**
+
+- Problem framing (functional scope, NFRs, constraints)
+- System boundary sketch (modules, data ownership, one sentence per component)
+- Top 1-2 trade-offs with reasoning
+
+**Deep depth adds (on top of standard):**
+
+- Capacity model with per-component throughput estimates and saturation point
+- Failure simulation: walk through 2-3 cascading failure scenarios end-to-end
+- Evolution notes: what changes if traffic doubles or a key dependency is removed
+
+Default: `standard`. If the user asks for a "quick design check" or "rough architecture", use `quick`. If they ask for "full design" or "staff-level review", use `standard` or `deep`.
 
 ## Rules
 
@@ -407,6 +430,36 @@ Feature Flags:
 - Key systemic risks:
 - Long-term evolution notes:
 - Areas requiring strict review:
+
+## Capacity Model (deep only)
+
+| Component | Expected RPS | Peak RPS | Saturation Point | Scaling Action |
+| --------- | ------------ | -------- | ---------------- | -------------- |
+| Name      | N            | N        | N (bottleneck)   | Scale out / up |
+
+## Failure Simulation (deep only)
+
+### Scenario 1: {Most likely high-impact failure}
+
+Walk through the failure end-to-end:
+
+1. {Component} fails due to {cause}
+2. {Propagation path} - {affected component}
+3. {User-visible impact}
+4. {Mitigation that activates}
+5. {Recovery path}
+
+**Blast radius:** {Narrow | Moderate | Wide}
+**MTTR estimate:** {minutes / hours}
+**Gap identified:** {What the design is missing to contain this faster}
+
+[Repeat for 1-2 additional scenarios in deep mode]
+
+## Evolution Notes (deep only)
+
+- **If traffic doubles**: {What saturates first, what to scale, what must be redesigned}
+- **If {key dependency} is removed**: {What breaks, what the fallback is}
+- **If team size changes significantly**: {What becomes hard to maintain, what should be simplified}
 ```
 
 ### Output Constraints

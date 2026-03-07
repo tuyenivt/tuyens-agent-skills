@@ -30,6 +30,31 @@ This skill runs BEFORE deployment. It focuses on risk identification and rollout
 - When deploying changes that affect shared resources or public APIs
 - When traffic patterns are expected to change significantly
 
+## Depth Levels
+
+| Depth      | When to Use                                                             | What Produces                                            |
+| ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `quick`    | Low-risk release or "is this safe to ship?" fast check                  | Rollout sequence + top 3 risks + rollback trigger        |
+| `standard` | Default - most production releases                                      | All 8 phases                                             |
+| `deep`     | High-risk release, canary with metrics thresholds, or new critical path | All 8 phases + canary metrics plan + rollback drill plan |
+
+**Quick depth produces:**
+
+- Risk level and blast radius (2-3 sentences)
+- Rollout sequence (ordered steps)
+- Top 3 risks with mitigation
+- Rollback trigger condition
+
+**Deep depth adds (on top of standard):**
+
+- Canary metrics plan: specific metric names, baseline values, and rollback thresholds to monitor during canary
+- Rollback drill plan: step-by-step procedure to practice before the release, with time estimates per step
+- Post-release monitoring window: what to watch for 24-48 hours after full rollout and who is responsible
+
+Default: `standard`. Use `quick` when the user asks for "release checklist" or "is this safe to ship?" on a low-risk change. Use `deep` for releases that introduce new critical paths, require canary validation, or have complex rollback procedures.
+
+Depth and scope are independent. Example: `quick +review` = risk snapshot + code review findings.
+
 ## Scope
 
 Before starting the analysis, ask the user which scope they need:
@@ -309,6 +334,38 @@ Soak time:
 ## Staff-Level Risk Notes
 
 - 3-5 systemic risk insights about this release.
+
+## Canary Metrics Plan (deep only)
+
+Define specific metrics to monitor during canary deployment:
+
+| Metric        | Baseline              | Warning Threshold    | Rollback Threshold     | Owner  |
+| ------------- | --------------------- | -------------------- | ---------------------- | ------ |
+| {metric name} | {current p99 or rate} | {10% above baseline} | {rollback if exceeded} | {team} |
+
+Minimum metrics to define:
+
+- Error rate for affected endpoints
+- p99 latency for affected endpoints
+- Downstream error rate (if dependency calls are involved)
+- Business metric (if applicable - order completion rate, payment success rate)
+
+**Canary soak window**: {minimum time before advancing - e.g., 30 minutes for low-risk, 2 hours for high-risk}
+
+## Rollback Drill Plan (deep only)
+
+Step-by-step procedure to practice before the release goes live:
+
+| Step | Action                                                             | Who     | Time Estimate |
+| ---- | ------------------------------------------------------------------ | ------- | ------------- |
+| 1    | Detect rollback trigger (alert fires or metric threshold exceeded) | On-call | < 2 min       |
+| 2    | {First rollback action - e.g., disable feature flag}               | {Role}  | {Time}        |
+| 3    | {Second rollback action - e.g., revert code deploy}                | {Role}  | {Time}        |
+| 4    | {Database rollback if needed}                                      | {Role}  | {Time}        |
+| 5    | Verify system stable (error rate returns to baseline)              | On-call | {Time}        |
+
+**Total estimated rollback time**: {sum of steps}
+**Practice recommended**: Run through this procedure in staging before production release
 ```
 
 ### Output Constraints

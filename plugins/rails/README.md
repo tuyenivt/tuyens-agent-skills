@@ -51,6 +51,9 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 | `rails-refactoring-expert`   | Systematic Rails code improvement: fat model/controller diet, service object extraction, ActiveRecord hygiene, callback elimination.                                             |
 | `rails-technical-writer`     | YARD docs, OpenAPI (rswag), ADRs, and runbooks for Rails/Sidekiq services.                                                                                                       |
 | `rails-test-engineer`        | RSpec strategies, FactoryBot fixtures, Shoulda-matchers, Sidekiq testing, VCR/WebMock, and test pyramid design.                                                                  |
+| `rails-code-reviewer`        | Persistent reviewer with session context - tracks recurring N+1, fat controller, and callback patterns across PRs.                                                               |
+| `rails-sprint-planner`       | Sprint allocation for Rails features with Sidekiq/large-table migration complexity awareness.                                                                                    |
+| `rails-incident-commander`   | Orchestrates incident response, postmortem, and follow-up tracking for Rails/Sidekiq systems.                                                                                    |
 
 ## Workflow Skills
 

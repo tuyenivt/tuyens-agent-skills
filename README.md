@@ -120,13 +120,16 @@ I want to...
   implement a feature               -> /task-feature-implement (dispatches to stack-specific)
   fix a bug or crash                -> /task-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown
+  fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode)
   design a system or architecture   -> /task-design-architecture
   design an API contract            -> /task-design-api
   write tests                       -> /task-code-test
   create a PR description           -> /task-pr-create
+  check concurrent PR conflicts     -> /task-pr-conflict-analysis
   plan a production release         -> /task-release-plan
   investigate an active incident    -> /task-incident-root-cause
   write a postmortem                -> /task-incident-postmortem (run after root-cause)
+  hand off an on-call shift         -> /task-oncall-handoff
   onboard to a codebase             -> /task-onboard-codebase
   understand a file or function     -> /task-code-explain
   plan a database migration         -> /task-migration-plan
@@ -137,6 +140,8 @@ I want to...
   assess risk after writing code    -> /task-code-review-advanced
   check for security issues         -> /task-code-secure
   check for performance issues      -> /task-code-perf-review
+  triage tech debt by ROI           -> /task-debt-triage
+  assess a dependency upgrade       -> /task-dependency-upgrade
   log feedback on skill output      -> /task-skill-feedback
 ```
 
@@ -179,19 +184,22 @@ Go / Gin (plugin: go)
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.
 - "Risk analysis" vs "Advanced review" - risk analysis is pre-code (proposed change). Advanced review is post-code (actual diff).
+- "Debt triage" vs "Code review" - debt triage ranks existing debt by blast radius, change frequency, and team pain to produce a prioritized backlog. Code review evaluates a specific PR or file for quality. Use debt triage before a planning session, not as a substitute for PR review.
+- "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.
+- "Dependency upgrade" vs "Feature implement" - dependency upgrade assesses the risk and effort of a version bump and produces a Go/No-Go recommendation. Feature implement writes the migration code. Run upgrade assessment first.
 
 ## Plugin Catalog
 
 | Plugin                   | Focus                                                          | Includes                             |
 | ------------------------ | -------------------------------------------------------------- | ------------------------------------ |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 47 skills                            |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 8 agents                 |
-| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 1 agent (requires `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 8 agents                  |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 8 agents                  |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 8 agents                 |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 8 agents                  |
-| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 8 agents                 |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 54 skills                             |
+| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 11 agents                 |
+| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 4 agents (requires `java`) |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 11 agents                  |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 11 agents                  |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 11 agents                 |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 11 agents                  |
+| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 11 agents                 |
 
 ## Notes
 

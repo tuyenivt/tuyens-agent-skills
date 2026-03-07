@@ -49,11 +49,14 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 
 ## Plugin contents
 
-### Agent (1)
+### Agents (4)
 
-| Agent              | Description                                                                                                                             |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `kotlin-architect` | Kotlin + Spring Boot architect. Extends the Java `spring-architect` with Kotlin idioms. Delegates core Spring decisions to Java plugin. |
+| Agent                       | Description                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `kotlin-architect`          | Kotlin + Spring Boot architect. Extends the Java `spring-architect` with Kotlin idioms. Delegates core Spring decisions to Java plugin. |
+| `kotlin-code-reviewer`      | Persistent reviewer extending `java-code-reviewer` with Kotlin idiom enforcement (null safety, coroutines, data class JPA).             |
+| `kotlin-sprint-planner`     | Sprint allocation extending `java-sprint-planner` with Kotlin-specific complexity (coroutine migration, MockK, Kotlin DSL).             |
+| `kotlin-incident-commander` | Incident commander extending `java-incident-commander` with Kotlin-specific failure patterns (!! NPE, coroutine leak, data class JPA).  |
 
 ### Atomic skills (3)
 
@@ -70,7 +73,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USER
 | `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (requirements, design, code, migration, tests, validation) | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
 | `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)                                  | `task-spring-debug` for Java/Spring errors                            |
 
-### Total: 1 agent + 5 skills (intentionally small - this is a companion plugin)
+### Total: 4 agents + 5 skills (intentionally small - this is a companion plugin)
 
 ## Dependency relationship
 

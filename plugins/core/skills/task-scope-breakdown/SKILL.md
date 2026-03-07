@@ -1,9 +1,9 @@
 ---
 name: task-scope-breakdown
-description: Task planning and effort sizing for an epic or feature - implementable tasks, dependency ordering, T-shirt sizing, and scope creep risk flags. Not a substitute for system design (use task-design-architecture for that).
+description: Task planning and effort sizing for an epic or feature - implementable tasks, dependency ordering, T-shirt sizing, and scope creep risk flags. Supports sprint-fitting mode to allocate tasks to sprints with team capacity constraints. Not a substitute for system design (use task-design-architecture for that).
 metadata:
   category: planning
-  tags: [planning, estimation, task-breakdown, scope, complexity]
+  tags: [planning, estimation, task-breakdown, scope, complexity, sprint-planning]
   type: workflow
 user-invocable: true
 ---
@@ -32,15 +32,25 @@ This skill produces a task breakdown plan. It does not generate implementation c
 
 ## Inputs
 
-| Input                 | Required | Description                                                      |
-| --------------------- | -------- | ---------------------------------------------------------------- |
-| Feature description   | Yes      | What needs to be built and why                                   |
-| Acceptance criteria   | No       | What "done" looks like from the product or business perspective  |
-| Existing system notes | No       | Relevant architecture, data models, or services already in place |
-| Constraints           | No       | Timeline, team size, tech debt, compliance, legacy coupling      |
-| Exclusions            | No       | What is explicitly out of scope for this feature                 |
+| Input                 | Required | Description                                                            |
+| --------------------- | -------- | ---------------------------------------------------------------------- |
+| Feature description   | Yes      | What needs to be built and why                                         |
+| Acceptance criteria   | No       | What "done" looks like from the product or business perspective        |
+| Existing system notes | No       | Relevant architecture, data models, or services already in place       |
+| Constraints           | No       | Timeline, team size, tech debt, compliance, legacy coupling            |
+| Exclusions            | No       | What is explicitly out of scope for this feature                       |
+| Mode                  | No       | `breakdown` (default) or `sprint-fit` - see Sprint-Fit Mode below      |
+| Sprint capacity       | No       | Required for `sprint-fit` mode - number of engineers and sprint length |
 
 Handle partial inputs gracefully. When input is missing, state assumptions explicitly and flag what clarification would sharpen the breakdown.
+
+## Sprint-Fit Mode
+
+When the user provides a team size and sprint length (or asks to "fit into sprints"), run the full breakdown first, then execute Step 6 below to allocate tasks to sprints.
+
+**Activation**: Provide `sprint-fit` mode explicitly, or include capacity context such as "team of 3 engineers, 2-week sprints" in the request.
+
+**Output**: Produces the full breakdown from Steps 1-5 plus a sprint allocation plan from Step 6.
 
 ## Rules
 
@@ -143,6 +153,61 @@ Totals:
 - Nice-to-have tasks: count, aggregate size
 - Risk-reduction tasks: count, aggregate size
 
+### Step 6 - Sprint Fit (sprint-fit mode only)
+
+**Skip this step if sprint-fit mode was not activated.**
+
+Allocate tasks to sprints based on:
+
+- **Team capacity**: Convert T-shirt sizes to relative points using the capacity provided
+  - S = 1 point, M = 2 points, L = 4 points, XL = 8 points (adjust if team has different conventions)
+  - Default capacity: 1 engineer = 2 points per week (or as stated in inputs)
+- **Dependency ordering**: Tasks that depend on earlier tasks cannot be moved to an earlier sprint
+- **Risk distribution**: Avoid concentrating all high-risk tasks in one sprint
+- **Scope flags**: Nice-to-have and risk-reduction tasks are last-in, first-out if capacity is tight
+
+For each sprint:
+
+- List tasks assigned with their size
+- Show capacity used vs available
+- Flag if the sprint is over-capacity (must de-scope or split)
+- Flag any must-have tasks that do not fit within the total sprint budget (requires scope or timeline negotiation)
+
+**Capacity sizing formula:**
+
+```
+Sprint capacity (points) = team size (engineers) x sprint weeks x 2 points/engineer/week x 0.7 (overhead buffer)
+```
+
+The 0.7 buffer accounts for meetings, reviews, incidents, and context switching. Adjust if team has empirical velocity data.
+
+**Example** (3 engineers, 2-week sprints):
+
+- Raw capacity: 3 x 2 x 2 = 12 points
+- With buffer: 12 x 0.7 = 8 points per sprint
+
+Output a sprint allocation table:
+
+```
+Sprint 1 (capacity: N points)
+  Task A [M] - 2 pts - deps: none
+  Task B [S] - 1 pt  - deps: none
+  Used: 3/8 pts
+
+Sprint 2 (capacity: N points)
+  Task C [L] - 4 pts - deps: Task A
+  Task D [M] - 2 pts - deps: Task A
+  Used: 6/8 pts
+
+Sprint 3 ...
+```
+
+Flag:
+
+- Over-capacity sprints (must de-scope or extend timeline)
+- Must-have tasks that exceed total sprint budget (epic must be split or timeline extended)
+- Nice-to-have tasks deferred if capacity is tight
+
 ### Step 5 - Scope Creep and Risk Flags
 
 Flag scope and risk issues at feature level:
@@ -227,6 +292,31 @@ For each flag, recommend: proceed as-is / de-scope / add spike / split epic.
 
 - [Flag]: [Recommendation]
 
+## Sprint Allocation (sprint-fit mode only)
+
+**Team:** {N engineers}, **Sprint:** {N weeks}, **Capacity:** {N points/sprint}
+
+### Sprint 1
+
+| Task | Size     | Points | Deps |
+| ---- | -------- | ------ | ---- |
+| Name | S/M/L/XL | N      | none |
+
+**Used:** N / N points
+
+### Sprint 2
+
+[repeat]
+
+### Sprint Summary
+
+| Sprint | Tasks | Points Used | Points Available | Status                   |
+| ------ | ----- | ----------- | ---------------- | ------------------------ |
+| 1      | N     | N           | N                | On track / Over capacity |
+
+**Must-have delivery:** Sprint N
+**Nice-to-have completion:** Sprint N or deferred
+
 ## Assumptions and Open Questions
 
 - [Assumption made due to missing input]
@@ -241,6 +331,7 @@ For each flag, recommend: proceed as-is / de-scope / add spike / split epic.
 - Assumptions made due to missing input must be listed
 - Omit phases with no tasks
 - Optimize for copy-paste into a ticket tracker
+- In sprint-fit mode, include the Sprint Allocation section after the Effort Summary
 
 ## Success Criteria
 
@@ -284,6 +375,12 @@ A well-executed scope breakdown passes all of these.
 - Use skill: `backward-compatibility-analysis` for contract and schema compatibility work
 - Use skill: `dependency-impact-analysis` for deployment ordering of infrastructure tasks
 - Use skill: `blast-radius-analysis` for rollback risk assessment per task
+
+**Sprint-fit mode only:**
+
+- Apply capacity formula: `team size x sprint weeks x 2 x 0.7` for default velocity
+- Use dependency order from Step 3 to constrain sprint allocation
+- Flag over-capacity sprints rather than silently overfilling them
 
 ## After This Skill
 
