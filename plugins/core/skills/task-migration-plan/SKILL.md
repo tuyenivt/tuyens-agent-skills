@@ -64,6 +64,7 @@ Handle partial inputs gracefully. When row counts or schema are missing, state a
 Classify the migration before planning any steps.
 
 Use skill: `change-risk-classification` to identify risk domains.
+Use skill: `db-migration-safety` for lock risk assessment, expand-contract sequencing, and backfill safety rules.
 Use skill: `backward-compatibility-analysis` to assess application-level compatibility during transition.
 
 **Schema change type:**

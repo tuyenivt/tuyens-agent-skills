@@ -150,6 +150,7 @@ If breaking changes exist, require an expand-contract migration plan before depl
 
 **Skip if no schema changes.**
 
+Use skill: `db-migration-safety` for expand-contract strategy, lock risk, and backfill safety.
 Use skill: `db-indexing` for index impact assessment.
 
 Evaluate:
@@ -166,7 +167,8 @@ Deploy order for destructive changes: code stops using old schema -> verify -> m
 
 ### 4. Rollout Strategy Recommendation
 
-Use skill: `release-safety` for rollout, rollback, and feature flag patterns.
+Use skill: `release-safety` for rollout, rollback, and deployment risk patterns.
+Use skill: `feature-flags` for flag design, gradual rollout sequencing, rollback triggers, and cleanup discipline.
 
 Select strategy based on risk classification:
 

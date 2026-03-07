@@ -42,9 +42,14 @@ user-invocable: false
 
 **Rule**: Code must work with both old and new schema during rolling deployment.
 
-Use skill: `backward-compatibility-analysis` for detailed expand-contract migration plans, deploy ordering for additive vs destructive schema changes, and consumer compatibility assessment.
+Use skill: `db-migration-safety` for expand-contract sequencing, lock risk assessment, and backfill safety rules.
+Use skill: `backward-compatibility-analysis` for application-level compatibility and consumer impact during transition.
 
 ### Feature Flag Design
+
+Use skill: `feature-flags` for flag lifecycle, gradual rollout strategy, rollback procedures, and cleanup discipline.
+
+Key patterns:
 
 - **Kill switch** -- disable feature instantly without deploy
 - **Percentage rollout** -- expose to N% of users, increase gradually

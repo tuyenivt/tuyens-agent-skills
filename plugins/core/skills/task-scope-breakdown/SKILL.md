@@ -72,22 +72,25 @@ Before creating any task, scan for hidden complexity that inflates effort or int
 Use skill: `stack-detect` to identify stack-specific complexity signals.
 Use skill: `change-risk-classification` to assess risk domains touched by this feature.
 Use skill: `backward-compatibility-analysis` to identify contract or schema compatibility work.
+Use skill: `db-migration-safety` if database changes are present - to surface lock risk, expand-contract phases, and backfill tasks.
+Use skill: `feature-flags` if the feature is high-risk or requires gradual rollout - to surface flag design, rollout stages, and cleanup tasks.
 
 Check for these hidden cost areas:
 
-| Signal                   | Questions to Answer                                                       |
-| ------------------------ | ------------------------------------------------------------------------- |
-| Database changes         | New table, column, index, or migration? Zero-downtime required?           |
-| API contract changes     | New endpoints or changed fields? External consumers affected?             |
-| Auth / permissions       | New roles, scopes, or authorization rules?                                |
-| Async / event flows      | New queues, topics, consumers, or producers?                              |
-| Third-party integrations | New external APIs, webhooks, or SDKs?                                     |
-| Data backfill            | Existing data needs migration or transformation?                          |
-| Observability gaps       | New flows need logging, metrics, tracing?                                 |
-| Backward compatibility   | Old and new behavior must coexist during rollout?                         |
-| Rollback complexity      | Can this be rolled back safely? What data would be in inconsistent state? |
-| Test surface expansion   | Integration tests, contract tests, load tests needed beyond unit tests?   |
-| Deployment coordination  | Deploy ordering required across services or teams?                        |
+| Signal                   | Questions to Answer                                                         |
+| ------------------------ | --------------------------------------------------------------------------- |
+| Database changes         | New table, column, index, or migration? Zero-downtime required?             |
+| API contract changes     | New endpoints or changed fields? External consumers affected?               |
+| Auth / permissions       | New roles, scopes, or authorization rules?                                  |
+| Async / event flows      | New queues, topics, consumers, or producers?                                |
+| Third-party integrations | New external APIs, webhooks, or SDKs?                                       |
+| Data backfill            | Existing data needs migration or transformation?                            |
+| Feature flag needed      | Is the risk high enough to warrant a flag, gradual rollout, or kill switch? |
+| Observability gaps       | New flows need logging, metrics, tracing?                                   |
+| Backward compatibility   | Old and new behavior must coexist during rollout?                           |
+| Rollback complexity      | Can this be rolled back safely? What data would be in inconsistent state?   |
+| Test surface expansion   | Integration tests, contract tests, load tests needed beyond unit tests?     |
+| Deployment coordination  | Deploy ordering required across services or teams?                          |
 
 State which signals apply before proceeding to task creation.
 
