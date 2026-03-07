@@ -65,6 +65,35 @@ If the detected stack is unfamiliar, apply the universal thresholds above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface complexity issues consistently.
+
+```
+## Complexity Assessment
+
+**Stack:** {detected language / framework}
+
+### Issues
+
+- [Severity: High | Medium | Low] {file:line or function/class name} - {description of complexity issue}
+  - Signal: {which signal triggered - cyclomatic complexity | file size | nesting depth | abstraction depth}
+  - Measured: {e.g., "cyclomatic complexity 18, threshold 10" or "347 lines, threshold 300"}
+  - Simplification: {concrete pattern from the detected stack - guard clauses, extraction, etc.}
+
+### No Issues Found
+
+{State explicitly if complexity is within acceptable thresholds - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Cyclomatic complexity > 15, or file > 400 lines, or abstraction depth > 4 levels
+- **Medium**: Cyclomatic complexity 10-15, or file 300-400 lines, or nesting > 3 levels
+- **Low**: Approaching thresholds but not yet a maintenance burden
+
+Omit "No Issues Found" if issues were listed.
+
 ## Avoid (All Stacks)
 
 - Complexity metrics as absolute rules - context matters

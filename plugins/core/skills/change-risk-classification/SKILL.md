@@ -90,6 +90,46 @@ Reason: It's just a column addition
 
 Why bad: Ignores integration context, does not identify shared state, does not classify domains, does not provide evidence.
 
+## Output Format
+
+Consuming workflow skills depend on this exact structure. The `Overall Risk Level` line is parsed by callers to gate scope, depth, and escalation decisions.
+
+```
+Overall Risk Level: {Low | Medium | High | Critical}
+
+Primary Risk Domains:
+- {Domain} ({Severity}) -- {1-sentence evidence}
+
+Secondary Risk Domains:
+- {Domain} ({Severity}) -- {1-sentence evidence}
+
+Shared State: {what shared resource is involved, or "none"}
+Shared State Amplification: Yes / No
+
+Evidence: {key signals that drove the overall classification}
+```
+
+**Examples:**
+
+```
+Overall Risk Level: Critical
+
+Primary Risk Domains:
+- Data (High) -- schema migration on orders table, high-traffic write path
+- External integration (Medium) -- new Stripe webhook dependency with retry semantics
+
+Secondary Risk Domains:
+- Async/event (Medium) -- webhook introduces async flow with ordering assumptions
+- Deployment (Medium) -- migration must precede code deployment
+
+Shared State: orders table (written by order-service and webhook handler)
+Shared State Amplification: Yes
+
+Evidence: Two high-severity domains amplified by shared mutable state
+```
+
+Always produce all sections. Use "none" for Secondary Risk Domains and Shared State when not applicable. Never omit Evidence.
+
 ## Avoid
 
 - Classifying risk without stating supporting evidence
@@ -98,4 +138,3 @@ Why bad: Ignores integration context, does not identify shared state, does not c
 - Conflating code quality concerns with systemic risk domains
 - Classifying as Low when multiple medium-severity domains are triggered
 - Using this skill as a replacement for `pr-risk-analysis` when a code diff exists -- use both for complete coverage
-

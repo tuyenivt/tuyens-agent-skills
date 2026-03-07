@@ -87,6 +87,32 @@ Order creates a payment by calling PaymentService REST API inside the transactio
 - Never remove a column that active code reads
 - Event schema versioning: consumers must tolerate unknown fields
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface consistency decisions and gaps.
+
+```
+## Data Consistency Assessment
+
+### Boundaries Assessed
+
+| Boundary | Model | Pattern | Staleness Tolerance | Recovery Mechanism |
+| -------- | ----- | ------- | ------------------- | ------------------ |
+| {e.g., Order -> Payment} | {Strong / Eventual} | {transaction / outbox / saga} | {N/A or duration} | {N/A or description} |
+
+### Risks
+
+- [Severity: High | Medium | Low] {boundary} - {description of consistency risk}
+  - Issue: {implicit assumption | missing recovery | distributed transaction | schema break}
+  - Recommendation: {concrete pattern for the detected stack}
+
+### No Risks Found
+
+{State explicitly if all boundaries have explicit consistency strategies - do not omit this section silently}
+```
+
+Always produce the Boundaries Assessed table. Omit "No Risks Found" if risks were listed.
+
 ## Avoid
 
 - Assuming strong consistency across service boundaries without distributed transactions

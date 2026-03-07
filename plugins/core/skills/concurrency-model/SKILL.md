@@ -66,6 +66,37 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface concurrency issues consistently.
+
+```
+## Concurrency Assessment
+
+**Stack:** {detected language / framework}
+**Concurrency model:** {Thread-based | Coroutine/Lightweight-task | Process-based}
+**Primary primitive:** {thread | goroutine | coroutine | process | task | fiber}
+
+### Issues
+
+- [Severity: High | Medium | Low] {file:line if available} - {description of issue}
+  - Anti-pattern: {which anti-pattern from the list applies}
+  - Risk: {data race | deadlock | goroutine leak | blocking in async context | etc.}
+  - Fix: {concrete correction using the detected stack's idioms}
+
+### No Issues Found
+
+{State explicitly if concurrency usage is safe - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Data race, deadlock risk, or unbounded concurrency with resource leak potential
+- **Medium**: Blocking call inside cooperative concurrency context, missing cancellation
+- **Low**: Style drift from the detected stack's idiomatic concurrency approach
+
+Omit "No Issues Found" if issues were listed.
+
 ## Anti-Patterns (All Stacks)
 
 - Shared mutable state without explicit synchronization

@@ -80,6 +80,35 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface resilience gaps consistently.
+
+```
+## Resiliency Assessment
+
+**Stack:** {detected language / framework}
+
+### Gaps
+
+- [Severity: High | Medium | Low] {integration point or component} - {description of gap}
+  - Missing: {timeout | retry | circuit breaker | bulkhead | fallback}
+  - Risk: {what failure mode this gap enables}
+  - Recommendation: {concrete pattern and library for the detected stack}
+
+### No Gaps Found
+
+{State explicitly if resilience patterns are adequate - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Missing timeout or retry on an external call with no circuit breaker
+- **Medium**: Retry without jitter, or circuit breaker without monitoring
+- **Low**: Missing bulkhead isolation where one exists elsewhere in the codebase
+
+Omit "No Gaps Found" if gaps were listed.
+
 ## Avoid (All Stacks)
 
 - External calls without timeouts (unbounded resource consumption)

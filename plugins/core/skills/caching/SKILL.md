@@ -69,6 +69,38 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface caching gaps and opportunities consistently.
+
+```
+## Caching Assessment
+
+**Stack:** {detected language / framework}
+
+### Opportunities
+
+- {component or endpoint} - {what to cache and why}
+  - Strategy: {Cache-aside | Write-through}
+  - Level: {In-process | Distributed | CDN}
+  - TTL: {recommended duration and rationale}
+  - Invalidation: {TTL-based | Event-based | Version-based} - {trigger condition}
+  - Stampede risk: {Low | Medium | High} - {mitigation if Medium/High}
+
+### Gaps (Existing Caches Missing Required Properties)
+
+- [Severity: High | Medium | Low] {cache name or component} - {description of gap}
+  - Missing: {TTL | invalidation strategy | stampede protection}
+  - Risk: {unbounded growth | stale data | thundering herd}
+  - Fix: {concrete correction for the detected stack}
+
+### No Issues Found
+
+{State explicitly if caching is adequate - do not omit this section silently}
+```
+
+Omit Opportunities if no caching additions are recommended. Omit "No Issues Found" if gaps were listed.
+
 ## Avoid (All Stacks)
 
 - Caching mutable objects or ORM entities (stale shared state)

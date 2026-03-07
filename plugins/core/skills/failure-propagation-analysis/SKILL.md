@@ -72,6 +72,34 @@ Errors seen in: order-service, cart-service, checkout-service, payment-service.
 All services have issues.
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this structure to understand failure origin and cascading scope. The propagation path is the primary output callers use for containment decisions.
+
+```
+## Failure Propagation Analysis
+
+**Primary failure:** {component and failure type}
+**Cascading components:** {list, or "none - failure is contained"}
+
+### Propagation Path
+
+{numbered chain from origin to observed impact}
+1. {origin component} - {failure mechanism, e.g., "timeout 30s, baseline 500ms"}
+2. -> {channel}: {affected component} - {how it was impacted}
+3. -> {channel}: {further component} - {user-visible impact}
+
+### Shared Resources on Path
+
+- {resource name}: {how it amplified the propagation}
+
+### Containment Assessment
+
+{What stopped the propagation or what would have stopped it earlier}
+```
+
+Always produce all sections. Use "none" for Cascading components only when the failure is demonstrably contained. Never skip Shared Resources - shared resources are often the key to containment recommendations.
+
 ## Avoid
 
 - Listing affected components without tracing the propagation mechanism

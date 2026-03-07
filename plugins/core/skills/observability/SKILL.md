@@ -70,6 +70,35 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface observability gaps consistently.
+
+```
+## Observability Assessment
+
+**Stack:** {detected language / framework}
+
+### Gaps
+
+- [Severity: High | Medium | Low] {component or layer} - {description of gap}
+  - Missing: {what signal is absent - log field, metric, trace span}
+  - Impact: {what becomes invisible or undetectable without it}
+  - Recommendation: {concrete addition with library/mechanism for the detected stack}
+
+### No Gaps Found
+
+{State explicitly if observability is adequate - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Gap that would prevent detection of a production failure (e.g., no error rate metric on a critical path)
+- **Medium**: Gap that reduces diagnosis speed (e.g., missing correlation ID on internal calls)
+- **Low**: Nice-to-have signal with no current blind spot (e.g., missing business metric)
+
+Omit "No Gaps Found" if gaps were listed.
+
 ## Avoid (All Stacks)
 
 - Logging sensitive data (passwords, tokens, PII)

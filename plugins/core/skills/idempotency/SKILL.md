@@ -69,6 +69,35 @@ If the detected stack is unfamiliar, apply the universal principles above and re
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface idempotency gaps consistently.
+
+```
+## Idempotency Assessment
+
+**Stack:** {detected language / framework}
+
+### Gaps
+
+- [Severity: High | Medium | Low] {operation or endpoint} - {description of gap}
+  - Missing: {idempotency key | deduplication table | transactional check | TTL}
+  - Risk: {duplicate side effect - e.g., double charge, double publish, double insert}
+  - Recommendation: {concrete pattern and mechanism for the detected stack}
+
+### No Gaps Found
+
+{State explicitly if idempotency is adequately handled - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: POST operation with financial or irreversible side effects lacking idempotency protection
+- **Medium**: Event consumer without deduplication, or idempotency check outside the transaction boundary
+- **Low**: Natural business key available but not used as idempotency key
+
+Omit "No Gaps Found" if gaps were listed.
+
 ## Avoid (All Stacks)
 
 - Relying on client retries without server-side protection

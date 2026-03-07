@@ -59,6 +59,38 @@ If the detected stack is unfamiliar, apply the universal rules above and recomme
 
 ---
 
+## Output Format
+
+This is the contract that consuming workflow skills depend on. Produce findings in this structure so that callers can integrate results consistently.
+
+```
+## Coding Standards Findings
+
+**Stack:** {detected language / framework}
+
+### Violations
+
+- [Severity: High | Medium | Low] {file:line if available} - {description of violation}
+  - Rule: {the naming/structure/anti-pattern rule violated}
+  - Fix: {concrete correction}
+
+### Anti-Patterns Detected
+
+- {anti-pattern name}: {location and impact}
+
+### No Issues Found
+
+{State explicitly if no violations detected - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Breaks correctness, security, or layering (e.g., god class, exposed entity in API response)
+- **Medium**: Structural issue that will compound over time (e.g., mixed naming styles, magic numbers)
+- **Low**: Style drift with no structural consequence (e.g., inconsistent comment style)
+
+Omit the Anti-Patterns section if none detected. Omit "No Issues Found" if violations were listed.
+
 ## Avoid (All Stacks)
 
 - Mixing naming conventions from different languages

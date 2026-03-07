@@ -97,6 +97,36 @@ Compare change patterns against established conventions:
 [Suggestion] The architecture could be improved.
 ```
 
+## Output Format
+
+This is the contract that consuming workflow skills depend on. Produce findings in this structure so callers can integrate results consistently.
+
+```
+## Architecture Guardrail Findings
+
+**Stack:** {detected language / framework}
+
+### Violations
+
+#### [{Severity}] {file:line}
+
+- Issue: {what boundary or layer was violated}
+- Impact: {coupling or drift consequence}
+- Drift: {how this diverges from the established pattern}
+
+### No Violations Found
+
+{State explicitly if no violations detected - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Direct layer bypass or circular dependency (e.g., controller queries DB directly)
+- **Medium**: New coupling between previously independent modules, boundary erosion
+- **Low**: Drift from established conventions with limited structural impact
+
+Omit "No Violations Found" if violations were listed. Never omit this section entirely - consuming skills use its presence to confirm the check ran.
+
 ## Avoid
 
 - Flagging intentional architectural decisions as violations

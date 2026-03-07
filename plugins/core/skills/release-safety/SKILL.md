@@ -68,6 +68,42 @@ Feature flag: ENABLE_NEW_PRICING gated for internal users first, then 10% -> 50%
 Deploy to all instances. If something breaks, we will fix it.
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this structure to produce actionable rollout and rollback plans.
+
+```
+## Release Safety Assessment
+
+**Rollout strategy:** {Feature flag | Canary | Blue-green | Rolling update}
+**Rollback speed:** {Instant | Fast (minutes) | Moderate | Slow}
+**DB migration backward compatible:** Yes / No / N/A
+
+### Rollout Plan
+
+1. {step} - {rationale}
+2. {step} - {monitor: metric and threshold}
+
+### Rollback Triggers
+
+- {observable condition, e.g., "error rate > 0.5% for 5 minutes"} -> {rollback action}
+
+### Rollback Plan
+
+1. {step} - {data safety note if applicable}
+
+### Risks
+
+- [Severity: High | Medium | Low] {description of deployment risk}
+  - Mitigation: {concrete action}
+
+### No Risks Found
+
+{State explicitly if the release has no identified safety risks - do not omit this section silently}
+```
+
+Always produce Rollout Plan, Rollback Triggers, and Rollback Plan - these three are mandatory. Omit "No Risks Found" if risks were listed.
+
 ## Avoid
 
 - Deploying without a rollback plan

@@ -70,6 +70,29 @@ between modules, evaluating the transitive closure of affected components...
 [200 more words]
 ```
 
+## Output Format
+
+This is the contract that consuming workflow skills depend on. Callers parse the `Risk Level:` line to make routing and framing decisions. Keep it to two lines maximum.
+
+```
+Risk Level: {Low | Medium | High | Critical}
+Signals: {comma-separated list of triggered risk signals, 1-2 sentences max}
+```
+
+**Examples:**
+
+```
+Risk Level: High
+Signals: Public API contract change (POST /orders), database schema migration on orders table.
+```
+
+```
+Risk Level: Low
+Signals: Test-only changes, no shared state or API modifications.
+```
+
+Never exceed two lines. Never omit the `Signals:` line - consuming skills use it for reviewer guidance.
+
 ## Avoid
 
 - Treating this as a formal risk assessment process

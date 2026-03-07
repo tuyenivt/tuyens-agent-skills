@@ -64,6 +64,34 @@ If the detected stack is unfamiliar, apply the universal rules above and recomme
 
 ---
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface API violations consistently.
+
+```
+## API Guidelines Assessment
+
+**Stack:** {detected language / framework}
+
+### Violations
+
+- [Severity: High | Medium | Low] {endpoint or file:line if available} - {description of violation}
+  - Rule: {the API guideline rule violated}
+  - Fix: {concrete correction using the detected stack's idioms}
+
+### No Violations Found
+
+{State explicitly if API design is compliant - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: ORM entity exposed in response, missing input validation, no error response format
+- **Medium**: Wrong HTTP method or status code, missing pagination on collection endpoint
+- **Low**: Naming inconsistency (e.g., mixed camelCase/snake_case), missing API version header
+
+Omit "No Violations Found" if violations were listed.
+
 ## Avoid (All Stacks)
 
 - Verbs in endpoint paths (`/getOrder`, `/createOrder`)

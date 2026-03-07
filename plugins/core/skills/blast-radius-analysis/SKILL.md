@@ -72,6 +72,27 @@ Blast Radius: Wide
 This change could potentially affect many parts of the system.
 ```
 
+## Output Format
+
+This is the contract that consuming workflow skills depend on. Produce output in this exact structure - callers parse the `Blast Radius:` line to make decisions.
+
+```
+Blast Radius: {Narrow | Moderate | Wide | Critical}
+Code: {Narrow | Moderate | Wide} ({1-sentence rationale})
+Data: {Narrow | Moderate | Wide} ({1-sentence rationale})
+User: {Narrow | Moderate | Wide} ({1-sentence rationale})
+```
+
+**Classification rules:**
+
+- Overall `Blast Radius` = maximum across all three dimensions
+- **Critical** = Wide data scope with no rollback path, OR public API break affecting external consumers
+- **Wide** = Shared library, core module, or all-user impact
+- **Moderate** = Multi-feature or multi-consumer, bounded to one service
+- **Narrow** = Single feature, single consumer, easily correctable
+
+Always produce all four lines. Use "N/A" for a dimension only if it genuinely does not apply (e.g., Data: N/A for a read-only, stateless change).
+
 ## Avoid
 
 - Inflating blast radius without specific evidence

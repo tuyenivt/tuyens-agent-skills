@@ -90,6 +90,36 @@ Migration plan:
 Renamed the field. It is just a rename, should be fine.
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface compatibility breaks and required migration plans.
+
+```
+## Backward Compatibility Assessment
+
+### Changes Assessed
+
+| Contract Type | Change | Compatible | Action Required |
+| ------------- | ------ | ---------- | --------------- |
+| {REST API / Event schema / DB schema} | {description} | Yes / No | {action or "None"} |
+
+### Breaking Changes
+
+{For each breaking change:}
+
+**{Contract type}: {change description}**
+- Consumers affected: {list or "unknown - verify before deploy"}
+- Migration plan: {expand-contract phases or "use expand-contract - see task-migration-plan"}
+- Dual-write needed: Yes / No
+- Dual-read needed: Yes / No
+
+### No Breaking Changes
+
+{State explicitly if all changes are backward compatible - do not omit this section silently}
+```
+
+Omit "No Breaking Changes" if breaking changes were listed. Always produce the Changes Assessed table even when all changes are compatible.
+
 ## Avoid
 
 - Assuming field additions are always safe (required fields break consumers)

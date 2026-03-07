@@ -70,6 +70,29 @@ Detected stack:
 Source: CLAUDE.md | AGENTS.md | GEMINI.md | file-detection | unknown
 ```
 
+## Output Format
+
+This is the contract that all consuming workflow skills depend on. Do not change field names or structure.
+
+```
+Detected stack:
+  Language: {string - as declared or "unknown"}
+  Framework: {string - as declared or "unknown"}
+  Build tool: {string - as declared or "unknown"}
+  Database: {string - as declared or "unknown"}
+  Test framework: {string - as declared or "unknown"}
+  ORM: {string - as declared or omitted if not declared}
+  Additional: {any other declared key-value pairs, or omitted if none}
+Source: CLAUDE.md | AGENTS.md | GEMINI.md | file-detection | unknown
+```
+
+**Consuming skill contract:**
+
+- All fields except `Language` and `Framework` are optional - omit if not declared
+- `Source` is always present - tells consumers how reliable the detection is
+- `file-detection` source is lower confidence than instruction-file sources; consuming skills should note this
+- `unknown` language means no detection succeeded; consuming skills must degrade gracefully
+
 ## Rules
 
 - Never guess - if a field cannot be determined, use `unknown`

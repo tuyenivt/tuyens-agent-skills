@@ -46,6 +46,37 @@ CREATE INDEX idx_users_created ON users(created_at);
 CREATE INDEX idx_users_status_created ON users(status, created_at);
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface index gaps and lock risks consistently.
+
+```
+## Database Indexing Assessment
+
+### Missing Indexes
+
+- [Severity: High | Medium | Low] {table.column(s)} - {description of gap}
+  - Query pattern: {the WHERE / JOIN / ORDER BY that needs this index}
+  - Recommended index: {CREATE INDEX statement or ORM equivalent}
+  - Lock risk: {Low - additive online | Medium - large table, use CONCURRENTLY | High - blocks writes}
+
+### Existing Index Issues
+
+- {table.index_name} - {over-indexed / low-cardinality / unused} - {recommendation}
+
+### No Issues Found
+
+{State explicitly if indexing is adequate - do not omit this section silently}
+```
+
+**Severity guidance:**
+
+- **High**: Missing index on a high-traffic query or foreign key on a large table
+- **Medium**: Missing composite index causing partial scan on a moderate-traffic path
+- **Low**: Low-cardinality index that adds write overhead with minimal read benefit
+
+Always include Lock risk for every recommended index - callers use this for migration planning.
+
 ## Avoid
 
 - Indexing all columns

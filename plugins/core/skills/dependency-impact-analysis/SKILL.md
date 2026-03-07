@@ -71,6 +71,37 @@ Mitigation: Verify FulfillmentService uses lenient JSON parsing before deploy
 Changed the Order API. Should be fine for everyone.
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this structure to determine deployment ordering and consumer impact.
+
+```
+## Dependency Impact Assessment
+
+### Consumers Affected
+
+| Component Changed | Direct Consumers | Transitive Consumers | Contract Type | Coupling |
+| ----------------- | ---------------- | -------------------- | ------------- | -------- |
+| {name} | {list or "none"} | {list or "none"} | {API / event / library / DB view} | {compile-time / runtime / event} |
+
+### Deployment Order
+
+{ordered list, e.g.:}
+1. Deploy {provider} first - additive change, consumers update at own pace
+2. Notify {consumer list} of upcoming breaking change
+3. Deploy {consumer} after {provider} has been running for {N} days
+
+### Breaking Changes Requiring Migration
+
+{For each breaking change: reference backward-compatibility-analysis for expand-contract plan}
+
+### No Impact
+
+{State explicitly if the change has no consumer impact - do not omit this section silently}
+```
+
+Always produce the Consumers Affected table. Omit "No Impact" if impact was found.
+
 ## Avoid
 
 - Deploying provider changes without mapping consumers

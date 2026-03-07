@@ -66,6 +66,32 @@ Failure Type: System error
 Something is wrong with the database.
 ```
 
+## Output Format
+
+Consuming workflow skills depend on this exact structure. The `Failure Type` and `Layer` lines are parsed by callers to drive hypothesis generation and investigation routing.
+
+```
+Failure Type: {one or more types from the table, comma-separated}
+Layer: {Infrastructure | Platform | Application | Integration | Configuration} ({1-sentence rationale})
+Evidence: {observable signals that support this classification - metrics, log lines, error messages}
+```
+
+**Examples:**
+
+```
+Failure Type: Resource exhaustion, External dependency failure
+Layer: Platform (connection pool exhausted) triggered by Integration (payment gateway timeout)
+Evidence: HikariCP active connections at max (40/40), payment-service p99 latency 12s (baseline 200ms)
+```
+
+```
+Failure Type: Misconfiguration
+Layer: Configuration (wrong DB_HOST in production environment)
+Evidence: Connection refused on startup, DB_HOST=localhost in production pod env vars
+```
+
+Always produce all three lines. Never omit Evidence - unsupported classifications mislead investigation.
+
 ## Avoid
 
 - Classifying without citing observable evidence

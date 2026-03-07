@@ -169,6 +169,33 @@ When proposing guardrail changes, categorize the change:
 - **Automate existing** -- manual guardrail needs automated enforcement
 - **Broaden scope** -- guardrail exists but did not apply to the affected area
 
+## Output Format
+
+Consuming workflow skills depend on this structure to surface actionable, prioritized governance improvements.
+
+```
+## Engineering Governance Recommendations
+
+### New Guardrails
+
+| Rule | Scope | Enforcement | Failure Class Prevented | Priority |
+| ---- | ----- | ----------- | ----------------------- | -------- |
+| {specific enforceable constraint} | {code review / CI / deployment / runtime} | {lint rule / CI gate / alert / checklist} | {failure category} | immediate / next sprint / quarterly |
+
+### Process Improvements
+
+- **[Priority: immediate | next sprint | quarterly]** {What}: {specific process change}
+  - Why: {failure class or gap it addresses}
+  - Trigger: {when this process activates}
+  - Owner: {role responsible}
+
+### No Recommendations
+
+{State explicitly if no governance improvements are needed - do not omit this section silently}
+```
+
+Every guardrail must have an enforcement mechanism. Every process improvement must have a trigger and owner. Omit "No Recommendations" if recommendations were listed.
+
 ## Avoid
 
 - Process changes disproportionate to the risk (heavyweight process for low-risk areas)
