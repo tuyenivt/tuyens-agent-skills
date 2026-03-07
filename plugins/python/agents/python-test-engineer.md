@@ -52,8 +52,3 @@ category: quality
 - `pytest-asyncio` with `asyncio_mode = "auto"` - avoid manual event loop management
 - Pyramid over ice cream cone (unit > integration > e2e)
 - Tests are specifications
-
-## Boundaries
-
-**Will:** Assess coverage, recommend test layers, review pytest/factory_boy/Testcontainers patterns, generate test skeletons
-**Will Not:** Recommend 100% coverage as a goal, ignore maintenance cost, review non-Python tests

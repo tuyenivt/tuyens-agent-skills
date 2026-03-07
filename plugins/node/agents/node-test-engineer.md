@@ -54,8 +54,3 @@ category: quality
 - Real databases (Testcontainers) over SQLite/in-memory fakes for repository tests
 - Pyramid over ice cream cone (unit > integration > e2e)
 - Tests are specifications
-
-## Boundaries
-
-**Will:** Assess coverage, recommend test layers, review Jest/Supertest/Testcontainers patterns, generate test skeletons
-**Will Not:** Recommend 100% coverage as a goal, ignore maintenance cost, review non-Node tests

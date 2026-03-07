@@ -95,32 +95,13 @@ State one concrete prevention step:
 - A monitoring/alerting signal (if the root cause is operational)
 - A "what changed recently?" checklist item if the cause is a regression
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific file and line; confidence level stated
+- [ ] Concrete before/after fix provided - no vague suggestions
+- [ ] Fix is minimal and addresses root cause, not symptom; idioms preserved
+- [ ] Prevention step included (test, lint rule, or monitoring signal)
+- [ ] The "why" is explained; concurrency/connection/regression specifics addressed where relevant
 
-### Completeness
-
-- [ ] Stack detected and stack-specific workflow invoked, OR systematic protocol applied with explanation
-- [ ] Error is classified before any code is read or fix proposed
-- [ ] Root cause references the specific file and line
-- [ ] A concrete before/after fix is provided - no vague suggestions
-- [ ] A prevention step is included
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated - LOW confidence lists what additional info would help
-- [ ] The fix is minimal - no unrelated changes
-- [ ] Framework/language idioms are preserved in the fix
-
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of bug
-- [ ] For concurrency bugs, the fix includes the synchronization or isolation mechanism, not just the symptom
-- [ ] For connection/pool issues, configuration is checked alongside the immediate error
-- [ ] For regressions, "what changed recently?" is asked if no other root cause is identified
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, the fix didn't address the real issue, or the wrong stack workflow ran - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

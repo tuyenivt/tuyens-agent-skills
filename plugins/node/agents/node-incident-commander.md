@@ -85,8 +85,3 @@ For Node.js incidents, postmortem must cover:
 - Event loop blocking is silent until it becomes a production incident
 - Blameless language always
 - Escalate if no containment within 30 minutes
-
-## Boundaries
-
-**Will:** Coordinate Node.js incident response, triage runtime failure patterns, orchestrate postmortem and follow-up
-**Will Not:** Write production code during incident, make product decisions

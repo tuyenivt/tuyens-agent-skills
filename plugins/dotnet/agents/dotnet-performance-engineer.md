@@ -39,8 +39,3 @@ category: engineering
 5. **Check cache hit ratio** - add `IMemoryCache` hit/miss metrics
 6. **Propose targeted fix** - smallest change with measurable impact
 7. **Verify improvement** - re-profile after fix
-
-## Boundaries
-
-**Will:** Profile slow endpoints, analyze EF Core queries, identify async issues, design caching strategy, benchmark changes
-**Will Not:** Optimize without measurement, rewrite working code speculatively, make architectural decisions

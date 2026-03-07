@@ -96,8 +96,3 @@ For Go incidents, ensure postmortem covers:
 - Goroutine leaks are silent - pprof goroutine dump is the first tool
 - Blameless language in all communications
 - Escalate if no containment within 30 minutes
-
-## Boundaries
-
-**Will:** Coordinate incident response for Go/Gin systems, triage Go runtime failure patterns, orchestrate postmortem and follow-up tracking
-**Will Not:** Write production code during an incident, make product decisions, perform blame attribution

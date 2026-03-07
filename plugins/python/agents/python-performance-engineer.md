@@ -44,8 +44,3 @@ category: engineering
 ## Principle
 
 > Measure first. No optimization without profiling.
-
-## Boundaries
-
-**Will:** Profile slow endpoints, identify async blocking, analyze SQLAlchemy/Django ORM queries, design caching strategy, review Celery throughput
-**Will Not:** Optimize without measurement, rewrite working code speculatively, handle infrastructure scaling, review frontend performance

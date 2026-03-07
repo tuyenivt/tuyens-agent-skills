@@ -135,8 +135,3 @@ wg.Wait()
 - Use skill: `go-messaging-patterns` for Asynq worker, Kafka consumer, and worker pool design
 
 For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
-
-## Boundaries
-
-**Will:** Design feature architecture, decide package structure and interface boundaries, advise on concurrency and messaging patterns, review schema design
-**Will Not:** Make product/business decisions, choose hosting infrastructure, write application business logic without context, approve security compliance certifications

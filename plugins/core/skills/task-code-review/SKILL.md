@@ -16,6 +16,16 @@ user-invocable: true
 - Code change reviews
 - Pre-merge quality checks
 
+## Depth Levels
+
+| Depth      | When to Use                                             | What Runs                               |
+| ---------- | ------------------------------------------------------- | --------------------------------------- |
+| `quick`    | Trivial changes, hotfix, or "is this safe to merge?"    | Correctness + top 2-3 findings only     |
+| `standard` | Default - routine PRs                                   | Steps 2-4 (full review)                 |
+| `deep`     | Complex refactors, unfamiliar code, or cross-module PRs | Full review + pattern consistency check |
+
+Default: `standard`. Use `quick` when user asks for "quick look", "sanity check", or "is this ok?".
+
 ## Scope
 
 | Scope      | What runs                                          |
@@ -137,48 +147,3 @@ If the detected stack is unfamiliar, apply the universal review criteria from St
 
 [Summary]
 ```
-
-## Key Skills Reference
-
-- Use skill: `coding-standards` for stack-specific conventions
-- Use skill: `api-guidelines` for REST endpoint patterns
-- Use skill: `architecture-guardrail` for layer violations
-- Use skill: `concurrency-model` for concurrency patterns
-- Use skill: `observability` for logging and metrics
-- Use skill: `resiliency` for fault tolerance
-
-## Success Criteria
-
-A well-executed code review passes all of these. Use as a self-check before posting findings.
-
-### Completeness
-
-- [ ] Correctness, readability, maintainability, and testing are all assessed
-- [ ] Framework-specific checks for the detected stack are applied
-- [ ] Every Blocker finding states why it must be fixed - not just what is wrong
-- [ ] Assessment (Approve / Request Changes / Discuss) is stated upfront in the Summary
-
-### Signal Quality
-
-- [ ] No findings are purely stylistic where no project standard exists
-- [ ] No findings based on personal preference
-- [ ] Suggestions are genuine improvements that add value, not alternatives of equal merit
-- [ ] Good work is acknowledged - Done Well section is not left empty when quality is present
-
-### Staff-Level Signal (for tech lead review)
-
-- [ ] The review assesses the change in context of the existing codebase patterns
-- [ ] Blockers are blockers - not things the reviewer would prefer but that don't affect correctness
-- [ ] Key Takeaways convey the most important signal from the review in 2-3 bullets
-- [ ] Scope is respected - performance or security sub-reviews are not run unless requested
-
-## Avoid
-
-- Nitpicking style when no standard exists
-- Blocking on personal preference
-- Reviewing without understanding context
-- Applying conventions from one stack to another
-
-## After This Skill
-
-If the output needed significant adjustment - findings were off-target, the wrong scope ran, or the assessment missed key context - run `/task-skill-feedback` to log what changed and why.

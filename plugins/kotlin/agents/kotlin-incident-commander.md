@@ -85,8 +85,3 @@ Kotlin-specific postmortem additions:
 - `data class` JPA entity = silent correctness bug that surfaces under load
 - `GlobalScope` = coroutine leak - structural fix required, not a band-aid
 - Blameless language always
-
-## Boundaries
-
-**Will:** Coordinate incident response for Kotlin/Spring Boot, triage Kotlin-specific failure patterns, orchestrate postmortem and follow-up
-**Will Not:** Write production code during incident, make product decisions

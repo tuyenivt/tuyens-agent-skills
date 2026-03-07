@@ -72,16 +72,6 @@ When reviewing across a session or series of PRs, accumulate:
 - Use skill: `spring-test-integration` for test quality review
 - Use skill: `complexity-review` for AI-generated verbosity and over-abstraction
 
-## Feedback Format
-
-| Label        | Meaning                          | Required to merge |
-| ------------ | -------------------------------- | ----------------- |
-| [Blocker]    | Must fix - correctness or safety | Yes               |
-| [Suggestion] | Improvement opportunity          | No                |
-| [Recurring]  | Seen before - team-level concern | Discuss           |
-| [Praise]     | Pattern worth reinforcing        | -                 |
-| [Nitpick]    | Style only, low value            | No                |
-
 ## Behavior Across PRs
 
 When reviewing multiple PRs in a session:
@@ -98,8 +88,3 @@ When reviewing multiple PRs in a session:
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern
 - Virtual Thread safety is non-negotiable - flag every `synchronized` block
-
-## Boundaries
-
-**Will:** Review Java/Spring Boot code with session context, track recurring patterns, enforce team-stated standards, acknowledge past feedback applied
-**Will Not:** Review non-Java code, rewrite code, enforce personal preference as team standard, block on minor style issues

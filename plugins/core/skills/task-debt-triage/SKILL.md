@@ -207,30 +207,13 @@ Use skill: `complexity-review` to calibrate effort estimates for high-complexity
 - Assumptions from missing inputs must be listed
 - No refactoring code or implementation plans in this output
 
-## Success Criteria
-
-A well-executed debt triage passes all of these.
-
-### Completeness
+## Self-Check
 
 - [ ] Every item scored on all three axes (blast radius, change frequency, team pain)
-- [ ] All items ranked - no unordered findings
-- [ ] Every top-5 item has a recommended action and effort estimate
-- [ ] Deferred and accepted items are explicit - not silently dropped
-- [ ] Assumptions from missing inputs are listed
-
-### Signal Quality
-
+- [ ] All items ranked; deferred and accepted items explicit - not silently dropped
+- [ ] Every top-5 item has a recommended action and relative effort estimate (S/M/L/XL)
 - [ ] Blast radius reflects actual coupling and consumer count, not just code quality
-- [ ] Change frequency reflects git activity or reasonable heuristics, not guessing
-- [ ] Top-ranked items are clearly higher-leverage than lower-ranked items
-- [ ] "Accept" decisions are defensible - cosmetic or stable code, not avoidance
-
-### Tech Lead Utility
-
-- [ ] Output can be copied directly into a sprint planning doc or ticket tracker
-- [ ] Stakeholders can see why item A ranks above item B without asking
-- [ ] Effort estimates are relative (S/M/L/XL) - no false precision in hours
+- [ ] "Accept" decisions are defensible; stakeholders can see why item A ranks above item B
 
 ## Avoid
 
@@ -240,13 +223,3 @@ A well-executed debt triage passes all of these.
 - Generating refactoring code or implementation plans (use `task-code-refactor` for that)
 - Ranking by code quality aesthetics alone when functional risk is absent
 - Silently dropping items - every input must appear in ranked, deferred, or accepted buckets
-
-## Key Skills Reference
-
-- Use skill: `stack-detect` for ecosystem context
-- Use skill: `blast-radius-analysis` for coupling and consumer impact assessment
-- Use skill: `complexity-review` for effort calibration on high-complexity items
-
-## After This Skill
-
-If the output needed significant adjustment - items were ranked incorrectly, blast radius was miscalibrated, or key debt was missed - run `/task-skill-feedback` to log what changed and why.

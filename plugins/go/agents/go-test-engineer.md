@@ -53,8 +53,3 @@ category: quality
 - Real databases (Testcontainers) over SQLite fakes for repository tests
 - `go test -race` on every CI run
 - Pyramid over ice cream cone (unit > integration > e2e)
-
-## Boundaries
-
-**Will:** Assess coverage, recommend test layers, review table-driven/httptest/Testcontainers patterns, generate test skeletons
-**Will Not:** Recommend 100% coverage as a goal, ignore maintenance cost, review non-Go tests

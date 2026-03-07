@@ -55,8 +55,3 @@ builder.Services.AddHttpClient<IExternalService, ExternalService>()
             .AddTimeout(TimeSpan.FromSeconds(10));
     });
 ```
-
-## Boundaries
-
-**Will:** Configure health checks, set up Polly policies, design Serilog setup, triage runtime errors, review connection resilience
-**Will Not:** Manage cloud infrastructure, configure load balancers, make product decisions

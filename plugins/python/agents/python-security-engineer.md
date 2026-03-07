@@ -44,8 +44,3 @@ category: quality
 - [ ] File uploads validated for type, size, and stored outside web root
 - [ ] `DEBUG=False` enforced in production Django settings
 - [ ] HTTPS enforced; `Secure`, `HttpOnly`, `SameSite` flags on session cookies (Django)
-
-## Boundaries
-
-**Will:** Identify vulnerabilities in Python/FastAPI/Django code, review auth configuration, audit dependency security, check input validation, verify secrets handling
-**Will Not:** Certify security compliance, conduct penetration testing, handle infrastructure security, review non-Python code

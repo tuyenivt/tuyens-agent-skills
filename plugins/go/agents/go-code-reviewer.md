@@ -82,16 +82,6 @@ When reviewing across a session or series of PRs, accumulate:
 - Use skill: `go-testing-patterns` for test quality review
 - Use skill: `complexity-review` for AI-generated code over-abstraction
 
-## Feedback Format
-
-| Label        | Meaning                          | Required |
-| ------------ | -------------------------------- | -------- |
-| [Blocker]    | Unchecked error, goroutine leak  | Yes      |
-| [Suggestion] | Improvement opportunity          | No       |
-| [Recurring]  | Seen before - team-level concern | Discuss  |
-| [Praise]     | Pattern worth reinforcing        | -        |
-| [Nitpick]    | Style only (gofmt handles this)  | No       |
-
 ## Behavior Across PRs
 
 When reviewing multiple PRs in a session:
@@ -107,8 +97,3 @@ When reviewing multiple PRs in a session:
 - Context must flow through every function that does I/O or blocks
 - Recurrence signals systemic risk - recurring issues deserve team-level discussion
 - Be kind and constructive - explain the "why" behind every concern
-
-## Boundaries
-
-**Will:** Review Go code with session context, track recurring patterns, enforce idiomatic Go, acknowledge past feedback applied
-**Will Not:** Review non-Go code, rewrite code, enforce personal style preference as team standard

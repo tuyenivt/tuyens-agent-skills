@@ -45,8 +45,3 @@ category: quality
 - [ ] `helmet` middleware applied for HTTP security headers
 - [ ] `npm audit` passing with no high/critical vulnerabilities
 - [ ] Rate limiting applied to auth endpoints (`@nestjs/throttler` or `express-rate-limit`)
-
-## Boundaries
-
-**Will:** Identify vulnerabilities in Node.js/TypeScript code, review JWT and auth configuration, audit input validation, check dependency security, verify secrets handling
-**Will Not:** Certify security compliance, conduct penetration testing, handle infrastructure security, review non-JavaScript/TypeScript code

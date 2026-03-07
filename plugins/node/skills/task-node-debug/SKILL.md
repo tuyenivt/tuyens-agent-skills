@@ -37,30 +37,13 @@ STEP 6 - PREVENTION: Jest test, stricter types, lint rule
 
 OUTPUT: root cause → location → fix → prevention
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
-
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] A prevention step is included (Jest test, TypeScript type, or lint rule)
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated - LOW confidence lists what additional info would help
-- [ ] The fix is minimal - no unrelated refactoring
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line; confidence level stated
+- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
 - [ ] Framework constraints respected (NestJS DI, decorator patterns, Express middleware order)
+- [ ] Prevention step included (Jest test, TypeScript type, or lint rule)
+- [ ] For circular deps: structure resolved, not just `forwardRef`; for BullMQ: idempotency and retry addressed
 
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of bug
-- [ ] For circular dependency errors, the fix resolves the structure - not just applies `forwardRef`
-- [ ] For BullMQ issues, job idempotency and retry config are addressed alongside the immediate fix
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, TypeScript types were incorrectly diagnosed, or NestJS DI constraints were missed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

@@ -170,9 +170,9 @@ Surface the three to five most important things the incoming engineer must know 
 
 ## Open Alerts
 
-| Alert        | System    | Status             | Action Needed                                             |
-| ------------ | --------- | ------------------ | --------------------------------------------------------- |
-| {Alert name} | {Service} | Known / Unexpected | None (expected noise) / Watch for X / Page if Y           |
+| Alert        | System    | Status             | Action Needed                                   |
+| ------------ | --------- | ------------------ | ----------------------------------------------- |
+| {Alert name} | {Service} | Known / Unexpected | None (expected noise) / Watch for X / Page if Y |
 
 ---
 
@@ -228,29 +228,13 @@ Surface the three to five most important things the incoming engineer must know 
 - Briefing section must be at the end - incoming engineer reads it first
 - Do not write postmortem content - reference the incident ticket instead
 
-## Success Criteria
+## Self-Check
 
-A well-executed handoff passes all of these.
-
-### Completeness
-
-- [ ] Every incident from the shift listed with status
-- [ ] All currently firing alerts categorized (known vs unexpected)
-- [ ] All known workarounds documented
-- [ ] All deferred work has enough context to hand off
-- [ ] Briefing section covers the most time-sensitive context
-
-### Handoff Quality
-
-- [ ] Incoming engineer can start immediately without needing to ask the outgoing engineer questions
-- [ ] It is clear which open items require immediate action vs monitoring
-- [ ] Flaky areas give a watch signal, not just a description of what happened
-
-### Ops Utility
-
-- [ ] Handoff can be posted to Slack or wiki without editing
-- [ ] Incident pattern recognition is possible across multiple handoffs
-- [ ] On-call burden is visible (number of pages, severity distribution)
+- [ ] Every incident from the shift listed with status; all firing alerts categorized (known vs unexpected)
+- [ ] All known workarounds documented; deferred work has enough context to hand off
+- [ ] Incoming engineer can start immediately without needing to ask questions
+- [ ] Open items clearly marked: immediate action vs monitoring
+- [ ] On-call burden visible (page count, severity distribution); handoff ready to post without editing
 
 ## Avoid
 
@@ -259,11 +243,3 @@ A well-executed handoff passes all of these.
 - Omitting resolved incidents - the incoming engineer needs the full picture
 - Skipping known-and-expected alert classification (causes alarm fatigue)
 - Long narrative prose - tables and bullets are faster to scan during an active incident
-
-## Key Skills Reference
-
-- Use skill: `failure-classification` for incident type categorization and pattern recognition
-
-## After This Skill
-
-If the output needed significant adjustment - incidents were missed, the briefing was unclear, or deferred work was not specific enough - run `/task-skill-feedback` to log what changed and why.

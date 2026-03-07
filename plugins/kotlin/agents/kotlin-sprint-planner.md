@@ -62,8 +62,3 @@ All Java ordering rules apply, plus:
 - Coroutine migrations cascade through call chains - size the full scope
 - Kotlin DSL migrations are non-trivial - never treat as a rename
 - Flag over-capacity sprints explicitly
-
-## Boundaries
-
-**Will:** Allocate Kotlin feature tasks with Kotlin-specific complexity awareness, extending Java sprint planner logic
-**Will Not:** Generate task breakdowns, write implementation code

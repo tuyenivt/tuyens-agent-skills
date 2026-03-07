@@ -122,29 +122,13 @@ Suggest one concrete guardrail to prevent the same class of error:
 
 ```
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
-
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed
+- [ ] Error classified before any code is read or fix proposed
 - [ ] Root cause references the specific source file and line - not just the exception type
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] Verification steps tell the developer exactly how to confirm the fix works
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] The fix is minimal - it doesn't rewrite unrelated code
-- [ ] Framework-specific skills are referenced when the fix involves a known pattern (EF Core, async, auth)
-- [ ] One concrete prevention guardrail is included
-
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer reading this understands how to avoid this class of error
-- [ ] Async fixes are context-specific - `.ConfigureAwait(false)` is not applied as a blanket solution
-- [ ] Production incident concerns are not mixed in - this is developer debugging, not blast radius analysis
+- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
+- [ ] Async fixes are context-specific - `.ConfigureAwait(false)` not applied as a blanket solution
+- [ ] One concrete prevention guardrail included; verification steps tell developer how to confirm the fix
 
 ## Avoid
 
@@ -153,6 +137,6 @@ A well-executed debug session passes all of these. Use as a self-check before pr
 - Adding defensive null checks everywhere - identify the actual null source
 - Recommending `.ConfigureAwait(false)` as a blanket fix without understanding the context
 
-## After This Skill
 
-If the output needed significant adjustment - root cause was wrong, async context was misread, or .NET-specific constraints were missed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.
+```

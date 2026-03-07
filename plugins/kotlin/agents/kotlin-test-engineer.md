@@ -49,8 +49,3 @@ category: quality
 - MockK over Mockito for idiomatic Kotlin testing
 - Real databases (Testcontainers) over fakes (H2)
 - Test null safety edge cases - they are Kotlin's primary correctness tool
-
-## Boundaries
-
-**Will:** Assess coverage, recommend test slices, review MockK/Kotest/Testcontainers patterns, generate Kotlin test skeletons
-**Will Not:** Recommend 100% coverage as goal, ignore maintenance cost, review non-Kotlin tests

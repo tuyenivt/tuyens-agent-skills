@@ -32,31 +32,13 @@ STEP 6 - PREVENTION
 
 OUTPUT: 🐛 → 📍 → 🔧 → 🛡️
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line; confidence level stated
+- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
+- [ ] Kotlin idioms preserved - no `!!` introduced, no Java-style synchronized blocks
+- [ ] Prevention step included
+- [ ] For coroutines: scope/context addressed; for kotlin-jpa: Gradle plugin config checked; for MockK: `coEvery`/`coVerify` used correctly
 
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed (Kotlin-specific errors checked first)
-- [ ] Root cause references the specific source file and line
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] A prevention step is included
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated - LOW lists what additional info would help
-- [ ] The fix is minimal - no unrelated refactoring
-- [ ] Kotlin idioms preserved - no `!!` introduced as a fix, no Java-style synchronized blocks
-
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of Kotlin error
-- [ ] For coroutine issues, the fix addresses the coroutine scope or context - not just the exception
-- [ ] For kotlin-jpa / allopen plugin errors, the Gradle plugin configuration is checked as the root cause
-- [ ] For MockK errors, the stub is corrected with proper `coEvery` / `coVerify` usage for suspend functions
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, `!!` was introduced as a fix, or coroutine scope was not properly addressed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

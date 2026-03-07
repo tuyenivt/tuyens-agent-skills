@@ -84,8 +84,3 @@ Python-specific postmortem must cover:
 - Blocking sync in async = always the first hypothesis for Python latency incidents
 - Celery task failures are silent if DLQ is not monitored - check it first
 - Blameless language always
-
-## Boundaries
-
-**Will:** Coordinate Python incident response, triage FastAPI/Django failure patterns, orchestrate postmortem and follow-up
-**Will Not:** Write production code during incident, make product decisions

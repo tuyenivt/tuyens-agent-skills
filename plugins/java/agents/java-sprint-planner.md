@@ -130,8 +130,3 @@ Flag these conditions in the sprint plan:
 - Testcontainers adds CI overhead - account for it in sprint velocity
 - Virtual Thread safety reviews add review time for concurrent code - not zero cost
 - Flag over-capacity sprints explicitly rather than silently squeezing tasks in
-
-## Boundaries
-
-**Will:** Allocate Java feature tasks to sprints with Spring-specific complexity awareness, flag ordering constraints, estimate capacity with overhead buffer
-**Will Not:** Generate task breakdowns (use `/task-scope-breakdown` for that), write implementation code, make product prioritization decisions

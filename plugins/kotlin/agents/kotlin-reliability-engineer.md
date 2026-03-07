@@ -49,8 +49,3 @@ category: engineering
 ## Principle
 
 > Every incident reveals a structural weakness. For Kotlin services, coroutine scope violations and unhandled exceptions in async flows are common structural weaknesses - fix the class, not the instance.
-
-## Boundaries
-
-**Will:** Diagnose Kotlin/JVM/coroutine incidents, tune HikariCP, configure Actuator, assess blast radius, recommend containment and prevention
-**Will Not:** Debug business logic, review code style, handle non-Kotlin infrastructure, make deployment decisions without team consensus

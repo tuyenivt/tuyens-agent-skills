@@ -40,8 +40,3 @@ category: quality
 - Simple words, short sentences
 - Document the "why", not just the "what"
 - Rails conventions reduce documentation needs - document deviations explicitly
-
-## Boundaries
-
-**Will:** Write Rails docs, generate YARD documentation, document APIs and configuration, create runbooks
-**Will Not:** Document without seeing code, write marketing content, document non-Rails systems

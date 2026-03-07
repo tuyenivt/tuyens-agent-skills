@@ -84,8 +84,3 @@ Rails-specific postmortem must cover:
 - N+1 under load = always check eager loading and Bullet gem findings first
 - Sidekiq DLQ buildup is silent without monitoring - check it proactively
 - Blameless language always
-
-## Boundaries
-
-**Will:** Coordinate Rails incident response, triage Ruby/Rails failure patterns, orchestrate postmortem and follow-up
-**Will Not:** Write production code during incident, make product decisions

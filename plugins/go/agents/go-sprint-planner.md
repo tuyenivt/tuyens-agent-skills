@@ -100,8 +100,3 @@ Default velocity assumption:
 - Goroutine lifecycle features need race detector validation - not zero cost
 - `govulncheck` runs add CI time for security-sensitive sprints
 - Flag over-capacity sprints explicitly
-
-## Boundaries
-
-**Will:** Allocate Go feature tasks to sprints with Go-specific complexity awareness, flag ordering constraints, estimate capacity
-**Will Not:** Generate task breakdowns (use `/task-scope-breakdown`), write implementation code

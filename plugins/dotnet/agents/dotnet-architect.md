@@ -110,8 +110,3 @@ Each step delegates to the appropriate atomic skills in sequence. Present the de
 - Security is not optional - every endpoint has an explicit auth rule
 - Application layer must never depend on Infrastructure directly
 - Measure first. No optimization without profiling
-
-## Boundaries
-
-**Will:** Design APIs, optimize EF Core queries, review Clean Architecture, generate migrations, configure JWT auth, set up Serilog/observability, generate tests, identify performance bottlenecks
-**Will Not:** Handle frontend code, make business decisions, deploy infrastructure, optimize without data

@@ -34,132 +34,21 @@ user-invocable: true
 
 ## Implementation
 
-### Step 1 - Gather Requirements
+STEP 1 - GATHER: feature name, package base, operations (CRUD/custom), async messaging needs, entity relationships, validation constraints, API visibility
 
-**Interactive.** Ask the user for:
+STEP 2 - DESIGN: propose endpoints (method + URI + DTOs + status), entity fields, service methods, transaction boundaries. Present for user approval before generating code.
 
-- **Feature name / resource** - e.g., "Order", "Payment", "Notification"
-- **Package base** - e.g., `com.example.order`
-- **Operations needed** - CRUD, specific operations (approve, cancel), event-driven
-- **Async messaging** - Kafka producer/consumer, RabbitMQ, background jobs, or none
-- **Relationships to existing entities** - OneToMany, ManyToOne, ManyToMany, or none
-- **Business rules / validation constraints** - e.g., "amount must be positive", "status transitions"
-- **API visibility** - public, internal, or admin-only (affects security annotations)
+STEP 3 - ENTITY + MIGRATION: Use skill: `spring-jpa-performance`, `spring-db-migration-safety`. Generate entity class with audit fields; Flyway migration with indexes for FK and filter columns. LAZY fetch by default.
 
-Do not proceed until all required inputs are confirmed.
+STEP 4 - REPOSITORY: Use skill: `spring-jpa-performance`. Extend `JpaRepository<{Name}, Long>`. JPQL `@Query` for custom methods; `Specification` for dynamic filters; `Page<>` for pagination.
 
-### Step 2 - Design
+STEP 5 - SERVICE: Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-DTO mapping in-class. Business exceptions from common base.
 
-Propose to the user:
+STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `spring-exception-handling`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
 
-- **Endpoints** - HTTP method, URI, request/response DTOs, status codes
-- **DTOs** - record definitions with validation annotations
-- **Entity fields** - column types, constraints, relationships
-- **Service methods** - business operations, transaction boundaries
+STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover happy path, not-found, validation, error responses.
 
-**Present the design and wait for user approval before proceeding.**
-
-### Step 3 - Generate Entity + Migration
-
-Create the JPA entity class and corresponding Flyway migration.
-
-Use skill: `spring-jpa-performance` - N+1 prevention, fetch strategy (`LAZY` by default)
-Use skill: `spring-db-migration-safety` - safe DDL patterns, zero-downtime migrations
-
-Generate:
-
-- **Entity** - `src/main/java/.../entity/{Name}.java`
-  - `@Entity`, `@Table`, proper column annotations
-  - Audit fields (`createdAt`, `updatedAt`) with `@CreationTimestamp`, `@UpdateTimestamp`
-  - Relationships with correct cascade and fetch settings
-- **Migration** - `src/main/resources/db/migration/V{timestamp}__create_{table_name}.sql`
-  - If relationships exist, generate join table migrations separately
-  - Include indexes for foreign keys and frequently queried columns
-
-### Step 4 - Generate Repository
-
-Create the Spring Data JPA repository interface.
-
-Use skill: `spring-jpa-performance` - optimal query patterns, projection usage
-
-Generate:
-
-- **Repository** - `src/main/java/.../repository/{Name}Repository.java`
-  - Extend `JpaRepository<{Name}, Long>`
-  - Custom query methods using `@Query` with JPQL (not native SQL) where possible
-  - `Specification`-based dynamic queries if filtering is needed
-  - Pagination support via `Page<>` return types
-
-### Step 5 - Generate Service
-
-Create the service class with business logic.
-
-Use skill: `spring-transaction` - `@Transactional` boundaries, read-only defaults
-Use skill: `spring-exception-handling` - business exception hierarchy, consistent error responses
-If feature requires async messaging, background jobs, or event-driven side effects: Use skill: `spring-messaging-patterns` - Kafka producer/consumer, RabbitMQ, transactional outbox, Spring Application Events
-
-Generate:
-
-- **Service** - `src/main/java/.../service/{Name}Service.java`
-  - `@Service`, `@Transactional(readOnly = true)`, `@RequiredArgsConstructor`, `@Slf4j`
-  - `@Transactional` (read-write) only on mutating methods
-  - Entity ↔ DTO mapping methods (private, in-class or via dedicated mapper)
-  - Bean Validation on DTO inputs via `@Valid` at controller level
-  - Virtual Thread-safe: no `synchronized`, no thread-local state
-  - Business exceptions extending a common base (e.g., `ResourceNotFoundException`)
-
-### Step 6 - Generate Controller
-
-Create the REST controller with proper HTTP semantics.
-
-Use skill: `api-guidelines` - consistent response format, URI conventions
-Use skill: `spring-exception-handling` - `@RestControllerAdvice` mapping
-
-Generate:
-
-- **Controller** - `src/main/java/.../controller/{Name}Controller.java`
-  - `@RestController`, `@RequestMapping("/api/v1/{resources}")`, `@RequiredArgsConstructor`, `@Slf4j`
-  - `@ResponseStatus` instead of `ResponseEntity` when a single status code suffices
-  - `@Valid @RequestBody` on create/update endpoints
-  - `Pageable` parameter for list endpoints
-  - Proper HTTP status codes: `201 CREATED` for POST, `204 NO_CONTENT` for DELETE
-- **Request DTO** - `src/main/java/.../dto/{Name}Request.java` (record with validation)
-- **Response DTO** - `src/main/java/.../dto/{Name}Response.java` (record)
-
-### Step 7 - Generate Tests
-
-Use skill: `spring-test-integration` - select correct test slice for each layer
-
-Generate:
-
-- **Unit test** - `src/test/java/.../service/{Name}ServiceTest.java`
-  - `@ExtendWith(MockitoExtension.class)`
-  - Mock repository with `@Mock`, inject service with `@InjectMocks`
-  - Test happy path, not-found, validation, and business rule scenarios
-  - Use `@MockitoBean` not `@MockBean`
-- **Integration test** - `src/test/java/.../repository/{Name}RepositoryTest.java`
-  - `@DataJpaTest` with Testcontainers for real database
-  - Test custom queries, pagination, relationship loading
-- **API test** - `src/test/java/.../controller/{Name}ControllerTest.java`
-  - `@WebMvcTest({Name}Controller.class)`
-  - MockMvc with `@MockitoBean` for service
-  - Test request validation, response format, HTTP status codes, error responses
-- **Test fixtures** - builder pattern or static factory methods for test data
-
-### Step 8 - Validate
-
-Run compilation and final checks.
-
-```bash
-./gradlew compileJava compileTestJava
-```
-
-Present summary to user:
-
-- Files created (with paths)
-- Endpoints available (method + URI)
-- Test count and coverage areas
-- Any warnings or manual steps required
+STEP 8 - VALIDATE: `./gradlew compileJava compileTestJava`. Present file list, endpoints, test count, any warnings.
 
 ## Output
 
@@ -195,84 +84,3 @@ Present a checklist of generated files:
 - Integration tests: {count} (repository layer)
 - API tests: {count} (controller layer)
 ```
-
-## Key Skills Reference
-
-**Data layer:**
-
-- Use skill: `spring-jpa-performance` for N+1 prevention, fetch strategy, query optimization
-- Use skill: `spring-db-migration-safety` for safe Flyway migrations and zero-downtime DDL
-- Use skill: `spring-transaction` for `@Transactional` boundaries and isolation levels
-
-**Business logic:**
-
-- Use skill: `spring-exception-handling` for business exception hierarchy and `@RestControllerAdvice`
-- Use skill: `spring-messaging-patterns` for Kafka/RabbitMQ producers/consumers, transactional outbox, and Spring Application Events (if async messaging required)
-
-**Testing:**
-
-- Use skill: `spring-test-integration` for test slice selection and integration test patterns
-
-> For stack-agnostic code review and architecture review, use the core plugin's `task-code-review` and `task-design-architecture`.
-
-## Checklist
-
-- [ ] Requirements gathered and confirmed with user
-- [ ] Design proposed and approved by user
-- [ ] Entity created with proper JPA annotations and audit fields
-- [ ] Flyway migration generated (with indexes)
-- [ ] Repository with custom queries (JPQL, not native)
-- [ ] Service with `@Transactional(readOnly = true)` default, read-write on mutating methods
-- [ ] Constructor injection only (`@RequiredArgsConstructor`)
-- [ ] DTOs as Java records with Bean Validation annotations
-- [ ] Controller with proper HTTP methods, status codes, and `@Valid`
-- [ ] Pagination for list endpoints
-- [ ] Entity never exposed in API responses
-- [ ] No `synchronized` blocks (Virtual Thread compatible)
-- [ ] Unit tests with Mockito (`@MockitoBean`, not `@MockBean`)
-- [ ] Integration tests with `@DataJpaTest` + Testcontainers
-- [ ] API tests with `@WebMvcTest` + MockMvc
-- [ ] Compilation verified (`compileJava compileTestJava`)
-- [ ] Summary presented to user
-
-## Success Criteria
-
-A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
-
-### Completeness
-
-- [ ] Requirements were gathered and confirmed before any code was generated
-- [ ] Design was proposed and user-approved before proceeding to code generation
-- [ ] All layers generated: entity, migration, repository, service, controller, DTOs, tests
-- [ ] Compilation verified with `./gradlew compileJava compileTestJava`
-
-### Spring Boot Correctness
-
-- [ ] No JPA entities exposed in API responses - all responses use DTO records
-- [ ] Constructor injection only - no `@Autowired` field injection
-- [ ] No `synchronized` blocks - Virtual Thread compatible
-- [ ] `@MockitoBean` used in tests - not deprecated `@MockBean`
-- [ ] `@Transactional(readOnly = true)` is the service class default; read-write only on mutating methods
-- [ ] All three test layers present: unit (`@ExtendWith`), integration (`@DataJpaTest`), API (`@WebMvcTest`)
-
-### Staff-Level Signal
-
-- [ ] Flyway migration includes indexes for foreign keys and frequently queried columns
-- [ ] List endpoints use pagination via `Pageable`
-- [ ] Business exceptions extend a common base class - not raw `RuntimeException`
-- [ ] Summary presented to user with file paths, endpoints, and test count
-
-## Avoid
-
-- Exposing JPA entities in API responses
-- `@Autowired` field injection
-- `synchronized` blocks (breaks Virtual Threads)
-- `@MockBean` (deprecated since Spring Boot 3.4.0)
-- Native SQL in `@Query` when JPQL suffices
-- Generating code before user approves the design
-- Skipping test generation
-- Over-engineering: only generate what was requested
-
-## After This Skill
-
-If the output needed significant adjustment - wrong layering, missing test layer, or Spring Boot constraints violated - run `/task-skill-feedback` to log what changed and why.

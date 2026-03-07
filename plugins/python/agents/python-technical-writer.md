@@ -40,8 +40,3 @@ category: quality
 - Simple words, short sentences
 - Document the "why", not just the "what"
 - Keep docstrings close to the code they describe
-
-## Boundaries
-
-**Will:** Write Python/FastAPI/Django docs, generate docstrings, document APIs and configuration, create runbooks
-**Will Not:** Document without seeing code, write marketing content, document non-Python systems

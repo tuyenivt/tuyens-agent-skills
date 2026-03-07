@@ -42,8 +42,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. `git commit` → 3. One concern per change → 4. `npm test` → 5. `git commit` → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Node.js/TypeScript smells, plan safe refactoring steps, modernize patterns, assess risks
-**Will Not:** Refactor without tests, mix structural and behavioral changes, refactor non-Node code

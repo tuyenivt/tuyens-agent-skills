@@ -474,40 +474,16 @@ Walk through the failure end-to-end:
 - No trivial detail inflation
 - Optimize for implementation team clarity and AI code generation guidance
 
-## Success Criteria
-
-A well-executed architecture design passes all of these. Use as a self-check before presenting for staff/principal review.
-
-### Completeness
+## Self-Check
 
 - [ ] Every module boundary has a stated responsibility and data ownership
-- [ ] Every component lists its primary failure mode
-- [ ] Every boundary states its failure isolation guarantee
-- [ ] Every significant decision has at least one rejected alternative with a reason
-- [ ] At least one negative trade-off is documented per decision - not just benefits
+- [ ] Every component lists its primary failure mode and isolation guarantee
+- [ ] Every significant decision has at least one rejected alternative with a reason; trade-offs include negatives
 - [ ] Consistency model stated for each data boundary, including partial failure behavior
-- [ ] Rollback strategy exists for the deployment
-
-### Clarity
-
-- [ ] A new team member could implement the design without asking what the modules are responsible for
-- [ ] It is clear which components own which data - no ambiguous shared ownership
-- [ ] The communication model (sync vs async) is explicit for every interaction
-- [ ] Failure modes are concrete scenarios, not generic ("service unavailable")
-
-### Risk Coverage
-
-- [ ] The highest-blast-radius failure scenario has a mitigation strategy
-- [ ] Retry amplification and backpressure risk have been assessed
-- [ ] At least one SLO candidate is identified in the observability plan
-- [ ] Capacity bottleneck prediction identifies which component saturates first
-
-### Staff-Level Signal (for tech lead review)
-
-- [ ] The design is grounded in stated requirements - no hypothetical future scope
-- [ ] Constraints that conflict are made explicit with resolution options proposed
-- [ ] Guardrails are concrete rules, not general principles ("keep layers separate")
-- [ ] The design can be reviewed against during implementation - drift is detectable
+- [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
+- [ ] Rollback strategy exists; SLO candidate identified in observability plan
+- [ ] Guardrails are concrete rules (not general principles) and detectable during implementation
+- [ ] Design is grounded in stated requirements - no hypothetical future scope
 
 ## Avoid
 
@@ -520,58 +496,3 @@ A well-executed architecture design passes all of these. Use as a self-check bef
 - Verbose explanations where a table communicates more clearly
 - Generic advice ("use microservices", "add caching") without context-specific reasoning
 - Treating this as a code review or implementation plan
-
-## Key Skills Reference
-
-### Existing Skills Reused
-
-**Boundary and Structure:**
-
-- Use skill: `architecture-guardrail` for boundary enforcement and drift detection
-- Use skill: `blast-radius-analysis` for failure propagation scope per boundary
-- Use skill: `engineering-governance` for alignment with engineering standards
-
-**Component Design:**
-
-- Use skill: `data-consistency-modeling` for consistency boundary design
-- Use skill: `idempotency` for retry safety at integration points
-- Use skill: `caching` for caching strategy and invalidation
-- Use skill: `resiliency` for fault tolerance and REST client integration patterns
-
-**Failure Analysis:**
-
-- Use skill: `failure-classification` for failure type categorization
-- Use skill: `failure-propagation-analysis` for cascading failure path tracing
-- Use skill: `observability` for logging, metrics, and tracing patterns
-
-**Performance:**
-
-- Use skill: `payload-optimization` for API response efficiency
-- Use skill: `db-indexing` for data access patterns and index strategy
-
-**Governance:**
-
-- Use skill: `engineering-governance` for evolving existing guardrails
-
-**Related Workflows:**
-
-- Use skill: `task-incident-root-cause` for incorporating incident lessons into design
-- Use skill: `task-incident-postmortem` for incorporating postmortem findings into design
-- Use skill: `task-code-review-advanced` for reviewing implementation against this design
-- Use skill: `task-code-perf-review` for deep performance review of implementation
-
-### Sub-Skills Defined for This Workflow
-
-| Skill                        | Purpose                                                            |
-| ---------------------------- | ------------------------------------------------------------------ |
-| `system-boundary-design`     | Formal boundary modeling for module and service decomposition      |
-| `data-consistency-modeling`  | Consistency strategy selection across data boundaries              |
-| `tradeoff-analysis`          | Structured architectural decision and trade-off documentation      |
-| `capacity-modeling`          | Throughput estimation, scaling analysis, and bottleneck prediction |
-| `release-safety`             | Rollout, rollback, and deployment risk patterns                    |
-| `dependency-impact-analysis` | Deployment ordering and dependency change impact assessment        |
-| `concurrency-model`          | Concurrency risk assessment and thread safety patterns             |
-
-## After This Skill
-
-If the output needed significant adjustment - boundaries were wrong, failure modes were missed, or trade-offs were not captured - run `/task-skill-feedback` to log what changed and why.

@@ -42,8 +42,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. `git commit` → 3. One concern per change → 4. `go test -race ./...` → 5. `git commit` → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Go/Gin smells, plan safe refactoring steps, modernize Go patterns, assess risks
-**Will Not:** Refactor without tests, mix structural and behavioral changes, refactor non-Go code

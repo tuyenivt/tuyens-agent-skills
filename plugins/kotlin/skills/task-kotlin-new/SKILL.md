@@ -112,32 +112,13 @@ Provide:
 - Tests added by layer
 - Validation result and follow-up actions (if any)
 
-## Success Criteria
-
-A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
-
-### Completeness
+## Self-Check
 
 - [ ] Requirements gathered and design approved before any code generated
 - [ ] All layers generated: entity, Flyway migration, repository, service, controller, DTOs, tests
-- [ ] Validated with `./gradlew compileKotlin compileTestKotlin test`
+- [ ] Kotlin class (not data class) for JPA entities; constructor injection only; no `synchronized` blocks
+- [ ] `suspend` used consistently; MockK with `coEvery`/`coVerify` for suspend functions
+- [ ] `./gradlew compileKotlin compileTestKotlin test` passes
+- [ ] Migration includes indexes; list endpoints paginated; files and test count presented
 
-### Kotlin + Spring Boot Correctness
-
-- [ ] Kotlin class (not data class) used for JPA entities
-- [ ] Constructor injection only - no `@Autowired` field injection
-- [ ] No `synchronized` blocks - coroutine-safe code only
-- [ ] `suspend` used consistently where coroutines are involved - not mixed with blocking calls
-- [ ] MockK used for unit tests with `coEvery`/`coVerify` for suspend functions
-- [ ] Entities never returned directly in API responses - data class DTOs used
-
-### Staff-Level Signal
-
-- [ ] Flyway migration includes indexes for foreign keys and frequently queried columns
-- [ ] List endpoints use pagination via `Pageable`
-- [ ] Kotlin-JPA and allopen plugins are assumed present - their absence is flagged if relevant
-- [ ] Files created, endpoints delivered, and tests added by layer presented to user
-
-## After This Skill
-
-If the output needed significant adjustment - data class used for JPA entity, blocking calls mixed with coroutines, or MockK not used for unit tests - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

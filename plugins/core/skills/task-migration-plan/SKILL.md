@@ -92,23 +92,16 @@ Identify which operations in this migration acquire locks and estimate duration.
 
 Use skill: `db-indexing` for index creation lock behavior.
 
-**Common lock risks by database:**
+**Lock risk reference:**
 
-**PostgreSQL:**
-
-- `ALTER TABLE ADD COLUMN` (nullable, no default): lock brief, safe
-- `ALTER TABLE ADD COLUMN ... DEFAULT ...` (< PG11): full table rewrite, dangerous on large tables
-- `ALTER TABLE ADD COLUMN ... DEFAULT ...` (PG11+): metadata only, safe
-- `CREATE INDEX`: full table scan, but `CREATE INDEX CONCURRENTLY` avoids lock (cannot run in transaction)
-- `ALTER TABLE ADD CONSTRAINT NOT NULL`: full table scan to validate
-- `ALTER TABLE ADD CONSTRAINT FOREIGN KEY`: full table scan
-- `DROP COLUMN`: brief lock, but `NOT VALID` pattern can defer validation
-
-**MySQL / MariaDB:**
-
-- Many `ALTER TABLE` operations cause full table copy (Online DDL varies by version and engine)
-- `ADD INDEX`: rebuilds index but can use online DDL in InnoDB
-- `ADD COLUMN` not at end: full table copy in older versions
+| Operation                         | PostgreSQL                                      | MySQL/MariaDB                     |
+| --------------------------------- | ----------------------------------------------- | --------------------------------- |
+| ADD COLUMN (nullable, no default) | Brief lock - safe                               | Brief (InnoDB)                    |
+| ADD COLUMN with DEFAULT (PG11+)   | Metadata only - safe                            | Full table copy on older versions |
+| ADD COLUMN with DEFAULT (< PG11)  | Full table rewrite - dangerous                  | -                                 |
+| CREATE INDEX                      | Full scan; use CONCURRENTLY (cannot run in txn) | Online DDL in InnoDB              |
+| ADD CONSTRAINT NOT NULL / FK      | Full table scan to validate                     | Full table copy                   |
+| DROP COLUMN                       | Brief lock; NOT VALID can defer FK validation   | Online DDL                        |
 
 For each migration step, state:
 
@@ -157,21 +150,7 @@ Use skill: `dependency-impact-analysis` for multi-service deployment ordering.
 
 If data migration is required (existing rows need updating), plan the backfill operation.
 
-**Never run:**
-
-```sql
-UPDATE large_table SET new_col = old_col WHERE new_col IS NULL;
-```
-
-**Always batch:**
-
-```sql
--- Pseudocode: run in a loop until 0 rows updated
-UPDATE table SET new_col = old_col
-WHERE id BETWEEN :start AND :end
-  AND new_col IS NULL
-LIMIT 1000;
-```
+**Never run unbounded UPDATE on a production table.** Always batch by ID range or cursor, 100-1000 rows per batch, in a loop until 0 rows updated.
 
 Estimate for the backfill plan:
 
@@ -334,31 +313,14 @@ For each step, state:
 - Omit phases that do not apply to this migration
 - Flag any phase where rollback requires a restore - make this explicit, not a footnote
 
-## Success Criteria
-
-A well-executed migration plan passes all of these.
-
-### Safety
+## Self-Check
 
 - [ ] Lock risk assessed for every schema operation
-- [ ] No unbounded UPDATE or DELETE on a large table - backfill is batched
-- [ ] Rollback procedure defined before any step runs
-- [ ] Phases requiring backup restore to roll back are explicitly flagged
+- [ ] No unbounded UPDATE or DELETE on large tables - backfill is batched and idempotent
+- [ ] Rollback procedure defined before any step; phases needing backup restore are flagged
 - [ ] Expand-contract applied to all non-additive changes unless downtime is explicitly accepted
-
-### Completeness
-
-- [ ] All phases are sequenced with pre-conditions
-- [ ] Backfill duration estimated where data migration is needed
-- [ ] Multi-service deployment ordering flagged where applicable
-- [ ] Application code changes are aligned with each schema phase
-
-### Staff-Level Signal
-
-- [ ] The plan answers "what happens if this fails at phase N?" for every phase
-- [ ] Backfill is idempotent - it can be re-run safely after a failure
-- [ ] The plan can be handed to a junior engineer to execute with confidence
-- [ ] The validation step for each phase is concrete, not "check that it worked"
+- [ ] All phases sequenced with pre-conditions; application code changes aligned per phase
+- [ ] Plan answers "what happens if this fails at phase N?" with concrete validation per phase
 
 ## Avoid
 
@@ -369,17 +331,3 @@ A well-executed migration plan passes all of these.
 - Treating "add a column" as always trivially safe (NOT NULL, DEFAULT, and constraint additions are not)
 - Ignoring multi-service deployment ordering when shared databases are involved
 - Vague validation steps ("verify the migration ran") - validations must be concrete and checkable
-
-## Key Skills Reference
-
-- Use skill: `change-risk-classification` for migration risk domain assessment
-- Use skill: `backward-compatibility-analysis` for application-level compatibility during transition
-- Use skill: `db-indexing` for index creation lock behavior and query access patterns
-- Use skill: `idempotency` for backfill operation safety
-- Use skill: `release-safety` for deploy ordering across migration phases
-- Use skill: `dependency-impact-analysis` for multi-service deployment coordination
-- Use skill: `blast-radius-analysis` for rollback failure impact assessment
-
-## After This Skill
-
-If the output needed significant adjustment - lock risk was underestimated, expand-contract phasing was wrong, or rollback procedures were missing - run `/task-skill-feedback` to log what changed and why.

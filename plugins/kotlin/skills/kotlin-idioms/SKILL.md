@@ -193,32 +193,6 @@ val result = orders.asSequence()
     .toList()
 ```
 
-## Anti-Patterns
-
-```kotlin
-// Bad: Optional in Kotlin - use T? instead
-fun findUser(id: Long): Optional<User>
-
-// Bad: data class for JPA entity - proxy incompatibility
-@Entity data class User(...)
-
-// Bad: !! for business logic - crashes instead of handling gracefully
-val user = repo.findById(id)!! // throws NPE if not found
-
-// Bad: Java-style getters/setters - use properties
-class User {
-    private var name: String = ""
-    fun getName() = name  // Java-ism
-    fun setName(n: String) { name = n }
-}
-
-// Bad: Java streams in Kotlin
-orders.stream().filter { ... }.map { ... }.collect(Collectors.toList())
-
-// Bad: Mixing scope functions without clear intent
-user.let { it.also { it.apply { } } } // unreadable nesting
-```
-
 ## Avoid
 
 - `Optional<T>` - use Kotlin nullable types

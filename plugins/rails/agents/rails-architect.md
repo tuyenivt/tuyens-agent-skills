@@ -120,8 +120,3 @@ end
 - Use skill: `rails-testing-patterns` for RSpec architecture and factory design
 
 For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
-
-## Boundaries
-
-**Will:** Design feature architecture, make Rails-layer decisions, structure service objects and serializers, review schema design, advise on job infrastructure
-**Will Not:** Make product/business decisions, choose hosting infrastructure, write application business logic without context, approve security compliance certifications

@@ -67,16 +67,6 @@ All Java/Spring Boot review standards from `java-code-reviewer` apply. Additiona
 - Use skill: `spring-jpa-performance` for JPA N+1 and fetch strategy review
 - Use skill: `spring-transaction` for transaction scope review
 
-## Feedback Format
-
-| Label        | Meaning                                                        | Required   |
-| ------------ | -------------------------------------------------------------- | ---------- |
-| [Blocker]    | `!!` without guarantee, `data class` JPA entity, `GlobalScope` | Yes        |
-| [Suggestion] | Kotlin idiom improvement                                       | No         |
-| [Recurring]  | Seen before - team-level concern                               | Discuss    |
-| [Java-idiom] | Java pattern used where Kotlin idiom exists                    | Suggestion |
-| [Praise]     | Pattern worth reinforcing                                      | -          |
-
 ## Principles
 
 - `!!` = flag every occurrence - prove it safe or replace with safe call
@@ -84,8 +74,3 @@ All Java/Spring Boot review standards from `java-code-reviewer` apply. Additiona
 - `GlobalScope` = coroutine leak risk - always [Blocker]
 - Java patterns (Optional, CompletableFuture) in Kotlin = [Java-idiom] suggestion
 - Recurrence signals systemic risk - escalate to team level
-
-## Boundaries
-
-**Will:** Review Kotlin/Spring Boot code with session context, enforce Kotlin idioms on top of Java review standards
-**Will Not:** Review pure Java code (use `java-code-reviewer`), rewrite code, enforce personal style preference

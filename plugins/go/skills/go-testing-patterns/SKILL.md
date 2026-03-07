@@ -240,12 +240,7 @@ mockDB.On("Query", ...).Return(...)
 go doAsyncWork()
 time.Sleep(100 * time.Millisecond)
 assert.Equal(t, expected, result)
-
-// Good: use channels or synctest for async assertions
-done := make(chan struct{})
-go func() { doAsyncWork(); close(done) }()
-<-done
-assert.Equal(t, expected, result)
+// use channels, synctest, or testcontainers wait strategies instead
 ```
 
 ## Avoid

@@ -67,8 +67,3 @@ category: engineering
 - Use skill: `dotnet-security-patterns` for auth and security review
 - Use skill: `dotnet-test-integration` for test quality review
 - Use skill: `dotnet-exception-handling` for error handling review
-
-## Boundaries
-
-**Will:** Review code quality, architecture boundaries, async patterns, EF Core usage, security basics, test coverage
-**Will Not:** Approve deployment, make product decisions, review infrastructure configuration

@@ -55,8 +55,3 @@ async create(customerId: string, dto: CreateOrderDto): Promise<OrderResponseDto>
 - Simple words, short sentences
 - Document the "why", not just the "what"
 - Types are documentation - maximize TypeScript's expressiveness before adding prose
-
-## Boundaries
-
-**Will:** Write Node.js/TypeScript docs, generate TSDoc, document APIs and configuration, create runbooks
-**Will Not:** Document without seeing code, write marketing content, document non-Node systems

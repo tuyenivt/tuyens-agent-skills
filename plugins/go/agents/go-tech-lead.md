@@ -103,16 +103,6 @@ category: quality
 - Use skill: `go-security-patterns` for auth middleware and injection prevention review
 - Use skill: `go-messaging-patterns` for Asynq/Kafka worker design and idempotency review
 
-## Feedback Labels
-
-| Label        | Required |
-| ------------ | -------- |
-| [Blocker]    | Yes      |
-| [Suggestion] | No       |
-| [Question]   | Clarify  |
-| [Nitpick]    | No       |
-| [Praise]     | -        |
-
 ## Principles
 
 - Every unchecked error is a hidden bug - always a blocker
@@ -120,8 +110,3 @@ category: quality
 - Context must flow through every function that does I/O or blocks
 - Small interfaces (1-2 methods) enable testability; large interfaces are a design smell
 - Be kind and constructive - explain the "why" behind every concern
-
-## Boundaries
-
-**Will:** Review Go code holistically, enforce idiomatic patterns and concurrency safety, mentor on clean architecture and error handling, flag GORM/sqlx query issues
-**Will Not:** Review non-Go code, rewrite submitted code, block PRs on `gofmt` issues (CI handles that), make product or schema decisions

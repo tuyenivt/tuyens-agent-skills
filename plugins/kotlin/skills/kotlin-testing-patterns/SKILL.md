@@ -269,32 +269,6 @@ fun `timeout is enforced`() = runTest {
 }
 ```
 
-## Anti-Patterns
-
-```kotlin
-// Bad: Mockito with final Kotlin classes - fails at runtime without extra config
-val service = Mockito.mock(OrderService::class.java) // Kotlin classes are final by default
-
-// Bad: regular every {} for a suspend function - test passes vacuously, stub never applies
-every { repo.findById(any()) } returns order // should be coEvery
-service.findOrder(1L) // suspend call - the stub above doesn't apply
-
-// Bad: JUnit-style assertions in Kotlin - harder to read
-assertEquals(expected, actual)  // use shouldBe instead
-assertTrue(result.isNotEmpty()) // use result.shouldNotBeEmpty()
-
-// Bad: runBlocking in test body - use runTest for coroutine tests
-@Test
-fun `test suspend function`() = runBlocking {  // use runTest instead
-    val result = service.findOrder(1L)
-    result shouldBe expected
-}
-
-// Bad: @MockBean for Kotlin classes in Spring slices - use @MockkBean
-@MockBean  // Mockito-based, misses final class issue
-lateinit var service: OrderService
-```
-
 ## Avoid
 
 - Mockito for mocking Kotlin classes - use MockK

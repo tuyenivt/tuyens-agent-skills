@@ -33,30 +33,13 @@ STEP 5 - FIX: before/after code, minimal change
 
 STEP 6 - PREVENTION: pytest test, type hint, linting rule
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line; confidence level stated
+- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
+- [ ] Async/sync mixing addressed at architectural level - not just patched with `asyncio.run()`
+- [ ] Prevention step included (pytest test, type hint, or linting rule)
+- [ ] For Celery: retry config and idempotency addressed; for SQLAlchemy: pool config checked
 
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line from the traceback
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] A prevention step is included (pytest test, type hint, or linting rule)
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated (HIGH / MEDIUM / LOW) - LOW lists what additional info would help
-- [ ] The fix is minimal - no unrelated refactoring
-- [ ] Async/sync mixing is addressed at the architectural level - not just patched with `asyncio.run()`
-
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of bug
-- [ ] For Celery issues, retry config and idempotency are addressed alongside the immediate fix
-- [ ] For SQLAlchemy connection issues, pool configuration is checked, not just the query
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, async/sync mixing was patched instead of fixed, or the wrong framework's patterns were applied - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

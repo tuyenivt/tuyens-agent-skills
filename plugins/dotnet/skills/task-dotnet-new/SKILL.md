@@ -32,130 +32,21 @@ user-invocable: true
 
 ## Implementation
 
-### Step 1 - Gather Requirements
+STEP 1 - GATHER: feature name, namespace base, operations (CRUD/custom), entity relationships, validation constraints, API visibility
 
-**Interactive.** Ask the user for:
+STEP 2 - DESIGN: propose endpoints (method + URI + DTO records + status), entity fields, commands/queries/handlers (CQRS if MediatR). Present for user approval before generating code.
 
-- **Feature name / resource** - e.g., "Order", "Payment", "Notification"
-- **Namespace base** - e.g., `YourApp.Orders`
-- **Operations needed** - CRUD, specific operations (approve, cancel, submit), event-driven
-- **Relationships to existing entities** - navigation properties, foreign keys
-- **Business rules / validation constraints** - e.g., "amount must be positive", "status transitions"
-- **API visibility** - public, internal, or admin-only (affects authorization policies)
+STEP 3 - ENTITY + MIGRATION: Use skill: `dotnet-ef-performance`, `dotnet-db-migration-safety`. Generate Domain entity (private setters, audit fields, navigation properties), EF Core `IEntityTypeConfiguration`, and migration with indexes for FK and filter columns.
 
-Do not proceed until all required inputs are confirmed.
+STEP 4 - REPOSITORY: Use skill: `dotnet-ef-performance`. Interface in `Application/Interfaces` with async + `CancellationToken`. Implementation in `Infrastructure` with `AsNoTracking()` reads and DTO projections for lists.
 
-### Step 2 - Design
+STEP 5 - APPLICATION LAYER: Use skill: `dotnet-transaction`, `dotnet-exception-handling`. Commands and Queries as records. FluentValidation validators. Handlers with business logic; single `SaveChangesAsync(ct)` per handler.
 
-Propose to the user:
+STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `dotnet-exception-handling`, `dotnet-security-patterns`. `[ApiController] [Route("api/v1/[controller]")]`. `CancellationToken ct` on every action. `[Authorize]` or `[AllowAnonymous]` on every action - no implicit defaults. `201 Created` POST, `204 NoContent` DELETE.
 
-- **Endpoints** - HTTP method, URI, request/response DTOs, status codes
-- **DTO records** - properties with FluentValidation rules
-- **Entity fields** - column types, constraints, relationships
-- **Application use-cases** - commands, queries, handlers (CQRS if using MediatR)
-- **Service/handler methods** - business operations, transaction boundaries
+STEP 7 - TESTS: Use skill: `dotnet-test-integration`. Unit: NSubstitute/Moq, happy path + not-found + validation. Repo: Testcontainers PostgreSQL. API: `WebApplicationFactory` + real HTTP client. Test fixtures via Bogus `Faker<T>`.
 
-**Present the design and wait for user approval before proceeding.**
-
-### Step 3 - Generate Entity + Migration
-
-Create the domain entity and corresponding EF Core migration.
-
-Use skill: `dotnet-ef-performance` - projection usage, `AsNoTracking()`, N+1 prevention
-Use skill: `dotnet-db-migration-safety` - safe DDL patterns, zero-downtime migrations
-
-Generate:
-
-- **Entity** - `src/YourApp.Domain/Entities/{Name}.cs`
-  - Private setters, factory methods or constructors for invariant enforcement
-  - Audit fields (`CreatedAt`, `UpdatedAt`)
-  - Navigation properties with explicit foreign key properties
-- **EF Core configuration** - `src/YourApp.Infrastructure/Persistence/Configurations/{Name}Configuration.cs`
-  - `IEntityTypeConfiguration<{Name}>` with explicit column mappings and indexes
-- **Migration** - `src/YourApp.Infrastructure/Persistence/Migrations/{Timestamp}_{Description}.cs`
-  - Generated via `dotnet ef migrations add`
-  - Include indexes for foreign keys and frequently queried columns
-
-### Step 4 - Generate Repository
-
-Create the repository interface and implementation.
-
-Use skill: `dotnet-ef-performance` - query patterns, Dapper for complex reads
-
-Generate:
-
-- **Interface** - `src/YourApp.Application/Interfaces/I{Name}Repository.cs`
-  - Async methods with `CancellationToken`
-  - Pagination support via `PagedResult<T>` return types
-- **Implementation** - `src/YourApp.Infrastructure/Persistence/Repositories/{Name}Repository.cs`
-  - EF Core queries with `AsNoTracking()` for reads
-  - Projections to DTO records for list endpoints
-
-### Step 5 - Generate Application Layer
-
-Create commands, queries, validators, and handlers.
-
-Use skill: `dotnet-transaction` - `SaveChanges` boundaries, unit of work
-Use skill: `dotnet-exception-handling` - domain exception hierarchy, consistent error responses
-
-Generate:
-
-- **Commands** - `src/YourApp.Application/{Feature}/Commands/{Operation}{Name}Command.cs` (record)
-- **Queries** - `src/YourApp.Application/{Feature}/Queries/Get{Name}Query.cs` (record)
-- **Validators** - `src/YourApp.Application/{Feature}/Validators/{Operation}{Name}Validator.cs` (FluentValidation)
-- **Handlers** - `src/YourApp.Application/{Feature}/Handlers/{Operation}{Name}Handler.cs`
-  - Business logic, entity creation, domain event publishing
-  - Call `SaveChangesAsync(ct)` once per handler
-
-### Step 6 - Generate Controller
-
-Create the REST controller with proper HTTP semantics.
-
-Use skill: `api-guidelines` - consistent response format, URI conventions
-Use skill: `dotnet-exception-handling` - global exception handler maps domain exceptions
-Use skill: `dotnet-security-patterns` - explicit auth rule on every endpoint
-
-Generate:
-
-- **Controller** - `src/YourApp.Api/Controllers/{Name}sController.cs`
-  - `[ApiController]`, `[Route("api/v1/[controller]")]`
-  - Constructor-injected `ISender` (MediatR) or direct service
-  - `CancellationToken ct` parameter on every action
-  - Proper HTTP status codes: `201 Created` for POST, `204 NoContent` for DELETE
-  - `[Authorize]` or `[AllowAnonymous]` on every action - no implicit defaults
-
-### Step 7 - Generate Tests
-
-Use skill: `dotnet-test-integration` - select correct test type for each layer
-
-Generate:
-
-- **Unit test** - `tests/YourApp.Application.Tests/{Feature}/{Operation}{Name}HandlerTests.cs`
-  - NSubstitute / Moq for repository mocks
-  - Test happy path, not-found, validation, and business rule scenarios
-- **Repository test** - `tests/YourApp.Infrastructure.Tests/Persistence/{Name}RepositoryTests.cs`
-  - Testcontainers PostgreSQL
-  - Test custom queries, pagination, relationship loading
-- **API test** - `tests/YourApp.Api.Tests/Controllers/{Name}sControllerTests.cs`
-  - `WebApplicationFactory` with real HTTP client
-  - Test request validation, response format, HTTP status codes, error responses
-- **Test fixtures** - Bogus `Faker<T>` for all test data
-
-### Step 8 - Validate
-
-Run build and final checks.
-
-```bash
-dotnet build --no-incremental
-dotnet test --no-build
-```
-
-Present summary to user:
-
-- Files created (with paths)
-- Endpoints available (method + URI)
-- Test count and coverage areas
-- Any warnings or manual steps required (e.g., run `dotnet ef migrations add`)
+STEP 8 - VALIDATE: `dotnet build --no-incremental`, `dotnet test --no-build`. Present file list, endpoints, test count, any manual steps (e.g., run `dotnet ef migrations add`).
 
 ## Output
 
@@ -193,90 +84,3 @@ Present a checklist of generated files:
 - Integration tests: {count} (repository layer)
 - API tests: {count} (controller layer)
 ```
-
-## Key Skills Reference
-
-**Data layer:**
-
-- Use skill: `dotnet-ef-performance` for N+1 prevention, `AsNoTracking()`, Dapper reads
-- Use skill: `dotnet-db-migration-safety` for safe EF Core migrations and zero-downtime DDL
-- Use skill: `dotnet-transaction` for `SaveChanges` boundaries and unit of work
-
-**Business logic:**
-
-- Use skill: `dotnet-exception-handling` for domain exception hierarchy and global error handler
-
-**Security:**
-
-- Use skill: `dotnet-security-patterns` for JWT auth and policy-based authorization
-
-**Testing:**
-
-- Use skill: `dotnet-test-integration` for test layer selection, Testcontainers, and Bogus
-
-> For stack-agnostic code review and architecture review, use the core plugin's `task-code-review` and `task-design-architecture`.
-
-## Checklist
-
-- [ ] Requirements gathered and confirmed with user
-- [ ] Design proposed and approved by user
-- [ ] Entity created with private setters and factory methods
-- [ ] EF Core configuration with explicit mappings and indexes
-- [ ] EF Core migration generated (with indexes)
-- [ ] Repository interface in Application layer; implementation in Infrastructure
-- [ ] FluentValidation validators for all commands/requests
-- [ ] Handlers with single `SaveChangesAsync()` per use-case
-- [ ] Constructor injection throughout - no `new` on dependencies
-- [ ] DTOs as C# records
-- [ ] Controller with explicit `[Authorize]`/`[AllowAnonymous]` on every action
-- [ ] `CancellationToken` propagated to all async calls
-- [ ] Entity never exposed in API responses
-- [ ] Unit tests with NSubstitute/Moq mocks
-- [ ] Integration tests with Testcontainers
-- [ ] API tests with WebApplicationFactory
-- [ ] Build verified (`dotnet build`)
-- [ ] Summary presented to user
-
-## Success Criteria
-
-A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
-
-### Completeness
-
-- [ ] Requirements were gathered and confirmed before any code was generated
-- [ ] Design was proposed and user-approved before proceeding to code generation
-- [ ] All layers generated: entity, EF config, migration, repository (interface + impl), application layer, controller, tests
-- [ ] Build verified with `dotnet build` and `dotnet test`
-
-### .NET Correctness
-
-- [ ] No EF Core entities exposed in API responses - all responses use DTO records
-- [ ] Constructor injection throughout - no `new` on dependencies
-- [ ] FluentValidation used for all request validation - no `[Required]` data annotations
-- [ ] `CancellationToken` propagated to all async methods
-- [ ] Single `SaveChangesAsync()` per handler - no partial write risk
-- [ ] Explicit `[Authorize]` or `[AllowAnonymous]` on every controller action
-- [ ] Clean Architecture layers respected: Application does not reference Infrastructure directly
-- [ ] All three test layers present: unit (handler), repository (Testcontainers), API (WebApplicationFactory)
-
-### Staff-Level Signal
-
-- [ ] EF Core migration includes indexes for foreign keys and frequently queried columns
-- [ ] List endpoints use pagination via `PagedResult<T>`
-- [ ] Domain exceptions extend a typed base - not raw `Exception`
-- [ ] Summary presented to user with file paths, endpoints, and test count
-
-## Avoid
-
-- Exposing EF Core entities in API responses
-- `[Required]` data annotations on DTO records (use FluentValidation)
-- Service/handler directly referencing `DbContext` (use repository interface)
-- Missing `CancellationToken` on async methods
-- Multiple `SaveChangesAsync()` calls in one handler (partial writes on failure)
-- Generating code before user approves the design
-- Skipping test generation
-- Over-engineering: only generate what was requested
-
-## After This Skill
-
-If the output needed significant adjustment - Clean Architecture layers violated, missing `CancellationToken`, or wrong validation approach used - run `/task-skill-feedback` to log what changed and why.

@@ -33,30 +33,13 @@ STEP 6 - PREVENTION: RSpec test, linting rule, validation
 
 OUTPUT: Bug Analysis → Root Cause → Fix → Prevention
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
-
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line from the stack trace
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] A prevention step is included (RSpec test, validation, or linting rule)
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated (HIGH / MEDIUM / LOW) - LOW lists what additional info would help
-- [ ] The fix is minimal - no unrelated refactoring
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line; confidence level stated
+- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
 - [ ] Rails conventions preserved - strong params, service objects, Pundit patterns not bypassed
+- [ ] Prevention step included (RSpec test, validation, or linting rule)
+- [ ] For `PG::LockNotAvailable`: migration safety pattern referenced; for Sidekiq: idempotency and retry state checked
 
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of bug
-- [ ] For `PG::LockNotAvailable`, the migration safety pattern is referenced alongside the fix
-- [ ] For Sidekiq failures, job idempotency and retry state are checked, not just the error message
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, Rails conventions were bypassed in the fix, or Sidekiq idempotency was ignored - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

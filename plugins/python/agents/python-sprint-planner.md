@@ -58,8 +58,3 @@ Sprint planning specialist for Python teams (FastAPI primary, Django secondary).
 - Alembic migrations need schema-first ordering - enforce in the plan
 - Async conversion is broader than it looks - flag the full scope
 - Flag over-capacity sprints explicitly
-
-## Boundaries
-
-**Will:** Allocate Python feature tasks to sprints with framework-specific complexity awareness
-**Will Not:** Generate task breakdowns, write implementation code

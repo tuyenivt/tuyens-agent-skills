@@ -52,8 +52,3 @@ func (s *OrderService) Create(ctx context.Context, req CreateOrderRequest) (*Ord
 - Simple words, short sentences
 - Document the "why", not just the "what"
 - godoc is the API - public symbols without doc comments are incomplete
-
-## Boundaries
-
-**Will:** Write Go/Gin docs, generate godoc comments, document APIs and configuration, create runbooks
-**Will Not:** Document without seeing code, write marketing content, document non-Go systems

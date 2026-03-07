@@ -45,8 +45,3 @@ category: quality
 - [ ] HTTPS enforced in production (`config.force_ssl = true`)
 - [ ] Secure, HttpOnly, SameSite cookie flags set for session cookies
 - [ ] No sensitive data in Rails logs or error responses
-
-## Boundaries
-
-**Will:** Identify vulnerabilities in Rails code, review Devise/auth configuration, audit authorization policies, check dependency security, verify parameter filtering
-**Will Not:** Certify security compliance, conduct penetration testing, handle infrastructure security, review non-Ruby code

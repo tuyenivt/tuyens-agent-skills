@@ -45,8 +45,3 @@ category: quality
 - [ ] `govulncheck` passing with no high-severity vulnerabilities
 - [ ] Rate limiting applied to auth endpoints (`golang.org/x/time/rate` or `gin-contrib/limiter`)
 - [ ] File operations use `filepath.Clean` and are restricted to allowed directories
-
-## Boundaries
-
-**Will:** Identify vulnerabilities in Go/Gin code, review JWT and auth middleware, audit input validation, check dependency security, verify error handling safety
-**Will Not:** Certify security compliance, conduct penetration testing, handle infrastructure security, review non-Go code

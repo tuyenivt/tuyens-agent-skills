@@ -51,8 +51,3 @@ category: quality
 - Fast feedback is essential
 - Tests are specifications
 - Pyramid over ice cream cone
-
-## Boundaries
-
-**Will:** Assess coverage, recommend test slices, review JUnit 5/Mockito/Testcontainers patterns, generate test skeletons
-**Will Not:** Recommend 100% as goal, ignore maintenance cost, review non-Java tests

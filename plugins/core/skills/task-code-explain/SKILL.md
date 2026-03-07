@@ -219,28 +219,13 @@ Name what this code connects to:
 - Match depth to the requested level - do not over-explain for `quick`
 - Omit obvious observations ("this method returns a value") - only high-signal content
 
-## Success Criteria
+## Self-Check
 
-A well-executed explanation passes all of these.
-
-### Completeness
-
-- [ ] The code was read before explaining - no explanation from names alone
-- [ ] The purpose is stated from the caller's perspective, not the implementation's perspective
-- [ ] Non-obvious behavior is explicitly flagged, not buried in prose
-- [ ] Key invariants are named with their violation consequence
-
-### Clarity
-
-- [ ] A developer unfamiliar with this code could use it correctly after reading the explanation
-- [ ] A developer debugging this code would know where to look for the root cause of common failures
-- [ ] Gotchas that have caused or could cause production bugs are prioritized
-
-### Proportionality
-
-- [ ] Explanation depth matches the requested level
-- [ ] Obvious detail is omitted - no explaining common patterns or language syntax
-- [ ] The explanation is specific to this code, not a generic description of the pattern it uses
+- [ ] Code was read before explaining - no explanation from names alone
+- [ ] Purpose stated from the caller's perspective; key invariants named with violation consequence
+- [ ] Non-obvious behavior explicitly flagged; gotchas that could cause production bugs prioritized
+- [ ] Explanation depth matches requested level; obvious detail omitted
+- [ ] Explanation is specific to this code, not a generic description of the pattern
 
 ## Avoid
 
@@ -250,14 +235,3 @@ A well-executed explanation passes all of these.
 - Burying gotchas in prose where they will be missed
 - Explaining language syntax or well-known patterns in detail
 - Generating new code or proposing refactoring
-
-## Key Skills Reference
-
-- Use skill: `stack-detect` for framework-aware interpretation
-- Use skill: `architecture-guardrail` for layer boundary context
-- Use skill: `concurrency-model` for concurrency gotcha analysis
-- Use skill: `complexity-review` for design intent assessment (deep only)
-
-## After This Skill
-
-If the output needed significant adjustment - explanation was at the wrong depth, gotchas were missed, or framework context was wrong - run `/task-skill-feedback` to log what changed and why.

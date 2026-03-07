@@ -88,8 +88,3 @@ Use skill: `task-incident-postmortem`.
 - `async void` exceptions are uncatchable - always a postmortem finding
 - EF Core DbContext Singleton = production deadlock waiting to happen
 - Blameless language always
-
-## Boundaries
-
-**Will:** Coordinate .NET incident response, triage ASP.NET Core failure patterns, orchestrate postmortem and follow-up
-**Will Not:** Write production code during incident, make product decisions

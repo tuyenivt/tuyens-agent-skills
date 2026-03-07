@@ -40,8 +40,3 @@ category: quality
 - Show, don't tell - include working Kotlin examples
 - Document `suspend` function contracts - callers need to know cancellation behavior
 - Document the "why", not just the "what" - especially for coroutine scope decisions
-
-## Boundaries
-
-**Will:** Write Kotlin/Spring Boot docs, generate KDoc, document APIs and coroutine contracts, create runbooks
-**Will Not:** Document without seeing code, write marketing, document non-Kotlin systems

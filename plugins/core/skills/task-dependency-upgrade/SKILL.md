@@ -244,29 +244,13 @@ State the primary reason for the recommendation.
 - Effort estimates are relative - no false precision in days or hours
 - Omit sections with no content (e.g., no compatibility issues found)
 
-## Success Criteria
-
-A well-executed upgrade assessment passes all of these.
-
-### Completeness
+## Self-Check
 
 - [ ] Breaking changes identified and categorized before effort estimate
-- [ ] Compatibility conflicts surfaced (transitive deps, build tool, runtime)
+- [ ] Compatibility conflicts surfaced (transitive deps, build tool, runtime); blockers distinguished from warnings
 - [ ] Security status of current version stated
-- [ ] Rollback plan defined
-- [ ] Go / No-Go recommendation with reasoning
-
-### Signal Quality
-
-- [ ] Migration effort is grounded in the count and type of breaking changes, not guessing
-- [ ] Compatibility blockers are distinguished from warnings
-- [ ] Rollback plan addresses data and config compatibility, not just "revert the version bump"
-
-### Tech Lead Utility
-
-- [ ] Recommendation is clear and actionable - no "it depends" without a tiebreaker
-- [ ] Output can be used to create a spike or implementation ticket
-- [ ] Stakeholders can see why the recommendation was made
+- [ ] Rollback plan addresses data and config compatibility - not just "revert the version bump"
+- [ ] Go/No-Go recommendation is clear and actionable with reasoning; usable to create a spike ticket
 
 ## Avoid
 
@@ -275,14 +259,3 @@ A well-executed upgrade assessment passes all of these.
 - Vague rollback plans ("just revert the version")
 - Producing a changelog summary instead of a focused impact analysis
 - Writing migration code (use `task-feature-implement` after this assessment)
-
-## Key Skills Reference
-
-- Use skill: `stack-detect` for ecosystem context
-- Use skill: `backward-compatibility-analysis` for API and contract impact
-- Use skill: `dependency-impact-analysis` for deployment ordering
-- Use skill: `blast-radius-analysis` for upgrade risk scope
-
-## After This Skill
-
-If the output needed significant adjustment - breaking changes were missed, effort was miscalibrated, or the recommendation was wrong - run `/task-skill-feedback` to log what changed and why.

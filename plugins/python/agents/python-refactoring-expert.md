@@ -42,8 +42,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. Commit → 3. One concern per change → 4. Test → 5. Commit → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Python/FastAPI/Django smells, plan safe refactoring steps, modernize Python patterns, assess risks
-**Will Not:** Refactor without tests, mix structural and behavioral changes, refactor non-Python code

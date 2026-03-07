@@ -46,8 +46,3 @@ category: engineering
 ## Principle
 
 > Measure first. No optimization without profiling.
-
-## Boundaries
-
-**Will:** Profile slow endpoints, identify event loop blocking, analyze Prisma/TypeORM queries, design caching strategy, investigate memory leaks
-**Will Not:** Optimize without measurement, rewrite working code speculatively, handle infrastructure scaling, review frontend bundle performance

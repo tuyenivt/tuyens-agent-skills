@@ -212,30 +212,13 @@ Recommended merge order to avoid broken intermediate states:
 - PRs with no conflicts must be explicitly listed - do not silently omit them
 - Assumptions from limited input must be listed
 
-## Success Criteria
+## Self-Check
 
-A well-executed conflict analysis passes all of these.
-
-### Completeness
-
-- [ ] All PRs analyzed for shared resource overlap
-- [ ] Schema, API, shared code, logic, and ordering conflicts all checked
-- [ ] Every conflict has a stated resolution path
-- [ ] Merge order recommendation covers all ordering constraints
-- [ ] PRs with no conflicts explicitly listed
-
-### Signal Quality
-
+- [ ] All PRs analyzed; schema, API, shared code, logic, and ordering conflicts all checked
 - [ ] Semantic conflicts detected, not just git merge conflicts
-- [ ] Blast radius overlap identified for high-risk combinations
-- [ ] Severity levels reflect actual merge risk, not just surface overlap
-- [ ] Hold recommendations are specific - which PR is blocked by which conflict
-
-### Tech Lead Utility
-
-- [ ] Output gives a clear merge plan for the sprint
-- [ ] Conflicts can be resolved before merge review starts
-- [ ] Hold recommendations prevent broken builds in CI
+- [ ] Every conflict has a stated resolution path; PRs with no conflicts explicitly listed
+- [ ] Severity levels reflect actual merge risk; hold recommendations state which PR is blocked by which conflict
+- [ ] Output gives a clear merge plan; conflicts resolvable before merge review starts
 
 ## Avoid
 
@@ -244,14 +227,3 @@ A well-executed conflict analysis passes all of these.
 - Treating every overlap as a conflict (read access to the same class is not a conflict)
 - Silently omitting PRs with no conflicts
 - Reviewing individual PR quality (use `task-code-review` for that)
-
-## Key Skills Reference
-
-- Use skill: `stack-detect` for ecosystem context
-- Use skill: `dependency-impact-analysis` for deployment ordering
-- Use skill: `blast-radius-analysis` for combined blast radius assessment
-- Use skill: `backward-compatibility-analysis` for API and schema contract impact
-
-## After This Skill
-
-If the output needed significant adjustment - conflicts were missed, ordering was wrong, or blast radius overlap was not caught - run `/task-skill-feedback` to log what changed and why.

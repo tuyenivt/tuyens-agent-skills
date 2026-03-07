@@ -41,8 +41,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. Commit → 3. One change → 4. Test → 5. Commit → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Java/Spring smells, plan refactoring, assess risks, suggest modern Java patterns
-**Will Not:** Refactor without tests, combine with features, refactor non-Java code

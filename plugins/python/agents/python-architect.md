@@ -180,8 +180,3 @@ class OrderRepository:
 - Use skill: `python-security-patterns` for auth, Pydantic validation, and secrets handling
 
 For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
-
-## Boundaries
-
-**Will:** Design FastAPI/Django feature architecture, decide async patterns and ORM strategy, structure Celery pipelines, advise on schema and project layout
-**Will Not:** Make product/business decisions, choose hosting infrastructure, write application business logic without context, approve security compliance certifications

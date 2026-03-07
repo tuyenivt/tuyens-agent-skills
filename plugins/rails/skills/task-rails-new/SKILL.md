@@ -34,31 +34,13 @@ STEP 10 - VALIDATE: bundle exec rspec && bundle exec rubocop
 
 OUTPUT: file list, endpoint summary, test count
 
-## Success Criteria
-
-A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
-
-### Completeness
+## Self-Check
 
 - [ ] Requirements gathered and design approved before code generation
 - [ ] All layers generated: migration, model, service object, controller, serializer, tests
-- [ ] Validated with `bundle exec rspec` and `bundle exec rubocop`
+- [ ] Strong params in controller; business logic in service objects; serializers for all API responses
+- [ ] Pundit policies applied; RSpec covers model, service, and request specs
+- [ ] `bundle exec rspec` and `bundle exec rubocop` pass
+- [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
 
-### Rails Correctness
-
-- [ ] Strong params defined in the controller - no mass-assignment vulnerabilities
-- [ ] Business logic in service objects - not in controllers or models
-- [ ] Serializers used for all API responses - no raw `to_json` on ActiveRecord objects
-- [ ] Pundit policies applied for authorization - not ad-hoc `current_user` checks in controllers
-- [ ] RSpec tests cover model specs, service specs, and request specs with factory traits
-
-### Staff-Level Signal
-
-- [ ] Migration includes indexes for foreign keys and frequently filtered columns
-- [ ] List endpoints include pagination (Kaminari or Pagy)
-- [ ] If Sidekiq used, job idempotency is included
-- [ ] File list, endpoint summary, and test count presented to user
-
-## After This Skill
-
-If the output needed significant adjustment - business logic ended up in controllers or models, Pundit policies were missing, or serializers were skipped - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

@@ -336,30 +336,14 @@ Flag:
 - Optimize for copy-paste into a ticket tracker
 - In sprint-fit mode, include the Sprint Allocation section after the Effort Summary
 
-## Success Criteria
-
-A well-executed scope breakdown passes all of these.
-
-### Completeness
+## Self-Check
 
 - [ ] Complexity signal scan completed before any task was created
-- [ ] Every hidden cost area (migrations, observability, rollback, compat) has been checked
+- [ ] Every hidden cost area (migrations, observability, rollback, compat) checked
 - [ ] Every task has a type, size, dependency statement, and scope flag
-- [ ] A dependency order and critical path are identified
-- [ ] Scope creep risks are flagged - not assumed away
-
-### Sizing Quality
-
-- [ ] XL tasks are flagged for breakdown - none silently accepted
-- [ ] Size rationale references complexity signals, not calendar time
-- [ ] The aggregate must-have effort is a realistic delivery signal for the tech lead
-
-### Staff-Level Signal
-
-- [ ] Hidden tasks (observability, rollback verification, data migration) are surfaced - not left to be discovered mid-sprint
-- [ ] Nice-to-have tasks are explicitly separated from must-have - no scope ambiguity
-- [ ] Open questions that would change the breakdown are listed, not silently assumed away
-- [ ] The critical path is identified so the team knows where to reduce risk first
+- [ ] XL tasks flagged for breakdown; size rationale references complexity signals
+- [ ] Nice-to-have tasks explicitly separated from must-have; open questions listed
+- [ ] Critical path identified; hidden tasks (observability, rollback, data migration) surfaced
 
 ## Avoid
 
@@ -370,21 +354,3 @@ A well-executed scope breakdown passes all of these.
 - Ignoring rollback complexity on data and infrastructure tasks
 - Creating tasks without dependency relationships - sequence matters
 - Generic task names ("Backend work", "Testing") - every task must be actionable
-
-## Key Skills Reference
-
-- Use skill: `stack-detect` for stack-specific hidden complexity signals
-- Use skill: `change-risk-classification` for risk domain identification
-- Use skill: `backward-compatibility-analysis` for contract and schema compatibility work
-- Use skill: `dependency-impact-analysis` for deployment ordering of infrastructure tasks
-- Use skill: `blast-radius-analysis` for rollback risk assessment per task
-
-**Sprint-fit mode only:**
-
-- Apply capacity formula: `team size x sprint weeks x 2 x 0.7` for default velocity
-- Use dependency order from Step 3 to constrain sprint allocation
-- Flag over-capacity sprints rather than silently overfilling them
-
-## After This Skill
-
-If the output needed significant adjustment - tasks were wrong-sized, hidden complexity was missed, or the dependency order was off - run `/task-skill-feedback` to log what changed and why.

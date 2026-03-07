@@ -78,22 +78,12 @@ If no matching stack workflow exists, implement the feature using universal best
 - Endpoint or API summary
 - Test count and coverage delta
 
-## Success Criteria
+## Self-Check
 
-A well-executed feature implementation passes all of these. Use as a self-check before presenting to the user.
-
-### Completeness
-
-- [ ] Stack detected correctly and stack-specific workflow invoked (or fallback applied with explanation)
-- [ ] Feature requirements confirmed with user before code generation
-- [ ] All affected layers implemented: data, business logic, API, tests
-- [ ] Tests pass
-
-### Quality Signal
-
-- [ ] Design presented and approved before implementation
-- [ ] No untested public API surfaces
-- [ ] Migration or schema change is backward-compatible or explicitly flagged
+- [ ] Stack detected and stack-specific workflow invoked (or fallback applied with explanation)
+- [ ] Requirements confirmed and design approved before code generation
+- [ ] All affected layers implemented: data, business logic, API, tests; tests pass
+- [ ] No untested public API surfaces; migration backward-compatible or explicitly flagged
 - [ ] File list and summary presented to user
 
 ## Notes
@@ -102,6 +92,4 @@ A well-executed feature implementation passes all of these. Use as a self-check 
 - For polyglot monorepos, detect the primary backend stack and note any secondary stacks.
 - If the user wants to skip stack detection (e.g., in a context where it always fails), they can invoke the stack-specific workflow directly.
 
-## After This Skill
-
-If the output needed significant adjustment - wrong stack detected, design was off, or key layers were missed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

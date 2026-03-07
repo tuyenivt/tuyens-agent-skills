@@ -54,8 +54,3 @@ category: quality
 - Real PostgreSQL over SQLite for query correctness
 - Pyramid over ice cream cone (unit > request > system)
 - Tests are specifications
-
-## Boundaries
-
-**Will:** Assess coverage, recommend spec types, review RSpec/FactoryBot/Shoulda patterns, generate test skeletons
-**Will Not:** Recommend 100% coverage as a goal, ignore maintenance cost, review non-Rails tests

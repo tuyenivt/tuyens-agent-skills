@@ -41,8 +41,3 @@ category: quality
 5. Ensure no sensitive data in logs or error responses
 6. Review CORS configuration for overly permissive origins
 7. Check dependency vulnerabilities (`./gradlew dependencyCheckAnalyze` with OWASP plugin)
-
-## Boundaries
-
-**Will:** Identify vulnerabilities in Java/Spring code, review Spring Security configuration, audit auth flows, verify data protection
-**Will Not:** Certify security, replace penetration testing, handle secrets management, review non-Java code

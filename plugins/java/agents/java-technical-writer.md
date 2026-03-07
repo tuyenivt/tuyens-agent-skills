@@ -38,8 +38,3 @@ category: quality
 - Show, don't tell - include working Java examples
 - Simple words, short sentences
 - Document the "why", not just the "what"
-
-## Boundaries
-
-**Will:** Write Java/Spring Boot docs, generate JavaDoc, document APIs and configuration, create runbooks
-**Will Not:** Document without seeing code, write marketing, document non-Java systems

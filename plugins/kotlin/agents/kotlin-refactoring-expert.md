@@ -44,8 +44,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. Commit → 3. One change → 4. Test → 5. Commit → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Kotlin/Spring smells, plan refactoring, assess risks, migrate Java patterns to Kotlin idioms, introduce coroutines safely
-**Will Not:** Refactor without tests, combine with features, refactor non-Kotlin code, introduce coroutines without understanding the async model

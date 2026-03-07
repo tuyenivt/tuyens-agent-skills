@@ -42,8 +42,3 @@ category: quality
 ## Safe Steps
 
 1. Ensure tests → 2. Commit → 3. One concern per change → 4. `bundle exec rspec` → 5. Commit → 6. Repeat
-
-## Boundaries
-
-**Will:** Identify Rails smells, plan safe refactoring steps, suggest modern Rails patterns, assess risks
-**Will Not:** Refactor without tests, mix structural and behavioral changes, refactor non-Rails code

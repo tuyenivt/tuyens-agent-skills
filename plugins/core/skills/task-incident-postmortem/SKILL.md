@@ -324,30 +324,14 @@ If this failure class recurs, what architectural change eliminates it permanentl
 - Prioritize high-leverage structural changes over trivial suggestions
 - Optimize for token efficiency and long-term organizational value
 
-## Success Criteria
+## Self-Check
 
-A well-executed postmortem passes all of these. Use as a self-check before presenting to stakeholders.
-
-### Completeness
-
-- [ ] Failure pattern is classified by type and system layer - not just described narratively
-- [ ] Systemic weaknesses are identified beyond the immediate failure (boundary, coupling, shared state)
-- [ ] Guardrail and review gaps explain why existing safeguards did not prevent this
+- [ ] Failure pattern classified by type and system layer - not just described narratively
+- [ ] Systemic weaknesses identified beyond the immediate failure (boundary, coupling, shared state)
 - [ ] Every observability gap has a concrete recommended addition with threshold or trigger
-- [ ] At least one new enforceable guardrail is produced, not just a process wish
-
-### Prevention Quality
-
+- [ ] At least one new enforceable guardrail produced (lint rule, checklist item, CI gate) - not a process wish
 - [ ] Every recommendation addresses a failure class, not just this specific incident
-- [ ] Architecture reinforcement actions are prioritized - not an unbounded wishlist
-- [ ] Guardrails are concrete and enforceable (lint rule, checklist item, CI gate) - not vague principles
-- [ ] Governance improvements are scoped with a specific owner category (review, CI, deployment)
-
-### Staff-Level Signal (for tech lead review)
-
-- [ ] The postmortem answers "why did our system allow this category of failure?" not just "what happened"
-- [ ] New guardrails table contains at least one item that can be implemented in the next sprint
-- [ ] Staff-Level Takeaways convey structural insights the team should carry forward
+- [ ] New guardrails table has at least one item implementable in the next sprint
 - [ ] No blame or individual attribution in any section
 
 ## Avoid
@@ -361,43 +345,3 @@ A well-executed postmortem passes all of these. Use as a self-check before prese
 - Proposing architectural rewrites when targeted fixes suffice
 - Ignoring AI-generated code as a contributing factor to complexity drift
 - Treating the postmortem as a debugging session
-
-## Key Skills Reference
-
-### Existing Skills Reused
-
-**Failure Analysis:**
-
-- Use skill: `failure-classification` for failure type, mechanism, and layer classification
-- Use skill: `blast-radius-analysis` for impact scope assessment
-- Use skill: `resiliency` for timeout, retry, and circuit breaker patterns
-- Use skill: `data-consistency-modeling` for data consistency issues
-- Use skill: `db-indexing` for query performance and N+1 detection
-- Use skill: `concurrency-model` for concurrency and thread safety issues
-
-**Observability and Architecture:**
-
-- Use skill: `observability` for logging, metrics, and tracing improvements
-- Use skill: `architecture-guardrail` for boundary violation and drift detection
-- Use skill: `idempotency` for retry safety patterns
-
-**Quality and Governance:**
-
-- Use skill: `complexity-review` for AI-generated complexity assessment
-- Use skill: `engineering-governance` for prevention strategies tied to failure classes
-- Use skill: `coding-standards` for coding standards updates
-
-**Related Workflow:**
-
-- Use skill: `task-incident-root-cause` for active incident investigation (run before this skill)
-
-### Sub-Skills Defined for This Workflow
-
-| Skill                    | Purpose                                                                          |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| `review-gap-analysis`    | Analyze why existing review processes did not catch the failure                  |
-| `engineering-governance` | Engineering process, governance, guardrail improvements, and incident prevention |
-
-## After This Skill
-
-If the output needed significant adjustment - guardrails were too vague, failure pattern was mislabeled, or action items were not actionable - run `/task-skill-feedback` to log what changed and why.

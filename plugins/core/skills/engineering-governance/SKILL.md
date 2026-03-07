@@ -37,29 +37,18 @@ user-invocable: false
 
 ## Pattern
 
-### Governance Dimensions
+### Governance & Prevention Matrix
 
-| Dimension             | Focus                                                              |
-| --------------------- | ------------------------------------------------------------------ |
-| Review process        | Checklist updates, reviewer assignment, risk-based review triggers |
-| Testing strategy      | Missing test types, coverage gaps, chaos experiment design         |
-| Deployment safety     | Canary, feature flags, progressive rollout, rollback criteria      |
-| Design governance     | When to require design docs, ADRs, architecture review             |
-| Operational readiness | Runbook updates, on-call training, incident response playbooks     |
-| Knowledge sharing     | Post-incident learnings distribution, pattern documentation        |
-
-### Prevention Categories
-
-| Category               | Focus                                                       |
-| ---------------------- | ----------------------------------------------------------- |
-| Architecture guardrail | Boundary enforcement, isolation, bulkheading                |
-| Observability          | Missing signals that would have caught this earlier         |
-| Testing                | Test scenario that would have prevented this in CI          |
-| Deployment safety      | Canary, feature flags, rollback automation                  |
-| Capacity planning      | Resource limits, pool sizing, rate limiting                 |
-| Dependency management  | Timeout budgets, circuit breakers, fallback paths           |
-| Process improvement    | Review checklist update, runbook addition, on-call training |
-| Chaos engineering      | Fault injection scenario to validate resilience             |
+| Area                   | Governance Focus                                                |
+| ---------------------- | --------------------------------------------------------------- |
+| Review process         | Checklist updates, risk-based review triggers, ADR creation     |
+| Architecture guardrail | Boundary enforcement, isolation, bulkheading                    |
+| Observability          | Missing signals that would have caught this earlier             |
+| Testing                | Coverage gaps, chaos experiment design, missing test types      |
+| Deployment safety      | Canary, feature flags, progressive rollout, rollback automation |
+| Capacity / deps        | Pool sizing, timeout budgets, circuit breakers, rate limiting   |
+| Operational readiness  | Runbook updates, on-call training, incident playbooks           |
+| Process improvement    | Review checklist update, runbook addition, knowledge sharing    |
 
 ### Recommendation Structure
 

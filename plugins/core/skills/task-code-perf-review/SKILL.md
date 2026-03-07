@@ -18,6 +18,16 @@ user-invocable: true
 - Database query optimization
 - Caching strategy review
 
+## Depth Levels
+
+| Depth      | When to Use                                             | What Runs                                   |
+| ---------- | ------------------------------------------------------- | ------------------------------------------- |
+| `quick`    | Single endpoint or focused change ("is this query ok?") | DB performance + top findings only          |
+| `standard` | Default - full performance review                       | All steps                                   |
+| `deep`     | Profiling-driven review or known hot path investigation | All steps + capacity and load test guidance |
+
+Default: `standard`. Use `quick` when user targets a specific query or method.
+
 ## Workflow
 
 ### Step 1 - Detect Stack
@@ -122,103 +132,3 @@ Verify:
 - [ ] Correlation ID propagation across service boundaries
 - [ ] Metrics instrumented for custom operations
 - [ ] Health indicators exist for critical dependencies
-
-## Key Skills Reference
-
-**Backend Performance:**
-
-- Use skill: `concurrency-model` for thread-safe locking
-- Use skill: `caching` for cache strategy patterns
-- Use skill: `db-indexing` for index strategy
-- Use skill: `observability` for metrics and monitoring
-- Use skill: `resiliency` for timeout and circuit breaker patterns
-
-**Frontend Performance:**
-
-- Use skill: `payload-optimization` for response size optimization
-
-## Principle
-
-> Measure first. No optimization without profiling.
-
-## Rules
-
-- Always profile before optimizing
-- Focus on the critical path
-- Measure improvement after each change
-- Consider trade-offs (complexity vs performance)
-- Do not apply performance patterns from one framework to another
-
-## Output
-
-```markdown
-## Summary
-
-**Stack Detected:** [language / framework]
-[Performance assessment]
-
-## Findings
-
-### Critical | High | Medium
-
-- **Location:** [file:line]
-- **Issue:** [description]
-- **Impact:** [expected improvement]
-
-## Database Issues
-
-[N+1, missing indexes, connection pool]
-
-## Caching Opportunities
-
-[What to cache, invalidation strategy]
-
-## Observability Gaps
-
-[Missing logging, metrics, correlation IDs]
-
-## Measurements Needed
-
-| Issue | How to Measure |
-
-## Recommendations
-
-[Prioritized with trade-offs]
-```
-
-## Success Criteria
-
-A well-executed performance review passes all of these. Use as a self-check before presenting findings.
-
-### Completeness
-
-- [ ] Database performance checks are applied - N+1, missing indexes, over-fetching, connection pool
-- [ ] Framework-specific checks for the detected stack are applied (concurrency, ORM, caching)
-- [ ] Every Critical or High finding includes a concrete measurement path - not just "profile this"
-- [ ] Caching opportunities include both what to cache and an invalidation strategy
-
-### Signal Quality
-
-- [ ] Findings are ordered Critical > High > Medium - no severity mixing
-- [ ] Every finding states expected impact - not just "this is slow"
-- [ ] No findings for non-critical paths without profiling evidence to justify them
-- [ ] Recommendations state the trade-off (complexity added vs performance gained)
-
-### Staff-Level Signal (for tech lead review)
-
-- [ ] The "measure first" principle is upheld - optimization recommendations cite the bottleneck evidence
-- [ ] The highest-impact finding is clearly identified and presented first
-- [ ] Observability gaps are called out if the affected path lacks the metrics needed to validate improvements
-- [ ] No performance patterns from a different stack are applied to the detected stack
-
-## Avoid
-
-- Optimizing without profiling data
-- Premature optimization of non-critical paths
-- Adding complexity for marginal gains
-- Caching without an invalidation strategy
-- Applying performance patterns from one stack to another
-
-## After This Skill
-
-If the output needed significant adjustment - wrong bottlenecks identified, caching advice lacked invalidation strategy, or stack-specific patterns were missed - run `/task-skill-feedback` to log what changed and why.

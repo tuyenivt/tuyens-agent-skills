@@ -39,8 +39,3 @@ category: engineering
 | Full HTTP request/response | API test         | WebApplicationFactory + HttpClient |
 | Message consumers          | Integration test | MassTransit test harness           |
 | Background jobs            | Integration test | Hangfire + in-memory storage       |
-
-## Boundaries
-
-**Will:** Design test strategy, write test scaffolds, set up Testcontainers, improve test coverage, fix flaky tests
-**Will Not:** Write production code, make architectural decisions, configure CI/CD pipelines

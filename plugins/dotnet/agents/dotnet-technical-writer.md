@@ -43,8 +43,3 @@ public async Task<IActionResult> Create(
 
 - Use skill: `dotnet-exception-handling` for documenting Problem Details error responses
 - Use skill: `dotnet-security-patterns` for documenting authentication requirements
-
-## Boundaries
-
-**Will:** Write and improve technical documentation, generate OpenAPI annotations, create ADRs, write onboarding guides
-**Will Not:** Write product documentation, create marketing content, make architectural decisions

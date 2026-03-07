@@ -45,8 +45,3 @@ category: engineering
 ## Principle
 
 > Measure first. No optimization without profiling.
-
-## Boundaries
-
-**Will:** Profile slow endpoints, identify goroutine leaks, analyze GORM/sqlx queries, design caching strategy, tune connection pools
-**Will Not:** Optimize without measurement, rewrite working code speculatively, handle infrastructure scaling, review frontend performance

@@ -313,31 +313,15 @@ Walk through the worst-case failure scenario for this change end-to-end:
 - Prioritize by blast radius containment potential
 - Optimize for token efficiency and decision readiness
 
-## Success Criteria
+## Self-Check
 
-A well-executed risk analysis passes all of these. Use as a self-check before presenting for staff sign-off.
-
-### Completeness
-
-- [ ] Risk domains are classified (primary and secondary) before any mitigation is recommended
-- [ ] Blast radius is explicitly classified (Narrow / Moderate / Wide / Critical)
-- [ ] Consistency and transaction risk is assessed for any data-touching change
-- [ ] Deployment and rollback risk is assessed - including rollback complexity classification
-- [ ] Observability readiness is evaluated - gaps are listed with concrete additions
-
-### Correctness
-
-- [ ] Risk level reflects the actual change scope - not defaulting to Medium for everything
-- [ ] Every mitigation recommendation references the specific risk domain it addresses
-- [ ] "No rollback feasible" scenarios are explicitly called out if they exist
-- [ ] Confidence level is stated in the Staff-Level Assessment - with what data would increase it
-
-### Staff-Level Signal (for tech lead review)
-
-- [ ] The analysis answers "what fails silently if this goes wrong?" - not just "what could go wrong"
+- [ ] Risk domains classified (primary and secondary) before any mitigation is recommended
+- [ ] Blast radius explicitly classified (Narrow / Moderate / Wide / Critical)
+- [ ] Consistency, transaction, deployment, and rollback risk all assessed
+- [ ] "No rollback feasible" scenarios called out if they exist
+- [ ] Observability gaps listed with concrete additions; confidence level stated
+- [ ] Systemic risks separated from implementation risks; analysis answers "what fails silently?"
 - [ ] Staff-Level Assessment states whether a design doc, ADR, or staged rollout is required
-- [ ] Systemic risks are separated from implementation risks - not a single undifferentiated list
-- [ ] A tech lead could use this analysis to decide whether to proceed, gate, or redesign the change
 
 ## Avoid
 
@@ -351,51 +335,3 @@ A well-executed risk analysis passes all of these. Use as a self-check before pr
 - Treating all changes as equal risk regardless of scope
 - Proposing overly conservative mitigation for genuinely low-risk changes
 - Ignoring AI-generated code velocity as a contributor to hidden coupling
-
-## Key Skills Reference
-
-### Existing Skills Reused
-
-**Risk and Impact Assessment:**
-
-- Use skill: `pr-risk-analysis` for code signal-based risk classification (when PR diff available)
-- Use skill: `blast-radius-analysis` for failure propagation and impact scope
-- Use skill: `failure-classification` for susceptible failure type identification
-- Use skill: `failure-propagation-analysis` for cascading failure path analysis
-
-**Consistency and Transactions:**
-
-- Use skill: `data-consistency-modeling` for consistency strategy evaluation
-- Use skill: `idempotency` for retry safety assessment
-- Use skill: `resiliency` for failure handling pattern assessment
-
-**Deployment and Compatibility:**
-
-- Use skill: `release-safety` for rollout and rollback patterns
-- Use skill: `backward-compatibility-analysis` for contract compatibility assessment
-- Use skill: `dependency-impact-analysis` for deployment ordering and dependency impact
-- Use skill: `observability` for logging, metrics, and tracing readiness
-
-**Governance and Prevention:**
-
-- Use skill: `architecture-guardrail` for boundary erosion detection and enforcement
-- Use skill: `complexity-review` for AI-generated complexity detection
-- Use skill: `engineering-governance` for process, governance, and guardrail recommendations
-- Use skill: `engineering-governance` for systemic prevention strategies
-
-**Related Workflows:**
-
-- Use skill: `task-code-review-advanced` for code quality assessment (separate concern)
-- Use skill: `task-incident-root-cause` for incorporating incident lessons into risk analysis
-- Use skill: `task-incident-postmortem` for incorporating postmortem findings into risk analysis
-- Use skill: `task-release-plan` for detailed release planning after risk assessment
-
-### Sub-Skills Defined for This Workflow
-
-| Skill                        | Purpose                                                            |
-| ---------------------------- | ------------------------------------------------------------------ |
-| `change-risk-classification` | Pre-implementation risk domain classification for proposed changes |
-
-## After This Skill
-
-If the output needed significant adjustment - risk domains were wrong, mitigation strategies were too generic, or key failure paths were missed - run `/task-skill-feedback` to log what changed and why.

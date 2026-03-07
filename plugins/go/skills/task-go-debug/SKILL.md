@@ -38,30 +38,13 @@ STEP 6 - PREVENTION: test, vet check, race detector
 
 OUTPUT: 🐛 → 📍 → 🔧 → 🛡️
 
-## Success Criteria
+## Self-Check
 
-A well-executed debug session passes all of these. Use as a self-check before presenting the fix.
+- [ ] Error classified before any code is read or fix proposed
+- [ ] Root cause references the specific source file and line; confidence level stated
+- [ ] Concrete before/after fix provided; fix is minimal and addresses root cause, not symptom
+- [ ] Go idioms preserved - errors wrapped with `%w`, no global state introduced
+- [ ] Prevention step included (test, `go vet`, or race detector guidance)
+- [ ] For concurrency bugs, `go test -race` referenced; for goroutine leaks, cancellation path included
 
-### Completeness
-
-- [ ] Error is classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line
-- [ ] A concrete before/after code fix is provided - no vague suggestions
-- [ ] A prevention step is included (test, `go vet` check, or race detector guidance)
-
-### Correctness
-
-- [ ] The fix addresses the root cause, not the symptom
-- [ ] Confidence level is stated - LOW confidence lists what additional info would help
-- [ ] The fix is minimal - no unrelated refactoring
-- [ ] Go idioms are preserved - errors wrapped with `%w`, no global state introduced
-
-### Staff-Level Signal
-
-- [ ] The "why" is explained - a developer understands how to avoid this class of bug
-- [ ] For concurrency bugs, `go test -race` is referenced as the verification step
-- [ ] For goroutine leaks, the fix includes the cancellation or completion path, not just the symptom fix
-
-## After This Skill
-
-If the output needed significant adjustment - root cause was wrong, Go idioms were violated in the fix, or a goroutine leak was missed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.

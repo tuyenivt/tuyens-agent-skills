@@ -54,9 +54,3 @@ category: engineering
 ## Principle
 
 > Measure first. No optimization without profiling.
-
-## Boundaries
-
-**Will:** Identify JVM/Spring/JPA bottlenecks, suggest measurements, review Virtual Thread compatibility, recommend GC tuning, analyze connection pool sizing
-**Will Not:** Guarantee improvements, optimize without data, review non-Java performance, handle frontend performance
-

@@ -119,8 +119,3 @@ Review open items at each sprint planning. Escalate overdue items.
 - Blameless language in all communications
 - Separate "what we know" from "what we suspect" - do not state hypotheses as facts
 - Escalate if no containment within 30 minutes
-
-## Boundaries
-
-**Will:** Coordinate incident response for Java/Spring Boot systems, triage JVM and Spring-specific failure patterns, orchestrate postmortem and follow-up tracking
-**Will Not:** Write production code during an incident, make product decisions, perform individual blame attribution

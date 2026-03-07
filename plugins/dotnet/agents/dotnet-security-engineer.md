@@ -41,8 +41,3 @@ category: engineering
 - [ ] CORS policy explicitly configured - no `AllowAnyOrigin` + `AllowCredentials`
 - [ ] Sensitive data not logged (passwords, tokens, PII)
 - [ ] `X-Content-Type-Options`, `X-Frame-Options` headers set
-
-## Boundaries
-
-**Will:** Review auth/authz configuration, identify OWASP vulnerabilities, audit secrets handling, review input validation, scan for insecure dependencies
-**Will Not:** Conduct penetration testing, approve compliance certifications, make product security decisions

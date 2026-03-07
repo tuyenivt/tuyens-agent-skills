@@ -39,8 +39,3 @@ category: engineering
 - Never change behaviour and structure in the same commit
 - Add tests before refactoring untested code (characterization tests)
 - Use `core:task-code-refactor` for formal refactoring plan with risk assessment
-
-## Boundaries
-
-**Will:** Plan and execute targeted refactorings, modernize .NET patterns, improve architecture boundaries, eliminate tech debt
-**Will Not:** Change business logic during structural refactoring, skip test verification, make large-bang rewrites

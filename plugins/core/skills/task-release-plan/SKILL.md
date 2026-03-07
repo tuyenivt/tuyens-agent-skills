@@ -381,38 +381,15 @@ Step-by-step procedure to practice before the release goes live:
 - Prioritize by blast radius containment potential
 - Optimize for token efficiency and deployment readiness
 
-## Success Criteria
+## Self-Check
 
-A well-executed release plan passes all of these. Use as a self-check before presenting for tech lead sign-off.
-
-### Completeness
-
-- [ ] Risk level and blast radius are explicitly classified (not implied)
-- [ ] A rollback plan exists - code, DB, and feature flag dimensions addressed
-- [ ] Rollback trigger is a specific, observable condition - not "if something goes wrong"
-- [ ] Observability readiness is verified, not assumed - missing signals are called out
-- [ ] Every breaking change (API, event, schema) has a migration plan, not just a flag
-
-### Correctness
-
-- [ ] DB migration order follows the expand-contract rule - additive before destructive
-- [ ] Rollout strategy matches the risk level - high-risk changes are not deployed as rolling updates
-- [ ] Promotion criteria are measurable signals, not time-based ("wait 30 minutes and hope")
-- [ ] Backward compatibility is validated for the rolling deployment window, not just after full rollout
-
-### Risk Coverage
-
-- [ ] The highest-risk change in the release is identified and drives the rollout strategy
-- [ ] A "no rollback feasible" scenario is acknowledged if it exists - forward-fix plan provided
-- [ ] Load test requirement is stated if the change introduces a new hot path
-- [ ] Consumer notification need is identified if downstream services are affected
-
-### Staff-Level Signal (for tech lead sign-off)
-
-- [ ] The plan answers "what happens if we need to roll back in 10 minutes?" concretely
-- [ ] Systemic risks are called out in Staff-Level Risk Notes - not just per-change risks
-- [ ] Any gap in observability coverage has a concrete remediation, not a TODO
-- [ ] The plan could be handed to an on-call engineer at 2am and followed without clarification
+- [ ] Risk level and blast radius explicitly classified; rollout strategy matches risk level
+- [ ] Rollback plan covers code, DB, and feature flag dimensions; trigger is a specific observable condition
+- [ ] DB migration order follows expand-contract; backward compatibility validated for the rolling window
+- [ ] Every breaking change (API, event, schema) has a migration plan - not just a flag
+- [ ] Promotion criteria are measurable signals, not time-based
+- [ ] "No rollback feasible" scenario acknowledged if it exists; observability gaps have concrete remediations
+- [ ] Plan can be handed to an on-call engineer at 2am and followed without clarification
 
 ## Avoid
 
@@ -426,6 +403,4 @@ A well-executed release plan passes all of these. Use as a self-check before pre
 - Treating all releases as equal risk regardless of change scope
 - Proposing overly conservative rollout for genuinely low-risk changes
 
-## After This Skill
-
-If the output needed significant adjustment - rollback plan was incomplete, blast radius was off, or a key risk was missed - run `/task-skill-feedback` to log what changed and why.
+> Run `/task-skill-feedback` if output needed significant correction.
