@@ -81,38 +81,38 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 26 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands. (`task-scope-breakdown` also supports `sprint-fit` mode for sprint allocation without being a separate skill.)
 
-| Skill                       | Description                                                                                                                                          |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                            |
-| `task-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                        |
-| `task-scope-breakdown`      | Break an epic or feature into implementable tasks with effort sizing, dependency ordering, hidden complexity signals, and sprint-fit mode.           |
-| `task-code-explain`         | Explain a specific file, function, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants.                 |
-| `task-migration-plan`       | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment. |
-| `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                                     |
-| `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                     |
-| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                      |
-| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                     |
-| `task-design-architecture`  | Staff-level architecture design proposal. Supports `quick`, `standard`, and `deep` depth levels.                                                     |
-| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                            |
-| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                      |
-| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria.                                                                        |
-| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                    |
-| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks.                                                       |
-| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                 |
-| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                           |
-| `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                                                                  |
-| `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.          |
-| `task-incident-postmortem`  | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels.                                                 |
-| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                                                             |
-| `task-debt-triage`          | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                           |
-| `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                       |
-| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                 |
-| `task-oncall-handoff`       | Generate a structured on-call handoff - incident summary, open alerts, known flaky areas, and context for the incoming engineer.                     |
-| `task-skill-feedback`       | Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations.                    |
+| Skill                       | Description                                                                                                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                             |
+| `task-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                         |
+| `task-scope-breakdown`      | Break an epic or feature into implementable tasks with effort sizing, dependency ordering, hidden complexity signals, and sprint-fit mode.            |
+| `task-code-explain`         | Explain a specific file, function, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants.                  |
+| `task-migration-plan`       | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment.  |
+| `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                                      |
+| `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                      |
+| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                       |
+| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                      |
+| `task-design-architecture`  | Staff-level architecture design proposal. Supports `quick`, `standard`, and `deep` depth levels.                                                      |
+| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                             |
+| `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                       |
+| `task-code-review`          | Code review for pull requests. Auto-detects stack and adapts review criteria. Supports `quick`, `standard`, and `deep` depth levels.                  |
+| `task-code-review-advanced` | Staff-level system-aware code review with risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                     |
+| `task-code-perf-review`     | Performance review for backend and frontend. Auto-detects stack and adapts performance checks. Supports `quick`, `standard`, and `deep` depth levels. |
+| `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                  |
+| `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                            |
+| `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                                                                   |
+| `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.           |
+| `task-incident-postmortem`  | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels.                                                  |
+| `task-incident-root-cause`  | Staff-level incident root cause analysis with containment and prevention                                                                              |
+| `task-debt-triage`          | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                            |
+| `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                        |
+| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                  |
+| `task-oncall-handoff`       | Generate a structured on-call handoff - incident summary, open alerts, known flaky areas, and context for the incoming engineer.                      |
+| `task-skill-feedback`       | Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations.                     |
 
 ## Atomic Skills
 
-28 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+30 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 > Note: `task-scope-breakdown` also supports sprint-fit mode (pass team size and sprint length to activate). This is not a separate skill - it is an extended output mode of the existing skill.
 

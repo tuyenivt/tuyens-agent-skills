@@ -178,6 +178,7 @@ Go / Gin (plugin: go)
 ```
 
 **Common decision points:**
+
 - "Implement" vs "scaffold" - `/task-feature-implement` and `/task-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
 - "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
 - "Debug" vs "Explain" - if something is broken, use `/task-debug`. If it works but you don't understand it, use `/task-code-explain`.
@@ -190,16 +191,16 @@ Go / Gin (plugin: go)
 
 ## Plugin Catalog
 
-| Plugin                   | Focus                                                          | Includes                             |
-| ------------------------ | -------------------------------------------------------------- | ------------------------------------ |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 54 skills                             |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 11 agents                 |
-| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 4 agents (requires `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 11 agents                  |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 11 agents                  |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 11 agents                 |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 11 agents                  |
-| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 11 agents                 |
+| Plugin                   | Focus                                                          | Includes                               |
+| ------------------------ | -------------------------------------------------------------- | -------------------------------------- |
+| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 56 skills                              |
+| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 11 agents                  |
+| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 11 agents (requires `java`) |
+| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 11 agents                   |
+| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 11 agents                   |
+| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 11 agents                  |
+| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 11 agents                   |
+| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 11 agents                  |
 
 ## Notes
 
