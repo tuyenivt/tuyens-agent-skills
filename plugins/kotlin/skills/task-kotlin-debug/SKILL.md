@@ -2,6 +2,11 @@
 name: task-kotlin-debug
 description: "Debug Kotlin + Spring Boot errors. Handles Kotlin-specific issues: null safety violations, coroutine stack traces, MockK setup errors, and Kotlin-JPA plugin configuration problems."
 agent: kotlin-architect
+metadata:
+  category: backend
+  tags: [kotlin, spring-boot, debug, troubleshooting, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - INTAKE: stack trace, test failure, build error

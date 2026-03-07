@@ -5,6 +5,7 @@ metadata:
   category: backend
   tags: [spring-boot, java, feature, implementation, workflow, jpa, rest-api, testing]
   type: workflow
+user-invocable: true
 ---
 
 # Implement Feature

@@ -5,6 +5,7 @@ metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]
   type: workflow
+user-invocable: true
 ---
 
 # Debug - Developer Debugging Workflow

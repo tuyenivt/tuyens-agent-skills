@@ -2,6 +2,11 @@
 name: task-go-debug
 description: "Debug Go errors. Paste a panic stack trace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix."
 agent: go-architect
+metadata:
+  category: backend
+  tags: [go, gin, debug, troubleshooting, stack-trace, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - INTAKE: panic trace, error log, test failure

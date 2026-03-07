@@ -5,6 +5,7 @@ metadata:
   category: backend
   tags: [dotnet, aspnet-core, debugging, stack-trace, error-analysis, workflow]
   type: workflow
+user-invocable: true
 ---
 
 # Debug .NET Issue

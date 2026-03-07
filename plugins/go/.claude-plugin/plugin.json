@@ -1,6 +1,6 @@
 {
   "name": "go",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "description": "Claude Code plugin for Go/Gin development. GORM, sqlx, golang-migrate, PostgreSQL. Works with core plugin.",
   "author": {
     "name": "Tuyen"

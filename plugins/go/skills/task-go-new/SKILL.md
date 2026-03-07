@@ -2,6 +2,11 @@
 name: task-go-new
 description: "End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests from a feature description."
 agent: go-architect
+metadata:
+  category: backend
+  tags: [go, gin, gorm, sqlx, feature, implementation, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - GATHER: feature, affected packages, external deps, concurrency needs

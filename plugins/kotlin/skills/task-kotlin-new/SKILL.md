@@ -2,6 +2,11 @@
 name: task-kotlin-new
 description: "End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Use for full feature delivery, not simple scaffolding."
 agent: kotlin-architect
+metadata:
+  category: backend
+  tags: [kotlin, spring-boot, feature, implementation, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - GATHER REQUIREMENTS (MANDATORY)

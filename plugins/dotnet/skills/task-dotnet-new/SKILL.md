@@ -5,6 +5,7 @@ metadata:
   category: backend
   tags: [dotnet, aspnet-core, feature, implementation, workflow, ef-core, rest-api, testing, clean-architecture]
   type: workflow
+user-invocable: true
 ---
 
 # Implement Feature

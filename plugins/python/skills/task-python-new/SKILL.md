@@ -2,6 +2,11 @@
 name: task-python-new
 description: "End-to-end Python feature implementation. Detects FastAPI or Django. Generates all layers: migrations, models, services, endpoints, schemas, Celery tasks, and comprehensive pytest tests."
 agent: python-architect
+metadata:
+  category: backend
+  tags: [python, fastapi, django, feature, implementation, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - DETECT FRAMEWORK

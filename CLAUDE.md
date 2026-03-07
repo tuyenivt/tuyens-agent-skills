@@ -11,7 +11,7 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 54 skills: 26 workflow (task-*) + 28 atomic
+    skills/      # 56 skills: 26 workflow (task-*) + 30 atomic
   java/          # Java 21+ / Spring Boot 3.5+
     skills/      # 12 skills (2 workflow + 10 atomic)
     agents/      # 11 agent definitions
@@ -19,7 +19,7 @@ plugins/
     skills/      # 11 skills (2 workflow + 9 atomic)
     agents/      # 11 agent definitions
   kotlin/        # Thin companion to java plugin (requires core + java)
-    agents/      # 4 agent definitions
+    agents/      # 11 agent definitions
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
     agents/      # 11 agent definitions
   rails/         # Ruby on Rails 7+/8
@@ -88,10 +88,37 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 4. For atomic skills: set `user-invocable: false`
 5. Update the plugin's `README.md` skill table
 
+### Atomic Skill Contract Convention
+
+Atomic skills that consume stack-detect output must declare this dependency at the top of their body with a blockquote:
+
+```markdown
+> Load `Use skill: stack-detect` first to determine the project stack.
+```
+
+This signals to workflow authors that `stack-detect` must have already run before invoking this atomic skill. The consuming workflow is responsible for loading `stack-detect` - the atomic skill does not load it itself.
+
 ## Adding a New Agent
 
 1. Create `plugins/<stack>/agents/<agent-name>.md`
-2. Update the plugin's `README.md` agents table
+2. Follow the standard agent frontmatter schema below
+3. Update the plugin's `README.md` agents table
+
+### Agent Frontmatter Schema
+
+All agent files use this standard frontmatter schema:
+
+```yaml
+---
+name: <stack>-<role>           # required: kebab-case, matches filename
+description: Short description  # required: shown in agent picker
+category: quality | engineering | planning | ops  # optional but encouraged
+tools: Read, Write, Edit, Bash, Glob, Grep  # optional: restrict available tools
+model: sonnet | opus            # optional: override default model
+---
+```
+
+Minimum required: `name` and `description`. The `category`, `tools`, and `model` fields are optional but should be included when they provide meaningful constraints.
 
 ## Post-Change Checklist
 

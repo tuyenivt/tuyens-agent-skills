@@ -2,6 +2,11 @@
 name: task-node-new
 description: "End-to-end Node.js/TypeScript feature implementation. Detects NestJS or Express. Generates all layers: data model, services, controllers, DTOs, middleware, and comprehensive Jest tests."
 agent: node-architect
+metadata:
+  category: backend
+  tags: [node, typescript, nestjs, express, feature, implementation, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - DETECT FRAMEWORK + ORM

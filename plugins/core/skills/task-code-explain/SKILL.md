@@ -26,9 +26,14 @@ This skill explains existing code. It does not review it for quality, suggest re
 
 - Understanding unfamiliar code during a code review
 - Debugging a module you did not write
-- Onboarding to a specific feature or component (not the whole codebase - use `task-onboard-codebase` for that)
 - Preparing to modify or extend a piece of code you need to understand first
 - Explaining code to a teammate or in documentation
+
+## Not For
+
+- Mapping a whole codebase or large subsystem - use `task-onboard-codebase` for that (it covers architecture, patterns, tech debt hotspots, and conventions across the whole repo)
+- Code quality review or suggesting improvements - use `task-code-review` for that
+- Broken or crashing code diagnosis - use `task-debug` for that
 
 ## Inputs
 

@@ -2,6 +2,11 @@
 name: task-rails-new
 description: "End-to-end Rails feature implementation. Generates migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests from a feature description."
 agent: rails-architect
+metadata:
+  category: backend
+  tags: [ruby, rails, feature, implementation, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - GATHER: feature description, affected models, external integrations, background jobs, auth rules

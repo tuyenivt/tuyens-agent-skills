@@ -2,6 +2,11 @@
 name: task-node-debug
 description: "Debug Node.js/TypeScript errors. Paste a stack trace, test failure, or describe unexpected behavior. Handles NestJS and Express errors, Prisma and TypeORM issues, and TypeScript compilation errors."
 agent: node-architect
+metadata:
+  category: backend
+  tags: [node, typescript, nestjs, express, debug, troubleshooting, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - INTAKE: stack trace, Jest failure, build error, runtime error

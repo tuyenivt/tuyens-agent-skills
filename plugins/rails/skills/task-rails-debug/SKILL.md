@@ -2,6 +2,11 @@
 name: task-rails-debug
 description: "Debug Rails errors. Paste a stack trace, Rails log, Sidekiq error, or RSpec failure. Classifies the error, identifies root cause, suggests fix, and recommends prevention."
 agent: rails-architect
+metadata:
+  category: backend
+  tags: [ruby, rails, debug, troubleshooting, workflow]
+  type: workflow
+user-invocable: true
 ---
 
 STEP 1 - INTAKE: Rails stack trace, log, Sidekiq error, RSpec failure, browser error

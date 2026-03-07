@@ -2,13 +2,15 @@
 name: task-skill-feedback
 description: Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations.
 metadata:
-  category: governance
+  category: meta
   tags: [feedback, skill-quality, learning, continuous-improvement]
   type: workflow
 user-invocable: true
 ---
 
 # Skill Feedback Capture
+
+> **Meta skill**: This is a plugin improvement utility, not a software engineering workflow. Use it after running any skill to log output quality and surface patterns for skill authors.
 
 ## Purpose
 

@@ -29,6 +29,12 @@ This skill reads the codebase. It does not modify any files.
 - Before making the first significant change to a codebase you don't fully know
 - When conducting a due diligence or acquisition code review
 
+## Not For
+
+- Explaining a single file, function, class, or module - use `task-code-explain` for that (it gives deep targeted explanation with gotchas, invariants, and data flow for a specific target)
+- Reviewing code quality - use `task-code-review` for that
+- Architecture decision review - use `task-design-architecture` for proposing new designs
+
 ## Inputs
 
 | Input                 | Required | Source                                                             |
