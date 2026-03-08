@@ -1,6 +1,6 @@
 ---
 name: task-design-architecture
-description: System design proposal with boundary modeling, failure modes, data model, and trade-offs. For pre-implementation design, not task planning (use task-scope-breakdown for that).
+description: Architecture design or review - produces a full design proposal for new systems, or evaluates an existing design proposal for boundary quality, failure modes, and guardrails. Not for task planning (use task-scope-breakdown for that).
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]
@@ -29,6 +29,55 @@ This skill produces a structured design proposal. It does not generate implement
 - Pre-implementation design review for Staff/Principal sign-off
 - Establishing module boundaries and data ownership for a new domain
 - Architecture proposal for cross-team or cross-service changes
+- Reviewing an existing design proposal for architectural quality, failure modes, and guardrails
+
+## Mode Detection
+
+**At the start of every invocation, ask the user:**
+
+> Are you designing something new, or reviewing an existing design or proposal?
+>
+> - **New design** - I'll help structure and produce a full architecture proposal
+> - **Review existing** - I'll evaluate the proposal's boundaries, failure modes, consistency, and guardrails
+
+Use the answer to select the appropriate mode below. If the user's initial message already makes the mode obvious (e.g., "here's a design doc, review it" or "I need to design a payment service"), skip the question and proceed directly.
+
+### New Design Mode
+
+Run all 10 sections. This is the default path described in the Design Model below.
+
+### Review Existing Design Mode
+
+The user provides an existing design doc, ADR, or architecture proposal. Skip sections that assume you are the author. Run only:
+
+- **Problem Framing** (Section 1) - confirm you understand scope and constraints as stated in the proposal
+- **System Context and Boundary Definition** (Section 2) - evaluate boundary clarity, data ownership, and coupling risks
+- **Architecture Overview** (Section 3) - evaluate component responsibilities, communication model, and integration patterns
+- **Data and Consistency Model** (Section 4) - evaluate consistency guarantees and partial failure behavior
+- **Failure Mode and Risk Analysis** (Section 5) - this is the primary focus in review mode
+- **Observability Plan** (Section 6) - identify gaps in the proposed observability coverage
+- **Guardrails and Review Guidance** (Section 10) - produce concrete guardrails for implementation
+
+Skip or significantly compress:
+
+- Section 7 (Performance) - only flag if the proposal has obvious capacity blind spots
+- Section 8 (Deployment) - only flag if rollback or compatibility issues are present
+- Section 9 (Trade-Offs) - only comment on trade-offs that are **implicit or undocumented** in the proposal; do not re-document ones already stated
+
+Output header for review mode: `# Architecture Review` (not `# Architecture Design Proposal`)
+
+Add a **Review Summary** at the end (in place of Staff-Level Summary):
+
+```markdown
+## Review Summary
+
+- Boundary clarity: Strong | Adequate | Weak (with specific gaps)
+- Failure containment: Strong | Adequate | Weak (with specific scenarios)
+- Consistency model: Clear | Incomplete | Missing
+- Observability readiness: Covered | Gaps (list)
+- Top 3 concerns: (ordered by systemic impact)
+- Recommendation: Approve | Approve with changes | Needs rework
+```
 
 ## Inputs
 

@@ -6,12 +6,12 @@ Stack-agnostic architecture design plugin for Claude Code. Provides system desig
 
 4 workflow skills (`task-*`) for architecture design workflows. Invoked as slash commands.
 
-| Skill                       | Description                                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `task-design-architecture`  | Staff-level architecture design proposal. Supports `quick`, `standard`, and `deep` depth levels.                |
-| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                |
-| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.       |
-| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger. |
+| Skill                       | Description                                                                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-design-architecture`  | Architecture design or review. Asks whether you're designing new or reviewing existing - adapts output accordingly. Supports `quick`, `standard`, and `deep` depth levels. |
+| `task-design-api`           | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                                           |
+| `task-design-risk-analysis` | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                                                  |
+| `task-adr-create`           | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                                            |
 
 ## Atomic Skills
 
@@ -65,12 +65,19 @@ All workflow skills depend on core atomics for stack detection, guardrail enforc
 
 ## Usage Examples
 
-**Design a system architecture:**
+**Design a new system architecture:**
 
 ```
 /task-design-architecture
 Feature: Order payment flow with Stripe integration
 Requirements: Handle 500 RPS, zero-downtime deploys, PCI compliance
+```
+
+**Review an existing design proposal:**
+
+```
+/task-design-architecture
+[paste design doc or ADR here]
 ```
 
 **Design an API contract:**

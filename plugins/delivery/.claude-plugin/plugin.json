@@ -1,6 +1,6 @@
 {
   "name": "delivery",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "description": "Software delivery plugin: release planning, scope breakdown, sprint-fit sizing, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.",
   "author": {
     "name": "Tuyen"
