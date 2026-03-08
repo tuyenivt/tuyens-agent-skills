@@ -1,9 +1,9 @@
 ---
 name: caching
-description: Caching patterns - cache strategy, invalidation, and anti-patterns. Auto-detects project stack and adapts caching guidance to the detected ecosystem.
+description: Caching patterns, response optimization, and serialization efficiency. Auto-detects project stack and adapts guidance to the detected ecosystem.
 metadata:
   category: ops
-  tags: [caching, performance, redis, multi-stack]
+  tags: [caching, performance, redis, payload, serialization, multi-stack]
 user-invocable: false
 ---
 
@@ -101,6 +101,41 @@ Consuming workflow skills depend on this structure to surface caching gaps and o
 
 Omit Opportunities if no caching additions are recommended. Omit "No Issues Found" if gaps were listed.
 
+---
+
+## Response Optimization
+
+Reducing payload size complements caching - smaller responses mean faster cache reads and lower bandwidth.
+
+### Response Shaping
+
+- Use dedicated response objects separate from data layer entities - never expose ORM entities directly
+- Include only the fields the consumer needs
+- Exclude internal fields (audit timestamps, soft-delete flags, internal IDs) unless explicitly needed
+- Control field visibility per response context (list view vs detail view)
+
+### Query-Level Projection
+
+- Select only needed columns in database queries (not `SELECT *`)
+- Load only required associations/relationships (avoid eager-loading everything)
+- Use the ORM's projection capabilities to fetch partial records
+
+### Serialization Control
+
+- Exclude null or empty fields from JSON output when appropriate
+- Use conditional serialization for fields that are only relevant in certain contexts
+- Use the framework's serialization mechanism for response shaping (DTOs/records, serializer classes, response structs with field tags, etc.)
+
+### Stack-Specific Response Optimization
+
+After loading stack-detect, apply response optimization using the idioms of the detected ecosystem:
+
+- Use the framework's serialization mechanism for response shaping
+- Use the ORM's projection or select API for query-level optimization
+- Apply the framework's conditional serialization features (e.g., JSON views, serializer contexts, field exclusion tags)
+
+---
+
 ## Avoid (All Stacks)
 
 - Caching mutable objects or ORM entities (stale shared state)
@@ -108,3 +143,7 @@ Omit Opportunities if no caching additions are recommended. Omit "No Issues Foun
 - Cache without invalidation strategy (stale data served indefinitely)
 - Caching write-heavy data (low hit rate, high invalidation churn)
 - Ignoring cache stampede on popular keys (use locking or singleflight)
+- Exposing ORM entities / model objects in API responses
+- Deep nesting in response schemas
+- Unpaginated collection endpoints
+- Over-fetching from the database when only a subset of fields is needed

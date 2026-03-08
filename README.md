@@ -220,7 +220,7 @@ Go / Gin (plugin: go)
 
 | Plugin                               | Focus                                                                                      | Includes                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 40 skills                              |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 38 skills                              |
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts     | 5 skills                               |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills                               |
 | [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                        | 5 skills                               |

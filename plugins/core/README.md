@@ -78,7 +78,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Atomic Skills
 
-26 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+24 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 ### Core Utility
 
@@ -95,12 +95,11 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ### Performance
 
-| Skill                  | Description                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `caching`              | Caching patterns - strategy, invalidation, anti-patterns. Adapts to detected ecosystem. |
-| `capacity-modeling`    | Throughput estimation, scaling analysis, and bottleneck prediction                      |
-| `db-indexing`          | Database index strategy and query optimization                                          |
-| `payload-optimization` | API response size and serialization efficiency. Adapts to detected ecosystem.           |
+| Skill               | Description                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `caching`           | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem. |
+| `capacity-modeling` | Throughput estimation, scaling analysis, and bottleneck prediction                                   |
+| `db-indexing`       | Database index strategy and query optimization                                                       |
 
 ### Ops
 
@@ -113,7 +112,6 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `observability`                   | Structured logging, metrics, and distributed tracing. Adapts to detected ecosystem.                 |
 | `release-safety`                  | Rollout, rollback, and deployment risk patterns                                                     |
 | `resiliency`                      | Resilience patterns - circuit breakers, retries, timeouts, bulkheads. Adapts to detected ecosystem. |
-| `safe-file-operations`            | Cross-platform shell operations - always use Unix/bash commands, never Windows commands             |
 
 ### Integration
 
@@ -149,7 +147,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-code-refactor`        | `stack-detect`, `coding-standards`, `concurrency-model`, `architecture-guardrail`                                                                                               |
 | `task-code-review`          | `stack-detect`, `coding-standards`, `api-guidelines`, `architecture-guardrail`, `concurrency-model`, `observability`, `resiliency`                                              |
 | `task-code-review-advanced` | `stack-detect`, `pr-risk-analysis`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`, `resiliency`, `api-guidelines` |
-| `task-code-perf-review`     | `stack-detect`, `concurrency-model`, `caching`, `db-indexing`, `observability`, `resiliency`, `payload-optimization`                                                            |
+| `task-code-perf-review`     | `stack-detect`, `caching`, `observability`                                                                                                                                      |
 | `task-code-secure`          | `stack-detect`, `observability`, `resiliency`, `idempotency`, `api-guidelines`                                                                                                  |
 | `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                            |
 | `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                            |

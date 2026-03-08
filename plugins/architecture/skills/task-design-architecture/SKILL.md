@@ -208,8 +208,7 @@ Define:
 Estimate capacity requirements and identify bottlenecks.
 
 Use skill: `capacity-modeling` for throughput estimation and scaling analysis.
-Use skill: `payload-optimization` for API response efficiency.
-Use skill: `caching` for cache-based load reduction.
+Use skill: `caching` for cache-based load reduction and API response optimization.
 Use skill: `db-indexing` for query performance.
 
 Estimate:
