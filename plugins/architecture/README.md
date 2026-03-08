@@ -1,10 +1,8 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, and Architecture Decision Record (ADR) creation workflows. Requires the `core` plugin for stack detection and shared atomics.
+Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, and Architecture Decision Record (ADR) creation workflows.
 
 ## Installation
-
-Install the core plugin first, then the Architecture plugin:
 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
@@ -72,7 +70,7 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 - `complexity-review` - cyclomatic complexity and cognitive load
 - `pr-risk-analysis` - lightweight heuristic PR risk classification
 
-The `architecture` plugin requires `core` to be installed. All workflow skills depend on core atomics for stack detection, guardrail enforcement, and deeper analysis.
+All workflow skills depend on core atomics for stack detection, guardrail enforcement, and deeper analysis.
 
 ## Skill Dependency Index
 

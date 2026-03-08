@@ -11,7 +11,9 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 50 skills: 22 workflow (task-*) + 28 atomic
+    skills/      # 45 skills: 17 workflow (task-*) + 28 atomic
+  delivery/      # Release planning and delivery coordination
+    skills/      # 5 workflow skills
   architecture/  # Stack-agnostic architecture design
     skills/      # 6 skills: 4 workflow + 2 atomic
   java/          # Java 21+ / Spring Boot 3.5+
@@ -63,10 +65,8 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 ## Plugin Dependencies
 
-- `core` is required by all language plugins and by `architecture`
-- `architecture` requires `core` (uses core atomics for deeper analysis)
-- `kotlin` requires both `core` and `java`
-- All other language plugins require only `core`
+- `core` is required by all other plugins
+- `kotlin` additionally requires `java`
 
 ## Stack Detection Pattern
 

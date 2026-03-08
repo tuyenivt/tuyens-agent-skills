@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -70,7 +70,21 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install dotnet@tuyens-agent-skills --scope project
 ```
 
-> `core` is always required - it provides the stack-agnostic workflow and governance skills used by all language plugins.
+**Architecture project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install architecture@tuyens-agent-skills --scope project
+```
+
+**Delivery project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install delivery@tuyens-agent-skills --scope project
+```
+
+> `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
 
 ## Optional: Share Skills Between Claude Code and Codex
 
@@ -79,6 +93,7 @@ Claude Code and Codex use the same `agentskills.io` format. You can create a sym
 ```bash
 # Unix (Linux/macOS)
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/core/skills" "$HOME/.codex/skills/tuyens-agent-skills-core-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/delivery/skills" "$HOME/.codex/skills/tuyens-agent-skills-delivery-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/architecture/skills" "$HOME/.codex/skills/tuyens-agent-skills-architecture-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/java/skills" "$HOME/.codex/skills/tuyens-agent-skills-java-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/kotlin/skills" "$HOME/.codex/skills/tuyens-agent-skills-kotlin-skills"
@@ -90,6 +105,7 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/ski
 
 # Windows
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-delivery-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/delivery/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-architecture-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/architecture/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/java/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/kotlin/skills"
@@ -121,14 +137,14 @@ I want to...
   review code (high-risk / AI-gen)  -> /task-code-review-advanced
   implement a feature               -> /task-feature-implement (dispatches to stack-specific)
   fix a bug or crash                -> /task-debug (dispatches to stack-specific)
-  plan and break down work          -> /task-scope-breakdown
-  fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode)
+  plan and break down work          -> /task-scope-breakdown [delivery]
+  fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode) [delivery]
   design a system or architecture   -> /task-design-architecture [architecture]
   design an API contract            -> /task-design-api [architecture]
   write tests                       -> /task-code-test
   create a PR description           -> /task-pr-create
-  check concurrent PR conflicts     -> /task-pr-conflict-analysis
-  plan a production release         -> /task-release-plan
+  check concurrent PR conflicts     -> /task-pr-conflict-analysis [delivery]
+  plan a production release         -> /task-release-plan [delivery]
   investigate an active incident    -> /task-incident-root-cause
   write a postmortem                -> /task-incident-postmortem (run after root-cause)
   hand off an on-call shift         -> /task-oncall-handoff
@@ -142,8 +158,8 @@ I want to...
   assess risk after writing code    -> /task-code-review-advanced
   check for security issues         -> /task-code-secure
   check for performance issues      -> /task-code-perf-review
-  triage tech debt by ROI           -> /task-debt-triage
-  assess a dependency upgrade       -> /task-dependency-upgrade
+  triage tech debt by ROI           -> /task-debt-triage [delivery]
+  assess a dependency upgrade       -> /task-dependency-upgrade [delivery]
   log feedback on skill output      -> /task-skill-feedback
 ```
 
@@ -195,8 +211,9 @@ Go / Gin (plugin: go)
 
 | Plugin                               | Focus                                                                                      | Includes                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 50 skills                              |
-| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills (requires `core`)             |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 45 skills                              |
+| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts     | 5 skills                               |
+| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills                               |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                | 12 skills + 11 agents                  |
 | [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                            | 5 skills + 11 agents (requires `java`) |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                        | 9 skills + 11 agents                   |
@@ -207,9 +224,8 @@ Go / Gin (plugin: go)
 
 ## Notes
 
-- `core` is required by all language plugins and by `architecture`.
-- `architecture` requires `core` - it uses core atomics for stack detection and deeper analysis.
-- `kotlin` is intentionally a thin companion plugin and depends on `java`.
+- `core` is required by all other plugins.
+- `kotlin` additionally requires `java` (thin companion plugin).
 - Each plugin folder has its own README with stack-specific usage and examples.
 
 ## Optional: Claude Code Settings Template
