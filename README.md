@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -84,6 +84,13 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install delivery@tuyens-agent-skills --scope project
 ```
 
+**On-call / Incident project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install oncall@tuyens-agent-skills --scope project
+```
+
 > `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
 
 ## Optional: Share Skills Between Claude Code and Codex
@@ -93,8 +100,9 @@ Claude Code and Codex use the same `agentskills.io` format. You can create a sym
 ```bash
 # Unix (Linux/macOS)
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/core/skills" "$HOME/.codex/skills/tuyens-agent-skills-core-skills"
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/delivery/skills" "$HOME/.codex/skills/tuyens-agent-skills-delivery-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/architecture/skills" "$HOME/.codex/skills/tuyens-agent-skills-architecture-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/delivery/skills" "$HOME/.codex/skills/tuyens-agent-skills-delivery-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/oncall/skills" "$HOME/.codex/skills/tuyens-agent-skills-oncall-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/java/skills" "$HOME/.codex/skills/tuyens-agent-skills-java-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/kotlin/skills" "$HOME/.codex/skills/tuyens-agent-skills-kotlin-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/python/skills" "$HOME/.codex/skills/tuyens-agent-skills-python-skills"
@@ -105,8 +113,9 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/ski
 
 # Windows
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-delivery-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/delivery/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-architecture-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/architecture/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-delivery-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/delivery/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-oncall-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/oncall/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/java/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/kotlin/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/python/skills"
@@ -145,9 +154,9 @@ I want to...
   create a PR description           -> /task-pr-create
   check concurrent PR conflicts     -> /task-pr-conflict-analysis [delivery]
   plan a production release         -> /task-release-plan [delivery]
-  investigate an active incident    -> /task-incident-root-cause
-  write a postmortem                -> /task-incident-postmortem (run after root-cause)
-  hand off an on-call shift         -> /task-oncall-handoff
+  investigate an active incident    -> /task-incident-root-cause [oncall]
+  write a postmortem                -> /task-incident-postmortem (run after root-cause) [oncall]
+  hand off an on-call shift         -> /task-oncall-handoff [oncall]
   onboard to a codebase             -> /task-onboard-codebase
   understand a file or function     -> /task-code-explain
   plan a database migration         -> /task-migration-plan
@@ -211,9 +220,10 @@ Go / Gin (plugin: go)
 
 | Plugin                               | Focus                                                                                      | Includes                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 45 skills                              |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 40 skills                              |
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts     | 5 skills                               |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills                               |
+| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                        | 5 skills                               |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                | 12 skills + 11 agents                  |
 | [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                            | 5 skills + 11 agents (requires `java`) |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                        | 9 skills + 11 agents                   |

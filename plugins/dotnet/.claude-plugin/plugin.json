@@ -1,6 +1,6 @@
 {
   "name": "dotnet",
-  "version": "1.25.0",
+  "version": "1.26.0",
   "description": "Claude Code plugin for .NET 8 LTS / ASP.NET Core Web API development. EF Core, Clean Architecture, xUnit, Testcontainers. Designed to work with core plugin.",
   "author": {
     "name": "Tuyen"

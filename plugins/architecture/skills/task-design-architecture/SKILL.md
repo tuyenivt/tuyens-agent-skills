@@ -94,8 +94,6 @@ Capture:
 
 Use skill: `engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
 
-If this design is triggered by an incident or failure pattern, reference outputs from skill: `task-incident-root-cause` or skill: `task-incident-postmortem` to incorporate lessons learned.
-
 ### 2. System Context and Boundary Definition
 
 Define the system's position in the broader architecture.
