@@ -193,21 +193,22 @@ Go / Gin (plugin: go)
 
 ## Plugin Catalog
 
-| Plugin                               | Focus                                                                                                 | Includes                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                                        | 50 skills                              |
-| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation (optional) | 6 skills                               |
-| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                           | 12 skills + 11 agents                  |
-| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                       | 5 skills + 11 agents (requires `java`) |
-| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                   | 9 skills + 11 agents                   |
-| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                                    | 8 skills + 11 agents                   |
-| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                             | 10 skills + 11 agents                  |
-| [go](plugins/go)                     | Go 1.25+ / Gin                                                                                        | 9 skills + 11 agents                   |
-| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                 | 11 skills + 11 agents                  |
+| Plugin                               | Focus                                                                                      | Includes                               |
+| ------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------- |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 50 skills                              |
+| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills (requires `core`)             |
+| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                | 12 skills + 11 agents                  |
+| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                            | 5 skills + 11 agents (requires `java`) |
+| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                        | 9 skills + 11 agents                   |
+| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                         | 8 skills + 11 agents                   |
+| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                  | 10 skills + 11 agents                  |
+| [go](plugins/go)                     | Go 1.25+ / Gin                                                                             | 9 skills + 11 agents                   |
+| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                      | 11 skills + 11 agents                  |
 
 ## Notes
 
-- `core` is required by all language plugins.
+- `core` is required by all language plugins and by `architecture`.
+- `architecture` requires `core` - it uses core atomics for stack detection and deeper analysis.
 - `kotlin` is intentionally a thin companion plugin and depends on `java`.
 - Each plugin folder has its own README with stack-specific usage and examples.
 

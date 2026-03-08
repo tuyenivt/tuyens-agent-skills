@@ -28,7 +28,7 @@
     {
       "name": "architecture",
       "source": "./plugins/architecture",
-      "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, and ADR creation.",
+      "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, and ADR creation. Requires core plugin.",
       "version": "1.24.0",
       "author": {
         "name": "Tuyen",

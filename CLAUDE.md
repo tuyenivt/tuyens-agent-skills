@@ -63,7 +63,8 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 ## Plugin Dependencies
 
-- `core` is required by all language plugins
+- `core` is required by all language plugins and by `architecture`
+- `architecture` requires `core` (uses core atomics for deeper analysis)
 - `kotlin` requires both `core` and `java`
 - All other language plugins require only `core`
 

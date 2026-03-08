@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, and Architecture Decision Record (ADR) creation workflows. Installs standalone or alongside any language plugin.
+Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, and Architecture Decision Record (ADR) creation workflows. Requires the `core` plugin for stack detection and shared atomics.
 
 ## Installation
 
@@ -45,9 +45,9 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-architecture-skills" 
 | `system-boundary-design` | Formal boundary modeling for module and service decomposition |
 | `tradeoff-analysis`      | Structured architectural decision and trade-off documentation |
 
-## Cross-Plugin Dependencies
+## Core Atomics Used
 
-When installed alongside `core`, the architecture workflow skills compose with these core atomics via `Use skill:` for deeper analysis:
+The architecture workflow skills compose with these core atomics via `Use skill:`:
 
 - `architecture-guardrail` - layer violation and boundary erosion detection
 - `capacity-modeling` - throughput estimation and scaling analysis
@@ -72,7 +72,7 @@ When installed alongside `core`, the architecture workflow skills compose with t
 - `complexity-review` - cyclomatic complexity and cognitive load
 - `pr-risk-analysis` - lightweight heuristic PR risk classification
 
-**Standalone installs (without `core`):** Workflows still function. Steps that call cross-plugin atomics note unavailability and skip those sub-sections. Core output sections (system design, API contracts, risk matrices, ADR structure) are unaffected.
+The `architecture` plugin requires `core` to be installed. All workflow skills depend on core atomics for stack detection, guardrail enforcement, and deeper analysis.
 
 ## Skill Dependency Index
 
