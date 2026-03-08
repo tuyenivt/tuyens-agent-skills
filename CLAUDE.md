@@ -11,7 +11,9 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 56 skills: 26 workflow (task-*) + 30 atomic
+    skills/      # 50 skills: 22 workflow (task-*) + 28 atomic
+  architecture/  # Stack-agnostic architecture design
+    skills/      # 6 skills: 4 workflow + 2 atomic
   java/          # Java 21+ / Spring Boot 3.5+
     skills/      # 12 skills (2 workflow + 10 atomic)
     agents/      # 11 agent definitions
@@ -110,11 +112,11 @@ All agent files use this standard frontmatter schema:
 
 ```yaml
 ---
-name: <stack>-<role>           # required: kebab-case, matches filename
-description: Short description  # required: shown in agent picker
-category: quality | engineering | planning | ops  # optional but encouraged
-tools: Read, Write, Edit, Bash, Glob, Grep  # optional: restrict available tools
-model: sonnet | opus            # optional: override default model
+name: <stack>-<role> # required: kebab-case, matches filename
+description: Short description # required: shown in agent picker
+category: quality | engineering | planning | ops # optional but encouraged
+tools: Read, Write, Edit, Bash, Glob, Grep # optional: restrict available tools
+model: sonnet | opus # optional: override default model
 ---
 ```
 

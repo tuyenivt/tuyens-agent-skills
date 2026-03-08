@@ -1,6 +1,6 @@
 ---
 name: task-scope-breakdown
-description: Task planning and effort sizing for an epic or feature - implementable tasks, dependency ordering, T-shirt sizing, and scope creep risk flags. Supports sprint-fitting mode to allocate tasks to sprints with team capacity constraints. Not a substitute for system design (use task-design-architecture for that).
+description: Task planning and effort sizing for an epic or feature - implementable tasks, dependency ordering, T-shirt sizing, and scope creep risk flags. Supports sprint-fitting mode to allocate tasks to sprints with team capacity constraints. Not a substitute for system design.
 metadata:
   category: planning
   tags: [planning, estimation, task-breakdown, scope, complexity, sprint-planning]

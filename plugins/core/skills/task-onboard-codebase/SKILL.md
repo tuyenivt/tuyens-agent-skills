@@ -33,7 +33,7 @@ This skill reads the codebase. It does not modify any files.
 
 - Explaining a single file, function, class, or module - use `task-code-explain` for that (it gives deep targeted explanation with gotchas, invariants, and data flow for a specific target)
 - Reviewing code quality - use `task-code-review` for that
-- Architecture decision review - use `task-design-architecture` for proposing new designs
+- Architecture decision review or proposing new system designs
 
 ## Inputs
 

@@ -10,8 +10,6 @@ user-invocable: true
 
 # Documentation Generator
 
-> For Architecture Decision Records, use `/task-adr-create` instead - it produces a complete, trade-off-documented ADR with alternatives analysis.
-
 ## When to Use
 
 - README creation or improvement

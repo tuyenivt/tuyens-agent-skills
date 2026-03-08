@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
+Single marketplace repository for Claude Code plugins: `architecture`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -79,6 +79,7 @@ Claude Code and Codex use the same `agentskills.io` format. You can create a sym
 ```bash
 # Unix (Linux/macOS)
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/core/skills" "$HOME/.codex/skills/tuyens-agent-skills-core-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/architecture/skills" "$HOME/.codex/skills/tuyens-agent-skills-architecture-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/java/skills" "$HOME/.codex/skills/tuyens-agent-skills-java-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/kotlin/skills" "$HOME/.codex/skills/tuyens-agent-skills-kotlin-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/python/skills" "$HOME/.codex/skills/tuyens-agent-skills-python-skills"
@@ -89,6 +90,7 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/ski
 
 # Windows
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-architecture-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/architecture/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/java/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/kotlin/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/python/skills"
@@ -121,8 +123,8 @@ I want to...
   fix a bug or crash                -> /task-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown
   fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode)
-  design a system or architecture   -> /task-design-architecture
-  design an API contract            -> /task-design-api
+  design a system or architecture   -> /task-design-architecture [architecture]
+  design an API contract            -> /task-design-api [architecture]
   write tests                       -> /task-code-test
   create a PR description           -> /task-pr-create
   check concurrent PR conflicts     -> /task-pr-conflict-analysis
@@ -135,8 +137,8 @@ I want to...
   plan a database migration         -> /task-migration-plan
   write documentation               -> /task-docs-generate
   refactor safely                   -> /task-code-refactor
-  record an architecture decision   -> /task-adr-create
-  assess risk before writing code   -> /task-design-risk-analysis
+  record an architecture decision   -> /task-adr-create [architecture]
+  assess risk before writing code   -> /task-design-risk-analysis [architecture]
   assess risk after writing code    -> /task-code-review-advanced
   check for security issues         -> /task-code-secure
   check for performance issues      -> /task-code-perf-review
@@ -191,16 +193,17 @@ Go / Gin (plugin: go)
 
 ## Plugin Catalog
 
-| Plugin                   | Focus                                                          | Includes                               |
-| ------------------------ | -------------------------------------------------------------- | -------------------------------------- |
-| [core](plugins/core)     | Stack-agnostic workflows, governance, ops, and review patterns | 56 skills                              |
-| [java](plugins/java)     | Java 21+ / Spring Boot 3.5+                                    | 12 skills + 11 agents                  |
-| [kotlin](plugins/kotlin) | Kotlin companion layer for Spring Boot projects                | 5 skills + 11 agents (requires `java`) |
-| [python](plugins/python) | Python 3.11+, FastAPI (primary), Django (secondary)            | 9 skills + 11 agents                   |
-| [rails](plugins/rails)   | Ruby on Rails 7+/8                                             | 8 skills + 11 agents                   |
-| [node](plugins/node)     | Node.js/TypeScript, NestJS (primary), Express (secondary)      | 10 skills + 11 agents                  |
-| [go](plugins/go)         | Go 1.25+ / Gin                                                 | 9 skills + 11 agents                   |
-| [dotnet](plugins/dotnet) | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture          | 11 skills + 11 agents                  |
+| Plugin                               | Focus                                                                                                 | Includes                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                                        | 50 skills                              |
+| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation (optional) | 6 skills                               |
+| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                           | 12 skills + 11 agents                  |
+| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                       | 5 skills + 11 agents (requires `java`) |
+| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                   | 9 skills + 11 agents                   |
+| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                                    | 8 skills + 11 agents                   |
+| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                             | 10 skills + 11 agents                  |
+| [go](plugins/go)                     | Go 1.25+ / Gin                                                                                        | 9 skills + 11 agents                   |
+| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                 | 11 skills + 11 agents                  |
 
 ## Notes
 
