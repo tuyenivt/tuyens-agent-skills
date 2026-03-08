@@ -2,27 +2,6 @@
 
 Software delivery plugin for Claude Code: release planning, scope breakdown, sprint-fit sizing, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install delivery@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/delivery/skills" "$HOME/.codex/skills/tuyens-agent-skills-delivery-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-delivery-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/delivery/skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
-
 ## Workflow Skills
 
 5 workflow skills (`task-*`) for delivery planning and coordination.

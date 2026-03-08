@@ -1,31 +1,9 @@
 # Tuyen's Agent Skills - Java / Spring Boot
 
-Claude Code plugin for Java 21+ / Spring Boot 3.5+ development. 8 agents, 11 skills (2 workflow + 9 atomic).
+Claude Code plugin for Java 21+ / Spring Boot 3.5+ development.
 
-> React support has been removed. This plugin focuses exclusively on Java/Spring Boot. For stack-agnostic code review, architecture, ops, and governance skills, install `core`.
+## Stack
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install java@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/java/skills" "$HOME/.codex/skills/tuyens-agent-skills-java-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-java-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/java/skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
 - Java 21+
 - Spring Boot 3.5+ (Spring Boot 4 best-effort)
 - Gradle

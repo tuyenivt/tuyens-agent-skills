@@ -2,28 +2,6 @@
 
 Incident response plugin for Claude Code: root cause analysis, postmortem with systemic learning, and structured on-call handoff. Requires the `core` plugin for shared atomic skills (failure-classification, blast-radius-analysis, observability, resiliency, engineering-governance, etc.).
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install oncall@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/oncall/skills" "$HOME/.codex/skills/tuyens-agent-skills-oncall-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-oncall-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/oncall/skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
-- `core` plugin (provides shared atomic skills used by oncall workflows)
-
 ## Workflow Skills
 
 3 workflow skills (`task-*`) for incident response and on-call operations.

@@ -2,27 +2,6 @@
 
 Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, and Architecture Decision Record (ADR) creation workflows.
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install architecture@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/architecture/skills" "$HOME/.codex/skills/tuyens-agent-skills-architecture-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-architecture-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/architecture/skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
-
 ## Workflow Skills
 
 4 workflow skills (`task-*`) for architecture design workflows. Invoked as slash commands.

@@ -1,31 +1,9 @@
 # Tuyen's Agent Skills - .NET / ASP.NET Core
 
-Claude Code plugin for .NET 8 LTS / ASP.NET Core Web API development. 8 agents, 11 skills (2 workflow + 9 atomic).
+Claude Code plugin for .NET 8 LTS / ASP.NET Core Web API development.
 
-> This plugin focuses exclusively on .NET 8 / ASP.NET Core with Clean Architecture. For stack-agnostic code review, architecture, ops, and governance skills, install `core`.
+## Stack
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install dotnet@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/skills" "$HOME/.codex/skills/tuyens-agent-skills-dotnet-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills\plugins\dotnet\skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
 - .NET 8 LTS
 - C# 12
 - ASP.NET Core Web API (primary), MVC (secondary), Minimal APIs (lightweight)

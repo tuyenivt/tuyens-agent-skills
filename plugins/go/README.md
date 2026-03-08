@@ -10,34 +10,6 @@ Claude Code plugin for Go/Gin development.
 - golang-migrate
 - PostgreSQL
 
-## Requirements
-
-- Claude Code >= 2.0.0
-- Go 1.25+
-- Gin (`github.com/gin-gonic/gin`)
-- PostgreSQL
-
-## Installation
-
-Install the core plugin first, then the Go plugin:
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install go@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/go/skills" "$HOME/.codex/skills/tuyens-agent-skills-go-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/go/skills"
-```
-
 ## Agents
 
 | Agent                     | Description                                                                                                                                           |

@@ -11,27 +11,6 @@ Claude Code plugin for Python development.
 - **Task Queue:** Celery
 - **Database:** PostgreSQL
 
-## Installation
-
-Install the core plugin first, then this plugin:
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install python@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/python/skills" "$HOME/.codex/skills/tuyens-agent-skills-python-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-python-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/python/skills"
-```
-
 ## Workflow Skills
 
 | Skill             | Agent            | Description                                              |

@@ -10,27 +10,6 @@ Claude Code plugin for Node.js/TypeScript development.
 - **Jest** + **Supertest**
 - **PostgreSQL**
 
-## Installation
-
-Install the core plugin first, then the Node plugin:
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install node@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/node/skills" "$HOME/.codex/skills/tuyens-agent-skills-node-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-node-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/node/skills"
-```
-
 ## Framework Detection
 
 Skills automatically detect which framework your project uses:

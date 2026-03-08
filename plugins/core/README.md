@@ -2,28 +2,6 @@
 
 Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from your agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) and adapts universal engineering principles to the detected ecosystem. Includes universal `task-feature-implement` and `task-debug` entry points that delegate to stack-specific workflows.
 
-## Installation
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/core/skills" "$HOME/.codex/skills/tuyens-agent-skills-core-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
-```
-
-## Requirements
-
-- Claude Code >= 2.0.0
-
 ## Stack Detection
 
 The core detects your project's tech stack automatically, in this priority order:

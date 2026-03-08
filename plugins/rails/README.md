@@ -11,34 +11,6 @@ Claude Code plugin for Ruby on Rails projects.
 - PostgreSQL
 - ActiveRecord
 
-## Requirements
-
-- Claude Code >= 2.0.0
-- Ruby 3.2+
-- Rails 7+/8
-- PostgreSQL
-
-## Installation
-
-Install the core plugin first, then the Rails plugin:
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install rails@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/rails/skills" "$HOME/.codex/skills/tuyens-agent-skills-rails-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/rails/skills"
-```
-
 ## Agents
 
 | Agent                        | Description                                                                                                                                                                      |

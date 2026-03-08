@@ -12,28 +12,6 @@ Spring Boot ecosystem provided by the Java plugin.
 - MockK / kotest for testing
 - Kotlin DSL for Gradle and Spring Security
 
-## Installation
-
-All three plugins are required, installed in order:
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install java@tuyens-agent-skills --scope project
-claude plugin install kotlin@tuyens-agent-skills --scope project
-```
-
-## Optional: Share Skills Between Claude Code and Codex
-
-Claude Code and Codex use the same `agentskills.io` format. You can create a symbolic link so Codex reuses the skills managed by Claude Code.
-
-```bash
-# Unix (Linux/macOS)
-ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/kotlin/skills" "$HOME/.codex/skills/tuyens-agent-skills-kotlin-skills"
-
-# Windows
-mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-kotlin-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/kotlin/skills"
-```
-
 ## What this plugin adds vs what comes from the Java plugin
 
 | From Java plugin          | From Kotlin plugin                         |
