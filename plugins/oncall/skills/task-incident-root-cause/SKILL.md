@@ -89,7 +89,7 @@ Output blast radius explicitly: Narrow | Moderate | Wide | Critical.
 
 Evaluate these containment options in order of speed:
 
-1. **Rollback** -- if recent deploy correlates, rollback is the fastest containment
+1. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `backward-compatibility-analysis` to check for schema or contract breakage that would make rollback unsafe.
 2. **Feature flag disable** -- isolate the failing feature without full rollback
 3. **Circuit breaker** -- stop cascading to downstream services
 4. **Traffic isolation** -- route affected traffic to degraded-mode path
@@ -103,6 +103,8 @@ Use skill: `data-consistency-modeling` for data consistency recovery.
 ### 4. Root Cause Hypothesis
 
 Use skill: `root-cause-hypothesis` to generate ranked hypotheses.
+
+If a recent PR diff is provided as input, use skill: `change-risk-classification` to assess the risk level of the triggering change before forming hypotheses.
 
 For each hypothesis, require:
 

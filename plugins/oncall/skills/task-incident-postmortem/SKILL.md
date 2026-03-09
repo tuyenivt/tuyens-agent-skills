@@ -84,6 +84,17 @@ Handle partial inputs gracefully. When input is missing, state what additional d
 
 ## Postmortem Model
 
+### Step 0 - Timeline Construction (if no timeline provided)
+
+If no structured timeline is provided as input, construct one from available evidence before proceeding:
+
+- Extract timestamps from any log lines, alert notifications, deploy metadata, or notes provided
+- Order events chronologically: first symptom → detection → containment → resolution
+- Note gaps where timing is unknown
+- Format each event as: `{timestamp} - {event} - {source}`
+
+This constructed timeline becomes the input for Section 1 and Section 3.
+
 ### 1. Incident Overview
 
 **Summarize concisely. No narrative.**
