@@ -149,6 +149,12 @@ Flag scope and risk issues at feature level:
 
 For each flag, recommend: proceed as-is / de-scope / add spike / split epic.
 
+When recommending a spike, define it with three things so it is actionable rather than open-ended:
+
+- **Question**: The specific unknown the spike must answer (e.g. "Can we query X without a full table scan at 10M rows?")
+- **Done condition**: What the spike must produce (e.g. "A proof-of-concept query with measured latency, or a documented reason it cannot work")
+- **Time-box**: Maximum time before the spike must conclude with a finding (e.g. "Half a day - if not resolved, escalate and descope")
+
 ## Output
 
 ```markdown

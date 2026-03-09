@@ -1,18 +1,19 @@
 # Tuyen's Agent Skills - Delivery
 
-Software delivery plugin for Claude Code: release planning, scope breakdown, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.
+Software delivery plugin for Claude Code: release planning, go-live monitoring, scope breakdown, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.
 
 ## Workflow Skills
 
-5 workflow skills (`task-*`) for delivery planning and coordination.
+6 workflow skills (`task-*`) for delivery planning and coordination.
 
 | Skill                       | Description                                                                                                                                                                      |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
+| `task-release-validate`     | Post-deploy go-live monitoring runbook. Time-boxed checkpoints, Go/No-Go decisions, canary advancement, and rollback triggers. Run after deploying, not before.                  |
 | `task-scope-breakdown`      | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
 | `task-debt-prioritize`      | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
 | `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
-| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                                             |
+| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent active PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                                      |
 
 ## Atomic Skills
 
@@ -23,23 +24,23 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 | Core Atomic                       | Used By                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------ |
 | `stack-detect`                    | `task-release-plan`, `task-scope-breakdown`                              |
-| `blast-radius-analysis`           | `task-release-plan`, `task-scope-breakdown`                              |
+| `blast-radius-analysis`           | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
 | `backward-compatibility-analysis` | `task-release-plan`, `task-scope-breakdown`                              |
 | `dependency-impact-analysis`      | `task-release-plan`, `task-scope-breakdown`, `task-pr-conflict-analysis` |
 | `change-risk-classification`      | `task-scope-breakdown`                                                   |
 | `db-migration-safety`             | `task-release-plan`, `task-scope-breakdown`                              |
-| `feature-flags`                   | `task-release-plan`, `task-scope-breakdown`                              |
+| `feature-flags`                   | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
 | `release-safety`                  | `task-release-plan`                                                      |
 | `pr-risk-analysis`                | `task-release-plan`                                                      |
-| `failure-classification`          | `task-release-plan`                                                      |
+| `failure-classification`          | `task-release-plan`, `task-release-validate`                             |
 | `capacity-modeling`               | `task-release-plan`                                                      |
 | `engineering-governance`          | `task-release-plan`                                                      |
 | `api-guidelines`                  | `task-release-plan`                                                      |
 | `data-consistency-modeling`       | `task-release-plan`                                                      |
 | `idempotency`                     | `task-release-plan`                                                      |
 | `db-indexing`                     | `task-release-plan`                                                      |
-| `resiliency`                      | `task-release-plan`                                                      |
-| `observability`                   | `task-release-plan`                                                      |
+| `resiliency`                      | `task-release-plan`, `task-release-validate`                             |
+| `observability`                   | `task-release-plan`, `task-release-validate`                             |
 | `caching`                         | `task-release-plan`                                                      |
 | `concurrency-model`               | `task-release-plan`                                                      |
 
@@ -52,6 +53,15 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 Feature: New order payment flow with Stripe integration
 DB migration: adds payment_intent_id column to orders table
 Traffic expectation: 500 RPS steady state
+```
+
+**Monitor a deployment go-live:**
+
+```
+/task-release-validate
+Deployed: New order payment flow with Stripe integration at 14:32 UTC
+Rollout: canary at 10% traffic
+Risk: High
 ```
 
 **Break down a feature into tasks:**

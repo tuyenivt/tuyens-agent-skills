@@ -1,6 +1,6 @@
 ---
 name: task-pr-conflict-analysis
-description: Detect semantic conflicts across concurrent PRs merging in the same sprint - logical incompatibilities, shared state mutations, and integration ordering risks. Not for single-PR review (use task-code-review or task-code-review-advanced for that).
+description: Detect semantic conflicts across concurrent active PRs - logical incompatibilities, shared state mutations, and integration ordering risks. Not for single-PR review (use task-code-review or task-code-review-advanced for that).
 metadata:
   category: review
   tags: [pull-request, conflicts, concurrent, integration, merge-order]
@@ -12,7 +12,7 @@ user-invocable: true
 
 ## Purpose
 
-Cross-PR semantic conflict detection for tech leads managing concurrent work in the same sprint:
+Cross-PR semantic conflict detection for tech leads managing concurrent active branches:
 
 - **Semantic conflicts** -- changes that don't produce a git merge conflict but break each other's assumptions
 - **Shared state mutations** -- two PRs modifying the same database schema, config, or shared component
@@ -23,8 +23,8 @@ This skill detects conflicts before merge. It does not review individual PR qual
 
 ## When to Use
 
-- Sprint planning or mid-sprint check when multiple PRs are active in the same codebase areas
-- Before merging a batch of PRs at the end of a sprint
+- When multiple branches are active in the same codebase areas and you want to detect conflicts before merge
+- Before merging a batch of concurrent PRs
 - When two PRs touch the same service, module, schema, or API contract
 - When a shared dependency or library is being changed by multiple PRs simultaneously
 - On-call or release preparation when understanding what changed is critical

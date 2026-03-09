@@ -150,6 +150,8 @@ If breaking changes exist, require an expand-contract migration plan before depl
 
 **Skip if no schema changes.**
 
+For complex schema changes (column type changes, table splits, large backfills, multi-service coordination), run `/task-migration-plan` first to produce a detailed migration execution plan. This skill consumes that plan's output - do not duplicate the migration planning work here.
+
 Use skill: `db-migration-safety` for expand-contract strategy, lock risk, and backfill safety.
 Use skill: `db-indexing` for index impact assessment.
 
