@@ -1,6 +1,6 @@
 ---
 name: task-code-secure
-description: Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects project stack from CLAUDE.md and adapts security checks to the detected language and framework.
+description: Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects project stack and adapts security checks to the detected language and framework.
 metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack]

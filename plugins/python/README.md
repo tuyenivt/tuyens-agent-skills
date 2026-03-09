@@ -52,7 +52,7 @@ FastAPI is the **primary** framework. Django/DRF is supported as secondary.
 
 Skills detect which framework is in use by checking:
 
-1. **CLAUDE.md** - explicit framework declaration takes priority
+1. **Repo context file** - explicit framework declaration takes priority
 2. **File detection** (fallback):
    - `main.py` + `fastapi` imports → FastAPI
    - `manage.py` + `settings.py` → Django

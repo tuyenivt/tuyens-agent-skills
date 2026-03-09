@@ -1,15 +1,13 @@
 # Tuyen's Agent Skills - Core
 
-Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from your agent instruction file (CLAUDE.md, AGENTS.md, or GEMINI.md) and adapts universal engineering principles to the detected ecosystem. Includes universal `task-feature-implement` and `task-debug` entry points that delegate to stack-specific workflows.
+Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from marker files and your repo context file, then adapts universal engineering principles to the detected ecosystem. Includes universal `task-feature-implement` and `task-debug` entry points that delegate to stack-specific workflows.
 
 ## Stack Detection
 
 The core detects your project's tech stack automatically, in this priority order:
 
-1. **CLAUDE.md (primary)**: Checks `./CLAUDE.md` or `.claude/CLAUDE.md`. Reads key-value pairs from any "Tech Stack" or similar section.
-2. **AGENTS.md**: Checked if CLAUDE.md has no stack section. OpenAI Codex / multi-agent convention.
-3. **GEMINI.md**: Checked if neither CLAUDE.md nor AGENTS.md has a stack section. Google Gemini convention.
-4. **File-based fallback**: If no agent instruction file contains a stack section, uses a best-effort heuristic based on marker files (`build.gradle`, `Gemfile`, `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `mix.exs`, `*.csproj`, etc.).
+1. **Marker files (primary)**: Checks well-known files (`build.gradle`, `Gemfile`, `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `mix.exs`, `*.csproj`, etc.) to determine language and build tool reliably.
+2. **Repo context file (supplemental)**: Reads the `## Tech Stack` section of your context file (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`) for details that marker files cannot provide - framework, database, ORM, test framework.
 
 Whatever you declare in your instruction file, the plugin uses - it does not validate against a fixed list.
 
@@ -81,9 +79,9 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ### Core Utility
 
-| Skill          | Description                                                                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stack-detect` | Detect project tech stack by reading CLAUDE.md, AGENTS.md, or GEMINI.md - extracts any declared properties as key-value pairs. Stack-agnostic. |
+| Skill          | Description                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stack-detect` | Detect project tech stack from marker files and the repo context file - extracts any declared properties as key-value pairs. Stack-agnostic. |
 
 ### Architecture
 

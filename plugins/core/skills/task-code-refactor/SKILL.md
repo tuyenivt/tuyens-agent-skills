@@ -1,6 +1,6 @@
 ---
 name: task-code-refactor
-description: Safe refactoring plan with risk assessment. Auto-detects project stack from CLAUDE.md and adapts refactoring patterns to the detected language and framework.
+description: Safe refactoring plan with risk assessment. Auto-detects project stack and adapts refactoring patterns to the detected language and framework.
 metadata:
   category: review
   tags: [refactoring, code-quality, technical-debt, multi-stack]

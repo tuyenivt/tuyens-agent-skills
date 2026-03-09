@@ -37,12 +37,12 @@ This skill reads the codebase. It does not modify any files.
 
 ## Inputs
 
-| Input                 | Required | Source                                                             |
-| --------------------- | -------- | ------------------------------------------------------------------ |
-| Root directory        | Yes      | Current working directory (default) or user-specified path         |
-| CLAUDE.md / AGENTS.md | No       | Auto-read if present - primary source of declared stack and intent |
-| Scope focus           | No       | User-specified module, service, or concern to prioritize           |
-| Known pain points     | No       | User-provided areas of concern ("payments module is a problem")    |
+| Input             | Required | Source                                                             |
+| ----------------- | -------- | ------------------------------------------------------------------ |
+| Root directory    | Yes      | Current working directory (default) or user-specified path         |
+| Repo context file | No       | Auto-read if present - primary source of declared stack and intent |
+| Scope focus       | No       | User-specified module, service, or concern to prioritize           |
+| Known pain points | No       | User-provided areas of concern ("payments module is a problem")    |
 
 If the user provides a scope focus, prioritize that area but still produce the full codebase overview. If no focus is given, cover the entire repository.
 
@@ -60,7 +60,7 @@ Use skill: `stack-detect` to identify:
 - Async/messaging infrastructure (if present)
 - Infrastructure-as-code or deployment tooling (if detectable)
 
-Read `CLAUDE.md`, `AGENTS.md`, `package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs` to fill in gaps not declared in agent files.
+Read the repo context file (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` if present), plus `package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs` to fill in gaps.
 
 State clearly what was detected vs what was inferred from file presence.
 
@@ -281,7 +281,7 @@ Use skill: `observability` to assess whether the observability setup is sufficie
 
 ### Output Constraints
 
-- Stack table must distinguish declared (from CLAUDE.md) from inferred (from file presence)
+- Stack table must distinguish declared (from repo context file) from inferred (from file presence)
 - Architecture classification must cite specific file paths as evidence - no guessing
 - Patterns table must cite a real file path for each pattern - not invented examples
 - Tech debt findings ordered High → Medium → Low

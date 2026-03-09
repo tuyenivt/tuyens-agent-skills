@@ -9,8 +9,8 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "37 skills (13 workflow + 24 atomic) for multi-stack development - auto-detects any tech stack from CLAUDE.md",
-      "version": "1.33.0",
+      "description": "37 skills (13 workflow + 24 atomic) for multi-stack development - auto-detects any tech stack",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -29,7 +29,7 @@
       "name": "delivery",
       "source": "./plugins/delivery",
       "description": "6 workflow skills for software delivery: release planning, go-live monitoring, scope breakdown, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -48,7 +48,7 @@
       "name": "architecture",
       "source": "./plugins/architecture",
       "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, and ADR creation.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -66,7 +66,7 @@
       "name": "oncall",
       "source": "./plugins/oncall",
       "description": "8 skills (4 workflow + 3 atomic) for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -86,7 +86,7 @@
       "name": "java",
       "source": "./plugins/java",
       "description": "12 skills and 11 agents for Java 21+ / Spring Boot 3.5+ development.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -104,7 +104,7 @@
       "name": "kotlin",
       "source": "./plugins/kotlin",
       "description": "5 skills and 11 agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires java plugin.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -122,7 +122,7 @@
       "name": "python",
       "source": "./plugins/python",
       "description": "9 skills and 11 agents for Python 3.11+ / FastAPI / Django development.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -133,7 +133,7 @@
       "name": "rails",
       "source": "./plugins/rails",
       "description": "8 skills and 11 agents for Ruby on Rails 7+/8 development.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -144,7 +144,7 @@
       "name": "node",
       "source": "./plugins/node",
       "description": "10 skills and 11 agents for Node.js/TypeScript development.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -164,7 +164,7 @@
       "name": "go",
       "source": "./plugins/go",
       "description": "9 skills and 11 agents for Go/Gin development.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -175,7 +175,7 @@
       "name": "dotnet",
       "source": "./plugins/dotnet",
       "description": "11 skills and 11 agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture.",
-      "version": "1.33.0",
+      "version": "1.34.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"

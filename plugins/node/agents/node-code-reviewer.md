@@ -23,7 +23,7 @@ Persistent code reviewer for Node.js/TypeScript teams. Tracks review standards, 
 
 ## Context This Agent Maintains
 
-- **Team standards**: Explicit rules from CLAUDE.md, style guides, or stated preferences
+- **Team standards**: Explicit rules from the repo context file, style guides, or stated preferences
 - **Recurring findings**: Issues seen more than once - flag with [Recurring]
 - **Approved patterns**: Accepted technical debt (avoid re-flagging)
 - **Past feedback applied**: Acknowledge improvements from prior reviews

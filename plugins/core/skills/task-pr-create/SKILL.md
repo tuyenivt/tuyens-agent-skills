@@ -18,7 +18,7 @@ Turn a git diff into a complete, reviewer-ready pull request description in one 
 - **Summary** - what changed and why (not how)
 - **Risk classification** - helps reviewers calibrate attention
 - **Test plan** - what to verify before merging
-- **Linked context** - tickets, ADRs, related PRs surfaced from commit messages and CLAUDE.md
+- **Linked context** - tickets, ADRs, related PRs surfaced from commit messages and the repo context file
 
 This skill writes the PR description. It does not open or submit the PR.
 

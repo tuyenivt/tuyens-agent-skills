@@ -27,7 +27,7 @@ Skills automatically detect which framework your project uses:
 | NestJS    | Prisma      |
 | Express   | TypeORM     |
 
-ORM selection can be overridden by declaring it in your project's `CLAUDE.md`.
+ORM selection can be overridden by declaring it in your project's repo context file.
 
 ## Workflow Skills
 

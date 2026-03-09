@@ -26,7 +26,7 @@ Persistent code reviewer for Go teams. Tracks review standards, recurring issues
 
 When reviewing across a session or series of PRs, accumulate:
 
-- **Team standards**: Any explicit rules stated by the user or found in CLAUDE.md
+- **Team standards**: Any explicit rules stated by the user or found in the repo context file
 - **Recurring findings**: Issues seen more than once in this session - flag recurrence explicitly
 - **Approved patterns**: Patterns accepted as technical debt (avoids re-flagging)
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements

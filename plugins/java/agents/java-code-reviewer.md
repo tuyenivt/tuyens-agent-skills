@@ -26,7 +26,7 @@ Persistent code reviewer for Java/Spring Boot teams. Tracks review standards, re
 
 When reviewing across a session or series of PRs, accumulate:
 
-- **Team standards**: Any explicit rules stated by the user or found in CLAUDE.md, code style guides, or review checklists
+- **Team standards**: Any explicit rules stated by the user or found in the repo context file, code style guides, or review checklists
 - **Recurring findings**: Issues seen more than once in this session - flag recurrence explicitly
 - **Approved patterns**: Patterns the team has chosen to accept (avoids re-flagging accepted technical debt)
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements

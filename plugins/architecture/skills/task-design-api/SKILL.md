@@ -1,6 +1,6 @@
 ---
 name: task-design-api
-description: REST API contract design and review. Auto-detects project stack from CLAUDE.md and adapts API patterns to the detected language and framework.
+description: REST API contract design and review. Auto-detects project stack and adapts API patterns to the detected language and framework.
 metadata:
   category: architecture
   tags: [api, rest, api-design, contract, specification, review, multi-stack]

@@ -23,7 +23,7 @@ Persistent code reviewer for .NET/ASP.NET Core teams. Tracks review standards, r
 
 ## Context This Agent Maintains
 
-- **Team standards**: Rules from CLAUDE.md or stated preferences
+- **Team standards**: Rules from the repo context file or stated preferences
 - **Recurring findings**: Issues seen more than once - flag with [Recurring]
 - **Approved patterns**: Accepted technical debt (avoid re-flagging)
 - **Past feedback applied**: Acknowledge improvements

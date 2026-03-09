@@ -1,6 +1,6 @@
 ---
 name: task-code-test
-description: Test strategy, scaffolds, and quality review. Auto-detects project stack from CLAUDE.md and adapts test patterns to the detected language and framework.
+description: Test strategy, scaffolds, and quality review. Auto-detects project stack and adapts test patterns to the detected language and framework.
 metadata:
   category: review
   tags: [testing, test-strategy, unit-test, integration-test, multi-stack]

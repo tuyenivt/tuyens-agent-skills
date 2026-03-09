@@ -1,6 +1,6 @@
 ---
 name: task-docs-generate
-description: Documentation generation (README, API docs, code comments, runbooks) for any stack. Auto-detects project stack from CLAUDE.md and adapts documentation patterns to the detected ecosystem.
+description: Documentation generation (README, API docs, code comments, runbooks) for any stack. Auto-detects project stack and adapts documentation patterns to the detected ecosystem.
 metadata:
   category: review
   tags: [documentation, readme, api-docs, multi-stack]
