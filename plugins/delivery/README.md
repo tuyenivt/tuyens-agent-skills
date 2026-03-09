@@ -1,18 +1,18 @@
 # Tuyen's Agent Skills - Delivery
 
-Software delivery plugin for Claude Code: release planning, scope breakdown, sprint-fit sizing, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.
+Software delivery plugin for Claude Code: release planning, scope breakdown, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.
 
 ## Workflow Skills
 
 5 workflow skills (`task-*`) for delivery planning and coordination.
 
-| Skill                       | Description                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan. |
-| `task-scope-breakdown`      | Break an epic or feature into implementable tasks with effort sizing, dependency ordering, hidden complexity signals, and sprint-fit mode.  |
-| `task-debt-triage`          | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                  |
-| `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.              |
-| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.        |
+| Skill                       | Description                                                                                                                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
+| `task-scope-breakdown`      | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
+| `task-debt-triage`          | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
+| `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
+| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                                             |
 
 ## Atomic Skills
 
@@ -27,6 +27,8 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 | `backward-compatibility-analysis` | `task-release-plan`, `task-scope-breakdown`                              |
 | `dependency-impact-analysis`      | `task-release-plan`, `task-scope-breakdown`, `task-pr-conflict-analysis` |
 | `change-risk-classification`      | `task-scope-breakdown`                                                   |
+| `db-migration-safety`             | `task-release-plan`, `task-scope-breakdown`                              |
+| `feature-flags`                   | `task-release-plan`, `task-scope-breakdown`                              |
 | `release-safety`                  | `task-release-plan`                                                      |
 | `pr-risk-analysis`                | `task-release-plan`                                                      |
 | `failure-classification`          | `task-release-plan`                                                      |
@@ -52,20 +54,11 @@ DB migration: adds payment_intent_id column to orders table
 Traffic expectation: 500 RPS steady state
 ```
 
-**Break down an epic into tasks:**
+**Break down a feature into tasks:**
 
 ```
 /task-scope-breakdown
-Epic: User authentication overhaul - migrate from session-based to JWT
-```
-
-**Sprint-fit mode (pass team size and sprint length):**
-
-```
-/task-scope-breakdown
-Epic: Payment processing V2
-Team: 4 engineers
-Sprint: 2 weeks
+Feature: User authentication overhaul - migrate from session-based to JWT
 ```
 
 **Triage tech debt:**
