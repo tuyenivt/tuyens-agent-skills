@@ -57,7 +57,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-14 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+13 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                       | Description                                                                                                                                           |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -74,7 +74,6 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `task-code-secure`          | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                  |
 | `task-code-test`            | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                            |
 | `task-docs-generate`        | Documentation generation (README, API docs, runbooks) for any stack                                                                                   |
-| `task-skill-feedback`       | Capture feedback on skill output quality - record what was useful, what was adjusted, and why, to inform future skill iterations.                     |
 
 ## Atomic Skills
 
@@ -151,7 +150,6 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-code-secure`          | `stack-detect`, `observability`, `resiliency`, `idempotency`, `api-guidelines`                                                                                                  |
 | `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                            |
 | `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                            |
-| `task-skill-feedback`       | _(none - self-contained)_                                                                                                                                                       |
 | `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                              |
 | `task-migration-plan`       | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`          |
 

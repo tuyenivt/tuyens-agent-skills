@@ -1,16 +1,15 @@
 # Tuyen's Agent Skills - Oncall
 
-Incident response plugin for Claude Code: root cause analysis, postmortem with systemic learning, and structured on-call handoff. Requires the `core` plugin for shared atomic skills (failure-classification, blast-radius-analysis, observability, resiliency, engineering-governance, etc.).
+Incident response plugin for Claude Code: root cause analysis and postmortem with systemic learning. Requires the `core` plugin for shared atomic skills (failure-classification, blast-radius-analysis, observability, resiliency, engineering-governance, etc.).
 
 ## Workflow Skills
 
-3 workflow skills (`task-*`) for incident response and on-call operations.
+2 workflow skills (`task-*`) for incident response.
 
-| Skill                      | Description                                                                                                                      |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `task-incident-root-cause` | Staff-level incident root cause analysis with containment and prevention                                                         |
-| `task-incident-postmortem` | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels.                             |
-| `task-oncall-handoff`      | Generate a structured on-call handoff - incident summary, open alerts, known flaky areas, and context for the incoming engineer. |
+| Skill                      | Description                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `task-incident-root-cause` | Staff-level incident root cause analysis with containment and prevention                             |
+| `task-incident-postmortem` | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels. |
 
 ## Atomic Skills
 
@@ -29,7 +28,6 @@ Incident response plugin for Claude Code: root cause analysis, postmortem with s
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-incident-root-cause` | `root-cause-hypothesis`     | `failure-classification`, `blast-radius-analysis`, `failure-propagation-analysis`, `concurrency-model`, `data-consistency-modeling`, `db-indexing`, `resiliency`, `observability`, `architecture-guardrail`, `engineering-governance`                         |
 | `task-incident-postmortem` | `review-gap-analysis`       | `failure-classification`, `concurrency-model`, `data-consistency-modeling`, `resiliency`, `db-indexing`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `engineering-governance`, `observability`, `idempotency`, `coding-standards` |
-| `task-oncall-handoff`      | _(none)_                    | `failure-classification`                                                                                                                                                                                                                                      |
 
 ## Usage Examples
 
@@ -45,11 +43,4 @@ Incident response plugin for Claude Code: root cause analysis, postmortem with s
 ```
 /task-incident-postmortem
 [paste incident timeline or reference root-cause output]
-```
-
-**Hand off an on-call shift:**
-
-```
-/task-oncall-handoff
-[describe current shift state, open issues, recent incidents]
 ```
