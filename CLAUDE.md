@@ -74,6 +74,10 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 Many core workflow skills begin with `Use skill: stack-detect`, which reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is the primary mechanism by which skills adapt their output to different ecosystems.
 
+## Environment
+
+- Shell: Git Bash on Windows - use Unix commands (`mv`, `cp`, `mkdir -p`, forward slashes). Do not use PowerShell cmdlets or CMD commands.
+
 ## Writing Conventions
 
 - Always use `-` (hyphen-minus) instead of `-` (em dash) in all Markdown files.

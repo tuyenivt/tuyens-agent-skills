@@ -1,5 +1,5 @@
 ---
-name: task-migration-plan
+name: task-db-migration-plan
 description: Safe database migration strategy - zero-downtime sequencing, expand-contract, rollback plan, data backfill estimation, and lock risk assessment. Plans the migration strategy only - not for writing migration files (use task-spring-new / task-dotnet-new for scaffolding).
 metadata:
   category: data

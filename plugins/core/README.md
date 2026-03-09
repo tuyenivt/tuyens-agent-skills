@@ -62,7 +62,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `task-feature-implement`    | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                             |
 | `task-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                         |
 | `task-code-explain`         | Explain a specific file, function, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants.                  |
-| `task-migration-plan`       | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment.  |
+| `task-db-migration-plan`    | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment.  |
 | `task-onboard-codebase`     | Senior engineer codebase onboarding - detect stack, map architecture, extract patterns, flag tech debt hotspots.                                      |
 | `task-pr-create`            | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                      |
 | `task-code-refactor`        | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                       |
@@ -149,7 +149,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                            |
 | `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                            |
 | `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                              |
-| `task-migration-plan`       | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`          |
+| `task-db-migration-plan`    | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`          |
 
 ### Atomic → Used By (Reuse Count)
 
@@ -157,17 +157,17 @@ Atomics used by the most workflows - highest customization leverage:
 
 | Atomic Skill                      | Used By                                                                                                                                | Count |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `stack-detect`                    | all except `task-migration-plan`                                                                                                       | 10    |
+| `stack-detect`                    | all except `task-db-migration-plan`                                                                                                    | 10    |
 | `observability`                   | `task-onboard-codebase`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                  | 5     |
 | `architecture-guardrail`          | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-explain`                    | 5     |
 | `coding-standards`                | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate` | 6     |
 | `resiliency`                      | `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                                           | 4     |
 | `concurrency-model`               | `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-code-explain`                                                 | 4     |
 | `api-guidelines`                  | `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`                            | 5     |
-| `blast-radius-analysis`           | `task-code-review-advanced`, `task-migration-plan`                                                                                     | 2     |
-| `backward-compatibility-analysis` | `task-migration-plan`                                                                                                                  | 1     |
-| `dependency-impact-analysis`      | `task-migration-plan`                                                                                                                  | 1     |
-| `change-risk-classification`      | `task-migration-plan`                                                                                                                  | 1     |
+| `blast-radius-analysis`           | `task-code-review-advanced`, `task-db-migration-plan`                                                                                  | 2     |
+| `backward-compatibility-analysis` | `task-db-migration-plan`                                                                                                               | 1     |
+| `dependency-impact-analysis`      | `task-db-migration-plan`                                                                                                               | 1     |
+| `change-risk-classification`      | `task-db-migration-plan`                                                                                                               | 1     |
 
 ## Usage Examples
 
