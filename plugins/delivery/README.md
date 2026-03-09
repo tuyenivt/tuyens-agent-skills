@@ -10,7 +10,7 @@ Software delivery plugin for Claude Code: release planning, scope breakdown, tec
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
 | `task-scope-breakdown`      | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
-| `task-debt-triage`          | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
+| `task-debt-prioritize`      | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
 | `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
 | `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                                             |
 
@@ -64,7 +64,7 @@ Feature: User authentication overhaul - migrate from session-based to JWT
 **Triage tech debt:**
 
 ```
-/task-debt-triage
+/task-debt-prioritize
 ```
 
 **Assess a dependency upgrade:**

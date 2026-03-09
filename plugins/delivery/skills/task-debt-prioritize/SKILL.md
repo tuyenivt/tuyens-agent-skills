@@ -1,5 +1,5 @@
 ---
-name: task-debt-triage
+name: task-debt-prioritize
 description: Prioritize technical debt items by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog ready for sprint planning. Not for general code review (use task-code-review) and not for refactoring planning (use task-code-refactor).
 metadata:
   category: planning
