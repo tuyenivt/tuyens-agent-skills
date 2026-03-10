@@ -71,8 +71,9 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 Use skill: `stack-detect` to identify the technology stack.
 Use skill: `architecture-guardrail` to assess current boundary quality.
+Use skill: `architecture-landscape` to build the service landscape map -- system inventory, integration map, and cross-system risks. This produces the coupling and ownership data that drives merge candidate identification in Section 2.
 
-Analyze:
+The `architecture-landscape` output replaces manual analysis of:
 
 - **Service inventory** -- all services, their responsibilities, team ownership
 - **Dependency graph** -- who calls whom, sync vs async, call frequency

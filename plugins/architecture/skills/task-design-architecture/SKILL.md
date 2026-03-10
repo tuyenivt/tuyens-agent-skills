@@ -48,6 +48,12 @@ Run all 10 sections. This is the default path described in the Design Model belo
 
 ### Review Existing Design Mode
 
+**If the user provides 2 or more proposals for the same problem:**
+
+Use skill: `architecture-proposal-compare` to produce a side-by-side comparison matrix and recommendation. Then apply the single-proposal review sections below only to the recommended proposal.
+
+**If the user provides a single proposal:**
+
 The user provides an existing design doc, ADR, or architecture proposal. Skip sections that assume you are the author. Run only:
 
 - **Problem Framing** (Section 1) - confirm you understand scope and constraints as stated in the proposal
@@ -137,9 +143,10 @@ Capture:
 
 - **Business objective** -- what business outcome does this serve
 - **Functional scope** -- what must the system do (in / out of scope)
-- **Non-functional requirements** -- latency, throughput, availability, consistency, compliance
 - **Constraints** -- technical debt, legacy systems, team capacity, timeline, budget
 - **Assumptions** -- what is assumed true but not yet validated
+
+Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
 
 Use skill: `engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
 

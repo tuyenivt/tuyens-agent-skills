@@ -113,6 +113,7 @@ For each bounded context:
 
 Define the end state.
 
+Use skill: `architecture-landscape` if the monolith integrates with other systems or the migration affects org-wide services -- build the surrounding landscape before defining target service boundaries to ensure the new service lines account for org-wide coupling.
 Use skill: `data-consistency-modeling` for inter-service consistency strategy.
 Use skill: `resiliency` for fault tolerance between services.
 

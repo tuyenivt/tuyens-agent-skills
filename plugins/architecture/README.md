@@ -1,30 +1,35 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, Architecture Decision Record (ADR) creation, and re-architecture workflows (monolith decomposition, microservices consolidation, legacy system modernization).
+Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, Architecture Decision Record (ADR) creation, re-architecture workflows (monolith decomposition, microservices consolidation, legacy system modernization), diagram generation, and docs repo auditing.
 
 ## Workflow Skills
 
-7 workflow skills (`task-*`) for architecture design and re-architecture workflows. Invoked as slash commands.
+9 workflow skills (`task-*`) for architecture design, re-architecture, and docs-repo workflows. Invoked as slash commands.
 
-| Skill                               | Description                                                                                                                                                                |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-design-architecture`          | Architecture design or review. Asks whether you're designing new or reviewing existing - adapts output accordingly. Supports `quick`, `standard`, and `deep` depth levels. |
-| `task-design-api`                   | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                                           |
-| `task-design-risk-analysis`         | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                                                  |
-| `task-adr-create`                   | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                                            |
-| `task-migrate-monolith-to-services` | Monolith to microservices/modular services decomposition migration plan with domain boundaries, extraction order, and data ownership transfer.                             |
-| `task-consolidate-services`         | Microservices consolidation - merge over-split services into fewer, well-bounded services with data reunification and consumer migration.                                  |
-| `task-modernize-legacy`             | Legacy system modernization - migrate from outdated language/framework to modern stack with behavioral verification and incremental cutover.                               |
+| Skill                               | Description                                                                                                                                                                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-design-architecture`          | Architecture design or review. Asks whether you're designing new or reviewing existing - adapts output accordingly. Compares multiple proposals when provided. Supports `quick`, `standard`, and `deep` depth levels. |
+| `task-design-api`                   | REST API contract design and review. Auto-detects stack and adapts API patterns.                                                                                                                                      |
+| `task-design-risk-analysis`         | Staff-level proactive engineering risk assessment. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                             |
+| `task-design-diagram`               | Generate architecture diagrams (C4 context/container/component, sequence, data flow, deployment) as Mermaid or PlantUML from a design doc or description.                                                             |
+| `task-adr-create`                   | Write an Architecture Decision Record with context, alternatives, trade-offs, consequences, and review trigger.                                                                                                       |
+| `task-architecture-docs-audit`      | Audit an architecture docs repo - inventory artifacts, detect stale or conflicting documents, and produce a prioritized remediation plan.                                                                             |
+| `task-migrate-monolith-to-services` | Monolith to microservices/modular services decomposition migration plan with domain boundaries, extraction order, and data ownership transfer.                                                                        |
+| `task-consolidate-services`         | Microservices consolidation - merge over-split services into fewer, well-bounded services with data reunification and consumer migration.                                                                             |
+| `task-modernize-legacy`             | Legacy system modernization - migrate from outdated language/framework to modern stack with behavioral verification and incremental cutover.                                                                          |
 
 ## Atomic Skills
 
-3 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+6 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
-| Skill                    | Description                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `system-boundary-design` | Formal boundary modeling for module and service decomposition                                                   |
-| `tradeoff-analysis`      | Structured architectural decision and trade-off documentation                                                   |
-| `strangler-fig-pattern`  | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases |
+| Skill                           | Description                                                                                                     | Composed By                                                                                                              |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `system-boundary-design`        | Formal boundary modeling for module and service decomposition                                                   | `task-design-architecture`, `task-migrate-monolith-to-services`, `task-consolidate-services`                             |
+| `tradeoff-analysis`             | Structured architectural decision and trade-off documentation                                                   | `task-design-architecture`, `task-adr-create`, `task-modernize-legacy`                                                   |
+| `strangler-fig-pattern`         | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases | `task-migrate-monolith-to-services`, `task-consolidate-services`, `task-modernize-legacy`                                |
+| `nfr-specification`             | Elicit and structure NFRs from business context into measurable SLOs and constraints                            | `task-design-architecture` (Section 1), `task-architecture-docs-audit`                                                   |
+| `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks         | `task-consolidate-services` (Section 1), `task-migrate-monolith-to-services` (Section 3), `task-architecture-docs-audit` |
+| `architecture-proposal-compare` | Compare 2-3 architecture proposals against a fixed criteria set and produce a ranked recommendation             | `task-design-architecture` (review mode, multiple proposals), `task-architecture-docs-audit`                             |
 
 ## Core Atomics Used
 
@@ -59,17 +64,17 @@ All workflow skills depend on core atomics for stack detection, guardrail enforc
 
 ### Workflow -> Atomics
 
-| Workflow                            | Atomic Skills Used                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-design-architecture`          | `stack-detect`_, `architecture-guardrail`_, `blast-radius-analysis`_, `system-boundary-design`, `data-consistency-modeling`_, `idempotency`_, `caching`_, `resiliency`_, `failure-classification`_, `failure-propagation-analysis`_, `observability`_, `db-indexing`_, `capacity-modeling`_, `release-safety`_, `dependency-impact-analysis`_, `concurrency-model`\_, `tradeoff-analysis`, `engineering-governance`\* |
-| `task-design-api`                   | `stack-detect`_, `api-guidelines`_, `backward-compatibility-analysis`\*                                                                                                                                                                                                                                                                                                                                               |
-| `task-design-risk-analysis`         | `stack-detect`_, `change-risk-classification`_, `pr-risk-analysis`_, `failure-classification`_, `architecture-guardrail`_, `complexity-review`_, `blast-radius-analysis`_, `failure-propagation-analysis`_, `data-consistency-modeling`_, `idempotency`_, `resiliency`_, `release-safety`_, `backward-compatibility-analysis`_, `dependency-impact-analysis`_, `observability`_, `engineering-governance`_            |
-| `task-adr-create`                   | `tradeoff-analysis`                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `task-migrate-monolith-to-services` | `stack-detect`_, `architecture-guardrail`_, `system-boundary-design`, `strangler-fig-pattern`, `data-consistency-modeling`_, `backward-compatibility-analysis`_, `blast-radius-analysis`_, `dependency-impact-analysis`_, `failure-classification`_, `failure-propagation-analysis`_, `resiliency`_, `observability`_, `engineering-governance`_, `release-safety`_, `feature-flags`\*                                |
-| `task-consolidate-services`         | `stack-detect`_, `architecture-guardrail`_, `system-boundary-design`, `strangler-fig-pattern`, `data-consistency-modeling`_, `backward-compatibility-analysis`_, `blast-radius-analysis`_, `dependency-impact-analysis`_, `failure-classification`_, `failure-propagation-analysis`_, `feature-flags`\*                                                                                                               |
-| `task-modernize-legacy`             | `stack-detect`_, `architecture-guardrail`_, `strangler-fig-pattern`, `tradeoff-analysis`, `data-consistency-modeling`_, `backward-compatibility-analysis`_, `blast-radius-analysis`_, `dependency-impact-analysis`_, `failure-classification`_, `failure-propagation-analysis`_, `resiliency`_, `feature-flags`_                                                                                                      |
-
-\* _Cross-plugin dependency from `core` - available when `core` is installed alongside `architecture`._
+| Workflow                            | Atomic Skills Used                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-design-architecture`          | `nfr-specification`, `architecture-proposal-compare` (review mode, multi-proposal), `system-boundary-design`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `blast-radius-analysis`, `data-consistency-modeling`, `idempotency`, `caching`, `resiliency`, `failure-classification`, `failure-propagation-analysis`, `observability`, `db-indexing`, `capacity-modeling`, `release-safety`, `dependency-impact-analysis`, `concurrency-model`, `engineering-governance` |
+| `task-design-api`                   | `stack-detect`, `api-guidelines`, `backward-compatibility-analysis`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `task-design-risk-analysis`         | `stack-detect`, `change-risk-classification`, `pr-risk-analysis`, `failure-classification`, `architecture-guardrail`, `complexity-review`, `blast-radius-analysis`, `failure-propagation-analysis`, `data-consistency-modeling`, `idempotency`, `resiliency`, `release-safety`, `backward-compatibility-analysis`, `dependency-impact-analysis`, `observability`, `engineering-governance`                                                                                              |
+| `task-design-diagram`               | _(no atomic dependencies - reads source docs directly)_                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `task-adr-create`                   | `tradeoff-analysis`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `task-architecture-docs-audit`      | `architecture-landscape`, `architecture-proposal-compare`, `nfr-specification`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `task-migrate-monolith-to-services` | `architecture-landscape` (optional, Section 3), `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `data-consistency-modeling`, `backward-compatibility-analysis`, `blast-radius-analysis`, `dependency-impact-analysis`, `failure-classification`, `failure-propagation-analysis`, `resiliency`, `observability`, `engineering-governance`, `release-safety`, `feature-flags`                                                                |
+| `task-consolidate-services`         | `architecture-landscape`, `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `data-consistency-modeling`, `backward-compatibility-analysis`, `blast-radius-analysis`, `dependency-impact-analysis`, `failure-classification`, `failure-propagation-analysis`, `feature-flags`                                                                                                                                                                 |
+| `task-modernize-legacy`             | `strangler-fig-pattern`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `data-consistency-modeling`, `backward-compatibility-analysis`, `blast-radius-analysis`, `dependency-impact-analysis`, `failure-classification`, `failure-propagation-analysis`, `resiliency`, `feature-flags`                                                                                                                                                                                  |
 
 ## Usage Examples
 
@@ -86,6 +91,38 @@ Requirements: Handle 500 RPS, zero-downtime deploys, PCI compliance
 ```
 /task-design-architecture
 [paste design doc or ADR here]
+```
+
+**Compare two competing architecture proposals:**
+
+```
+/task-design-architecture
+[paste Proposal A]
+---
+[paste Proposal B]
+```
+
+**Generate a C4 container diagram:**
+
+```
+/task-design-diagram
+[paste task-design-architecture output or design doc]
+Diagram type: C4 container
+```
+
+**Generate a sequence diagram for a specific flow:**
+
+```
+/task-design-diagram
+Source: docs/design/order-processing.md
+Flow: Order creation through to fulfillment event
+```
+
+**Audit the architecture docs repo:**
+
+```
+/task-architecture-docs-audit
+Path: docs/
 ```
 
 **Design an API contract:**
