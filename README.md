@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, and `dotnet`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, and `rust`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -70,6 +70,13 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install dotnet@tuyens-agent-skills --scope project
 ```
 
+**Rust project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install rust@tuyens-agent-skills --scope project
+```
+
 **Architecture project:**
 
 ```bash
@@ -110,6 +117,7 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/rails/skil
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/node/skills" "$HOME/.codex/skills/tuyens-agent-skills-node-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/go/skills" "$HOME/.codex/skills/tuyens-agent-skills-go-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/skills" "$HOME/.codex/skills/tuyens-agent-skills-dotnet-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/rust/skills" "$HOME/.codex/skills/tuyens-agent-skills-rust-skills"
 
 # Windows
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
@@ -123,6 +131,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rails-skills" "%USERP
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-node-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/node/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/go/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/dotnet/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rust-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/rust/skills"
 ```
 
 ## How Skills Work
@@ -202,6 +211,10 @@ Go / Gin (plugin: go)
 .NET / ASP.NET Core (plugin: dotnet)
   scaffold a new .NET feature         -> /task-dotnet-new
   debug a .NET issue                  -> /task-dotnet-debug
+
+Rust / Axum (plugin: rust)
+  scaffold a new Rust feature         -> /task-rust-new
+  debug a Rust issue                  -> /task-rust-debug
 ```
 
 **Common decision points:**
@@ -231,6 +244,7 @@ Go / Gin (plugin: go)
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                  | 10 skills + 11 agents                  |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                             | 9 skills + 11 agents                   |
 | [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                      | 11 skills + 11 agents                  |
+| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                   | 11 skills + 11 agents                  |
 
 ## Notes
 
