@@ -20,7 +20,7 @@ STEP 2 - CLASSIFY:
 - UnauthorizedException (NestJS) → auth guard failed
 - BadRequestException (NestJS) → validation pipe rejected input
 - TS2322 / TS2345 → TypeScript type mismatch, check types
-- Cannot find module → missing dependency, wrong import path
+- Cannot find module → missing dependency, wrong import path; run `bun install`
 - Circular dependency detected (NestJS) → forwardRef or refactor modules
 - ERR_UNHANDLED_REJECTION → unhandled promise rejection, add catch
 - BullMQ job stuck in failed state → load node-bullmq-patterns, check retry/backoff config

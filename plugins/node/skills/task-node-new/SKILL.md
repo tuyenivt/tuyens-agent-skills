@@ -26,7 +26,7 @@ STEP 6 - API LAYER:
 
 STEP 7 - TESTS: load node-testing-patterns, comprehensive coverage
 
-STEP 8 - VALIDATE: build + test + lint + typecheck
+STEP 8 - VALIDATE: build + test + lint + typecheck (prefer `bun run build`, `bun test`, `bun run lint`)
 
 OUTPUT: file list, endpoint summary, test count
 

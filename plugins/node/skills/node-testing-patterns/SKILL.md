@@ -17,25 +17,29 @@ Cover:
    - request(app).get('/api/v1/orders').expect(200)
    - Mock services via dependency injection or jest.mock()
 
-3. DATABASE TESTING:
+3. RUNNING TESTS:
+   - Prefer `bun test` or `bun run test` (faster install and execution)
+   - Falls back to `npx jest` if bun is not available
+
+4. DATABASE TESTING:
    - testcontainers (testcontainers-node) for real PostgreSQL
    - Prisma: use prisma migrate deploy on test container
    - TypeORM: synchronize: true ONLY in test config
    - Transaction rollback per test for isolation
 
-4. MOCKING:
+5. MOCKING:
    - jest.mock() for module-level mocking
    - jest.spyOn() for partial mocking
    - Manual mocks in **mocks**/ directories
    - Prefer dependency injection over jest.mock when possible
 
-5. PATTERNS:
+6. PATTERNS:
    - describe/it blocks with clear naming: "should return 201 when order is created"
    - beforeAll for DB setup, afterAll for teardown, beforeEach for data reset
    - Use expect().resolves / expect().rejects for async assertions
    - Snapshot testing ONLY for serializers/response shapes, not business logic
 
-6. ANTI-PATTERNS:
+7. ANTI-PATTERNS:
    - ❌ SQLite for integration tests (use Testcontainers PostgreSQL)
    - ❌ No types in test helpers (TypeScript in tests too)
    - ❌ Testing implementation details (mock internals)

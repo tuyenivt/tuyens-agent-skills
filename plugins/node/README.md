@@ -5,9 +5,10 @@ Claude Code plugin for Node.js/TypeScript development.
 ## Stack
 
 - **TypeScript** - strict mode
+- **Bun** - preferred for install, build, test, and scripts (faster than npm/yarn); Node.js remains the production runtime
 - **NestJS** (primary) + **Express** (secondary)
 - **Prisma** (NestJS) + **TypeORM** (Express)
-- **Jest** + **Supertest**
+- **Jest** + **Supertest** (run via `bun test` or `bun run test`)
 - **PostgreSQL**
 
 ## Framework Detection
@@ -78,7 +79,7 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | `node-architect`            | sonnet | Node.js/TypeScript architect for NestJS and Express. Designs APIs, module structure, DI, Prisma/TypeORM data access |
 | `node-tech-lead`            | sonnet | Code review for TypeScript strictness, NestJS/Express patterns, query optimization, test coverage                   |
 | `node-reliability-engineer` | sonnet | Incident analysis: event loop blocking, memory leaks, connection pools, graceful shutdown, monitoring               |
-| `node-security-engineer`    | sonnet | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with npm audit               |
+| `node-security-engineer`    | sonnet | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with bun audit / npm audit   |
 | `node-performance-engineer` | sonnet | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
 | `node-refactoring-expert`   | sonnet | Systematic Node.js/TypeScript code improvement: TypeScript strict mode, async safety, NestJS DI, ORM migration      |
 | `node-technical-writer`     | sonnet | TSDoc, NestJS Swagger (`@nestjs/swagger`), ADRs, and runbooks for Node.js/BullMQ services                           |

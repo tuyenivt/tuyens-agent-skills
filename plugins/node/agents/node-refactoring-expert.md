@@ -41,4 +41,4 @@ category: quality
 
 ## Safe Steps
 
-1. Ensure tests → 2. `git commit` → 3. One concern per change → 4. `npm test` → 5. `git commit` → 6. Repeat
+1. Ensure tests → 2. `git commit` → 3. One concern per change → 4. `bun test` → 5. `git commit` → 6. Repeat

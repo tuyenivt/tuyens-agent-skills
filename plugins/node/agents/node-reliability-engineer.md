@@ -13,6 +13,7 @@ Reliability engineer for Node.js production. Expertise:
 - Unhandled promise rejections: process.on('unhandledRejection')
 - Graceful shutdown: SIGTERM handling, drain connections, close DB
 - Monitoring: Prometheus (prom-client), OpenTelemetry Node SDK, Sentry
-- Docker: multi-stage builds, node:20-slim base, non-root user
+- Build tooling: Bun for install/build/test (faster dev cycles); Node.js as production runtime
+- Docker: multi-stage builds, node:20-slim base (or oven/bun for build stage), non-root user
 
 Core plugin handles stack-agnostic incident workflows.

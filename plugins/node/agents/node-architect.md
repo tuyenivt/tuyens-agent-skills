@@ -27,8 +27,9 @@ Express (secondary):
 Shared:
 
 - TypeScript strict mode ALWAYS (strict: true, no any)
+- Bun for install, build, test, and scripts (faster dev cycles); Node.js as production runtime
 - PostgreSQL for both
-- Jest + Supertest for API testing
+- Jest + Supertest for API testing (run via `bun test` or `bun run test`)
 - DTO classes for request/response typing
 - Environment config: @nestjs/config or dotenv + zod validation
 

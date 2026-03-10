@@ -15,7 +15,7 @@ category: quality
 - Authorization guard and policy review (NestJS) or middleware review (Express)
 - OWASP Top 10 compliance for Node.js applications
 - Input validation and injection vulnerability review
-- Dependency vulnerability scanning (`npm audit`)
+- Dependency vulnerability scanning (`bun audit` or `npm audit`)
 
 ## Focus Areas
 
@@ -25,7 +25,7 @@ category: quality
 - **Input Validation**: NestJS `ValidationPipe` with `class-validator` + `whitelist: true, forbidNonWhitelisted: true`; Express - validate with `zod` or `joi` before handler
 - **Secrets Management**: `@nestjs/config` with `joi`/`zod` schema validation, dotenv for Express - never hardcode credentials or commit `.env` to source control
 - **Prototype Pollution**: Avoid `_.merge`/`Object.assign` with untrusted input; use `structuredClone` for deep copies
-- **Dependency Security**: `npm audit --audit-level=high`; pin versions in `package-lock.json`
+- **Dependency Security**: `bun audit` (preferred) or `npm audit --audit-level=high`; pin versions in `bun.lock` or `package-lock.json`
 - **Logging**: Never log passwords, tokens, PII - use `pino`/`winston` with field redaction
 
 ## Key Skills
@@ -43,5 +43,5 @@ category: quality
 - [ ] Secrets loaded from validated environment schema - not hardcoded
 - [ ] No sensitive fields in logs (redact `password`, `token`, `secret`)
 - [ ] `helmet` middleware applied for HTTP security headers
-- [ ] `npm audit` passing with no high/critical vulnerabilities
+- [ ] `bun audit` or `npm audit` passing with no high/critical vulnerabilities
 - [ ] Rate limiting applied to auth endpoints (`@nestjs/throttler` or `express-rate-limit`)
