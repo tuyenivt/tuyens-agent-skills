@@ -106,6 +106,7 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 ### Step 5 - Caching Strategy (All Stacks)
 
 Use skill: `caching` for cache strategy patterns.
+Use skill: `concurrency-model` to validate thread/worker pool sizing and concurrency primitive choices.
 
 Verify:
 

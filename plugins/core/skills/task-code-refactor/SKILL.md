@@ -48,6 +48,9 @@ Use judgment - these are signals, not hard rules. A 25-line method with a clear 
 
 ### Step 3 - Framework-Specific Smells
 
+Use skill: `coding-standards` to enforce naming, structure, and anti-pattern rules for the detected stack.
+Use skill: `concurrency-model` if concurrency patterns are present in the target scope.
+
 After loading stack-detect, identify smells specific to the detected ecosystem. Common categories include:
 
 **Controller/Handler Bloat:**

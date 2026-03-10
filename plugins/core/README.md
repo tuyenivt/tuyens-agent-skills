@@ -135,21 +135,21 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 ### Workflow → Atomics
 
-| Workflow                    | Atomic Skills Used                                                                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`    | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                    |
-| `task-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                    |
-| `task-onboard-codebase`     | `stack-detect`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`                                                                              |
-| `task-pr-create`            | `stack-detect`, `pr-risk-analysis`                                                                                                                                              |
-| `task-code-refactor`        | `stack-detect`, `coding-standards`, `concurrency-model`, `architecture-guardrail`                                                                                               |
-| `task-code-review`          | `stack-detect`, `coding-standards`, `api-guidelines`, `architecture-guardrail`, `concurrency-model`, `observability`, `resiliency`                                              |
-| `task-code-review-advanced` | `stack-detect`, `pr-risk-analysis`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`, `resiliency`, `api-guidelines` |
-| `task-code-perf-review`     | `stack-detect`, `caching`, `observability`                                                                                                                                      |
-| `task-code-secure`          | `stack-detect`, `observability`, `resiliency`, `idempotency`, `api-guidelines`                                                                                                  |
-| `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                            |
-| `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                            |
-| `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                              |
-| `task-db-migration-plan`    | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`          |
+| Workflow                    | Atomic Skills Used                                                                                                                                                                                   |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                         |
+| `task-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                         |
+| `task-onboard-codebase`     | `stack-detect`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`                                                                                                   |
+| `task-pr-create`            | `stack-detect`, `pr-risk-analysis`                                                                                                                                                                   |
+| `task-code-refactor`        | `stack-detect`, `coding-standards`, `concurrency-model`, `architecture-guardrail`                                                                                                                    |
+| `task-code-review`          | `stack-detect`, `coding-standards`, `api-guidelines`, `architecture-guardrail`, `concurrency-model`, `observability`, `resiliency`                                                                   |
+| `task-code-review-advanced` | `stack-detect`, `pr-risk-analysis`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`, `resiliency`, `api-guidelines`, `concurrency-model` |
+| `task-code-perf-review`     | `stack-detect`, `caching`, `observability`, `concurrency-model`                                                                                                                                      |
+| `task-code-secure`          | `stack-detect`, `observability`, `resiliency`, `idempotency`, `api-guidelines`                                                                                                                       |
+| `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                                                 |
+| `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                                                 |
+| `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                                                   |
+| `task-db-migration-plan`    | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`                               |
 
 ### Atomic → Used By (Reuse Count)
 
@@ -162,7 +162,7 @@ Atomics used by the most workflows - highest customization leverage:
 | `architecture-guardrail`          | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-explain`                    | 5     |
 | `coding-standards`                | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate` | 6     |
 | `resiliency`                      | `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                                           | 4     |
-| `concurrency-model`               | `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-code-explain`                                                 | 4     |
+| `concurrency-model`               | `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-explain`                    | 5     |
 | `api-guidelines`                  | `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`                            | 5     |
 | `blast-radius-analysis`           | `task-code-review-advanced`, `task-db-migration-plan`                                                                                  | 2     |
 | `backward-compatibility-analysis` | `task-db-migration-plan`                                                                                                               | 1     |

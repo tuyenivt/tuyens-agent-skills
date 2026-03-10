@@ -85,7 +85,9 @@ After loading stack-detect, apply correctness checks specific to the detected ec
 - Null/nil/zero-value handling using the language's standard approach
 - Error handling following the ecosystem's conventions
 
-Use skill: `resiliency`, `api-guidelines`
+Use skill: `resiliency` for error handling, retry, and fault tolerance patterns.
+Use skill: `api-guidelines` if the change touches API contracts or HTTP endpoints.
+Use skill: `concurrency-model` if concurrency patterns are present in the change.
 
 ### Phase C - Architecture Guardrails
 
