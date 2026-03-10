@@ -14,8 +14,8 @@ plugins/
     skills/      # 37 skills: 13 workflow (task-*) + 24 atomic
   delivery/      # Release planning and delivery coordination
     skills/      # 5 workflow skills
-  architecture/  # Stack-agnostic architecture design
-    skills/      # 6 skills: 4 workflow + 2 atomic
+  architecture/  # Stack-agnostic architecture design and re-architecture
+    skills/      # 10 skills: 7 workflow + 3 atomic
   oncall/        # Incident response workflows
     skills/      # 4 skills: 2 workflow + 2 atomic
   java/          # Java 21+ / Spring Boot 3.5+

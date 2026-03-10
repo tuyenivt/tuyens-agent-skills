@@ -1,7 +1,7 @@
 {
   "name": "architecture",
-  "version": "1.37.0",
-  "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, and ADR creation.",
+  "version": "1.38.0",
+  "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, ADR creation, and re-architecture (monolith decomposition, service consolidation, legacy modernization).",
   "author": {
     "name": "Tuyen"
   },

@@ -172,6 +172,9 @@ I want to...
   write documentation               -> /task-docs-generate
   refactor safely                   -> /task-code-refactor
   record an architecture decision   -> /task-adr-create [architecture]
+  decompose monolith into services  -> /task-migrate-monolith-to-services [architecture]
+  consolidate over-split services   -> /task-consolidate-services [architecture]
+  modernize a legacy system         -> /task-modernize-legacy [architecture]
   assess risk before writing code   -> /task-design-risk-analysis [architecture]
   assess risk after writing code    -> /task-code-review-advanced
   check for security issues         -> /task-code-secure
@@ -231,20 +234,20 @@ Rust / Axum (plugin: rust)
 
 ## Plugin Catalog
 
-| Plugin                               | Focus                                                                                      | Includes                               |
-| ------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                             | 38 skills                              |
-| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts     | 5 skills                               |
-| [architecture](plugins/architecture) | Stack-agnostic architecture design: system design, API design, risk analysis, ADR creation | 6 skills                               |
-| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                        | 5 skills                               |
-| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                | 12 skills + 11 agents                  |
-| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                            | 5 skills + 11 agents (requires `java`) |
-| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                        | 9 skills + 11 agents                   |
-| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                         | 8 skills + 11 agents                   |
-| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                  | 10 skills + 11 agents                  |
-| [go](plugins/go)                     | Go 1.25+ / Gin                                                                             | 9 skills + 11 agents                   |
-| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                      | 11 skills + 11 agents                  |
-| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                   | 11 skills + 11 agents                  |
+| Plugin                               | Focus                                                                                                                                                                               | Includes                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                                                                                                                      | 38 skills                              |
+| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                               |
+| [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                              |
+| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                               |
+| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         | 12 skills + 11 agents                  |
+| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                                                                                                     | 5 skills + 11 agents (requires `java`) |
+| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 | 9 skills + 11 agents                   |
+| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                                                                                                                  | 8 skills + 11 agents                   |
+| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           | 10 skills + 11 agents                  |
+| [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      | 9 skills + 11 agents                   |
+| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                                                                                               | 11 skills + 11 agents                  |
+| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            | 11 skills + 11 agents                  |
 
 ## Notes
 
