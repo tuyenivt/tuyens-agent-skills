@@ -104,6 +104,7 @@
       "Bash(git restore --staged:*)",
       "Bash(git ls-files:*)",
       "Bash(git ls-tree:*)",
+      "Bash(go vet:*)",
       "Bash(./gradlew compileJava)",
       "Bash(./gradlew compileTestJava)",
       "Bash(./gradlew build -x test)",
