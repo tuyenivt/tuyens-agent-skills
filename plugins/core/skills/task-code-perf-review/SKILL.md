@@ -1,6 +1,6 @@
 ---
 name: task-code-perf-review
-description: Performance review for backend services and React frontends - N+1 queries, missing indexes, caching strategy, and concurrency anti-patterns. Use when you have a specific performance concern or want a dedicated perf pass before a release. Not for general code review (use task-code-review) and not for pre-implementation risk assessment (use task-design-risk-analysis).
+description: Performance review for backend services and React frontends - N+1 queries, missing indexes, slow endpoints, memory leaks, cache miss rate, connection pool sizing, and concurrency anti-patterns. Use when an endpoint is slow, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release or scale event. Not for general code review (use task-code-review), not for security review (use task-code-secure), and not for pre-implementation risk planning (use task-design-risk-analysis).
 metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack]

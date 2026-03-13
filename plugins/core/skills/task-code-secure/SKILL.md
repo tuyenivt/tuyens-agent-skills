@@ -1,6 +1,6 @@
 ---
 name: task-code-secure
-description: Security review for a PR, feature, or codebase - OWASP Top 10, auth/authz, and stack-specific vulnerability patterns. Use when you need a dedicated security assessment rather than a broad code review. Not for general PR review (use task-code-review or task-code-review-advanced which can include security as a scope option).
+description: Security review for a PR, feature, or codebase - OWASP Top 10, injection vulnerabilities, broken auth, XSS, CSRF, insecure file handling, secrets exposure, and authorization gaps. Use when you need a dedicated security audit: pre-pentest hardening, reviewing auth flows, assessing file upload or user input handling, or checking for IDOR and privilege escalation. Not for general PR review (use task-code-review or task-code-review-advanced) and not for performance issues (use task-code-perf-review).
 metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack]

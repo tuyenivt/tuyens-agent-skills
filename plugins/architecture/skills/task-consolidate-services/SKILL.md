@@ -1,6 +1,6 @@
 ---
 name: task-consolidate-services
-description: Microservices consolidation plan for over-split service landscapes. Use when too many fine-grained services are creating operational overhead, consistency problems, or deployment coupling. Not for decomposing a monolith (use task-migrate-monolith-to-services for that) and not for modernizing a legacy tech stack (use task-modernize-legacy).
+description: Microservices consolidation plan - merge over-split services back into fewer, cohesive units. Use when you have too many nano-services, services that always deploy together, services sharing a database without clear boundaries, or more services than your team can operate. Also use when reversing a monolith decomposition that went too far. Not for breaking a monolith apart (use task-migrate-monolith-to-services) and not for upgrading the tech stack of existing services (use task-modernize-legacy).
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]

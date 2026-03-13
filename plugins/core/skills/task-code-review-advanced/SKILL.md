@@ -1,6 +1,6 @@
 ---
 name: task-code-review-advanced
-description: Staff-level code review for high-risk PRs or AI-generated code - blast radius, architecture boundaries, cross-module impact. Use when a basic review is not enough. Not a substitute for task-code-review on routine PRs.
+description: Staff-level code review for high-risk PRs, AI-generated code, or large cross-service changes - blast radius, hidden coupling, architecture boundary violations, and systemic risk. Use when the PR is AI-assisted, touches multiple services or bounded contexts, is unusually large (500+ lines), modifies shared infrastructure, or a basic review clearly isn't enough. Not for routine PRs (use task-code-review), not for security-only audits (use task-code-secure), and not for performance-only review (use task-code-perf-review).
 metadata:
   category: review
   tags: [code-review, pull-request, risk-assessment, architecture, ai-quality, multi-stack]

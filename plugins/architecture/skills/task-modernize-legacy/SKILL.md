@@ -1,6 +1,6 @@
 ---
 name: task-modernize-legacy
-description: Legacy system modernization - migrate from an outdated language, framework, or architecture to a modern stack. Use when the problem is the technology itself (COBOL to Java, PHP to Go, Rails 3 to modern Rails). Not for decomposing a monolith into services (use task-migrate-monolith-to-services) and not for merging over-split microservices (use task-consolidate-services).
+description: Legacy system modernization plan - upgrading the language version, framework, or patterns of an existing system while preserving its structure. Use when the problem is the technology itself: framework upgrade (Spring Boot 2 to 3, .NET Framework to .NET 8, Rails 4 to 7), language version bump (Java 8 to 21, Python 2 to 3, Node 14 to 22), or modernizing an outdated data layer or auth pattern. Not for splitting a monolith into services (use task-migrate-monolith-to-services), not for consolidating over-split microservices (use task-consolidate-services), and not for a single library/package upgrade (use task-dependency-upgrade).
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]
