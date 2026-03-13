@@ -106,16 +106,33 @@ Before proposing any refactoring step, assess boundary impact:
 - Never rename public symbols without a deprecation alias step first
 - Add tests at the boundary before moving code across module lines
 
-### Step 5 - Safe Refactoring Steps
+### Step 5 - Test Coverage Gate
 
-1. Ensure tests exist
+Before proposing any refactoring sequence, assess test coverage on the target:
+
+**If tests exist and pass:**
+
+- Proceed to Step 6. The tests are the safety net.
+
+**If tests are absent or insufficient:**
+
+- Do not propose refactoring steps yet. Refactoring without tests is high-risk - a passing CI after the change proves nothing.
+- Instead, output a "Test First" plan:
+  - Identify the minimum test surface needed to safely refactor (the key behaviors to pin)
+  - Write characterization tests that capture current behavior without asserting correctness
+  - Only after those tests pass, proceed with the refactoring plan
+- State this clearly: "Target has insufficient test coverage. Recommend writing characterization tests first before refactoring."
+
+### Step 6 - Safe Refactoring Steps
+
+1. Ensure tests exist and pass (see Step 5)
 2. Commit current state
 3. Apply ONE refactoring
 4. Run tests
 5. Commit
 6. Repeat
 
-### Step 6 - Common Refactorings
+### Step 7 - Common Refactorings
 
 | Smell            | Refactoring            | Cross-Module Risk         |
 | ---------------- | ---------------------- | ------------------------- |
@@ -125,3 +142,38 @@ Before proposing any refactoring step, assess boundary impact:
 | Feature Envy     | Move Method            | Medium (changes callers)  |
 | Divergent Change | Split into two classes | High (public boundary)    |
 | Shotgun Surgery  | Inline and consolidate | High (many callers)       |
+
+## Output Format
+
+```markdown
+## Refactoring Plan: [Target Name]
+
+**Stack:** [language / framework]
+**Goal:** [what the refactoring achieves]
+**Test coverage status:** [sufficient / insufficient - if insufficient, see Test First plan below]
+**Blast radius:** [Low / Medium / High] - [number of callers / affected modules]
+
+## Smells Found
+
+| Smell   | Location    | Risk              |
+| ------- | ----------- | ----------------- |
+| [smell] | [file:line] | [Low/Medium/High] |
+
+## Refactoring Sequence
+
+Each step is independently committable. Run tests after each.
+
+1. **[Refactoring name]** - [file:line] - [what to do and why]
+2. ...
+
+## Breaking Change Risk
+
+[None / Low / High] - [explanation if any public interfaces change]
+
+## Test First Plan (if coverage insufficient)
+
+Characterization tests to write before starting:
+
+1. [Test: what behavior to pin, suggested test name]
+2. ...
+```

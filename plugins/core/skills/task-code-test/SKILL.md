@@ -140,3 +140,46 @@ After loading stack-detect, verify the ecosystem's specific testing best practic
 - [ ] Message/event schemas are tested for producer-consumer compatibility
 - [ ] Consumer tolerates additive schema changes (new optional fields don't break it)
 - [ ] Provider CI verifies contracts before deploy
+
+## Output Format
+
+Produce one or more of the following depending on what was requested:
+
+**Coverage Assessment:**
+
+```markdown
+## Test Coverage Assessment
+
+**Stack:** [language / framework]
+**Coverage gaps:**
+
+- [Layer / component]: [what is missing and why it matters]
+
+**Recommended testing pyramid:**
+
+- Unit: [what belongs here]
+- Integration: [what belongs here]
+- E2E: [what belongs here, if anything]
+```
+
+**Test Scaffolds** (when generating boilerplate):
+Produce ready-to-run test files using the detected stack's test framework. Include:
+
+- Arrange-Act-Assert structure with descriptive test names
+- At least one happy path, one not-found/empty case, and one validation/error case per unit
+- Inline comments explaining non-obvious setup
+
+**Strategy Doc** (when designing a test strategy):
+
+```markdown
+## Test Strategy
+
+**Objective:** [what this strategy achieves]
+**Pyramid balance:** Unit {x}% / Integration {y}% / E2E {z}%
+**Tooling:** [test framework, mocking library, container strategy]
+**Contract testing:** [required / not required - rationale]
+**Gaps to close (prioritized):**
+
+1. [Highest risk gap]
+2. ...
+```

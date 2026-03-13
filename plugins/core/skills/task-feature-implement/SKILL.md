@@ -46,45 +46,70 @@ If the detected stack does not match any of the above, proceed with the universa
 
 If no matching stack workflow exists, implement the feature using universal best practices:
 
-**Gather:**
+**GATHER** - Confirm before proceeding:
 
-- Confirm the feature description with the user
-- Identify which layers are affected: data model, business logic, API, background jobs, tests
-- Identify external dependencies or integration points
+- Feature name, operations (CRUD / custom actions), affected layers
+- Entity relationships and validation constraints
+- External dependencies or integration points
+- Auth requirements: which endpoints are public vs protected
+- Background job or async processing needs
 
-**Design:**
+**DESIGN** - Propose and wait for explicit approval before generating any code:
 
-- Propose data model changes (schema, entity design)
-- Propose service/business logic structure
-- Propose API contract (endpoints, request/response shapes)
-- Present design for user approval before generating code
+- Data model changes (schema, entity fields, indexes for FK and filter columns)
+- Service/business logic structure and transaction boundaries
+- API contract: endpoints (method + URI + request/response shapes + status codes)
+- Error model: how validation failures and not-found cases are communicated
 
-**Implement (in order):**
+**IMPLEMENT (in order):**
 
-1. Data layer: schema migrations or model changes
-2. Business logic: service or domain objects
-3. API layer: controllers, routes, handlers
-4. Background jobs (if applicable)
-5. Tests: unit tests for business logic, integration tests for API and data layer
+1. **Data layer**: schema migration with indexes; never modify existing columns destructively
+2. **Business logic**: service or domain objects with constructor injection; no business logic in controllers
+3. **API layer**: controllers/routes/handlers; never expose data layer entities directly in API responses - always map to response DTOs or structs
+4. **Auth**: confirm every endpoint has explicit auth - no implicit defaults
+5. **Background jobs** (if applicable): async task processing
+6. **Tests**: unit tests for business logic; integration tests for data layer against a real DB; API tests for routing, serialization, and auth
 
-**Validate:**
+**VALIDATE:**
 
-- Run the project's test suite
-- Confirm the implementation matches the agreed design
+- Run the project's test suite and confirm all pass
+- Confirm the implementation matches the approved design
+- Confirm list endpoints are paginated
 
 **Output:**
 
-- List of created/modified files
-- Endpoint or API summary
-- Test count and coverage delta
+```markdown
+## Generated Files
+
+- [ ] Migration: [path]
+- [ ] Model/Entity: [path]
+- [ ] Service: [path]
+- [ ] Controller/Handler: [path]
+- [ ] DTO/Response types: [path]
+- [ ] Unit tests: [path]
+- [ ] Integration tests: [path]
+
+## Endpoints
+
+| Method | URI | Status | Description |
+| ------ | --- | ------ | ----------- |
+| ...    | ... | ...    | ...         |
+
+## Tests
+
+- Unit tests: {count}
+- Integration tests: {count}
+```
 
 ## Self-Check
 
 - [ ] Stack detected and stack-specific workflow invoked (or fallback applied with explanation)
-- [ ] Requirements confirmed and design approved before code generation
-- [ ] All affected layers implemented: data, business logic, API, tests; tests pass
-- [ ] No untested public API surfaces; migration backward-compatible or explicitly flagged
-- [ ] File list and summary presented to user
+- [ ] Requirements confirmed and design approved before any code generated
+- [ ] All layers implemented: migration, model, service, controller, DTOs, tests
+- [ ] No data layer entities exposed directly in API responses - DTOs/response structs used
+- [ ] Every endpoint has explicit auth; list endpoints are paginated
+- [ ] Migration is safe: no destructive column changes without expand-contract sequencing
+- [ ] Tests pass; file list, endpoint table, and test count presented
 
 ## Notes
 
