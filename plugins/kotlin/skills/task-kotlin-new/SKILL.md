@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-new
-description: "End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Use for full feature delivery, not simple scaffolding."
+description: End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Use for full feature delivery. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
 agent: kotlin-architect
 metadata:
   category: backend

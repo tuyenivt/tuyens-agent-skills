@@ -1,6 +1,6 @@
 ---
 name: task-modernize-legacy
-description: Legacy system modernization - migrate from outdated language, framework, or architecture to a modern stack. Produces a phased modernization plan with technology selection, incremental migration, and coexistence strategy.
+description: Legacy system modernization - migrate from an outdated language, framework, or architecture to a modern stack. Use when the problem is the technology itself (COBOL to Java, PHP to Go, Rails 3 to modern Rails). Not for decomposing a monolith into services (use task-migrate-monolith-to-services) and not for merging over-split microservices (use task-consolidate-services).
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]

@@ -1,6 +1,6 @@
 ---
 name: task-rust-new
-description: "End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests from a feature description."
+description: End-to-end Rust/Axum feature implementation workflow. Generates all layers from migration to HTTP handler with full test coverage. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-rust-debug for errors).
 agent: rust-architect
 metadata:
   category: backend

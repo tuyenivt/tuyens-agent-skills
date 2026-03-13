@@ -1,6 +1,6 @@
 ---
 name: task-consolidate-services
-description: Microservices consolidation - merge over-split services back into fewer, well-bounded services. Produces a consolidation plan with merge candidates, data reunification, and phased rollout.
+description: Microservices consolidation plan for over-split service landscapes. Use when too many fine-grained services are creating operational overhead, consistency problems, or deployment coupling. Not for decomposing a monolith (use task-migrate-monolith-to-services for that) and not for modernizing a legacy tech stack (use task-modernize-legacy).
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]

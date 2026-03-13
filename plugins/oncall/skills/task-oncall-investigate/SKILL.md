@@ -1,6 +1,6 @@
 ---
 name: task-oncall-investigate
-description: Structured investigation for non-incident oncall work - user requests, support tickets, operational questions, unexpected behavior, and performance concerns
+description: Structured investigation for non-incident oncall work - user requests, support tickets, operational questions, unexpected behavior, and performance concerns. Not for active incidents with service degradation or user impact (use task-incident-root-cause for that).
 metadata:
   category: ops
   tags: [oncall, investigation, user-request, operational, performance, support]

@@ -1,6 +1,6 @@
 ---
 name: task-adr-create
-description: Write an Architecture Decision Record. Captures context, decision, alternatives considered, trade-offs, consequences, and a review trigger. Produces a ready-to-commit ADR file.
+description: Write an Architecture Decision Record for a significant, hard-to-reverse design choice affecting multiple teams or components. Use when you need to document why a decision was made, what alternatives were rejected, and when to revisit. Not for small local decisions (skip the ADR) and not for writing a general design proposal (use task-design-architecture).
 metadata:
   category: workflow
   tags: [adr, architecture, decisions, trade-offs, documentation]

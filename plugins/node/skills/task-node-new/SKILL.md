@@ -1,6 +1,6 @@
 ---
 name: task-node-new
-description: "End-to-end Node.js/TypeScript feature implementation. Detects NestJS or Express. Generates all layers: data model, services, controllers, DTOs, middleware, and comprehensive Jest tests."
+description: End-to-end Node.js/TypeScript feature implementation workflow. Detects NestJS or Express and generates all layers: data model, services, controllers, DTOs, middleware, and comprehensive Jest tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-node-debug for errors).
 agent: node-architect
 metadata:
   category: backend

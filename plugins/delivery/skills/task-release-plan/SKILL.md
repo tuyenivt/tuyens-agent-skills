@@ -1,6 +1,6 @@
 ---
 name: task-release-plan
-description: Staff-level production release planning with rollout safety and blast radius control
+description: Staff-level production release plan before deploying to production - rollout strategy selection, backward compatibility assessment, DB migration ordering, observability readiness check, and rollback plan. Use before a deployment. Not for post-deploy monitoring (use task-release-validate for that) and not for pre-implementation risk assessment (use task-design-risk-analysis).
 metadata:
   category: ops
   tags: [release, deployment, rollout, rollback, safety, blast-radius]

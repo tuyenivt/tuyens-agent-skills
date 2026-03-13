@@ -1,6 +1,6 @@
 ---
 name: task-code-test
-description: Test strategy, scaffolds, and quality review. Auto-detects project stack and adapts test patterns to the detected language and framework.
+description: Test strategy design, test scaffolding, and test quality review for a codebase or code change. Use when assessing test coverage gaps, designing a testing pyramid, generating test boilerplate, or reviewing contract testing needs. Not for general code quality review (use task-code-review) and not for performance or security testing (use task-code-perf-review or task-code-secure).
 metadata:
   category: review
   tags: [testing, test-strategy, unit-test, integration-test, multi-stack]

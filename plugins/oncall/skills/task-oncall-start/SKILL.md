@@ -1,6 +1,6 @@
 ---
 name: task-oncall-start
-description: Oncall entry point - classify incoming alert, ticket, or request and route to the right workflow
+description: Oncall triage entry point. Use when you have a page, alert, or report and are unsure which workflow to invoke. Classifies work type (incident vs investigation vs bug) and severity, then routes to the correct skill. Not needed when you already know it is an active incident (use task-incident-root-cause directly) or a non-incident investigation (use task-oncall-investigate directly).
 metadata:
   category: ops
   tags: [oncall, routing, incident, investigation]

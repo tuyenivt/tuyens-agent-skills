@@ -1,6 +1,6 @@
 ---
 name: task-rust-debug
-description: "Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix."
+description: Debug Rust application errors - panic backtraces, borrow checker violations, async/await issues, and sqlx errors. Paste a backtrace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: rust-architect
 metadata:
   category: backend

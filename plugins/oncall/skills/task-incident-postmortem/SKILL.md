@@ -1,6 +1,6 @@
 ---
 name: task-incident-postmortem
-description: Staff-level postmortem for systemic learning and prevention
+description: Post-incident postmortem for systemic prevention after an incident is resolved and root cause is known. Use after resolution - not during an active incident (use task-incident-root-cause for that). Produces enforceable guardrails, not just action items. Requires a completed root cause analysis as input.
 metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]

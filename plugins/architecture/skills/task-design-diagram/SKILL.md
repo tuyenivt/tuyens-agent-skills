@@ -1,6 +1,6 @@
 ---
 name: task-design-diagram
-description: Generate architecture diagrams (C4, sequence, data flow, deployment) as Mermaid or PlantUML code from a design description, design doc, or task-design-architecture output.
+description: Generate Mermaid or PlantUML architecture diagrams (C4 context/container/component, sequence, data flow, deployment) from a design document or description. Use after task-design-architecture produces a design proposal, or whenever a visual artifact is needed for review or onboarding. Produces diagram code only - does not create or modify design documents.
 metadata:
   category: architecture
   tags: [architecture, diagram, c4, mermaid, plantuml, visualization, documentation]

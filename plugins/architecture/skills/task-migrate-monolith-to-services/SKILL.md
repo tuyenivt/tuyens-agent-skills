@@ -1,6 +1,6 @@
 ---
 name: task-migrate-monolith-to-services
-description: Monolith to microservices/modular services decomposition migration plan. Produces a phased migration strategy with domain boundaries, extraction order, data ownership transfer, and coexistence plan.
+description: Monolith decomposition plan - break a monolith into independently deployable services or well-bounded modules. Use when deployment coupling, scaling limits, or team autonomy are the driver for decomposition. Not for consolidating over-split microservices back together (use task-consolidate-services) and not for modernizing the tech stack of the monolith itself (use task-modernize-legacy).
 metadata:
   category: architecture
   tags: [architecture, migration, monolith, microservices, decomposition, strangler-fig]

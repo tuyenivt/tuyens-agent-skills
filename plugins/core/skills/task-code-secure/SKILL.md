@@ -1,6 +1,6 @@
 ---
 name: task-code-secure
-description: Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects project stack and adapts security checks to the detected language and framework.
+description: Security review for a PR, feature, or codebase - OWASP Top 10, auth/authz, and stack-specific vulnerability patterns. Use when you need a dedicated security assessment rather than a broad code review. Not for general PR review (use task-code-review or task-code-review-advanced which can include security as a scope option).
 metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack]

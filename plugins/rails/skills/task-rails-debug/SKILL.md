@@ -1,6 +1,6 @@
 ---
 name: task-rails-debug
-description: "Debug Rails errors. Paste a stack trace, Rails log, Sidekiq error, or RSpec failure. Classifies the error, identifies root cause, suggests fix, and recommends prevention."
+description: Debug Rails application errors - stack traces, Rails logs, Sidekiq errors, and RSpec failures. Paste an error or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: rails-architect
 metadata:
   category: backend

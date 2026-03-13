@@ -1,6 +1,6 @@
 ---
 name: task-go-debug
-description: "Debug Go errors. Paste a panic stack trace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix."
+description: Debug Go application errors - panics, context errors, SQL connectivity, data races, and goroutine leaks. Paste a stack trace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: go-architect
 metadata:
   category: backend

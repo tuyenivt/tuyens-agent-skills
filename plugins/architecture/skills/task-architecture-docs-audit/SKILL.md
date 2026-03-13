@@ -1,6 +1,6 @@
 ---
 name: task-architecture-docs-audit
-description: Audit an architecture docs repo - inventory artifacts, detect stale or conflicting documents, and produce a prioritized remediation plan.
+description: Architecture documentation health audit - inventory all ADRs, design docs, runbooks, and diagrams, then detect stale content, conflicts, and gaps. Use quarterly, when joining a project, or after a major system change. Not for reading a codebase to understand its structure (use task-onboard-codebase for that) and not for writing new documentation (use task-docs-generate or task-adr-create).
 metadata:
   category: architecture
   tags: [architecture, documentation, audit, adr, consistency, docs-repo]

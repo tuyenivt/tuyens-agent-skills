@@ -1,6 +1,6 @@
 ---
 name: task-code-perf-review
-description: Performance review for backend and frontend. Auto-detects project stack and adapts performance checks to the detected language and framework.
+description: Performance review for backend services and React frontends - N+1 queries, missing indexes, caching strategy, and concurrency anti-patterns. Use when you have a specific performance concern or want a dedicated perf pass before a release. Not for general code review (use task-code-review) and not for pre-implementation risk assessment (use task-design-risk-analysis).
 metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack]

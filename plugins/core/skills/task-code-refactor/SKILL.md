@@ -1,6 +1,6 @@
 ---
 name: task-code-refactor
-description: Safe refactoring plan with risk assessment. Auto-detects project stack and adapts refactoring patterns to the detected language and framework.
+description: Safe refactoring plan for a specific target (file, class, or module) with smell identification, cross-module risk assessment, and step-by-step refactoring sequence. Use when you have a specific refactoring goal and need a safety-first approach. Not for triaging which debt to address (use task-debt-prioritize) and not for feature implementation (use task-feature-implement).
 metadata:
   category: review
   tags: [refactoring, code-quality, technical-debt, multi-stack]

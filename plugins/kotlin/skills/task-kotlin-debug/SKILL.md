@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-debug
-description: "Debug Kotlin + Spring Boot errors. Handles Kotlin-specific issues: null safety violations, coroutine stack traces, MockK setup errors, and Kotlin-JPA plugin configuration problems."
+description: Debug Kotlin + Spring Boot errors - null safety violations, coroutine stack traces, MockK setup errors, and Kotlin-JPA plugin configuration problems. Paste a stack trace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: kotlin-architect
 metadata:
   category: backend

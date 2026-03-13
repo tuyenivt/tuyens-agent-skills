@@ -1,6 +1,6 @@
 ---
 name: task-rails-new
-description: "End-to-end Rails feature implementation. Generates migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests from a feature description."
+description: End-to-end Rails feature implementation workflow. Generates all layers: migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-rails-debug for errors).
 agent: rails-architect
 metadata:
   category: backend

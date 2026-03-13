@@ -1,6 +1,6 @@
 ---
 name: task-python-debug
-description: "Debug Python application errors. Paste a traceback, log, Celery error, or test failure. Classifies the error, identifies root cause, suggests fix. Works with FastAPI and Django."
+description: Debug Python application errors - tracebacks, Celery errors, pytest failures, and unexpected behavior in FastAPI and Django apps. Paste a traceback or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: python-architect
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: task-code-review
-description: Standard code review for PRs - correctness, readability, maintainability, and test coverage. Auto-detects project stack. Not for design review, security-only audit (use task-code-secure), or high-risk AI-generated code (use task-code-review-advanced).
+description: Standard code review for PRs - correctness, readability, maintainability, and test coverage. Auto-detects project stack. Not for architecture or design review (use task-design-architecture), not for security-only audit (use task-code-secure), and not for high-risk AI-generated code (use task-code-review-advanced).
 metadata:
   category: review
   tags: [code-review, pull-request, quality, multi-stack]

@@ -1,6 +1,6 @@
 ---
 name: task-node-debug
-description: "Debug Node.js/TypeScript errors. Paste a stack trace, test failure, or describe unexpected behavior. Handles NestJS and Express errors, Prisma and TypeORM issues, and TypeScript compilation errors."
+description: Debug Node.js/TypeScript application errors - NestJS and Express errors, Prisma and TypeORM issues, TypeScript compilation errors, and Jest test failures. Paste a stack trace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
 agent: node-architect
 metadata:
   category: backend
