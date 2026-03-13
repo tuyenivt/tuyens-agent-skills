@@ -1,6 +1,6 @@
 ---
 name: task-release-validate
-description: Post-deploy go-live monitoring runbook. Converts a release plan into a time-boxed monitoring sequence - what to watch, when to advance or roll back, and who calls it. Run after deploying, not before.
+description: Post-deploy go-live monitoring runbook. Converts a release plan into a time-boxed checkpoint sequence - what signals to watch, when to advance canary or roll back, and who makes the call. Use immediately after a production deployment while the team is watching. Not for pre-deploy planning (use task-release-plan for that) and not for writing postmortems after incidents (use task-incident-postmortem).
 metadata:
   category: ops
   tags: [release, monitoring, canary, go-live, rollback, observability]

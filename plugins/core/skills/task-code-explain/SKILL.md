@@ -1,6 +1,6 @@
 ---
 name: task-code-explain
-description: Explain a single file, function, class, or module - what it does, why it is structured this way, non-obvious gotchas, and key invariants. Not for broken code (use task-debug) and not for whole-codebase mapping (use task-onboard-codebase).
+description: Explain a single file, function, class, or module - what it does, why it is structured this way, non-obvious gotchas, side effects, and key invariants. Use when reading inherited or unfamiliar code, trying to understand a complex algorithm, or preparing to modify code you didn't write. Not for broken or crashing code (use task-debug), not for whole-codebase orientation (use task-onboard-codebase), and not for code review feedback (use task-code-review).
 metadata:
   category: code
   tags: [explanation, code-understanding, onboarding, review, debugging]

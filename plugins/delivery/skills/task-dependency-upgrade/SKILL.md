@@ -1,6 +1,6 @@
 ---
 name: task-dependency-upgrade
-description: Assess a library or platform version upgrade - changelog analysis, breaking change detection, migration effort estimate, and rollback plan. Not for writing migration code (use task-feature-implement for that).
+description: Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation. Use before upgrading a major framework version, when a dependency has CVEs requiring upgrade, or when evaluating whether an upgrade is worth the disruption. Not for writing migration code (use task-feature-implement after this assessment) and not for whole-system tech stack modernization (use task-modernize-legacy).
 metadata:
   category: planning
   tags: [dependencies, upgrade, migration, breaking-changes, risk]

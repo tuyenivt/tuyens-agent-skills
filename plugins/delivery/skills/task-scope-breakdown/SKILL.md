@@ -1,6 +1,6 @@
 ---
 name: task-scope-breakdown
-description: Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity (migrations, backward compat, observability, rollback) before implementation starts. Not a substitute for system design.
+description: Break a feature, epic, or ticket into implementable tasks with dependency ordering, relative sizing (S/M/L/XL), and scope creep risk flags. Surfaces hidden complexity - migrations, backward compatibility, observability, rollback - before a sprint starts. Use during sprint planning, before kicking off a large feature, or when a ticket feels bigger than it looks. Not a substitute for system design (use task-design-architecture first for complex new systems) and not for prioritizing which features to build (use task-debt-prioritize for debt triage).
 metadata:
   category: planning
   tags: [planning, estimation, task-breakdown, scope, complexity]

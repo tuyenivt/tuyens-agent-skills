@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-debug
-description: Developer-level debugging workflow for .NET 8 / ASP.NET Core. Paste a stack trace, exception, or describe unexpected behaviour. Analyses root cause in your codebase, suggests a fix with code, and explains why it happened.
+description: Developer-level debugging workflow for .NET 8 / ASP.NET Core. Paste a stack trace, exception, EF Core error, DI startup failure, or describe unexpected behaviour. Analyses root cause in your codebase, suggests a minimal fix with before/after code, and explains why it happened. Not for production incidents with service degradation (use task-incident-root-cause) and not for performance profiling without a concrete error (use task-code-perf-review).
 metadata:
   category: backend
   tags: [dotnet, aspnet-core, debugging, stack-trace, error-analysis, workflow]

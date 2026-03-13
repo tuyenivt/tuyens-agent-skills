@@ -1,6 +1,6 @@
 ---
 name: task-debug
-description: Universal debugging workflow for broken or crashing code. Paste a stack trace, error log, test failure, or describe unexpected behavior. Detects stack and delegates to the stack-specific debug workflow. Not for understanding working code - use task-code-explain for that.
+description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, startup crash, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow. Not for understanding working code (use task-code-explain), not for production incidents with service degradation (use task-incident-root-cause), and not for performance analysis without a concrete error (use task-code-perf-review).
 metadata:
   category: backend
   tags: [debug, troubleshooting, root-cause, stack-agnostic]
