@@ -180,7 +180,7 @@ Code comments should document decisions, not restate code. The "why" is what rot
 - When a better name would make the comment unnecessary
 - When the comment just restates the type signature
 
-### Step 6 - Stack-Specific Documentation Patterns
+### Step 5 - Stack-Specific Documentation Patterns
 
 After loading stack-detect, apply documentation patterns appropriate to the detected ecosystem:
 
@@ -190,3 +190,13 @@ After loading stack-detect, apply documentation patterns appropriate to the dete
 - **Build and task documentation**: Document the project's build tool targets/tasks and common developer workflows
 
 If the detected stack is unfamiliar, apply generic documentation templates and recommend the user consult their ecosystem's documentation conventions.
+
+## Self-Check
+
+- [ ] Documentation debt surfaced before new docs were written - stale docs fixed before new ones added
+- [ ] Audience and purpose identified for each doc artifact produced
+- [ ] Runbooks written for an on-call engineer with no prior context on the service
+- [ ] Code comments document the "why" not the "what" - no comments that restate the code
+- [ ] API docs include request/response examples and all error codes
+- [ ] Stack-specific doc format used (JavaDoc, GoDoc, docstrings, etc.) where applicable
+- [ ] No invented file paths, endpoints, or config values - all examples match the actual codebase

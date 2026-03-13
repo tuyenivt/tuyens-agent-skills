@@ -82,28 +82,7 @@ After loading stack-detect, apply performance checks specific to the detected ec
 
 If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
 
-### Step 4 - Frontend (React)
-
-**Rendering:**
-
-- [ ] Unnecessary re-renders
-- [ ] Missing memoization
-- [ ] Inline objects in JSX
-- [ ] Heavy computations in render
-
-**Data:**
-
-- [ ] Over-fetching
-- [ ] No caching
-- [ ] Waterfall requests
-
-**Assets:**
-
-- [ ] Unoptimized images
-- [ ] No lazy loading
-- [ ] Large bundle
-
-### Step 5 - Caching Strategy (All Stacks)
+### Step 4 - Caching Strategy (All Stacks)
 
 Use skill: `caching` for cache strategy patterns.
 Use skill: `concurrency-model` to validate thread/worker pool sizing and concurrency primitive choices.
@@ -116,14 +95,36 @@ Verify:
 - [ ] Cache key design avoids collisions
 - [ ] Local cache vs distributed cache decision made explicitly
 
-### Step 6 - Stateless Design (All Stacks)
+### Step 5 - Frontend (React, if applicable)
+
+Skip this step if the review target is backend-only.
+
+**Rendering:**
+
+- [ ] Unnecessary re-renders (missing `React.memo`, `useMemo`, `useCallback`)
+- [ ] Inline objects or functions in JSX causing re-renders
+- [ ] Heavy computations in render path (move to `useMemo` or worker)
+
+**Data:**
+
+- [ ] Over-fetching (requesting more data than rendered)
+- [ ] No client-side caching (consider React Query / SWR)
+- [ ] Waterfall requests (parallelize with `Promise.all` or `Suspense`)
+
+**Assets:**
+
+- [ ] Unoptimized images (missing `next/image` or equivalent)
+- [ ] No lazy loading for below-the-fold components
+- [ ] Large bundle (check for unintentional full-library imports)
+
+### Step 7 - Stateless Design (All Stacks)
 
 - [ ] No server-side session state (use JWT/tokens)
 - [ ] Externalized session if needed (Redis)
 - [ ] No static mutable state
 - [ ] Idempotent operations where possible
 
-### Step 7 - Observability (All Stacks)
+### Step 8 - Observability (All Stacks)
 
 Use skill: `observability` for metrics and monitoring patterns.
 
@@ -133,3 +134,45 @@ Verify:
 - [ ] Correlation ID propagation across service boundaries
 - [ ] Metrics instrumented for custom operations
 - [ ] Health indicators exist for critical dependencies
+
+## Self-Check
+
+- [ ] Database performance checked: N+1 queries, missing indexes, pagination, pool sizing
+- [ ] Framework-specific concurrency and ORM checks applied for the detected stack
+- [ ] Caching strategy assessed: TTL, invalidation, key design
+- [ ] Frontend step applied if React is in scope; skipped with note if backend-only
+- [ ] Every finding states estimated impact (latency/throughput/memory) not just "this is slow"
+- [ ] Findings ordered by impact; quick wins separated from structural changes
+
+## Output Format
+
+```markdown
+## Performance Review Summary
+
+**Stack Detected:** [language / framework]
+**Scope:** Backend | Backend + React frontend
+**Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+
+## Findings
+
+### High Impact
+
+- **Location:** [file:line or component]
+- **Issue:** [what the problem is]
+- **Impact:** [estimated effect - e.g., "N+1 query adds ~200ms per request at 1K rows"]
+- **Fix:** [specific change with code example if applicable]
+
+### Medium Impact
+
+[Same structure]
+
+### Low Impact / Quick Wins
+
+[Same structure]
+
+_Omit sections with no findings._
+
+## Recommendations
+
+[Structural improvements not tied to a specific finding - e.g., "Add query result caching for the product catalog endpoint", "Enable connection pool monitoring"]
+```

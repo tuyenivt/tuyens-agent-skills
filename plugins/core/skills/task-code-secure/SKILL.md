@@ -78,24 +78,53 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and reco
 - Log security events without sensitive data
 - Follow principle of least privilege
 
+## Self-Check
+
+- [ ] Every OWASP Top 10 category checked - not just the ones with obvious findings
+- [ ] Auth enforcement verified on every endpoint, not just spot-checked
+- [ ] No secrets, tokens, or credentials found in code or config files
+- [ ] Data protection checks run: PII logging, encryption at rest, secure headers
+- [ ] Framework-specific checks applied for the detected stack
+- [ ] Every finding states an attack scenario, not just a code observation
+- [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
+
 ## Output Format
 
 ```markdown
-## Summary
+## Security Review Summary
 
 **Stack Detected:** [language / framework]
-[Security posture assessment]
+**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
-## Findings by Severity
+[2-3 sentence assessment of the overall security posture]
 
-### Critical | High | Medium | Low
+## Findings
+
+### Critical
 
 - **Location:** [file:line]
-- **Issue:** [vulnerability]
-- **Impact:** [attack scenario]
+- **Issue:** [vulnerability description]
+- **Attack scenario:** [how an attacker exploits this]
+- **Fix:** [specific remediation with code example if applicable]
+
+### High
+
+- **Location:** [file:line]
+- **Issue:** [vulnerability description]
+- **Attack scenario:** [how an attacker exploits this]
 - **Fix:** [specific remediation]
+
+### Medium
+
+[Same structure]
+
+### Low
+
+[Same structure]
+
+_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
 
 ## Recommendations
 
-[Prioritized security improvements]
+[Prioritized improvements that are not specific findings but would strengthen the overall posture - e.g., "Add rate limiting to all auth endpoints", "Enable HSTS in production config"]
 ```
