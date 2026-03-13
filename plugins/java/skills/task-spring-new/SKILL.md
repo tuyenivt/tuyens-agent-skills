@@ -50,6 +50,16 @@ STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(Mockito
 
 STEP 8 - VALIDATE: `./gradlew compileJava compileTestJava`. Present file list, endpoints, test count, any warnings.
 
+## Self-Check
+
+- [ ] Requirements gathered and design approved before any code generated
+- [ ] All layers generated: Flyway migration, entity, repository, service, controller, DTOs, tests
+- [ ] `@RequiredArgsConstructor` used; no `@Autowired` fields; no `synchronized` blocks
+- [ ] Records used for all DTOs; JPA entities never exposed directly in API responses
+- [ ] `@Transactional(readOnly = true)` on service class; `@Transactional` on mutating methods only
+- [ ] `@MockitoBean` used (not `@MockBean`); Testcontainers for integration tests
+- [ ] `./gradlew compileJava compileTestJava` passes; file list, endpoint table, and test count presented
+
 ## Output
 
 Present a checklist of generated files:

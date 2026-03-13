@@ -48,6 +48,17 @@ STEP 7 - TESTS: Use skill: `dotnet-test-integration`. Unit: NSubstitute/Moq, hap
 
 STEP 8 - VALIDATE: `dotnet build --no-incremental`, `dotnet test --no-build`. Present file list, endpoints, test count, any manual steps (e.g., run `dotnet ef migrations add`).
 
+## Self-Check
+
+- [ ] Requirements gathered and design approved before any code generated
+- [ ] All layers generated: EF Core migration, entity, repository (interface + impl), command/query handlers, controller, DTOs, tests
+- [ ] Constructor injection only; no `new` on dependencies; `CancellationToken` on all async methods
+- [ ] `record` types for all DTOs; EF Core entities never exposed in API responses
+- [ ] `FluentValidation` for all request validation; no `[Required]` data annotations on DTOs
+- [ ] Clean Architecture boundaries respected: `Domain` -> `Application` -> `Infrastructure` -> `Api`
+- [ ] `[Authorize]` or `[AllowAnonymous]` explicit on every controller action
+- [ ] `dotnet build --no-incremental` and `dotnet test --no-build` pass; file list, endpoint table, and test count presented
+
 ## Output
 
 Present a checklist of generated files:

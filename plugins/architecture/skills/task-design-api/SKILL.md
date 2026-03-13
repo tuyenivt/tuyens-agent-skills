@@ -204,3 +204,23 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - Error format must follow RFC 9457 (Problem Details for HTTP APIs)
 - All endpoints must state authentication and authorization requirements
 - Breaking changes must be explicitly flagged with migration guidance
+
+## Self-Check
+
+- [ ] Every endpoint has defined auth requirements (not just "required: yes" but which mechanism)
+- [ ] Every collection endpoint has pagination in request params and response envelope
+- [ ] Error format follows RFC 9457 consistently across all endpoints
+- [ ] Breaking changes explicitly identified with migration path - not just flagged
+- [ ] DTO/schema definitions use the detected ecosystem's standard approach
+- [ ] No implementation code generated - specification only
+- [ ] If reviewing existing code: every violation states the fix, not just the rule
+
+## Avoid
+
+- Generating implementation code (service classes, repository methods, or controllers)
+- Omitting auth requirements on any endpoint - no implicit "this one is probably public"
+- Collections without pagination - every list endpoint must have it
+- Inconsistent error formats across endpoints
+- Breaking change warnings without migration guidance
+- Generic naming advice without checking against the actual detected stack convention
+- Treating OpenAPI/Swagger spec validation as a separate concern from design quality
