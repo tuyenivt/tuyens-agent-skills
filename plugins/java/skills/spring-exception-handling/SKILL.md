@@ -37,6 +37,47 @@ user-invocable: false
 | `RateLimitException` | 429 Too Many Requests | Rate limit exceeded |
 | `RuntimeException` (unexpected) | 500 Internal Server Error | System failure - log with stack trace |
 
+## Domain Exception Hierarchy
+
+Define a base exception that carries an error code and HTTP status, then extend it for each domain case. This lets the global handler map any domain exception with a single `@ExceptionHandler`:
+
+```java
+// Base class - all domain exceptions extend this
+public abstract class DomainException extends RuntimeException {
+    private final HttpStatus status;
+    private final String errorCode;
+
+    protected DomainException(String message, HttpStatus status, String errorCode) {
+        super(message);
+        this.status = status;
+        this.errorCode = errorCode;
+    }
+
+    public HttpStatus getStatus() { return status; }
+    public String getErrorCode() { return errorCode; }
+}
+
+// Concrete domain exceptions
+public class OrderNotFoundException extends DomainException {
+    public OrderNotFoundException(Long id) {
+        super("Order not found: " + id, HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND");
+    }
+}
+
+public class InsufficientStockException extends DomainException {
+    public InsufficientStockException(String sku, int requested, int available) {
+        super("Insufficient stock for %s: requested %d, available %d".formatted(sku, requested, available),
+              HttpStatus.CONFLICT, "INSUFFICIENT_STOCK");
+    }
+}
+
+public class DuplicateEmailException extends DomainException {
+    public DuplicateEmailException(String email) {
+        super("Email already registered: " + email, HttpStatus.CONFLICT, "DUPLICATE_EMAIL");
+    }
+}
+```
+
 ## Pattern
 
 Bad - Scattered error handling:
@@ -83,6 +124,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ProblemDetail handleConflict(ConflictException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    // Generic domain exception handler - catches all DomainException subclasses
+    @ExceptionHandler(DomainException.class)
+    public ProblemDetail handleDomainException(DomainException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+        pd.setTitle(ex.getErrorCode());
+        pd.setProperty("traceId", MDC.get("traceId"));
+        return pd;
+    }
+
+    // Bean validation errors: 400, with per-field details
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleValidationErrors(MethodArgumentNotValidException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        pd.setTitle("Validation Failed");
+        pd.setProperty("traceId", MDC.get("traceId"));
+        Map<String, String> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+            .collect(Collectors.toMap(
+                FieldError::getField,
+                fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "invalid",
+                (a, b) -> a // keep first if duplicate field
+            ));
+        pd.setProperty("fieldErrors", fieldErrors);
+        return pd;
     }
 
     // System exception: 500, log with stack trace
