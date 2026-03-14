@@ -46,5 +46,3 @@ OUTPUT: 🐛 → 📍 → 🔧 → 🛡️
 - [ ] Go idioms preserved - errors wrapped with `%w`, no global state introduced
 - [ ] Prevention step included (test, `go vet`, or race detector guidance)
 - [ ] For concurrency bugs, `go test -race` referenced; for goroutine leaks, cancellation path included
-
-> Run `/task-skill-feedback` if output needed significant correction.

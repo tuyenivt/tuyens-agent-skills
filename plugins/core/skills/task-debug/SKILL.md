@@ -38,6 +38,7 @@ Use skill: stack-detect
 | Ruby / Rails                | `task-rails-debug`  |
 | Node.js / NestJS or Express | `task-node-debug`   |
 | Go / Gin                    | `task-go-debug`     |
+| Rust / Axum                 | `task-rust-debug`   |
 
 If the detected stack does not match any of the above, continue with the systematic protocol below.
 
@@ -104,4 +105,3 @@ State one concrete prevention step:
 - [ ] Prevention step included (test, lint rule, or monitoring signal)
 - [ ] The "why" is explained; concurrency/connection/regression specifics addressed where relevant
 
-> Run `/task-skill-feedback` if output needed significant correction.

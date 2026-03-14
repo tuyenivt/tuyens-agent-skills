@@ -120,8 +120,6 @@ Suggest one concrete guardrail to prevent the same class of error:
 
 [one guardrail to prevent recurrence]
 
-```
-
 ## Self-Check
 
 - [ ] Error classified before any code is read or fix proposed
@@ -136,7 +134,3 @@ Suggest one concrete guardrail to prevent the same class of error:
 - Suggesting broad rewrites when a targeted fix suffices
 - Adding defensive null checks everywhere - identify the actual null source
 - Recommending `.ConfigureAwait(false)` as a blanket fix without understanding the context
-
-
-> Run `/task-skill-feedback` if output needed significant correction.
-```

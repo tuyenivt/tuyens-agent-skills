@@ -201,4 +201,3 @@ Characterization tests to write before starting:
 - Combining multiple refactorings into one step (masks which change caused a test failure)
 - Generating implementation code for the refactoring - describe what to do, not every line of code
 
-> Run `/task-skill-feedback` if output needed significant correction.

@@ -42,5 +42,3 @@ OUTPUT: file list, endpoint summary, test count
 - [ ] Pundit policies applied; RSpec covers model, service, and request specs
 - [ ] `bundle exec rspec` and `bundle exec rubocop` pass
 - [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.

@@ -37,5 +37,3 @@ OUTPUT: file list, endpoint summary, test count
 - [ ] No goroutine leaks; repository interface defined in service layer
 - [ ] `go build`, `go test -race`, and `go vet` all pass
 - [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.

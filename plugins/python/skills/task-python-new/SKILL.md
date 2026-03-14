@@ -45,5 +45,3 @@ OUTPUT: file list, endpoint summary, test count
 - [ ] All async endpoints use `async def`; type hints on all function signatures
 - [ ] pytest, linting, and type checking all pass
 - [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.

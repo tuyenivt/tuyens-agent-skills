@@ -240,4 +240,3 @@ Conditions to close:
 - Advancing canary based on time alone - advancement requires signal validation
 - Omitting downstream service signals for releases that affect consumers
 
-> Run `/task-skill-feedback` if output needed significant correction.

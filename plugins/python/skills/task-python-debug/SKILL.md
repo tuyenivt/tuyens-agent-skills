@@ -43,5 +43,3 @@ STEP 6 - PREVENTION: pytest test, type hint, linting rule
 - [ ] Async/sync mixing addressed at architectural level - not just patched with `asyncio.run()`
 - [ ] Prevention step included (pytest test, type hint, or linting rule)
 - [ ] For Celery: retry config and idempotency addressed; for SQLAlchemy: pool config checked
-
-> Run `/task-skill-feedback` if output needed significant correction.

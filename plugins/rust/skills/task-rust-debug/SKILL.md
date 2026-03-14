@@ -49,5 +49,3 @@ OUTPUT: bug -> location -> fix -> prevention
 - [ ] Prevention step included (test, `cargo clippy`, or MIRI guidance)
 - [ ] For async bugs, cancellation safety and `.await` holding addressed
 - [ ] For borrow checker issues, ownership model explained clearly
-
-> Run `/task-skill-feedback` if output needed significant correction.

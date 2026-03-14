@@ -93,7 +93,35 @@ Before writing or recommending tests, determine what deserves each layer:
 - If it's configuration you wrote, test that configuration works
 - If a bug could only be caught at a higher layer, write the test there - not at both layers
 
-### Step 5 - Contract Testing (for service-to-service APIs)
+### Step 5 - Prioritization (when coverage is low)
+
+When starting from low test coverage, prioritize by risk rather than trying to reach a coverage number:
+
+**Priority 1 - Business-critical paths:**
+
+- Revenue-impacting flows (checkout, billing, payments)
+- Data integrity logic (writes, migrations, state transitions)
+- Authentication and authorization checks
+
+**Priority 2 - Error-prone areas:**
+
+- Code with recent bug history (check git log for fix commits)
+- Complex conditional logic with many branches
+- Integration points with external services
+
+**Priority 3 - High-change areas:**
+
+- Code that changes frequently (high churn in git history)
+- Shared utilities used across many modules
+
+**Priority 4 - Plumbing and glue code:**
+
+- Simple CRUD, pass-through controllers, configuration
+- These are lower risk and can wait
+
+**Testability refactoring:** Untested legacy code often needs structural changes before tests can be added (extracting dependencies behind interfaces, breaking god classes, isolating I/O from logic). Budget time for these refactors - they are part of the testing work, not separate from it.
+
+### Step 6 - Contract Testing (for service-to-service APIs)
 
 When the detected stack involves multiple services or the project exposes/consumes HTTP/messaging APIs:
 
@@ -101,7 +129,7 @@ When the detected stack involves multiple services or the project exposes/consum
 
 - The API consumer defines the contract (what fields and status codes it depends on)
 - The API provider verifies it satisfies all consumer contracts before deploy
-- Recommended tooling: Pact (most stacks), Spring Cloud Contract (Java)
+- Use the ecosystem's standard contract testing tool (e.g., Pact, Spring Cloud Contract, msw, nock, WireMock)
 
 **When contract tests are mandatory:**
 
@@ -115,31 +143,18 @@ When the detected stack involves multiple services or the project exposes/consum
 - Provider error: consumer handles 4xx/5xx gracefully
 - Schema evolution: consumer tolerates new fields (Postel's law)
 
-## Universal Checklist
+## Review Checklist
 
-- [ ] Clear test names (describe behavior)
-- [ ] Arrange-Act-Assert pattern
-- [ ] Edge cases covered
-- [ ] Error paths tested
-- [ ] No test interdependencies
-- [ ] Fast feedback (tests run quickly)
+Quick-reference checklist consolidating the key checks from above:
 
-## Stack-Specific Checklist
-
-After loading stack-detect, verify the ecosystem's specific testing best practices:
-
-- [ ] Test framework is current (no deprecated test utilities or annotations)
-- [ ] Mock/stub mechanism follows current framework recommendations
-- [ ] Integration test isolation is properly configured (transactions, cleanup, containers)
-- [ ] Test data setup uses the ecosystem's recommended approach
-- [ ] Parallel test execution is enabled where safe
-
-## Contract Testing Checklist
-
-- [ ] Service-to-service APIs have consumer-driven contracts or stub-verified tests
-- [ ] Message/event schemas are tested for producer-consumer compatibility
-- [ ] Consumer tolerates additive schema changes (new optional fields don't break it)
-- [ ] Provider CI verifies contracts before deploy
+- [ ] Test names describe behavior, not implementation
+- [ ] Arrange-Act-Assert pattern used consistently
+- [ ] Each testable unit has: happy path + error path + edge case
+- [ ] No test interdependencies (tests pass in any order)
+- [ ] Test framework and mocks follow current ecosystem recommendations
+- [ ] Integration tests have proper isolation (transactions, cleanup, containers)
+- [ ] Contract tests exist for independently-deployed service dependencies
+- [ ] Slow tests (integration, E2E) can be skipped in fast feedback loops
 
 ## Output Format
 

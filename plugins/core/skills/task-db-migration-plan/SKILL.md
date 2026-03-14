@@ -176,7 +176,7 @@ Estimate for the backfill plan:
 | Lock held per batch | Brief row-level locks per batch; no table lock if batched correctly     |
 | Retry safety        | Is the backfill idempotent? Can it be re-run safely?                    |
 
-Use skill: `idempotency` to ensure the backfill is safe to re-run.
+Use skill: `idempotency` to ensure the backfill is safe to re-run (idempotent by design - re-running produces the same result).
 
 Recommend a backfill approach:
 

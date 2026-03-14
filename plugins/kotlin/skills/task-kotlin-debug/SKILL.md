@@ -40,5 +40,3 @@ OUTPUT: 🐛 → 📍 → 🔧 → 🛡️
 - [ ] Kotlin idioms preserved - no `!!` introduced, no Java-style synchronized blocks
 - [ ] Prevention step included
 - [ ] For coroutines: scope/context addressed; for kotlin-jpa: Gradle plugin config checked; for MockK: `coEvery`/`coVerify` used correctly
-
-> Run `/task-skill-feedback` if output needed significant correction.

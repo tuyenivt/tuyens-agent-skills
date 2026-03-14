@@ -46,5 +46,3 @@ OUTPUT: root cause → location → fix → prevention
 - [ ] Framework constraints respected (NestJS DI, decorator patterns, Express middleware order)
 - [ ] Prevention step included (Jest test, TypeScript type, or lint rule)
 - [ ] For circular deps: structure resolved, not just `forwardRef`; for BullMQ: idempotency and retry addressed
-
-> Run `/task-skill-feedback` if output needed significant correction.

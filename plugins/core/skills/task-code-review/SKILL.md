@@ -48,8 +48,8 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 **Correctness:**
 
 - Does what it's supposed to do
-- Edge cases handled
-- Error paths considered
+- Edge cases handled (empty input, nulls, boundary values)
+- Error paths considered - external calls, I/O, and parsing have failure handling
 
 **Readability:**
 
@@ -59,14 +59,15 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 **Maintainability:**
 
-- Changes are focused
-- Follows existing patterns
+- Changes are focused and scoped
+- Follows existing patterns in the codebase
 - No unnecessary coupling
+- No hardcoded values (URLs, credentials, magic numbers) - use config or constants
 
 **Testing:**
 
-- Appropriate coverage
-- Edge cases tested
+- New behavior has tests: happy path + at least one error/edge case
+- Tests are meaningful - not just coverage theater
 
 ### Step 3 - Framework-Specific Checks
 
@@ -91,6 +92,23 @@ After loading stack-detect, apply framework-specific review criteria based on th
 - Response shaping uses proper DTOs/serializers - ORM entities are not exposed in API responses
 - The framework's validation mechanism is used for input validation
 
+**Data Access:**
+
+- No N+1 query patterns (loops that trigger per-row queries)
+- Queries are bounded - no unbounded fetches without pagination or limit
+- Transactions are scoped correctly and not held across I/O
+
+**Configuration Hygiene:**
+
+- No hardcoded URLs, secrets, credentials, or environment-specific values in code
+- Magic numbers or strings are named constants or configuration entries
+
+**Error Handling:**
+
+- External service calls (HTTP, messaging, DB) have explicit error handling
+- Failures return meaningful errors rather than swallowing exceptions or returning null
+- Happy path and error path are both covered in tests
+
 **Concurrency Safety:**
 
 - Concurrency primitives are appropriate for the detected runtime's threading model
@@ -99,6 +117,7 @@ After loading stack-detect, apply framework-specific review criteria based on th
 
 **Testing Patterns:**
 
+- New behavior has tests covering at least: happy path, primary error path, and one edge case
 - Test utilities match the framework's current recommendations (no deprecated test annotations or helpers)
 - Integration tests use the ecosystem's standard approach
 

@@ -35,5 +35,3 @@ OUTPUT: file list, endpoint summary, test count
 - [ ] No unbounded spawns; repository trait defined in service module
 - [ ] `cargo build`, `cargo test`, and `cargo clippy` all pass
 - [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.

@@ -181,7 +181,6 @@ I want to...
   check for performance issues      -> /task-code-perf-review
   triage tech debt by ROI           -> /task-debt-triage [delivery]
   assess a dependency upgrade       -> /task-dependency-upgrade [delivery]
-  log feedback on skill output      -> /task-skill-feedback
 ```
 
 ### Stack-Specific Skills (language plugins)

@@ -39,6 +39,7 @@ Based on the detected stack, invoke the appropriate workflow:
 | Ruby / Rails                | `task-rails-new`  |
 | Node.js / NestJS or Express | `task-node-new`   |
 | Go / Gin                    | `task-go-new`     |
+| Rust / Axum                 | `task-rust-new`   |
 
 If the detected stack does not match any of the above, proceed with the universal fallback below.
 
@@ -117,4 +118,3 @@ If no matching stack workflow exists, implement the feature using universal best
 - For polyglot monorepos, detect the primary backend stack and note any secondary stacks.
 - If the user wants to skip stack detection (e.g., in a context where it always fails), they can invoke the stack-specific workflow directly.
 
-> Run `/task-skill-feedback` if output needed significant correction.

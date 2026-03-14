@@ -199,4 +199,3 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 - Commenting on every file - focus on systemic issues
 - Applying framework conventions from a different stack
 
-> Run `/task-skill-feedback` if output needed significant correction.

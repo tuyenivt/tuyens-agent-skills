@@ -118,14 +118,14 @@ Skip this step if the review target is backend-only.
 - [ ] No lazy loading for below-the-fold components
 - [ ] Large bundle (check for unintentional full-library imports)
 
-### Step 7 - Stateless Design (All Stacks)
+### Step 6 - Stateless Design (All Stacks)
 
 - [ ] No server-side session state (use JWT/tokens)
 - [ ] Externalized session if needed (Redis)
 - [ ] No static mutable state
 - [ ] Idempotent operations where possible
 
-### Step 8 - Observability (All Stacks)
+### Step 7 - Observability (All Stacks)
 
 Use skill: `observability` for metrics and monitoring patterns.
 

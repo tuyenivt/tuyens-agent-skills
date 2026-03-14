@@ -205,7 +205,7 @@ Use skill: `complexity-review` to calibrate effort estimates for high-complexity
 
 1. Add top-priority items to the backlog with their effort estimates
 2. Create spike tickets for "Spike" items before committing to fix effort
-3. Run `/task-scope-breakdown` on top "Fix now" items to get an implementable task list with dependency ordering
+3. Run `/task-code-refactor` on top "Fix now" items to get a safe refactoring plan
 4. Document "Accept" decisions so future engineers know the debt is intentional
 5. Re-run this triage after each significant incident or quarter boundary
 ```

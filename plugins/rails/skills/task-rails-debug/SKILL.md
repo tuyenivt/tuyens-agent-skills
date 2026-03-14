@@ -42,5 +42,3 @@ OUTPUT: Bug Analysis → Root Cause → Fix → Prevention
 - [ ] Rails conventions preserved - strong params, service objects, Pundit patterns not bypassed
 - [ ] Prevention step included (RSpec test, validation, or linting rule)
 - [ ] For `PG::LockNotAvailable`: migration safety pattern referenced; for Sidekiq: idempotency and retry state checked
-
-> Run `/task-skill-feedback` if output needed significant correction.

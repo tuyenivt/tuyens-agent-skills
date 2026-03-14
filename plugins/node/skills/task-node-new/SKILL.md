@@ -38,5 +38,3 @@ OUTPUT: file list, endpoint summary, test count
 - [ ] TypeScript types explicit; guards/middleware chain explicit
 - [ ] Build, test, lint, and typecheck all pass
 - [ ] Migration includes indexes; list endpoints paginated; file list and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.

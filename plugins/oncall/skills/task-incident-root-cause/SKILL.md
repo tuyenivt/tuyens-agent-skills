@@ -93,10 +93,10 @@ Evaluate these containment options in order of speed and safety:
 2. **Feature flag disable** -- surgical isolation of the failing feature without full rollback; prefer when rollback has compatibility concerns
 3. **Patch and redeploy** -- only if root cause is clearly understood and the fix is small (avoid under pressure)
 4. **Circuit breaker** -- stop cascading to downstream services
-4. **Traffic isolation** -- route affected traffic to degraded-mode path
-5. **Rate limiting** -- reduce load to buy recovery time
-6. **Scaling mitigation** -- add capacity if resource exhaustion is the bottleneck
-7. **Data repair** -- if partial writes occurred, assess correction urgency
+5. **Traffic isolation** -- route affected traffic to degraded-mode path
+6. **Rate limiting** -- reduce load to buy recovery time
+7. **Scaling mitigation** -- add capacity if resource exhaustion is the bottleneck
+8. **Data repair** -- if partial writes occurred, assess correction urgency
 
 Use skill: `resiliency` for circuit breaker and retry patterns.
 Use skill: `data-consistency-modeling` for data consistency recovery.
@@ -236,5 +236,3 @@ Verification Steps:
 - Prevention that only fixes this specific instance
 - Verbose explanations under incident pressure
 - Ignoring AI-generated code as a contributing factor to architectural drift
-
-> Run `/task-skill-feedback` if output needed significant correction.

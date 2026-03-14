@@ -120,5 +120,3 @@ Provide:
 - [ ] `suspend` used consistently; MockK with `coEvery`/`coVerify` for suspend functions
 - [ ] `./gradlew compileKotlin compileTestKotlin test` passes
 - [ ] Migration includes indexes; list endpoints paginated; files and test count presented
-
-> Run `/task-skill-feedback` if output needed significant correction.
