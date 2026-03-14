@@ -95,6 +95,12 @@ Before proposing any refactoring step, assess boundary impact:
 - HTTP endpoints, SDK methods, events, and database schemas are public contracts
 - Refactoring these requires backward-compatibility analysis - use skill: `backward-compatibility-analysis`
 
+**Does the refactoring change a constructor, `__init__`, factory method, or function signature?**
+
+- Any parameter addition, removal, or reorder is a breaking change for callers outside the module
+- Always invoke skill: `backward-compatibility-analysis` before finalizing refactoring steps that touch signatures
+- Propose a deprecation alias or keyword-only parameters to soften the break where the language permits
+
 **What is the blast radius?**
 
 - Use skill: `blast-radius-analysis` to estimate how many callers, tests, and deployments are affected
@@ -177,3 +183,22 @@ Characterization tests to write before starting:
 1. [Test: what behavior to pin, suggested test name]
 2. ...
 ```
+
+## Self-Check
+
+- [ ] stack-detect invoked before any smell identification or refactoring steps
+- [ ] Test coverage gate checked before proposing any refactoring steps; if insufficient, Test First plan output instead
+- [ ] Cross-module usage checked; blast-radius-analysis invoked if callers exist outside the target module
+- [ ] backward-compatibility-analysis invoked if refactoring touches constructors, `__init__`, factory methods, or public function signatures
+- [ ] Every refactoring step is independently committable with a test run between steps
+- [ ] Breaking Change Risk section present; empty only if no public symbols change
+
+## Avoid
+
+- Proposing refactoring steps before checking test coverage
+- Renaming or removing public symbols without a deprecation alias step
+- Treating constructor/signature changes as low-risk - always check callers first
+- Combining multiple refactorings into one step (masks which change caused a test failure)
+- Generating implementation code for the refactoring - describe what to do, not every line of code
+
+> Run `/task-skill-feedback` if output needed significant correction.

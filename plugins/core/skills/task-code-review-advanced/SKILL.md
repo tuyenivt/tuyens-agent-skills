@@ -78,6 +78,8 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, unsafe shared state mutation, transaction boundary correctness.
 
+**Test coverage finding:** If the PR adds or modifies logic without corresponding tests, raise this as an explicit finding - at minimum a [Suggestion], escalate to [High] if the changed code is in a critical path (auth, payments, data integrity). Do not bury this in Key Takeaways - it must appear as a named finding.
+
 After loading stack-detect, apply correctness checks specific to the detected ecosystem:
 
 - Transaction management patterns appropriate to the framework
@@ -185,6 +187,7 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 - [ ] AI-generated code evaluated for over-abstraction and verbosity inflation
 - [ ] Findings ordered Blocker > High > Suggestion; no purely stylistic findings without a project standard
 - [ ] Key Takeaways convey systemic risk; Summary alone is enough for an Approve/Request Changes decision
+- [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 
 ## Avoid
 
