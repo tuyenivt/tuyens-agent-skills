@@ -86,6 +86,7 @@ After loading stack-detect, apply correctness checks specific to the detected ec
 - Concurrency safety for the detected runtime's threading model
 - Null/nil/zero-value handling using the language's standard approach
 - Error handling following the ecosystem's conventions
+- **Synchronous external I/O in hot paths**: flag as [High] any synchronous call to cache, database, or external service added in a shared hot path (auth middleware, request filters, interceptors) where the added latency affects every request
 
 Use skill: `resiliency` for error handling, retry, and fault tolerance patterns.
 Use skill: `api-guidelines` if the change touches API contracts or HTTP endpoints.

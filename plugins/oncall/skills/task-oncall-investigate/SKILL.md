@@ -97,7 +97,7 @@ Gather evidence specific to the request type:
 
 - Query the relevant DB state for the affected entity
 - Trace the write path: was the data ever written? Was it overwritten? Was it corrupted?
-- Check for recent migrations or data pipeline failures
+- Check for recent migrations or data pipeline failures; specifically check if a soft-delete pattern was introduced (new `deleted_at` column) that invalidates existing queries missing `deleted_at IS NULL` filters
 
 **For access/permission issues:**
 

@@ -23,8 +23,11 @@ STEP 5 - MODELS: SQLAlchemy or Django models
 STEP 6 - SERVICES: business logic
 If async heavy: load python-async-patterns
 If background jobs: load python-celery-patterns
+If domain events needed (e.g., order.created): emit after DB commit via Celery task or event bus
+For service-to-service calls: use httpx with timeout, classify errors (timeout → 503, 404 → not-found), never block event loop with requests library in async context
+Transaction management: FastAPI = SQLAlchemy session scope per request; Django = @transaction.atomic(). Rollback on external service failure.
 
-STEP 7 - ENDPOINTS: FastAPI routes or Django views
+STEP 7 - ENDPOINTS: FastAPI routes or Django views. Map domain errors to HTTP status: validation → 422, not-found → 404, conflict → 409, external timeout → 503.
 
 STEP 8 - SCHEMAS: Pydantic or DRF serializers
 

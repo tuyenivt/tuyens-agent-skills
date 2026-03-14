@@ -73,6 +73,16 @@ Use skill: `blast-radius-analysis` to determine how many callers, consumers, or 
 | Moderate     | 2-5 consumers, shared data access, or cross-service  |
 | Wide         | Core shared library, auth/payment path, high-traffic |
 
+### Step 2.5 - Time-Sensitivity Check
+
+Before scoring, flag any debt item with a hard deadline:
+
+- **Security CVEs** with a known exploit window or vendor end-of-life date
+- **External API deprecations** with a stated cutoff date (e.g., Stripe v2 deprecated in 6 months)
+- **EOL frameworks or runtimes** that stop receiving security patches on a known date
+
+Flag these as **time-sensitive** and treat them as if their blast radius is at least one tier higher than the score alone would suggest. A Moderate blast radius item with a 3-month deadline should be treated as Wide for prioritization purposes.
+
 ### Step 3 - Change Frequency Signal
 
 For each debt item, assess how often the affected code changes:

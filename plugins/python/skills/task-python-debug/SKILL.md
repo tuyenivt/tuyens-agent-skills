@@ -13,6 +13,8 @@ STEP 1 - INTAKE: Python traceback, application log, Celery task error, pytest fa
 
 STEP 2 - CLASSIFY:
 
+- DI / Dependency errors (FastAPI): `ImportError` or `AttributeError` in a `Depends()` chain → check if service class is imported correctly, no circular imports, virtualenv has the package. For `AttributeError: 'NoneType'` on an injected dep: check `Depends()` returns a value (not None). Prevention: pytest fixture that imports all service modules and instantiates them.
+- DI / Dependency errors (Django): `AppRegistryNotReady` or `django.core.exceptions.AppRegistryNotReady` → accessing models before `django.setup()`; check `INSTALLED_APPS`, `AppConfig.ready()` order.
 - ImportError / ModuleNotFoundError → missing dependency, wrong virtualenv, circular import
 - AttributeError: 'NoneType' → None reference, trace the None
 - pydantic.ValidationError → request validation failed, check schema

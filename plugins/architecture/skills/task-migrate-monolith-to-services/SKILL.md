@@ -133,15 +133,33 @@ Use skill: `strangler-fig-pattern` for incremental migration strategy.
 Use skill: `blast-radius-analysis` to assess extraction risk per module.
 Use skill: `dependency-impact-analysis` for extraction ordering.
 
+**Deploy cadence prerequisite check:**
+
+Before planning service extraction, verify the team can deploy frequently. Microservices require independent, frequent deployment - a team on monthly or bimonthly release cycles cannot safely operate a distributed system. If current deploy frequency is less than weekly:
+
+- Treat this as a prerequisite, not a nice-to-have
+- Recommend establishing continuous deployment (CI/CD pipeline, automated tests, canary tooling) before extracting services
+- Consider a modular monolith (enforced module boundaries, single deployment) as an intermediate step
+
+**Lowest-risk first candidates:**
+
+Certain bounded contexts are universally safe to extract first regardless of architecture:
+
+- **Analytics / reporting** - typically read-only, naturally isolated, failures don't affect core operations
+- **Notifications** - can be eventually consistent, failures degrade UX but don't break core flows
+- **Search** - usually read-only consumer of events, separated read model
+
+Recommend one of these as Phase 1 unless they are unusually coupled in this specific system.
+
 Determine extraction order using these criteria:
 
-| Criterion               | Lower Risk (extract first)         | Higher Risk (extract later)     |
-| ----------------------- | ---------------------------------- | ------------------------------- |
-| Coupling                | Few inbound/outbound dependencies  | Many cross-cutting dependencies |
-| Data sharing            | Owns its data, few shared tables   | Heavily shared tables           |
-| Business criticality    | Non-critical, failure is tolerable | Revenue-critical, zero-downtime |
-| Team readiness          | Team experienced with target stack | Team needs training             |
-| Bounded context clarity | Clear domain boundary              | Fuzzy boundary, shared logic    |
+| Criterion               | Lower Risk (extract first)                          | Higher Risk (extract later)     |
+| ----------------------- | --------------------------------------------------- | ------------------------------- |
+| Coupling                | Few inbound/outbound dependencies                   | Many cross-cutting dependencies |
+| Data sharing            | Owns its data, few shared tables                    | Heavily shared tables           |
+| Business criticality    | Non-critical, failure tolerable (analytics, search) | Revenue-critical, zero-downtime |
+| Team readiness          | Team experienced with target stack                  | Team needs training             |
+| Bounded context clarity | Clear domain boundary                               | Fuzzy boundary, shared logic    |
 
 For each extraction phase:
 

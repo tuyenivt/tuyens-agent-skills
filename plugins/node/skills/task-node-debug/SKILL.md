@@ -13,6 +13,7 @@ STEP 1 - INTAKE: stack trace, Jest failure, build error, runtime error
 
 STEP 2 - CLASSIFY:
 
+- DI / Injection errors (NestJS): `Cannot read properties of undefined (reading 'method')` in a service → missing `@Injectable()`, provider not listed in module `providers[]`, or circular dependency. Check constructor injection and module metadata. Prevention: NestJS integration test that bootstraps the full module and calls `app.get(YourService)`.
 - TypeError: Cannot read properties of undefined → null/undefined access
 - PrismaClientKnownRequestError (P2002) → unique constraint violation
 - PrismaClientKnownRequestError (P2025) → record not found

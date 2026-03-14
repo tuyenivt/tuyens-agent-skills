@@ -51,13 +51,14 @@ After loading stack-detect, apply performance checks specific to the detected ec
 **Concurrency and Threading:**
 
 - [ ] Concurrency primitives are appropriate for the runtime's threading model
-- [ ] No blocking operations in lightweight/cooperative concurrency contexts
+- [ ] No blocking operations in lightweight/cooperative concurrency contexts (e.g., sync SQLAlchemy in async Python handlers, blocking I/O in Node.js event loop, sync JDBC in Kotlin coroutines)
 - [ ] Thread/worker pool sizing matches the runtime's recommendations
 - [ ] Connection pool sized appropriately for the concurrency model
 
 **Database and ORM:**
 
-- [ ] N+1 queries addressed using the ORM's eager loading mechanism
+- [ ] N+1 queries addressed using the ORM's eager loading mechanism (e.g., `joinedload`/`selectinload` in SQLAlchemy, `includes`/`eager_load` in Rails, `fetch = EAGER` in JPA, `Include()` in EF Core)
+- [ ] Multi-level N+1 patterns caught (nested loops each issuing queries - 2N+1, 3N+1)
 - [ ] Read-only transactions or query hints used where applicable
 - [ ] The ORM's batch processing API used for large record sets
 

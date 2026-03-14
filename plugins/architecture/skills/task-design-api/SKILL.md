@@ -82,6 +82,20 @@ Validate or design against these rules:
 | PATCH  | Partial update (JSON Merge Patch) | 200                   | 404, 400      |
 | DELETE | Remove                            | 204                   | 404           |
 
+**State Machine Transitions:**
+
+When a resource has a defined lifecycle (e.g., `draft → pending → paid → shipped → canceled`):
+
+- Model transitions as explicit sub-resource actions: `POST /orders/{id}/transitions` with `{ "to": "pending" }` or named actions: `POST /orders/{id}/submit`, `POST /orders/{id}/cancel`
+- Do NOT accept arbitrary `status` values via `PUT /orders/{id}` - this bypasses state machine validation
+- Invalid transitions return 422 Unprocessable Entity with the reason
+
+**Idempotency for POST (Create):**
+
+- POST is not idempotent by default - duplicate requests create duplicate resources
+- For financially or state-sensitive endpoints, support `Idempotency-Key` header: clients generate a unique key per operation; the server returns the same response for repeated requests with the same key
+- Document the deduplication window (e.g., "Idempotency-Key honored for 24 hours")
+
 **Pagination (mandatory for collections):**
 
 Request: `?page=0&size=20&sort=createdAt,desc`

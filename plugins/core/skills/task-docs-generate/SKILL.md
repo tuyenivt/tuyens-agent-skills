@@ -185,6 +185,19 @@ Code comments should document decisions, not restate code. The "why" is what rot
 After loading stack-detect, apply documentation patterns appropriate to the detected ecosystem:
 
 - **Code documentation**: Use the ecosystem's standard doc comment format (e.g., JavaDoc, YARD, GoDoc, docstrings, rustdoc, ExDoc)
+
+**Method and Class Documentation Structure:**
+
+For each public class or method, produce the following using the ecosystem's doc format:
+
+1. **Summary** - one sentence from the caller's perspective (what they get, not what the code does internally)
+2. **Parameters** - type + meaning + constraints (required/optional, validation rules, valid ranges)
+3. **Returns** - what is returned and how the caller is expected to use it
+4. **Errors / Exceptions** - all thrown or returned errors with the specific condition that triggers each
+5. **Side Effects** - state changes, external calls, events emitted, cache invalidations
+6. **Example** - one tested usage showing the happy path
+
+Do NOT document what the code does line-by-line. Focus on the contract: what the caller must provide, what they will receive, and what will change as a result.
 - **Configuration reference**: Document the framework's configuration mechanism (properties files, YAML, environment variables, etc.)
 - **Contributor setup**: Include test setup, container dependencies, and development environment instructions specific to the detected toolchain
 - **Build and task documentation**: Document the project's build tool targets/tasks and common developer workflows

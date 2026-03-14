@@ -133,6 +133,7 @@ Based on the landscape and artifact inventory, identify what is missing:
 
 For each gap, assess priority:
 
+- **Critical** - missing ADR or design doc for a major architectural change that has already happened (the system diverged from docs with no recorded rationale); or missing incident runbook for a frequently-paged service
 - **High** - gap creates confusion or risk during incidents or onboarding
 - **Medium** - gap reduces velocity but no immediate safety risk
 - **Low** - nice to have; lower priority than fixing stale or conflicting docs

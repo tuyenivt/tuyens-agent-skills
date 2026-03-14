@@ -17,11 +17,13 @@ STEP 3 - DATABASE: load go-migration-safety, generate migrations
 
 STEP 4 - DATA LAYER: repository interface + impl (GORM and/or sqlx)
 
-STEP 5 - BUSINESS LOGIC: service with constructor injection, error wrapping (load go-error-handling). If goroutines: load go-concurrency. If background jobs or async messaging: load go-messaging-patterns.
+STEP 5 - BUSINESS LOGIC: service with constructor injection, error wrapping (load go-error-handling). If goroutines: load go-concurrency. If background jobs or async messaging: load go-messaging-patterns. For service-to-service calls: wrap with timeout (context.WithTimeout), classify errors (timeout vs not-found vs server error), map to HTTP status.
 
-STEP 6 - HTTP LAYER: Gin handlers, middleware, routes
+STEP 5.5 - EVENTS: If the feature must emit domain events (e.g., order.created), load go-messaging-patterns. Emit after transaction commit, not before.
 
-STEP 7 - TESTS: load go-testing-patterns. Table-driven + httptest + testcontainers.
+STEP 6 - HTTP LAYER: Gin handlers, middleware, routes. Map domain errors to HTTP status codes: validation errors → 400, not found → 404, conflict → 409, external service timeout → 503.
+
+STEP 7 - TESTS: load go-testing-patterns. Table-driven + httptest + testcontainers. Cover: happy path, validation errors, not-found, external service timeout.
 
 STEP 8 - VALIDATE: go build, go test -race, go vet
 

@@ -104,8 +104,9 @@ Capture:
 - Failure type (from root cause analysis or classify using skill: `failure-classification`)
 - Severity: Low | Medium | High | Critical
 - User impact scope and nature
-- Duration from detection to resolution
-- Containment actions taken
+- Duration from first symptom to resolution
+- **Detection gap**: time between first symptom and first alert/acknowledgment - flag if > 5 minutes as an observability gap
+- **Immediate actions taken**: what was done to stop the bleeding (rollback, config revert, feature flag disable, etc.) - document separately before systemic analysis
 
 ### 2. Failure Pattern Classification
 

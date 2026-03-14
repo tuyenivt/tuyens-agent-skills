@@ -138,7 +138,8 @@ For each merge group:
 - **Current data layout** -- separate databases, schemas, or tables per service
 - **Target data layout** -- unified schema in merged service's database
 - **Migration strategy**:
-  - Same DB engine: schema merge with migration scripts
+  - **Already shared database** (services read/write the same DB): no data migration needed - focus on schema cleanup, removing artificial service boundaries, and merging ORM models. This is the simplest consolidation case.
+  - Same DB engine, separate databases: schema merge with migration scripts
   - Different DB engines: pick target engine, migrate data
   - Event-sourced services: merge event stores or project to unified store
 - **Data migration phases**:

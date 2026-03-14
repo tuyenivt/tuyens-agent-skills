@@ -13,6 +13,7 @@ STEP 1 - INTAKE: Rails stack trace, log, Sidekiq error, RSpec failure, browser e
 
 STEP 2 - CLASSIFY:
 
+- DI / Autoloading errors: `LoadError` or `NameError: uninitialized constant Foo` → Zeitwerk autoloading failure; check file path matches constant name (PascalCase class → snake_case file), no typo in require/require_relative. For Rails 6+: run `rails zeitwerk:check`. Prevention: RSpec `describe 'autoloading'` that does `require 'application'` and checks all constants load.
 - ActiveRecord::RecordNotFound → missing record, check params/scopes
 - ActiveRecord::RecordInvalid → validation failure
 - ActionController::ParameterMissing → strong params misconfiguration

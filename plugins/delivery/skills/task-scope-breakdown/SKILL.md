@@ -65,20 +65,23 @@ Use skill: `feature-flags` if the feature is high-risk or requires gradual rollo
 
 Check for these hidden cost areas:
 
-| Signal                   | Questions to Answer                                                         |
-| ------------------------ | --------------------------------------------------------------------------- |
-| Database changes         | New table, column, index, or migration? Zero-downtime required?             |
-| API contract changes     | New endpoints or changed fields? External consumers affected?               |
-| Auth / permissions       | New roles, scopes, or authorization rules?                                  |
-| Async / event flows      | New queues, topics, consumers, or producers?                                |
-| Third-party integrations | New external APIs, webhooks, or SDKs?                                       |
-| Data backfill            | Existing data needs migration or transformation?                            |
-| Feature flag needed      | Is the risk high enough to warrant a flag, gradual rollout, or kill switch? |
-| Observability gaps       | New flows need logging, metrics, tracing?                                   |
-| Backward compatibility   | Old and new behavior must coexist during rollout?                           |
-| Rollback complexity      | Can this be rolled back safely? What data would be in inconsistent state?   |
-| Test surface expansion   | Integration tests, contract tests, load tests needed beyond unit tests?     |
-| Deployment coordination  | Deploy ordering required across services or teams?                          |
+| Signal                   | Questions to Answer                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Database changes         | New table, column, index, or migration? Zero-downtime required?                                                                       |
+| API contract changes     | New endpoints or changed fields? External consumers affected?                                                                         |
+| Auth / permissions       | New roles, scopes, or authorization rules?                                                                                            |
+| Async / event flows      | New queues, topics, consumers, or producers? Do webhooks require a separate receive-validate-process pipeline task?                   |
+| Third-party integrations | New external APIs, webhooks, or SDKs? Are webhook events idempotent (can be delivered 2+ times)?                                      |
+| Idempotency              | Do operations need to be idempotent (e.g., Stripe webhooks, payment retries, queue re-delivery)?                                      |
+| State machine            | Does the feature require defined lifecycle states and transition rules? Model this as a dedicated task, not inline in business logic. |
+| Domain-specific logic    | Does the feature have complex calculations (e.g., billing proration, tax, shipping rates)? Flag as hidden complexity requiring spike. |
+| Data backfill            | Existing data needs migration or transformation?                                                                                      |
+| Feature flag needed      | Is the risk high enough to warrant a flag, gradual rollout, or kill switch?                                                           |
+| Observability gaps       | New flows need logging, metrics, tracing?                                                                                             |
+| Backward compatibility   | Old and new behavior must coexist during rollout?                                                                                     |
+| Rollback complexity      | Can this be rolled back safely? What data would be in inconsistent state?                                                             |
+| Test surface expansion   | Integration tests, contract tests, load tests needed? For third-party integrations: webhook simulation and test mode coverage needed? |
+| Deployment coordination  | Deploy ordering required across services or teams?                                                                                    |
 
 State which signals apply before proceeding to task creation.
 

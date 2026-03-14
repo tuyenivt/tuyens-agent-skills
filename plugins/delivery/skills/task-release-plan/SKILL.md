@@ -167,6 +167,14 @@ Evaluate:
 Deploy order for additive changes: code first (handle both schemas) -> migrate -> code that uses new schema.
 Deploy order for destructive changes: code stops using old schema -> verify -> migrate to drop.
 
+**New async integrations and microservices:**
+
+When the release introduces a new queue, worker service, or webhook endpoint:
+- Deploy infrastructure (queue, topics) before any code that depends on it
+- Deploy the consumer (worker, webhook handler) before the producer starts emitting
+- For webhook endpoints: the endpoint must be registered with the third party AFTER it is deployed and healthy - not before
+- Specify deployment ordering explicitly when multiple new services are involved
+
 ### 4. Rollout Strategy Recommendation
 
 Use skill: `release-safety` for rollout, rollback, and deployment risk patterns.

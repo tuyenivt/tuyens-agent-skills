@@ -51,6 +51,9 @@ After loading stack-detect, apply security checks specific to the detected ecosy
 - Verify the framework's standard validation mechanism is applied to all user input
 - No raw SQL concatenation - use parameterized queries or the ORM's query builder
 - Validate and sanitize all user-provided data before use
+- **File path operations**: validate and normalize paths (use `path.resolve()` or equivalent, then check result is within an allowed base directory) - path traversal via `../` sequences in filenames is Critical
+- **File upload handling**: validate file types by magic bytes (not just extension), enforce per-file size limits and total request body size limits in middleware (e.g., multer `fileSize`, Spring `MaxUploadSize`, ASP.NET `RequestSizeLimit`)
+- **Shell/system calls**: never pass user-controlled data to `exec`, `spawn`, or equivalent; prefer API-based alternatives over shelling out
 
 **Common Vulnerability Patterns:**
 

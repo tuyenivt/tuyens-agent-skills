@@ -138,6 +138,19 @@ For any change that is not purely additive, apply expand-contract to eliminate t
 
 Apply this pattern to: column renames, type changes, table splits, constraint additions on existing data.
 
+**Adding NOT NULL on large tables (PostgreSQL-specific):**
+
+For tables with millions of rows, `ALTER TABLE ADD CONSTRAINT NOT NULL` acquires an ACCESS EXCLUSIVE lock and performs a full table scan to validate. Use deferred validation instead:
+
+1. **Expand**: Add column as nullable (`ALTER TABLE ADD COLUMN tenant_id UUID`)
+2. **Deploy app**: write `tenant_id` on all new rows
+3. **Backfill**: update existing rows in batches
+4. **Add constraint NOT VALID**: `ALTER TABLE ADD CONSTRAINT orders_tenant_id_not_null CHECK (tenant_id IS NOT NULL) NOT VALID` - brief lock, skips historical row validation
+5. **Validate in background**: `ALTER TABLE VALIDATE CONSTRAINT orders_tenant_id_not_null` - ShareUpdateExclusiveLock (non-blocking to reads/writes)
+6. **Contract**: once validated, the constraint is enforced for all new writes
+
+Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever validating a constraint against >1M rows.
+
 Skip expand-contract only when:
 
 - The change is purely additive (new nullable column, new table with no existing data dependency)

@@ -17,7 +17,7 @@ STEP 3 - DESIGN: propose module structure, interfaces, data flow. Present for ap
 
 STEP 4 - DATA MODEL: Prisma schema or TypeORM entity + migration (load node-migration-safety)
 
-STEP 5 - SERVICE LAYER: business logic with proper typing (load node-typescript-patterns). If feature requires background jobs or async task processing: load node-bullmq-patterns.
+STEP 5 - SERVICE LAYER: business logic with proper typing (load node-typescript-patterns). If feature requires background jobs or async task processing: load node-bullmq-patterns. If feature emits domain events (e.g., order.created): load node-event-emitter-patterns or node-bullmq-patterns after transaction commit. For service-to-service calls: configure timeout, handle errors explicitly (timeout → 503, not-found → 404, validation → 400).
 
 STEP 6 - API LAYER:
 

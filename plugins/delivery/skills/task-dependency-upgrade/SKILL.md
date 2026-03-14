@@ -66,6 +66,8 @@ This shapes:
 
 ### Step 2 - Breaking Change Analysis
 
+**Version numbering caveat:** Do not assume that minor version bumps (X.minor.patch) are safe. Some ecosystems (Spring Boot, Django, Rails) regularly introduce breaking changes in minor releases. Always read the full changelog and dedicated migration guide for every version in the upgrade path, including intermediate minor versions.
+
 Analyze the changelog and migration guide for the target version:
 
 Categorize breaking changes by type:

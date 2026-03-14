@@ -307,6 +307,8 @@ For each significant decision:
 - **Reversibility** -- how hard is it to change this decision later
 - **Risk** -- what could make this decision wrong
 
+**ADR candidates:** For any decision with High reversibility cost or significant trade-offs (messaging broker, consistency model, primary storage engine, async vs sync communication), recommend creating an ADR using `/task-adr-create`. State which decisions warrant an ADR so the team can commit the rationale before implementation begins.
+
 ### 10. Guardrails and Review Guidance
 
 Define constraints to enforce during implementation.

@@ -72,6 +72,7 @@ For Medium and Low: complete classification fully before investigating.
 - **Is this ongoing?** (Yes = urgency up; No = investigation can be measured)
 - **Is data at risk?** (Yes = Critical regardless of other signals)
 - **Has this happened before?** (Yes = check runbooks or prior postmortems first)
+- **Did an external dependency degrade?** (Yes = check third-party API status pages, latency dashboards before assuming internal cause)
 - **Was there a recent deploy or config change?** (Yes = rollback may be fastest resolution)
 
 ### Step 5 - Route and Package Context

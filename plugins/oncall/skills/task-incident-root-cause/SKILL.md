@@ -87,11 +87,12 @@ Output blast radius explicitly: Narrow | Moderate | Wide | Critical.
 
 **Prioritize fast blast radius reduction.**
 
-Evaluate these containment options in order of speed:
+Evaluate these containment options in order of speed and safety:
 
 1. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `backward-compatibility-analysis` to check for schema or contract breakage that would make rollback unsafe.
-2. **Feature flag disable** -- isolate the failing feature without full rollback
-3. **Circuit breaker** -- stop cascading to downstream services
+2. **Feature flag disable** -- surgical isolation of the failing feature without full rollback; prefer when rollback has compatibility concerns
+3. **Patch and redeploy** -- only if root cause is clearly understood and the fix is small (avoid under pressure)
+4. **Circuit breaker** -- stop cascading to downstream services
 4. **Traffic isolation** -- route affected traffic to degraded-mode path
 5. **Rate limiting** -- reduce load to buy recovery time
 6. **Scaling mitigation** -- add capacity if resource exhaustion is the bottleneck
@@ -111,7 +112,9 @@ For each hypothesis, require:
 - Primary suspect component and mechanism
 - Secondary suspects
 - Likely triggering change (recent PR, deploy, config change)
+- **Contributing factors** (distinct from root cause): conditions that made the system vulnerable - e.g., no memory limit set, no load test for large payloads, missing circuit breaker
 - Failure propagation path (from step 2)
+- **Timeline interpretation**: if there is a lag between triggering change and symptom onset (e.g., deploy at T+0, alerts at T+15min), explain why - load-dependent trigger, cache warming, gradual leak vs. startup error
 - Confidence level with supporting and contradicting evidence
 - One concrete verification step
 
@@ -171,6 +174,7 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 Primary Suspect:
 Mechanism:
 Triggering Change:
+Contributing Factors: [conditions that made the system vulnerable, distinct from root cause]
 Failure Propagation Path:
 Confidence: X%
 
