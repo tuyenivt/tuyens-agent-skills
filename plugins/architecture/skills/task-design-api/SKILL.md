@@ -172,6 +172,7 @@ For each endpoint, verify:
 - **Rate limiting** -- applies? What limits?
 - **Input validation** -- all request bodies and parameters validated
 - **Sensitive data** -- no passwords, tokens, or PII in URLs or logs
+- **CORS** -- if consumed by browser clients (SPA, mobile web), specify allowed origins, methods, and headers; preflight caching (`Access-Control-Max-Age`)
 
 ### Step 7 - Output
 
@@ -238,3 +239,4 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - Breaking change warnings without migration guidance
 - Generic naming advice without checking against the actual detected stack convention
 - Treating OpenAPI/Swagger spec validation as a separate concern from design quality
+- Inconsistent pagination across endpoints -- same envelope and parameter names everywhere
