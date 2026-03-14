@@ -78,6 +78,41 @@ Root Cause: Probably a database issue.
 We should check the database.
 ```
 
+### Insufficient Evidence
+
+When available evidence is too thin to form a meaningful hypothesis (no stack trace, no metrics, no deploy correlation), do not guess. Instead:
+
+1. State the strongest signal available and what failure class it suggests
+2. List the 2-3 specific evidence items that would enable a hypothesis (e.g., "need connection pool metrics for the last hour", "need the deploy diff from the last 4 hours")
+3. For each missing item, state where to get it (dashboard, log query, CLI command)
+
+This is more useful than a low-confidence hypothesis — it tells the team exactly what to gather next rather than sending them chasing a weak lead.
+
+## Output Format
+
+Produce one primary hypothesis and at least one secondary. Use this structure:
+
+```
+Primary Hypothesis ({confidence}% confidence):
+Suspect: {component} -- {resource or module}
+Mechanism: {how the failure occurs, not just where}
+Evidence for: {observations supporting, with specific values}
+Evidence against: {observations that weaken it}
+Triggering change: {PR, deploy, config change, or "None identified"}
+Verification: {one concrete action to confirm or reject}
+
+Secondary Hypothesis ({confidence}% confidence):
+Suspect: {component}
+Mechanism: {how}
+Evidence for: {what supports it}
+Evidence against: {what weakens it}
+Verification: {action}
+
+Remaining confidence ({remaining}%): unexplained by current hypotheses.
+```
+
+Confidence percentages across all hypotheses plus the remaining share should sum to 100%. The "remaining" bucket acknowledges unknown unknowns — if it exceeds 40%, explicitly state what evidence is missing.
+
 ## Avoid
 
 - Anchoring on the first hypothesis without considering alternatives
