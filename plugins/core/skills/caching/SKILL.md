@@ -74,6 +74,26 @@ if random() < (fetch_cost / remaining_ttl):
 
 Use lock-based for correctness-critical data; use probabilistic for read-heavy/staleness-tolerant data.
 
+### Cache Key Design
+
+Well-designed cache keys prevent collisions, enable targeted invalidation, and survive deployments:
+
+```
+// Pattern: {service}:{entity}:{id}:{version}
+"order-service:order:12345:v2"
+
+// Pattern: {service}:{query}:{hash-of-params}
+"product-service:search:sha256(category=electronics&sort=price)"
+```
+
+**Key design rules:**
+
+- **Namespace by service** -- prevents collisions between services sharing a cache cluster
+- **Include a version segment** -- bump when the cached structure changes (avoids deserialization errors after deploys)
+- **Use deterministic hashing for query keys** -- sort parameters before hashing so `?a=1&b=2` and `?b=2&a=1` produce the same key
+- **Keep keys under 250 bytes** -- some cache backends truncate or reject longer keys
+- **Never embed user-controlled input directly** -- sanitize or hash to prevent key injection
+
 ### Cache Levels
 
 - **In-process cache**: Fastest, but per-instance only (not shared across replicas)

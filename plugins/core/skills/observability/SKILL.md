@@ -70,15 +70,53 @@ After loading stack-detect, apply structured logging using the libraries and pat
 
 ## Metrics
 
-- Instrument RED metrics (Rate, Errors, Duration) at every service boundary
-- Use the metrics library standard for the detected ecosystem (e.g., Micrometer, Prometheus client, Yabeda, StatsD)
-- Define custom metrics for business-critical operations
+Instrument **RED metrics** (Rate, Errors, Duration) at every service boundary:
+
+```
+// Rate: request count by endpoint and status
+http_requests_total{method="POST", endpoint="/api/orders", status="201"}
+
+// Errors: error count by endpoint and error type
+http_errors_total{method="POST", endpoint="/api/orders", error="validation"}
+
+// Duration: latency histogram by endpoint
+http_request_duration_seconds{method="POST", endpoint="/api/orders"}
+  -> track p50, p95, p99 from histogram buckets
+```
+
+**Metric types and when to use each:**
+
+| Type      | Use For                                 | Example                             |
+| --------- | --------------------------------------- | ----------------------------------- |
+| Counter   | Cumulative totals that only go up       | Total requests, total errors        |
+| Histogram | Distribution of values (latency, sizes) | Request duration, response size     |
+| Gauge     | Values that go up and down              | Active connections, queue depth     |
+
+**Business metrics** -- define at least one metric per critical business operation (e.g., `orders_completed_total`, `payment_success_rate`). These detect revenue-impacting issues that RED metrics alone may miss.
+
+Use the metrics library standard for the detected ecosystem (e.g., Micrometer, Prometheus client, Yabeda, StatsD).
 
 ## Distributed Tracing
 
-- Use OpenTelemetry or the ecosystem's standard tracing library
-- Ensure trace context propagation across service boundaries (see trace context headers above)
-- Add trace spans for key operations (database queries, external calls, message processing)
+Add trace spans for key operations to make the request lifecycle visible:
+
+- **Service entry point** -- automatic span from framework middleware
+- **Database queries** -- span per query with query template (not parameters) as span attribute
+- **External HTTP calls** -- span per outbound request with target service name
+- **Message publish/consume** -- span linking producer to consumer across async boundaries
+- **Cache operations** -- span for cache reads/writes on hot paths
+
+**Sampling strategy** -- tracing every request is expensive at scale. Choose based on traffic volume:
+
+| Strategy    | Use When                                        | Trade-off                            |
+| ----------- | ----------------------------------------------- | ------------------------------------ |
+| Head-based  | Moderate traffic; decision made at request start | Simple; may miss rare errors         |
+| Tail-based  | High traffic; decision made after request ends   | Captures errors/slow requests; costly |
+| Always-on   | Low traffic or debugging                        | Full visibility; high storage cost   |
+
+Start with head-based sampling at 10-20% for high-traffic services. Always sample 100% of errored or slow requests regardless of strategy.
+
+Use OpenTelemetry or the ecosystem's standard tracing library. Ensure trace context propagation across service boundaries (see trace context headers above).
 
 ## SLO Definition
 

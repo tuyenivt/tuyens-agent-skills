@@ -101,11 +101,12 @@ Evidence: HikariCP active connections at max (40/40), payment-service p99 latenc
 
 ```
 Failure Type: Misconfiguration
+Scope: Total + Isolated
 Layer: Configuration (wrong DB_HOST in production environment)
 Evidence: Connection refused on startup, DB_HOST=localhost in production pod env vars
 ```
 
-Always produce all three lines. Never omit Evidence - unsupported classifications mislead investigation.
+Always produce all four lines (Failure Type, Scope, Layer, Evidence). Never omit Evidence - unsupported classifications mislead investigation.
 
 ## Avoid
 

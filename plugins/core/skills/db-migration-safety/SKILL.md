@@ -157,3 +157,13 @@ When surfacing migration safety analysis:
 - Backfill operations must always be batched - never unbounded
 - Application code must be backward compatible with both schemas during the transition window
 - Flag changes requiring a database restore to roll back - these are go/no-go decision points
+
+## Avoid
+
+- Running ALTER TABLE with exclusive lock on large tables during peak traffic
+- Deploying migration and application code that depends on it in the same release (rolling deploys mean old code runs against new schema)
+- Unbounded UPDATE or DELETE on production tables (always batch by ID range)
+- Skipping expand-contract for renames or type changes ("it's just a rename" causes downtime)
+- Adding NOT NULL constraints directly on large PostgreSQL tables (use NOT VALID + VALIDATE CONSTRAINT)
+- Assuming CREATE INDEX is fast on large tables (use CONCURRENTLY or online DDL)
+- Running destructive migrations (DROP COLUMN/TABLE) before confirming zero reads/writes to the old structure
