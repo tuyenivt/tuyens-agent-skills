@@ -177,6 +177,69 @@ async fn run_worker_pool(
 }
 ```
 
+### Transactional Outbox Pattern (reliable publishing)
+
+Publishing to Kafka or AMQP inside a database transaction is a dual-write anti-pattern. The DB commit and broker publish are not atomic - a failure between them causes event loss or phantom events.
+
+**Bad - dual-write:**
+
+```rust
+async fn place_order(pool: &PgPool, kafka: &KafkaProducer, req: OrderRequest) -> anyhow::Result<Order> {
+    let mut tx = pool.begin().await?;
+    let order = insert_order(&mut *tx, &req).await?;
+    tx.commit().await?; // DB committed
+
+    // PROBLEM: if this fails, DB is committed but event is never published
+    kafka.produce("order.created", &serde_json::to_vec(&order)?).await?;
+    Ok(order)
+}
+```
+
+**Good - transactional outbox:**
+
+```rust
+// Step 1: Insert order AND outbox record in the same DB transaction
+async fn place_order(pool: &PgPool, req: OrderRequest) -> anyhow::Result<Order> {
+    let mut tx = pool.begin().await?;
+    let order = insert_order(&mut *tx, &req).await?;
+
+    // Outbox record commits atomically with the order
+    sqlx::query!(
+        "INSERT INTO outbox_events (aggregate_id, event_type, payload) VALUES ($1, $2, $3)",
+        order.id,
+        "order.created",
+        serde_json::to_value(&order)?,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(order)
+}
+
+// Step 2: Relay worker - polls outbox, publishes to Kafka, marks sent
+async fn run_outbox_relay(pool: &PgPool, kafka: &KafkaProducer, token: CancellationToken) {
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        tokio::select! {
+            _ = token.cancelled() => return,
+            _ = interval.tick() => {
+                let events = sqlx::query!("SELECT * FROM outbox_events WHERE published_at IS NULL LIMIT 100")
+                    .fetch_all(pool).await.unwrap_or_default();
+
+                for ev in events {
+                    if kafka.produce(&ev.event_type, &ev.payload.to_string().into_bytes()).await.is_ok() {
+                        let _ = sqlx::query!(
+                            "UPDATE outbox_events SET published_at = NOW() WHERE id = $1", ev.id
+                        ).execute(pool).await;
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
 ## Stack-Specific Guidance
 
 - **rdkafka**: Rust binding to librdkafka - high performance, production-grade Kafka client; disable auto-commit and commit after successful processing

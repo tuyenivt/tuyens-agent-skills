@@ -219,4 +219,4 @@ for _, file := range files {
 - Using `time.Sleep` as a synchronization mechanism
 - Unbuffered channels in hot paths (causes goroutine pile-up under load)
 - Ignoring the race detector output
-- Sharing memory by communicating - Go's model is "communicate by sharing"... wait, the reverse: communicate to share, don't share memory directly
+- Sharing memory directly - Go's model is "do not communicate by sharing memory; instead, share memory by communicating" (use channels to transfer ownership)

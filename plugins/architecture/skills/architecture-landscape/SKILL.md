@@ -49,6 +49,18 @@ For each integration between systems:
 - **Tight**: caller blocks on response; failure in target propagates to caller
 - **Loose**: async events or eventual sync; caller continues on target failure
 
+### Discovery Methods
+
+When the integration map cannot be read from documentation alone, use these discovery approaches:
+
+- **Codebase scan**: Search for HTTP client instantiation, service URLs in config, message broker topic names, and queue consumer registrations
+- **Infrastructure config**: Check API gateway routing rules, service mesh (Istio/Linkerd) configuration, or load balancer upstream definitions
+- **Environment variables / secrets**: Service hostnames and API endpoints in `.env`, Kubernetes ConfigMaps/Secrets, or Terraform variables reveal integration targets
+- **Database foreign keys and shared tables**: Cross-schema foreign keys or tables accessed from multiple services reveal hidden coupling
+- **Message broker inspection**: List topics/queues and their producers/consumers from broker admin UI or infrastructure-as-code
+
+Flag each integration entry with confidence: **Confirmed** (documented or code-verified) vs **Inferred** (derived from config or naming convention). Do not invent integrations.
+
 ### Cross-System Risk Assessment
 
 After mapping the inventory and integrations, identify:

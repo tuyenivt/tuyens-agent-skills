@@ -154,10 +154,37 @@ celery_app.conf.beat_schedule = {
 - Prometheus exporter for metrics
 - Alert on: queue length > threshold, task failure rate, worker count
 
-## 7. ANTI-PATTERNS
+## 7. ACKS_LATE vs ACKS_EARLY (Delivery Guarantees)
+
+By default, Celery uses `acks_early` (task acknowledged before execution). This risks message loss if the worker crashes mid-task. Use `acks_late=True` for at-least-once delivery:
+
+| Setting                | Acknowledged              | Risk                             | Use When                                    |
+| ---------------------- | ------------------------- | -------------------------------- | ------------------------------------------- |
+| `acks_early` (default) | Before execution starts   | Message lost on worker crash     | Task is not idempotent, prefer at-most-once |
+| `acks_late=True`       | After execution completes | Task re-executed on worker crash | Task is idempotent, prefer at-least-once    |
+
+```python
+@celery_app.task(
+    bind=True,
+    acks_late=True,            # re-queue on worker crash
+    reject_on_worker_lost=True, # return to queue if worker dies mid-task
+    max_retries=3,
+    retry_backoff=True,
+)
+def process_payment(self, order_id: int) -> None:
+    """Idempotent payment processor - safe to retry with acks_late."""
+    if payment_already_processed(order_id):
+        return  # idempotency guard prevents double charge
+    charge_payment(order_id)
+```
+
+Always pair `acks_late=True` with an idempotency guard in the task body.
+
+## 8. ANTI-PATTERNS
 
 - ❌ Passing ORM objects as task arguments (use IDs)
 - ❌ Tasks longer than 30 minutes without chunking
 - ❌ Ignoring task results when they contain errors
 - ❌ No retry strategy (all tasks should handle transient failures)
 - ❌ Celery worker running on same process as web server
+- ❌ `acks_late=True` without idempotency guard (causes double processing on retry)

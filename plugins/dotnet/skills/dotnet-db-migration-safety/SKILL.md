@@ -55,6 +55,32 @@ migrationBuilder.AlterColumn<string>(
 migrationBuilder.DropColumn(name: "email", table: "users");
 ```
 
+### NOT NULL on Large Tables (PostgreSQL)
+
+`AlterColumn nullable: false` maps to `ALTER COLUMN SET NOT NULL`, which acquires an `AccessExclusiveLock` and scans every row. On tables with millions of rows this blocks reads and writes for seconds or longer.
+
+Use NOT VALID + VALIDATE CONSTRAINT instead - this skips scanning existing rows (no lock) and validates separately with a `ShareUpdateExclusiveLock` that allows concurrent reads and writes:
+
+```csharp
+// Phase 3a: Add CHECK constraint without scanning existing rows (instant, no lock)
+migrationBuilder.Sql(@"
+    ALTER TABLE users
+    ADD CONSTRAINT users_email_address_not_null
+    CHECK (email_address IS NOT NULL) NOT VALID;
+");
+
+// Phase 3b: Validate existing rows in a separate migration
+// (ShareUpdateExclusiveLock - allows concurrent reads and writes)
+migrationBuilder.Sql(@"
+    ALTER TABLE users
+    VALIDATE CONSTRAINT users_email_address_not_null;
+");
+```
+
+Each phase goes in its own migration file so they can be deployed separately. On SQL Server, the equivalent is `WITH (ONLINE = ON)` on index/constraint operations, which is enabled by default for Enterprise Edition.
+
+Note: EF Core does not generate NOT VALID constraints automatically - always use `migrationBuilder.Sql()` for this pattern.
+
 ## Apply Migrations Safely
 
 ```bash

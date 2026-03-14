@@ -136,10 +136,45 @@ engine = create_async_engine(
 )
 ```
 
-## 6. ANTI-PATTERNS
+## 6. ASYNC SESSION SAFETY AND MISSINGGREENLETERROR
+
+The `MissingGreenlet` error occurs when SQLAlchemy attempts a lazy load (attribute access that triggers a SELECT) in an async context after the session has been closed:
+
+```python
+# BAD: accessing relationship after session closes triggers MissingGreenlet
+async def get_order_with_items(order_id: int) -> Order:
+    async with async_session() as session:
+        order = await session.get(Order, order_id)
+    # session closed here
+    print(order.items)  # MissingGreenlet: greenlet_spawn has not been called
+```
+
+Fix: eagerly load all relationships you need inside the session scope:
+
+```python
+# GOOD: load relationships before session closes
+async def get_order_with_items(order_id: int) -> Order:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.items))  # load eagerly
+            .where(Order.id == order_id)
+        )
+        return result.scalar_one_or_none()
+        # items already loaded - safe to access after session closes
+```
+
+Set `expire_on_commit=False` on `async_sessionmaker` to prevent attribute expiry after commit (another source of `MissingGreenlet`):
+
+```python
+async_session = async_sessionmaker(engine, expire_on_commit=False)
+```
+
+## 7. ANTI-PATTERNS
 
 - ❌ session.query() (1.x style - use select())
 - ❌ Column() (use mapped_column())
-- ❌ Forgetting to load relationships (causes N+1 or lazy load errors in async)
+- ❌ Accessing unloaded relationships after session closes (MissingGreenlet error)
+- ❌ `expire_on_commit=True` (default) in async sessions - causes attribute access errors post-commit
 - ❌ Long-lived sessions (create per request, close after)
 - ❌ Mixing sync and async engines

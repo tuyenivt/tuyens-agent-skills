@@ -56,8 +56,54 @@ public class OrderService {
 }
 ```
 
+## Common Pitfalls
+
+### Self-Invocation Proxy Bypass
+
+`@Transactional` works via Spring's AOP proxy. Calling a `@Transactional` method from **within the same class** bypasses the proxy - no transaction is started:
+
+```java
+// Bad: self-invocation - @Transactional on createWithAudit is ignored
+@Service
+public class OrderService {
+    public Order create(OrderRequest req) {
+        return createWithAudit(req); // calls directly, NOT through proxy
+    }
+
+    @Transactional
+    public Order createWithAudit(OrderRequest req) { ... }
+}
+
+// Good: extract to a separate Spring bean so the proxy intercepts
+@Service
+public class OrderService {
+    private final OrderAuditService auditService; // injected bean
+
+    public Order create(OrderRequest req) {
+        return auditService.createWithAudit(req); // goes through proxy
+    }
+}
+```
+
+### REQUIRES_NEW for Isolated Side Effects
+
+`REQUIRES_NEW` suspends the outer transaction and runs the method in its own transaction. Use it for audit logs or notifications that must commit regardless of whether the outer transaction rolls back:
+
+```java
+@Service
+public class AuditService {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logAction(String action, Long entityId) {
+        auditRepo.save(new AuditLog(action, entityId)); // commits independently
+    }
+}
+```
+
+Caution: REQUIRES_NEW opens a second DB connection - avoid in tight loops or high-throughput paths.
+
 ## Avoid
 
 - `@Transactional` on controllers or repositories
 - Long-running transactions
 - Mixing read and write operations without readOnly
+- Calling `@Transactional` methods within the same class (self-invocation - proxy bypass)

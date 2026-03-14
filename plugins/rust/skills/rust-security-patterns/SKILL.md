@@ -146,6 +146,47 @@ let jwt_secret = std::env::var("JWT_SECRET")
 dotenvy::dotenv().ok();
 ```
 
+### Path Traversal Prevention
+
+Never construct file paths directly from user input. A path like `../../../etc/passwd` can escape the intended directory:
+
+```rust
+use std::path::{Path, PathBuf};
+
+// BAD: direct path construction from user input - path traversal vulnerability
+async fn download_file(
+    Path(filename): Path<String>,
+) -> Result<Vec<u8>, AppError> {
+    let path = format!("./uploads/{filename}"); // traversal: "../../../etc/passwd"
+    Ok(tokio::fs::read(path).await?)
+}
+
+// GOOD: canonicalize and verify the resolved path stays within the allowed directory
+async fn download_file(
+    Path(filename): Path<String>,
+) -> Result<Vec<u8>, AppError> {
+    let uploads_dir = Path::new("./uploads").canonicalize()
+        .map_err(|_| AppError::Internal("uploads dir not found".into()))?;
+
+    let requested = uploads_dir.join(&filename).canonicalize()
+        .map_err(|_| AppError::BadRequest("invalid file path".into()))?;
+
+    // Verify the resolved path starts with the uploads directory
+    if !requested.starts_with(&uploads_dir) {
+        return Err(AppError::Forbidden("path traversal detected".into()));
+    }
+
+    Ok(tokio::fs::read(&requested).await
+        .map_err(|_| AppError::NotFound("file not found".into()))?)
+}
+```
+
+Key rules:
+- `canonicalize()` resolves `..`, symlinks, and relative segments to an absolute path
+- Always call `canonicalize()` on the **joined** path (after appending user input), not before
+- `starts_with()` on `PathBuf` checks path components, not string prefix - safe against `uploads_evil/` bypasses
+- Reject the request if `canonicalize()` fails (file doesn't exist or invalid path)
+
 ### Dependency Auditing
 
 ```bash
@@ -181,3 +222,4 @@ cargo audit --deny warnings
 - Symmetric JWT keys (HS256) in production - use RS256/ES256
 - Password hashing on the async runtime (blocks the executor)
 - Skipping `cargo audit` in CI
+- Constructing file paths from user input without `canonicalize()` + `starts_with()` prefix check (path traversal)

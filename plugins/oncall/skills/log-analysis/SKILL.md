@@ -54,14 +54,14 @@ If no correlation IDs are present, note this as an observability gap.
 
 For error logs in the window:
 
-| Dimension            | What to Check                                                            |
-| -------------------- | ------------------------------------------------------------------------ |
-| Rate                 | Errors per minute - is it constant, spiking, or tapering?                |
-| Affected users       | Is it one user, a segment, or all users?                                 |
-| Affected endpoints   | Is it one route or many?                                                 |
-| Error type           | Are all errors the same class or mixed?                                  |
-| Service distribution | Which services are logging errors - one or many?                         |
-| Timing correlation   | Does the error rate correlate with a deploy, traffic spike, or cron job? |
+| Dimension            | What to Check                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rate                 | Errors per minute - is it constant, spiking, or tapering?                                                                                                                                                                                                                                                                                                                       |
+| Affected users       | Is it one user, a segment, or all users? To identify a segment: extract distinct user IDs from error logs, then cross-reference with user attributes (e.g., users with no billing address, users in a specific region, users on a specific plan). Query pattern: `SELECT attribute, COUNT(*) FROM error_logs JOIN users USING (user_id) GROUP BY attribute ORDER BY COUNT DESC` |
+| Affected endpoints   | Is it one route or many?                                                                                                                                                                                                                                                                                                                                                        |
+| Error type           | Are all errors the same class or mixed?                                                                                                                                                                                                                                                                                                                                         |
+| Service distribution | Which services are logging errors - one or many?                                                                                                                                                                                                                                                                                                                                |
+| Timing correlation   | Does the error rate correlate with a deploy, traffic spike, or cron job?                                                                                                                                                                                                                                                                                                        |
 
 State the distribution as a sentence: "47 timeout errors in 3 minutes, all on `/api/orders`, all from users in the EU region, starting at 14:23 UTC immediately after deploy v2.4.1."
 

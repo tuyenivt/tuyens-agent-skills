@@ -53,18 +53,30 @@ ALTER TABLE users DROP COLUMN phone;
 
 ### Adding a NOT NULL Column (multi-step)
 
-A single `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` locks the table in older Postgres. Use expand-contract:
+A single `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` or `ALTER COLUMN SET NOT NULL` acquires an `AccessExclusiveLock` that blocks all reads and writes on large tables. Use NOT VALID + VALIDATE CONSTRAINT for zero-downtime:
 
 ```sql
--- Step 1: add nullable (migration N)
+-- Step 1: add nullable column (migration N)
+-- migrate: no transaction not needed here (DDL inside transaction is fine)
 ALTER TABLE users ADD COLUMN phone VARCHAR(20);
 
--- Step 2: backfill in a separate DML migration (migration N+1)
+-- Step 2: backfill existing rows (migration N+1, separate DML migration)
+-- Run in batches for large tables; golang-migrate runs this in a transaction
 UPDATE users SET phone = '' WHERE phone IS NULL;
 
--- Step 3: add constraint (migration N+2)
-ALTER TABLE users ALTER COLUMN phone SET NOT NULL;
+-- Step 3: add CHECK constraint with NOT VALID (migration N+2)
+-- NOT VALID skips scanning existing rows - no table lock, instant
+-- migrate: no transaction
+ALTER TABLE users ADD CONSTRAINT users_phone_not_null
+    CHECK (phone IS NOT NULL) NOT VALID;
+
+-- Step 4: validate existing rows (migration N+3)
+-- VALIDATE CONSTRAINT acquires ShareUpdateExclusiveLock - allows concurrent reads/writes
+-- migrate: no transaction
+ALTER TABLE users VALIDATE CONSTRAINT users_phone_not_null;
 ```
+
+Do NOT use `ALTER TABLE users ALTER COLUMN phone SET NOT NULL` on tables with millions of rows - it acquires `AccessExclusiveLock` and scans the entire table.
 
 ### Adding an Index (use CONCURRENTLY)
 

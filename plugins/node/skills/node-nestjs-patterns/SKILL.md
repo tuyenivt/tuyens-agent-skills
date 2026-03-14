@@ -42,9 +42,64 @@ Cover:
    - Whitelist: true strips unknown properties (security)
    - Custom validators for complex business rules
 
-7. ANTI-PATTERNS:
+7. DEPENDENCY INJECTION SCOPES:
+
+   NestJS providers have three scopes controlling instance lifetime:
+
+   | Scope                 | Decorator              | Lifetime                         | Use When                                                     |
+   | --------------------- | ---------------------- | -------------------------------- | ------------------------------------------------------------ |
+   | `DEFAULT` (Singleton) | none / `Scope.DEFAULT` | One instance for app lifetime    | Stateless services (default)                                 |
+   | `REQUEST`             | `Scope.REQUEST`        | New instance per HTTP request    | Services that hold request-scoped state (e.g., current user) |
+   | `TRANSIENT`           | `Scope.TRANSIENT`      | New instance per injection point | Stateful helpers that must not be shared                     |
+
+   ```typescript
+   import { Injectable, Scope } from "@nestjs/common";
+
+   // Singleton (default) - stateless services
+   @Injectable()
+   export class OrderService {}
+
+   // Request-scoped - inject REQUEST to access current request
+   @Injectable({ scope: Scope.REQUEST })
+   export class AuditService {
+     constructor(@Inject(REQUEST) private readonly request: Request) {}
+   }
+
+   // Transient - new instance per injection
+   @Injectable({ scope: Scope.TRANSIENT })
+   export class UniqueIdGenerator {}
+   ```
+
+   Note: REQUEST and TRANSIENT scopes propagate upward - a singleton that injects a REQUEST-scoped provider becomes REQUEST-scoped too.
+
+8. CIRCULAR DEPENDENCY RESOLUTION:
+
+   When two providers depend on each other, use `forwardRef()` to break the cycle:
+
+   ```typescript
+   @Injectable()
+   export class OrderService {
+     constructor(
+       @Inject(forwardRef(() => PaymentService))
+       private readonly paymentService: PaymentService,
+     ) {}
+   }
+
+   @Injectable()
+   export class PaymentService {
+     constructor(
+       @Inject(forwardRef(() => OrderService))
+       private readonly orderService: OrderService,
+     ) {}
+   }
+   ```
+
+   Prefer resolving circular deps by extracting shared logic into a third service. `forwardRef()` is a workaround, not a design goal.
+
+9. ANTI-PATTERNS:
    - ❌ Business logic in controllers (use services)
-   - ❌ Circular module dependencies (refactor to shared module)
+   - ❌ Circular module dependencies without `forwardRef()` (runtime error: "Nest cannot create the module instance")
+   - ❌ Injecting REQUEST-scoped providers into singletons without declaring `Scope.REQUEST` on the singleton (Nest will throw or use wrong scope)
    - ❌ Using `any` in DTOs (defeats TypeScript purpose)
    - ❌ Global guards when per-route is more appropriate
    - ❌ Returning Prisma models directly from controllers

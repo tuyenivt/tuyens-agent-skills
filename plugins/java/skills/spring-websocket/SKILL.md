@@ -119,7 +119,50 @@ public class WebSocketEventListener {
 }
 ```
 
-### Security
+### Handshake Authentication
+
+Authenticate at the WebSocket handshake using a `HandshakeInterceptor`. This is the correct place to validate tokens - the `Principal` set here is available in all `@MessageMapping` methods:
+
+```java
+@Component
+public class JwtHandshakeInterceptor implements HandshakeInterceptor {
+
+    private final JwtService jwtService;
+
+    @Override
+    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                                   WebSocketHandler wsHandler, Map<String, Object> attributes) {
+        String token = extractToken(request); // from query param or header
+        if (token == null || !jwtService.isValid(token)) {
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false; // reject handshake
+        }
+        String userId = jwtService.extractSubject(token);
+        attributes.put("userId", userId); // available in session attributes
+        return true;
+    }
+
+    @Override
+    public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                               WebSocketHandler wsHandler, Exception exception) {}
+}
+
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+    private final JwtHandshakeInterceptor jwtInterceptor;
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/ws")
+                .addInterceptors(jwtInterceptor) // authenticate at handshake
+                .setAllowedOrigins("${app.cors.origins}")
+                .withSockJS();
+    }
+}
+```
+
+### Message-Level Security
 
 ```java
 @Configuration

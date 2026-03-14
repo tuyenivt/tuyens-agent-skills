@@ -99,6 +99,67 @@ class Migration(migrations.Migration):
     ]
 ```
 
+## NOT NULL CONSTRAINT ON LARGE TABLES (Zero-Downtime)
+
+Direct `ALTER COLUMN SET NOT NULL` acquires a full table lock. Use NOT VALID + VALIDATE CONSTRAINT for large tables:
+
+```python
+# Alembic - 4-step zero-downtime NOT NULL on large table
+
+# Step 1: Add nullable column
+def upgrade():
+    op.add_column("orders", sa.Column("shipping_address", sa.String(500), nullable=True))
+
+# Step 2 (separate migration): Backfill existing rows in batches
+def upgrade():
+    conn = op.get_bind()
+    while True:
+        result = conn.execute(sa.text("""
+            UPDATE orders SET shipping_address = 'UNKNOWN'
+            WHERE shipping_address IS NULL LIMIT 1000
+        """))
+        if result.rowcount == 0:
+            break
+
+# Step 3 (separate migration): Add CHECK constraint with NOT VALID (skips existing rows, no lock)
+def upgrade():
+    op.execute(sa.text(
+        "ALTER TABLE orders ADD CONSTRAINT orders_shipping_address_not_null "
+        "CHECK (shipping_address IS NOT NULL) NOT VALID"
+    ))
+
+# Step 4 (separate migration): Validate existing rows (ShareUpdateExclusiveLock - concurrent reads/writes allowed)
+def upgrade():
+    op.execute(sa.text(
+        "ALTER TABLE orders VALIDATE CONSTRAINT orders_shipping_address_not_null"
+    ))
+```
+
+Django equivalent (each step is a separate migration with `atomic = False`):
+
+```python
+# Step 3 - add NOT VALID constraint
+class Migration(migrations.Migration):
+    atomic = False
+    operations = [
+        migrations.RunSQL(
+            "ALTER TABLE orders_order ADD CONSTRAINT orders_shipping_nn "
+            "CHECK (shipping_address IS NOT NULL) NOT VALID;",
+            reverse_sql="ALTER TABLE orders_order DROP CONSTRAINT orders_shipping_nn;",
+        ),
+    ]
+
+# Step 4 - validate (separate migration)
+class Migration(migrations.Migration):
+    atomic = False
+    operations = [
+        migrations.RunSQL(
+            "ALTER TABLE orders_order VALIDATE CONSTRAINT orders_shipping_nn;",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+    ]
+```
+
 ## SHARED
 
 - CI validation: migrate up -> migrate down -> migrate up (must be clean)
@@ -107,3 +168,4 @@ class Migration(migrations.Migration):
   - ❌ Auto-generated migrations without review
   - ❌ Data in schema migrations
   - ❌ Removing columns without removing code references first
+  - ❌ `ALTER COLUMN SET NOT NULL` directly on tables with millions of rows (full table lock)

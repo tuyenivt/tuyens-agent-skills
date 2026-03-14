@@ -186,6 +186,70 @@ func RunWorkerPool(ctx context.Context, jobs <-chan Job, concurrency int) error 
 }
 ```
 
+### Transactional Outbox Pattern (Kafka / reliable publishing)
+
+Publishing a Kafka message inside a database transaction is a dual-write anti-pattern: the DB write and the Kafka publish are not atomic. If the Kafka publish succeeds but the DB rolls back (or vice versa), you get phantom messages or silent event loss.
+
+**Bad - dual-write (not atomic):**
+
+```go
+func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (*Order, error) {
+    tx, _ := s.db.Begin(ctx)
+    order, _ := s.repo.CreateTx(ctx, tx, req)
+    tx.Commit(ctx) // DB committed
+
+    // PROBLEM: Kafka publish is outside the transaction.
+    // If this fails, DB is committed but event is never published.
+    s.kafka.Produce("order.created", orderEvent(order))
+    return order, nil
+}
+```
+
+**Good - transactional outbox:**
+
+```go
+// Step 1: Write order AND outbox record in one DB transaction
+func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (*Order, error) {
+    var order *Order
+    err := s.db.RunInTx(ctx, func(tx pgx.Tx) error {
+        var err error
+        order, err = s.repo.CreateTx(ctx, tx, req)
+        if err != nil {
+            return err
+        }
+        // Write outbox record atomically with the order
+        return s.outboxRepo.InsertTx(ctx, tx, OutboxEvent{
+            AggregateID: order.ID,
+            EventType:   "order.created",
+            Payload:     mustMarshal(orderEvent(order)),
+        })
+    })
+    return order, err
+}
+
+// Step 2: A relay worker polls the outbox and publishes to Kafka
+// This runs in a separate goroutine/process; retries on failure
+func (r *OutboxRelay) Run(ctx context.Context) error {
+    for {
+        events, _ := r.outboxRepo.FetchPending(ctx, 100)
+        for _, ev := range events {
+            if err := r.kafka.Produce(ev.EventType, ev.Payload); err != nil {
+                slog.Error("kafka produce failed", "id", ev.ID, "err", err)
+                continue
+            }
+            r.outboxRepo.MarkPublished(ctx, ev.ID)
+        }
+        select {
+        case <-ctx.Done():
+            return nil
+        case <-time.After(5 * time.Second):
+        }
+    }
+}
+```
+
+For Asynq (Redis-backed), enqueue after `repo.Create` is acceptable because Asynq's persistence layer handles retries. Use the outbox pattern only when publishing to Kafka or external message brokers where dual-write atomicity is required.
+
 ## Stack-Specific Guidance
 
 - **Asynq**: Best fit for Redis-backed single-service job queues; integrates naturally with Gin services; use `asynqmon` for a web monitoring UI

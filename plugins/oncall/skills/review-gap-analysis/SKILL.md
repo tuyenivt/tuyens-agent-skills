@@ -29,17 +29,18 @@ user-invocable: false
 
 ### Gap Categories
 
-| Category           | Question                                                             |
-| ------------------ | -------------------------------------------------------------------- |
-| Coverage gap       | Was the risky code path reviewed at all?                             |
-| Context gap        | Did the reviewer have enough context to assess the risk?             |
-| Checklist gap      | Was there a checklist item that would have caught this?              |
-| Tooling gap        | Would automated analysis (lint, static analysis, CI) have caught it? |
-| Expertise gap      | Did the reviewer have domain knowledge for this failure type?        |
-| Cognitive load gap | Was the PR too large or complex for effective review?                |
-| Architecture gap   | Was architectural drift visible in the diff?                         |
-| Test gap           | Were test scenarios sufficient to exercise the failure path?         |
-| Monitoring gap     | Would pre-deploy monitoring checks have flagged the risk?            |
+| Category               | Question                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| Coverage gap           | Was the risky code path reviewed at all?                                                             |
+| Context gap            | Did the reviewer have enough context to assess the risk?                                             |
+| Checklist gap          | Was there a checklist item that would have caught this?                                              |
+| Tooling gap            | Would automated analysis (lint, static analysis, CI) have caught it?                                 |
+| Expertise gap          | Did the reviewer have domain knowledge for this failure type?                                        |
+| Cognitive load gap     | Was the PR too large or complex for effective review?                                                |
+| Architecture gap       | Was architectural drift visible in the diff?                                                         |
+| Test gap               | Were test scenarios sufficient to exercise the failure path?                                         |
+| Monitoring gap         | Would pre-deploy monitoring checks have flagged the risk?                                            |
+| Resilience pattern gap | Were resilience patterns (circuit breaker, timeout, retry, bulkhead) checked for all external calls? |
 
 ### Analysis Structure
 
@@ -64,6 +65,26 @@ Enforcement: CI check on PR size; CODEOWNERS file for cross-module changes.
 ```
 The reviewer should have caught the missing null check on line 142.
 ```
+
+## Output Format
+
+Consuming workflow skills depend on this structure to surface actionable review process changes.
+
+```
+## Review Gap Analysis
+
+### Gaps Identified
+
+| Gap Type | Why It Existed | What Would Close It | Enforcement |
+| --- | --- | --- | --- |
+| {category from table} | {structural reason - not individual blame} | {specific process or tooling change} | {automated check / checklist item / policy} |
+
+### No Gaps Found
+
+{State explicitly if review process was adequate for the failure that occurred - do not omit silently}
+```
+
+Omit "No Gaps Found" if gaps were listed. Every gap must have a specific structural fix - "be more careful" and "do a better review" are not valid fixes.
 
 ## Avoid
 

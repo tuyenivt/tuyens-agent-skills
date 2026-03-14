@@ -101,6 +101,42 @@ class OrderService(
 }
 ```
 
+### coroutineScope vs supervisorScope
+
+`coroutineScope` and `supervisorScope` differ in how child failures propagate:
+
+| Scope | Child failure behavior | Use When |
+| ----- | ---------------------- | -------- |
+| `coroutineScope` | One child failure cancels all siblings and rethrows | All operations are required; partial failure = full failure |
+| `supervisorScope` | Each child fails independently; siblings continue | Optional operations; collect partial results |
+
+```kotlin
+// coroutineScope: all-or-nothing - if ANY child throws, siblings are cancelled
+suspend fun getDashboard(userId: Long): Dashboard = coroutineScope {
+    val user = async { userService.findUser(userId) }       // required
+    val orders = async { orderService.getRecentOrders(userId) } // required
+
+    Dashboard(user = user.await(), orders = orders.await())
+    // If userService throws, orderService is cancelled and exception propagates
+}
+
+// supervisorScope: best-effort - collect what succeeds, tolerate failures
+suspend fun getEnrichedProfile(userId: Long): Profile = supervisorScope {
+    val user = async { userService.findUser(userId) }               // required
+    val recommendations = async { recommendationService.get(userId) } // optional
+
+    val recs = try {
+        recommendations.await()
+    } catch (e: Exception) {
+        emptyList() // fallback - recommendation failure doesn't break the profile
+    }
+
+    Profile(user = user.await(), recommendations = recs)
+}
+```
+
+Rule: use `coroutineScope` by default. Use `supervisorScope` only when some operations are optional and you have an explicit fallback for each child that might fail.
+
 ### Structured Concurrency for Parallel Operations
 
 Use `coroutineScope { }` to run independent operations in parallel within a single request:
