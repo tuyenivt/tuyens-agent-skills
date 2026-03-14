@@ -42,6 +42,23 @@ Failures propagate through:
 | Thread/virtual thread pool | Exhaustion blocking unrelated work on shared executor        |
 | Event bus                  | Failed event handler blocking downstream consumers           |
 
+### Sync/Async Boundary Transitions
+
+When a propagation path crosses a sync/async boundary, the failure mechanism changes:
+
+- **Sync -> async**: The producing service continues operating; failure manifests as queue backlog accumulation. The consumer's backlog eventually causes memory pressure or back-pressure on the producer's send buffer.
+- **Async -> sync**: Consumers may block waiting for a response from a downstream sync service. If the downstream is slow, consumers accumulate, depleting the worker pool.
+- **Queue backlog as secondary blast radius**: A down consumer (Service C) does not immediately affect the producer (Service B), but if the queue is unbounded, Service B's memory or send buffer will eventually exhaust - trace this path explicitly.
+
+Example mixed-boundary trace:
+```
+1. Service C (consumer) is down
+2. -> Message queue: backlog grows (messages accumulate, no consumer)
+3. -> Queue send buffer: Service B cannot enqueue new messages (back-pressure)
+4. -> Service B: request handlers block waiting to enqueue, thread pool exhausted
+5. -> HTTP call: Service A gets 503s from Service B
+```
+
 ### Propagation Map
 
 Trace the failure path as a directed chain:

@@ -53,6 +53,28 @@ Skip expand-contract only when:
 
 Flag any operation with an exclusive lock on a table estimated above 1M rows as high risk.
 
+### PostgreSQL: Zero-Downtime NOT NULL Constraint Addition
+
+For PostgreSQL tables with >1M rows, `ADD COLUMN col NOT NULL` takes an exclusive table lock for the full backfill duration. Use this 4-step sequence instead:
+
+```sql
+-- Step 1: Add column as nullable (fast, no lock)
+ALTER TABLE orders ADD COLUMN tenant_id UUID;
+
+-- Step 2: Backfill in batches (run as background job)
+UPDATE orders SET tenant_id = 'default-tenant-uuid'
+WHERE id BETWEEN :start AND :end AND tenant_id IS NULL;
+
+-- Step 3: Add constraint as NOT VALID (validates new rows only - no full table scan)
+ALTER TABLE orders ADD CONSTRAINT orders_tenant_id_not_null
+  CHECK (tenant_id IS NOT NULL) NOT VALID;
+
+-- Step 4: Validate existing rows in background (ShareUpdateExclusiveLock - allows concurrent reads/writes)
+ALTER TABLE orders VALIDATE CONSTRAINT orders_tenant_id_not_null;
+```
+
+Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding any constraint (NOT NULL, CHECK, FK) to a table with >1M rows. The `VALIDATE CONSTRAINT` step acquires only a `ShareUpdateExclusiveLock`, allowing concurrent reads and writes. This applies to PostgreSQL; MySQL and SQL Server have different online DDL mechanisms (check stack-detect Database field).
+
 ### Backfill Safety Rules
 
 **Never run unbounded updates on production tables:**

@@ -41,6 +41,19 @@ user-invocable: false
 | Deployment/config drift          | Works in staging not prod, recent deploy correlates with failure     |
 | Architectural boundary violation | Unexpected coupling, layer bypass causing cascading failure          |
 
+### Failure Scope
+
+Classify the scope alongside the type:
+
+| Scope     | Definition                          | Example                                                            |
+| --------- | ----------------------------------- | ------------------------------------------------------------------ |
+| Total     | All requests affected               | Service returns 503 for 100% of traffic                            |
+| Partial   | Subset of requests affected         | 15% of checkout requests timeout; rest succeed                     |
+| Isolated  | Failure stays within one component  | Single service OOM, no downstream impact                           |
+| Cascading | Failure spreads to other components | Payment timeout exhausts connection pool, blocks checkout and cart |
+
+For partial failures, estimate the affected percentage from metrics. For cascading, identify the propagation path (use failure-propagation-analysis for detailed tracing).
+
 ### System Layers
 
 Identify which layer the failure originates from:
@@ -72,6 +85,7 @@ Consuming workflow skills depend on this exact structure. The `Failure Type` and
 
 ```
 Failure Type: {one or more types from the table, comma-separated}
+Scope: {Total | Partial X%} + {Isolated | Cascading}
 Layer: {Infrastructure | Platform | Application | Integration | Configuration} ({1-sentence rationale})
 Evidence: {observable signals that support this classification - metrics, log lines, error messages}
 ```
@@ -80,6 +94,7 @@ Evidence: {observable signals that support this classification - metrics, log li
 
 ```
 Failure Type: Resource exhaustion, External dependency failure
+Scope: Partial 15% + Cascading
 Layer: Platform (connection pool exhausted) triggered by Integration (payment gateway timeout)
 Evidence: HikariCP active connections at max (40/40), payment-service p99 latency 12s (baseline 200ms)
 ```

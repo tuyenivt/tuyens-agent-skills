@@ -31,15 +31,34 @@ user-invocable: false
 
 Common complexity signals across all ecosystems:
 
-| Signal                                         | Threshold                                     | Fix                                            |
-| ---------------------------------------------- | --------------------------------------------- | ---------------------------------------------- |
-| Long method/function                           | > 20-40 lines (varies by language convention) | Extract methods/functions by responsibility    |
-| Deeply nested conditionals                     | > 3 levels                                    | Guard clauses, early returns, pattern matching |
-| Large file/class/module                        | > 200-300 lines                               | Split by responsibility                        |
-| Constructor/initializer with many dependencies | > 5 params                                    | Facade or reorganize responsibilities          |
-| Long switch/case or if-else chain              | > 10 branches                                 | Map lookup, strategy pattern, or polymorphism  |
+| Signal                                         | Threshold                                     | Fix                                                                                        |
+| ---------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Long method/function                           | > 20-40 lines (varies by language convention) | Extract methods/functions by responsibility                                                |
+| Deeply nested conditionals                     | > 3 levels                                    | Guard clauses, early returns, pattern matching                                             |
+| Large file/class/module                        | > 200-300 lines                               | Split by responsibility                                                                    |
+| Constructor/initializer with many dependencies | > 5 params                                    | Facade or reorganize responsibilities                                                      |
+| Long switch/case or if-else chain              | > 10 branches                                 | Map lookup, strategy pattern, or polymorphism                                              |
+| External service calls in one method           | > 3 calls                                     | Coordinator pattern - extract to orchestration layer with explicit error handling per call |
 
 Note: Exact thresholds vary by ecosystem. Some languages are naturally more verbose than others. After loading stack-detect, calibrate thresholds to the norms of the detected language.
+
+### Cognitive Complexity
+
+Cyclomatic complexity counts decision points; cognitive complexity measures how hard the code is to read. Cognitive complexity increases with:
+
+- Each nesting level: `+1` per level for conditionals and loops
+- Structural complexity breaks (early `return`, `break`, `continue`, `goto`): `+1`
+- Boolean operator sequences (`&&`, `||`): `+1` per unique sequence
+
+Flag high cognitive complexity (estimated > 15) even when cyclomatic complexity is within threshold - deeply nested code with few branches is still hard to reason about.
+
+### Refactoring Priority
+
+When multiple complexity signals fire simultaneously, fix in this order:
+
+1. **External service calls first** - extract into named wrapper methods with explicit timeout/error handling per call
+2. **Guard clauses** - invert nested conditionals into early returns to flatten nesting
+3. **Extract by responsibility** - split long methods into focused single-purpose functions
 
 ## Simplification Patterns
 

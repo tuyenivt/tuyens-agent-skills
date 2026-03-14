@@ -39,13 +39,24 @@ For each changed component, identify:
 
 ### Impact Classification
 
-| Change Type           | Consumer Impact     | Deployment Constraint                        |
-| --------------------- | ------------------- | -------------------------------------------- |
-| Additive (new field)  | None if optional    | Deploy provider first                        |
-| Modification (rename) | Breaking            | Use skill: `backward-compatibility-analysis` |
-| Removal (drop field)  | Breaking            | Verify no consumers, then remove             |
-| Behavioral (logic)    | Depends on contract | Canary with consumer monitoring              |
-| Performance (latency) | Cascading risk      | Load test with consumer traffic              |
+| Change Type             | Consumer Impact     | Deployment Constraint                                                                                  |
+| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ |
+| Additive (new field)    | None if optional    | Deploy provider first                                                                                  |
+| Modification (rename)   | Breaking            | Use skill: `backward-compatibility-analysis`                                                           |
+| Removal (drop field)    | Breaking            | Verify no consumers, then remove                                                                       |
+| Behavioral (logic)      | Depends on contract | Canary with consumer monitoring                                                                        |
+| Performance (latency)   | Cascading risk      | Load test with consumer traffic                                                                        |
+| Version upgrade (minor) | Possibly breaking   | Check release notes for deprecations/removals; minor versions can contain breaking changes in practice |
+| Version upgrade (major) | Breaking            | Compatibility matrix review + upgrade one module/service first before rolling to all                   |
+
+### Dependency Version Upgrade Impact
+
+When the change is a version upgrade rather than a code change, the standard consumer-mapping approach still applies, but the impact surface is different:
+
+1. **Transitive dependency conflicts**: The new version may require different transitive dependencies (e.g., Spring Boot 3.5 requires Java 21 minimum). Check the upgraded library's requirements against each module's runtime.
+2. **Minor version breaking changes**: Treat minor version bumps as potentially breaking - check the official migration guide and release notes for deprecated APIs, removed defaults, or behavior changes.
+3. **Phased rollout for shared parent dependencies**: In a monorepo with a shared parent POM or root build file, upgrade one module first and run its full test suite before propagating to other modules.
+4. **Deprecated API removal window**: If consumers use APIs that are deprecated in the new version, flag them - they may be removed in the next major version.
 
 ### Deployment Ordering
 

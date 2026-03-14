@@ -31,18 +31,19 @@ user-invocable: false
 
 ### Risk Domain Table
 
-| Domain               | Trigger Signals                                                                    | Default Severity |
-| -------------------- | ---------------------------------------------------------------------------------- | ---------------- |
-| Data                 | Schema migration, data model change, new entity, column type change                | High             |
-| Concurrency          | Shared mutable state, new locking, thread pool change, concurrency model migration | High             |
-| Transaction boundary | Transaction scope change, new distributed transaction, isolation level change      | High             |
-| Async/event          | New event flow, new consumer, event schema change, ordering assumption             | Medium           |
-| External integration | New third-party API, modified integration contract, new outbound dependency        | Medium           |
-| Dependency upgrade   | Major version bump, framework upgrade, transitive dependency change                | Medium           |
-| Performance          | New hot path, query pattern change, cache invalidation change, connection pool     | Medium           |
-| Security             | Auth change, new endpoint exposure, data access scope change, secret management    | High             |
-| Architecture drift   | Boundary erosion, layer violation, new cross-module dependency, ownership shift    | Medium           |
-| Deployment           | Non-reversible migration, multi-step deploy, config-dependent rollout              | Medium           |
+| Domain                   | Trigger Signals                                                                                         | Default Severity |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- | ---------------- |
+| Data                     | Schema migration, data model change, new entity, column type change                                     | High             |
+| Concurrency              | Shared mutable state, new locking, thread pool change, concurrency model migration                      | High             |
+| Transaction boundary     | Transaction scope change, new distributed transaction, isolation level change                           | High             |
+| Async/event              | New event flow, new consumer, event schema change, ordering assumption                                  | Medium           |
+| External integration     | New third-party API, modified integration contract, new outbound dependency                             | Medium           |
+| Dependency upgrade       | Major version bump, framework upgrade, transitive dependency change                                     | Medium           |
+| Performance              | New hot path, query pattern change, cache invalidation change, connection pool                          | Medium           |
+| Security                 | Auth change, new endpoint exposure, data access scope change, secret management, TLS/cert config change | High             |
+| Configuration management | Config shared across environments, environment variable pollution, config used as base for prod         | High             |
+| Architecture drift       | Boundary erosion, layer violation, new cross-module dependency, ownership shift                         | Medium           |
+| Deployment               | Non-reversible migration, multi-step deploy, config-dependent rollout                                   | Medium           |
 
 ### Classification Rules
 

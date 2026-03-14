@@ -39,16 +39,17 @@ user-invocable: false
 
 ### Governance & Prevention Matrix
 
-| Area                   | Governance Focus                                                |
-| ---------------------- | --------------------------------------------------------------- |
-| Review process         | Checklist updates, risk-based review triggers, ADR creation     |
-| Architecture guardrail | Boundary enforcement, isolation, bulkheading                    |
-| Observability          | Missing signals that would have caught this earlier             |
-| Testing                | Coverage gaps, chaos experiment design, missing test types      |
-| Deployment safety      | Canary, feature flags, progressive rollout, rollback automation |
-| Capacity / deps        | Pool sizing, timeout budgets, circuit breakers, rate limiting   |
-| Operational readiness  | Runbook updates, on-call training, incident playbooks           |
-| Process improvement    | Review checklist update, runbook addition, knowledge sharing    |
+| Area                   | Governance Focus                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Review process         | Checklist updates, risk-based review triggers, ADR creation, merge policy enforcement (required approvals, branch protection) |
+| Dependency governance  | New external dependency approval, security scanning (CVE check), license compliance, dependency ownership                     |
+| Architecture guardrail | Boundary enforcement, isolation, bulkheading                                                                                  |
+| Observability          | Missing signals that would have caught this earlier                                                                           |
+| Testing                | Coverage gaps, chaos experiment design, missing test types                                                                    |
+| Deployment safety      | Canary, feature flags, progressive rollout, rollback automation                                                               |
+| Capacity / deps        | Pool sizing, timeout budgets, circuit breakers, rate limiting                                                                 |
+| Operational readiness  | Runbook updates, on-call training, incident playbooks                                                                         |
+| Process improvement    | Review checklist update, runbook addition, knowledge sharing                                                                  |
 
 ### Recommendation Structure
 

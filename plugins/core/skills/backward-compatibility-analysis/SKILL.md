@@ -58,6 +58,16 @@ After loading stack-detect, apply compatibility checks using the idioms of the d
 - **Internal event changes**: Event schema changes within the application affect all subscribers/listeners - assess impact within the detected framework's event system.
 - **Module/package interface changes**: Renaming or removing public APIs (exported functions, public methods, interface methods) is breaking. In some ecosystems (e.g., Go modules), module path changes require major version bumps.
 
+### Code Contract vs HTTP Contract
+
+Distinguish the scope of the contract break:
+
+- **HTTP-exposed contract**: A method that backs an HTTP endpoint - renaming or removing it is a breaking change for API consumers.
+- **Internal code contract**: A public method called only within the same service - may be refactored freely without consumer coordination, but verify it is not called via reflection, dynamic dispatch, or tested directly by consumers.
+- **Shared library contract**: A method in a library consumed by other services - treat like an HTTP contract even without HTTP; consumers depend on the method signature at compile-time or runtime.
+
+When the scope is unclear, search for callers before classifying. "No external callers found" is evidence; absence of search is not.
+
 If the detected stack is unfamiliar, apply the universal compatibility matrix above and recommend the user verify against their framework's serialization and migration documentation.
 
 ### Dual-Write / Dual-Read Assessment

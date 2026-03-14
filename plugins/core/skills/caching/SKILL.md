@@ -49,6 +49,31 @@ Write to cache and source simultaneously - ensures cache is always fresh but add
 - **Event-based**: Invalidate on write/update events; more complex but fresher
 - **Version-based**: Include version in cache key; new version = new key
 
+### Cache Stampede Prevention
+
+When a popular key expires, many concurrent requests all miss and simultaneously hit the backend - this is the thundering herd / cache stampede problem. Two concrete prevention patterns:
+
+**1. Lock-based refresh (singleflight)**
+Only one request fetches from the backend; others wait and reuse the result. Use the ecosystem's singleflight primitive (Go `golang.org/x/sync/singleflight`, Java `ConcurrentHashMap.computeIfAbsent`, Redis `SET NX` distributed lock):
+```
+on cache miss:
+  acquire lock(key, ttl=fetch_timeout)
+  if lock acquired:
+    fetch from backend -> write to cache -> release lock
+  else:
+    wait for lock release -> read from cache (now populated)
+```
+
+**2. Probabilistic early expiry (XFetch)**
+Randomly refresh a cache entry before it expires, with probability increasing as TTL approaches zero. No locking needed:
+```
+remaining_ttl = key_expires_at - now()
+if random() < (fetch_cost / remaining_ttl):
+  refresh cache entry early  # only one of many concurrent callers will trigger this
+```
+
+Use lock-based for correctness-critical data; use probabilistic for read-heavy/staleness-tolerant data.
+
 ### Cache Levels
 
 - **In-process cache**: Fastest, but per-instance only (not shared across replicas)

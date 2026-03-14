@@ -101,7 +101,7 @@ Source: context-file | file-detection | unknown
 - Never guess - if a field cannot be determined, use `unknown`
 - File-based marker detection is the primary source; agent instruction files are supplemental for details (framework, database, ORM) that marker files cannot provide
 - Do not prompt the user for stack information - detect silently
-- If multiple languages are present (e.g., backend + frontend), report the primary backend language as `language` and note the frontend separately
+- If multiple languages are present (e.g., backend + frontend), report the primary backend language as `language` and note others in `Additional`. Example: `Language: Java`, `Additional: Frontend: TypeScript (React)`. If the CLAUDE.md Tech Stack section lists both, use that as the source of truth; otherwise infer from marker files (e.g., both `build.gradle` and `package.json` present).
 - Cache the result mentally for the duration of the conversation - do not re-detect on every skill invocation
 - Do not validate detected values against any fixed list - pass through as-is
 

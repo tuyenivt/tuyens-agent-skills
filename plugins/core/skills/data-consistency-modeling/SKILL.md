@@ -80,6 +80,18 @@ Recovery: Dead-letter queue with manual review for unrecoverable payment failure
 Order creates a payment by calling PaymentService REST API inside the transaction.
 ```
 
+### Eventual Consistency Read Anomalies
+
+When a boundary uses eventual consistency, reads may surface stale or inconsistent state. Classify which anomalies are acceptable:
+
+| Anomaly      | Cause                                                                | Example                                                               | Acceptable?                                  |
+| ------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------- |
+| Stale read   | Consumer reads before event propagates                               | Order shows PENDING after payment confirmed                           | Tolerable if window is bounded (< 5s)        |
+| Lost update  | Two writers update the same entity concurrently without coordination | Two services both update `order.status`                               | Never acceptable without conflict resolution |
+| Phantom read | Query returns different rows as background saga steps commit         | Payment service sees order as PAID before OrderService commits status | Requires saga step ordering or re-query      |
+
+For each eventually consistent boundary, declare the tolerated anomaly type and the maximum staleness window. Flag "unknown staleness tolerance" as Medium risk.
+
 ### Schema Evolution Strategy
 
 - Additive changes only during rolling deployments (new columns nullable, new fields optional)

@@ -37,14 +37,28 @@ Every ecosystem has a recommended structured logging approach. The universal pat
 // Bad - unstructured, missing context
 log("User processed: " + userId)
 
-// Good - structured with context
+// Good - structured with mandatory fields
 log({
   message: "User processed",
-  userId: user.id,
-  correlationId: requestContext.correlationId,
-  durationMs: elapsed
+  level: "info",
+  service: "order-service",
+  trace_id: traceContext.traceId,       // W3C traceparent or equivalent
+  span_id: traceContext.spanId,
+  user_id: user.id,
+  duration_ms: elapsed
 })
 ```
+
+**Mandatory fields for every log entry:** `level`, `service`, `trace_id`, `span_id`. Without `trace_id`/`span_id`, log correlation across services in a distributed trace is impossible.
+
+### Distributed Trace Context Propagation
+
+Propagate trace context across service boundaries using standard headers:
+- **W3C `traceparent`** (recommended, OpenTelemetry default)
+- **`b3` / `x-b3-traceid`** (Zipkin, still common in older Spring Cloud deployments)
+- **`uber-trace-id`** (Jaeger)
+
+The receiving service must extract the incoming trace context and create child spans - not generate a new trace ID. Use the ecosystem's standard propagator (e.g., `W3CTraceContextPropagator` in OTel, Spring Cloud Sleuth/Micrometer Tracing).
 
 ### Stack-Specific Guidance
 
@@ -63,8 +77,18 @@ After loading stack-detect, apply structured logging using the libraries and pat
 ## Distributed Tracing
 
 - Use OpenTelemetry or the ecosystem's standard tracing library
-- Ensure trace context propagation across service boundaries
+- Ensure trace context propagation across service boundaries (see trace context headers above)
 - Add trace spans for key operations (database queries, external calls, message processing)
+
+## SLO Definition
+
+For every critical service, define at minimum:
+
+- **SLI (Service Level Indicator)**: the measurable signal (e.g., request success rate, p99 latency)
+- **SLO target**: the threshold (e.g., 99.9% success rate over 30 days, p99 < 500ms)
+- **Error budget**: `1 - SLO` expressed as allowable downtime/failures per window (e.g., 43.8 min/month for 99.9%)
+
+Flag services with no defined SLO as a **High** observability gap - without an SLO, alerting thresholds are arbitrary and error budget burn goes undetected.
 
 If the detected stack is unfamiliar, apply the universal principles above and recommend the user consult their ecosystem's observability tooling documentation.
 

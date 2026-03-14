@@ -24,9 +24,10 @@ user-invocable: false
 - Return appropriate HTTP status codes: 200, 201, 204, 400, 401, 403, 404, 409, 422, 500
 - Error responses follow RFC 9457 (Problem Details): `type`, `title`, `status`, `detail`, `instance`
 - Never expose internal IDs, stack traces, or implementation details in error responses
-- Paginate all collection endpoints - never return unbounded lists
-- Version APIs when making breaking changes (`/v1/`, `/v2/` or header-based)
+- Paginate all collection endpoints - never return unbounded lists. Use cursor-based pagination for large or frequently updated datasets (stable ordering, no skipped rows); use offset-based only for small datasets with infrequent mutations.
+- Version APIs when making breaking changes (`/v1/`, `/v2/` or header-based). Deprecate old versions with a sunset date in the response header (`Sunset: Sat, 01 Jan 2027 00:00:00 GMT`).
 - Never expose ORM entities / model objects directly in responses - always use DTOs / serializers / response structs
+- For non-idempotent POST endpoints (payments, order creation, message sends), support an `Idempotency-Key` header. Store the key + response for the deduplication window (typically 24h). Return the same response on replay without re-executing the operation.
 
 ---
 
@@ -86,9 +87,9 @@ Consuming workflow skills depend on this structure to surface API violations con
 
 **Severity guidance:**
 
-- **High**: ORM entity exposed in response, missing input validation, no error response format
-- **Medium**: Wrong HTTP method or status code, missing pagination on collection endpoint
-- **Low**: Naming inconsistency (e.g., mixed camelCase/snake_case), missing API version header
+- **High**: ORM entity exposed in response, missing input validation, no error response format, non-idempotent financial POST without `Idempotency-Key` support
+- **Medium**: Wrong HTTP method or status code, missing pagination on collection endpoint, offset pagination on high-volume mutable collection
+- **Low**: Naming inconsistency (e.g., mixed camelCase/snake_case), missing API version header, missing `Sunset` header on deprecated endpoint
 
 Omit "No Violations Found" if violations were listed.
 

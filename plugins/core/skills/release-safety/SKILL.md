@@ -45,6 +45,19 @@ user-invocable: false
 Use skill: `db-migration-safety` for expand-contract sequencing, lock risk assessment, and backfill safety rules.
 Use skill: `backward-compatibility-analysis` for application-level compatibility and consumer impact during transition.
 
+**Deployment sequence validation:**
+
+For any change that includes both a schema migration and code changes, verify the deploy order explicitly:
+
+| Change type   | Correct order                               | Wrong order (flag as High risk)                   |
+| ------------- | ------------------------------------------- | ------------------------------------------------- |
+| Add column    | Migration first, then code                  | Code first (code references non-existent column)  |
+| Drop column   | Code first (stop reading), then migration   | Migration first (code breaks when column is gone) |
+| Rename column | Expand-contract required; never single-step | Rename migration + code in same deploy            |
+| Add index     | Migration first (additive)                  | N/A - additive, no ordering constraint            |
+
+Flag any plan where a destructive migration (DROP COLUMN, DROP TABLE, RENAME) is deployed before or simultaneously with the code change that removes the reference. The safe sequence is always: deploy code that tolerates the absence → verify no reads/writes → run destructive migration.
+
 ### Feature Flag Design
 
 Use skill: `feature-flags` for flag lifecycle, gradual rollout strategy, rollback procedures, and cleanup discipline.

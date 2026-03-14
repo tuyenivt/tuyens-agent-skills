@@ -91,6 +91,28 @@ User: {Narrow | Moderate | Wide} ({1-sentence rationale})
 - **Moderate** = Multi-feature or multi-consumer, bounded to one service
 - **Narrow** = Single feature, single consumer, easily correctable
 
+### Reversibility and Mitigation
+
+After classifying, assess:
+
+**Reversibility:**
+- **Recoverable** - can roll back the change (schema migration, code deploy)
+- **Conditional** - recoverable within a time window (e.g., database PITR retention, recent backup)
+- **Irreversible** - data destruction, dropped table, purged records - no programmatic rollback path
+
+**Mitigations that reduce effective blast radius:**
+- Feature flag guarding the change: Wide code scope becomes Narrow if flag is off
+- Backup/PITR available: reduces Irreversible data scope to Conditional
+- Soft delete instead of hard delete: Recoverable until purge job runs
+
+Include mitigations in the output when they materially change the risk profile:
+
+```
+Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
+Reversibility: Conditional (PITR available for 7 days)
+Mitigation: Gate behind feature flag; verify PITR backup before proceeding
+```
+
 Always produce all four lines. Use "N/A" for a dimension only if it genuinely does not apply (e.g., Data: N/A for a read-only, stateless change).
 
 ## Avoid

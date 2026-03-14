@@ -75,6 +75,42 @@ For each scaling decision, note:
 - Cost growth model (linear, super-linear, step function)
 - Cost optimization opportunity (reserved instances, spot, right-sizing)
 
+## Output Format
+
+Consuming workflow skills depend on this structure. Always produce all fields.
+
+```
+## Capacity Model
+
+**Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x)
+**Bottleneck component:** {name} - saturates at {N} RPS/TPS
+**Headroom target:** {2-3x peak = N RPS; current capacity = N RPS}
+
+### Component Saturation Points
+
+| Component | Capacity | Per-Request Cost | Saturates At | Bottleneck? |
+| --------- | -------- | ---------------- | ------------ | ----------- |
+| {name}    | {limit}  | {cost/request}   | {N RPS}      | Yes / No    |
+
+### Scaling Recommendation
+
+{Primary recommendation with rationale - horizontal / vertical / sharding / async offload}
+
+### Queue Depth (if async workload)
+
+- Producer rate: {N/s}
+- Consumer rate: {N/s}
+- Time to clear backlog at peak: {duration}
+- Max queue depth before back-pressure: {N messages}
+
+### Assumptions
+
+- {stated assumption 1}
+- {stated assumption 2}
+```
+
+Omit "Queue Depth" for synchronous workloads. Always state assumptions explicitly so the model can be updated when traffic patterns change.
+
 ## Avoid
 
 - Capacity estimates without stated assumptions
