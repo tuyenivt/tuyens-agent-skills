@@ -107,12 +107,61 @@ workflow = chord(
 workflow.apply_async()
 ```
 
-## 5. INTEGRATION
+## 5. TASK TIMEOUTS AND RATE LIMITING
+
+Always set time limits on tasks to prevent hung workers. Use `rate_limit` for external API calls.
+
+```python
+@celery_app.task(
+    bind=True,
+    soft_time_limit=120,    # raises SoftTimeLimitExceeded after 2 min (can catch and clean up)
+    time_limit=150,          # hard kill after 2.5 min (last resort)
+    rate_limit="10/m",       # max 10 executions per minute per worker (for external APIs)
+    max_retries=3,
+    retry_backoff=True,
+)
+def call_payment_gateway(self, order_id: int) -> None:
+    try:
+        charge_payment(order_id)
+    except SoftTimeLimitExceeded:
+        logger.error(f"Payment task timed out for order {order_id}")
+        mark_payment_as_timed_out(order_id)
+```
+
+For fire-and-forget tasks that don't need results stored:
+
+```python
+@celery_app.task(ignore_result=True)
+def send_notification(order_id: int) -> None:
+    ...
+```
+
+## 6. CANVAS ERROR HANDLING
+
+Chain and chord errors propagate silently by default. Use `link_error` to catch failures:
+
+```python
+from celery import chain
+
+pipeline = chain(
+    validate_order.s(order_id),
+    charge_payment.s(),
+    send_confirmation.s(),
+)
+pipeline.apply_async(link_error=handle_pipeline_error.s())
+
+@celery_app.task
+def handle_pipeline_error(request, exc, traceback):
+    logger.error(f"Pipeline failed for task {request.id}: {exc}")
+    # Mark order as failed, notify ops, etc.
+```
+
+## 7. INTEGRATION
 
 - FastAPI: initialize celery app in core/celery.py, import in lifespan
-- Django: celery.py in project config, autodiscover_tasks()
+- Django: celery.py in project config, `autodiscover_tasks()`
 - Both: shared config from environment variables
-- Beat scheduler for periodic tasks (celery-beat or django-celery-beat)
+- Beat scheduler for periodic tasks
 
 ```python
 # FastAPI: app/core/celery.py
@@ -123,6 +172,13 @@ celery_app = Celery(
     "app",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
+)
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
 )
 celery_app.autodiscover_tasks(["app.tasks"])
 ```
@@ -139,22 +195,46 @@ app.autodiscover_tasks()
 ```
 
 ```python
-# Periodic tasks (Beat)
+# Periodic tasks (Beat) - use crontab or timedelta, not raw floats
+from celery.schedules import crontab
+from datetime import timedelta
+
 celery_app.conf.beat_schedule = {
     "cleanup-expired-orders": {
         "task": "app.tasks.cleanup_expired_orders",
-        "schedule": 3600.0,  # every hour
+        "schedule": timedelta(hours=1),
+    },
+    "daily-report": {
+        "task": "app.tasks.generate_daily_report",
+        "schedule": crontab(hour=8, minute=0),
     },
 }
 ```
 
-## 6. MONITORING
+## 8. MONITORING
 
-- Flower for web dashboard
-- Prometheus exporter for metrics
-- Alert on: queue length > threshold, task failure rate, worker count
+- Flower: `celery -A app flower --port=5555` for web dashboard
+- Prometheus exporter: `celery-exporter` for metrics scraping
+- Alert on: queue length > threshold, task failure rate, worker count drop
+- Structured logging with task context:
 
-## 7. ACKS_LATE vs ACKS_EARLY (Delivery Guarantees)
+```python
+import structlog
+
+@celery_app.task(bind=True)
+def process_order(self, order_id: int) -> None:
+    log = structlog.get_logger().bind(
+        task_id=self.request.id,
+        task_name=self.name,
+        order_id=order_id,
+        retry=self.request.retries,
+    )
+    log.info("processing_order_started")
+    ...
+    log.info("processing_order_completed")
+```
+
+## 9. ACKS_LATE vs ACKS_EARLY (Delivery Guarantees)
 
 By default, Celery uses `acks_early` (task acknowledged before execution). This risks message loss if the worker crashes mid-task. Use `acks_late=True` for at-least-once delivery:
 
@@ -180,11 +260,15 @@ def process_payment(self, order_id: int) -> None:
 
 Always pair `acks_late=True` with an idempotency guard in the task body.
 
-## 8. ANTI-PATTERNS
+## 10. ANTI-PATTERNS
 
-- ❌ Passing ORM objects as task arguments (use IDs)
+- ❌ Passing ORM objects as task arguments (use IDs - objects aren't JSON-serializable)
 - ❌ Tasks longer than 30 minutes without chunking
-- ❌ Ignoring task results when they contain errors
+- ❌ No `soft_time_limit` / `time_limit` (hung tasks hold workers indefinitely)
 - ❌ No retry strategy (all tasks should handle transient failures)
 - ❌ Celery worker running on same process as web server
 - ❌ `acks_late=True` without idempotency guard (causes double processing on retry)
+- ❌ Dispatching `.delay()` inside a DB transaction (worker fires before commit - may read stale data or missing rows)
+- ❌ Sharing DB sessions between web process and Celery worker (separate session factories)
+- ❌ Using pickle serializer (`task_serializer="pickle"`) - security risk, use JSON
+- ❌ Chains/chords without `link_error` (failures propagate silently)

@@ -1,6 +1,6 @@
 ---
 name: python-fastapi-patterns
-description: "FastAPI patterns: async endpoints, dependency injection, Pydantic v2 models, router organization, error handling, middleware, lifespan events, and OpenAPI customization."
+description: "FastAPI patterns: async endpoints, dependency injection, Pydantic v2 models, router organization, error handling, middleware, lifespan events, pagination, and OpenAPI customization."
 user-invocable: false
 ---
 
@@ -9,18 +9,24 @@ user-invocable: false
 Depends() for shared logic (get_db_session, get_current_user).
 Nested dependencies (auth depends on session depends on pool).
 Yield dependencies for resource cleanup (session commit/rollback).
+Use Annotated types to avoid repeating `Depends()` on every endpoint.
 
 ```python
-async def get_db(
-    session_factory: AsyncSessionFactory = Depends(get_session_factory),
-):
-    async with session_factory() as session:
+from typing import Annotated
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session() as session:
         try:
             yield session
             await session.commit()
         except Exception:
             await session.rollback()
             raise
+
+# Reusable annotated dependency - use this type alias in all endpoints
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 ```
 
 ## 2. PYDANTIC v2 MODELS
@@ -28,11 +34,11 @@ async def get_db(
 - Request models with Field validators
 - Response models with model_config (from_attributes=True for ORM)
 - Separate Create/Update/Response schemas per resource
-- ConfigDict(strict=True) for strict type checking
 - Use Annotated types for reusable validators
+- `field_validator` and `model_validator` for complex validation
 
 ```python
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Annotated
 
 PositiveAmount = Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=2)]
@@ -40,6 +46,18 @@ PositiveAmount = Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=2)
 class OrderCreate(BaseModel):
     total: PositiveAmount
     items: list[OrderItemCreate]
+
+    @field_validator("items")
+    @classmethod
+    def at_least_one_item(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Order must have at least one item")
+        return v
+
+class OrderUpdate(BaseModel):
+    """Partial update - all fields optional, use exclude_unset=True when applying."""
+    total: PositiveAmount | None = None
+    status: str | None = None
 
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -63,19 +81,27 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 @router.post("/", response_model=OrderResponse, status_code=201)
 async def create_order(
     order_in: OrderCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
 ):
     service = OrderService(OrderRepository(db))
     return await service.create(order_in, user=current_user)
+
+# api/v1/router.py - wire all routers
+from api.v1.routes import orders, users
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(orders.router)
+api_router.include_router(users.router)
+
+# main.py
+app = FastAPI(lifespan=lifespan)
+app.include_router(api_router)
 ```
 
 ## 4. ERROR HANDLING
 
-- Custom exception classes inheriting from base AppException
-- Exception handlers registered via app.add_exception_handler()
-- Consistent error response: {"detail": str, "code": str, "errors": [...]}
-- HTTPException for known HTTP errors, custom exceptions for business errors
+Custom exception classes + override Pydantic's default validation error format for consistency.
 
 ```python
 class AppException(Exception):
@@ -98,32 +124,69 @@ async def app_exception_handler(request: Request, exc: AppException):
         status_code=exc.status_code,
         content={"detail": exc.detail, "code": exc.code},
     )
+
+# Override Pydantic validation error format for consistent API response shape
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "code": "VALIDATION_ERROR",
+            "errors": [
+                {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
+                for e in exc.errors()
+            ],
+        },
+    )
 ```
 
-## 5. ASYNC PATTERNS
+## 5. PAGINATION AND FILTERING
 
-- All DB operations must use async SQLAlchemy or asyncpg
-- Never call sync I/O in async endpoints (blocks event loop)
-- Use run_in_executor() ONLY as escape hatch for unavoidable sync libs
-- Background tasks: BackgroundTasks for fire-and-forget, Celery for reliable
+All list endpoints must support pagination. Use query parameter dependencies.
 
 ```python
-@router.post("/orders/{order_id}/notify")
-async def notify_order(
-    order_id: int,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+from fastapi import Query
+
+class PaginationParams(BaseModel):
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1, le=100)
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    offset: int
+    limit: int
+
+@router.get("/", response_model=PaginatedResponse[OrderListResponse])
+async def list_orders(
+    db: DbSession,
+    current_user: CurrentUser,
+    pagination: Annotated[PaginationParams, Query()],
+    status: str | None = None,
 ):
-    order = await OrderRepository(db).get_by_id(order_id)
-    if not order:
-        raise OrderNotFoundError(order_id)
-    background_tasks.add_task(send_notification_email, order.id)
-    return {"status": "notification queued"}
+    query = select(Order).where(Order.user_id == current_user.id)
+    if status:
+        query = query.where(Order.status == status)
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.offset(pagination.offset).limit(pagination.limit)
+        .options(selectinload(Order.items))
+    )
+    return PaginatedResponse(
+        items=result.scalars().all(),
+        total=total,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
 ```
 
 ## 6. MIDDLEWARE
 
-- CORS via CORSMiddleware
+- CORS: use explicit origins, not `["*"]` with `allow_credentials=True` (CORS spec violation)
 - Request ID injection middleware
 - Timing middleware (log request duration)
 - Auth middleware vs dependency (prefer Depends for per-route auth)
@@ -134,7 +197,7 @@ import time, uuid
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.ALLOWED_ORIGINS,  # explicit list, not ["*"] with credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -147,37 +210,53 @@ async def add_request_id(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
-
-@app.middleware("http")
-async def timing_middleware(request: Request, call_next):
-    start = time.perf_counter()
-    response = await call_next(request)
-    duration = time.perf_counter() - start
-    response.headers["X-Process-Time"] = f"{duration:.4f}"
-    return response
 ```
 
 ## 7. LIFESPAN EVENTS
 
+Connect lifespan to DB engine so dependencies can access it via `app.state`.
+
 ```python
 from contextlib import asynccontextmanager
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup
-    engine = create_async_engine(settings.DATABASE_URL)
-    yield {"engine": engine}
+    engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    app.state.async_session = async_sessionmaker(engine, expire_on_commit=False)
+    yield
     # shutdown
     await engine.dispose()
 
 app = FastAPI(lifespan=lifespan)
+
+# Dependency reads session factory from app state
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    async with request.app.state.async_session() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 ```
 
-## 8. ANTI-PATTERNS
+## 8. ASYNC PATTERNS
 
-- ❌ Sync database calls in async endpoints
+- All DB operations must use async SQLAlchemy or asyncpg
+- Never call sync I/O in async endpoints (blocks event loop)
+- Use `run_in_executor()` ONLY as escape hatch for unavoidable sync libs
+- Background tasks: `BackgroundTasks` for fire-and-forget, Celery for reliable
+
+## 9. ANTI-PATTERNS
+
+- ❌ Sync database calls in async endpoints (blocks event loop)
+- ❌ `allow_origins=["*"]` with `allow_credentials=True` (CORS spec violation, rejected at runtime)
 - ❌ Global mutable state (use dependency injection)
-- ❌ Returning dicts instead of Pydantic models
+- ❌ Returning dicts instead of Pydantic response models
 - ❌ Catching Exception broadly in endpoints
-- ❌ Business logic in route functions (use services)
+- ❌ Business logic in route functions (extract to services)
+- ❌ `@app.on_event("startup")` (deprecated - use lifespan context manager)
+- ❌ `model.dict()` (Pydantic v1 - use `model.model_dump()`)
+- ❌ List endpoints without pagination

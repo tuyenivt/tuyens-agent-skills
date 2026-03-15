@@ -6,10 +6,10 @@ user-invocable: false
 
 ## 1. PYTEST FUNDAMENTALS
 
-- Fixtures over setup/teardown: @pytest.fixture with scope (function, module, session)
-- parametrize for table-driven style testing
-- conftest.py for shared fixtures (DB session, test client, factories)
-- Markers: @pytest.mark.slow, @pytest.mark.integration
+- Fixtures over setup/teardown: `@pytest.fixture` with scope (function, module, session)
+- `parametrize` for table-driven style testing
+- `conftest.py` for shared fixtures (DB session, test client, factories)
+- Markers: `@pytest.mark.slow`, `@pytest.mark.integration`
 
 ```python
 @pytest.fixture
@@ -25,21 +25,41 @@ def test_list_orders_by_status(status, expected_count):
     ...
 ```
 
-## 2. FASTAPI TESTING
+### Test Organization
 
-- TestClient (sync) or AsyncClient (httpx) for endpoint tests
-- Override dependencies: app.dependency_overrides[get_db] = mock_db
-- pytest-asyncio for async test functions
+```
+tests/
+  conftest.py              # shared fixtures: db session, client, factories
+  unit/
+    test_order_service.py  # service logic, mocked dependencies
+    test_order_schemas.py  # Pydantic validation edge cases
+  integration/
+    conftest.py            # Testcontainers PostgreSQL, real DB fixtures
+    test_orders_api.py     # full endpoint tests with real DB
+    test_order_tasks.py    # Celery task tests
+```
+
+## 2. FASTAPI ASYNC TESTING
+
+Configure `pytest-asyncio` mode to avoid decorating every test:
+
+```ini
+# pyproject.toml
+[tool.pytest-asyncio]
+asyncio_mode = "auto"
+```
+
+Use `httpx.ASGITransport` (httpx 0.27+) to mount the FastAPI app:
 
 ```python
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 @pytest.fixture
 async def client(app: FastAPI):
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-@pytest.mark.asyncio
 async def test_create_order(client: AsyncClient):
     response = await client.post("/api/v1/orders", json={
         "total": "49.99",
@@ -50,11 +70,30 @@ async def test_create_order(client: AsyncClient):
     assert data["status"] == "pending"
 ```
 
+### Async SQLAlchemy Session Fixture
+
+Wire a real async session into FastAPI dependency overrides:
+
 ```python
-# Override dependencies in tests
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+@pytest.fixture(scope="session")
+def async_engine(postgres_url):
+    return create_async_engine(postgres_url)
+
 @pytest.fixture
-def app_with_mocks(app: FastAPI, mock_db_session):
-    app.dependency_overrides[get_db] = lambda: mock_db_session
+async def db_session(async_engine):
+    async_session = async_sessionmaker(async_engine, expire_on_commit=False)
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with async_session() as session:
+        async with session.begin():
+            yield session
+            await session.rollback()  # rollback per test for isolation
+
+@pytest.fixture
+def app_with_db(app: FastAPI, db_session: AsyncSession):
+    app.dependency_overrides[get_db] = lambda: db_session
     yield app
     app.dependency_overrides.clear()
 ```
@@ -62,9 +101,9 @@ def app_with_mocks(app: FastAPI, mock_db_session):
 ## 3. DJANGO TESTING
 
 - APIClient for DRF endpoint tests
-- @pytest.mark.django_db for database access
-- pytest-django fixtures: client, admin_client, django_user_model
-- TransactionTestCase only when testing transaction behavior
+- `@pytest.mark.django_db` for database access
+- pytest-django fixtures: `client`, `admin_client`, `django_user_model`
+- `TransactionTestCase` only when testing transaction behavior
 
 ```python
 from rest_framework.test import APIClient
@@ -87,7 +126,7 @@ def test_create_order(api_client):
 ## 4. DATABASE TESTING
 
 - Testcontainers (testcontainers-python) for real PostgreSQL
-- Transaction rollback per test (pytest-django default, or manual with Alembic)
+- Transaction rollback per test for isolation
 - factory_boy for test data (like FactoryBot for Python)
 
 ```python
@@ -120,14 +159,18 @@ from testcontainers.postgres import PostgresContainer
 def postgres():
     with PostgresContainer("postgres:16") as pg:
         yield pg
+
+@pytest.fixture(scope="session")
+def postgres_url(postgres):
+    return postgres.get_connection_url().replace("psycopg2", "asyncpg")
 ```
 
 ## 5. CELERY TESTING
 
-- @pytest.fixture with celery_app and celery_worker (pytest-celery)
-- task.apply() for synchronous execution in tests
-- Assert task was called: mock the task.delay() call
+- `task.apply()` for synchronous execution in tests
+- Mock `.delay()` to verify task dispatch without running workers
 - Test task logic separately from Celery machinery
+- Use `CELERY_TASK_ALWAYS_EAGER=True` for integration tests (but beware: this skips serialization)
 
 ```python
 def test_send_notification_task(db_session, order):
@@ -143,20 +186,20 @@ def test_order_triggers_notification(mocker):
 
 ## 6. MOCKING
 
-- unittest.mock.patch / pytest-mock's mocker fixture
-- Mock external APIs: responses library or respx (for httpx)
+- `unittest.mock.patch` / pytest-mock `mocker` fixture
+- Mock external APIs: `respx` for httpx (FastAPI), `responses` for requests (Django)
 - Prefer dependency injection over patching where possible
+- Patch at the import path, not the source path
 
 ```python
 # respx for httpx mocking (FastAPI)
 import respx
 
-@respx.mock
-@pytest.mark.asyncio
 async def test_external_api_call():
-    respx.get("https://api.example.com/data").respond(json={"key": "value"})
-    result = await fetch_external_data()
-    assert result["key"] == "value"
+    with respx.mock:
+        respx.get("https://api.example.com/data").respond(json={"key": "value"})
+        result = await fetch_external_data()
+        assert result["key"] == "value"
 
 # pytest-mock mocker fixture
 def test_service_calls_repo(mocker):
@@ -166,10 +209,29 @@ def test_service_calls_repo(mocker):
     ...
 ```
 
-## 7. ANTI-PATTERNS
+## 7. CI AND COVERAGE
 
-- ❌ unittest.TestCase classes (use plain functions with pytest)
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+addopts = "--cov=app --cov-branch --cov-report=term-missing --cov-fail-under=80"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: requires external services",
+]
+
+[tool.coverage.run]
+omit = ["tests/*", "migrations/*"]
+```
+
+For parallel execution: `pytest -n auto` (pytest-xdist).
+
+## 8. ANTI-PATTERNS
+
+- ❌ `unittest.TestCase` classes (use plain functions with pytest)
 - ❌ SQLite for integration tests (use Testcontainers PostgreSQL)
-- ❌ Mocking everything (test real DB interactions)
-- ❌ No type hints in test functions
-- ❌ time.sleep in async tests (use asyncio.wait_for or pytest-timeout)
+- ❌ Mocking everything (test real DB interactions for integration tests)
+- ❌ `time.sleep` in async tests (use `asyncio.wait_for` or `pytest-timeout`)
+- ❌ Patching at the source module instead of the import path
+- ❌ `CELERY_TASK_ALWAYS_EAGER` without also testing with real serialization (masks pickle/JSON bugs)
+- ❌ Shared mutable state between tests (global variables, module-scoped fixtures that mutate)

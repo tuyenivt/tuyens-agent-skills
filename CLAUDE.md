@@ -80,6 +80,7 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 ## Environment
 
 - Shell: Git Bash on Windows - use Unix commands (`mv`, `cp`, `mkdir -p`, forward slashes). Do not use PowerShell cmdlets or CMD commands.
+- **Git: read-only**. Only read operations are allowed (`git log`, `git diff`, `git status`, `git blame`, etc.). Never run state-changing git commands (`git add`, `git commit`, `git push`, `git checkout`, `git reset`, `git rebase`, `git merge`, `git stash`, `git branch -d/-D`, etc.). The user manages all commits and branch operations manually.
 
 ## Writing Conventions
 

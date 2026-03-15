@@ -8,17 +8,17 @@ user-invocable: false
 
 - Auto-generation: `alembic revision --autogenerate -m "description"`
 - Review every auto-generated migration - never trust blindly
-- Zero-downtime DDL: same universal rules (nullable first, CONCURRENTLY indexes,
-  never rename columns directly)
+- Zero-downtime DDL: same universal rules (nullable first, CONCURRENTLY indexes, never rename columns directly)
 - Separate data migrations from schema migrations (use separate revision)
-- op.execute() for raw SQL when needed (e.g., CREATE INDEX CONCURRENTLY)
+- `op.execute()` for raw SQL when needed (e.g., CREATE INDEX CONCURRENTLY)
 - Downgrade function: always implement, test in CI
-- alembic.ini: prepend_sys_path, sqlalchemy.url from env var
 - Online migration for large tables: batch updates in a Celery task
+- **Always set `lock_timeout`** before DDL to fail fast instead of blocking other queries
 
 ```python
 # Schema migration - add nullable column first
 def upgrade():
+    op.execute(sa.text("SET lock_timeout = '2s'"))
     op.add_column("orders", sa.Column("tracking_number", sa.String(100), nullable=True))
 
 def downgrade():
@@ -26,19 +26,26 @@ def downgrade():
 ```
 
 ```python
-# Separate data migration - backfill in batches
+# Separate data migration - backfill in batches using keyset pagination (NOT WHERE col IS NULL LIMIT N)
 def upgrade():
     conn = op.get_bind()
+    last_id = 0
     while True:
         result = conn.execute(
             sa.text("""
                 UPDATE orders SET tracking_number = 'LEGACY-' || id::text
-                WHERE tracking_number IS NULL
-                LIMIT 1000
-            """)
+                WHERE tracking_number IS NULL AND id > :last_id
+                ORDER BY id LIMIT 1000
+            """),
+            {"last_id": last_id},
         )
         if result.rowcount == 0:
             break
+        # Advance cursor to avoid re-scanning processed rows
+        row = conn.execute(sa.text(
+            "SELECT MAX(id) FROM orders WHERE tracking_number LIKE 'LEGACY-%' AND id > :last_id"
+        ), {"last_id": last_id}).scalar()
+        last_id = row or last_id + 1000
 
 def downgrade():
     op.execute(sa.text("UPDATE orders SET tracking_number = NULL WHERE tracking_number LIKE 'LEGACY-%'"))
@@ -99,7 +106,26 @@ class Migration(migrations.Migration):
     ]
 ```
 
-## NOT NULL CONSTRAINT ON LARGE TABLES (Zero-Downtime)
+## POSTGRESQL 11+ SHORTCUT: NOT NULL WITH DEFAULT
+
+PostgreSQL 11+ can add a `NOT NULL` column with a constant `DEFAULT` as a metadata-only operation (no table rewrite). This is simpler than the 4-step approach when a default value is acceptable:
+
+```python
+# Alembic - single migration, metadata-only on PG 11+
+def upgrade():
+    op.execute(sa.text("SET lock_timeout = '2s'"))
+    op.add_column("orders", sa.Column(
+        "tracking_number", sa.String(100),
+        nullable=False, server_default="PENDING",
+    ))
+
+def downgrade():
+    op.drop_column("orders", "tracking_number")
+```
+
+If a constant default is NOT acceptable (values must be computed per row), use the 4-step pattern below.
+
+## NOT NULL CONSTRAINT ON LARGE TABLES (Zero-Downtime, No Default)
 
 Direct `ALTER COLUMN SET NOT NULL` acquires a full table lock. Use NOT VALID + VALIDATE CONSTRAINT for large tables:
 
@@ -160,12 +186,50 @@ class Migration(migrations.Migration):
     ]
 ```
 
+## DEPLOY SEQUENCING
+
+The multi-step patterns above must be deployed across multiple releases, not all at once:
+
+1. **Release 1**: Add nullable column migration + backfill migration. Deploy. Existing app code ignores the new column.
+2. **Release 2**: Update app code to read/write the new column. Deploy. Both old and new code work because the column is nullable.
+3. **Release 3**: Add NOT VALID constraint migration. Deploy.
+4. **Release 4**: VALIDATE constraint migration. Deploy.
+
+For column removal, reverse the order: remove code references first (Release 1), then drop the column (Release 2).
+
+## ENUM CHANGES (PostgreSQL)
+
+Adding enum values is safe; removing or renaming is not.
+
+```python
+# Alembic - add enum value (safe, non-transactional)
+def upgrade():
+    op.execute(sa.text("ALTER TYPE orderstatus ADD VALUE IF NOT EXISTS 'refunded'"))
+
+# Removing enum values requires creating a new type and migrating (expand-contract)
+```
+
+## COLUMN RENAMES (Expand-Contract)
+
+Never rename a column directly. Use expand-contract:
+
+1. Add new column (nullable)
+2. Backfill new column from old column
+3. Update app code to write to both columns, read from new
+4. Deploy, verify
+5. Stop writing to old column
+6. Drop old column in a later migration
+
 ## SHARED
 
 - CI validation: migrate up -> migrate down -> migrate up (must be clean)
 - Never mix DDL and DML in same migration
+- Always set `lock_timeout` before DDL statements in production migrations
 - Anti-patterns:
   - ❌ Auto-generated migrations without review
   - ❌ Data in schema migrations
   - ❌ Removing columns without removing code references first
   - ❌ `ALTER COLUMN SET NOT NULL` directly on tables with millions of rows (full table lock)
+  - ❌ `WHERE col IS NULL LIMIT N` backfill loops (O(n^2) - use keyset pagination instead)
+  - ❌ Running all multi-step migrations in a single deployment (race conditions with app code)
+  - ❌ DDL without `SET lock_timeout` (can block other queries indefinitely)

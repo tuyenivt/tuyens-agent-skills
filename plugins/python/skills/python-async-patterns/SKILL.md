@@ -73,41 +73,87 @@ class AsyncDatabaseConnection:
 ## 4. ERROR HANDLING IN ASYNC
 
 - try/except works normally in async functions
-- asyncio.gather(return_exceptions=True) to collect all errors
-- Timeout: async with asyncio.timeout(5.0): await operation()
-- TaskGroup (Python 3.11+) for structured concurrency
+- `asyncio.gather(return_exceptions=True)` to collect all errors without cancelling siblings
+- `asyncio.timeout()` (Python 3.11+) for per-operation timeouts
+- `TaskGroup` (Python 3.11+) for structured concurrency with `except*` for error handling
+
+### Per-Task Timeout with Partial Results
+
+When calling multiple external APIs, wrap each call individually so one slow API doesn't block the others:
 
 ```python
-# Collect results and errors together
-results = await asyncio.gather(
-    fetch_order(1),
-    fetch_order(2),
-    fetch_order(3),
-    return_exceptions=True,
-)
-for result in results:
-    if isinstance(result, Exception):
-        logger.error(f"Failed: {result}")
+async def fetch_with_timeout(client: httpx.AsyncClient, url: str, timeout: float = 5.0) -> dict | None:
+    try:
+        async with asyncio.timeout(timeout):
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+    except (asyncio.TimeoutError, httpx.HTTPError) as e:
+        logger.warning(f"Failed to fetch {url}: {e}")
+        return None  # partial failure - return None instead of crashing
+
+async def fetch_all_apis(order_id: int) -> dict:
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(
+            fetch_with_timeout(client, f"https://api-a.com/orders/{order_id}"),
+            fetch_with_timeout(client, f"https://api-b.com/orders/{order_id}"),
+            fetch_with_timeout(client, f"https://api-c.com/orders/{order_id}"),
+        )
+    return {
+        "api_a": results[0],  # None if failed
+        "api_b": results[1],
+        "api_c": results[2],
+    }
 ```
 
-```python
-# Timeout (Python 3.11+)
-async with asyncio.timeout(5.0):
-    data = await fetch_external_api()
-```
+### TaskGroup with ExceptionGroup Handling (Python 3.11+)
 
 ```python
-# TaskGroup (Python 3.11+) - structured concurrency
 async with asyncio.TaskGroup() as tg:
     task_a = tg.create_task(operation_a())
     task_b = tg.create_task(operation_b())
-# Both tasks guaranteed complete here; any exception cancels all
+# Both tasks guaranteed complete here; any exception cancels all and raises ExceptionGroup
+
+# Handle ExceptionGroup from TaskGroup failures
+try:
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(risky_operation_a())
+        tg.create_task(risky_operation_b())
+except* ValueError as eg:
+    for exc in eg.exceptions:
+        logger.error(f"ValueError: {exc}")
+except* ConnectionError as eg:
+    for exc in eg.exceptions:
+        logger.error(f"Connection failed: {exc}")
 ```
 
-## 5. ANTI-PATTERNS
+## 5. CONCURRENCY CONTROL
+
+Use `asyncio.Semaphore` to limit concurrent operations (rate limiting, connection limits):
+
+```python
+# Limit to 5 concurrent API calls (respects external rate limits)
+sem = asyncio.Semaphore(5)
+
+async def rate_limited_fetch(client: httpx.AsyncClient, url: str) -> dict:
+    async with sem:
+        response = await client.get(url)
+        return response.json()
+
+async def fetch_all(urls: list[str]) -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        return await asyncio.gather(
+            *(rate_limited_fetch(client, url) for url in urls)
+        )
+```
+
+## 6. ANTI-PATTERNS
 
 - ❌ Blocking calls in async functions (kills throughput)
 - ❌ Creating event loops manually (FastAPI/uvicorn manages this)
-- ❌ asyncio.run() inside an already-running loop
+- ❌ `asyncio.run()` inside an already-running loop
 - ❌ Fire-and-forget tasks without error handling
 - ❌ Mixing sync and async ORMs in the same codebase
+- ❌ `asyncio.gather()` without `return_exceptions=True` when partial failure tolerance is needed
+- ❌ Using `TaskGroup` without handling `ExceptionGroup` / `except*`
+- ❌ Creating a new `httpx.AsyncClient` per request instead of reusing one (connection pool waste)

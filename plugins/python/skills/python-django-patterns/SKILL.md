@@ -57,12 +57,13 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 ## 2. QUERYSET OPTIMIZATION
 
-- select_related (FK, OneToOne - SQL JOIN) vs prefetch_related (M2M, reverse FK - 2 queries)
-- only() and defer() for partial field loading
-- values() and values_list() to avoid model instantiation
-- exists() over count() > 0
-- iterator() for large result sets
-- annotate/aggregate for DB-level computation
+- `select_related` (FK, OneToOne - SQL JOIN) vs `prefetch_related` (M2M, reverse FK - 2 queries)
+- `only()` and `defer()` for partial field loading
+- `values()` and `values_list()` to avoid model instantiation
+- `exists()` over `count() > 0`
+- `iterator()` for large result sets
+- `annotate`/`aggregate` for DB-level computation
+- `select_for_update()` for concurrent update safety
 
 ```python
 # select_related: FK / OneToOne (single JOIN)
@@ -82,9 +83,14 @@ Order.objects.aggregate(
     order_count=Count("id"),
 )
 
-# Large result sets
-for order in Order.objects.iterator(chunk_size=1000):
-    process(order)
+# Concurrent update safety (e.g., order cancellation)
+from django.db import transaction
+
+with transaction.atomic():
+    order = Order.objects.select_for_update().get(pk=order_id)
+    if order.status == "pending":
+        order.status = "cancelled"
+        order.save(update_fields=["status", "updated_at"])
 ```
 
 ## 3. MODEL PATTERNS
@@ -110,10 +116,18 @@ class OrderQuerySet(models.QuerySet):
     def for_user(self, user):
         return self.filter(user=user)
 
+class OrderStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PROCESSING = "processing", "Processing"
+    COMPLETED = "completed", "Completed"
+    CANCELLED = "cancelled", "Cancelled"
+
 class Order(TimestampedModel):
     objects = OrderQuerySet.as_manager()
     total = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=20, default="pending")
+    status = models.CharField(
+        max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING,
+    )
 
     class Meta:
         constraints = [
@@ -124,7 +138,76 @@ class Order(TimestampedModel):
         ]
 ```
 
-## 4. DRF PERMISSIONS
+## 4. FILTERING, PAGINATION, AND ROUTER WIRING
+
+Use `django-filter` for declarative queryset filtering and DRF's built-in pagination.
+
+```python
+# filters.py
+import django_filters
+
+class OrderFilter(django_filters.FilterSet):
+    status = django_filters.ChoiceFilter(choices=OrderStatus.choices)
+    created_after = django_filters.DateTimeFilter(field_name="created_at", lookup_expr="gte")
+    min_total = django_filters.NumberFilter(field_name="total", lookup_expr="gte")
+
+    class Meta:
+        model = Order
+        fields = ["status", "created_after", "min_total"]
+
+# views.py
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import OrderingFilter, SearchFilter
+
+class OrderViewSet(viewsets.ModelViewSet):
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filterset_class = OrderFilter
+    ordering_fields = ["created_at", "total"]
+    ordering = ["-created_at"]
+    search_fields = ["customer__name"]
+```
+
+```python
+# settings.py - pagination
+REST_FRAMEWORK = {
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    "PAGE_SIZE": 20,
+}
+```
+
+```python
+# urls.py - router wiring
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register("orders", OrderViewSet, basename="order")
+
+urlpatterns = [
+    path("api/", include(router.urls)),
+]
+```
+
+### Serializer Validation
+
+```python
+class OrderCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ["total", "items"]
+
+    def validate_total(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Total must be positive")
+        return value
+
+    def validate(self, attrs):
+        """Cross-field validation."""
+        if not attrs.get("items"):
+            raise serializers.ValidationError({"items": "Order must have at least one item"})
+        return attrs
+```
+
+## 5. DRF PERMISSIONS
 
 - IsAuthenticated, IsAdminUser, custom permission classes
 - Object-level permissions via has_object_permission
@@ -139,10 +222,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrderOwner]
 ```
 
-## 5. ANTI-PATTERNS
+## 6. ANTI-PATTERNS
 
 - ❌ Fat views (extract to services or model methods)
-- ❌ N+1 in serializers (prefetch in get_queryset)
+- ❌ N+1 in serializers (prefetch in `get_queryset`)
 - ❌ Signals for business logic (hard to trace, test, debug)
-- ❌ raw() SQL without parameterization
-- ❌ Model.objects.all() without pagination
+- ❌ `raw()` SQL without parameterization
+- ❌ `Model.objects.all()` without pagination
+- ❌ `depth=N` on nested serializers (use explicit nested serializer classes)
+- ❌ Business logic in serializer `create()`/`update()` (use service layer)
+- ❌ Bare `CharField` for status fields (use `TextChoices`)
+- ❌ Missing `select_for_update()` on concurrent state transitions
