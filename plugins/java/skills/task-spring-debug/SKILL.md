@@ -1,6 +1,6 @@
 ---
 name: task-spring-debug
-description: Developer-level debugging workflow. Paste a stack trace, error log, or describe unexpected behavior. Analyzes the error, identifies root cause in your codebase, suggests a fix with code, and explains why it happened. For developer debugging, not production incident analysis (use task-incident-root-cause for incidents).
+description: Developer debugging workflow that analyzes a stack trace, error log, or unexpected behavior to identify root cause, propose a minimal fix with code, and suggest a test to prevent recurrence.
 metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]
@@ -121,49 +121,24 @@ Identify the error category to guide investigation:
 - If it's a pattern violation, reference the relevant atomic skill
 - If the same bug could exist elsewhere, identify other occurrences (grep for similar patterns)
 
+## Edge Cases
+
+- **Vague description, no stack trace**: Ask for the exact error message, the class/method where it occurs, and steps to reproduce before classifying.
+- **Multiple errors**: If the input contains multiple errors, identify the root error (usually the earliest in the chain or the "Caused by") and focus on that. Mention secondary errors only if they are independent.
+- **No source code available**: If the stack trace points to framework internals only, explain the framework behavior and ask the user for the application code that triggered it.
+- **Intermittent/non-deterministic bug**: Note that the issue may be concurrency-related; ask for thread dump or load conditions if confidence is LOW.
+
 ## Output
 
-````markdown
-## 🐛 Bug Analysis
+Present the analysis in this structure:
 
-**Error**: {exception type or error description}
-**Confidence**: HIGH | MEDIUM | LOW
-**Layer**: Controller | Service | Repository | Configuration | Build
+**Bug Analysis** - error type, confidence (HIGH/MEDIUM/LOW), layer (Controller/Service/Repository/Configuration/Build)
 
-## 📍 Root Cause
+**Root Cause** - explanation of why this happened, referencing specific code
 
-{explanation of why this happened, referencing specific code}
+**Fix** - before/after code diff showing the exact change, with explanation
 
-## 🔧 Fix
-
-**Before:**
-
-```java
-// the problematic code
-```
-````
-
-**After:**
-
-```java
-// the corrected code
-```
-
-{explanation of why this change fixes the issue}
-
-## 🛡️ Prevention
-
-**Test to add:**
-
-```java
-// test that would catch this bug
-```
-
-**Pattern to follow:** {reference to atomic skill or convention if applicable}
-
-**Other occurrences:** {grep results for similar patterns, or "None found"}
-
-```
+**Prevention** (omit if fix is trivial) - test that would catch this bug, pattern reference, other occurrences found via grep
 
 ### Output Constraints
 
@@ -189,5 +164,3 @@ Identify the error category to guide investigation:
 - Analysis without reading the actual source code
 - Proposing fixes that violate domain constraints (e.g., adding `synchronized`, using `@Autowired`)
 - Mixing incident response concerns into developer debugging
-
-```

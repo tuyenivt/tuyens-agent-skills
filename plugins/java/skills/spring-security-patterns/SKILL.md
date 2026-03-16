@@ -1,6 +1,6 @@
 ---
 name: spring-security-patterns
-description: Spring Security 6.x configuration patterns for Spring Boot 3.5+. Covers SecurityFilterChain, OAuth2/JWT resource server, method-level security, CORS, and common vulnerability prevention. All patterns use the component-based configuration (no WebSecurityConfigurerAdapter).
+description: Spring Security 6.x configuration patterns for Spring Boot 3.5+ covering SecurityFilterChain, OAuth2/JWT resource server, method-level security, CORS, CSRF, and security headers.
 metadata:
   category: backend
   tags: [security, spring-security, oauth2, jwt, cors, csrf, authorization]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # Spring Security Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -325,11 +327,11 @@ class SecurityIntegrationTest {
 
 ## Avoid
 
-- ❌ `WebSecurityConfigurerAdapter` - removed in Spring Security 6
-- ❌ `antMatchers()` - replaced by `requestMatchers()`
-- ❌ `@EnableGlobalMethodSecurity` - replaced by `@EnableMethodSecurity`
-- ❌ `@Secured` - limited; prefer `@PreAuthorize` with SpEL
-- ❌ Disabling CSRF on stateful (session-based) applications
-- ❌ Storing JWT in `localStorage` - vulnerable to XSS; use HttpOnly cookie or keep in memory
-- ❌ Wildcard CORS origins (`*`) in production - specify exact origins
-- ❌ Hardcoded secrets or issuer URIs - externalize to configuration
+- `WebSecurityConfigurerAdapter` - removed in Spring Security 6
+- `antMatchers()` - replaced by `requestMatchers()`
+- `@EnableGlobalMethodSecurity` - replaced by `@EnableMethodSecurity`
+- `@Secured` - limited; prefer `@PreAuthorize` with SpEL
+- Disabling CSRF on stateful (session-based) applications
+- Storing JWT in `localStorage` - vulnerable to XSS; use HttpOnly cookie or keep in memory
+- Wildcard CORS origins (`*`) in production - specify exact origins
+- Hardcoded secrets or issuer URIs - externalize to configuration

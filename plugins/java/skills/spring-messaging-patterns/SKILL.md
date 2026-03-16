@@ -1,6 +1,6 @@
 ---
 name: spring-messaging-patterns
-description: Spring Kafka, RabbitMQ, and Spring Events for reliable async messaging in Spring Boot 3.5+
+description: Spring Kafka, RabbitMQ, and Spring Events patterns for reliable async messaging in Spring Boot 3.5+ covering idempotent consumers, dead-letter queues, and the transactional outbox pattern.
 metadata:
   category: backend
   tags: [kafka, rabbitmq, spring-events, messaging, async, outbox, idempotency]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # Spring Messaging Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

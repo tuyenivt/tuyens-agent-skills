@@ -1,6 +1,6 @@
 ---
 name: spring-test-integration
-description: Spring Boot test slice strategy, Testcontainers patterns, and integration test architecture. Covers @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, test fixtures, and Virtual Thread-safe test configuration.
+description: Spring Boot test slice strategy and Testcontainers patterns covering @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, singleton containers, test fixtures, and Awaitility for async assertions.
 metadata:
   category: backend
   tags: [testing, spring-boot, testcontainers, integration-test, test-slices]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # Spring Integration Testing
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

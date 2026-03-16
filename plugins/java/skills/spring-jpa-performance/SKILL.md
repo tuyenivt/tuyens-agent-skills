@@ -1,6 +1,6 @@
 ---
 name: spring-jpa-performance
-description: JPA/Hibernate-specific performance - N+1 detection with fetch joins and entity graphs, batch size tuning, projection queries, second-level cache strategy. For index-level optimization, see db-indexing.
+description: JPA/Hibernate performance patterns covering N+1 detection with fetch joins and entity graphs, batch size tuning, projection queries, and second-level cache strategy.
 metadata:
   category: backend
   tags: [jpa, hibernate, performance, queries]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # JPA Performance
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

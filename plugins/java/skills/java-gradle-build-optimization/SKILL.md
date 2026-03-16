@@ -9,6 +9,8 @@ user-invocable: false
 
 # Gradle Build Optimization
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Setting up a new Spring Boot Gradle project or migrating from Maven
@@ -242,11 +244,11 @@ Use `--no-daemon` in CI - daemon wastes memory in ephemeral runners.
 
 ## Avoid
 
-- ❌ Groovy DSL (`.gradle`) for new projects - use Kotlin DSL (`.gradle.kts`)
-- ❌ `allprojects {}` / `subprojects {}` blocks - use convention plugins in `build-logic/`
-- ❌ Force-resolving all configurations at configuration time - delays build startup
-- ❌ Publishing internal modules as JARs when `project()` dependency suffices
-- ❌ Applying Spring Boot plugin to library modules - only application modules need `bootJar`
-- ❌ Using `api()` by default - prefer `implementation()`, use `api()` only for public API types
-- ❌ Running CI builds with Gradle daemon - use `--no-daemon` for ephemeral runners
-- ❌ Hardcoding dependency versions in `build.gradle.kts` - centralize in version catalog
+- Groovy DSL (`.gradle`) for new projects - use Kotlin DSL (`.gradle.kts`)
+- `allprojects {}` / `subprojects {}` blocks - use convention plugins in `build-logic/`
+- Force-resolving all configurations at configuration time - delays build startup
+- Publishing internal modules as JARs when `project()` dependency suffices
+- Applying Spring Boot plugin to library modules - only application modules need `bootJar`
+- Using `api()` by default - prefer `implementation()`, use `api()` only for public API types
+- Running CI builds with Gradle daemon - use `--no-daemon` for ephemeral runners
+- Hardcoding dependency versions in `build.gradle.kts` - centralize in version catalog

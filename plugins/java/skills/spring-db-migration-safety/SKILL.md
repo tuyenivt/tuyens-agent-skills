@@ -1,6 +1,6 @@
 ---
 name: spring-db-migration-safety
-description: Safe database migration patterns for zero-downtime deployments. Covers Flyway and Liquibase conventions, DDL safety rules, migration ordering, and rollback strategies. Referenced by workflow skills for Spring Boot projects.
+description: Safe database migration patterns for zero-downtime deployments covering Flyway and Liquibase conventions, DDL safety rules, expand-then-contract migration ordering, and rollback strategies.
 metadata:
   category: backend
   tags: [flyway, liquibase, migrations, zero-downtime, ddl, spring-boot]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # DB Migration Safety
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

@@ -9,6 +9,8 @@ user-invocable: false
 
 # Exception Handling
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Centralizing error handling across REST APIs

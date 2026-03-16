@@ -1,6 +1,6 @@
 ---
 name: task-spring-new
-description: End-to-end Spring Boot feature implementation workflow. Generates entity, repository, service, controller, DTO records, Flyway migration, and tests (unit + integration). Use for new features requiring multiple coordinated layers. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
+description: End-to-end Spring Boot feature implementation workflow that generates entity, repository, service, controller, DTO records, Flyway migration, and tests across all layers.
 metadata:
   category: backend
   tags: [spring-boot, java, feature, implementation, workflow, jpa, rest-api, testing]
@@ -16,6 +16,13 @@ user-invocable: true
 - Scaffolding a complete CRUD or domain-specific resource with production-ready patterns
 - Adding a new domain aggregate with REST API, persistence, and test coverage
 - Any daily coding task that requires coordinated generation of multiple Spring Boot layers
+
+## Edge Cases
+
+- **Partial input**: If the user provides only a feature name without details, ask for entity fields, relationships, and operations before proceeding to design.
+- **No database**: If the feature does not require persistence (e.g., proxy/aggregation endpoint), skip entity, repository, migration steps; generate only controller, service, DTOs, and tests.
+- **Existing entity**: If the user references an entity that already exists, read the existing entity class and extend it rather than creating a new one. Skip the migration step if no schema change is needed.
+- **Maven project**: If the project uses Maven instead of Gradle, replace `./gradlew` commands with `./mvnw` equivalents in validation step.
 
 ## Rules
 
@@ -44,7 +51,7 @@ STEP 4 - REPOSITORY: Use skill: `spring-jpa-performance`. Extend `JpaRepository<
 
 STEP 5 - SERVICE: Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-DTO mapping in-class. Business exceptions from common base.
 
-STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `spring-exception-handling`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
+STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
 
 STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover happy path, not-found, validation, error responses.
 

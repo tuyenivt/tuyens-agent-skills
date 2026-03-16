@@ -1,6 +1,6 @@
 ---
 name: spring-transaction
-description: Spring @Transactional scope, propagation levels, and common pitfalls - read-only optimization, nested transaction boundaries, LazyInitializationException prevention.
+description: Spring @Transactional scope, propagation levels, and common pitfalls covering read-only optimization, self-invocation proxy bypass, checked exception rollback, and transaction timeout.
 metadata:
   category: backend
   tags: [transactions, database, spring, consistency]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # Transaction Management
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

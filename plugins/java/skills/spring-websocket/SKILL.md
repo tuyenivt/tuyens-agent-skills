@@ -1,6 +1,6 @@
 ---
 name: spring-websocket
-description: Spring WebSocket and STOMP messaging patterns
+description: Spring WebSocket and STOMP messaging patterns covering configuration, handshake authentication, message-level security, connection lifecycle events, and Virtual Thread-compatible controllers.
 metadata:
   category: backend
   tags: [websocket, stomp, messaging, real-time, spring]
@@ -8,6 +8,8 @@ user-invocable: false
 ---
 
 # Spring WebSocket
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -180,11 +182,24 @@ public class WebSocketSecurityConfig {
 }
 ```
 
+### Error Handling
+
+Handle exceptions in `@MessageMapping` methods to prevent silent failures. Unhandled exceptions close the WebSocket session without client notification:
+
+```java
+@MessageExceptionHandler
+@SendToUser("/queue/errors")
+public String handleException(Exception ex) {
+    log.error("WebSocket message error", ex);
+    return ex.getMessage();
+}
+```
+
 ## Avoid
 
-- Synchronized blocks (use ReentrantLock or concurrent collections)
-- Missing heartbeat configuration
-- Unauthenticated WebSocket endpoints
-- Broadcasting sensitive data to all subscribers
-- Unbounded message queues (configure limits)
-- Missing error handling for message processing
+- `synchronized` blocks in message handlers - blocks Virtual Threads; use `ReentrantLock` or concurrent collections
+- Missing heartbeat configuration - stale connections consume resources indefinitely
+- Unauthenticated WebSocket endpoints - authenticate at handshake, not per-message
+- Broadcasting sensitive data to all `/topic` subscribers - use `/queue` for user-specific messages
+- Unbounded message queues - configure `messageSizeLimit` and buffer size on the broker registry
+- Omitting `@MessageExceptionHandler` - unhandled exceptions silently close the session
