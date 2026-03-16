@@ -1,6 +1,6 @@
 ---
 name: task-go-new
-description: End-to-end Go/Gin feature implementation workflow. Generates all layers from migration to HTTP handler with full test coverage. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-go-debug for errors).
+description: End-to-end Go/Gin feature implementation workflow. Generates all layers from migration to HTTP handler with full test coverage.
 agent: go-architect
 metadata:
   category: backend

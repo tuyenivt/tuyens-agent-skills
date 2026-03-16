@@ -1,6 +1,9 @@
 ---
 name: go-gin-patterns
 description: "Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, graceful shutdown, health endpoints."
+metadata:
+  category: backend
+  tags: [go, gin, http, middleware, routing, pagination]
 user-invocable: false
 ---
 
@@ -245,3 +248,13 @@ srv.Addr = cfg.Host + ":" + cfg.Port // use net.JoinHostPort instead
 - Concatenating host:port as strings
 - No pagination limits (unbounded list endpoints)
 - Missing graceful shutdown (in-flight requests dropped on SIGTERM)
+
+## Self-Check
+
+- [ ] Handlers contain no business logic or direct DB access - they orchestrate services
+- [ ] All endpoints return a consistent response envelope (`SuccessResponse` / `ErrorResponse`)
+- [ ] List endpoints implement pagination with defaults and upper-bound limits
+- [ ] `gin.New()` used instead of `gin.Default()` with explicit middleware registration
+- [ ] Graceful shutdown implemented with `signal.Notify` and `srv.Shutdown`
+- [ ] Health and readiness endpoints present at `/health` and `/ready`
+- [ ] `net.JoinHostPort` used for address construction

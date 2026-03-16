@@ -1,6 +1,9 @@
 ---
 name: go-data-access
 description: "Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling. When to use GORM vs sqlx. Both can coexist."
+metadata:
+  category: backend
+  tags: [go, gorm, sqlx, database, postgresql, repository]
 user-invocable: false
 ---
 
@@ -232,3 +235,13 @@ db, _ := gorm.Open(...)
 - Hooks for non-trivial business logic
 - GORM for complex reporting queries - use sqlx
 - Transactions without deferred rollback
+
+## Self-Check
+
+- [ ] GORM used for CRUD with associations; sqlx used for complex reporting queries
+- [ ] Connection pool configured immediately after opening (`SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime`)
+- [ ] All `*sql.Rows` closed with `defer rows.Close()` after checking the open error
+- [ ] Transactions use `defer tx.Rollback()` with explicit `tx.Commit()` on success
+- [ ] N+1 prevented with `Preload` for known associations or `Joins` for filtered queries
+- [ ] Repository interface defined in the consumer (service) package
+- [ ] No `AutoMigrate` in production code

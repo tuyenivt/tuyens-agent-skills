@@ -1,6 +1,6 @@
 ---
 name: task-go-debug
-description: Debug Go application errors - panics, context errors, SQL connectivity, data races, and goroutine leaks. Paste a stack trace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
+description: Debug Go application errors - panics, context errors, SQL connectivity, data races, and goroutine leaks. Paste a stack trace or describe the unexpected behavior.
 agent: go-architect
 metadata:
   category: backend
@@ -12,6 +12,8 @@ user-invocable: true
 ## STEP 1 - INTAKE
 
 Ask for: full stack trace or error output, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip standard library frames) and read that file.
+
+If the user provides only a partial error message or vague description ("it doesn't work"), ask clarifying questions: which command was run, what the expected vs actual behavior is, and whether the error is reproducible. Do not guess at root cause without sufficient input.
 
 ## STEP 2 - CLASSIFY
 

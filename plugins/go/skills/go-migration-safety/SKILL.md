@@ -1,6 +1,9 @@
 ---
 name: go-migration-safety
-description: "Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, embedding in Go binary, CI validation. Never use GORM AutoMigrate in production."
+description: "Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, embedding in Go binary, CI validation."
+metadata:
+  category: backend
+  tags: [go, migration, postgresql, golang-migrate, ddl, zero-downtime]
 user-invocable: false
 ---
 
@@ -220,6 +223,13 @@ ALTER TABLE users RENAME COLUMN name TO full_name; -- running app breaks immedia
 -- Bad: adding NOT NULL without a default or backfill step
 ALTER TABLE users ADD COLUMN phone VARCHAR(20) NOT NULL; -- fails if table has rows
 ```
+
+## Edge Cases
+
+- **Dirty migration state**: if a migration fails mid-way, golang-migrate marks the version as "dirty" - use `migrate force <version>` to reset to the last known good version, then fix and re-run
+- **Concurrent migration runs**: multiple app instances starting simultaneously can race on migrations - use a single migration runner (init container, CLI job) or rely on golang-migrate's advisory lock
+- **Empty down migration**: if a migration cannot be safely reversed (e.g., dropped column with data), write a down file that raises an error explaining why manual intervention is needed rather than leaving it empty
+- **Large table backfills**: batch `UPDATE` statements to avoid long-running transactions and WAL bloat - use `WHERE id BETWEEN ... AND ...` or a cursor-based approach
 
 ## Avoid
 

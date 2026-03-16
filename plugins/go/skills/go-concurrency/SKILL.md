@@ -1,6 +1,9 @@
 ---
 name: go-concurrency
-description: "Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives (including WaitGroup.Go), and common concurrency bugs."
+description: "Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, and common concurrency bugs."
+metadata:
+  category: backend
+  tags: [go, concurrency, goroutine, channels, errgroup, sync, worker-pool]
 user-invocable: false
 ---
 
@@ -151,9 +154,9 @@ func GetDB() *DB {
 }
 
 // sync.WaitGroup.Go (Go 1.25+) for safer goroutine accounting
+// Go() calls Add(1) before launching and Done() on return - no manual Add/Done needed
 var wg sync.WaitGroup
 wg.Go(func() {
-    defer wg.Done()
     doWork()
 })
 wg.Wait()
@@ -211,6 +214,13 @@ for _, file := range files {
     }()
 }
 ```
+
+## Edge Cases
+
+- **Nil channel**: sending to or receiving from a nil channel blocks forever - ensure channels are initialized before use
+- **Closed channel**: sending to a closed channel panics; receiving from a closed channel returns the zero value immediately - always use `val, ok := <-ch` to detect closure
+- **Empty select**: `select {}` blocks forever - useful only for intentional blocking (e.g., keeping main alive), but usually indicates a missing `case <-ctx.Done()`
+- **WaitGroup reuse**: do not call `wg.Add()` after `wg.Wait()` has started - add all goroutines before waiting or use `errgroup` instead
 
 ## Avoid
 

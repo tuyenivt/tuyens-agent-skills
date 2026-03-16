@@ -257,6 +257,13 @@ For Asynq (Redis-backed), enqueue after `repo.Create` is acceptable because Asyn
 - **Graceful shutdown**: Call `srv.Shutdown()` on `SIGTERM` - asynq waits for in-progress tasks to complete before stopping
 - **Scheduled tasks**: Use `asynq.Scheduler` for cron-style periodic tasks instead of a raw `time.Ticker` in a goroutine
 
+## Edge Cases
+
+- **Empty or malformed payload**: always validate payload after unmarshal - return a permanent (non-retryable) error for malformed payloads to avoid infinite retry loops
+- **Task enqueued but entity deleted**: the handler must handle "entity not found" gracefully (log and return nil, not an error) since the entity may have been deleted between enqueue and execution
+- **Redis unavailable at enqueue time**: decide per use case whether to fail the request or degrade gracefully (e.g., log and continue if the job is best-effort)
+- **Duplicate delivery**: Asynq guarantees at-least-once delivery, not exactly-once - always check current state before acting (idempotency guard)
+
 ## Avoid
 
 - Passing large structs or DB models as task payloads - serialize only IDs and primitives

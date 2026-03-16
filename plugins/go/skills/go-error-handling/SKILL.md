@@ -1,6 +1,9 @@
 ---
 name: go-error-handling
 description: "Go error patterns: explicit returns, wrapping with %w, sentinel errors, custom error types, errors.Is/As, Gin error middleware. Never swallow errors."
+metadata:
+  category: backend
+  tags: [go, error-handling, sentinel-errors, gin, middleware]
 user-invocable: false
 ---
 
@@ -175,6 +178,13 @@ if user == nil {
 // Bad: returning generic errors without context
 return errors.New("failed")
 ```
+
+## Edge Cases
+
+- **nil error wrapping**: `fmt.Errorf("context: %w", nil)` returns a non-nil error with text "context: <nil>" - always check `if err != nil` before wrapping
+- **errors.Is on nil**: `errors.Is(nil, ErrNotFound)` returns false, which is correct - no guard needed
+- **Multiple wrapping**: wrapping with `%w` twice in the same format string (Go 1.20+) creates a multi-error; use `errors.Is` / `errors.As` which traverse all wrapped errors
+- **Unwrap loop**: custom error types implementing `Unwrap() error` must not create cycles - an infinite unwrap chain will hang `errors.Is` / `errors.As`
 
 ## Avoid
 

@@ -1,6 +1,9 @@
 ---
 name: go-testing-patterns
-description: "Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify (assert/require), interface mocking, t.Parallel, benchmarks, and testing/synctest."
+description: "Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify, interface mocking, t.Parallel, benchmarks, and testing/synctest."
+metadata:
+  category: backend
+  tags: [go, testing, httptest, testcontainers, testify, benchmarks]
 user-invocable: false
 ---
 
@@ -242,6 +245,13 @@ time.Sleep(100 * time.Millisecond)
 assert.Equal(t, expected, result)
 // use channels, synctest, or testcontainers wait strategies instead
 ```
+
+## Edge Cases
+
+- **t.Parallel with shared state**: subtests sharing a loop variable must capture it (Go < 1.22) or use `t.Parallel()` only when each subtest is truly independent - shared mocks or counters need synchronization
+- **testcontainers port mapping**: container internal port differs from host-mapped port - always use `container.MappedPort()` or `ConnectionString()`, never hardcode ports
+- **Gin test mode**: set `gin.SetMode(gin.TestMode)` in `TestMain` or init to suppress debug logging and avoid misleading output in CI
+- **Cleanup ordering**: `t.Cleanup` functions run in LIFO order - register container termination before DB connection close to avoid connection errors during teardown
 
 ## Avoid
 
