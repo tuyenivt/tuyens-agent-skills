@@ -89,9 +89,10 @@ Handle partial inputs gracefully. When input is missing, state what additional d
 If no structured timeline is provided as input, construct one from available evidence before proceeding:
 
 - Extract timestamps from any log lines, alert notifications, deploy metadata, or notes provided
-- Order events chronologically: first symptom → detection → containment → resolution
+- Order events chronologically: triggering change (deploy/config) → first symptom → detection → containment → resolution
 - Note gaps where timing is unknown
 - Format each event as: `{timestamp} - {event} - {source}`
+- **Deploy-to-symptom lag**: if a deployment or config change preceded the incident, calculate the delay between deploy and first symptom. Explain the lag mechanism (gradual resource leak, load-dependent trigger, cache expiry, batch schedule alignment, connection pool drain rate)
 
 This constructed timeline becomes the input for Section 1 and Section 3.
 
@@ -105,7 +106,9 @@ Capture:
 - Severity: Low | Medium | High | Critical
 - User impact scope and nature
 - Duration from first symptom to resolution
+- **Triggering change**: the deploy, config change, batch job, or traffic pattern that initiated the failure - include timestamp and version/commit if available
 - **Detection gap**: time between first symptom and first alert/acknowledgment - flag if > 5 minutes as an observability gap
+- **Timeline summary**: key milestones from Step 0 (triggering change → first symptom → detection → containment → resolution) with timestamps
 - **Immediate actions taken**: what was done to stop the bleeding (rollback, config revert, feature flag disable, etc.) - document separately before systemic analysis
 
 ### 2. Failure Pattern Classification
@@ -122,8 +125,10 @@ Identify the primary failure category:
 - External dependency failure
 - Configuration drift
 - Architecture drift / boundary erosion
+- Workload contention (batch vs. online, scheduled job vs. user traffic)
 - Guardrail failure (review, test, or monitoring gap)
-- AI-generated code complexity amplification
+
+**Compound failures**: most production incidents involve chained categories where one failure triggers another. Identify the full chain. Example: "Transaction boundary failure (long-running transactions) → Resource exhaustion (connection pool drain) → cascading user-facing outage." Classify both the root category and the amplifying category.
 
 Apply domain-specific skills based on classification:
 
@@ -131,6 +136,7 @@ Apply domain-specific skills based on classification:
 - Data consistency: use skill: `data-consistency-modeling`
 - External dependency: use skill: `resiliency`
 - DB performance: use skill: `db-indexing`
+- Resource exhaustion: use skill: `resiliency` for pool sizing, timeouts, and bulkhead patterns
 
 Identify contributing factors that amplified the failure.
 
@@ -143,15 +149,16 @@ Evaluate:
 - **Boundary weakness** -- did the failure cross boundaries it should not have?
 - **Coupling amplification** -- did tight coupling spread the impact?
 - **Shared mutable state risk** -- was shared state a contributing factor?
+- **Shared resource contention** -- did multiple workloads (batch, online, scheduled) compete for the same resource pool without isolation? (connection pools, thread pools, memory, I/O bandwidth)
 - **Layer violation trend** -- is there a pattern of bypassing abstractions?
 - **Incomplete abstraction** -- did a leaky abstraction expose internals?
-- **Hidden assumption** -- was there an undocumented assumption that broke?
-- **AI-generated code cognitive risk** -- did code volume or complexity from AI-generated contributions obscure the failure path?
+- **Hidden assumption** -- was there an undocumented assumption that broke? (e.g., "transactions complete in < 1s", "batch jobs run during off-peak hours")
 - **Blast radius amplification** -- what structural factors made the impact worse than necessary?
+- **AI-generated code cognitive risk** (evaluate only when AI-generated code is in the failure path) -- did code volume or complexity from AI-generated contributions obscure the failure path?
 
 Use skill: `blast-radius-analysis` to assess propagation scope.
 Use skill: `architecture-guardrail` to identify boundary violations exposed by the incident.
-Use skill: `complexity-review` to assess whether AI-generated complexity contributed.
+Use skill: `complexity-review` to assess whether AI-generated complexity contributed (only when relevant).
 
 ### 4. Guardrail and Review Gap Analysis
 
@@ -165,6 +172,8 @@ Use skill: `review-gap-analysis` to evaluate:
 - Were critical test scenarios missing?
 - Was monitoring insufficient to detect early?
 - Was cognitive load too high for effective review?
+- Did the review assess resource impact? (new batch jobs, background tasks, or scheduled jobs that share connection pools, thread pools, or memory with user-facing workloads)
+- Were load/stress tests required before deploying resource-consuming changes?
 
 Use skill: `engineering-governance` to propose specific guardrail improvements.
 
@@ -200,9 +209,12 @@ Evaluate:
 
 - Boundary reinforcement (isolate failure domains)
 - Decoupling (reduce propagation paths)
+- **Resource pool isolation** -- separate connection pools, thread pools, or queues for different workload types (batch vs. OLTP, background vs. user-facing). Prevent one workload from starving another.
+- **Transaction timeout enforcement** -- set explicit statement and transaction timeouts to prevent long-running transactions from holding resources. Evaluate both application-level and database-level timeout configuration.
 - Idempotency guarantees (make retries safe)
 - Retry and timeout policy corrections
 - Circuit breaker additions or adjustments
+- **Bulkhead pattern** -- isolate critical paths so that failures in non-critical paths (batch processing, reports, analytics) cannot degrade user-facing operations
 - Data consistency redesign
 - Shared state isolation
 
@@ -251,11 +263,15 @@ Failure Type:
 Severity: Low | Medium | High | Critical
 User Impact:
 Duration:
+Triggering Change: {deploy, config change, batch job, traffic pattern - with timestamp}
+Timeline: {triggering change → first symptom → detection → containment → resolution, with timestamps}
+Detection Gap: {time between first symptom and first alert}
 Containment Actions:
 
 ## Failure Pattern Classification
 
 Primary Category:
+Chained Categories: {if compound failure, list the chain: root category → amplifying category → user impact}
 System Layer:
 Contributing Factors:
 
@@ -263,9 +279,10 @@ Contributing Factors:
 
 - Boundary weakness:
 - Coupling risk:
-- Shared state risk:
+- Shared resource contention: {did multiple workloads compete for the same pool?}
+- Hidden assumption: {what undocumented assumption broke?}
+- Blast radius amplification: {what structural factor made impact worse than necessary?}
 - Observability blind spot:
-- AI-related cognitive risk:
 
 ## Guardrail and Review Gaps
 
@@ -302,7 +319,9 @@ Contributing Factors:
 
 ## Staff-Level Takeaways
 
-- 3-5 systemic insights focused on prevention, not this specific incident.
+- 3-5 systemic insights. Each must name a failure class and state the structural principle that prevents it.
+- Format: "{Failure class}: {structural principle or policy change that eliminates the class}"
+- Focus on transferable lessons: resource isolation policies, workload governance, deployment safety invariants, or boundary enforcement rules that apply beyond this incident.
 
 ## Pattern Analysis (deep only)
 
@@ -339,10 +358,13 @@ If this failure class recurs, what architectural change eliminates it permanentl
 ## Self-Check
 
 - [ ] Failure pattern classified by type and system layer - not just described narratively
-- [ ] Systemic weaknesses identified beyond the immediate failure (boundary, coupling, shared state)
+- [ ] Compound failure chain identified if multiple categories are involved (root → amplifier → impact)
+- [ ] Triggering change identified with timestamp; deploy-to-symptom lag explained if applicable
+- [ ] Systemic weaknesses identified beyond the immediate failure (boundary, coupling, shared resources, hidden assumptions)
 - [ ] Every observability gap has a concrete recommended addition with threshold or trigger
 - [ ] At least one new enforceable guardrail produced (lint rule, checklist item, CI gate) - not a process wish
 - [ ] Every recommendation addresses a failure class, not just this specific incident
+- [ ] Architecture reinforcement includes resource isolation if shared resources were involved
 - [ ] New guardrails table has at least one item implementable in the next sprint
 - [ ] No blame or individual attribution in any section
 
@@ -355,5 +377,7 @@ If this failure class recurs, what architectural change eliminates it permanentl
 - Recommendations that only fix this specific instance
 - Unbounded improvement wishlists without prioritization
 - Proposing architectural rewrites when targeted fixes suffice
-- Ignoring AI-generated code as a contributing factor to complexity drift
 - Treating the postmortem as a debugging session
+- Classifying only the immediate failure without tracing the compound chain
+- Omitting the triggering change when deployment or config change evidence exists
+- Recommending resource pool changes without specifying concrete sizing or timeout values

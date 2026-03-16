@@ -23,11 +23,10 @@ This skill assumes partial code comprehension. Code volume from AI-generated con
 
 ## When to Use
 
-- Production incident investigation
+- Active production incident investigation
 - On-call triage and escalation support
-- Post-incident root cause analysis
 - Cascading failure diagnosis
-- Incident postmortem preparation
+- Containment-first analysis during an ongoing outage
 
 ## Inputs
 
@@ -51,12 +50,33 @@ This skill assumes partial code comprehension. Code volume from AI-generated con
 - Omit empty sections in output
 - Keep output concise and high-signal -- optimize for on-call clarity
 - When evidence is insufficient, state what is missing and what signal would resolve ambiguity
+- When input provides only an error message without logs, metrics, or deploy context: frame incident from what is available, provide containment based on the error class, form hypotheses at lower confidence, and explicitly list the 3-5 evidence items needed to raise confidence
 
 ## Analysis Model
 
-### 1. Failure Classification
+### 1. Incident Framing
 
-**Run first. This frames the entire investigation.**
+**Establish timeline and severity before analysis begins.**
+
+From the input, extract:
+
+- **Symptom onset** -- when the issue started (or was first detected)
+- **Duration** -- how long the incident has been active
+- **Affected percentage** -- what fraction of requests, users, or services are impacted
+- **Affected services** -- enumerate each service and its current status (degraded, down, healthy)
+
+Assign severity using these criteria:
+
+| Severity | Criteria                                                                |
+| -------- | ----------------------------------------------------------------------- |
+| Critical | Revenue-impacting, >50% of requests affected, or data loss risk         |
+| High     | User-facing degradation, 10-50% affected, or multiple services impacted |
+| Medium   | Partial degradation <10%, single service, no data risk                  |
+| Low      | Non-user-facing, minimal impact, single component                       |
+
+### 2. Failure Classification
+
+**Run immediately after framing. This drives the entire investigation.**
 
 Use skill: `failure-classification` to categorize the failure by type, mechanism, and system layer.
 
@@ -66,9 +86,9 @@ Apply domain-specific skills based on classification:
 - Data consistency error: use skill: `data-consistency-modeling` for scope and propagation issues
 - DB performance degradation or N+1: use skill: `db-indexing` for query patterns
 - External dependency failure: use skill: `resiliency` for timeout, retry, and circuit breaker gaps
-- Resource exhaustion: check connection pool sizing, thread pool limits, memory bounds
+- Resource exhaustion: assess connection pool sizing, thread pool limits, memory bounds, file descriptors; check current utilization vs. configured maximums and identify what is consuming the resource
 
-### 2. Blast Radius Assessment
+### 3. Blast Radius Assessment
 
 Use skill: `blast-radius-analysis` to determine scope across code, data, and user dimensions.
 
@@ -83,25 +103,26 @@ Use skill: `failure-propagation-analysis` to trace the cascading failure path.
 
 Output blast radius explicitly: Narrow | Moderate | Wide | Critical.
 
-### 3. Immediate Containment
+### 4. Immediate Containment
 
 **Prioritize fast blast radius reduction.**
 
 Evaluate these containment options in order of speed and safety:
 
-1. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `backward-compatibility-analysis` to check for schema or contract breakage that would make rollback unsafe.
-2. **Feature flag disable** -- surgical isolation of the failing feature without full rollback; prefer when rollback has compatibility concerns
-3. **Patch and redeploy** -- only if root cause is clearly understood and the fix is small (avoid under pressure)
-4. **Circuit breaker** -- stop cascading to downstream services
+1. **Immediate resource recovery** -- for resource exhaustion (connection pool, thread pool, memory): restart affected instances to reclaim resources, resize pool limits if configurable at runtime, or drain slow consumers holding resources
+2. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `backward-compatibility-analysis` to check for schema or contract breakage that would make rollback unsafe.
+3. **Feature flag disable** -- surgical isolation of the failing feature without full rollback; prefer when rollback has compatibility concerns
+4. **Circuit breaker** -- stop cascading to downstream services; especially critical when downstream latency is exhausting upstream resources
 5. **Traffic isolation** -- route affected traffic to degraded-mode path
 6. **Rate limiting** -- reduce load to buy recovery time
-7. **Scaling mitigation** -- add capacity if resource exhaustion is the bottleneck
-8. **Data repair** -- if partial writes occurred, assess correction urgency
+7. **Scaling mitigation** -- add capacity if resource exhaustion is the bottleneck and recovery alone is insufficient
+8. **Patch and redeploy** -- only if root cause is clearly understood and the fix is small (avoid under pressure)
+9. **Data repair** -- if partial writes occurred, assess correction urgency
 
 Use skill: `resiliency` for circuit breaker and retry patterns.
 Use skill: `data-consistency-modeling` for data consistency recovery.
 
-### 4. Root Cause Hypothesis
+### 5. Root Cause Hypothesis
 
 Use skill: `root-cause-hypothesis` to generate ranked hypotheses.
 
@@ -113,12 +134,12 @@ For each hypothesis, require:
 - Secondary suspects
 - Likely triggering change (recent PR, deploy, config change)
 - **Contributing factors** (distinct from root cause): conditions that made the system vulnerable - e.g., no memory limit set, no load test for large payloads, missing circuit breaker
-- Failure propagation path (from step 2)
+- Failure propagation path (from step 3)
 - **Timeline interpretation**: if there is a lag between triggering change and symptom onset (e.g., deploy at T+0, alerts at T+15min), explain why - load-dependent trigger, cache warming, gradual leak vs. startup error
 - Confidence level with supporting and contradicting evidence
 - One concrete verification step
 
-### 5. Observability Gap Detection
+### 6. Observability Gap Detection
 
 Use skill: `observability` to evaluate signal coverage.
 
@@ -136,7 +157,7 @@ Common gaps to check:
 - Async event processing lag and failure rates
 - Health check coverage for critical dependencies
 
-### 6. Systemic Prevention
+### 7. Systemic Prevention
 
 Use skill: `engineering-governance` for structured prevention recommendations.
 Use skill: `architecture-guardrail` to identify boundary weaknesses exposed by the incident.
@@ -163,10 +184,16 @@ Categories to cover:
 Failure Type:
 Severity: Low | Medium | High | Critical
 Blast Radius: Narrow | Moderate | Wide | Critical
+Onset: {timestamp or "unknown"}
+Duration: {how long the incident has been active}
+Affected Services:
+
+- {service-1}: {status -- degraded/down/healthy}
+- {service-2}: {status}
 
 ## Immediate Containment
 
-- [ ] Action 1 (priority, expected impact)
+- [ ] Action 1 (priority, expected impact, estimated time)
 - [ ] Action 2
 
 ## Root Cause Hypothesis
@@ -174,11 +201,13 @@ Blast Radius: Narrow | Moderate | Wide | Critical
 Primary Suspect:
 Mechanism:
 Triggering Change:
-Contributing Factors: [conditions that made the system vulnerable, distinct from root cause]
+Contributing Factors:
 Failure Propagation Path:
+Timeline Interpretation: {why symptom onset lagged triggering change, if applicable}
 Confidence: X%
 
 Secondary Suspect:
+Mechanism:
 Confidence: X%
 
 Verification Steps:
@@ -211,6 +240,7 @@ Verification Steps:
 ### Output Constraints
 
 - Containment section always comes before diagnosis
+- Each containment action includes estimated time to execute (minutes, not hours)
 - Findings ordered by urgency: containment > hypothesis > gaps > prevention
 - Omit empty sections
 - No low-level debugging walkthroughs
@@ -219,6 +249,9 @@ Verification Steps:
 
 ## Self-Check
 
+- [ ] Severity assigned with justification based on criteria table
+- [ ] Incident onset time and duration stated (or explicitly marked unknown)
+- [ ] All affected services enumerated with individual status
 - [ ] Blast radius classified (Narrow / Moderate / Wide / Critical) before any hypothesis
 - [ ] At least one immediate containment action recommended before diagnosis begins
 - [ ] Every hypothesis cites observable evidence; concrete verification step exists per hypothesis

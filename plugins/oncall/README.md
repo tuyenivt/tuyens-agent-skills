@@ -8,7 +8,7 @@ Incident response and investigation plugin for Claude Code: triage, investigatio
 
 | Skill                      | Description                                                                                                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task-oncall-start`        | Oncall entry point - classify incoming alert, ticket, or request and route to the right workflow                                                             |
+| `task-oncall-start`        | Oncall entry point for shift starts (rotation handoff, system health review) and incoming alert triage (classify and route to the right workflow)            |
 | `task-oncall-investigate`  | Structured investigation for non-incident oncall work - user requests, support tickets, operational questions, unexpected behavior, and performance concerns |
 | `task-incident-root-cause` | Staff-level incident root cause analysis with containment and prevention                                                                                     |
 | `task-incident-postmortem` | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels.                                                         |
@@ -36,7 +36,14 @@ Incident response and investigation plugin for Claude Code: triage, investigatio
 
 ## Usage Examples
 
-**Not sure what type of work this is? Start here:**
+**Starting your oncall rotation:**
+
+```
+/task-oncall-start
+Starting my oncall rotation for the payments team. What should I check first?
+```
+
+**Not sure what type of work this is? Triage here:**
 
 ```
 /task-oncall-start

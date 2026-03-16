@@ -24,6 +24,7 @@ user-invocable: false
 - Lead with correlation ID tracing when available - this is the fastest path to truth
 - Distinguish signal (meaningful patterns) from noise (expected errors, health checks)
 - Quantify frequency and distribution - "many errors" is not useful; "47 errors in 3 minutes all from user ID 8821" is
+- When multiple error classes appear together, establish temporal ordering to determine causation direction - which error type appeared first matters more than which is most frequent
 - State what the logs confirm, what they contradict, and what remains unresolved
 - If logs are insufficient, state exactly what additional log signal is needed
 
@@ -38,6 +39,8 @@ Identify the relevant time window before reading log volume:
 - **Comparison window**: Identify an equivalent "healthy" window (same time of day, same day of week) for contrast
 
 Narrow the window to 5-10 minutes around the failure onset unless the issue is intermittent or slow-burn.
+
+**High-volume windows**: If the failure window contains thousands of log lines, sample strategically rather than reading everything. Focus on: (1) the first 30 seconds of the anomaly for root signal, (2) a sample from peak error rate, (3) the last 30 seconds before recovery (if resolved). This avoids drowning in repetitive error lines while capturing onset, peak, and resolution patterns.
 
 ### Step 2 - Correlation ID Tracing
 
@@ -65,6 +68,27 @@ For error logs in the window:
 
 State the distribution as a sentence: "47 timeout errors in 3 minutes, all on `/api/orders`, all from users in the EU region, starting at 14:23 UTC immediately after deploy v2.4.1."
 
+### Step 3b - Multi-Error-Class Sequencing
+
+When multiple distinct error types appear in the same window (e.g., "connection timeout" and "pool exhausted" interleaved), determine causation direction:
+
+1. **First-appearance ordering**: Which error class logged first? The earliest error type is the likely upstream cause
+2. **Frequency crossover**: Plot both error types by minute - does one consistently precede the other, or do they start simultaneously?
+3. **Request-level correlation**: For requests that produce both error types, which appears first in the request lifecycle? (e.g., timeout at 14:30:01 on request R1, then pool exhausted at 14:30:02 on request R2 because R1 held the last connection)
+4. **Saturation signals**: If one error is a resource exhaustion type (pool exhausted, queue full, memory limit, file descriptor limit, thread pool rejected), check the resource metric leading up to the spike - gradual climb to limit confirms exhaustion, sudden jump suggests a burst
+
+Common causal chains to check:
+
+| Upstream Error            | Downstream Effect          | Mechanism                                                                |
+| ------------------------- | -------------------------- | ------------------------------------------------------------------------ |
+| Dependency timeout        | Connection pool exhausted  | Slow responses hold connections open, starving the pool                  |
+| Connection pool exhausted | Request timeout / HTTP 503 | New requests cannot acquire a connection and time out or get rejected    |
+| Memory pressure           | GC pauses, then timeouts   | Long GC pauses cause request timeouts that look like dependency failures |
+| DNS resolution failure    | Connection timeout         | Connections hang waiting for DNS, then time out                          |
+| TLS handshake failure     | Connection timeout         | Handshake stalls consume connection slots                                |
+
+State the causal chain as: "{upstream error} causes {downstream error} because {mechanism}, confirmed by {evidence}."
+
 ### Step 4 - Healthy vs. Unhealthy Comparison
 
 Compare the failing window against the healthy comparison window:
@@ -81,6 +105,7 @@ Produce a focused evidence set for downstream analysis:
 
 - **Earliest anomalous log**: Exact timestamp and message
 - **Highest-frequency error**: Error class, count, and time distribution
+- **Causal chain** (when multiple error types): Which error class appeared first and caused the others, with mechanism
 - **Correlation chain**: Traced request path (or gap where tracing breaks)
 - **Likely trigger**: What changed just before the first anomalous log?
 - **Affected scope**: Users, endpoints, or services confirmed affected by log evidence
@@ -101,7 +126,8 @@ Comparison Window: {healthy period used for contrast}
 
 - Rate: {errors/minute, spike pattern}
 - Affected scope: {users / endpoints / services}
-- Dominant error class: {type and count}
+- Error classes: {type and count for each distinct error type}
+- Causal chain: {upstream error -> downstream error with mechanism, or "Single error class" if only one type}
 - Timing trigger: {what correlates with onset}
 
 ### Healthy vs. Unhealthy Delta
@@ -117,6 +143,7 @@ Comparison Window: {healthy period used for contrast}
 
 - Earliest anomaly: {timestamp} - {log message}
 - Primary signal: {most diagnostic finding}
+- Causal chain: {error A -> error B because mechanism, or "Single error class"}
 - Likely trigger: {what changed before onset}
 - Confirmed scope: {affected users/endpoints/services}
 
@@ -132,3 +159,5 @@ Comparison Window: {healthy period used for contrast}
 - Reporting individual log lines without frequency context
 - Skipping the healthy comparison - patterns only have meaning relative to baseline
 - Concluding root cause from logs alone without linking to code or config evidence
+- Treating interleaved error types as independent problems - when two error classes spike together, one is almost always causing the other
+- Reading all log lines in a high-volume spike - sample onset, peak, and recovery instead

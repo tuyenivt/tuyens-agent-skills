@@ -76,6 +76,12 @@ Narrow investigation to the specific case before broadening:
 - Is it scoped to a specific endpoint, feature, or data subset?
 - Did it start at a specific time or has it always been this way?
 
+**Proactive blast radius check** - even when only one user has reported, verify whether the issue is silently affecting others:
+
+- Query for other entities with the same symptom (e.g., if user 12345's orders are missing, check if other users' recent orders are also invisible)
+- Check error logs and metrics for the same code path - elevated error rates suggest wider impact
+- If the issue traces to a deploy, config change, or migration, assume all users on that code path are potentially affected until proven otherwise
+
 If more than one user is affected and the issue is ongoing, reassess whether this should be escalated to `task-incident-root-cause`.
 
 ### Step 4 - Check Expected Behavior
@@ -86,6 +92,7 @@ Before investigating a bug, confirm what the expected behavior actually is:
 - Use skill: `task-code-explain` if the code path is unfamiliar
 - Check if any feature flags, config values, or A/B test assignments affect this case
 - Check if this behavior was recently changed by a deploy or config update
+- For data visibility issues: check query filters (status filters, date range boundaries, timezone handling, soft-delete clauses, pagination limits) to confirm the query is designed to return the expected results
 
 This step frequently reveals that the reported behavior is actually correct (misunderstanding) or a known limitation (not a bug).
 
@@ -95,9 +102,12 @@ Gather evidence specific to the request type:
 
 **For data issues:**
 
-- Query the relevant DB state for the affected entity
-- Trace the write path: was the data ever written? Was it overwritten? Was it corrupted?
-- Check for recent migrations or data pipeline failures; specifically check if a soft-delete pattern was introduced (new `deleted_at` column) that invalidates existing queries missing `deleted_at IS NULL` filters
+- Query the relevant DB state for the affected entity - confirm the data exists in the database before investigating the read path
+- Compare what the API/UI returns against what the DB contains - this isolates whether the issue is in storage, the query layer, caching, or rendering
+- Trace the write path: was the data ever written? Was it overwritten? Was it deleted or archived?
+- Check query filters that control visibility: status filters, date range boundaries (especially timezone conversion between user local time and server/DB time - e.g., "yesterday" in the user's timezone may not match UTC date boundaries), soft-delete clauses (`deleted_at IS NULL`), and pagination or result limits
+- Check for caching: if the DB has the correct data but the API returns stale results, check cache TTLs and invalidation logic
+- Check for recent migrations, schema changes, or data pipeline failures that may have altered data shape or visibility rules
 
 **For access/permission issues:**
 
@@ -151,6 +161,7 @@ Classify the finding and recommend a clear next action:
 
 Request Type: {Data issue | Access | Operational failure | Unexpected behavior | Performance | Alert}
 Affected Scope: {Single user | N users | Specific feature | All users}
+Potential Blast Radius: {Confirmed isolated to reporter | Potentially affects N other users/entities - checked by [method]}
 Time Window: {when the issue occurred or was observed}
 
 ### Expected vs. Actual Behavior
@@ -184,6 +195,8 @@ Time Window: {when the issue occurred or was observed}
 - [ ] Request type classified before investigation starts
 - [ ] Expected behavior checked before concluding it is a bug
 - [ ] Evidence collected specific to the request type - no generic log fishing
+- [ ] For data issues: verified what the user actually sees (API/UI response) vs. what the DB contains to isolate the layer
+- [ ] Proactive blast radius check performed - confirmed whether the issue is isolated or silently affecting others
 - [ ] Finding is conclusive (Bug | Working as designed | Config | Data) or states what is needed to reach a conclusion
 - [ ] Recommended action is concrete and actionable
 - [ ] Scope reassessed - if more than one user is affected and ongoing, `task-incident-root-cause` may be more appropriate
@@ -196,3 +209,5 @@ Time Window: {when the issue occurred or was observed}
 - Reporting "I checked the logs and didn't find anything" without stating what signal was missing
 - Scope creep - investigate the specific case first, then broaden only if evidence points to a systemic issue
 - Using `task-debug` unless the investigation confirms a code bug with a clear stack trace or reproduction path
+- For data issues: checking only the database without verifying what the API or UI actually returns - the issue may be in the query layer, caching, or rendering, not in storage
+- Assuming a single-user report means the issue is isolated - always run a proactive blast radius check before concluding scope
