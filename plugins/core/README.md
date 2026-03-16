@@ -75,7 +75,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Atomic Skills
 
-24 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+30 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 ### Core Utility
 
@@ -128,6 +128,17 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                           |
 | `engineering-governance`     | Engineering process, governance improvement, and guardrail evolution for incident prevention               |
 | `pr-risk-analysis`           | Lightweight heuristic PR risk classification based on change signals                                       |
+
+### Frontend
+
+| Skill                       | Description                                                                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend-state-management` | State management patterns: local vs global, when to lift state, derived state, state normalization. Adapts to detected stack (Redux, Pinia, NgRx, Zustand, etc.) |
+| `frontend-testing-patterns` | Frontend testing: component testing, integration testing, e2e with Playwright/Cypress, mocking APIs (MSW), snapshot discipline. Adapts to detected stack         |
+| `frontend-accessibility`    | WCAG 2.1 AA compliance: semantic HTML, ARIA, keyboard navigation, focus management, color contrast, screen reader testing                                        |
+| `frontend-api-integration`  | Data fetching patterns: loading/error states, caching, optimistic updates, pagination. Adapts to detected stack (TanStack Query, SWR, Apollo, etc.)              |
+| `frontend-performance`      | Core Web Vitals, bundle splitting, lazy loading, image optimization, render performance, memoization discipline                                                  |
+| `frontend-form-handling`    | Form patterns: validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack                                        |
 
 ## Skill Dependency Index
 

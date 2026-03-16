@@ -30,7 +30,51 @@ Check for well-known marker files in the project root. This is reliable, zero-co
 | `*.csproj` / `*.sln`                            | .NET ecosystem                    |
 | `Makefile`                                      | Check further - could be anything |
 
-File-based detection determines `Language` and often `Build tool`. It cannot determine `Framework`, `Database`, `ORM`, or `Test framework` - those require Step 2.
+#### Frontend meta-framework marker files (higher specificity than `package.json`)
+
+When these marker files are found alongside `package.json`, they refine the detection from generic "JavaScript/TypeScript ecosystem" to a specific frontend framework and meta-framework:
+
+| Marker File(s)                                                    | Detected Framework |
+| ----------------------------------------------------------------- | ------------------ |
+| `next.config.js` / `next.config.mjs` / `next.config.ts`           | React (Next.js)    |
+| `nuxt.config.ts` / `nuxt.config.js`                               | Vue (Nuxt)         |
+| `angular.json`                                                    | Angular            |
+| `remix.config.*` or `app/root.tsx` + `@remix-run` in package.json | React (Remix)      |
+
+#### Deeper detection via package.json dependencies (still file-based)
+
+When `package.json` is found but no meta-framework marker file exists, inspect `dependencies`/`devDependencies` keys:
+
+| Dependency key               | Detected As                                       |
+| ---------------------------- | ------------------------------------------------- |
+| `react` + `next`             | React (Next.js) - fallback if next.config missing |
+| `react` + `@remix-run/react` | React (Remix)                                     |
+| `react` (no meta-framework)  | React (Vite/CRA/custom)                           |
+| `vue` + `nuxt`               | Vue (Nuxt) - fallback if nuxt.config missing      |
+| `vue` (no Nuxt)              | Vue (Vite/custom)                                 |
+| `@angular/core`              | Angular                                           |
+
+#### Priority order within file-based detection
+
+1. Meta-framework marker files (most specific: `next.config.*`, `nuxt.config.*`, `angular.json`)
+2. `package.json` dependency inspection (when no marker file found)
+3. Generic `package.json` presence (JavaScript/TypeScript ecosystem)
+
+#### Frontend detection output
+
+For frontend projects, detection should populate the `Additional` field:
+
+```
+Detected stack:
+  Language: TypeScript
+  Framework: React (Next.js)    # or Vue (Nuxt), Angular, React (Vite), etc.
+  Build tool: Next.js            # or Vite, Angular CLI, etc.
+  Additional: Frontend: true, Meta-framework: Next.js
+```
+
+This lets consuming skills branch on `Framework` containing "React", "Vue", or "Angular" and check `Additional` for meta-framework details.
+
+File-based detection determines `Language` and often `Build tool`. It cannot determine `Database`, `ORM`, or `Test framework` - those require Step 2. For frontend projects, file-based detection can also determine `Framework` via marker files and package.json inspection.
 
 ### Step 2 - Agent Instruction File (supplemental detail)
 
