@@ -1,10 +1,15 @@
 ---
 name: rust-db-access
-description: "Rust data access with sqlx. Compile-time checked queries, connection pooling, transactions, query building, N+1 prevention. sqlx (primary) vs diesel (secondary)."
+description: "Rust data access with sqlx: compile-time checked queries, connection pool sizing, transactions, pagination, N+1 prevention, and sqlx vs diesel guidance."
+metadata:
+  category: backend
+  tags: [rust, sqlx, diesel, postgresql, database, connection-pool]
 user-invocable: false
 ---
 
 # Rust Data Access
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -32,6 +37,8 @@ user-invocable: false
 | Existing project with diesel setup             | diesel |
 
 sqlx is the primary recommendation for new projects - compile-time query checking catches SQL errors at build time.
+
+**Note:** Compile-time checking with `sqlx::query!` requires `DATABASE_URL` set at build time (or a cached `sqlx-data.json` via `cargo sqlx prepare`). If the project uses offline mode, ensure `sqlx-data.json` is committed and regenerated after schema changes.
 
 ## sqlx Patterns
 

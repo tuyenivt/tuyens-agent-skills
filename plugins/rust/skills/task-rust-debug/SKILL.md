@@ -1,6 +1,6 @@
 ---
 name: task-rust-debug
-description: Debug Rust application errors - panic backtraces, borrow checker violations, async/await issues, and sqlx errors. Paste a backtrace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
+description: Diagnose and fix Rust application errors from panic backtraces, compiler errors, borrow checker violations, async/await issues, and sqlx failures. Paste a backtrace or describe unexpected behavior. Not for production incident analysis (use task-incident-root-cause).
 agent: rust-architect
 metadata:
   category: backend
@@ -12,6 +12,8 @@ user-invocable: true
 ## STEP 1 - INTAKE
 
 Ask for: full backtrace or compiler error, the source file where the error originates, and what the user expected to happen. If a backtrace is provided, identify the first application-code frame (skip standard library and crate frames) and read that file. For compiler errors, read the file and line referenced in the error.
+
+If the user provides only a partial error (e.g., just an error message without a backtrace), ask for the full output of `RUST_BACKTRACE=1 cargo run` or `cargo test`. If the user describes unexpected behavior without an error, ask them to add `tracing` or `dbg!()` output to narrow the scope before proceeding.
 
 ## STEP 2 - CLASSIFY
 

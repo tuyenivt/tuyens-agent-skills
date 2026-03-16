@@ -1,6 +1,9 @@
 ---
 name: rust-web-patterns
-description: "Axum web framework patterns: routing, middleware with tower, extractors, request validation, consistent JSON responses, pagination, graceful shutdown, health endpoints."
+description: "Axum web framework patterns: routing, tower middleware, extractors, request validation, consistent JSON response envelopes, pagination, graceful shutdown, and health endpoints."
+metadata:
+  category: backend
+  tags: [rust, axum, tower, middleware, routing, http, web]
 user-invocable: false
 ---
 

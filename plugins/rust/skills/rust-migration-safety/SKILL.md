@@ -1,10 +1,15 @@
 ---
 name: rust-migration-safety
-description: "Safe migration patterns with sqlx-cli and PostgreSQL. File naming, reversible migrations, zero-downtime DDL, embedded migrations, CI validation."
+description: "Safe PostgreSQL migration patterns with sqlx-cli: file naming, reversible up/down migrations, zero-downtime DDL (expand-contract, CONCURRENTLY), embedded migrations, and CI validation."
+metadata:
+  category: backend
+  tags: [rust, sqlx, postgresql, migrations, ddl, zero-downtime]
 user-invocable: false
 ---
 
 # Rust Migration Safety
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -164,6 +169,8 @@ sqlx migrate run --database-url "$TEST_DB_URL"
 ```
 
 This catches: syntax errors, missing down migrations, and migrations that fail on re-apply.
+
+**Failed migration recovery:** If a migration fails partway through (e.g., syntax error after first statement), the database may be in a partially-applied state. Check `sqlx migrate info` to identify the failed migration, manually inspect the database schema, apply the corrective SQL, then mark the migration as applied or revert it. Always use `IF EXISTS`/`IF NOT EXISTS` guards in migration SQL to make re-runs safe.
 
 ## Anti-Patterns
 

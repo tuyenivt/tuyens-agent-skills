@@ -1,10 +1,15 @@
 ---
 name: rust-concurrency
-description: "Rust concurrency patterns: Arc/Mutex, RwLock, channels, Send+Sync traits, rayon for data parallelism, atomics, and common concurrency bugs."
+description: "Rust concurrency primitives: Arc/Mutex, RwLock, channels (mpsc/oneshot), Send+Sync traits, rayon for CPU-bound parallelism, atomics, and deadlock prevention."
+metadata:
+  category: backend
+  tags: [rust, concurrency, mutex, channels, rayon, send-sync]
 user-invocable: false
 ---
 
 # Rust Concurrency
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

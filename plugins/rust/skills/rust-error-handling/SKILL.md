@@ -1,10 +1,15 @@
 ---
 name: rust-error-handling
-description: "Rust error patterns: Result<T, E>, thiserror for libraries, anyhow for applications, custom error types, error propagation with ?, error mapping at layer boundaries."
+description: "Rust error handling: thiserror for domain errors, anyhow for applications, error propagation with ?, layer-boundary mapping (repo to service to handler), and Axum IntoResponse."
+metadata:
+  category: backend
+  tags: [rust, error-handling, thiserror, anyhow, result]
 user-invocable: false
 ---
 
 # Rust Error Handling
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 

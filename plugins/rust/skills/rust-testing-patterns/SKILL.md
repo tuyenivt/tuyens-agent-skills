@@ -1,10 +1,15 @@
 ---
 name: rust-testing-patterns
-description: "Rust testing: unit tests, integration tests, tokio::test for async, testcontainers for PostgreSQL, mockall for trait mocking, property-based testing with proptest."
+description: "Rust testing patterns: unit tests with mockall, async tests with tokio::test, integration tests with testcontainers, handler tests with tower oneshot, and property-based testing with proptest."
+metadata:
+  category: backend
+  tags: [rust, testing, mockall, testcontainers, proptest, tokio]
 user-invocable: false
 ---
 
 # Rust Testing Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -21,6 +26,7 @@ user-invocable: false
 - Test public behavior, not private implementation - if you're testing a private function, the module design may need rethinking
 - Keep unit tests fast - isolate from I/O with trait-based mocks
 - Use `cargo test -- --test-threads=1` only when tests have shared state; prefer parallel by default
+- If Docker is unavailable (CI without Docker, WSL limitations), skip testcontainers tests with `#[ignore]` and document the requirement - do not remove integration tests entirely
 
 ## Patterns
 

@@ -1,6 +1,6 @@
 ---
 name: task-rust-new
-description: End-to-end Rust/Axum feature implementation workflow. Generates all layers from migration to HTTP handler with full test coverage. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-rust-debug for errors).
+description: Scaffold a multi-layer Rust/Axum feature end-to-end - migrations, models, repositories, services, handlers, DTOs, and tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rust-debug).
 agent: rust-architect
 metadata:
   category: backend
@@ -31,6 +31,8 @@ STEP 1 - GATHER: Ask the user these questions before writing any code:
 5. Does the feature need authentication/authorization?
 6. Are there status transitions? (e.g., order: pending -> confirmed -> shipped)
 7. Concurrency needs? (shared state, parallel processing, rate limiting)
+
+If the user provides only a brief description without answering all questions, infer reasonable defaults and present them for confirmation. If the user provides a ticket or spec, extract the answers from it.
 
 STEP 2 - DESIGN: Use skill: `rust-web-patterns` for API/handler design. Use skill: `rust-db-access` for data layer design. Propose the implementation layers and present for user approval before generating code.
 

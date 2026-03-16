@@ -1,10 +1,15 @@
 ---
 name: rust-security-patterns
-description: "Rust security patterns: JWT authentication, input validation, SQL injection prevention, secrets management, CORS, dependency auditing with cargo-audit."
+description: "Rust security patterns for Axum: JWT auth middleware (RS256), input validation with validator, password hashing (Argon2), path traversal prevention, CORS, secrets management, and cargo-audit."
+metadata:
+  category: backend
+  tags: [rust, security, jwt, authentication, validation, cors, cargo-audit]
 user-invocable: false
 ---
 
 # Rust Security Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -21,6 +26,7 @@ user-invocable: false
 - Never expose internal error details or stack traces in API responses
 - Secrets from environment variables or config files - never hardcoded
 - Run `cargo audit` in CI for known CVEs
+- If the project uses API keys or session cookies instead of JWT, skip the JWT middleware section but still apply input validation, SQL injection prevention, and secrets management
 
 ## Patterns
 

@@ -1,10 +1,15 @@
 ---
 name: rust-async-patterns
-description: "Rust async patterns: Tokio runtime, async/await, Future design, task spawning, cancellation safety, select!, and common async pitfalls."
+description: "Tokio async patterns for Rust: runtime setup, task spawning with JoinSet, cancellation safety, select!, spawn_blocking for CPU work, and common async pitfalls."
+metadata:
+  category: backend
+  tags: [rust, tokio, async, concurrency, futures]
 user-invocable: false
 ---
 
 # Rust Async Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -12,6 +17,8 @@ user-invocable: false
 - Reviewing async code for cancellation safety and blocking issues
 - Debugging hangs, deadlocks, or task panics
 - Choosing between `tokio::spawn`, `JoinSet`, and sequential execution
+
+If the project does not use Tokio (e.g., uses async-std or smol), adapt the patterns to the equivalent primitives but preserve the same structural rules (no blocking on runtime, structured concurrency, cancellation tokens).
 
 ## Rules
 
