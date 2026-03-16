@@ -1,6 +1,9 @@
 ---
 name: python-fastapi-patterns
-description: "FastAPI patterns: async endpoints, dependency injection, Pydantic v2 models, router organization, error handling, middleware, lifespan events, pagination, and OpenAPI customization."
+description: "FastAPI patterns for building async REST APIs. Covers Depends-based dependency injection, Pydantic v2 request/response models, router organization, custom exception handlers, pagination, CORS middleware, and lifespan events."
+metadata:
+  category: backend
+  tags: [python, fastapi, pydantic, dependency-injection, async, rest-api]
 user-invocable: false
 ---
 
@@ -249,7 +252,14 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 - Use `run_in_executor()` ONLY as escape hatch for unavoidable sync libs
 - Background tasks: `BackgroundTasks` for fire-and-forget, Celery for reliable
 
-## 9. ANTI-PATTERNS
+## 9. EDGE CASES
+
+- **Yield dependency exception handling**: If the code after `yield` in a generator dependency raises, FastAPI catches it but the client still gets the original response. Cleanup logic after `yield` must not raise.
+- **Dependency override in tests**: `app.dependency_overrides` requires the exact function object as key - if the dependency is re-imported or aliased, the override silently fails.
+- **BackgroundTasks and DB sessions**: Background tasks run after the response is sent and the request-scoped DB session is closed. Pass entity IDs to background tasks, not ORM objects.
+- **File upload with Pydantic**: `UploadFile` parameters cannot be part of a Pydantic model body - they must be separate function parameters alongside `File(...)`.
+
+## 10. ANTI-PATTERNS
 
 - ❌ Sync database calls in async endpoints (blocks event loop)
 - ❌ `allow_origins=["*"]` with `allow_credentials=True` (CORS spec violation, rejected at runtime)

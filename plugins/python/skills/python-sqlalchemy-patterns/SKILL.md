@@ -1,6 +1,9 @@
 ---
 name: python-sqlalchemy-patterns
-description: "SQLAlchemy 2.0+ patterns: async sessions, mapped_column, select() style queries, relationships, N+1 prevention (selectinload/joinedload), connection pooling, and repository pattern."
+description: "SQLAlchemy 2.0+ patterns for async Python applications. Covers DeclarativeBase with mapped_column, select()-style queries, N+1 prevention (selectinload/joinedload), async session safety (MissingGreenlet), connection pooling, and repository pattern."
+metadata:
+  category: backend
+  tags: [python, sqlalchemy, async, orm, n-plus-one, repository]
 user-invocable: false
 ---
 
@@ -240,7 +243,14 @@ Set `expire_on_commit=False` on `async_sessionmaker` to prevent attribute expiry
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 ```
 
-## 9. ANTI-PATTERNS
+## 9. EDGE CASES
+
+- **`selectinload` with LIMIT**: `selectinload` fires a second query using `IN (ids)`. When the parent query has `LIMIT`, this works correctly - but `subqueryload` re-executes the full parent query as a subquery, which may return different results if data changes between queries. Prefer `selectinload` for paginated queries.
+- **`flush()` vs `commit()`**: `flush()` sends SQL to the DB but stays in the transaction. Use `flush()` in repository methods to get generated IDs, and `commit()` at the service/request boundary.
+- **Composite primary keys with `session.get()`**: `session.get()` accepts a tuple for composite keys: `session.get(Model, (pk1, pk2))`. Passing a single value silently fails.
+- **`on_conflict_do_update` with async**: The `insert().on_conflict_do_update()` construct works with async sessions but requires `await session.execute()` - do not use `session.add()` for upserts.
+
+## 10. ANTI-PATTERNS
 
 - ❌ `session.query()` (1.x style - use `select()`)
 - ❌ `Column()` (use `mapped_column()`)

@@ -1,6 +1,9 @@
 ---
 name: python-migration-safety
-description: "Safe migration patterns for Python. Alembic (FastAPI) and Django migrations. Zero-downtime DDL, migration ordering, data migration separation, rollback strategy with PostgreSQL."
+description: "Zero-downtime migration patterns for Alembic and Django. Covers lock_timeout, NOT NULL via NOT VALID constraints, concurrent index creation, expand-contract column renames, data migration separation, and multi-release deploy sequencing."
+metadata:
+  category: backend
+  tags: [python, alembic, django, migrations, postgresql, zero-downtime]
 user-invocable: false
 ---
 
@@ -219,6 +222,13 @@ Never rename a column directly. Use expand-contract:
 4. Deploy, verify
 5. Stop writing to old column
 6. Drop old column in a later migration
+
+## EDGE CASES
+
+- **`CREATE INDEX CONCURRENTLY` failure**: If a concurrent index build fails (e.g., unique violation), it leaves an `INVALID` index behind. Check with `\d tablename` and drop the invalid index before retrying.
+- **Alembic `--autogenerate` misses**: Autogenerate does not detect: table/column renames (generates drop + add), changes to `CheckConstraint` text, enum value changes, or custom types. Always review generated migrations.
+- **Django `squashmigrations` with `RunSQL`/`RunPython`**: Squashed migrations cannot auto-optimize `RunSQL` or `RunPython` operations - they are preserved as-is. Mark completed data migrations with `elidable=True` so squash can remove them.
+- **Multi-database migrations**: If using Django with multiple databases, `RunPython` operations must check `schema_editor.connection.alias` to avoid running against the wrong database.
 
 ## SHARED
 

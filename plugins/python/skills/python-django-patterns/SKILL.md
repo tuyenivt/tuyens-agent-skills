@@ -1,6 +1,9 @@
 ---
 name: python-django-patterns
-description: "Django/DRF patterns: ViewSets, serializers, QuerySet optimization, signals (sparingly), management commands, Django REST Framework permissions, and project organization."
+description: "Django and DRF patterns for building REST APIs. Covers ViewSets with action-specific serializers, QuerySet optimization (select_related/prefetch_related), model constraints, filtering/pagination, and object-level permissions."
+metadata:
+  category: backend
+  tags: [python, django, drf, viewsets, serializers, queryset]
 user-invocable: false
 ---
 
@@ -222,7 +225,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrderOwner]
 ```
 
-## 6. ANTI-PATTERNS
+## 6. EDGE CASES
+
+- **Serializer `create()` inside transaction**: DRF's `CreateModelMixin` wraps `perform_create` in `transaction.atomic()`. If you dispatch Celery tasks inside `create()`, the task may execute before the transaction commits - dispatch tasks in `perform_create` after `serializer.save()` returns, or use `transaction.on_commit`.
+- **`get_queryset()` called multiple times**: DRF calls `get_queryset()` for both filtering and object retrieval. Expensive QuerySet construction should be cached or kept lightweight.
+- **`select_for_update()` with `prefetch_related`**: `select_for_update` does not lock prefetched related objects - only the main query rows. If you need to lock related rows, use separate `select_for_update` queries.
+- **Nested serializer writes**: DRF `ModelSerializer` does not support writable nested serializers out of the box - override `create()` and `update()` to handle nested objects explicitly.
+
+## 7. ANTI-PATTERNS
 
 - ❌ Fat views (extract to services or model methods)
 - ❌ N+1 in serializers (prefetch in `get_queryset`)

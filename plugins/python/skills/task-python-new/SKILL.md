@@ -1,6 +1,6 @@
 ---
 name: task-python-new
-description: End-to-end Python feature implementation workflow. Detects FastAPI or Django and generates all layers: migrations, models, services, endpoints, schemas, Celery tasks, and comprehensive pytest tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-python-debug for errors).
+description: End-to-end Python feature implementation workflow. Detects FastAPI or Django and generates all layers - migrations, models, services, endpoints, schemas, Celery tasks, and pytest tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-python-debug for errors).
 agent: python-architect
 metadata:
   category: backend
@@ -9,28 +9,44 @@ metadata:
 user-invocable: true
 ---
 
-## STEP 1 - DETECT FRAMEWORK
+# Implement Feature
 
-Use skill: `stack-detect` to determine FastAPI or Django. Read `pyproject.toml` / `requirements.txt` to confirm.
+## When to Use
 
-## STEP 2 - GATHER
+- Implementing a new Python feature end-to-end (migration -> model -> service -> endpoint -> tests)
+- Scaffolding a complete CRUD or domain-specific resource with production-ready patterns
+- Adding a new domain aggregate requiring REST API, persistence, background tasks, and test coverage
+- Any task requiring coordinated generation of multiple FastAPI or Django layers
 
-Ask the user these questions before writing any code:
+## Rules
+
+- Detect framework first - FastAPI (primary) or Django (secondary) - before generating any code
+- Pydantic v2 schemas (FastAPI) or DRF serializers (Django) for all responses - never return raw ORM objects
+- `async def` on all FastAPI endpoints; type hints on all function signatures
+- Celery `.delay()` dispatched AFTER DB transaction commits, never inside the transaction
+- Transactions: FastAPI = session scoped per request via `Depends(get_db)`; Django = `@transaction.atomic()`
+- Each step must complete and be reviewed before proceeding to the next
+- Present the design to the user for approval before generating code
+
+## Implementation
+
+STEP 1 - DETECT FRAMEWORK: Use skill: `stack-detect` to determine FastAPI or Django. Read `pyproject.toml` / `requirements.txt` to confirm.
+
+STEP 2 - GATHER: Ask the user these questions before writing any code:
 
 1. What is the feature? (brief description, primary use case)
 2. What are the main entities/models? (fields, relationships, constraints)
 3. Are there external integrations? (payment APIs, email, third-party services)
 4. Are background jobs needed? (async processing, notifications, scheduled tasks)
 5. Does the feature need authentication/authorization?
-6. Are there status transitions? (e.g., order: pending → processing → completed)
+6. Are there status transitions? (e.g., order: pending -> processing -> completed)
 
-## STEP 3 - DESIGN
-
-Propose the implementation layers and present for user approval before generating code:
+STEP 3 - DESIGN: Propose the implementation layers and present for user approval before generating code.
 
 **If FastAPI**: Use skill: `python-fastapi-patterns` for endpoint/DI design. Use skill: `python-sqlalchemy-patterns` for ORM/session design.
 **If Django**: Use skill: `python-django-patterns` for ViewSet/serializer design.
 **If background jobs needed**: Use skill: `python-celery-patterns` for task design.
+**If async heavy**: Use skill: `python-async-patterns` for concurrency design.
 
 Present a file tree showing what will be generated:
 
@@ -50,24 +66,15 @@ app/
 migrations/versions/xxx_add_orders.py
 ```
 
-## STEP 4 - DATABASE
+STEP 4 - DATABASE: Use skill: `python-migration-safety` to generate the migration safely. Include indexes on foreign keys and frequently-filtered columns. For list endpoints, add indexes that support the default sort order.
 
-Use skill: `python-migration-safety` to generate the migration safely. Include indexes on foreign keys and frequently-filtered columns. For list endpoints, add indexes that support the default sort order.
-
-## STEP 5 - MODELS
-
-Generate SQLAlchemy 2.0 models (Mapped[], mapped_column) or Django models. Include:
+STEP 5 - MODELS: Generate SQLAlchemy 2.0 models (Mapped[], mapped_column) or Django models. Include:
 - Type annotations on all fields
 - Relationships with appropriate loading strategy
 - DB-level constraints (unique, check, not-null)
 - `TextChoices` (Django) or string enum (FastAPI) for status fields
 
-## STEP 6 - SERVICES
-
-Business logic layer. Key rules:
-
-- **Transaction boundary**: FastAPI = session scoped per request via `Depends(get_db)`. Django = `@transaction.atomic()`.
-- **Celery dispatch timing**: Always dispatch `.delay()` AFTER the DB transaction commits, never inside it. If the task fires before commit, the worker may read stale data or a row that doesn't exist yet.
+STEP 6 - SERVICES: Business logic layer.
 
 ```python
 # CORRECT: dispatch after commit
@@ -80,12 +87,9 @@ async def create_order(self, order_in: OrderCreate) -> Order:
     return order
 ```
 
-- **External service calls**: Use `httpx.AsyncClient` with timeout. Classify errors: timeout → 503, 404 → not-found, 5xx → retry. Never use `requests` in async context.
-- **If async heavy**: Use skill: `python-async-patterns`
+- **External service calls**: Use `httpx.AsyncClient` with timeout. Classify errors: timeout -> 503, 404 -> not-found, 5xx -> retry. Never use `requests` in async context.
 
-## STEP 7 - ENDPOINTS
-
-FastAPI routes or Django views. Map domain errors to HTTP status codes:
+STEP 7 - ENDPOINTS: FastAPI routes or Django views. Map domain errors to HTTP status codes:
 
 | Domain Error | HTTP Status |
 |---|---|

@@ -1,6 +1,9 @@
 ---
 name: python-celery-patterns
-description: "Celery background task patterns for Python. Task design, idempotency, retry strategy, queue routing, error handling, task chains/groups/chords, monitoring with Flower, and deployment with both FastAPI and Django."
+description: "Celery background task patterns for Python. Covers idempotent task design, retry strategies with backoff, queue routing, canvas workflows (chain/group/chord), acks_late delivery guarantees, and integration with FastAPI and Django."
+metadata:
+  category: backend
+  tags: [python, celery, background-tasks, queue, retry, idempotency]
 user-invocable: false
 ---
 
@@ -260,7 +263,14 @@ def process_payment(self, order_id: int) -> None:
 
 Always pair `acks_late=True` with an idempotency guard in the task body.
 
-## 10. ANTI-PATTERNS
+## 10. EDGE CASES
+
+- **Task name changes after deployment**: Celery identifies tasks by their import path. Renaming or moving a task module while messages are in the queue causes `NotRegistered` errors. Keep old task names as aliases during transition: `@celery_app.task(name="old.module.task_name")`.
+- **`acks_late` with `visibility_timeout`**: When using Redis as broker with `acks_late=True`, tasks that exceed `visibility_timeout` (default 1 hour) are re-delivered to another worker while still running. Set `visibility_timeout` higher than your longest expected task duration.
+- **Chord callback with empty group**: A chord with an empty group header calls the callback immediately with an empty list. Guard against this in the callback.
+- **Database connections in workers**: Celery workers fork by default (`prefork` pool). Each worker process needs its own DB connection - do not share a connection pool across forked processes. Use `worker_process_init` signal to initialize per-process connections.
+
+## 11. ANTI-PATTERNS
 
 - ❌ Passing ORM objects as task arguments (use IDs - objects aren't JSON-serializable)
 - ❌ Tasks longer than 30 minutes without chunking

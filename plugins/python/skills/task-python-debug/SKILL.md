@@ -1,6 +1,6 @@
 ---
 name: task-python-debug
-description: Debug Python application errors - tracebacks, Celery errors, pytest failures, and unexpected behavior in FastAPI and Django apps. Paste a traceback or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
+description: Debug Python application errors by classifying tracebacks, locating root causes, and providing minimal before/after fixes. Covers FastAPI, Django, SQLAlchemy, Celery, and async errors. Paste a traceback or describe the unexpected behavior. Not for production incident triage (use task-incident-root-cause for that).
 agent: python-architect
 metadata:
   category: backend
@@ -12,6 +12,8 @@ user-invocable: true
 ## STEP 1 - INTAKE
 
 Ask for: full traceback, the source file where the error originates, framework (FastAPI or Django), and what the user expected to happen. If a traceback is provided, identify the first application-code frame (skip library frames) and read that file.
+
+**If partial input**: If the user provides only a description without a traceback, search the codebase for the relevant file/function and ask clarifying questions. If only an error message is given (no traceback), check logs and match against the classification table below before asking for more context.
 
 ## STEP 2 - CLASSIFY
 

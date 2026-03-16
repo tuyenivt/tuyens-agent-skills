@@ -1,6 +1,9 @@
 ---
 name: python-testing-patterns
-description: "pytest patterns for Python. Fixtures, parametrize, async testing (pytest-asyncio), factory_boy, mocking (unittest.mock/pytest-mock), FastAPI TestClient, Django test client, Celery task testing."
+description: "pytest patterns for FastAPI, Django, and Celery applications. Covers fixtures, parametrize, async testing with pytest-asyncio, factory_boy for test data, mocking with respx/pytest-mock, Testcontainers for real PostgreSQL, and CI coverage configuration."
+metadata:
+  category: backend
+  tags: [python, pytest, testing, fixtures, mocking, factory-boy, testcontainers]
 user-invocable: false
 ---
 
@@ -226,7 +229,14 @@ omit = ["tests/*", "migrations/*"]
 
 For parallel execution: `pytest -n auto` (pytest-xdist).
 
-## 8. ANTI-PATTERNS
+## 8. EDGE CASES
+
+- **Async fixture scoping**: `scope="session"` async fixtures require `pytest-asyncio` 0.21+ and a session-scoped event loop. If tests hang or fail with event loop errors, check that the event loop fixture scope matches.
+- **Dependency override cleanup**: Always call `app.dependency_overrides.clear()` in fixture teardown - leftover overrides leak between tests.
+- **Factory circular references**: When two factories reference each other via `SubFactory`, use `LazyAttribute` or `post_generation` to break the cycle.
+- **Transaction isolation with Testcontainers**: If tests share a session-scoped database, use `SAVEPOINT` rollback per test (not `DROP/CREATE` tables) for speed.
+
+## 9. ANTI-PATTERNS
 
 - ❌ `unittest.TestCase` classes (use plain functions with pytest)
 - ❌ SQLite for integration tests (use Testcontainers PostgreSQL)
@@ -235,3 +245,4 @@ For parallel execution: `pytest -n auto` (pytest-xdist).
 - ❌ Patching at the source module instead of the import path
 - ❌ `CELERY_TASK_ALWAYS_EAGER` without also testing with real serialization (masks pickle/JSON bugs)
 - ❌ Shared mutable state between tests (global variables, module-scoped fixtures that mutate)
+- ❌ `scope="session"` on fixtures that mutate DB state (breaks test isolation)

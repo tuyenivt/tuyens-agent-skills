@@ -1,6 +1,9 @@
 ---
 name: python-async-patterns
-description: "Python async/await patterns: event loop management, async context managers, asyncio.gather, avoiding event loop blocking, sync-to-async bridges, and common async pitfalls."
+description: "Python async/await patterns for I/O-bound operations. Covers asyncio.gather, TaskGroup, semaphore-based concurrency control, sync-to-async bridges, and event loop blocking prevention."
+metadata:
+  category: backend
+  tags: [python, async, asyncio, concurrency, event-loop]
 user-invocable: false
 ---
 
@@ -147,7 +150,14 @@ async def fetch_all(urls: list[str]) -> list[dict]:
         )
 ```
 
-## 6. ANTI-PATTERNS
+## 6. EDGE CASES
+
+- **`asyncio.gather` cancellation**: When one task in `gather` raises (without `return_exceptions=True`), all other tasks are cancelled. If those tasks hold resources (DB connections, file handles), ensure cleanup via `try/finally` in each coroutine.
+- **`run_in_executor` with thread-local state**: `run_in_executor` runs sync code in a thread pool. Thread-local state (Flask/Django request context, SQLAlchemy scoped sessions) is not available in executor threads - pass all needed data as function arguments.
+- **Generator-based async iteration**: `async for` with database cursors holds the connection open for the entire iteration. For large result sets, prefer fetching in batches with explicit pagination over server-side cursors.
+- **Mixing `asyncio.timeout` with `httpx.Timeout`**: When using both, the stricter timeout wins. Set `httpx.Timeout` for per-request control and `asyncio.timeout` for overall operation budgets.
+
+## 7. ANTI-PATTERNS
 
 - ❌ Blocking calls in async functions (kills throughput)
 - ❌ Creating event loops manually (FastAPI/uvicorn manages this)
