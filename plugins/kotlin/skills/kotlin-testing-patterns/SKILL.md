@@ -1,6 +1,6 @@
 ---
 name: kotlin-testing-patterns
-description: "Kotlin testing with MockK, kotest, and Spring test integration. Mocking Kotlin classes (no open requirement), coroutine testing, Kotlin-friendly assertions."
+description: "Kotlin testing patterns with MockK (coEvery/coVerify for suspend functions), Kotest matchers, Turbine for Flow testing, Spring test slice integration with @MockkBean, and runTest for coroutine test bodies."
 user-invocable: false
 ---
 
@@ -269,10 +269,37 @@ fun `timeout is enforced`() = runTest {
 }
 ```
 
+## Edge Cases
+
+**Mocking extension functions**: MockK can mock extension functions, but only with `mockkStatic`:
+
+```kotlin
+// Extension function under test
+fun Order.isExpired(): Boolean = this.createdAt.isBefore(Instant.now().minus(Duration.ofDays(30)))
+
+// Test
+mockkStatic(Order::isExpired) // required for extension functions
+every { any<Order>().isExpired() } returns true
+```
+
+**lateinit in tests**: When using `@MockkBean` with `lateinit var`, ensure the test context is properly initialized. If you see `UninitializedPropertyAccessException`, verify `@ExtendWith(MockKExtension::class)` or `@SpringBootTest` is present on the test class.
+
+**relaxed mocks for large interfaces**: When a mock has many methods but only a few are relevant to the test, use `relaxed = true` to avoid stubbing every call:
+
+```kotlin
+val repo = mockk<OrderRepository>(relaxed = true) // returns default values for unstubbed methods
+coEvery { repo.findById(1L) } returns order // override only what matters
+```
+
+Use relaxed mocks sparingly - they hide missing stubs that might indicate incorrect test assumptions.
+
+**Testing coroutine timeouts**: `runTest` uses virtual time, so `delay()` advances instantly. To test real timeout behavior, use `withTimeout` inside `runTest` - the virtual clock handles it correctly without real waiting.
+
 ## Avoid
 
-- Mockito for mocking Kotlin classes - use MockK
-- `every` / `verify` for `suspend` functions - use `coEvery` / `coVerify`
+- Mockito for mocking Kotlin classes - use MockK (works with final classes by default)
+- `every` / `verify` for `suspend` functions - use `coEvery` / `coVerify` (regular versions silently fail)
 - `@MockBean` in Spring test slices - use `@MockkBean`
-- `runBlocking` in test bodies - use `runTest`
+- `runBlocking` in test bodies - use `runTest` (controls virtual time, prevents flakiness)
 - JUnit 5 assertions in Kotlin code - use kotest matchers or assertk for readability
+- Relaxed mocks as default - use only when a mock has many irrelevant methods

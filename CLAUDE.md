@@ -13,11 +13,11 @@ plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
     skills/      # 37 skills: 13 workflow (task-*) + 24 atomic
   delivery/      # Release planning and delivery coordination
-    skills/      # 5 workflow skills
+    skills/      # 6 workflow skills
   architecture/  # Stack-agnostic architecture design and re-architecture
-    skills/      # 10 skills: 7 workflow + 3 atomic
+    skills/      # 15 skills: 9 workflow + 6 atomic
   oncall/        # Incident response workflows
-    skills/      # 4 skills: 2 workflow + 2 atomic
+    skills/      # 7 skills: 4 workflow + 3 atomic
   java/          # Java 21+ / Spring Boot 3.5+
     skills/      # 12 skills (2 workflow + 10 atomic)
     agents/      # 11 agent definitions
@@ -25,10 +25,13 @@ plugins/
     skills/      # 11 skills (2 workflow + 9 atomic)
     agents/      # 11 agent definitions
   kotlin/        # Thin companion to java plugin (requires core + java)
+    skills/      # 5 skills (2 workflow + 3 atomic)
     agents/      # 11 agent definitions
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
+    skills/      # 9 skills (2 workflow + 7 atomic)
     agents/      # 11 agent definitions
   rails/         # Ruby on Rails 7+/8
+    skills/      # 8 skills (2 workflow + 6 atomic)
     agents/      # 11 agent definitions
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
     skills/      # 10 skills (2 workflow + 8 atomic)
@@ -99,7 +102,8 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 2. Add YAML frontmatter with `name`, `description`, `metadata`, and `user-invocable`
 3. For workflow skills: prefix with `task-`, set `user-invocable: true`, `type: workflow`
 4. For atomic skills: set `user-invocable: false`
-5. Update the plugin's `README.md` skill table
+5. Write skill body following the content standards below
+6. Update the plugin's `README.md` skill table
 
 ### Atomic Skill Contract Convention
 
@@ -110,6 +114,48 @@ Atomic skills that consume stack-detect output must declare this dependency at t
 ```
 
 This signals to workflow authors that `stack-detect` must have already run before invoking this atomic skill. The consuming workflow is responsible for loading `stack-detect` - the atomic skill does not load it itself.
+
+### Skill Content Standards
+
+Every skill must follow these content quality standards. Skills that skip these produce weaker output.
+
+#### Description (frontmatter)
+
+- 1-2 sentences focused on what the skill **does** (positive framing)
+- Do not list what the skill is NOT for in the description - move that to "When to Use" in the body
+- Description drives skill selection in the slash menu - make it trigger-accurate
+
+#### Required Body Sections
+
+**Workflow skills** (`task-*`) must include:
+
+| Section           | Purpose                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| **When to Use**   | Scope, constraints, and when NOT to use                                             |
+| **Workflow**      | Numbered steps (STEP 1, STEP 2, ...) with `Use skill:` delegations to atomic skills |
+| **Output Format** | Template showing the expected deliverable structure                                 |
+| **Self-Check**    | Checkbox list of completion criteria, aligned 1:1 with workflow steps               |
+| **Avoid**         | Anti-patterns and common mistakes                                                   |
+
+**Atomic skills** must include:
+
+| Section           | Purpose                                                |
+| ----------------- | ------------------------------------------------------ |
+| **When to Use**   | Usage scope                                            |
+| **Rules**         | Non-negotiable constraints governing the pattern       |
+| **Patterns**      | Detailed guidance with bad/good code example pairs     |
+| **Output Format** | Structured contract that consuming workflows depend on |
+| **Avoid**         | Domain-specific anti-patterns                          |
+
+#### Content Quality Rules
+
+- **Output format is a contract.** Consuming workflow skills parse atomic skill output. Use exact field names and value enums (e.g., `Blast Radius: {Narrow | Moderate | Wide | Critical}`).
+- **Self-check items must match workflow steps.** Every numbered step should have a corresponding checkbox. Do not add checks for steps that do not exist.
+- **Code examples use bad/good pairs.** Show the mistake immediately followed by the correct approach, both with brief explanations.
+- **Tables for decision support.** Use tables for depth levels, scope options, classification criteria - anything a user needs to scan quickly.
+- **Handle edge cases explicitly.** Skills must handle: missing input, unknown stack, partial information. Do not fail silently.
+- **Workflow skills must delegate to all relevant atomic skills.** If an atomic skill exists for a concern the workflow touches, compose it via `Use skill:`.
+- **Consistent depth across stacks.** A Python atomic skill should cover the same categories (patterns, anti-patterns, output format, avoid) as an equivalent Java skill.
 
 ## Adding a New Agent
 

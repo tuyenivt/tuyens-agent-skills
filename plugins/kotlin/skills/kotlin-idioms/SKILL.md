@@ -1,6 +1,6 @@
 ---
 name: kotlin-idioms
-description: "Kotlin idioms for Spring Boot: data classes, null safety, extension functions, scope functions (let/apply/run/also), sealed classes, inline value classes, and Kotlin-Java interop patterns."
+description: "Idiomatic Kotlin patterns for Spring Boot projects: data classes for DTOs, null safety over Optional, scope functions (let/apply/run/also), sealed class error hierarchies, inline value classes, and Kotlin-Java interop annotations."
 user-invocable: false
 ---
 
@@ -193,6 +193,22 @@ val result = orders.asSequence()
     .toList()
 ```
 
+## Edge Cases
+
+**Scope function nesting**: Never nest more than 2 scope functions. If you find yourself writing `x?.let { it.run { ... } }`, extract to a named function instead.
+
+**Data class copy() with JPA**: Even for DTOs, be careful with `copy()` on classes that hold mutable collections - `copy()` is a shallow copy. The new instance shares the same list reference.
+
+**Inline value classes with Jackson**: Jackson requires the `jackson-module-kotlin` module and may need `@JsonCreator` or `@JvmInline` to serialize/deserialize inline value classes correctly. Test serialization round-trips when introducing value classes to API boundaries.
+
+**Kotlin nullable types from Java code**: Java methods without nullability annotations (`@Nullable`, `@NonNull`) return platform types (`T!`). Treat these as nullable at call sites to avoid runtime `NullPointerException`:
+
+```kotlin
+// Java library returns String! (platform type)
+val name: String = javaService.getName() // compiles but crashes if null
+val name: String? = javaService.getName() // safe - forces null handling
+```
+
 ## Avoid
 
 - `Optional<T>` - use Kotlin nullable types
@@ -200,4 +216,4 @@ val result = orders.asSequence()
 - `!!` for expected null cases - use `?: error(...)` or handle the null path
 - Java streams - use Kotlin stdlib collection operations
 - Java-style getters/setters - use Kotlin properties
-- Nested scope functions without a clear reason for each level
+- Nested scope functions beyond 2 levels deep - extract to named functions instead

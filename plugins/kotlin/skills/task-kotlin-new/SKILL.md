@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-new
-description: End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Use for full feature delivery. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
+description: End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
 agent: kotlin-architect
 metadata:
   category: backend
@@ -9,7 +9,30 @@ metadata:
 user-invocable: true
 ---
 
-STEP 1 - GATHER REQUIREMENTS (MANDATORY)
+# Implement Kotlin Feature
+
+## When to Use
+
+- Implementing a new Kotlin + Spring Boot feature end-to-end (entity, controller, tests, migration)
+- Scaffolding a complete CRUD or domain-specific resource with Kotlin idioms
+- Adding a new domain aggregate with REST API, persistence, coroutines, and test coverage
+- Any daily coding task that requires coordinated generation of multiple Spring Boot layers in Kotlin
+
+## Rules
+
+- Constructor injection only - never `@Autowired` fields
+- `data class` for DTOs; regular `class` for JPA entities (Hibernate proxies are incompatible with data classes)
+- `@Transactional(readOnly = true)` as default on service classes; `@Transactional` on mutating methods only
+- Never expose JPA entities in API responses - always map to DTO data classes
+- No `synchronized` blocks - breaks Virtual Threads; use `ReentrantLock` if needed
+- Use `suspend` endpoints only when the service path is coroutine-based
+- Use `@MockkBean` not `@MockBean`; `coEvery`/`coVerify` for `suspend` function mocks
+- Each step must complete and be reviewed before proceeding to the next
+- Present the design to the user for approval before generating code
+
+## Implementation
+
+### STEP 1 - GATHER REQUIREMENTS (MANDATORY)
 
 Collect and confirm:
 
@@ -18,105 +41,142 @@ Collect and confirm:
 - Fields, constraints, validation rules
 - Relationships to existing entities
 - API visibility (public/internal/admin)
-- Coroutine usage expectations
+- Coroutine usage expectations (suspend services? Flow streaming?)
+- Async/messaging needs
 
-Do not continue until requirements are complete.
+Do not continue until requirements are complete. If the user provides incomplete input, ask targeted clarifying questions.
 
-STEP 2 - DESIGN (MANDATORY APPROVAL GATE)
+### STEP 2 - DESIGN (MANDATORY APPROVAL GATE)
 
 Propose and wait for approval:
 
-- Endpoints (method, URI, status codes)
-- Request/response DTO contracts
+- Endpoints (method, URI, status codes, request/response DTOs)
 - Entity model + DB schema changes
-- Transaction boundaries
+- Service methods and transaction boundaries
+- Coroutine scope decisions (suspend vs blocking, Flow vs List)
 - Error model and validation behavior
 
 Only generate code after user approves design.
 
-STEP 3 - ENTITY + MIGRATION
+### STEP 3 - ENTITY + MIGRATION
+
+Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID).
+
+Use skill: `spring-db-migration-safety` for zero-downtime migration safety.
 
 Generate:
 
-- Entity: Kotlin class (not data class) with JPA annotations
-- Flyway migration with indexes and FK constraints
+- Entity: Kotlin class (not data class) with JPA annotations, audit fields
+- Flyway migration with indexes for FK and filter columns
 
-Rules:
+Entity changes must always include a migration.
 
-- Use skill: `kotlin-idioms` for Kotlin/JPA conventions
-- Use skill: `spring-db-migration-safety` for zero-downtime migration safety
-- Entity changes must always include migration
+### STEP 4 - REPOSITORY
 
-STEP 4 - REPOSITORY
+Use skill: `spring-jpa-performance` for query patterns.
 
-Generate Spring Data repository and custom queries as needed.
+Generate Spring Data repository and custom queries as needed:
 
-Rules:
+- Extend `JpaRepository<{Name}, Long>` (or `CoroutineCrudRepository` if project uses R2DBC)
+- JPQL `@Query` before native SQL; `Specification` for dynamic filters
+- Add `Pageable` methods when listing/filtering is required
 
-- Use JPQL/projections before native SQL
-- Add pageable methods when listing/filtering is required
-- Use suspend repository APIs only when project conventions require it
+### STEP 5 - SERVICE
 
-STEP 5 - SERVICE
+Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation.
 
-Generate service with business rules and mapping.
+Use skill: `spring-transaction` for transaction patterns.
 
-Rules:
+Generate service with business rules and mapping:
 
 - Constructor injection only
-- Read methods: `@Transactional(readOnly = true)`
-- Mutations: explicit `@Transactional`
-- Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation
-- No `synchronized` blocks
+- `@Service @Transactional(readOnly = true)`
+- `@Transactional` on mutating methods only
+- Entity-DTO mapping in-class
+- Business exceptions from common base
 
-STEP 6 - CONTROLLER + DTO
+### STEP 6 - CONTROLLER + DTO
+
+Use skill: `api-guidelines` for REST conventions.
 
 Generate:
 
-- REST controller with proper status codes
-- Kotlin request/response data classes with validation annotations
+- REST controller with `@RestController @RequestMapping("/api/v1/{resources}")`
+- Kotlin request/response data classes with Jakarta validation annotations
+- `@Valid @RequestBody` on writes; `Pageable` on list endpoints
+- `201 CREATED` for POST, `204 NO_CONTENT` for DELETE
 
 Rules:
 
 - Use `suspend` endpoints only when service path is coroutine-based
 - Never return entities directly
-- Keep API contract stable and explicit
 
-STEP 7 - ERROR HANDLING + SECURITY CHECK
+### STEP 7 - ERROR HANDLING + SECURITY CHECK
 
-- Apply consistent error mapping via Java plugin conventions
+Use skill: `spring-exception-handling` for error mapping patterns.
+
+- Apply consistent error mapping (use existing `@ControllerAdvice` or create if absent)
 - Confirm endpoint auth requirements are explicit before finalizing
 
-STEP 8 - TESTS
+### STEP 8 - TESTS
+
+Use skill: `kotlin-testing-patterns` for MockK, kotest, and coroutine test patterns.
 
 Generate all three layers:
 
-- Unit tests (MockK; `coEvery`/`coVerify` for suspend)
-- Repository integration tests (`@DataJpaTest`)
-- Controller/API tests (`@WebMvcTest`)
+- Unit tests: MockK with `coEvery`/`coVerify` for suspend functions; kotest matchers
+- Repository integration tests: `@DataJpaTest` + Testcontainers
+- Controller/API tests: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
 
-Use skill: `kotlin-testing-patterns` and Java plugin test slice conventions.
+Cover happy path, not-found, validation errors, and error responses.
 
-STEP 9 - VALIDATE
+### STEP 9 - VALIDATE
 
-Run:
+Run: `./gradlew compileKotlin compileTestKotlin test`
 
-`./gradlew compileKotlin compileTestKotlin test`
+### STEP 10 - OUTPUT SUMMARY
 
-STEP 10 - OUTPUT SUMMARY
+Present the output format below.
 
-Provide:
+## Output
 
-- Files created (paths)
-- Endpoints delivered
-- Tests added by layer
-- Validation result and follow-up actions (if any)
+```markdown
+## Generated Files
+
+- [ ] Entity: `src/main/kotlin/.../entity/{Name}.kt`
+- [ ] DTO: `src/main/kotlin/.../dto/{Name}Request.kt`
+- [ ] DTO: `src/main/kotlin/.../dto/{Name}Response.kt`
+- [ ] Repository: `src/main/kotlin/.../repository/{Name}Repository.kt`
+- [ ] Service: `src/main/kotlin/.../service/{Name}Service.kt`
+- [ ] Controller: `src/main/kotlin/.../controller/{Name}Controller.kt`
+- [ ] Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql`
+- [ ] Unit test: `src/test/kotlin/.../service/{Name}ServiceTest.kt`
+- [ ] Integration test: `src/test/kotlin/.../repository/{Name}RepositoryTest.kt`
+- [ ] API test: `src/test/kotlin/.../controller/{Name}ControllerTest.kt`
+
+## Endpoints
+
+| Method | URI                      | Status | Description      |
+| ------ | ------------------------ | ------ | ---------------- |
+| GET    | /api/v1/{resources}      | 200    | List (paginated) |
+| GET    | /api/v1/{resources}/{id} | 200    | Get by ID        |
+| POST   | /api/v1/{resources}      | 201    | Create           |
+| PUT    | /api/v1/{resources}/{id} | 200    | Update           |
+| DELETE | /api/v1/{resources}/{id} | 204    | Delete           |
+
+## Tests
+
+- Unit tests: {count} (service layer)
+- Integration tests: {count} (repository layer)
+- API tests: {count} (controller layer)
+```
 
 ## Self-Check
 
 - [ ] Requirements gathered and design approved before any code generated
 - [ ] All layers generated: entity, Flyway migration, repository, service, controller, DTOs, tests
-- [ ] Kotlin class (not data class) for JPA entities; constructor injection only; no `synchronized` blocks
-- [ ] `suspend` used consistently; MockK with `coEvery`/`coVerify` for suspend functions
+- [ ] Kotlin class (not data class) for JPA entities; `data class` for DTOs; constructor injection only; no `synchronized` blocks
+- [ ] `suspend` used consistently where needed; MockK with `coEvery`/`coVerify` for suspend functions
+- [ ] `@MockkBean` used (not `@MockBean`); Testcontainers for integration tests
 - [ ] `./gradlew compileKotlin compileTestKotlin test` passes
-- [ ] Migration includes indexes; list endpoints paginated; files and test count presented
+- [ ] Migration includes indexes; list endpoints paginated; file list, endpoint table, and test count presented

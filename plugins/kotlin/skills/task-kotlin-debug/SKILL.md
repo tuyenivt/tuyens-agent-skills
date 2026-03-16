@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-debug
-description: Debug Kotlin + Spring Boot errors - null safety violations, coroutine stack traces, MockK setup errors, and Kotlin-JPA plugin configuration problems. Paste a stack trace or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
+description: Diagnose and fix Kotlin + Spring Boot errors including null safety violations, coroutine stack traces, MockK setup errors, and Kotlin-JPA plugin issues. Not for production incident analysis with blast radius assessment (use task-incident-root-cause).
 agent: kotlin-architect
 metadata:
   category: backend
@@ -9,9 +9,22 @@ metadata:
 user-invocable: true
 ---
 
+## When to Use
+
+- Debugging a Kotlin + Spring Boot stack trace or error message
+- Fixing null safety violations (`KotlinNullPointerException`, `UninitializedPropertyAccessException`)
+- Resolving Kotlin-JPA plugin misconfiguration (`No default constructor`, entity is final)
+- Diagnosing coroutine errors (suspension outside coroutine body, Flow exception transparency)
+- Fixing MockK test failures (`no answer found`, wrong mock bean annotation)
+
 ## STEP 1 - INTAKE
 
 Ask for: full stack trace or error message, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip library frames) and read that file.
+
+**Edge cases**:
+- If no stack trace is provided, ask the user for the exact error message or describe the unexpected behavior, then search the codebase for likely trigger points
+- If the stack trace contains only library frames (no application code), look for configuration errors in `build.gradle.kts`, `application.yml`, or Spring `@Configuration` classes
+- If the error is a compilation error (not runtime), skip to STEP 4 - the root cause is in the compiler message itself
 
 ## STEP 2 - CLASSIFY
 

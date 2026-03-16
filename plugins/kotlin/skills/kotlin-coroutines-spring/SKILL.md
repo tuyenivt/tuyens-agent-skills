@@ -1,6 +1,6 @@
 ---
 name: kotlin-coroutines-spring
-description: "Kotlin coroutines with Spring Boot 3.5+: suspend functions in services, Flow for streaming, coroutine-aware transactions, Virtual Thread interop, and structured concurrency."
+description: "Patterns for Kotlin coroutines in Spring Boot 3.5+: suspend service/controller functions, Flow streaming, coroutine-aware transactions, Virtual Thread interop, and structured concurrency with coroutineScope/supervisorScope."
 user-invocable: false
 ---
 
@@ -179,9 +179,13 @@ class ExternalApiClient(private val webClient: WebClient) {
     suspend fun fetchWithFullResponse(id: String): ResponseEntity<Product> =
         webClient.get()
             .uri("/products/{id}", id)
-            .awaitExchange { it.toEntity<Product>().awaitBody().let { body ->
-                ResponseEntity.ok(body)
-            }}
+            .awaitExchange { response ->
+                if (response.statusCode().is2xxSuccessful) {
+                    ResponseEntity.ok(response.awaitBody<Product>())
+                } else {
+                    ResponseEntity.status(response.statusCode()).build()
+                }
+            }
 }
 ```
 
@@ -206,6 +210,38 @@ suspend fun fetchData(): Data =
     withContext(Dispatchers.IO) { // unnecessary - Virtual Thread already handles this
         repo.findAll()
     }
+```
+
+### Edge Cases
+
+**Mixed blocking and coroutine codebases**: When a project has both blocking (JDBC/JPA) and coroutine-based (R2DBC) code paths, keep them in separate service classes. Do not mix `suspend` and blocking calls in the same service without explicit dispatcher management.
+
+**Spring `@Scheduled` with coroutines**: `@Scheduled` methods cannot be `suspend`. Use a `CoroutineScope` injected as a bean:
+
+```kotlin
+@Component
+class ScheduledTasks(private val scope: CoroutineScope, private val service: OrderService) {
+
+    @Scheduled(fixedRate = 60_000)
+    fun cleanupExpiredOrders() {
+        scope.launch { service.cleanupExpired() }
+    }
+}
+```
+
+**Exception handling in Flow**: Exceptions thrown inside `Flow.collect` violate exception transparency. Use the `catch` operator before `collect`:
+
+```kotlin
+// Bad: throwing inside collect violates exception transparency
+flow.collect { value ->
+    if (value.isInvalid()) throw ValidationException("invalid") // breaks Flow contract
+}
+
+// Good: catch operator before collect
+flow
+    .onEach { value -> if (value.isInvalid()) throw ValidationException("invalid") }
+    .catch { e -> log.error("Flow error", e) }
+    .collect { value -> process(value) }
 ```
 
 ## Anti-Patterns
