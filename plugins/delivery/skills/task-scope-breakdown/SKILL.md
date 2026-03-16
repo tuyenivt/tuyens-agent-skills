@@ -1,6 +1,6 @@
 ---
 name: task-scope-breakdown
-description: Break a feature, epic, or ticket into implementable tasks with dependency ordering, relative sizing (S/M/L/XL), and scope creep risk flags. Surfaces hidden complexity - migrations, backward compatibility, observability, rollback - before a sprint starts. Use during sprint planning, before kicking off a large feature, or when a ticket feels bigger than it looks. Not a substitute for system design (use task-design-architecture first for complex new systems) and not for prioritizing which features to build (use task-debt-prioritize for debt triage).
+description: Break a feature, epic, or ticket into implementable tasks with dependency ordering, relative sizing (S/M/L/XL), and scope creep risk flags. Surfaces hidden complexity - migrations, backward compatibility, observability, rollback - before a sprint starts. Use during sprint planning, before kicking off a large feature, or when a ticket feels bigger than it looks.
 metadata:
   category: planning
   tags: [planning, estimation, task-breakdown, scope, complexity]
@@ -27,6 +27,8 @@ This skill produces a task breakdown plan. It does not generate implementation c
 - Identifying hidden dependencies and risks before implementation starts
 - Estimating relative effort for a feature before committing to a timeline
 - Reviewing scope to avoid creep during delivery
+
+Not for system design (use `task-design-architecture` for complex new systems) or prioritizing which features to build (use `task-debt-prioritize` for debt triage).
 
 ## Inputs
 

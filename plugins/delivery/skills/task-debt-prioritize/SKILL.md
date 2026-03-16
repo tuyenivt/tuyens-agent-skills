@@ -1,6 +1,6 @@
 ---
 name: task-debt-prioritize
-description: Prioritize technical debt items by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog ready for sprint planning. Not for general code review (use task-code-review) and not for refactoring planning (use task-code-refactor).
+description: Prioritize technical debt items by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog with effort estimates and fix/spike/defer/accept recommendations, ready for sprint planning.
 metadata:
   category: planning
   tags: [tech-debt, prioritization, planning, risk, maintainability]
@@ -221,6 +221,7 @@ Use skill: `complexity-review` to calibrate effort estimates for high-complexity
 ## Self-Check
 
 - [ ] Every item scored on all three axes (blast radius, change frequency, team pain)
+- [ ] Time-sensitive items (CVEs, API deprecations, EOL runtimes) flagged and priority-boosted
 - [ ] All items ranked; deferred and accepted items explicit - not silently dropped
 - [ ] Every top-5 item has a recommended action and relative effort estimate (S/M/L/XL)
 - [ ] Blast radius reflects actual coupling and consumer count, not just code quality

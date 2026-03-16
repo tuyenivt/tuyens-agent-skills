@@ -1,6 +1,6 @@
 ---
 name: task-release-plan
-description: Staff-level production release plan before deploying to production - rollout strategy selection, backward compatibility assessment, DB migration ordering, observability readiness check, and rollback plan. Use before a deployment. Not for post-deploy monitoring (use task-release-validate for that) and not for pre-implementation risk assessment (use task-design-risk-analysis).
+description: Staff-level production release plan before deploying to production - rollout strategy selection, backward compatibility assessment, DB migration ordering, observability readiness check, and rollback plan. Use before deploying a feature, migration, integration, or dependency upgrade to production.
 metadata:
   category: ops
   tags: [release, deployment, rollout, rollback, safety, blast-radius]
@@ -30,6 +30,8 @@ This skill runs BEFORE deployment. It focuses on risk identification and rollout
 - When upgrading dependencies or platform versions
 - When deploying changes that affect shared resources or public APIs
 - When traffic patterns are expected to change significantly
+
+Not for post-deploy monitoring (use `task-release-validate`) or pre-implementation risk assessment (use `task-design-risk-analysis`).
 
 ## Depth Levels
 

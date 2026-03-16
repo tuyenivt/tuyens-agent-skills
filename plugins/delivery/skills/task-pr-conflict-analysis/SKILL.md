@@ -1,6 +1,6 @@
 ---
 name: task-pr-conflict-analysis
-description: Detect semantic conflicts across concurrent active PRs - logical incompatibilities, shared state mutations, and integration ordering risks. Not for single-PR review (use task-code-review or task-code-review-advanced for that).
+description: Detect semantic conflicts across concurrent active PRs - logical incompatibilities, shared state mutations, integration ordering risks, and blast radius overlap. Use when multiple branches touch the same codebase areas and you need a safe merge order.
 metadata:
   category: review
   tags: [pull-request, conflicts, concurrent, integration, merge-order]
@@ -75,6 +75,8 @@ For each PR, extract:
 - Which shared resources it touches
 - What assumptions it makes about the state of the codebase at merge time
 
+**When diffs are unavailable:** If only PR titles or descriptions are provided, infer likely change areas from the description (e.g., "refactors UserService" likely touches user-related models, repositories, and tests). Flag each inference as assumed and recommend manual verification of the specific conflict areas identified in Step 3.
+
 ### Step 3 - Conflict Detection
 
 Cross-analyze all PRs for these conflict types:
@@ -125,6 +127,7 @@ Use skill: `dependency-impact-analysis` for deployment ordering assessment.
 
 When two or more PRs touch the same high-risk area, their combined blast radius is higher than either alone:
 
+Use skill: `change-risk-classification` to classify the risk domains each PR touches.
 Use skill: `blast-radius-analysis` to assess each PR's individual blast radius.
 
 Flag PRs where blast radius overlap creates elevated combined risk:

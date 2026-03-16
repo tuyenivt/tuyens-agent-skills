@@ -1,6 +1,6 @@
 ---
 name: task-dependency-upgrade
-description: Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation. Use before upgrading a major framework version, when a dependency has CVEs requiring upgrade, or when evaluating whether an upgrade is worth the disruption. Not for writing migration code (use task-feature-implement after this assessment) and not for whole-system tech stack modernization (use task-modernize-legacy).
+description: Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation. Use before upgrading a major framework version, when a dependency has CVEs requiring upgrade, or when evaluating whether an upgrade is worth the disruption.
 metadata:
   category: planning
   tags: [dependencies, upgrade, migration, breaking-changes, risk]
@@ -29,6 +29,8 @@ This skill produces an upgrade assessment. It does not write migration code (use
 - When a dependency has known security vulnerabilities requiring an upgrade
 - When evaluating whether an upgrade is worth the disruption relative to the benefit
 - Before upgrading a build tool, runtime, or language version
+
+Not for writing migration code (use `task-feature-implement` after this assessment) or whole-system tech stack modernization (use `task-modernize-legacy`).
 
 ## Inputs
 
@@ -102,6 +104,8 @@ State each conflict and whether it can be resolved, needs its own upgrade, or is
 
 Use skill: `dependency-impact-analysis` to assess deployment ordering if multiple components must upgrade together.
 
+**Multi-dependency upgrades:** When upgrading multiple dependencies simultaneously (e.g., framework + runtime + type system), assess interaction effects between the upgrades. Upgrades that are individually safe may conflict when combined. For each pair of concurrent upgrades, check whether the target version of one is compatible with the target version of the other, and whether a specific upgrade order is required. If interaction risk is high, recommend sequencing the upgrades across separate PRs rather than a single batch.
+
 ### Step 4 - Security Assessment
 
 Assess whether this upgrade addresses known vulnerabilities:
@@ -147,6 +151,8 @@ Use skill: `blast-radius-analysis` to assess upgrade risk:
 | Blast radius        | Narrow/Wide       | Scope of affected functionality           |
 
 ### Step 7 - Rollback Plan
+
+Use skill: `release-safety` for rollback patterns and deployment risk assessment.
 
 Define the rollback procedure before the upgrade starts:
 
