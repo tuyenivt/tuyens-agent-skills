@@ -97,6 +97,16 @@ Consuming workflow skills depend on this structure to surface concurrency issues
 
 Omit "No Issues Found" if issues were listed.
 
+## Testing Concurrent Code
+
+Concurrency bugs often manifest only under contention. Test strategies that surface them:
+
+- **Stress testing**: Run N concurrent operations against shared state and verify invariants hold (e.g., counter matches expected value, no duplicate inserts)
+- **Deterministic scheduling**: Use test harnesses that control goroutine/coroutine/thread scheduling to force specific interleavings (where the ecosystem supports it)
+- **Race detection**: Enable the runtime's race detector during tests (e.g., `go test -race`, ThreadSanitizer, `--cfg tokio_unstable` for Tokio)
+- **Latch-based tests**: Use countdown latches or barriers to ensure all concurrent actors start simultaneously, maximizing contention window
+- **Timeout assertions**: Every concurrent test must have a timeout - a deadlock should fail the test, not hang the CI pipeline
+
 ## Anti-Patterns (All Stacks)
 
 - Shared mutable state without explicit synchronization

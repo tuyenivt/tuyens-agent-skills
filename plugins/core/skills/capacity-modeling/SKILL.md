@@ -67,6 +67,20 @@ The system should scale to handle high traffic. We can add more instances if nee
 | Caching                 | Read-heavy, staleness acceptable         | Invalidation complexity           |
 | Async offload           | Work can be deferred                     | Eventual consistency              |
 
+### Queue Depth Estimation
+
+For async workloads, estimate whether consumers can keep up with producers during sustained peaks:
+
+```
+Producer rate (peak): 2000 msg/s for 60s burst
+Consumer rate: 500 msg/s per consumer x 3 consumers = 1500 msg/s
+Deficit during peak: 2000 - 1500 = 500 msg/s
+Backlog after 60s peak: 500 x 60 = 30,000 messages
+Recovery time: 30,000 / (1500 - 500) = 30 seconds (assuming producer drops to 500 msg/s steady)
+```
+
+If the backlog exceeds the queue's memory/disk limit, the producer blocks or drops messages. Size the queue to hold at least one full peak burst. If recovery time exceeds the interval between peaks, the system cannot keep up and requires more consumers or producer-side throttling.
+
 ### Cost Awareness
 
 For each scaling decision, note:
@@ -99,8 +113,10 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 ### Queue Depth (if async workload)
 
 - Producer rate: {N/s}
-- Consumer rate: {N/s}
-- Time to clear backlog at peak: {duration}
+- Consumer rate: {N/s per consumer} x {consumer count} = {total consumer rate/s}
+- Steady-state queue depth: 0 (if consumer rate > producer rate)
+- Peak backlog accumulation: ({peak producer rate} - {total consumer rate}) x {peak duration seconds} = {N messages}
+- Time to clear backlog after peak: {backlog} / ({total consumer rate} - {steady producer rate}) = {duration}
 - Max queue depth before back-pressure: {N messages}
 
 ### Assumptions

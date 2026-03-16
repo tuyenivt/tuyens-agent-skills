@@ -57,6 +57,20 @@ After loading stack-detect, check for anti-patterns specific to the detected eco
 
 If the detected stack is unfamiliar, apply the universal rules above and recommend the user verify against their framework's documentation and linting tools.
 
+### Good: Specific finding with fix
+
+```
+[Severity: Medium] src/handlers/user_handler.go:12 - Mixed naming styles: camelCase `getUserById` in a Go codebase that uses snake_case elsewhere
+  - Rule: Go convention is MixedCaps/mixedCaps (exported/unexported), not snake_case or camelCase with lowercase prefix
+  - Fix: Rename to `GetUserByID` (exported) or `getUserByID` (unexported). Note: `ID` not `Id` per Go conventions.
+```
+
+### Bad: Vague style comment
+
+```
+[Suggestion] The naming could be more consistent across the codebase.
+```
+
 ---
 
 ## Output Format

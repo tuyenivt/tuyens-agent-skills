@@ -48,6 +48,37 @@ The universal pattern for idempotency is the same across all stacks:
 - Set a TTL on idempotency records (e.g., 24-48 hours) to prevent unbounded growth
 - Use database-level uniqueness (`INSERT ... ON CONFLICT` or equivalent) for atomicity
 
+### Idempotency Key Strategies
+
+| Strategy              | When to Use                                                       | Example                                                 |
+| --------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| Client-generated UUID | Generic POST endpoints where no natural key exists                | `Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000` |
+| Natural business key  | Operations with inherent uniqueness (e.g., one payment per order) | `order_id + payment_type` as composite key              |
+| Content hash          | When the same payload should always produce the same result       | SHA-256 of normalized request body                      |
+| Message ID            | Event/message consumers where the broker assigns an ID            | Kafka offset, SQS message ID, or event `id` field       |
+
+Prefer natural business keys when they exist - they prevent duplicate operations even across different client sessions. Use client-generated UUIDs only as a fallback when no natural key is available.
+
+### Race Condition Prevention
+
+The idempotency check and business operation must be atomic. Without atomicity, two concurrent requests with the same key can both pass the "not yet processed" check:
+
+```
+-- UNSAFE: check-then-act without atomicity
+1. Request A: SELECT * FROM idempotency WHERE key = 'abc' -> not found
+2. Request B: SELECT * FROM idempotency WHERE key = 'abc' -> not found
+3. Request A: executes business logic, INSERT INTO idempotency
+4. Request B: executes business logic, INSERT INTO idempotency -> duplicate!
+
+-- SAFE: atomic insert with conflict handling
+1. Request A: INSERT INTO idempotency (key, status) VALUES ('abc', 'processing')
+   ON CONFLICT (key) DO NOTHING -> 1 row inserted, proceed
+2. Request B: INSERT INTO idempotency (key, status) VALUES ('abc', 'processing')
+   ON CONFLICT (key) DO NOTHING -> 0 rows inserted, return cached response
+```
+
+Use `INSERT ... ON CONFLICT` (PostgreSQL), `INSERT IGNORE` (MySQL), or database-level advisory locks to ensure only one request processes a given key.
+
 ### Event/Message Idempotency
 
 For message consumers and event handlers:

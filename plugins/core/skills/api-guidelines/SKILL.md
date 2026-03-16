@@ -45,6 +45,14 @@ user-invocable: false
 - Use projection queries to fetch only needed fields from the data layer
 - Paginate collection endpoints with consistent pagination metadata
 
+### Rate Limiting
+
+- Apply rate limiting at the API gateway or middleware level, not inside business logic
+- Return `429 Too Many Requests` with `Retry-After` header (seconds until the client can retry)
+- Include rate limit headers in responses: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- Use token bucket or sliding window algorithms - fixed window has burst-at-boundary issues
+- Rate limit by API key or authenticated user, not by IP alone (IPs are shared behind NATs/proxies)
+
 ### Conventions
 
 - Use the framework's standard routing and controller/handler patterns

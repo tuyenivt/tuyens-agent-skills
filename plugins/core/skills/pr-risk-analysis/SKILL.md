@@ -26,7 +26,7 @@ user-invocable: false
 
 ## Pattern
 
-Evaluate these risk signals from the diff:
+Evaluate these risk signals from the diff, PR description, or prose summary (whatever source is available):
 
 ### Risk Signals
 
@@ -50,9 +50,9 @@ Evaluate these risk signals from the diff:
 
 **Medium** -- Cross-module OR shared state OR config changes, but bounded scope.
 
-**High** -- API/schema changes OR transaction boundary changes OR security-adjacent, affecting multiple consumers.
+**High** -- One high-weight signal (API/schema changes, transaction boundary changes, or security-adjacent), affecting multiple consumers.
 
-**Critical** -- Database migration on high-traffic table OR breaking public API change OR security mechanism modification.
+**Critical** -- Two or more high-weight signals, OR database migration on high-traffic table + any other high signal, OR breaking public API change + security mechanism modification.
 
 ### Good: Concise risk output
 

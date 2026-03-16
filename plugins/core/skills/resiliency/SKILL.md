@@ -61,11 +61,50 @@ For transient failures only (5xx, timeouts, connection errors):
 - Total request timeout = sum of downstream timeouts + buffer
 - Always propagate timeout context (e.g., via request context or deadline)
 
+### Timeout Budget
+
+When a request calls multiple downstream services, use a timeout budget to prevent cascading delays:
+
+```
+Total request budget: 5s
+  -> Service A timeout: 2s
+  -> Service B timeout: 2s
+  -> Local processing buffer: 1s
+
+If Service A takes 1.8s, remaining budget for Service B = 5s - 1.8s - 1s = 2.2s
+If Service A takes 3s (timeout), fail fast - do not call Service B
+```
+
+Pass the remaining budget as a deadline/context to each downstream call. Without a budget, a slow first call can leave insufficient time for subsequent calls, causing cascading timeouts.
+
+### Retry Budget
+
+Retries amplify load. Without a budget, a 3-retry policy across 3 services in a chain can turn 1 failed request into 27 downstream calls (3 x 3 x 3). Limit total retries across the request lifecycle:
+
+- Set a **request-level retry budget** (e.g., max 5 total retry attempts per incoming request)
+- Decrement the budget on each retry at any level in the chain
+- When the budget is exhausted, fail fast with no further retries
+- Pass the remaining retry budget as context/header to downstream calls
+
 ### Bulkhead
 
 - Isolate failure domains with separate thread/connection pools per downstream service
 - Limit concurrent calls to each downstream dependency independently
 - Prevents one slow dependency from consuming all resources
+
+### Fallback Patterns
+
+When a dependency fails, degrade gracefully rather than propagating the failure:
+
+| Pattern          | Use When                      | Example                                                                |
+| ---------------- | ----------------------------- | ---------------------------------------------------------------------- |
+| Cached fallback  | Stale data is acceptable      | Return cached product catalog when catalog-service is down             |
+| Default value    | A reasonable default exists   | Return default shipping estimate when shipping-service times out       |
+| Partial response | Some data is better than none | Return order without recommendations when recommendation-service fails |
+| Queue for later  | Operation can be deferred     | Queue the notification for retry instead of failing the order          |
+| Fail fast        | No safe degradation exists    | Return 503 immediately rather than waiting for a timeout               |
+
+Every fallback must log the original failure at WARN level - silent fallbacks hide degradation until it compounds.
 
 ## Stack-Specific Guidance
 
