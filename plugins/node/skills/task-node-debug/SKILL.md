@@ -9,34 +9,81 @@ metadata:
 user-invocable: true
 ---
 
-STEP 1 - INTAKE: stack trace, Jest failure, build error, runtime error
+# Debug Node.js/TypeScript Error
 
-STEP 2 - CLASSIFY:
+## When to Use
 
-- DI / Injection errors (NestJS): `Cannot read properties of undefined (reading 'method')` in a service → missing `@Injectable()`, provider not listed in module `providers[]`, or circular dependency. Check constructor injection and module metadata. Prevention: NestJS integration test that bootstraps the full module and calls `app.get(YourService)`.
-- TypeError: Cannot read properties of undefined → null/undefined access
-- PrismaClientKnownRequestError (P2002) → unique constraint violation
-- PrismaClientKnownRequestError (P2025) → record not found
-- QueryFailedError (TypeORM) → SQL error, check migration state
-- UnauthorizedException (NestJS) → auth guard failed
-- BadRequestException (NestJS) → validation pipe rejected input
-- TS2322 / TS2345 → TypeScript type mismatch, check types
-- Cannot find module → missing dependency, wrong import path; run `bun install`
-- Circular dependency detected (NestJS) → forwardRef or refactor modules
-- ERR_UNHANDLED_REJECTION → unhandled promise rejection, add catch
-- BullMQ job stuck in failed state → load node-bullmq-patterns, check retry/backoff config
-- BullMQ worker not processing → Redis connectivity, worker not registered, missing processor
-- Job data missing or undefined → passing entity instead of ID, check serialization
+- Debugging stack traces, runtime errors, build failures, or test failures in NestJS or Express applications
+- Diagnosing TypeScript compilation errors, Prisma/TypeORM query errors, or DI resolution failures
+- Investigating BullMQ job failures, unhandled rejections, or middleware ordering issues
 
-STEP 3 - LOCATE: read stack trace, open source, trace call chain
+## Rules
 
-STEP 4 - ROOT CAUSE: WHY. Confidence level.
+- Classify the error before reading any source code or proposing a fix
+- Always state confidence level (high/medium/low) with root cause
+- Provide minimal before/after fix - address root cause, not symptoms
+- Include a prevention step (test, type constraint, or lint rule) with every fix
 
-STEP 5 - FIX: before/after, minimal change
+## Edge Cases
 
-STEP 6 - PREVENTION: Jest test, stricter types, lint rule
+- **No stack trace provided**: Ask the user to reproduce the error and capture the full stack trace. If they describe behavior only, ask for: (1) the exact error message or unexpected output, (2) which endpoint or command triggers it, (3) recent code changes.
+- **Multiple errors in output**: Identify the root error (usually the first one) - later errors are often cascading failures.
+- **Intermittent errors**: Ask about concurrency, connection pool exhaustion, or race conditions. Check for missing `await` on async operations.
 
-OUTPUT: root cause → location → fix → prevention
+## Implementation
+
+STEP 1 - INTAKE: Collect the error - stack trace, Jest failure output, build error, or runtime error description. If the user provides only a description without an error message, ask for the exact error output before proceeding.
+
+STEP 2 - CLASSIFY the error into one of these categories:
+
+| Error Pattern                                                       | Category          | First Check                                                                 |
+| ------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `Cannot read properties of undefined (reading 'method')` in service | NestJS DI         | Missing `@Injectable()`, provider not in module `providers[]`, circular dep |
+| `TypeError: Cannot read properties of undefined`                    | Null access       | Trace variable origin, check optional chaining                              |
+| `PrismaClientKnownRequestError (P2002)`                             | Unique constraint | Duplicate value on unique field                                             |
+| `PrismaClientKnownRequestError (P2025)`                             | Record not found  | ID does not exist or was deleted                                            |
+| `QueryFailedError` (TypeORM)                                        | SQL error         | Check migration state, column types                                         |
+| `UnauthorizedException` (NestJS)                                    | Auth guard        | Token missing/expired, guard misconfigured                                  |
+| `BadRequestException` (NestJS)                                      | Validation        | DTO validation failed, check decorators                                     |
+| `TS2322` / `TS2345`                                                 | Type mismatch     | Incompatible types in assignment or argument                                |
+| `Cannot find module`                                                | Missing dep       | Wrong import path or missing install; run `bun install`                     |
+| `Circular dependency detected` (NestJS)                             | Circular DI       | Use `forwardRef()` or extract shared logic to third service                 |
+| `ERR_UNHANDLED_REJECTION`                                           | Unhandled promise | Missing `await` or `.catch()` on async call                                 |
+| BullMQ job stuck in failed state                                    | Job failure       | Load `node-bullmq-patterns`, check retry/backoff config                     |
+| BullMQ worker not processing                                        | Worker issue      | Redis connectivity, worker not registered, missing processor                |
+| Job data missing or undefined                                       | Serialization     | Passing entity instead of ID, check job data shape                          |
+
+STEP 3 - LOCATE: Read the stack trace top-to-bottom. Open the referenced source files. Trace the call chain from the error point back to the trigger.
+
+STEP 4 - ROOT CAUSE: State WHY the error occurs (not just what). Include confidence level (high/medium/low) and reasoning.
+
+STEP 5 - FIX: Provide concrete before/after code. Fix must be minimal and address the root cause.
+
+STEP 6 - PREVENTION: Add a Jest test that would catch this error, a stricter TypeScript type, or a lint rule.
+
+## Output
+
+```markdown
+## Root Cause
+
+{confidence: high/medium/low} - {explanation of WHY the error occurs}
+
+## Location
+
+`{file}:{line}` - {description of the problematic code}
+
+## Fix
+
+**Before:**
+{code}
+
+**After:**
+{code}
+
+## Prevention
+
+{test, type constraint, or lint rule to prevent recurrence}
+```
 
 ## Self-Check
 

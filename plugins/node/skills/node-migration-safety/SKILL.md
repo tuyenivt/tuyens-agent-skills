@@ -1,40 +1,57 @@
 ---
 name: node-migration-safety
-description: "Safe migration patterns for Node.js with Prisma and TypeORM. Prisma migrate for NestJS, TypeORM migrations for Express. Zero-downtime DDL, review workflow, CI validation."
+description: Safe database migration patterns for Prisma and TypeORM. Zero-downtime DDL rules, deploy ordering (add column vs drop column), CI validation, and rollback strategies.
+metadata:
+  category: backend
+  tags: [node, prisma, typeorm, migrations, database, zero-downtime]
 user-invocable: false
 ---
 
-Cover:
+# Migration Safety
 
-PRISMA MIGRATIONS (NestJS):
+## When to Use
 
-- prisma migrate dev: development (creates + applies)
-- prisma migrate deploy: production (applies only, no generation)
-- Review every generated migration in prisma/migrations/
-- Custom SQL in migration.sql for: CONCURRENTLY indexes, partial indexes, data backfill
-- Rollback: Prisma has no built-in down migration - plan forward-only migrations
-  that are backward-compatible, or use manual SQL down scripts
-- prisma migrate reset: for test environments only
-- CI: run prisma migrate deploy in pipeline
+- Creating or reviewing database migrations in Prisma or TypeORM projects
+- Planning schema changes that must be deployed with zero downtime
+- Determining safe deploy ordering for DDL changes during rolling deployments
 
-TYPEORM MIGRATIONS (Express):
+## Rules
 
-- typeorm migration:generate - generates from entity diff
-- typeorm migration:create - creates empty migration for custom SQL
-- typeorm migration:run - applies pending
-- typeorm migration:revert - reverts last applied
-- ALWAYS review generated migrations
-- synchronize: NEVER true in production
+- Every generated migration must be reviewed before applying
+- Never use `prisma db push` or `synchronize: true` in production
+- Data migrations must be separate from schema migrations
+- All column additions start as nullable; add NOT NULL only after backfill completes
 
-SHARED ZERO-DOWNTIME RULES (same as Core):
+## Patterns
 
-- Add columns nullable first → backfill → add NOT NULL
-- Create indexes CONCURRENTLY
-- Never rename columns directly
+### Prisma Migrations (NestJS)
+
+- `prisma migrate dev` - development (creates + applies)
+- `prisma migrate deploy` - production (applies only, no generation)
+- Review every generated migration in `prisma/migrations/`
+- Custom SQL in `migration.sql` for: CONCURRENTLY indexes, partial indexes, data backfill
+- Rollback: Prisma has no built-in down migration - plan forward-only migrations that are backward-compatible, or use manual SQL down scripts
+- `prisma migrate reset` - for test environments only
+- CI: run `prisma migrate deploy` in pipeline
+
+### TypeORM Migrations (Express)
+
+- `typeorm migration:generate` - generates from entity diff
+- `typeorm migration:create` - creates empty migration for custom SQL
+- `typeorm migration:run` - applies pending
+- `typeorm migration:revert` - reverts last applied
+- Always review generated migrations
+- `synchronize: true` - NEVER in production
+
+### Zero-Downtime DDL Rules
+
+- Add columns nullable first, backfill, then add NOT NULL constraint
+- Create indexes CONCURRENTLY (avoids table locks)
+- Never rename columns directly - use expand-contract pattern
 - Separate data migrations from schema migrations
-- Test: migrate up → migrate down (TypeORM) or verify backward compatibility (Prisma)
+- Test: migrate up then migrate down (TypeORM) or verify backward compatibility (Prisma)
 
-DEPLOY ORDER SAFETY:
+### Deploy Order Safety
 
 The order of code deployment relative to migration execution determines whether a rolling deploy is safe:
 
@@ -54,10 +71,16 @@ For Prisma (no built-in rollback), plan each migration as forward-only and backw
 # 3. Run: prisma migrate deploy (drops column)
 ```
 
-ANTI-PATTERNS:
+## Edge Cases
 
-- ❌ prisma db push in production
-- ❌ synchronize: true in production (TypeORM)
-- ❌ Generated migrations without review
-- ❌ Data manipulation inside schema migrations
-- ❌ Destructive migration (DROP COLUMN) before code is updated to remove the reference
+- **Migration already applied partially (crash mid-migration)**: Prisma marks failed migrations in `_prisma_migrations` table - fix the SQL and run `prisma migrate resolve`. TypeORM: check which statements succeeded and manually complete or revert.
+- **Multiple developers creating migrations simultaneously**: Merge conflicts in migration files. Prisma: may need `prisma migrate resolve` after merge. TypeORM: ensure migration timestamps do not conflict.
+- **Large table migrations**: Adding a column or index on a large table can lock it. Use `CONCURRENTLY` for indexes; for column changes, consider batched backfill in a separate migration.
+
+## Avoid
+
+- `prisma db push` in production (no migration history, can lose data)
+- `synchronize: true` in production (TypeORM auto-syncs schema without migration history - can drop columns)
+- Generated migrations without review
+- Data manipulation inside schema migrations
+- Destructive migration (DROP COLUMN) before code is updated to remove the reference

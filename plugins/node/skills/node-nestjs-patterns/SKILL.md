@@ -1,105 +1,136 @@
 ---
 name: node-nestjs-patterns
-description: "NestJS patterns: modules, DI, controllers, guards, interceptors, pipes, exception filters, validation, and Swagger/OpenAPI. TypeScript strict mode."
+description: NestJS application patterns - module architecture, dependency injection, controllers, guards, interceptors, pipes, exception filters, validation with class-validator, DI scopes, and circular dependency resolution.
+metadata:
+  category: backend
+  tags: [node, typescript, nestjs, di, validation, patterns]
 user-invocable: false
 ---
 
-Cover:
+# NestJS Patterns
 
-1. MODULE ARCHITECTURE:
-   - One module per bounded context: OrdersModule, PaymentsModule
-   - Explicit imports/exports: only export what other modules need
-   - Global modules (@Global) sparingly - only for truly cross-cutting services
-   - Dynamic modules for configurable providers (e.g., DatabaseModule.forRoot(config))
+## When to Use
 
-2. DEPENDENCY INJECTION:
-   - @Injectable() on every service, repository, guard, etc.
-   - Constructor injection (default, preferred)
-   - Custom providers: useClass, useFactory, useValue for advanced DI
-   - Async providers for DB connections, external clients
+- Building or extending a NestJS application
+- Setting up module structure, DI, guards, or validation
+- Reviewing NestJS code for architectural or DI issues
 
-3. CONTROLLERS:
-   - @Controller('orders') with route prefix
-   - HTTP decorators: @Get(), @Post(), @Put(), @Patch(), @Delete()
-   - @Param(), @Query(), @Body() for input extraction
-   - @HttpCode(201) for POST responses
-   - Return DTOs, never return raw Prisma/entity objects
+## Rules
 
-4. GUARDS, INTERCEPTORS, PIPES:
-   - Guards for authentication/authorization: @UseGuards(JwtAuthGuard)
-   - Interceptors for response transformation, logging, caching
-   - Pipes for validation: new ValidationPipe({ whitelist: true, transform: true })
-   - Apply globally or per-controller/per-route
+- One module per bounded context - explicit imports/exports
+- `@Injectable()` on every service, repository, guard, interceptor
+- Constructor injection preferred; custom providers for advanced DI
+- Return DTOs from controllers - never expose Prisma models or TypeORM entities
 
-5. EXCEPTION FILTERS:
-   - Built-in: BadRequestException, NotFoundException, UnauthorizedException
-   - Custom exception filter for consistent error format
-   - @Catch() decorator on filter class
+## Patterns
 
-6. VALIDATION:
-   - class-validator decorators on DTOs: @IsString(), @IsInt(), @Min(), @IsEmail()
-   - class-transformer for type coercion
-   - Whitelist: true strips unknown properties (security)
-   - Custom validators for complex business rules
+### Module Architecture
 
-7. DEPENDENCY INJECTION SCOPES:
+- One module per bounded context: `OrdersModule`, `PaymentsModule`
+- Explicit imports/exports: only export what other modules need
+- Global modules (`@Global`) sparingly - only for truly cross-cutting services
+- Dynamic modules for configurable providers (e.g., `DatabaseModule.forRoot(config)`)
 
-   NestJS providers have three scopes controlling instance lifetime:
+### Dependency Injection
 
-   | Scope                 | Decorator              | Lifetime                         | Use When                                                     |
-   | --------------------- | ---------------------- | -------------------------------- | ------------------------------------------------------------ |
-   | `DEFAULT` (Singleton) | none / `Scope.DEFAULT` | One instance for app lifetime    | Stateless services (default)                                 |
-   | `REQUEST`             | `Scope.REQUEST`        | New instance per HTTP request    | Services that hold request-scoped state (e.g., current user) |
-   | `TRANSIENT`           | `Scope.TRANSIENT`      | New instance per injection point | Stateful helpers that must not be shared                     |
+- `@Injectable()` on every service, repository, guard
+- Constructor injection (default, preferred)
+- Custom providers: `useClass`, `useFactory`, `useValue` for advanced DI
+- Async providers for DB connections, external clients
 
-   ```typescript
-   import { Injectable, Scope } from "@nestjs/common";
+### Controllers
 
-   // Singleton (default) - stateless services
-   @Injectable()
-   export class OrderService {}
+- `@Controller('orders')` with route prefix
+- HTTP decorators: `@Get()`, `@Post()`, `@Put()`, `@Patch()`, `@Delete()`
+- `@Param()`, `@Query()`, `@Body()` for input extraction
+- `@HttpCode(201)` for POST responses
+- Return DTOs, never return raw Prisma/entity objects
 
-   // Request-scoped - inject REQUEST to access current request
-   @Injectable({ scope: Scope.REQUEST })
-   export class AuditService {
-     constructor(@Inject(REQUEST) private readonly request: Request) {}
-   }
+### Guards, Interceptors, Pipes
 
-   // Transient - new instance per injection
-   @Injectable({ scope: Scope.TRANSIENT })
-   export class UniqueIdGenerator {}
-   ```
+- Guards for authentication/authorization: `@UseGuards(JwtAuthGuard)`
+- Interceptors for response transformation, logging, caching
+- Pipes for validation: `new ValidationPipe({ whitelist: true, transform: true })`
+- Apply globally or per-controller/per-route
 
-   Note: REQUEST and TRANSIENT scopes propagate upward - a singleton that injects a REQUEST-scoped provider becomes REQUEST-scoped too.
+### Exception Filters
 
-8. CIRCULAR DEPENDENCY RESOLUTION:
+- Built-in: `BadRequestException`, `NotFoundException`, `UnauthorizedException`
+- Custom exception filter for consistent error format
+- `@Catch()` decorator on filter class
 
-   When two providers depend on each other, use `forwardRef()` to break the cycle:
+### Validation
 
-   ```typescript
-   @Injectable()
-   export class OrderService {
-     constructor(
-       @Inject(forwardRef(() => PaymentService))
-       private readonly paymentService: PaymentService,
-     ) {}
-   }
+- `class-validator` decorators on DTOs: `@IsString()`, `@IsInt()`, `@Min()`, `@IsEmail()`
+- `class-transformer` for type coercion
+- `whitelist: true` strips unknown properties (security)
+- Custom validators for complex business rules
 
-   @Injectable()
-   export class PaymentService {
-     constructor(
-       @Inject(forwardRef(() => OrderService))
-       private readonly orderService: OrderService,
-     ) {}
-   }
-   ```
+### Dependency Injection Scopes
 
-   Prefer resolving circular deps by extracting shared logic into a third service. `forwardRef()` is a workaround, not a design goal.
+NestJS providers have three scopes controlling instance lifetime:
 
-9. ANTI-PATTERNS:
-   - ❌ Business logic in controllers (use services)
-   - ❌ Circular module dependencies without `forwardRef()` (runtime error: "Nest cannot create the module instance")
-   - ❌ Injecting REQUEST-scoped providers into singletons without declaring `Scope.REQUEST` on the singleton (Nest will throw or use wrong scope)
-   - ❌ Using `any` in DTOs (defeats TypeScript purpose)
-   - ❌ Global guards when per-route is more appropriate
-   - ❌ Returning Prisma models directly from controllers
+| Scope                 | Decorator              | Lifetime                         | Use When                                                     |
+| --------------------- | ---------------------- | -------------------------------- | ------------------------------------------------------------ |
+| `DEFAULT` (Singleton) | none / `Scope.DEFAULT` | One instance for app lifetime    | Stateless services (default)                                 |
+| `REQUEST`             | `Scope.REQUEST`        | New instance per HTTP request    | Services that hold request-scoped state (e.g., current user) |
+| `TRANSIENT`           | `Scope.TRANSIENT`      | New instance per injection point | Stateful helpers that must not be shared                     |
+
+```typescript
+import { Injectable, Scope } from "@nestjs/common";
+
+// Singleton (default) - stateless services
+@Injectable()
+export class OrderService {}
+
+// Request-scoped - inject REQUEST to access current request
+@Injectable({ scope: Scope.REQUEST })
+export class AuditService {
+  constructor(@Inject(REQUEST) private readonly request: Request) {}
+}
+
+// Transient - new instance per injection
+@Injectable({ scope: Scope.TRANSIENT })
+export class UniqueIdGenerator {}
+```
+
+Note: REQUEST and TRANSIENT scopes propagate upward - a singleton that injects a REQUEST-scoped provider becomes REQUEST-scoped too.
+
+### Circular Dependency Resolution
+
+When two providers depend on each other, use `forwardRef()` to break the cycle:
+
+```typescript
+@Injectable()
+export class OrderService {
+  constructor(
+    @Inject(forwardRef(() => PaymentService))
+    private readonly paymentService: PaymentService,
+  ) {}
+}
+
+@Injectable()
+export class PaymentService {
+  constructor(
+    @Inject(forwardRef(() => OrderService))
+    private readonly orderService: OrderService,
+  ) {}
+}
+```
+
+Prefer resolving circular deps by extracting shared logic into a third service. `forwardRef()` is a workaround, not a design goal.
+
+## Edge Cases
+
+- **Scope propagation confusion**: A singleton injecting a REQUEST-scoped provider silently becomes REQUEST-scoped. If performance degrades after adding a REQUEST-scoped dependency, check for unintended scope propagation up the injection chain.
+- **Module not importing required provider**: Error "Nest can't resolve dependencies of X" - verify the module that declares X also imports the module that exports the dependency.
+- **Guard ordering with multiple guards**: Guards execute in array order - put auth guard before role guard: `@UseGuards(JwtAuthGuard, RolesGuard)`.
+
+## Avoid
+
+- Business logic in controllers (use services)
+- Circular module dependencies without `forwardRef()` (runtime error: "Nest cannot create the module instance")
+- Injecting REQUEST-scoped providers into singletons without declaring `Scope.REQUEST` on the singleton (Nest will throw or use wrong scope)
+- Using `any` in DTOs (defeats TypeScript purpose)
+- Global guards when per-route is more appropriate
+- Returning Prisma models directly from controllers

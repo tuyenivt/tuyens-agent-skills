@@ -1,19 +1,40 @@
 ---
 name: node-typeorm-patterns
-description: "TypeORM patterns for Express and NestJS: entity definition, repository pattern, query builder, migrations, relations, N+1 prevention, transactions, pagination, connection pooling, and batch operations."
+description: TypeORM patterns for Express and NestJS - entity definition, repository pattern with DataSource, QueryBuilder for complex queries, transactions, N+1 prevention, migrations, pagination, connection pooling, and batch operations.
+metadata:
+  category: backend
+  tags: [node, typescript, typeorm, orm, database, patterns]
 user-invocable: false
 ---
 
-Cover:
+# TypeORM Patterns
 
-1. ENTITY DEFINITION:
-   - @Entity(), @Column(), @PrimaryGeneratedColumn('uuid')
-   - Relations: @ManyToOne, @OneToMany, @ManyToMany with JoinColumn/JoinTable
-   - @Index() on foreign keys and frequently-filtered columns
-   - @CreateDateColumn(), @UpdateDateColumn() for timestamps
-   - @Column({ type: 'enum', enum: OrderStatus }) for status fields
+## When to Use
 
-2. REPOSITORY PATTERN:
+- Designing TypeORM entities, relations, and indexes
+- Writing queries that must avoid N+1 problems or require transactions
+- Setting up repositories, QueryBuilder, or connection pooling
+- Implementing pagination or batch operations with TypeORM
+
+## Rules
+
+- Every entity gets `@Index()` on foreign keys and frequently-filtered columns
+- Use `relations` option or `leftJoinAndSelect` to prevent N+1 - never rely on lazy loading
+- Always release `QueryRunner` in a `finally` block
+- `synchronize: true` is forbidden in production - use migrations only
+- Never return entities directly from API endpoints - map to DTOs
+
+## Patterns
+
+### Entity Definition
+
+- `@Entity()`, `@Column()`, `@PrimaryGeneratedColumn('uuid')`
+- Relations: `@ManyToOne`, `@OneToMany`, `@ManyToMany` with `JoinColumn`/`JoinTable`
+- `@Index()` on foreign keys and frequently-filtered columns
+- `@CreateDateColumn()`, `@UpdateDateColumn()` for timestamps
+- `@Column({ type: 'enum', enum: OrderStatus })` for status fields
+
+### Repository Pattern
 
 ```typescript
 @Injectable()
@@ -33,9 +54,9 @@ export class OrderRepository {
 }
 ```
 
-3. QUERY BUILDER:
+### QueryBuilder
 
-   Use QueryBuilder for complex filtering, joins, and aggregations that go beyond simple `find` options:
+Use QueryBuilder for complex filtering, joins, and aggregations that go beyond simple `find` options:
 
 ```typescript
 async findOrdersWithFilters(filters: OrderFilterDto): Promise<[Order[], number]> {
@@ -55,12 +76,13 @@ async findOrdersWithFilters(filters: OrderFilterDto): Promise<[Order[], number]>
 }
 ```
 
-4. N+1 PREVENTION:
-   - `relations` option in find: `{ relations: ['items', 'customer'] }`
-   - QueryBuilder: `.leftJoinAndSelect('order.items', 'items')`
-   - Lazy loading: avoid - it fires a query per access. Prefer explicit eager loading in every query.
+### N+1 Prevention
 
-5. TRANSACTIONS:
+- `relations` option in find: `{ relations: ['items', 'customer'] }`
+- QueryBuilder: `.leftJoinAndSelect('order.items', 'items')`
+- Lazy loading: avoid - it fires a query per access. Prefer explicit eager loading in every query.
+
+### Transactions
 
 ```typescript
 // Simple form - EntityManager handles commit/rollback
@@ -87,7 +109,7 @@ try {
 }
 ```
 
-6. BATCH OPERATIONS:
+### Batch Operations
 
 ```typescript
 // Bulk insert (chunks automatically)
@@ -102,7 +124,7 @@ await this.repo
   .execute();
 ```
 
-7. CONNECTION POOLING:
+### Connection Pooling
 
 ```typescript
 // DataSource options
@@ -115,18 +137,26 @@ await this.repo
 }
 ```
 
-8. MIGRATIONS:
-   - `typeorm migration:generate -d src/data-source.ts -n AddShipment` - auto-generates from entity diff
-   - `typeorm migration:create -n BackfillPhoneColumn` - empty migration for custom SQL
-   - `typeorm migration:run` - applies pending
-   - `typeorm migration:revert` - reverts last applied
-   - Always review generated migrations before applying
-   - Same zero-downtime rules as core (add nullable first, backfill, then NOT NULL)
+### Migrations
 
-9. ANTI-PATTERNS:
-   - `synchronize: true` in production (auto-syncs schema without migration history - can drop columns)
-   - Lazy loading without understanding it fires a query per access
-   - Raw SQL for simple CRUD (use repository/query builder)
-   - Not setting connection pool limits (defaults may exhaust database connections)
-   - Returning entities directly from API endpoints (use DTOs to control response shape)
-   - Not releasing QueryRunner in finally block (leaks database connections)
+- `typeorm migration:generate -d src/data-source.ts -n AddShipment` - auto-generates from entity diff
+- `typeorm migration:create -n BackfillPhoneColumn` - empty migration for custom SQL
+- `typeorm migration:run` - applies pending
+- `typeorm migration:revert` - reverts last applied
+- Always review generated migrations before applying
+- Same zero-downtime rules as core (add nullable first, backfill, then NOT NULL)
+
+## Edge Cases
+
+- **QueryRunner not released after error**: Always use `finally { await queryRunner.release() }`. A leaked QueryRunner holds an open database connection permanently.
+- **Entity listeners firing during bulk operations**: `save()` triggers `@BeforeInsert`/`@AfterInsert` listeners for each entity. For bulk inserts where listeners are not needed, use `createQueryBuilder().insert()` instead.
+- **Relation loading in transactions**: When using `QueryRunner` transactions, load relations via `queryRunner.manager.findOne()` with `relations` option - do not use the default repository (it uses a different connection).
+
+## Avoid
+
+- `synchronize: true` in production (auto-syncs schema without migration history - can drop columns)
+- Lazy loading without understanding it fires a query per access
+- Raw SQL for simple CRUD (use repository/QueryBuilder)
+- Not setting connection pool limits (defaults may exhaust database connections)
+- Returning entities directly from API endpoints (use DTOs to control response shape)
+- Not releasing QueryRunner in `finally` block (leaks database connections)

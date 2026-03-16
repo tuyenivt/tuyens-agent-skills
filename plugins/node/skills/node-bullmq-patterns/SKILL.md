@@ -1,9 +1,9 @@
 ---
 name: node-bullmq-patterns
-description: BullMQ background job patterns for Node.js/TypeScript. Job design, idempotency, retry strategy, queue routing, worker lifecycle, and monitoring.
+description: BullMQ background job patterns for Node.js/TypeScript - job design, idempotency, retry with exponential backoff, queue routing by priority, worker lifecycle, scheduled jobs, and graceful shutdown.
 metadata:
   category: backend
-  tags: [bullmq, background-jobs, queues, async, idempotency, redis]
+  tags: [node, typescript, bullmq, background-jobs, queues, redis, idempotency]
 user-invocable: false
 ---
 
@@ -23,8 +23,9 @@ user-invocable: false
 - Every queue must have a **dead-letter** strategy (`removeOnFail` or a failed job handler)
 - Use `attempts` + exponential `backoff` for transient failures
 - Workers must handle `SIGTERM` gracefully - close the worker before process exit
+- Enqueue jobs AFTER the database transaction commits - never inside it
 
-## Pattern
+## Patterns
 
 ### Queue and Worker Setup (NestJS)
 
@@ -154,12 +155,19 @@ worker.on("failed", (job, err) => {
 });
 ```
 
-## Stack-Specific Guidance
+### Stack-Specific Guidance
 
 - **NestJS**: Use `@nestjs/bullmq` - `@Processor` + `WorkerHost` integrates with NestJS DI; register queues in `BullModule.registerQueue`
 - **Express**: Use `bullmq` directly - create `Queue` and `Worker` instances; wire into app lifecycle for graceful shutdown
 - **Redis**: BullMQ requires Redis 6.2+; use `ioredis` connection with `maxRetriesPerRequest: null` (required by BullMQ)
 - **Monitoring**: Use Bull Board (`@bull-board/express` or `@bull-board/nestjs`) for a web UI; expose `/queues` behind admin auth only
+
+## Edge Cases
+
+- **Job enqueued inside a transaction that rolls back**: The job fires but the database row it references does not exist. Always enqueue after the transaction commits.
+- **Duplicate recurring jobs on restart**: Without a stable `jobId`, each app restart creates a new recurring job. Always set `jobId` on repeatable jobs to prevent duplicates.
+- **Redis connection lost mid-processing**: BullMQ workers auto-reconnect, but in-progress jobs may be marked as stalled and retried. Ensure idempotency handles this - check state before acting.
+- **Job data too large**: Redis is not designed for large payloads. If job data exceeds ~50KB, store the payload in S3/object storage and pass only the reference key as job data.
 
 ## Avoid
 

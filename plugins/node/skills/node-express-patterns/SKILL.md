@@ -1,20 +1,36 @@
 ---
 name: node-express-patterns
-description: "Express patterns with TypeScript: router organization, middleware chain, error handling middleware, async handler wrapper, Zod validation, security headers, and request typing."
+description: Express application patterns with TypeScript - router organization, middleware chain ordering, async error handling, Zod validation, central error middleware, security headers, and graceful shutdown.
+metadata:
+  category: backend
+  tags: [node, typescript, express, middleware, validation, patterns]
 user-invocable: false
 ---
 
-Cover:
+# Express Patterns
 
-1. ROUTER ORGANIZATION:
-   - Separate router per resource: orders.router.ts, payments.router.ts
-   - Router mounting: app.use('/api/v1/orders', ordersRouter)
-   - Controller functions separate from router definition
+## When to Use
 
-2. MIDDLEWARE:
-   - Order matters: helmet → cors → auth → validation → handler → error handler
-   - Auth middleware: verify JWT, attach user to req
-   - Async handler wrapper (catch async errors):
+- Building or extending an Express application with TypeScript
+- Setting up middleware chain, validation, or error handling in Express
+- Reviewing Express code for structural or security issues
+
+## Rules
+
+- Middleware order matters: helmet -> cors -> auth -> validation -> handler -> error handler
+- All async route handlers must be wrapped to catch rejected promises
+- Central error middleware must have exactly 4 parameters (Express uses arity detection)
+- Never expose raw error details to clients in production
+
+## Patterns
+
+### Router Organization
+
+- Separate router per resource: `orders.router.ts`, `payments.router.ts`
+- Router mounting: `app.use('/api/v1/orders', ordersRouter)`
+- Controller functions separate from router definition
+
+### Async Handler Wrapper
 
 ```typescript
 const asyncHandler =
@@ -23,9 +39,9 @@ const asyncHandler =
     Promise.resolve(fn(req, res, next)).catch(next);
 ```
 
-3. VALIDATION WITH ZOD:
+### Validation with Zod
 
-   Use Zod schemas for request validation — preferred over class-validator in Express because schemas are plain objects that compose naturally:
+Use Zod schemas for request validation - preferred over class-validator in Express because schemas are plain objects that compose naturally:
 
 ```typescript
 import { z } from "zod";
@@ -54,9 +70,9 @@ const validate =
 router.post("/", validate(createProductSchema), asyncHandler(controller.create));
 ```
 
-4. ERROR HANDLING:
+### Error Handling
 
-   Central error middleware must have exactly 4 parameters (Express uses arity to detect error handlers):
+Central error middleware must have exactly 4 parameters (Express uses arity to detect error handlers):
 
 ```typescript
 class AppError extends Error {
@@ -81,19 +97,21 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 ```
 
-   - Unhandled rejection handler: process.on('unhandledRejection') to catch missed promises
+Unhandled rejection handler: `process.on('unhandledRejection')` to catch missed promises.
 
-5. TYPESCRIPT PATTERNS:
-   - Typed request/response: Request<Params, ResBody, ReqBody, Query>
-   - Extend Request interface for auth: declare module 'express' { interface Request { user?: User } }
-   - Use Zod's `z.infer<typeof schema>` to derive types from validation schemas
+### TypeScript Patterns
 
-6. SECURITY:
-   - `helmet()` for security headers (first middleware)
-   - `cors({ origin: allowedOrigins })` - never use `cors()` with no options in production (allows all origins)
-   - Rate limiting with `express-rate-limit` on auth endpoints
+- Typed request/response: `Request<Params, ResBody, ReqBody, Query>`
+- Extend Request interface for auth: `declare module 'express' { interface Request { user?: User } }`
+- Use Zod's `z.infer<typeof schema>` to derive types from validation schemas
 
-7. GRACEFUL SHUTDOWN:
+### Security
+
+- `helmet()` for security headers (first middleware)
+- `cors({ origin: allowedOrigins })` - never use `cors()` with no options in production (allows all origins)
+- Rate limiting with `express-rate-limit` on auth endpoints
+
+### Graceful Shutdown
 
 ```typescript
 const server = app.listen(port);
@@ -103,9 +121,11 @@ process.on("SIGTERM", () => {
 });
 ```
 
-8. ANTI-PATTERNS:
-   - Not catching async errors (unhandled promise rejection crashes the process)
-   - Business logic in route handlers (extract to service layer)
-   - Using `any` for request types (defeats TypeScript)
-   - Missing error handling middleware (errors become unhandled rejections)
-   - `cors()` with no origin restriction in production
+## Avoid
+
+- Not catching async errors (unhandled promise rejection crashes the process)
+- Business logic in route handlers (extract to service layer)
+- Using `any` for request types (defeats TypeScript)
+- Missing error handling middleware (errors become unhandled rejections)
+- `cors()` with no origin restriction in production
+- Error handler with fewer than 4 parameters (Express will not recognize it as an error handler)
