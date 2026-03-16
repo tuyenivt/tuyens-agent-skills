@@ -1,6 +1,6 @@
 ---
 name: task-db-migration-plan
-description: Database migration strategy for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk assessment, data backfill estimation, and rollback plan. Use before a risky schema change: adding NOT NULL columns, renaming tables, splitting or merging tables, large backfills, or multi-service coordinated migrations. Not for simple additive changes (just write the migration), not for writing migration files (use task-spring-new / task-dotnet-new), and not for release rollout planning (use task-release-plan).
+description: Database migration strategy for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk assessment, data backfill estimation, and rollback plan. Use before risky schema changes like NOT NULL columns, renames, table splits, large backfills, or multi-service migrations.
 metadata:
   category: data
   tags: [migration, database, schema, zero-downtime, rollback, expand-contract]
@@ -21,6 +21,8 @@ Safe database migration planning for production systems, optimized for zero-down
 - **Multi-service coordination** -- flag when schema changes require deployment ordering across services
 
 This skill produces a migration execution plan. It does not generate ORM model code or migration scripts.
+
+**Not for:** Simple additive changes (just write the migration), writing migration files (use stack-specific `task-*-new`), release rollout planning (use `task-release-plan`).
 
 ## When to Use
 

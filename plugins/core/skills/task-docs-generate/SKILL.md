@@ -1,6 +1,6 @@
 ---
 name: task-docs-generate
-description: Generate or improve project documentation - READMEs, API docs, inline code comments, runbooks, and API changelogs. Use when documentation is missing, stale, or needs a specific format for a new API or service. Not for architecture decision records (use task-adr-create) and not for auditing existing docs health (use task-architecture-docs-audit).
+description: Generate or improve project documentation - READMEs, API docs, inline code comments, runbooks, and API changelogs. Use when documentation is missing, stale, or needs a specific format for a new API or service.
 metadata:
   category: review
   tags: [documentation, readme, api-docs, multi-stack]
@@ -17,6 +17,8 @@ user-invocable: true
 - Code comments and inline doc generation
 - Runbooks and operational guides
 - Contributor setup guides
+
+**Not for:** Architecture decision records (use `task-adr-create`), auditing existing docs health (use `task-architecture-docs-audit`).
 
 ## Workflow
 
@@ -213,3 +215,11 @@ If the detected stack is unfamiliar, apply generic documentation templates and r
 - [ ] API docs include request/response examples and all error codes
 - [ ] Stack-specific doc format used (JavaDoc, GoDoc, docstrings, etc.) where applicable
 - [ ] No invented file paths, endpoints, or config values - all examples match the actual codebase
+
+## Avoid
+
+- Inventing file paths, endpoints, or configuration values that don't exist in the codebase
+- Writing comments that restate what the code does ("increment counter" above `count++`)
+- Generating runbooks with ambiguous instructions ("check the logs") - every step must be executable
+- Adding documentation that will immediately go stale (e.g., documenting implementation details that change frequently)
+- Writing new docs when existing stale docs should be fixed first

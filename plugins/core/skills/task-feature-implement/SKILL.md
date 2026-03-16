@@ -1,6 +1,6 @@
 ---
 name: task-feature-implement
-description: Universal feature implementation entry point for new functionality requiring multiple coordinated layers (API + service + persistence + tests). Detects your stack and delegates to the appropriate workflow (task-spring-new, task-go-new, task-python-new, etc.). Use when implementing a new endpoint, resource, domain aggregate, or cross-layer feature. Not for bug fixes (use task-debug), not for refactoring existing code (use task-code-refactor), and not for single-file or isolated changes.
+description: Universal feature implementation entry point for new functionality requiring multiple coordinated layers (API + service + persistence + tests). Detects your stack and delegates to the appropriate workflow. Use when implementing a new endpoint, resource, domain aggregate, or cross-layer feature.
 metadata:
   category: backend
   tags: [feature, implementation, scaffold, stack-agnostic]
@@ -11,6 +11,8 @@ user-invocable: true
 # Feature Implementation
 
 Stack-agnostic entry point for end-to-end feature implementation. Detects the project stack and delegates to the right stack-specific workflow.
+
+**Not for:** Bug fixes (use `task-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes.
 
 ## Inputs
 
@@ -111,6 +113,14 @@ If no matching stack workflow exists, implement the feature using universal best
 - [ ] Every endpoint has explicit auth; list endpoints are paginated
 - [ ] Migration is safe: no destructive column changes without expand-contract sequencing
 - [ ] Tests pass; file list, endpoint table, and test count presented
+
+## Avoid
+
+- Generating code before the design is explicitly approved by the user
+- Skipping the data layer (migration, indexes) and jumping straight to business logic
+- Exposing ORM entities directly in API responses
+- Leaving endpoints without explicit auth configuration
+- Implementing features without tests
 
 ## Notes
 

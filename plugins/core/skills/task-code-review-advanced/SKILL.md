@@ -1,6 +1,6 @@
 ---
 name: task-code-review-advanced
-description: Staff-level code review for high-risk PRs, AI-generated code, or large cross-service changes - blast radius, hidden coupling, architecture boundary violations, and systemic risk. Use when the PR is AI-assisted, touches multiple services or bounded contexts, is unusually large (500+ lines), modifies shared infrastructure, or a basic review clearly isn't enough. Not for routine PRs (use task-code-review), not for security-only audits (use task-code-secure), and not for performance-only review (use task-code-perf-review).
+description: Staff-level code review for high-risk PRs, AI-generated code, or large cross-service changes. Evaluates blast radius, hidden coupling, architecture boundary violations, and systemic risk. Use when the PR is AI-assisted, touches multiple services, is unusually large (500+ lines), or modifies shared infrastructure.
 metadata:
   category: review
   tags: [code-review, pull-request, risk-assessment, architecture, ai-quality, multi-stack]
@@ -26,6 +26,8 @@ Staff-level code review that prioritizes system risk over style:
 - Post-AI-generation quality gate
 - Architecture drift detection
 - Pre-merge risk assessment
+
+**Not for:** Routine PRs (use `task-code-review`), security-only audits (use `task-code-secure`), performance-only review (use `task-code-perf-review`).
 
 ## Depth Levels
 
@@ -74,6 +76,8 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - Use skill: `blast-radius-analysis` to assess failure propagation scope
 - Output risk level and blast radius before proceeding to findings
 
+**Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, skip Phases C-D and produce a streamlined output with Phase B findings only. This avoids over-reviewing trivial changes with the staff-level process.
+
 ### Phase B - Correctness and Safety
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, unsafe shared state mutation, transaction boundary correctness.
@@ -106,16 +110,17 @@ Key signals: over-abstraction, premature generalization, redundant mapping layer
 ### Phase E - Maintainability and Clarity
 
 Naming that obscures intent, mixed responsibilities, large unreviewable chunks, complex logic without explanation.
-Use skill: `coding-standards`, `observability`
+Use skill: `coding-standards` for naming, structure, and anti-pattern enforcement.
+Use skill: `observability` to check logging, metrics, and tracing coverage.
 
 ## Framework-Specific Signals
 
-After loading stack-detect, check for framework-specific signals based on the detected ecosystem. These typically include:
+After loading stack-detect, check for framework-specific signals based on the detected ecosystem. The atomic skills loaded in Phases B-E handle detailed pattern enforcement. In addition, check these staff-level concerns:
 
-- Modern language feature adoption (use current idioms, not deprecated patterns)
-- Framework-recommended architecture patterns (layering, DI, response shaping)
-- Concurrency model compatibility (thread safety for the detected runtime)
-- Test utility currency (use current test annotations and helpers, not deprecated ones)
+- **Architectural fit**: Does the change follow the framework's recommended layering and DI patterns, or does it introduce a competing pattern?
+- **Concurrency model match**: Are concurrency primitives appropriate for the detected runtime's threading model (e.g., virtual threads vs. thread pools in Java 21+, goroutines vs. OS threads)?
+- **Ecosystem currency**: Does the change use current language features and framework APIs, or does it introduce deprecated patterns that create future migration burden?
+- **ORM entities in API responses**: Are data layer entities exposed directly in API responses instead of using DTOs/serializers?
 
 If the detected stack is unfamiliar, apply only the universal review criteria and note the limitation.
 

@@ -1,6 +1,6 @@
 ---
 name: task-code-perf-review
-description: Performance review for backend services and React frontends - N+1 queries, missing indexes, slow endpoints, memory leaks, cache miss rate, connection pool sizing, and concurrency anti-patterns. Use when an endpoint is slow, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release or scale event. Not for general code review (use task-code-review), not for security review (use task-code-secure), and not for pre-implementation risk planning (use task-design-risk-analysis).
+description: Performance review for backend services and React frontends - N+1 queries, missing indexes, slow endpoints, memory leaks, connection pool sizing, and concurrency anti-patterns. Use when an endpoint is slow, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release.
 metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack]
@@ -17,6 +17,8 @@ user-invocable: true
 - Frontend optimization (React)
 - Database query optimization
 - Caching strategy review
+
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-secure`), pre-implementation risk planning (use `task-design-risk-analysis`).
 
 ## Depth Levels
 
@@ -83,18 +85,16 @@ After loading stack-detect, apply performance checks specific to the detected ec
 
 If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
 
-### Step 4 - Caching Strategy (All Stacks)
+### Step 4 - Caching Deep Dive (All Stacks)
 
-Use skill: `caching` for cache strategy patterns.
+Use skill: `caching` for cache strategy patterns (key design, invalidation, local vs distributed).
 Use skill: `concurrency-model` to validate thread/worker pool sizing and concurrency primitive choices.
 
-Verify:
+Verify (beyond the basic cache checks in Step 3):
 
-- [ ] Cache-aside pattern applied for read-heavy data
-- [ ] Cache invalidation strategy defined
-- [ ] TTL configured appropriately
-- [ ] Cache key design avoids collisions
+- [ ] Cache key design avoids collisions and hot keys
 - [ ] Local cache vs distributed cache decision made explicitly
+- [ ] Cache stampede protection considered for high-traffic keys
 
 ### Step 5 - Frontend (React, if applicable)
 
@@ -177,3 +177,11 @@ _Omit sections with no findings._
 
 [Structural improvements not tied to a specific finding - e.g., "Add query result caching for the product catalog endpoint", "Enable connection pool monitoring"]
 ```
+
+## Avoid
+
+- Reporting performance issues without estimated impact ("this is slow" vs "adds ~200ms per request")
+- Premature optimization on cold paths - focus on hot paths and measured bottlenecks
+- Recommending caching without addressing invalidation strategy
+- Suggesting async/concurrent solutions without considering the runtime's threading model
+- Conflating performance review with general code review - stay focused on perf

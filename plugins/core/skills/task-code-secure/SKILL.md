@@ -1,6 +1,6 @@
 ---
 name: task-code-secure
-description: Security review for a PR, feature, or codebase - OWASP Top 10, injection vulnerabilities, broken auth, XSS, CSRF, insecure file handling, secrets exposure, and authorization gaps. Use when you need a dedicated security audit: pre-pentest hardening, reviewing auth flows, assessing file upload or user input handling, or checking for IDOR and privilege escalation. Not for general PR review (use task-code-review or task-code-review-advanced) and not for performance issues (use task-code-perf-review).
+description: Security review for a PR, feature, or codebase - OWASP Top 10, injection, broken auth, XSS, CSRF, secrets exposure, and authorization gaps. Use for dedicated security audits, pre-pentest hardening, reviewing auth flows, or assessing input handling and file uploads.
 metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack]
@@ -16,6 +16,8 @@ user-invocable: true
 - Pre-deployment security checks
 - Vulnerability assessment
 - Authentication and authorization review
+
+**Not for:** General PR review (use `task-code-review`), performance issues (use `task-code-perf-review`).
 
 ## Workflow
 
@@ -131,3 +133,11 @@ _Omit severity sections with no findings. If all sections are omitted, state "No
 
 [Prioritized improvements that are not specific findings but would strengthen the overall posture - e.g., "Add rate limiting to all auth endpoints", "Enable HSTS in production config"]
 ```
+
+## Avoid
+
+- Reporting vulnerabilities without an attack scenario ("input is not validated" vs "attacker can inject SQL via the search parameter")
+- Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
+- Recommending security measures that conflict with the framework's built-in security model
+- Conflating security review with general code quality review - stay focused on vulnerabilities
+- Suggesting overly complex security measures for low-risk surfaces

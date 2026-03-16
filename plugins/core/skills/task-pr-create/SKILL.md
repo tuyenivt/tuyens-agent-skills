@@ -1,6 +1,6 @@
 ---
 name: task-pr-create
-description: Generate a production-ready PR title and description from a git diff or change summary. Produces: summary of what changed and why, risk level, test plan, and links to tickets or ADRs. Use before opening a PR when you need a clear, structured description for reviewers. Not for reviewing code quality (use task-code-review) and not for release planning (use task-release-plan). Outputs description text only - does not open or push the PR.
+description: Generate a production-ready PR title and description from a git diff or change summary. Produces summary, risk level, test plan, and linked context. Use before opening a PR when you need a clear, structured description for reviewers.
 metadata:
   category: workflow
   tags: [pull-request, pr-description, git, collaboration, documentation]
@@ -27,6 +27,8 @@ This skill writes the PR description. It does not open or submit the PR.
 - After finishing a feature, fix, or refactor branch and before opening the PR
 - When you want a consistent, complete PR description without writing it manually
 - When the diff is large and you need a clear summary to orient reviewers
+
+**Not for:** Reviewing code quality (use `task-code-review`), release planning (use `task-release-plan`).
 
 ## Inputs
 
@@ -165,3 +167,20 @@ Related: #[PR number or branch]
 - If the diff is too large to summarize meaningfully (500+ files), ask the user to scope the input
 - Do not include personal opinions about code quality - this is documentation, not review
 - Risk classification from Step 3 must be the only risk assessment - do not add a second one inline
+
+## Self-Check
+
+- [ ] Title is imperative mood, under 72 characters, with type prefix
+- [ ] Summary explains the "why" not the "how" - no line-by-line diff description
+- [ ] Risk classification present with rationale
+- [ ] Test plan includes at least one runnable command for the detected stack
+- [ ] Linked context references real ticket IDs, ADRs, or PRs found in git context - nothing invented
+- [ ] Empty sections omitted; total description under 400 words
+
+## Avoid
+
+- Inventing ticket IDs, ADR titles, or PR references not found in git context
+- Duplicating the diff in the summary - orient reviewers, don't re-describe the code
+- Writing test plans with vague steps ("test it works") instead of concrete commands
+- Including personal opinions about code quality - this is documentation, not review
+- Adding empty placeholder sections (Linked Context with no content)

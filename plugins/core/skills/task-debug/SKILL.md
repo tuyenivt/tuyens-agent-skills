@@ -1,6 +1,6 @@
 ---
 name: task-debug
-description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, startup crash, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow. Not for understanding working code (use task-code-explain), not for production incidents with service degradation (use task-incident-root-cause), and not for performance analysis without a concrete error (use task-code-perf-review).
+description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow.
 metadata:
   category: backend
   tags: [debug, troubleshooting, root-cause, stack-agnostic]
@@ -12,6 +12,8 @@ user-invocable: true
 
 Universal entry point for debugging errors. Detects the project stack and delegates to the matching stack-specific debug workflow. For unknown stacks, runs the systematic protocol below.
 
+**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `task-incident-root-cause`), performance analysis without a concrete error (use `task-code-perf-review`).
+
 ## Inputs
 
 Paste any of the following - the more context, the better:
@@ -20,6 +22,8 @@ Paste any of the following - the more context, the better:
 - Relevant log lines around the error
 - Test failure output
 - Description of unexpected behavior ("it used to work, now X happens")
+
+**Insufficient input handling:** If the user provides only a vague description (e.g., "it's broken") with no error message, stack trace, or reproduction steps, ask for the specific error output before proceeding. Do not guess at the problem.
 
 ## Steps
 
@@ -93,8 +97,41 @@ State one concrete prevention step:
 
 - A test that would have caught this (unit, integration, or property-based)
 - A static analysis rule, linter, or type annotation
+- A guard clause, assertion, or input validation
 - A monitoring/alerting signal (if the root cause is operational)
+- A defensive coding pattern (null check, default value, timeout)
 - A "what changed recently?" checklist item if the cause is a regression
+
+## Output Format
+
+```markdown
+## Classification
+
+**Error class:** [class from table above]
+**Confidence:** HIGH | MEDIUM | LOW
+
+## Root Cause
+
+**File:** [file:line]
+**Why:** [root cause explanation with full causal chain]
+**Confidence:** HIGH | MEDIUM | LOW
+[If LOW: what additional information would raise confidence]
+
+## Fix
+
+**Before:**
+[code snippet showing the problematic code]
+
+**After:**
+[code snippet showing the minimal fix]
+
+[If config/env change needed, state explicitly]
+[If multiple fixes possible, state tradeoffs and recommend one]
+
+## Prevention
+
+- [One concrete prevention step with specifics]
+```
 
 ## Self-Check
 
@@ -104,4 +141,12 @@ State one concrete prevention step:
 - [ ] Fix is minimal and addresses root cause, not symptom; idioms preserved
 - [ ] Prevention step included (test, lint rule, or monitoring signal)
 - [ ] The "why" is explained; concurrency/connection/regression specifics addressed where relevant
+
+## Avoid
+
+- Proposing a fix before understanding the root cause
+- Refactoring or cleaning up code alongside the fix - change only what is necessary
+- Guessing at the problem when the user provides insufficient context - ask for more details
+- Treating symptoms instead of root cause (e.g., adding a null check without understanding why the value is null)
+- Providing multiple fix options without a clear recommendation
 

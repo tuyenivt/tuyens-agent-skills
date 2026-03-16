@@ -1,6 +1,6 @@
 ---
 name: task-code-test
-description: Test strategy, test scaffolding, and test coverage review. Use when coverage is low and you need a plan, when adding tests to untested code, when scaffolding a new test suite for a feature, when reviewing what test types are missing (unit vs integration vs contract), or when designing the testing pyramid for a service. Not for general code quality review (use task-code-review), not for performance testing (use task-code-perf-review), and not for security testing (use task-code-secure).
+description: Test strategy, test scaffolding, and test coverage review. Use when coverage is low and you need a plan, when adding tests to untested code, when scaffolding a new test suite, when reviewing what test types are missing (unit vs integration vs contract), or when designing the testing pyramid for a service.
 metadata:
   category: review
   tags: [testing, test-strategy, unit-test, integration-test, multi-stack]
@@ -18,6 +18,8 @@ user-invocable: true
 - Test pyramid balance assessment
 - Generating test scaffolds
 
+**Not for:** General code quality review (use `task-code-review`), performance testing (use `task-code-perf-review`), security testing (use `task-code-secure`).
+
 ## Workflow
 
 ### Step 1 - Detect Stack
@@ -26,11 +28,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 2 - Testing Pyramid (All Stacks)
 
-```
-    /\      E2E (few)
-   /--\     Integration (some)
-  /----\    Unit (many)
-```
+**Unit (many)** → **Integration (some)** → **E2E (few)**. Most tests should be fast unit tests; integration tests cover boundaries; E2E tests cover only critical user flows.
 
 ### Step 3 - Framework-Specific Test Patterns
 
@@ -198,3 +196,22 @@ Produce ready-to-run test files using the detected stack's test framework. Inclu
 1. [Highest risk gap]
 2. ...
 ```
+
+## Self-Check
+
+- [ ] Stack detected and framework-specific test patterns applied
+- [ ] Testing pyramid balance assessed - not just unit tests or just integration tests
+- [ ] Prioritization by risk applied when coverage is low (not chasing a coverage number)
+- [ ] Test boundaries clearly defined - each test layer covers what it does best
+- [ ] Contract testing assessed for service-to-service APIs
+- [ ] Test scaffolds (if generated) include happy path, error path, and edge case
+- [ ] Review checklist items all addressed
+
+## Avoid
+
+- Chasing a coverage number instead of prioritizing by risk
+- Testing framework internals (trust the framework, test your configuration)
+- Writing brittle tests that break on implementation changes (test behavior, not implementation)
+- Duplicating assertions across test layers (if an integration test covers it, don't unit test the same thing)
+- Generating tests without understanding what the code does - characterization tests first for unfamiliar code
+- Recommending E2E tests for things that can be caught at the unit or integration level

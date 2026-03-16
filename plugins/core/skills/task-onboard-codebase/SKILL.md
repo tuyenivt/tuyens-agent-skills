@@ -1,6 +1,6 @@
 ---
 name: task-onboard-codebase
-description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack, maps architecture layers and entry points, identifies key patterns and conventions, surfaces tech debt and risk hotspots. Use when joining a new project, taking over an unfamiliar codebase, or doing a pre-implementation survey before a large change. Not for explaining a single file or function (use task-code-explain) and not for architecture documentation audit (use task-architecture-docs-audit).
+description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack, maps architecture layers and entry points, identifies key patterns and conventions, surfaces tech debt and risk hotspots. Use when joining a new project, taking over an unfamiliar codebase, or doing a pre-implementation survey.
 metadata:
   category: workflow
   tags: [onboarding, architecture, tech-debt, codebase-analysis, patterns, multi-stack]
@@ -297,3 +297,20 @@ Use skill: `observability` to assess whether the observability setup is sufficie
 - If a directory or file cannot be read, note it and continue
 - If the codebase is monorepo with multiple services, scope the report to the service the user is focused on, then note other services exist
 - Do not generate code, refactoring plans, or migration plans - produce a map, not a roadmap
+
+## Self-Check
+
+- [ ] Stack table distinguishes declared (from repo context file) from inferred (from file presence)
+- [ ] Architecture classification cites specific file paths as evidence
+- [ ] Patterns table references real file paths for each observed pattern
+- [ ] Tech debt findings ordered High → Medium → Low with concrete locations
+- [ ] Onboarding recommendations limited to 5 prioritized actions
+- [ ] No invented file paths, module names, or pattern examples
+
+## Avoid
+
+- Inventing file paths or module names not observed in the codebase
+- Commenting on code style or formatting as tech debt - focus on structural and operational risk
+- Generating refactoring plans or migration strategies (this produces a map, not a roadmap)
+- Over-exploring irrelevant directories (vendor, node_modules, build output)
+- Producing an exhaustive inventory instead of a scannable summary

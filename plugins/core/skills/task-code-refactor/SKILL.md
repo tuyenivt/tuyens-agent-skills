@@ -1,6 +1,6 @@
 ---
 name: task-code-refactor
-description: Safe refactoring plan for a specific target - file, class, module, or function. Identifies code smells, assesses cross-module risk, requires a test coverage gate before changes, and produces a step-by-step sequence. Use when you know what to refactor and need a safe execution plan: extracting a class, reducing coupling, splitting a large method, renaming for clarity. Not for deciding which debt to tackle first (use task-debt-prioritize), not for feature changes (use task-feature-implement), and not for architecture-level restructuring (use task-design-architecture).
+description: Safe refactoring plan for a specific target - file, class, module, or function. Identifies code smells, assesses cross-module risk, requires a test coverage gate, and produces a step-by-step sequence of independently committable changes.
 metadata:
   category: review
   tags: [refactoring, code-quality, technical-debt, multi-stack]
@@ -16,6 +16,8 @@ user-invocable: true
 - Technical debt reduction
 - Safe refactoring planning
 - Code quality improvement
+
+**Not for:** Deciding which debt to tackle first (use `task-debt-prioritize`), feature changes (use `task-feature-implement`), architecture-level restructuring (use `task-design-architecture`).
 
 ## Inputs
 

@@ -1,6 +1,6 @@
 ---
 name: task-code-review
-description: Standard code review for PRs - correctness, readability, maintainability, and test coverage. Auto-detects project stack. Not for architecture or design review (use task-design-architecture), not for security-only audit (use task-code-secure), and not for high-risk AI-generated code (use task-code-review-advanced).
+description: Standard code review for PRs - correctness, readability, maintainability, and test coverage. Auto-detects project stack and applies framework-specific checks. Use for routine PRs and pre-merge quality checks.
 metadata:
   category: review
   tags: [code-review, pull-request, quality, multi-stack]
@@ -15,6 +15,8 @@ user-invocable: true
 - Pull request reviews
 - Code change reviews
 - Pre-merge quality checks
+
+**Not for:** Architecture/design review (use `task-design-architecture`), security-only audit (use `task-code-secure`), high-risk or AI-generated PRs (use `task-code-review-advanced`).
 
 ## Depth Levels
 
@@ -77,20 +79,14 @@ Use skill: `observability` to check logging, metrics, and tracing coverage.
 Use skill: `resiliency` for error handling, retry, and circuit breaker patterns.
 Use skill: `api-guidelines` if the change touches API contracts or HTTP endpoints.
 
-After loading stack-detect, apply framework-specific review criteria based on the detected ecosystem. Key areas to check:
+After loading stack-detect, apply framework-specific review criteria based on the detected ecosystem. The atomic skills above handle detailed pattern enforcement. In addition, check these cross-cutting concerns:
 
-**Language Idioms:**
+**Language and Framework Fit:**
 
-- Code follows the naming conventions and idioms of the detected language
-- Modern language features are used where appropriate (e.g., pattern matching, records, type hints)
-- Deprecated patterns or APIs are avoided in favor of current best practices
-
-**Framework Conventions:**
-
+- Code uses modern language features and current idioms - no deprecated patterns or APIs
 - Layering follows the framework's recommended architecture (controllers/handlers → services → data access)
-- Dependency injection uses the framework's standard mechanism
-- Response shaping uses proper DTOs/serializers - ORM entities are not exposed in API responses
-- The framework's validation mechanism is used for input validation
+- Dependency injection and response shaping use the framework's standard mechanisms
+- ORM entities are not exposed in API responses
 
 **Data Access:**
 
@@ -102,24 +98,6 @@ After loading stack-detect, apply framework-specific review criteria based on th
 
 - No hardcoded URLs, secrets, credentials, or environment-specific values in code
 - Magic numbers or strings are named constants or configuration entries
-
-**Error Handling:**
-
-- External service calls (HTTP, messaging, DB) have explicit error handling
-- Failures return meaningful errors rather than swallowing exceptions or returning null
-- Happy path and error path are both covered in tests
-
-**Concurrency Safety:**
-
-- Concurrency primitives are appropriate for the detected runtime's threading model
-- Shared mutable state is properly synchronized
-- Connection pool sizing matches the runtime's concurrency model
-
-**Testing Patterns:**
-
-- New behavior has tests covering at least: happy path, primary error path, and one edge case
-- Test utilities match the framework's current recommendations (no deprecated test annotations or helpers)
-- Integration tests use the ecosystem's standard approach
 
 If the detected stack is unfamiliar, apply the universal review criteria from Step 2 and note that framework-specific checks could not be applied.
 
@@ -159,16 +137,48 @@ If the detected stack is unfamiliar, apply the universal review criteria from St
 
 ## Findings
 
-### [Blocker] Location
+### [Blocker] file:line
 
-- Issue: [description]
-- Why: [impact]
+- Issue: [what is wrong]
+- Why: [impact on correctness, reliability, or maintainability]
+- Fix: [concrete code change or approach]
 
-### [Suggestion] Location
+### [Suggestion] file:line
 
-- [improvement idea]
+- Issue: [what could be improved]
+- Fix: [specific improvement]
 
 ## Key Takeaways
 
-[Summary]
+- [2-3 bullets summarizing overall quality and what to address before merge]
 ```
+
+**Example finding (good depth):**
+
+```markdown
+### [Blocker] PaymentWebhookController.java:45
+
+- Issue: Webhook signature verification happens after the request body is parsed and partially processed
+- Why: An attacker can trigger side effects (order status update) with a forged webhook payload before verification fails
+- Fix: Move `verifySignature(request)` to the first line of the handler, before any business logic executes
+```
+
+**Omit empty sections.** If there are no Blockers, do not include a Blocker heading. Always include at least one [Praise] in Done Well.
+
+## Self-Check
+
+- [ ] Stack detected and framework-specific checks applied (or noted as unfamiliar)
+- [ ] Every finding has a label, location (file:line), and actionable fix
+- [ ] Findings ordered: Blocker > Suggestion > Question > Nitpick
+- [ ] At least one [Praise] included in Done Well
+- [ ] Key Takeaways summarize the overall assessment - Summary alone is enough for an Approve/Request Changes decision
+- [ ] No framework conventions applied from a different stack than detected
+
+## Avoid
+
+- Reviewing without reading the full diff first
+- Applying conventions from one stack to another (e.g., Java conventions on Go code)
+- Nitpicking style where no project standard exists
+- Providing vague feedback without a concrete fix ("this could be better")
+- Blocking on personal preference rather than correctness or maintainability
+- Commenting on every file - focus on the most impactful findings
