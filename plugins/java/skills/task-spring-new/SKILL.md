@@ -51,7 +51,7 @@ STEP 4 - REPOSITORY: Use skill: `spring-jpa-performance`. Extend `JpaRepository<
 
 STEP 5 - SERVICE: Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-DTO mapping in-class. Business exceptions from common base.
 
-STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
+STEP 6 - CONTROLLER: Use skill: `backend-api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
 
 STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover happy path, not-found, validation, error responses.
 

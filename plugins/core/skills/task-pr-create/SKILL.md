@@ -65,7 +65,7 @@ Extract from the above:
 
 ### Step 3 - Classify Risk
 
-Use skill: `pr-risk-analysis`
+Use skill: `review-pr-risk`
 
 Produce a single-line risk output:
 

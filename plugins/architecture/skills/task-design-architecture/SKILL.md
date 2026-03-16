@@ -148,14 +148,14 @@ Capture:
 
 Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
 
-Use skill: `engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
+Use skill: `ops-engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
 
 ### 2. System Context and Boundary Definition
 
 Define the system's position in the broader architecture.
 
 Use skill: `architecture-guardrail` to establish boundary rules.
-Use skill: `blast-radius-analysis` to assess failure propagation scope per boundary.
+Use skill: `review-blast-radius` to assess failure propagation scope per boundary.
 Use skill: `system-boundary-design` for formal boundary modeling.
 
 Define:
@@ -177,10 +177,10 @@ For each boundary, state:
 
 Provide the high-level component design.
 
-Use skill: `data-consistency-modeling` for consistency boundary design.
-Use skill: `idempotency` for retry safety at integration points.
-Use skill: `caching` for caching strategy and invalidation.
-Use skill: `resiliency` for fault tolerance and REST client integration patterns.
+Use skill: `architecture-data-consistency` for consistency boundary design.
+Use skill: `backend-idempotency` for retry safety at integration points.
+Use skill: `backend-caching` for caching strategy and invalidation.
+Use skill: `ops-resiliency` for fault tolerance and REST client integration patterns.
 
 Define:
 
@@ -202,8 +202,8 @@ For each component, briefly state:
 
 Define data flow and consistency guarantees.
 
-Use skill: `data-consistency-modeling` for consistency strategy selection.
-Use skill: `db-indexing` for data access patterns and index strategy.
+Use skill: `architecture-data-consistency` for consistency strategy selection.
+Use skill: `backend-db-indexing` for data access patterns and index strategy.
 
 Define:
 
@@ -223,11 +223,11 @@ For each data boundary:
 
 Analyze how the design fails.
 
-Use skill: `failure-classification` to categorize failure types per component.
+Use skill: `ops-failure-classification` to categorize failure types per component.
 Use skill: `failure-propagation-analysis` to trace cascading failure paths.
-Use skill: `blast-radius-analysis` to assess impact scope per failure scenario.
-Use skill: `resiliency` for mitigation patterns.
-Use skill: `concurrency-model` for concurrency risk assessment.
+Use skill: `review-blast-radius` to assess impact scope per failure scenario.
+Use skill: `ops-resiliency` for mitigation patterns.
+Use skill: `architecture-concurrency` for concurrency risk assessment.
 
 Analyze per component boundary:
 
@@ -248,7 +248,7 @@ For each high-risk scenario:
 
 Define what signals the system must produce from day one.
 
-Use skill: `observability` for logging, metrics, and tracing patterns.
+Use skill: `ops-observability` for logging, metrics, and tracing patterns.
 
 Define:
 
@@ -263,9 +263,9 @@ Define:
 
 Estimate capacity requirements and identify bottlenecks.
 
-Use skill: `capacity-modeling` for throughput estimation and scaling analysis.
-Use skill: `caching` for cache-based load reduction and API response optimization.
-Use skill: `db-indexing` for query performance.
+Use skill: `architecture-capacity` for throughput estimation and scaling analysis.
+Use skill: `backend-caching` for cache-based load reduction and API response optimization.
+Use skill: `backend-db-indexing` for query performance.
 
 Estimate:
 
@@ -279,7 +279,7 @@ Estimate:
 
 Define how the system goes to production safely.
 
-Use skill: `release-safety` for rollout and rollback patterns.
+Use skill: `ops-release-safety` for rollout and rollback patterns.
 Use skill: `dependency-impact-analysis` for deployment ordering.
 
 Define:
@@ -314,7 +314,7 @@ For each significant decision:
 Define constraints to enforce during implementation.
 
 Use skill: `architecture-guardrail` for boundary enforcement rules.
-Use skill: `engineering-governance` for evolving existing guardrails.
+Use skill: `ops-engineering-governance` for evolving existing guardrails.
 
 Define:
 

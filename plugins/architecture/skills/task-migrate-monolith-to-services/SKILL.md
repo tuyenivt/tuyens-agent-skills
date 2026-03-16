@@ -121,8 +121,8 @@ For each bounded context:
 Define the end state.
 
 Use skill: `architecture-landscape` if the monolith integrates with other systems or the migration affects org-wide services -- build the surrounding landscape before defining target service boundaries to ensure the new service lines account for org-wide coupling.
-Use skill: `data-consistency-modeling` for inter-service consistency strategy.
-Use skill: `resiliency` for fault tolerance between services.
+Use skill: `architecture-data-consistency` for inter-service consistency strategy.
+Use skill: `ops-resiliency` for fault tolerance between services.
 Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
 Define:
@@ -138,7 +138,7 @@ Define:
 **The core of the migration plan.**
 
 Use skill: `strangler-fig-pattern` for incremental migration strategy.
-Use skill: `blast-radius-analysis` to assess extraction risk per module.
+Use skill: `review-blast-radius` to assess extraction risk per module.
 Use skill: `dependency-impact-analysis` for extraction ordering.
 
 **Deploy cadence prerequisite check:**
@@ -183,8 +183,8 @@ For each extraction phase:
 
 **The hardest part of decomposition. Plan explicitly.**
 
-Use skill: `data-consistency-modeling` for consistency during migration.
-Use skill: `backward-compatibility-analysis` for schema change safety.
+Use skill: `architecture-data-consistency` for consistency during migration.
+Use skill: `ops-backward-compatibility` for schema change safety.
 
 For each extracted service's data:
 
@@ -209,9 +209,9 @@ Data migration phases per entity:
 
 ### 6. Failure and Risk Analysis
 
-Use skill: `failure-classification` for failure categorization.
+Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
-Use skill: `resiliency` for mitigation patterns.
+Use skill: `ops-resiliency` for mitigation patterns.
 
 Analyze risks specific to decomposition:
 
@@ -231,7 +231,7 @@ For each high-risk scenario:
 
 ### 7. Observability and Verification
 
-Use skill: `observability` for monitoring patterns.
+Use skill: `ops-observability` for monitoring patterns.
 
 Define:
 
@@ -243,9 +243,9 @@ Define:
 
 ### 8. Migration Governance
 
-Use skill: `engineering-governance` for process guardrails.
-Use skill: `release-safety` for rollout safety.
-Use skill: `feature-flags` for migration feature flag strategy.
+Use skill: `ops-engineering-governance` for process guardrails.
+Use skill: `ops-release-safety` for rollout safety.
+Use skill: `ops-feature-flags` for migration feature flag strategy.
 
 Define:
 

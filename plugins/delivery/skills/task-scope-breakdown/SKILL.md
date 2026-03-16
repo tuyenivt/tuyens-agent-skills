@@ -60,10 +60,10 @@ Handle partial inputs gracefully. When input is missing, state assumptions expli
 Before creating any task, scan for hidden complexity that inflates effort or introduces risk:
 
 Use skill: `stack-detect` to identify stack-specific complexity signals.
-Use skill: `change-risk-classification` to assess risk domains touched by this feature.
-Use skill: `backward-compatibility-analysis` to identify contract or schema compatibility work.
-Use skill: `db-migration-safety` if database changes are present - to surface lock risk, expand-contract phases, and backfill tasks.
-Use skill: `feature-flags` if the feature is high-risk or requires gradual rollout - to surface flag design, rollout stages, and cleanup tasks.
+Use skill: `review-change-risk` to assess risk domains touched by this feature.
+Use skill: `ops-backward-compatibility` to identify contract or schema compatibility work.
+Use skill: `backend-db-migration` if database changes are present - to surface lock risk, expand-contract phases, and backfill tasks.
+Use skill: `ops-feature-flags` if the feature is high-risk or requires gradual rollout - to surface flag design, rollout stages, and cleanup tasks.
 
 Check for these hidden cost areas:
 
@@ -117,7 +117,7 @@ Tests, load testing, contract validation, and QA.
 Observability, runbooks, feature flags, rollback verification.
 
 Use skill: `dependency-impact-analysis` to validate deployment ordering for infrastructure and data tasks.
-Use skill: `blast-radius-analysis` to assess which tasks carry the highest rollback risk.
+Use skill: `review-blast-radius` to assess which tasks carry the highest rollback risk.
 
 ### Step 3 - Dependency Order
 

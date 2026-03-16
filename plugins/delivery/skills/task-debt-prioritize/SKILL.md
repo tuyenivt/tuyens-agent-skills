@@ -65,7 +65,7 @@ This shapes:
 
 For each debt item, assess its blast radius:
 
-Use skill: `blast-radius-analysis` to determine how many callers, consumers, or downstream components are affected if this debt causes a failure or requires a change.
+Use skill: `review-blast-radius` to determine how many callers, consumers, or downstream components are affected if this debt causes a failure or requires a change.
 
 | Blast Radius | Definition                                           |
 | ------------ | ---------------------------------------------------- |

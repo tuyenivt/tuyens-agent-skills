@@ -61,7 +61,7 @@ For new designs, clarify:
 
 ### Step 3 - Design / Review
 
-Use skill: `api-guidelines`
+Use skill: `backend-api-guidelines`
 
 Validate or design against these rules:
 
@@ -97,7 +97,7 @@ When a resource has a defined lifecycle (e.g., `draft → pending → paid → s
 - For financially or state-sensitive endpoints, support `Idempotency-Key` header: clients generate a unique key per operation; the server returns the same response for repeated requests with the same key
 - Document the deduplication window (e.g., "Idempotency-Key honored for 24 hours")
 
-Use skill: `idempotency` for endpoints with financial or state-critical side effects.
+Use skill: `backend-idempotency` for endpoints with financial or state-critical side effects.
 
 **Multi-Tenancy (when applicable):**
 
@@ -160,7 +160,7 @@ If the detected stack is unfamiliar, apply the universal API design rules from S
 
 ### Step 5 - Backward Compatibility Check
 
-Use skill: `backward-compatibility-analysis`
+Use skill: `ops-backward-compatibility`
 
 If modifying an existing API, check for breaking changes:
 

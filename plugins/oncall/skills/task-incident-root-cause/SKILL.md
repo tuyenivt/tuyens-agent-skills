@@ -78,19 +78,19 @@ Assign severity using these criteria:
 
 **Run immediately after framing. This drives the entire investigation.**
 
-Use skill: `failure-classification` to categorize the failure by type, mechanism, and system layer.
+Use skill: `ops-failure-classification` to categorize the failure by type, mechanism, and system layer.
 
 Apply domain-specific skills based on classification:
 
-- Concurrency issue: use skill: `concurrency-model` for thread safety and lock patterns
-- Data consistency error: use skill: `data-consistency-modeling` for scope and propagation issues
-- DB performance degradation or N+1: use skill: `db-indexing` for query patterns
-- External dependency failure: use skill: `resiliency` for timeout, retry, and circuit breaker gaps
+- Concurrency issue: use skill: `architecture-concurrency` for thread safety and lock patterns
+- Data consistency error: use skill: `architecture-data-consistency` for scope and propagation issues
+- DB performance degradation or N+1: use skill: `backend-db-indexing` for query patterns
+- External dependency failure: use skill: `ops-resiliency` for timeout, retry, and circuit breaker gaps
 - Resource exhaustion: assess connection pool sizing, thread pool limits, memory bounds, file descriptors; check current utilization vs. configured maximums and identify what is consuming the resource
 
 ### 3. Blast Radius Assessment
 
-Use skill: `blast-radius-analysis` to determine scope across code, data, and user dimensions.
+Use skill: `review-blast-radius` to determine scope across code, data, and user dimensions.
 
 Additionally assess:
 
@@ -110,7 +110,7 @@ Output blast radius explicitly: Narrow | Moderate | Wide | Critical.
 Evaluate these containment options in order of speed and safety:
 
 1. **Immediate resource recovery** -- for resource exhaustion (connection pool, thread pool, memory): restart affected instances to reclaim resources, resize pool limits if configurable at runtime, or drain slow consumers holding resources
-2. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `backward-compatibility-analysis` to check for schema or contract breakage that would make rollback unsafe.
+2. **Rollback** -- if recent deploy correlates, rollback is the fastest containment. Before recommending rollback, use skill: `ops-backward-compatibility` to check for schema or contract breakage that would make rollback unsafe.
 3. **Feature flag disable** -- surgical isolation of the failing feature without full rollback; prefer when rollback has compatibility concerns
 4. **Circuit breaker** -- stop cascading to downstream services; especially critical when downstream latency is exhausting upstream resources
 5. **Traffic isolation** -- route affected traffic to degraded-mode path
@@ -119,14 +119,14 @@ Evaluate these containment options in order of speed and safety:
 8. **Patch and redeploy** -- only if root cause is clearly understood and the fix is small (avoid under pressure)
 9. **Data repair** -- if partial writes occurred, assess correction urgency
 
-Use skill: `resiliency` for circuit breaker and retry patterns.
-Use skill: `data-consistency-modeling` for data consistency recovery.
+Use skill: `ops-resiliency` for circuit breaker and retry patterns.
+Use skill: `architecture-data-consistency` for data consistency recovery.
 
 ### 5. Root Cause Hypothesis
 
 Use skill: `root-cause-hypothesis` to generate ranked hypotheses.
 
-If a recent PR diff is provided as input, use skill: `change-risk-classification` to assess the risk level of the triggering change before forming hypotheses.
+If a recent PR diff is provided as input, use skill: `review-change-risk` to assess the risk level of the triggering change before forming hypotheses.
 
 For each hypothesis, require:
 
@@ -141,7 +141,7 @@ For each hypothesis, require:
 
 ### 6. Observability Gap Detection
 
-Use skill: `observability` to evaluate signal coverage.
+Use skill: `ops-observability` to evaluate signal coverage.
 
 For each gap found, state:
 
@@ -159,7 +159,7 @@ Common gaps to check:
 
 ### 7. Systemic Prevention
 
-Use skill: `engineering-governance` for structured prevention recommendations.
+Use skill: `ops-engineering-governance` for structured prevention recommendations.
 Use skill: `architecture-guardrail` to identify boundary weaknesses exposed by the incident.
 
 For each recommendation:

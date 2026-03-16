@@ -135,8 +135,8 @@ Produce a merge map:
 
 **Merging services means merging data. Plan explicitly.**
 
-Use skill: `data-consistency-modeling` for consistency during migration.
-Use skill: `backward-compatibility-analysis` for schema change safety.
+Use skill: `architecture-data-consistency` for consistency during migration.
+Use skill: `ops-backward-compatibility` for schema change safety.
 
 For each merge group:
 
@@ -160,7 +160,7 @@ For each merge group:
 **Merge incrementally, not all at once.**
 
 Use skill: `strangler-fig-pattern` for incremental migration.
-Use skill: `blast-radius-analysis` to assess merge risk.
+Use skill: `review-blast-radius` to assess merge risk.
 Use skill: `dependency-impact-analysis` for merge ordering.
 
 Determine merge order:
@@ -187,8 +187,8 @@ For each consolidation phase:
 
 **Services have consumers. Plan their transition.**
 
-Use skill: `backward-compatibility-analysis` for API compatibility.
-Use skill: `feature-flags` for consumer routing.
+Use skill: `ops-backward-compatibility` for API compatibility.
+Use skill: `ops-feature-flags` for consumer routing.
 
 For each merged service:
 
@@ -202,7 +202,7 @@ For each merged service:
 
 ### 7. Risk Analysis
 
-Use skill: `failure-classification` for failure categorization.
+Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
 
 Analyze consolidation-specific risks:

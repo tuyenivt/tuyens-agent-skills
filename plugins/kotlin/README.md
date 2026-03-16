@@ -62,5 +62,5 @@ core   (base patterns, git, code quality)
 ```
 
 The Kotlin plugin **never duplicates** Java plugin content. It references Java plugin skills
-by name (e.g., `jpa-performance`, `transaction`, `db-migration-safety`, `task-spring-debug`) and
+by name (e.g., `jpa-performance`, `transaction`, `backend-db-migration`, `task-spring-debug`) and
 adds only the Kotlin-specific layer on top.

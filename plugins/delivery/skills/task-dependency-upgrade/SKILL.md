@@ -89,7 +89,7 @@ For each breaking change relevant to this codebase:
 - State the migration action
 - State the effort (S/M/L/XL per change)
 
-Use skill: `backward-compatibility-analysis` to assess API and data contract impact.
+Use skill: `ops-backward-compatibility` to assess API and data contract impact.
 
 ### Step 3 - Compatibility Check
 
@@ -137,7 +137,7 @@ Size guidance:
 
 ### Step 6 - Risk Assessment
 
-Use skill: `blast-radius-analysis` to assess upgrade risk:
+Use skill: `review-blast-radius` to assess upgrade risk:
 
 - Which features and flows depend on this dependency?
 - What is the blast radius if the upgrade introduces a regression?
@@ -152,7 +152,7 @@ Use skill: `blast-radius-analysis` to assess upgrade risk:
 
 ### Step 7 - Rollback Plan
 
-Use skill: `release-safety` for rollback patterns and deployment risk assessment.
+Use skill: `ops-release-safety` for rollback patterns and deployment risk assessment.
 
 Define the rollback procedure before the upgrade starts:
 

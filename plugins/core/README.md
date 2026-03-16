@@ -85,49 +85,51 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ### Architecture
 
-| Skill                       | Description                                                                                              |
-| --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `concurrency-model`         | Concurrency patterns adapted to the detected stack - threading models, synchronization, safe concurrency |
-| `data-consistency-modeling` | Consistency strategy selection across data boundaries                                                    |
+| Skill                           | Description                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `architecture-concurrency`      | Concurrency patterns adapted to the detected stack - threading models, synchronization, safe concurrency |
+| `architecture-data-consistency` | Consistency strategy selection across data boundaries                                                    |
 
 ### Performance
 
-| Skill               | Description                                                                                          |
-| ------------------- | ---------------------------------------------------------------------------------------------------- |
-| `caching`           | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem. |
-| `capacity-modeling` | Throughput estimation, scaling analysis, and bottleneck prediction                                   |
-| `db-indexing`       | Database index strategy and query optimization                                                       |
+| Skill                   | Description                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `backend-caching`       | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem. |
+| `architecture-capacity` | Throughput estimation, scaling analysis, and bottleneck prediction                                   |
+| `backend-db-indexing`   | Database index strategy and query optimization                                                       |
+| `backend-db-migration`  | Universal zero-downtime database migration patterns - expand-contract, lock risk, backfill safety.   |
 
 ### Ops
 
-| Skill                             | Description                                                                                         |
-| --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `backward-compatibility-analysis` | API, event, and data contract backward compatibility assessment                                     |
-| `dependency-impact-analysis`      | Deployment ordering and dependency change impact assessment                                         |
-| `failure-classification`          | Classify production failures by type, mechanism, and system layer                                   |
-| `failure-propagation-analysis`    | Trace failure propagation paths across service and system boundaries                                |
-| `observability`                   | Structured logging, metrics, and distributed tracing. Adapts to detected ecosystem.                 |
-| `release-safety`                  | Rollout, rollback, and deployment risk patterns                                                     |
-| `resiliency`                      | Resilience patterns - circuit breakers, retries, timeouts, bulkheads. Adapts to detected ecosystem. |
+| Skill                          | Description                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `ops-backward-compatibility`   | API, event, and data contract backward compatibility assessment                                     |
+| `dependency-impact-analysis`   | Deployment ordering and dependency change impact assessment                                         |
+| `ops-failure-classification`   | Classify production failures by type, mechanism, and system layer                                   |
+| `failure-propagation-analysis` | Trace failure propagation paths across service and system boundaries                                |
+| `ops-observability`            | Structured logging, metrics, and distributed tracing. Adapts to detected ecosystem.                 |
+| `ops-release-safety`           | Rollout, rollback, and deployment risk patterns                                                     |
+| `ops-resiliency`               | Resilience patterns - circuit breakers, retries, timeouts, bulkheads. Adapts to detected ecosystem. |
+| `ops-feature-flags`            | Feature flag lifecycle - flag design, gradual rollout, rollback, and cleanup discipline.            |
 
 ### Integration
 
-| Skill         | Description                                                             |
-| ------------- | ----------------------------------------------------------------------- |
-| `idempotency` | Idempotency key pattern for safe retries. Adapts to detected ecosystem. |
+| Skill                 | Description                                                             |
+| --------------------- | ----------------------------------------------------------------------- |
+| `backend-idempotency` | Idempotency key pattern for safe retries. Adapts to detected ecosystem. |
 
 ### Governance
 
 | Skill                        | Description                                                                                                |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `api-guidelines`             | REST API design - resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem. |
+| `backend-api-guidelines`     | REST API design - resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem. |
 | `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                              |
-| `blast-radius-analysis`      | Failure propagation and change impact scope assessment                                                     |
-| `change-risk-classification` | Pre-implementation risk domain classification for proposed changes                                         |
-| `coding-standards`           | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                        |
+| `review-blast-radius`        | Failure propagation and change impact scope assessment                                                     |
+| `review-change-risk`         | Pre-implementation risk domain classification for proposed changes                                         |
+| `backend-coding-standards`   | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                        |
 | `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                           |
-| `engineering-governance`     | Engineering process, governance improvement, and guardrail evolution for incident prevention               |
-| `pr-risk-analysis`           | Lightweight heuristic PR risk classification based on change signals                                       |
+| `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention               |
+| `review-pr-risk`             | Lightweight heuristic PR risk classification based on change signals                                       |
 
 ### Frontend
 
@@ -146,39 +148,39 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 ### Workflow → Atomics
 
-| Workflow                    | Atomic Skills Used                                                                                                                                                                                   |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`    | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                         |
-| `task-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                         |
-| `task-onboard-codebase`     | `stack-detect`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`                                                                                                   |
-| `task-pr-create`            | `stack-detect`, `pr-risk-analysis`                                                                                                                                                                   |
-| `task-code-refactor`        | `stack-detect`, `coding-standards`, `concurrency-model`, `architecture-guardrail`                                                                                                                    |
-| `task-code-review`          | `stack-detect`, `coding-standards`, `api-guidelines`, `architecture-guardrail`, `concurrency-model`, `observability`, `resiliency`                                                                   |
-| `task-code-review-advanced` | `stack-detect`, `pr-risk-analysis`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `coding-standards`, `observability`, `resiliency`, `api-guidelines`, `concurrency-model` |
-| `task-code-perf-review`     | `stack-detect`, `caching`, `observability`, `concurrency-model`                                                                                                                                      |
-| `task-code-secure`          | `stack-detect`, `observability`, `resiliency`, `idempotency`, `api-guidelines`                                                                                                                       |
-| `task-code-test`            | `stack-detect`, `coding-standards`, `api-guidelines`                                                                                                                                                 |
-| `task-docs-generate`        | `stack-detect`, `api-guidelines`, `coding-standards`                                                                                                                                                 |
-| `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `concurrency-model`, `complexity-review`                                                                                                                   |
-| `task-db-migration-plan`    | `change-risk-classification`, `backward-compatibility-analysis`, `db-indexing`, `idempotency`, `release-safety`, `dependency-impact-analysis`, `blast-radius-analysis`                               |
+| Workflow                    | Atomic Skills Used                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-feature-implement`    | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                    |
+| `task-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                    |
+| `task-onboard-codebase`     | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`                                                                                                                  |
+| `task-pr-create`            | `stack-detect`, `review-pr-risk`                                                                                                                                                                                                |
+| `task-code-refactor`        | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                |
+| `task-code-review`          | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-guardrail`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`                                                               |
+| `task-code-review-advanced` | `stack-detect`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `ops-resiliency`, `backend-api-guidelines`, `architecture-concurrency` |
+| `task-code-perf-review`     | `stack-detect`, `backend-caching`, `ops-observability`, `architecture-concurrency`                                                                                                                                              |
+| `task-code-secure`          | `stack-detect`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                          |
+| `task-code-test`            | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`                                                                                                                                                            |
+| `task-docs-generate`        | `stack-detect`, `backend-api-guidelines`, `backend-coding-standards`                                                                                                                                                            |
+| `task-code-explain`         | `stack-detect`, `architecture-guardrail`, `architecture-concurrency`, `complexity-review`                                                                                                                                       |
+| `task-db-migration-plan`    | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`                                                     |
 
 ### Atomic → Used By (Reuse Count)
 
 Atomics used by the most workflows - highest customization leverage:
 
-| Atomic Skill                      | Used By                                                                                                                                | Count |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `stack-detect`                    | all except `task-db-migration-plan`                                                                                                    | 10    |
-| `observability`                   | `task-onboard-codebase`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                  | 5     |
-| `architecture-guardrail`          | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-explain`                    | 5     |
-| `coding-standards`                | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate` | 6     |
-| `resiliency`                      | `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                                           | 4     |
-| `concurrency-model`               | `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-explain`                    | 5     |
-| `api-guidelines`                  | `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`                            | 5     |
-| `blast-radius-analysis`           | `task-code-review-advanced`, `task-db-migration-plan`                                                                                  | 2     |
-| `backward-compatibility-analysis` | `task-db-migration-plan`                                                                                                               | 1     |
-| `dependency-impact-analysis`      | `task-db-migration-plan`                                                                                                               | 1     |
-| `change-risk-classification`      | `task-db-migration-plan`                                                                                                               | 1     |
+| Atomic Skill                 | Used By                                                                                                                                | Count |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| `stack-detect`               | all except `task-db-migration-plan`                                                                                                    | 10    |
+| `ops-observability`          | `task-onboard-codebase`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                  | 5     |
+| `architecture-guardrail`     | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-explain`                    | 5     |
+| `backend-coding-standards`   | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-test`, `task-docs-generate` | 6     |
+| `ops-resiliency`             | `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-secure`                                           | 4     |
+| `architecture-concurrency`   | `task-code-refactor`, `task-code-review`, `task-code-review-advanced`, `task-code-perf-review`, `task-code-explain`                    | 5     |
+| `backend-api-guidelines`     | `task-code-review`, `task-code-review-advanced`, `task-code-secure`, `task-code-test`, `task-docs-generate`                            | 5     |
+| `review-blast-radius`        | `task-code-review-advanced`, `task-db-migration-plan`                                                                                  | 2     |
+| `ops-backward-compatibility` | `task-db-migration-plan`                                                                                                               | 1     |
+| `dependency-impact-analysis` | `task-db-migration-plan`                                                                                                               | 1     |
+| `review-change-risk`         | `task-db-migration-plan`                                                                                                               | 1     |
 
 ## Usage Examples
 

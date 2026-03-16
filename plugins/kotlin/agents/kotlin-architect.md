@@ -57,5 +57,4 @@ Your focused expertise is the KOTLIN LAYER:
    - kotlin-allopen plugin (opens @Entity, @MappedSuperclass)
    - Id generation: use Long? = null for auto-generated IDs
 
-Reference the Java plugin's skills for: jpa-performance, transaction,
-spring-security-patterns, gradle-build-optimization, db-migration-safety
+Reference the Java plugin's skills for: `spring-jpa-performance`, `spring-transaction`, `spring-security-patterns`, `java-gradle-build-optimization`, `spring-db-migration-safety`

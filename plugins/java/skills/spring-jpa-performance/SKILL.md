@@ -25,7 +25,7 @@ user-invocable: false
 - Prefer projection over entity for read-only queries
 - Detect and eliminate N+1 queries
 - Keep entities small, avoid heavy logic inside entities
-- Add indexes on WHERE/ORDER BY/JOIN columns (see core plugin's `db-indexing` for general index strategy)
+- Add indexes on WHERE/ORDER BY/JOIN columns (see core plugin's `backend-db-indexing` for general index strategy)
 
 ## Pattern
 

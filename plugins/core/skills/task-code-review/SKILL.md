@@ -73,11 +73,11 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 3 - Framework-Specific Checks
 
-Use skill: `coding-standards` for naming, structure, and anti-pattern enforcement.
-Use skill: `concurrency-model` if concurrency patterns are present in the change.
-Use skill: `observability` to check logging, metrics, and tracing coverage.
-Use skill: `resiliency` for error handling, retry, and circuit breaker patterns.
-Use skill: `api-guidelines` if the change touches API contracts or HTTP endpoints.
+Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
+Use skill: `architecture-concurrency` if concurrency patterns are present in the change.
+Use skill: `ops-observability` to check logging, metrics, and tracing coverage.
+Use skill: `ops-resiliency` for error handling, retry, and circuit breaker patterns.
+Use skill: `backend-api-guidelines` if the change touches API contracts or HTTP endpoints.
 
 After loading stack-detect, apply framework-specific review criteria based on the detected ecosystem. The atomic skills above handle detailed pattern enforcement. In addition, check these cross-cutting concerns:
 

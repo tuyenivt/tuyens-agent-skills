@@ -42,7 +42,7 @@ STEP 4 - REPOSITORY: Use skill: `dotnet-ef-performance`. Interface in `Applicati
 
 STEP 5 - APPLICATION LAYER: Use skill: `dotnet-transaction`, `dotnet-exception-handling`, `dotnet-async-patterns`. Commands and Queries as records. FluentValidation validators. Handlers with business logic; single `SaveChangesAsync(ct)` per handler. If async messaging needed: Use skill: `dotnet-messaging-patterns`.
 
-STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `dotnet-exception-handling`, `dotnet-security-patterns`. `[ApiController] [Route("api/v1/[controller]")]`. `CancellationToken ct` on every action. `[Authorize]` or `[AllowAnonymous]` on every action - no implicit defaults. `201 Created` POST, `204 NoContent` DELETE.
+STEP 6 - CONTROLLER: Use skill: `backend-api-guidelines`, `dotnet-exception-handling`, `dotnet-security-patterns`. `[ApiController] [Route("api/v1/[controller]")]`. `CancellationToken ct` on every action. `[Authorize]` or `[AllowAnonymous]` on every action - no implicit defaults. `201 Created` POST, `204 NoContent` DELETE.
 
 STEP 7 - TESTS: Use skill: `dotnet-test-integration`. Unit: NSubstitute/Moq, happy path + not-found + validation. Repo: Testcontainers PostgreSQL. API: `WebApplicationFactory` + real HTTP client. Test fixtures via Bogus `Faker<T>`.
 

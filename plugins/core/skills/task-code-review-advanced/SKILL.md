@@ -72,8 +72,8 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Phase A - PR Risk Snapshot (run first)
 
-- Use skill: `pr-risk-analysis` to evaluate cross-cutting risk signals
-- Use skill: `blast-radius-analysis` to assess failure propagation scope
+- Use skill: `review-pr-risk` to evaluate cross-cutting risk signals
+- Use skill: `review-blast-radius` to assess failure propagation scope
 - Output risk level and blast radius before proceeding to findings
 
 **Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, skip Phases C-D and produce a streamlined output with Phase B findings only. This avoids over-reviewing trivial changes with the staff-level process.
@@ -92,9 +92,9 @@ After loading stack-detect, apply correctness checks specific to the detected ec
 - Error handling following the ecosystem's conventions
 - **Synchronous external I/O in hot paths**: flag as [High] any synchronous call to cache, database, or external service added in a shared hot path (auth middleware, request filters, interceptors) where the added latency affects every request
 
-Use skill: `resiliency` for error handling, retry, and fault tolerance patterns.
-Use skill: `api-guidelines` if the change touches API contracts or HTTP endpoints.
-Use skill: `concurrency-model` if concurrency patterns are present in the change.
+Use skill: `ops-resiliency` for error handling, retry, and fault tolerance patterns.
+Use skill: `backend-api-guidelines` if the change touches API contracts or HTTP endpoints.
+Use skill: `architecture-concurrency` if concurrency patterns are present in the change.
 
 ### Phase C - Architecture Guardrails
 
@@ -110,8 +110,8 @@ Key signals: over-abstraction, premature generalization, redundant mapping layer
 ### Phase E - Maintainability and Clarity
 
 Naming that obscures intent, mixed responsibilities, large unreviewable chunks, complex logic without explanation.
-Use skill: `coding-standards` for naming, structure, and anti-pattern enforcement.
-Use skill: `observability` to check logging, metrics, and tracing coverage.
+Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
+Use skill: `ops-observability` to check logging, metrics, and tracing coverage.
 
 ## Framework-Specific Signals
 

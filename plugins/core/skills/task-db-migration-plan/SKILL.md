@@ -65,9 +65,9 @@ Handle partial inputs gracefully. When row counts or schema are missing, state a
 
 Classify the migration before planning any steps.
 
-Use skill: `change-risk-classification` to identify risk domains.
-Use skill: `db-migration-safety` for lock risk assessment, expand-contract sequencing, and backfill safety rules.
-Use skill: `backward-compatibility-analysis` to assess application-level compatibility during transition.
+Use skill: `review-change-risk` to identify risk domains.
+Use skill: `backend-db-migration` for lock risk assessment, expand-contract sequencing, and backfill safety rules.
+Use skill: `ops-backward-compatibility` to assess application-level compatibility during transition.
 
 **Schema change type:**
 
@@ -92,7 +92,7 @@ State the type and risk level before continuing.
 
 Identify which operations in this migration acquire locks and estimate duration.
 
-Use skill: `db-indexing` for index creation lock behavior.
+Use skill: `backend-db-indexing` for index creation lock behavior.
 
 **Lock risk reference:**
 
@@ -158,7 +158,7 @@ Skip expand-contract only when:
 - The change is purely additive (new nullable column, new table with no existing data dependency)
 - Downtime is explicitly acceptable and scheduled
 
-Use skill: `release-safety` to plan the deploy ordering across expand, migrate, and contract phases.
+Use skill: `ops-release-safety` to plan the deploy ordering across expand, migrate, and contract phases.
 Use skill: `dependency-impact-analysis` for multi-service deployment ordering.
 
 ### Step 4 - Backfill Planning
@@ -178,7 +178,7 @@ Estimate for the backfill plan:
 | Lock held per batch | Brief row-level locks per batch; no table lock if batched correctly     |
 | Retry safety        | Is the backfill idempotent? Can it be re-run safely?                    |
 
-Use skill: `idempotency` to ensure the backfill is safe to re-run (idempotent by design - re-running produces the same result).
+Use skill: `backend-idempotency` to ensure the backfill is safe to re-run (idempotent by design - re-running produces the same result).
 
 Recommend a backfill approach:
 
@@ -211,7 +211,7 @@ For each phase, answer:
 
 Flag any phase where rollback requires a database restore - this is a go/no-go decision point.
 
-Use skill: `blast-radius-analysis` to assess the impact if the rollback itself fails.
+Use skill: `review-blast-radius` to assess the impact if the rollback itself fails.
 
 ### Step 6 - Execution Plan
 

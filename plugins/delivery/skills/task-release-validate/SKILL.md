@@ -59,8 +59,8 @@ Handle partial inputs gracefully. When a prior release plan is not provided, der
 
 ### Step 1 - Classify and Calibrate
 
-Use skill: `observability` to identify the key signals for this release.
-Use skill: `failure-classification` to determine which failure modes are most likely in the first minutes post-deploy.
+Use skill: `ops-observability` to identify the key signals for this release.
+Use skill: `ops-failure-classification` to determine which failure modes are most likely in the first minutes post-deploy.
 
 Determine the monitoring window length based on risk:
 
@@ -83,7 +83,7 @@ For each checkpoint:
 - **Unhealthy state**: What triggers a No-Go decision
 - **Decision**: Go (advance to next checkpoint or widen canary) / No-Go (rollback)
 
-Use skill: `blast-radius-analysis` to prioritize which signals matter most for the specific change.
+Use skill: `review-blast-radius` to prioritize which signals matter most for the specific change.
 
 ### Step 3 - Canary Advancement Plan
 
@@ -100,7 +100,7 @@ Define explicit stages with traffic percentages and advancement criteria:
 
 Adjust stages based on risk level. High / Critical risk: require explicit approval before each advance.
 
-Use skill: `feature-flags` if the canary is controlled by a feature flag - define the flag state at each stage.
+Use skill: `ops-feature-flags` if the canary is controlled by a feature flag - define the flag state at each stage.
 
 ### Step 4 - Rollback Trigger and Procedure
 
@@ -114,7 +114,7 @@ Define:
 - **Rollback time estimate**: How long until the system is back to pre-deploy state
 - **Post-rollback validation**: How to confirm the rollback succeeded
 
-Use skill: `resiliency` to check if circuit breakers or fallbacks are providing any automatic protection during the monitoring window.
+Use skill: `ops-resiliency` to check if circuit breakers or fallbacks are providing any automatic protection during the monitoring window.
 
 ### Step 5 - Monitoring Window Close
 

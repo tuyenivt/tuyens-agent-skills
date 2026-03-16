@@ -23,7 +23,7 @@ user-invocable: false
 - Use projections (`Select()`) instead of full entity loads for read-only views
 - Prefer Dapper for complex reporting queries or bulk reads
 - Detect and eliminate N+1: never lazy-load inside a loop
-- Add indexes on `WHERE`/`ORDER BY`/`JOIN` columns (see core plugin's `db-indexing`)
+- Add indexes on `WHERE`/`ORDER BY`/`JOIN` columns (see core plugin's `backend-db-indexing`)
 - Use `AsSplitQuery()` for multi-collection includes to avoid cartesian explosion
 - Batch writes with `ExecuteUpdateAsync` / `ExecuteDeleteAsync` (EF Core 7+) for bulk mutations
 

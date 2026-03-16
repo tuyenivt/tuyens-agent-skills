@@ -134,7 +134,7 @@ Read representative files across the codebase to extract the patterns the team a
 - How external dependencies are mocked (library, approach)
 - Test naming conventions
 
-Use skill: `coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
+Use skill: `backend-coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
 
 ### Step 6 - Surface Tech Debt and Risk Hotspots
 
@@ -183,7 +183,7 @@ Identify how the application runs and is operated:
 - **Observability** - logging library and format, metrics endpoint, tracing instrumentation (if detectable)
 - **Database migration strategy** - manual trigger, auto-run on startup, CI step
 
-Use skill: `observability` to assess whether the observability setup is sufficient for production operation.
+Use skill: `ops-observability` to assess whether the observability setup is sufficient for production operation.
 
 ## Output Format
 

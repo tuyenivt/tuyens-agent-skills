@@ -175,9 +175,9 @@ For deep depth, produce a behavioral matrix:
 **The core of the modernization plan.**
 
 Use skill: `strangler-fig-pattern` for incremental migration strategy.
-Use skill: `blast-radius-analysis` to assess migration risk per capability.
+Use skill: `review-blast-radius` to assess migration risk per capability.
 Use skill: `dependency-impact-analysis` for migration ordering.
-Use skill: `feature-flags` for migration routing.
+Use skill: `ops-feature-flags` for migration routing.
 
 Choose the primary migration approach:
 
@@ -210,8 +210,8 @@ Migration order heuristics:
 
 **Data outlives code. Plan the data transition carefully.**
 
-Use skill: `data-consistency-modeling` for consistency during migration.
-Use skill: `backward-compatibility-analysis` for schema compatibility.
+Use skill: `architecture-data-consistency` for consistency during migration.
+Use skill: `ops-backward-compatibility` for schema compatibility.
 
 Address:
 
@@ -239,9 +239,9 @@ Address:
 
 ### 8. Risk Analysis
 
-Use skill: `failure-classification` for failure categorization.
+Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
-Use skill: `resiliency` for mitigation patterns.
+Use skill: `ops-resiliency` for mitigation patterns.
 
 Analyze modernization-specific risks:
 

@@ -97,7 +97,7 @@ Generate service with business rules and mapping:
 
 ### STEP 6 - CONTROLLER + DTO
 
-Use skill: `api-guidelines` for REST conventions.
+Use skill: `backend-api-guidelines` for REST conventions.
 
 Generate:
 

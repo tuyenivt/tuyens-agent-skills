@@ -102,7 +102,7 @@ This constructed timeline becomes the input for Section 1 and Section 3.
 
 Capture:
 
-- Failure type (from root cause analysis or classify using skill: `failure-classification`)
+- Failure type (from root cause analysis or classify using skill: `ops-failure-classification`)
 - Severity: Low | Medium | High | Critical
 - User impact scope and nature
 - Duration from first symptom to resolution
@@ -113,7 +113,7 @@ Capture:
 
 ### 2. Failure Pattern Classification
 
-Use skill: `failure-classification` to categorize by type, mechanism, and system layer.
+Use skill: `ops-failure-classification` to categorize by type, mechanism, and system layer.
 
 Identify the primary failure category:
 
@@ -132,11 +132,11 @@ Identify the primary failure category:
 
 Apply domain-specific skills based on classification:
 
-- Concurrency: use skill: `concurrency-model`
-- Data consistency: use skill: `data-consistency-modeling`
-- External dependency: use skill: `resiliency`
-- DB performance: use skill: `db-indexing`
-- Resource exhaustion: use skill: `resiliency` for pool sizing, timeouts, and bulkhead patterns
+- Concurrency: use skill: `architecture-concurrency`
+- Data consistency: use skill: `architecture-data-consistency`
+- External dependency: use skill: `ops-resiliency`
+- DB performance: use skill: `backend-db-indexing`
+- Resource exhaustion: use skill: `ops-resiliency` for pool sizing, timeouts, and bulkhead patterns
 
 Identify contributing factors that amplified the failure.
 
@@ -156,7 +156,7 @@ Evaluate:
 - **Blast radius amplification** -- what structural factors made the impact worse than necessary?
 - **AI-generated code cognitive risk** (evaluate only when AI-generated code is in the failure path) -- did code volume or complexity from AI-generated contributions obscure the failure path?
 
-Use skill: `blast-radius-analysis` to assess propagation scope.
+Use skill: `review-blast-radius` to assess propagation scope.
 Use skill: `architecture-guardrail` to identify boundary violations exposed by the incident.
 Use skill: `complexity-review` to assess whether AI-generated complexity contributed (only when relevant).
 
@@ -175,11 +175,11 @@ Use skill: `review-gap-analysis` to evaluate:
 - Did the review assess resource impact? (new batch jobs, background tasks, or scheduled jobs that share connection pools, thread pools, or memory with user-facing workloads)
 - Were load/stress tests required before deploying resource-consuming changes?
 
-Use skill: `engineering-governance` to propose specific guardrail improvements.
+Use skill: `ops-engineering-governance` to propose specific guardrail improvements.
 
 ### 5. Observability and Detection Improvements
 
-Use skill: `observability` to evaluate signal coverage and recommend additions.
+Use skill: `ops-observability` to evaluate signal coverage and recommend additions.
 
 For each gap:
 
@@ -200,10 +200,10 @@ Common improvements to evaluate:
 
 Propose structural changes that prevent the failure class.
 
-Use skill: `resiliency` for fault tolerance patterns.
-Use skill: `data-consistency-modeling` for data consistency redesign.
+Use skill: `ops-resiliency` for fault tolerance patterns.
+Use skill: `architecture-data-consistency` for data consistency redesign.
 Use skill: `architecture-guardrail` for boundary enforcement.
-Use skill: `idempotency` for retry safety.
+Use skill: `backend-idempotency` for retry safety.
 
 Evaluate:
 
@@ -220,8 +220,8 @@ Evaluate:
 
 ### 7. Governance and Process Improvements
 
-Use skill: `engineering-governance` to recommend process-level changes.
-Use skill: `engineering-governance` for prevention strategies tied to failure classes.
+Use skill: `ops-engineering-governance` to recommend process-level changes.
+Use skill: `ops-engineering-governance` for prevention strategies tied to failure classes.
 
 Evaluate:
 

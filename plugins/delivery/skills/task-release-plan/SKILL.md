@@ -107,8 +107,8 @@ Handle partial inputs gracefully. When input is missing, state what additional d
 
 **Run first. This frames the entire rollout plan.**
 
-Use skill: `pr-risk-analysis` for change signal assessment.
-Use skill: `blast-radius-analysis` to determine scope across code, data, and user dimensions.
+Use skill: `review-pr-risk` for change signal assessment.
+Use skill: `review-blast-radius` to determine scope across code, data, and user dimensions.
 
 Evaluate risk signals:
 
@@ -121,7 +121,7 @@ Evaluate risk signals:
 - Dependency or platform upgrade
 - Traffic pattern change
 
-Use skill: `failure-classification` to identify which failure types the change is most susceptible to.
+Use skill: `ops-failure-classification` to identify which failure types the change is most susceptible to.
 
 Classify:
 
@@ -132,7 +132,7 @@ Risk classification drives rollout strategy -- higher risk demands more conserva
 
 ### 2. Backward Compatibility Assessment
 
-Use skill: `backward-compatibility-analysis` to evaluate contract and schema compatibility.
+Use skill: `ops-backward-compatibility` to evaluate contract and schema compatibility.
 
 Validate:
 
@@ -142,9 +142,9 @@ Validate:
 - **Consumer impact** -- which downstream services or clients are affected?
 - **Dual-write requirement** -- is a transition period needed where both old and new formats coexist?
 
-Use skill: `api-guidelines` for API contract standards.
-Use skill: `data-consistency-modeling` for consistency strategy across data boundaries.
-Use skill: `idempotency` for retry safety during transition periods.
+Use skill: `backend-api-guidelines` for API contract standards.
+Use skill: `architecture-data-consistency` for consistency strategy across data boundaries.
+Use skill: `backend-idempotency` for retry safety during transition periods.
 
 If breaking changes exist, require an expand-contract migration plan before deployment.
 
@@ -154,8 +154,8 @@ If breaking changes exist, require an expand-contract migration plan before depl
 
 For complex schema changes (column type changes, table splits, large backfills, multi-service coordination), run `/task-db-migration-plan` first to produce a detailed migration execution plan. This skill consumes that plan's output - do not duplicate the migration planning work here.
 
-Use skill: `db-migration-safety` for expand-contract strategy, lock risk, and backfill safety.
-Use skill: `db-indexing` for index impact assessment.
+Use skill: `backend-db-migration` for expand-contract strategy, lock risk, and backfill safety.
+Use skill: `backend-db-indexing` for index impact assessment.
 
 Evaluate:
 
@@ -179,8 +179,8 @@ When the release introduces a new queue, worker service, or webhook endpoint:
 
 ### 4. Rollout Strategy Recommendation
 
-Use skill: `release-safety` for rollout, rollback, and deployment risk patterns.
-Use skill: `feature-flags` for flag design, gradual rollout sequencing, rollback triggers, and cleanup discipline.
+Use skill: `ops-release-safety` for rollout, rollback, and deployment risk patterns.
+Use skill: `ops-feature-flags` for flag design, gradual rollout sequencing, rollback triggers, and cleanup discipline.
 
 Select strategy based on risk classification:
 
@@ -198,13 +198,13 @@ For each strategy, define:
 - **Rollback trigger** -- what signals trigger automatic or manual rollback
 - **Soak time** -- minimum observation period before next stage
 
-Use skill: `resiliency` for circuit breaker and timeout patterns during rollout.
+Use skill: `ops-resiliency` for circuit breaker and timeout patterns during rollout.
 
 ### 5. Observability and Alerting Readiness
 
 **Observability is a deployment prerequisite.**
 
-Use skill: `observability` to evaluate signal coverage.
+Use skill: `ops-observability` to evaluate signal coverage.
 
 Verify before deployment:
 
@@ -225,8 +225,8 @@ For each gap:
 
 **Every release must answer: "How do we undo this in 10 minutes?"**
 
-Use skill: `release-safety` for rollback patterns.
-Use skill: `engineering-governance` for prevention strategies.
+Use skill: `ops-release-safety` for rollback patterns.
+Use skill: `ops-engineering-governance` for prevention strategies.
 Use skill: `failure-propagation-analysis` to understand rollback propagation impact.
 
 Define:
@@ -274,9 +274,9 @@ For framework or platform upgrades:
 
 **Skip if no traffic impact expected.**
 
-Use skill: `capacity-modeling` for throughput estimation and bottleneck prediction.
-Use skill: `caching` for cache pressure and invalidation impact.
-Use skill: `concurrency-model` for concurrency risk assessment.
+Use skill: `architecture-capacity` for throughput estimation and bottleneck prediction.
+Use skill: `backend-caching` for cache pressure and invalidation impact.
+Use skill: `architecture-concurrency` for concurrency risk assessment.
 
 Evaluate:
 

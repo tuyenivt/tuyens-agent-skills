@@ -127,8 +127,8 @@ Use skill: `dependency-impact-analysis` for deployment ordering assessment.
 
 When two or more PRs touch the same high-risk area, their combined blast radius is higher than either alone:
 
-Use skill: `change-risk-classification` to classify the risk domains each PR touches.
-Use skill: `blast-radius-analysis` to assess each PR's individual blast radius.
+Use skill: `review-change-risk` to classify the risk domains each PR touches.
+Use skill: `review-blast-radius` to assess each PR's individual blast radius.
 
 Flag PRs where blast radius overlap creates elevated combined risk:
 

@@ -50,8 +50,8 @@ Use judgment - these are signals, not hard rules. A 25-line method with a clear 
 
 ### Step 3 - Framework-Specific Smells
 
-Use skill: `coding-standards` to enforce naming, structure, and anti-pattern rules for the detected stack.
-Use skill: `concurrency-model` if concurrency patterns are present in the target scope.
+Use skill: `backend-coding-standards` to enforce naming, structure, and anti-pattern rules for the detected stack.
+Use skill: `architecture-concurrency` if concurrency patterns are present in the target scope.
 
 After loading stack-detect, identify smells specific to the detected ecosystem. Common categories include:
 
@@ -95,17 +95,17 @@ Before proposing any refactoring step, assess boundary impact:
 **Is the target part of a public API or published contract?**
 
 - HTTP endpoints, SDK methods, events, and database schemas are public contracts
-- Refactoring these requires backward-compatibility analysis - use skill: `backward-compatibility-analysis`
+- Refactoring these requires backward-compatibility analysis - use skill: `ops-backward-compatibility`
 
 **Does the refactoring change a constructor, `__init__`, factory method, or function signature?**
 
 - Any parameter addition, removal, or reorder is a breaking change for callers outside the module
-- Always invoke skill: `backward-compatibility-analysis` before finalizing refactoring steps that touch signatures
+- Always invoke skill: `ops-backward-compatibility` before finalizing refactoring steps that touch signatures
 - Propose a deprecation alias or keyword-only parameters to soften the break where the language permits
 
 **What is the blast radius?**
 
-- Use skill: `blast-radius-analysis` to estimate how many callers, tests, and deployments are affected
+- Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected
 - A refactoring touching shared infrastructure (logging, auth, caching) has higher blast radius than a leaf class
 
 **Rules for cross-module refactoring:**
@@ -190,8 +190,8 @@ Characterization tests to write before starting:
 
 - [ ] stack-detect invoked before any smell identification or refactoring steps
 - [ ] Test coverage gate checked before proposing any refactoring steps; if insufficient, Test First plan output instead
-- [ ] Cross-module usage checked; blast-radius-analysis invoked if callers exist outside the target module
-- [ ] backward-compatibility-analysis invoked if refactoring touches constructors, `__init__`, factory methods, or public function signatures
+- [ ] Cross-module usage checked; `review-blast-radius` invoked if callers exist outside the target module
+- [ ] `ops-backward-compatibility` invoked if refactoring touches constructors, `__init__`, factory methods, or public function signatures
 - [ ] Every refactoring step is independently committable with a test run between steps
 - [ ] Breaking Change Risk section present; empty only if no public symbols change
 
@@ -202,4 +202,3 @@ Characterization tests to write before starting:
 - Treating constructor/signature changes as low-risk - always check callers first
 - Combining multiple refactorings into one step (masks which change caused a test failure)
 - Generating implementation code for the refactoring - describe what to do, not every line of code
-

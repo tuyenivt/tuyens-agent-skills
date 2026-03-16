@@ -1,6 +1,6 @@
 ---
 name: dependency-impact-analysis
-description: Library and service dependency graph analysis - deployment ordering, breaking change detection, and compatibility impact. Focused on dependency graph and sequencing, not code-level blast radius (use blast-radius-analysis for that).
+description: Library and service dependency graph analysis - deployment ordering, breaking change detection, and compatibility impact. Focused on dependency graph and sequencing, not code-level blast radius (use review-blast-radius for that).
 metadata:
   category: ops
   tags: [deployment, dependencies, impact, ordering, compatibility]
@@ -23,7 +23,7 @@ user-invocable: false
 - Map the dependency graph before assessing impact
 - Changes to shared contracts require consumer impact assessment
 - Deployment order must respect the dependency direction
-- Breaking changes require a compatibility migration plan -- use skill: `backward-compatibility-analysis` for expand-contract mechanics
+- Breaking changes require a compatibility migration plan -- use skill: `ops-backward-compatibility` for expand-contract mechanics
 - Do not assume consumers will update immediately
 
 ## Pattern
@@ -42,7 +42,7 @@ For each changed component, identify:
 | Change Type             | Consumer Impact     | Deployment Constraint                                                                                  |
 | ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ |
 | Additive (new field)    | None if optional    | Deploy provider first                                                                                  |
-| Modification (rename)   | Breaking            | Use skill: `backward-compatibility-analysis`                                                           |
+| Modification (rename)   | Breaking            | Use skill: `ops-backward-compatibility`                                                                |
 | Removal (drop field)    | Breaking            | Verify no consumers, then remove                                                                       |
 | Behavioral (logic)      | Depends on contract | Canary with consumer monitoring                                                                        |
 | Performance (latency)   | Cascading risk      | Load test with consumer traffic                                                                        |
@@ -63,7 +63,7 @@ When the change is a version upgrade rather than a code change, the standard con
 - **Provider before consumer** for additive changes
 - **Consumer before provider** for removal changes
 - **Simultaneous** only when feature-flagged on both sides
-- **Expand-contract** for breaking changes -- see skill: `backward-compatibility-analysis` for detailed migration plan
+- **Expand-contract** for breaking changes -- see skill: `ops-backward-compatibility` for detailed migration plan
 
 ### Good: Specific impact with deployment order
 
@@ -104,7 +104,7 @@ Consuming workflow skills depend on this structure to determine deployment order
 
 ### Breaking Changes Requiring Migration
 
-{For each breaking change: reference backward-compatibility-analysis for expand-contract plan}
+{For each breaking change: reference `ops-backward-compatibility` for expand-contract plan}
 
 ### No Impact
 
@@ -117,6 +117,6 @@ Always produce the Consumers Affected table. Omit "No Impact" if impact was foun
 
 - Deploying provider changes without mapping consumers
 - Assuming all consumers handle new fields gracefully
-- Breaking changes without a migration plan (see skill: `backward-compatibility-analysis`)
+- Breaking changes without a migration plan (see skill: `ops-backward-compatibility`)
 - Deploying consumer before provider for additive changes
 - Ignoring transitive dependency impact

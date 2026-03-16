@@ -116,7 +116,7 @@ Surface behavior that will surprise a developer who has not read this code caref
 
 List only the gotchas that actually apply to this code.
 
-Use skill: `concurrency-model` if concurrency gotchas are present.
+Use skill: `architecture-concurrency` if concurrency gotchas are present.
 
 ### Step 5 - Key Invariants (standard and deep)
 

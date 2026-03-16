@@ -87,8 +87,8 @@ If the detected stack is unfamiliar, apply the database and universal I/O checks
 
 ### Step 4 - Caching Deep Dive (All Stacks)
 
-Use skill: `caching` for cache strategy patterns (key design, invalidation, local vs distributed).
-Use skill: `concurrency-model` to validate thread/worker pool sizing and concurrency primitive choices.
+Use skill: `backend-caching` for cache strategy patterns (key design, invalidation, local vs distributed).
+Use skill: `architecture-concurrency` to validate thread/worker pool sizing and concurrency primitive choices.
 
 Verify (beyond the basic cache checks in Step 3):
 
@@ -127,7 +127,7 @@ Skip this step if the review target is backend-only.
 
 ### Step 7 - Observability (All Stacks)
 
-Use skill: `observability` for metrics and monitoring patterns.
+Use skill: `ops-observability` for metrics and monitoring patterns.
 
 Verify:
 

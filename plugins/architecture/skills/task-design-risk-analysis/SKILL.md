@@ -103,9 +103,9 @@ Capture:
 
 **Classify the change by risk domains.**
 
-Use skill: `change-risk-classification` for pre-implementation risk domain classification.
-Use skill: `pr-risk-analysis` for code signal-based risk assessment (when PR diff is available).
-Use skill: `failure-classification` to identify which failure types the change is most susceptible to.
+Use skill: `review-change-risk` for pre-implementation risk domain classification.
+Use skill: `review-pr-risk` for code signal-based risk assessment (when PR diff is available).
+Use skill: `ops-failure-classification` to identify which failure types the change is most susceptible to.
 Use skill: `architecture-guardrail` to detect boundary erosion risk.
 Use skill: `complexity-review` to detect AI-generated complexity amplification.
 
@@ -132,7 +132,7 @@ Classify:
 
 **Evaluate the scope and propagation of potential failure.**
 
-Use skill: `blast-radius-analysis` to assess impact across code, data, and user dimensions.
+Use skill: `review-blast-radius` to assess impact across code, data, and user dimensions.
 Use skill: `failure-propagation-analysis` to trace cascading failure paths.
 
 Evaluate:
@@ -153,9 +153,9 @@ Classify:
 
 **Evaluate data consistency and transaction safety implications.**
 
-Use skill: `data-consistency-modeling` for consistency strategy evaluation.
-Use skill: `idempotency` for retry safety assessment.
-Use skill: `resiliency` for failure handling pattern assessment.
+Use skill: `architecture-data-consistency` for consistency strategy evaluation.
+Use skill: `backend-idempotency` for retry safety assessment.
+Use skill: `ops-resiliency` for failure handling pattern assessment.
 
 Evaluate:
 
@@ -170,11 +170,11 @@ Evaluate:
 
 **Evaluate deployment safety and rollback feasibility.**
 
-Use skill: `release-safety` for rollout and rollback patterns.
-Use skill: `backward-compatibility-analysis` for contract compatibility assessment.
+Use skill: `ops-release-safety` for rollout and rollback patterns.
+Use skill: `ops-backward-compatibility` for contract compatibility assessment.
 Use skill: `dependency-impact-analysis` for deployment ordering and dependency impact.
-Use skill: `db-migration-safety` when the change involves schema decomposition or migration.
-Use skill: `feature-flags` when evaluating feature flag necessity.
+Use skill: `backend-db-migration` when the change involves schema decomposition or migration.
+Use skill: `ops-feature-flags` when evaluating feature flag necessity.
 
 Evaluate:
 
@@ -198,7 +198,7 @@ Classify rollback complexity:
 
 **Evaluate whether existing observability can detect the failure modes identified above.**
 
-Use skill: `observability` to evaluate signal coverage.
+Use skill: `ops-observability` to evaluate signal coverage.
 
 Verify:
 
@@ -218,7 +218,7 @@ For each gap:
 
 **Recommend specific mitigations proportional to the identified risks.**
 
-Use skill: `engineering-governance` for process, governance, guardrail, and systemic prevention recommendations.
+Use skill: `ops-engineering-governance` for process, governance, guardrail, and systemic prevention recommendations.
 Use skill: `architecture-guardrail` for boundary enforcement recommendations.
 
 Recommend across five categories:

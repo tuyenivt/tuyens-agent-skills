@@ -21,28 +21,28 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 
 ### Core Atomics Used by Delivery Workflows
 
-| Core Atomic                       | Used By                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `stack-detect`                    | `task-release-plan`, `task-scope-breakdown`                              |
-| `blast-radius-analysis`           | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
-| `backward-compatibility-analysis` | `task-release-plan`, `task-scope-breakdown`                              |
-| `dependency-impact-analysis`      | `task-release-plan`, `task-scope-breakdown`, `task-pr-conflict-analysis` |
-| `change-risk-classification`      | `task-scope-breakdown`                                                   |
-| `db-migration-safety`             | `task-release-plan`, `task-scope-breakdown`                              |
-| `feature-flags`                   | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
-| `release-safety`                  | `task-release-plan`                                                      |
-| `pr-risk-analysis`                | `task-release-plan`                                                      |
-| `failure-classification`          | `task-release-plan`, `task-release-validate`                             |
-| `capacity-modeling`               | `task-release-plan`                                                      |
-| `engineering-governance`          | `task-release-plan`                                                      |
-| `api-guidelines`                  | `task-release-plan`                                                      |
-| `data-consistency-modeling`       | `task-release-plan`                                                      |
-| `idempotency`                     | `task-release-plan`                                                      |
-| `db-indexing`                     | `task-release-plan`                                                      |
-| `resiliency`                      | `task-release-plan`, `task-release-validate`                             |
-| `observability`                   | `task-release-plan`, `task-release-validate`                             |
-| `caching`                         | `task-release-plan`                                                      |
-| `concurrency-model`               | `task-release-plan`                                                      |
+| Core Atomic                     | Used By                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `stack-detect`                  | `task-release-plan`, `task-scope-breakdown`                              |
+| `review-blast-radius`           | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
+| `ops-backward-compatibility`    | `task-release-plan`, `task-scope-breakdown`                              |
+| `dependency-impact-analysis`    | `task-release-plan`, `task-scope-breakdown`, `task-pr-conflict-analysis` |
+| `review-change-risk`            | `task-scope-breakdown`                                                   |
+| `backend-db-migration`          | `task-release-plan`, `task-scope-breakdown`                              |
+| `ops-feature-flags`             | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
+| `ops-release-safety`            | `task-release-plan`                                                      |
+| `review-pr-risk`                | `task-release-plan`                                                      |
+| `ops-failure-classification`    | `task-release-plan`, `task-release-validate`                             |
+| `architecture-capacity`         | `task-release-plan`                                                      |
+| `ops-engineering-governance`    | `task-release-plan`                                                      |
+| `backend-api-guidelines`        | `task-release-plan`                                                      |
+| `architecture-data-consistency` | `task-release-plan`                                                      |
+| `backend-idempotency`           | `task-release-plan`                                                      |
+| `backend-db-indexing`           | `task-release-plan`                                                      |
+| `ops-resiliency`                | `task-release-plan`, `task-release-validate`                             |
+| `ops-observability`             | `task-release-plan`, `task-release-validate`                             |
+| `backend-caching`               | `task-release-plan`                                                      |
+| `architecture-concurrency`      | `task-release-plan`                                                      |
 
 ## Usage Examples
 

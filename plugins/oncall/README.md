@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Oncall
 
-Incident response and investigation plugin for Claude Code: triage, investigation, root cause analysis, and postmortem. Requires the `core` plugin for shared atomic skills (failure-classification, blast-radius-analysis, observability, resiliency, engineering-governance, etc.).
+Incident response and investigation plugin for Claude Code: triage, investigation, root cause analysis, and postmortem. Requires the `core` plugin for shared atomic skills (`ops-failure-classification`, `review-blast-radius`, `ops-observability`, `ops-resiliency`, `ops-engineering-governance`, etc.).
 
 ## Workflow Skills
 
@@ -27,12 +27,12 @@ Incident response and investigation plugin for Claude Code: triage, investigatio
 
 ### Workflow -> Atomics
 
-| Workflow                   | Atomic Skills Used (oncall) | Atomic Skills Used (from core)                                                                                                                                                                                                                                                                         |
-| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task-oncall-start`        | -                           | `stack-detect`                                                                                                                                                                                                                                                                                         |
-| `task-oncall-investigate`  | `log-analysis`              | `stack-detect`, `task-code-explain`                                                                                                                                                                                                                                                                    |
-| `task-incident-root-cause` | `root-cause-hypothesis`     | `failure-classification`, `blast-radius-analysis`, `failure-propagation-analysis`, `concurrency-model`, `data-consistency-modeling`, `db-indexing`, `resiliency`, `observability`, `architecture-guardrail`, `engineering-governance`, `backward-compatibility-analysis`, `change-risk-classification` |
-| `task-incident-postmortem` | `review-gap-analysis`       | `failure-classification`, `concurrency-model`, `data-consistency-modeling`, `resiliency`, `db-indexing`, `blast-radius-analysis`, `architecture-guardrail`, `complexity-review`, `engineering-governance`, `observability`, `idempotency`, `coding-standards`                                          |
+| Workflow                   | Atomic Skills Used (oncall) | Atomic Skills Used (from core)                                                                                                                                                                                                                                                                                             |
+| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-oncall-start`        | -                           | `stack-detect`                                                                                                                                                                                                                                                                                                             |
+| `task-oncall-investigate`  | `log-analysis`              | `stack-detect`, `task-code-explain`                                                                                                                                                                                                                                                                                        |
+| `task-incident-root-cause` | `root-cause-hypothesis`     | `ops-failure-classification`, `review-blast-radius`, `failure-propagation-analysis`, `architecture-concurrency`, `architecture-data-consistency`, `backend-db-indexing`, `ops-resiliency`, `ops-observability`, `architecture-guardrail`, `ops-engineering-governance`, `ops-backward-compatibility`, `review-change-risk` |
+| `task-incident-postmortem` | `review-gap-analysis`       | `ops-failure-classification`, `architecture-concurrency`, `architecture-data-consistency`, `ops-resiliency`, `backend-db-indexing`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `ops-engineering-governance`, `ops-observability`, `backend-idempotency`, `backend-coding-standards`             |
 
 ## Usage Examples
 
