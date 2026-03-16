@@ -1,6 +1,6 @@
 ---
 name: dotnet-test-integration
-description: xUnit test patterns, WebApplicationFactory slices, Testcontainers, and Bogus test data for .NET 8
+description: Structure integration tests with WebApplicationFactory, Testcontainers for real database testing, Bogus for data generation, and Respawn for state isolation.
 metadata:
   category: backend
   tags: [xunit, testcontainers, webapplicationfactory, integration-testing, bogus]
@@ -95,3 +95,61 @@ public sealed class OrderFaker : Faker<Order>
 - Shared mutable state between tests (test isolation)
 - Testing implementation details - test observable behaviour
 - Hardcoded connection strings - read from `IConfiguration` or Testcontainers
+
+## Testcontainers Fixture
+
+Shared Testcontainers fixture to avoid spinning up a new database per test class:
+
+```csharp
+public sealed class PostgresContainerFixture : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
+        .WithImage("postgres:16-alpine")
+        .Build();
+
+    public string ConnectionString => _container.GetConnectionString();
+    public AppDbContext Context { get; private set; } = null!;
+
+    public async Task InitializeAsync()
+    {
+        await _container.StartAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(ConnectionString)
+            .Options;
+        Context = new AppDbContext(options);
+        await Context.Database.MigrateAsync();
+    }
+
+    public async Task DisposeAsync() => await _container.DisposeAsync();
+}
+```
+
+## WebApplicationFactory Fixture
+
+Override services to use Testcontainers instead of a real database:
+
+```csharp
+public sealed class CustomWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().Build();
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<DbContextOptions<AppDbContext>>();
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_db.GetConnectionString()));
+        });
+    }
+
+    public async Task InitializeAsync() => await _db.StartAsync();
+    public new async Task DisposeAsync() => await _db.DisposeAsync();
+}
+```
+
+## Edge Cases
+
+- **Parallel test execution**: xUnit runs test classes in parallel by default. Each class sharing the same `IClassFixture` gets the same instance, but different classes get different instances. Use `[Collection]` to share a single Testcontainers instance across multiple test classes to avoid excessive container creation.
+- **Respawn with PostgreSQL**: When using Respawn, pass `new RespawnerOptions { DbAdapter = DbAdapter.Postgres }` and call `ResetAsync` in the test constructor or `InitializeAsync`, not in `Dispose` (async cleanup in `Dispose` is unreliable).
+- **WebApplicationFactory port conflicts**: `WebApplicationFactory` uses a random port by default. Do not hardcode ports in test configuration.
+- **Docker not available in CI**: Testcontainers requires a Docker-compatible runtime. In CI environments without Docker, use Testcontainers Cloud or fall back to SQLite for a degraded but functional test suite.

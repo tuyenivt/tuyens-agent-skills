@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-debug
-description: Developer-level debugging workflow for .NET 8 / ASP.NET Core. Paste a stack trace, exception, EF Core error, DI startup failure, or describe unexpected behaviour. Analyses root cause in your codebase, suggests a minimal fix with before/after code, and explains why it happened. Not for production incidents with service degradation (use task-incident-root-cause) and not for performance profiling without a concrete error (use task-code-perf-review).
+description: Developer-level debugging workflow for .NET 8 / ASP.NET Core. Paste a stack trace, exception, or describe unexpected behaviour to get root cause analysis with a minimal before/after fix. Not for production incidents (use task-incident-root-cause) or performance profiling without a concrete error (use task-code-perf-review).
 metadata:
   category: backend
   tags: [dotnet, aspnet-core, debugging, stack-trace, error-analysis, workflow]
@@ -48,6 +48,7 @@ Identify the error category:
 | **Validation**          | `ValidationException`, 400 responses, FluentValidation failures               |
 | **Auth / Middleware**   | 401/403 responses, missing claims, middleware ordering issues                 |
 | **Test Failure**        | xUnit assertion failures, Testcontainers startup errors                       |
+| **Concurrency**         | `DbUpdateConcurrencyException`, optimistic locking failures, race conditions  |
 | **Build / Compilation** | `CS` error codes, nullable warnings, missing package references               |
 
 ### Step 3 - Locate Root Cause
@@ -87,25 +88,20 @@ Suggest one concrete guardrail to prevent the same class of error:
 
 ## Output Format
 
-````markdown
+```markdown
 ## Root Cause
 
-[1-3 sentence explanation]
+[1-3 sentence explanation referencing specific file and line]
 
 ## Fix
 
 **Before:**
-
-```csharp
+`[file path]`
 // problematic code
-```
-````
 
 **After:**
-
-```csharp
+`[file path]`
 // fixed code
-```
 
 ## Why This Works
 
@@ -119,6 +115,7 @@ Suggest one concrete guardrail to prevent the same class of error:
 ## Prevention
 
 [one guardrail to prevent recurrence]
+```
 
 ## Self-Check
 
@@ -127,6 +124,7 @@ Suggest one concrete guardrail to prevent the same class of error:
 - [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
 - [ ] Async fixes are context-specific - `.ConfigureAwait(false)` not applied as a blanket solution
 - [ ] One concrete prevention guardrail included; verification steps tell developer how to confirm the fix
+- [ ] For EF Core issues, `dotnet-ef-performance` patterns applied; for async issues, `dotnet-async-patterns` consulted
 
 ## Avoid
 
@@ -134,3 +132,4 @@ Suggest one concrete guardrail to prevent the same class of error:
 - Suggesting broad rewrites when a targeted fix suffices
 - Adding defensive null checks everywhere - identify the actual null source
 - Recommending `.ConfigureAwait(false)` as a blanket fix without understanding the context
+- Blaming the framework when the root cause is in user code

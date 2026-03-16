@@ -1,6 +1,6 @@
 ---
 name: dotnet-build-optimization
-description: .NET 8 build performance, NuGet Central Package Management, multi-project solution setup, and CI caching
+description: Optimize .NET build performance with NuGet Central Package Management, shared build props, Clean Architecture solution layout, and CI caching.
 metadata:
   category: backend
   tags: [dotnet, build, nuget, cpm, solution, ci-cd]
@@ -93,3 +93,10 @@ tests/
 - `dotnet restore` without a NuGet cache step in CI
 - Circular project references (Domain must not reference Application or Infrastructure)
 - Mixing `net8.0` and `net6.0` targets in the same solution without reason
+- `dotnet build` without `--no-restore` when restore already succeeded (doubles NuGet resolution time)
+
+## Edge Cases
+
+- **Migrating to CPM**: When adopting Central Package Management on an existing solution, run `dotnet nuget locals all --clear` first. Existing `<PackageReference Version="...">` in `.csproj` files will conflict with `Directory.Packages.props` - remove all `Version` attributes from `.csproj` files before enabling `ManagePackageVersionsCentrally`.
+- **Conditional package references**: When a package is only needed in certain projects (e.g., `Testcontainers` only in test projects), still declare its version in `Directory.Packages.props` and reference it without a version in the specific `.csproj`.
+- **Multi-TFM builds**: If targeting multiple frameworks (e.g., `net8.0;net9.0`), use `<TargetFrameworks>` (plural) in `Directory.Build.props` and ensure all NuGet packages support all targets.

@@ -1,6 +1,6 @@
 ---
 name: dotnet-exception-handling
-description: Global exception middleware, Problem Details (RFC 7807), and domain exception hierarchy for ASP.NET Core
+description: Implement centralized exception handling with IExceptionHandler, RFC 7807 Problem Details responses, and a domain exception hierarchy mapped to HTTP status codes.
 metadata:
   category: backend
   tags: [exception-handling, problem-details, middleware, error-responses]
@@ -76,9 +76,42 @@ builder.Services.AddProblemDetails();
 app.UseExceptionHandler();
 ```
 
+## FluentValidation Integration
+
+When using `FluentValidation`, validation failures throw `ValidationException` with a list of errors. Map them to a 422 response with per-field details:
+
+```csharp
+FluentValidation.ValidationException ve => (422, "Validation Error"),
+```
+
+In the handler, attach validation errors to the Problem Details extensions:
+
+```csharp
+if (exception is FluentValidation.ValidationException validationEx)
+{
+    var errors = validationEx.Errors
+        .GroupBy(e => e.PropertyName)
+        .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+
+    await Results.Problem(
+        statusCode: 422,
+        title: "Validation Error",
+        extensions: new Dictionary<string, object?> { ["errors"] = errors }
+    ).ExecuteAsync(context);
+    return true;
+}
+```
+
+## Edge Cases
+
+- **Multiple IExceptionHandler registrations**: ASP.NET Core 8 chains handlers in registration order. If the first handler returns `true`, subsequent handlers are skipped. Register the most specific handler first.
+- **Minimal API vs controllers**: `IExceptionHandler` works for both Minimal APIs and controllers. No separate configuration is needed.
+- **OperationCanceledException**: Client disconnections throw `OperationCanceledException`. Do not log these as errors - return early or let the framework handle them (ASP.NET Core returns no response body for cancelled requests).
+
 ## Avoid
 
 - `try/catch` in controllers just to return `BadRequest()`
 - Different error response shapes across endpoints
 - Swallowing exceptions without logging
 - Returning `500` for expected domain errors
+- Catching `Exception` broadly in service code instead of letting it propagate to the global handler

@@ -1,6 +1,6 @@
 ---
 name: dotnet-db-migration-safety
-description: EF Core migration safety, zero-downtime DDL patterns, and rollback strategies for .NET 8
+description: Enforce zero-downtime EF Core migration patterns including expand-then-contract, rollback-safe DDL, and safe NOT NULL constraints on large tables.
 metadata:
   category: backend
   tags: [ef-core, migrations, zero-downtime, ddl, database]
@@ -97,3 +97,10 @@ dotnet run --project src/Migrator -- migrate
 - Dropping a column while code still references it
 - Adding a NOT NULL column without a default to an existing table
 - Squashing migrations that have been applied to production
+
+## Edge Cases
+
+- **Index creation on large tables**: `CREATE INDEX` acquires a lock that blocks writes. Use `CREATE INDEX CONCURRENTLY` (PostgreSQL) or `CREATE INDEX ... WITH (ONLINE = ON)` (SQL Server Enterprise) via `migrationBuilder.Sql()` - EF Core does not generate concurrent indexes.
+- **Enum column additions**: Adding a new enum value is safe, but removing or renaming one requires expand-then-contract just like column renames.
+- **Migration ordering conflicts**: When multiple branches add migrations, the `ModelSnapshot` will conflict on merge. Resolve by regenerating the snapshot: delete the conflicting snapshot, keep both migration files, and run `dotnet ef migrations script` to verify correctness.
+- **Empty migrations**: If `dotnet ef migrations add` generates an empty migration (no `Up`/`Down` body), the model snapshot still changed. Investigate whether a configuration change was unintentional before removing it.

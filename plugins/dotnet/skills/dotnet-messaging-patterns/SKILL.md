@@ -1,6 +1,6 @@
 ---
 name: dotnet-messaging-patterns
-description: MassTransit consumers, sagas, outbox pattern, and Hangfire background jobs for .NET 8
+description: Implement reliable async messaging with MassTransit consumers, transactional outbox, retry policies, and Hangfire for scheduled background jobs.
 metadata:
   category: backend
   tags: [masstransit, hangfire, messaging, background-jobs, outbox, saga]
@@ -85,3 +85,11 @@ RecurringJob.AddOrUpdate<IReportGenerationService>(
 - Consumers that are not idempotent
 - Long-running synchronous work inside a consumer - offload to Hangfire if needed
 - Missing dead-letter queue configuration (messages are silently dropped)
+
+## Edge Cases
+
+- **Outbox requires SaveChangesAsync**: The transactional outbox only publishes messages when `SaveChangesAsync()` is called on the same `DbContext`. If you publish without saving, the message is lost. Always publish within the same unit of work that persists domain state.
+- **Consumer DI scope**: MassTransit creates a new DI scope per message. Scoped services (e.g., `DbContext`) work correctly. Do not inject singleton services that hold mutable state.
+- **Hangfire serialization**: Hangfire serializes job arguments to JSON. Do not pass complex objects, `CancellationToken`, or EF entities as job parameters - pass identifiers and resolve dependencies inside the job.
+- **MassTransit in-memory for testing**: Use `x.UsingInMemory()` in integration tests instead of requiring a real RabbitMQ broker. This avoids flaky tests while still exercising consumer logic.
+- **Duplicate consumer registration**: If a consumer is registered both via `AddConsumer<T>()` and auto-discovery (`AddConsumers(assembly)`), it runs twice per message. Use one registration method consistently.

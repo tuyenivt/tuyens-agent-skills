@@ -1,6 +1,6 @@
 ---
 name: dotnet-transaction
-description: Transaction scope, SaveChanges boundaries, and Unit of Work patterns for EF Core
+description: Define transactional boundaries with single-SaveChanges semantics, explicit IDbContextTransaction for cross-aggregate writes, Unit of Work abstraction, and retry-safe execution strategies.
 metadata:
   category: backend
   tags: [ef-core, transactions, unit-of-work, consistency]
@@ -133,3 +133,10 @@ await using var tx = await _context.Database
 - Business logic inside the `catch` block of a transaction
 - Manual retry loops around `SaveChangesAsync` - use `EnableRetryOnFailure` instead
 - `Serializable` isolation when `RepeatableRead` suffices (unnecessary lock contention)
+
+## Edge Cases
+
+- **Execution strategy + explicit transactions**: When `EnableRetryOnFailure` is active, you cannot call `BeginTransactionAsync` directly - it throws. Always wrap in `CreateExecutionStrategy().ExecuteAsync()` as shown in the Transient Fault Retry section.
+- **Ambient TransactionScope**: Avoid `TransactionScope` in async code unless using `TransactionScopeAsyncFlowOption.Enabled`. Forgetting this option causes the transaction to be lost after the first `await`.
+- **Distributed transactions**: `TransactionScope` with multiple databases or resources escalates to MSDTC, which is not supported on Linux or in most cloud environments. Use the saga/outbox pattern instead.
+- **Read-only queries inside transactions**: Read-only queries inside a `RepeatableRead` or `Serializable` transaction acquire shared locks that block writers. Move read-only queries outside the transaction when possible, or use `AsNoTracking()` with `ReadCommitted`.

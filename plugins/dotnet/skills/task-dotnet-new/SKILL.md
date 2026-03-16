@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-new
-description: End-to-end ASP.NET Core feature implementation workflow. Generates entity, repository, service, controller, DTOs, EF Core migration, FluentValidation validators, and tests (unit + integration). Use for new features requiring multiple coordinated layers. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
+description: End-to-end ASP.NET Core feature implementation workflow that generates entity, repository, service, controller, DTO records, EF Core migration, FluentValidation validators, and tests across all layers. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
 metadata:
   category: backend
   tags: [dotnet, aspnet-core, feature, implementation, workflow, ef-core, rest-api, testing, clean-architecture]
@@ -40,13 +40,13 @@ STEP 3 - ENTITY + MIGRATION: Use skill: `dotnet-ef-performance`, `dotnet-db-migr
 
 STEP 4 - REPOSITORY: Use skill: `dotnet-ef-performance`. Interface in `Application/Interfaces` with async + `CancellationToken`. Implementation in `Infrastructure` with `AsNoTracking()` reads and DTO projections for lists.
 
-STEP 5 - APPLICATION LAYER: Use skill: `dotnet-transaction`, `dotnet-exception-handling`. Commands and Queries as records. FluentValidation validators. Handlers with business logic; single `SaveChangesAsync(ct)` per handler.
+STEP 5 - APPLICATION LAYER: Use skill: `dotnet-transaction`, `dotnet-exception-handling`, `dotnet-async-patterns`. Commands and Queries as records. FluentValidation validators. Handlers with business logic; single `SaveChangesAsync(ct)` per handler. If async messaging needed: Use skill: `dotnet-messaging-patterns`.
 
 STEP 6 - CONTROLLER: Use skill: `api-guidelines`, `dotnet-exception-handling`, `dotnet-security-patterns`. `[ApiController] [Route("api/v1/[controller]")]`. `CancellationToken ct` on every action. `[Authorize]` or `[AllowAnonymous]` on every action - no implicit defaults. `201 Created` POST, `204 NoContent` DELETE.
 
 STEP 7 - TESTS: Use skill: `dotnet-test-integration`. Unit: NSubstitute/Moq, happy path + not-found + validation. Repo: Testcontainers PostgreSQL. API: `WebApplicationFactory` + real HTTP client. Test fixtures via Bogus `Faker<T>`.
 
-STEP 8 - VALIDATE: `dotnet build --no-incremental`, `dotnet test --no-build`. Present file list, endpoints, test count, any manual steps (e.g., run `dotnet ef migrations add`).
+STEP 8 - VALIDATE: Use skill: `dotnet-build-optimization`. `dotnet build --no-incremental`, `dotnet test --no-build`. Present file list, endpoints, test count, any manual steps (e.g., run `dotnet ef migrations add`).
 
 ## Self-Check
 

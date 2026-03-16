@@ -1,6 +1,6 @@
 ---
 name: dotnet-ef-performance
-description: EF Core query optimization, N+1 prevention, and Dapper for read-heavy queries
+description: Optimize EF Core data access with N+1 prevention, projection queries, compiled queries, keyset pagination, bulk operations, and Dapper fallback for complex reads.
 metadata:
   category: backend
   tags: [ef-core, dapper, performance, queries, n+1]
@@ -130,3 +130,10 @@ var all = await _context.Products.IgnoreQueryFilters().ToListAsync(ct);
 - Calling `SaveChangesAsync()` inside a loop
 - `Skip/Take` pagination on tables with millions of rows - use keyset pagination
 - Loading entities just to delete or update them - use `ExecuteUpdateAsync`/`ExecuteDeleteAsync`
+
+## Edge Cases
+
+- **Global query filters + Include**: Global query filters (e.g., soft delete) apply to `Include()` targets too. If you need to include soft-deleted related entities, use `IgnoreQueryFilters()` on the included navigation, not the root query.
+- **AsSplitQuery with ordering**: Split queries execute as separate SQL statements. If the root query uses `OrderBy`, the related collections may not preserve the expected order - verify the final materialized order in tests.
+- **Compiled queries limitations**: Compiled queries do not support `Include()`, `AsSplitQuery()`, or query filters that reference the `DbContext`. Use them only for simple single-entity lookups.
+- **Dapper + EF Core coexistence**: When using Dapper alongside EF Core, obtain the `DbConnection` from `_context.Database.GetDbConnection()` to reuse the same connection and participate in the same transaction if needed.
