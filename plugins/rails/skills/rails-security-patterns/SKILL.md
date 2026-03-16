@@ -1,8 +1,21 @@
 ---
 name: rails-security-patterns
-description: "Rails security: strong parameters, Devise (with JWT for APIs), Pundit authorization, CSRF, XSS prevention, SQL injection, Rack::Attack rate limiting, Rails credentials."
+description: "Rails security hardening patterns covering strong parameters, Devise/JWT authentication, Pundit authorization, CSRF/XSS prevention, SQL injection guards, Rack::Attack rate limiting, and credentials management."
+metadata:
+  category: backend
+  tags: [ruby, rails, security, authentication, authorization]
 user-invocable: false
 ---
+
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Adding authentication (Devise/JWT) or authorization (Pundit) to endpoints
+- Reviewing controller params for mass assignment safety
+- Implementing rate limiting for public or login endpoints
+- Auditing templates or API responses for XSS/injection risks
+- Setting up Rails credentials for secrets management
 
 ## 1. Strong Parameters
 

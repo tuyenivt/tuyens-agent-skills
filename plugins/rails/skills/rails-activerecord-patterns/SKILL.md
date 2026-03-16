@@ -1,8 +1,21 @@
 ---
 name: rails-activerecord-patterns
-description: "ActiveRecord optimization for Rails 7+/8. N+1 prevention (includes/preload/eager_load), scopes, associations, counter_cache, find_each, connection pooling, PostgreSQL features."
+description: "ActiveRecord query optimization and association patterns for Rails 7+/8. Covers N+1 prevention, scopes, counter_cache, batch processing, connection pooling, and PostgreSQL-specific features."
+metadata:
+  category: backend
+  tags: [ruby, rails, activerecord, postgresql, performance]
 user-invocable: false
 ---
+
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Designing model associations and scopes for a new feature
+- Fixing N+1 queries flagged by Bullet or log analysis
+- Optimizing slow list/index endpoints with eager loading
+- Adding PostgreSQL-specific columns (JSONB, arrays, partial indexes)
+- Reviewing batch processing for large dataset operations
 
 ## 1. N+1 Prevention
 

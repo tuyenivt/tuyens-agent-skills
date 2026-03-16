@@ -1,8 +1,21 @@
 ---
 name: rails-testing-patterns
-description: "RSpec testing patterns for Rails 7+/8. Model specs, request specs (not controller specs), system specs, FactoryBot, shoulda-matchers, Sidekiq testing, VCR/WebMock."
+description: "RSpec testing patterns for Rails 7+/8. Covers the test type hierarchy (model, request, system, service specs), FactoryBot with traits, shoulda-matchers, Sidekiq job testing, VCR/WebMock for external APIs, and shared examples."
+metadata:
+  category: backend
+  tags: [ruby, rails, rspec, testing, factorybot]
 user-invocable: false
 ---
+
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Writing tests for a new feature (models, services, request specs)
+- Setting up FactoryBot factories with traits for different model states
+- Testing Sidekiq jobs with fake/inline modes
+- Mocking external API calls with VCR or WebMock
+- Reviewing test quality: checking for mystery guests, excessive mocking, or missing edge cases
 
 ## Test Type Hierarchy
 

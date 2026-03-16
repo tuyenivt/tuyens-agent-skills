@@ -1,6 +1,6 @@
 ---
 name: task-rails-new
-description: End-to-end Rails feature implementation workflow. Generates all layers: migrations, models, services, controllers, serializers, Sidekiq jobs, and comprehensive RSpec tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-rails-debug for errors).
+description: Scaffold a multi-layer Rails feature end-to-end - migrations, models, services, controllers, serializers, Sidekiq jobs, and RSpec tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rails-debug).
 agent: rails-architect
 metadata:
   category: backend
@@ -30,6 +30,8 @@ STEP 1 - GATHER: Ask the user these questions before writing any code:
 4. Are background jobs needed? (async processing, notifications, scheduled tasks)
 5. Does the feature need authorization? (admin-only, owner-only, public)
 6. Are there status transitions? (e.g., order: pending -> confirmed -> shipped -> delivered)
+
+If the user provides only a brief description without answering all questions, infer reasonable defaults and present them for confirmation. If the user provides a ticket or spec, extract the answers from it.
 
 STEP 2 - DESIGN: Use skill: `rails-activerecord-patterns` for association/scope design. Use skill: `rails-service-objects` for service layer design. Propose the implementation layers and present for user approval before generating code.
 

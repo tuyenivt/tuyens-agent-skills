@@ -1,8 +1,21 @@
 ---
 name: rails-service-objects
-description: "Service object patterns for Rails. When to extract, naming (verb-based), Result objects, input validation, error handling, composition, and anti-patterns."
+description: "Service object design patterns for Rails. Covers extraction criteria, verb-based naming, the .call interface with Result objects, input boundary validation, error handling, and service composition."
+metadata:
+  category: backend
+  tags: [ruby, rails, service-objects, architecture, patterns]
 user-invocable: false
 ---
+
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Extracting business logic that spans multiple models or external APIs
+- Creating a new feature that involves multi-step mutations with transactions
+- Refactoring fat controllers or models with >10 lines of business logic
+- Composing multiple operations into an orchestrator (e.g., checkout flow)
+- Wrapping external API calls with error handling and Result objects
 
 ## When to Extract
 

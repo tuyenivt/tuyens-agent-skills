@@ -1,8 +1,21 @@
 ---
 name: rails-migration-safety
-description: "Safe Rails migration patterns for PostgreSQL. strong_migrations gem, zero-downtime DDL, reversible migrations, data migration separation, large table operations."
+description: "Zero-downtime migration patterns for Rails/PostgreSQL. Covers strong_migrations gem enforcement, concurrent indexes, safe column operations, data migration separation, and large table strategies."
+metadata:
+  category: backend
+  tags: [ruby, rails, postgresql, migration, zero-downtime]
 user-invocable: false
 ---
+
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Creating or modifying database tables, columns, or indexes
+- Adding NOT NULL constraints or renaming/removing columns on deployed tables
+- Running data backfills on tables with >100K rows
+- Adding foreign keys to existing tables without downtime
+- Reviewing migrations for production safety before merge
 
 ## 1. strong_migrations Gem
 

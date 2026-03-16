@@ -1,6 +1,6 @@
 ---
 name: task-rails-debug
-description: Debug Rails application errors - stack traces, Rails logs, Sidekiq errors, and RSpec failures. Paste an error or describe the unexpected behavior. Not for production incident analysis with blast radius assessment (use task-incident-root-cause for that).
+description: Diagnose and fix Rails application errors from stack traces, logs, Sidekiq failures, and RSpec output. Paste an error or describe unexpected behavior. Not for production incident analysis (use task-incident-root-cause).
 agent: rails-architect
 metadata:
   category: backend
@@ -12,6 +12,8 @@ user-invocable: true
 ## STEP 1 - INTAKE
 
 Ask for: full stack trace or error message, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip gem/library frames) and read that file.
+
+If the user provides only a partial error (e.g., just an error class name or a single line), ask for the full stack trace or the relevant log output before proceeding. If the user describes unexpected behavior without an error, ask them to reproduce it and capture the Rails log output (`tail -f log/development.log`).
 
 ## STEP 2 - CLASSIFY
 
