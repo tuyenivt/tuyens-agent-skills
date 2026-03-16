@@ -1,6 +1,6 @@
 ---
 name: task-design-diagram
-description: Generate Mermaid or PlantUML architecture diagrams (C4 context/container/component, sequence, data flow, deployment) from a design document or description. Use when a visual artifact is needed for review, onboarding, or documentation - typically after task-design-architecture produces a proposal. Not for creating or modifying design documents (use task-design-architecture or task-adr-create), and not for code-level UML class diagrams.
+description: Generate Mermaid or PlantUML architecture diagrams (C4 context/container/component, sequence, data flow, deployment) from a design description or document. Invoke when a visual artifact is needed for review, onboarding, or documentation.
 metadata:
   category: architecture
   tags: [architecture, diagram, c4, mermaid, plantuml, visualization, documentation]
@@ -57,6 +57,12 @@ If the source material makes the appropriate type obvious (e.g., a sequence-desc
 
 ## Workflow
 
+### Step 0 - Detect Stack and Format Preference
+
+Use skill: `stack-detect`
+
+Check if the consuming project's documentation tooling has a format preference (Mermaid for GitHub/GitLab, PlantUML for Confluence/enterprise). Use this to inform Step 2.
+
 ### Step 1 - Read Source Material
 
 Read the provided design document, ADR, or description. Extract:
@@ -68,6 +74,14 @@ Read the provided design document, ADR, or description. Extract:
 - **External dependencies** - third-party services, APIs, identity providers
 
 If source material is a file path, read it. If it references `task-design-architecture` output, parse the component table, boundary contracts, and communication model sections.
+
+### Step 1.5 - Resolve Input Gaps
+
+Before generating, verify the source material is sufficient:
+
+- **Missing component names**: If the source uses generic labels ("4 microservices") without naming them, ask the user for names before generating. Do not invent names.
+- **Ambiguous diagram type**: If diagram type remains unclear after the Type Selection prompt and the user defers, default to C4 Container with a note explaining the choice.
+- **Large scope**: If the source describes more than 12 elements at one level, offer to split into multiple diagrams or suggest a higher abstraction level.
 
 ### Step 2 - Select Format
 
@@ -258,6 +272,12 @@ After the diagram block, produce a brief **Diagram Notes** section:
 - **Next level**: {which diagram type would show more detail - e.g., "See C4 Container for internal services"}
 ```
 
+**Example Diagram Notes:**
+
+- **Scope**: Shows the 4 deployable containers within the e-commerce system boundary; deliberately omits internal module structure and infrastructure details
+- **Assumptions**: Product and Search services inferred as separate containers based on the source description mentioning "search endpoint"; not confirmed
+- **Next level**: C4 Component diagram for OrderService would show internal modules (validation, pricing, fulfillment coordination)
+
 ## Rules
 
 - Never invent components not present in or strongly implied by the source material
@@ -273,7 +293,9 @@ After the diagram block, produce a brief **Diagram Notes** section:
 - [ ] Diagram stays at a single abstraction level
 - [ ] Diagram Notes states scope and assumptions
 - [ ] Mermaid/PlantUML syntax is valid (no unclosed blocks, no invalid aliases)
-- [ ] Async paths are visually distinct from sync paths
+- [ ] Format selection (Mermaid vs PlantUML) is justified by project context or user request
+- [ ] Output target (inline vs standalone file) matches user request
+- [ ] Async paths are visually distinct from sync paths (sequence and data flow diagrams only)
 - [ ] C4 diagrams use correct C4 element types (Person, System, Container, Component)
 
 ## Avoid

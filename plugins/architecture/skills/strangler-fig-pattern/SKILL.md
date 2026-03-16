@@ -1,6 +1,6 @@
 ---
 name: strangler-fig-pattern
-description: Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence, verification, and cutover phases
+description: Produces a phased migration plan to incrementally route traffic from a legacy system to a replacement using coexistence, verification gates, and explicit rollback at each stage.
 metadata:
   category: architecture
   tags: [architecture, migration, strangler-fig, incremental, legacy, modernization]
@@ -9,7 +9,7 @@ user-invocable: false
 
 # Strangler Fig Pattern
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Primary consumers: `task-migrate-monolith-to-services` Section 4, `task-modernize-legacy` Section 5.
 
 ## When to Use
 
@@ -132,6 +132,37 @@ Rollback: Gateway config change, <1 minute to route 100% back to monolith
 ```
 Plan: Rewrite the whole order module and deploy on March 15.
 Rollback: Redeploy the old version if something breaks.
+```
+
+## Output Format
+
+```markdown
+## Strangler Fig Migration Plan
+
+### Migration Overview
+
+| Aspect           | Detail                                                                   |
+| ---------------- | ------------------------------------------------------------------------ |
+| Legacy system    | {name, stack}                                                            |
+| Target system    | {name, stack}                                                            |
+| Routing layer    | {gateway, proxy, or facade -- chosen method from Routing Strategy table} |
+| Data strategy    | {chosen method from Data Migration table}                                |
+| Estimated phases | {count}                                                                  |
+
+### Capability Migration Sequence
+
+| #   | Capability   | Current Phase                             | Routing Method | Data Strategy | Verification Status     | Rollback Method |
+| --- | ------------ | ----------------------------------------- | -------------- | ------------- | ----------------------- | --------------- |
+| 1   | {capability} | Intercept/Build/Route/Verify/Decommission | {method}       | {strategy}    | {gate checklist status} | {how to revert} |
+
+### Decommission Checklist
+
+- [ ] Zero traffic confirmed to legacy for all migrated capabilities
+- [ ] Legacy code paths removed
+- [ ] Data sync jobs stopped and removed
+- [ ] Routing rules cleaned up
+- [ ] Feature flags removed
+- [ ] Legacy documentation archived
 ```
 
 ## Avoid

@@ -1,6 +1,6 @@
 ---
 name: task-design-risk-analysis
-description: Pre-implementation risk assessment for proposed changes - before code exists. Classifies risk domains, blast radius, and deployment safety. Not for reviewing actual code (use task-code-review-advanced for post-implementation review).
+description: Proactive risk assessment for proposed changes before implementation -- classifies risk domains, blast radius, consistency hazards, deployment safety, and observability readiness. Adapts depth from quick sanity check to full cascading failure simulation.
 metadata:
   category: ops
   tags: [risk-analysis, blast-radius, safety, architecture, deployment, prevention]
@@ -84,6 +84,10 @@ Handle partial inputs gracefully. When input is missing, state what additional d
 - Always ask: "What fails silently if this goes wrong?"
 
 ## Risk Analysis Model
+
+### 0. Determine Analysis Depth
+
+If the user specified `quick` or `deep`, use that. Otherwise default to `standard`, but auto-escalate to `deep` if the change touches auth, payment, PII data core paths, or cross-service ownership boundaries. State the selected depth and rationale before proceeding.
 
 ### 1. Change Summary
 
@@ -169,6 +173,8 @@ Evaluate:
 Use skill: `release-safety` for rollout and rollback patterns.
 Use skill: `backward-compatibility-analysis` for contract compatibility assessment.
 Use skill: `dependency-impact-analysis` for deployment ordering and dependency impact.
+Use skill: `db-migration-safety` when the change involves schema decomposition or migration.
+Use skill: `feature-flags` when evaluating feature flag necessity.
 
 Evaluate:
 
@@ -212,8 +218,7 @@ For each gap:
 
 **Recommend specific mitigations proportional to the identified risks.**
 
-Use skill: `engineering-governance` for process, governance, and guardrail recommendations.
-Use skill: `engineering-governance` for systemic prevention strategies.
+Use skill: `engineering-governance` for process, governance, guardrail, and systemic prevention recommendations.
 Use skill: `architecture-guardrail` for boundary enforcement recommendations.
 
 Recommend across five categories:
@@ -236,14 +241,14 @@ Intent:
 
 ## Risk Classification
 
-Primary Risk Domains:
+Primary Risk Domains: [list from taxonomy, ordered by confidence, one evidence note per domain]
 Secondary Risk Domains:
 
 Overall Risk Level: Low | Medium | High | Critical
 
 ## Blast Radius
 
-Affected Boundaries:
+Affected Boundaries: [bullet list: module/service name -- direct or transitive impact]
 Shared Resources:
 External Contracts:
 Blast Radius: Narrow | Moderate | Wide | Critical
@@ -315,13 +320,15 @@ Walk through the worst-case failure scenario for this change end-to-end:
 
 ## Self-Check
 
-- [ ] Risk domains classified (primary and secondary) before any mitigation is recommended
-- [ ] Blast radius explicitly classified (Narrow / Moderate / Wide / Critical)
-- [ ] Consistency, transaction, deployment, and rollback risk all assessed
-- [ ] "No rollback feasible" scenarios called out if they exist
-- [ ] Observability gaps listed with concrete additions; confidence level stated
-- [ ] Systemic risks separated from implementation risks; analysis answers "what fails silently?"
-- [ ] Staff-Level Assessment states whether a design doc, ADR, or staged rollout is required
+- [ ] Change summary captures scope, intent, and affected components (Section 1)
+- [ ] Risk domains classified (primary and secondary) with evidence before mitigation (Section 2)
+- [ ] Blast radius explicitly classified (Narrow / Moderate / Wide / Critical) with affected boundaries named (Section 3)
+- [ ] Consistency, idempotency, and partial failure risk assessed (Section 4)
+- [ ] Deployment, rollback, and backward compatibility assessed; "no rollback feasible" called out if present (Section 5)
+- [ ] Observability gaps listed with concrete additions per failure mode (Section 6)
+- [ ] Mitigation recommendations reference specific risks and are proportional to blast radius (Section 7)
+- [ ] Staff-Level Assessment states design doc, ADR, and staged rollout requirements with confidence level
+- [ ] If depth = deep: cascading failure simulation identifies at least one containment or detection gap
 
 ## Avoid
 

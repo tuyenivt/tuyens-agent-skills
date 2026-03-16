@@ -1,6 +1,6 @@
 ---
 name: tradeoff-analysis
-description: Structured architectural decision and trade-off documentation
+description: Produces a structured trade-off record for a significant architectural decision -- chosen option, rejected alternatives with reasons, costs accepted, reversibility assessment, and review triggers.
 metadata:
   category: architecture
   tags: [architecture, decisions, trade-offs, adr]
@@ -9,7 +9,7 @@ user-invocable: false
 
 # Trade-Off Analysis
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Primary consumers: `task-design-architecture` Section 9, `task-adr-create` Step 3, `task-modernize-legacy` Section 3.
 
 ## When to Use
 
@@ -74,6 +74,41 @@ Reason: Events are better than REST for this
 | Cost           | Cheap (limited)       | Expensive (capable) |
 | Time to market | Fast (technical debt) | Thorough (slower)   |
 | Build vs buy   | Build (control)       | Buy (speed)         |
+
+## Output Format
+
+```markdown
+## Trade-Off Record
+
+### Context
+
+{What situation requires this decision}
+
+### Decision
+
+{What was chosen and its scope}
+
+### Alternatives Considered
+
+| Option     | What It Provides | What It Costs | Reversibility          | Risk                  |
+| ---------- | ---------------- | ------------- | ---------------------- | --------------------- |
+| {chosen}   | {benefits}       | {costs}       | Easy / Moderate / Hard | {what makes it wrong} |
+| {rejected} | {benefits}       | {costs}       | {level}                | {risk}                |
+
+### Rationale
+
+{Why the chosen option over alternatives -- specific, not preference-based}
+
+### Trade-Off Accepted
+
+{What is sacrificed -- be specific about the negative consequence}
+
+### Review Trigger
+
+Revisit this decision if: {specific observable condition}
+```
+
+**Hybrid or phased decisions:** If the answer is a phased approach (e.g., "sync now, migrate to async in Q3"), document each phase as a separate decision row in the Alternatives table, with its own reversibility and review trigger.
 
 ## Avoid
 

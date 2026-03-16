@@ -1,6 +1,6 @@
 ---
 name: system-boundary-design
-description: Formal boundary modeling for module and service decomposition
+description: Documents data ownership, contracts, failure isolation, and communication patterns for each module or service boundary in a system decomposition.
 metadata:
   category: architecture
   tags: [architecture, boundaries, modules, decomposition, data-ownership]
@@ -9,7 +9,7 @@ user-invocable: false
 
 # System Boundary Design
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Primary consumers: `task-migrate-monolith-to-services` Section 2, `task-consolidate-services` Section 3, `task-design-architecture` Section 2.
 
 ## When to Use
 
@@ -86,6 +86,30 @@ Keep together when:
 - Data is tightly coupled and queried together
 - Splitting would require distributed transactions
 
+## Output Format
+
+```markdown
+## System Boundary Design
+
+### Boundary Definitions
+
+| Boundary      | Owner  | Data Owned | Exposed Contract | Hidden Internals       | Failure Isolation     |
+| ------------- | ------ | ---------- | ---------------- | ---------------------- | --------------------- |
+| {module name} | {team} | {entities} | {APIs, events}   | {domain logic, schema} | {isolation guarantee} |
+
+### Boundary Communication Map
+
+| From     | To       | Pattern                               | Data Exchanged | Trade-off                        |
+| -------- | -------- | ------------------------------------- | -------------- | -------------------------------- |
+| {module} | {module} | Sync API / Async event / Shared cache | {what crosses} | {coupling, latency, consistency} |
+
+### Data Ownership Summary
+
+| Entity   | Owning Boundary | Access Method for Others         | Consistency Model |
+| -------- | --------------- | -------------------------------- | ----------------- |
+| {entity} | {boundary}      | API / Event subscription / Cache | Strong / Eventual |
+```
+
 ## Avoid
 
 - Defining boundaries by code structure alone (packages are not boundaries)
@@ -93,3 +117,4 @@ Keep together when:
 - Boundaries without failure isolation assessment
 - Premature decomposition before understanding data access patterns
 - Ignoring the operational cost of each boundary (networking, serialization, monitoring)
+- Circular dependencies between boundaries -- if A depends on B and B depends on A, one dependency must become an async event or the boundaries must be redrawn

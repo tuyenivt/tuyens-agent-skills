@@ -1,6 +1,6 @@
 ---
 name: task-adr-create
-description: Write an Architecture Decision Record for a significant, hard-to-reverse design choice affecting multiple teams or components. Use when you need to document why a decision was made, what alternatives were rejected, and when to revisit. Not for small local decisions (skip the ADR) and not for writing a general design proposal (use task-design-architecture).
+description: Write an Architecture Decision Record documenting a significant design choice: context, alternatives evaluated, trade-offs, consequences, and review triggers. Produces a ready-to-commit `.md` file.
 metadata:
   category: workflow
   tags: [adr, architecture, decisions, trade-offs, documentation]
@@ -77,8 +77,11 @@ If any required input is missing, ask before writing:
 - **No alternatives provided**: "What other approaches did you consider? An ADR without alternatives documents an outcome, not a decision."
 - **Status unclear**: default to `Proposed` - the author or team lead marks it `Accepted` after review.
 - **Context vague**: ask "What situation or constraint made this decision necessary right now?"
+- **Decision already implemented**: 'Is this decision already in production, or is it being proposed for approval?' Default to `Proposed` if unclear; set `Accepted` only when the author confirms it is already implemented.
 
 ### Step 3 - Analyse Trade-Offs
+
+Use skill: `stack-detect`
 
 Use skill: `tradeoff-analysis`
 
@@ -90,6 +93,8 @@ For each alternative (including the chosen option), evaluate:
 - Risk: what conditions or assumptions would make this choice wrong
 
 The chosen option must have the same rigour applied as the rejected ones - document its costs, not just its benefits.
+
+The `tradeoff-analysis` output provides the structured evaluation of each alternative. Use this output to populate the Alternatives Considered and Consequences sections in Step 4.
 
 ### Step 4 - Write the ADR
 
@@ -229,3 +234,15 @@ Revisit this decision if:
 - Do not implement the decision - produce the document only
 - If the decision supersedes an existing ADR, update the superseded ADR's Status line to `Superseded by ADR-NNNN` and note this as a follow-up action
 - Respect any project-specific ADR format observed in existing ADRs over this template
+
+## Self-Check
+
+- [ ] Filename is `NNNN-kebab-case.md` with zero-padded sequence number
+- [ ] Date is today in YYYY-MM-DD format
+- [ ] Context section describes the situation, not the decision itself
+- [ ] Decision section is one present-tense statement with explicit scope
+- [ ] At least one alternative is present with a "Why rejected" rationale
+- [ ] Chosen option lists at least one cost, not only benefits
+- [ ] Consequences section contains at least one negative or trade-off item
+- [ ] Review trigger is a specific observable condition, not "when needed"
+- [ ] Status is `Proposed` unless author explicitly set otherwise

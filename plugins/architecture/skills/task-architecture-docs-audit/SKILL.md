@@ -1,6 +1,6 @@
 ---
 name: task-architecture-docs-audit
-description: Architecture documentation health audit - inventory all ADRs, design docs, runbooks, and diagrams, then detect stale content, conflicts, and gaps. Use quarterly, when joining a project, or after a major system change. Not for reading a codebase to understand its structure (use task-onboard-codebase for that) and not for writing new documentation (use task-docs-generate or task-adr-create).
+description: Inventory all architecture artifacts (ADRs, design docs, runbooks, diagrams), detect stale content, conflicts between documents, and coverage gaps, then produce a prioritized remediation plan.
 metadata:
   category: architecture
   tags: [architecture, documentation, audit, adr, consistency, docs-repo]
@@ -80,6 +80,8 @@ This landscape becomes the reference against which staleness and conflicts are d
 
 ### Step 3 - Staleness Detection
 
+If `System context` was provided as input, use it as the primary reference for staleness detection; use the landscape from Step 2 as secondary context only. If no system context was provided, staleness detection is limited to internal signals (date gaps, broken references, superseded status, version mismatches); flag this limitation in the output Summary.
+
 For each artifact, assess staleness using these signals:
 
 | Signal                       | Staleness Indicator                                                            |
@@ -101,6 +103,8 @@ Classify each artifact:
 ### Step 4 - Conflict Detection
 
 Use skill: `architecture-proposal-compare` when two or more documents cover the same decision space with differing conclusions.
+
+Use the Recommendation field from `architecture-proposal-compare` to populate the 'More authoritative' and 'Recommendation' fields in the Conflicts section. The full comparison matrix is optional context; focus on the conflict resolution recommendation.
 
 Scan for conflicts:
 
@@ -138,13 +142,19 @@ For each gap, assess priority:
 - **Medium** - gap reduces velocity but no immediate safety risk
 - **Low** - nice to have; lower priority than fixing stale or conflicting docs
 
+For minimal doc inventories (fewer than 5 artifacts), suppress Low-priority gap warnings to avoid overwhelming a nascent documentation culture. Focus on Critical and High gaps only.
+
 ### Step 6 - Produce Remediation Plan
 
 Order all findings by impact. Group into three action categories:
 
+**Effort estimation:** High = more than 5 Fix Now items or any critical runbook gap; Medium = 2-4 Fix Now items; Low = Fix Soon and Fix Eventually items only.
+
 **Fix now** (staleness or conflicts causing active confusion or incorrect decisions)
 **Fix soon** (stale docs or gaps that slow down onboarding or architecture work)
 **Fix eventually** (low-priority gaps and polish)
+
+When uncertain between Fix Now and Fix Soon, ask: would an on-call engineer or new team member make a wrong decision today because of this gap or conflict? If yes, Fix Now.
 
 ## Output
 
@@ -230,6 +240,8 @@ Artifacts found: {count} ({ADRs: N, Design docs: N, Runbooks: N, Diagrams: N, Ot
 - [ ] Every conflict names both documents and the specific disagreement
 - [ ] Gap recommendations are ordered by priority with rationale
 - [ ] Remediation plan is actionable - each item specifies what to do, not just that a problem exists
+- [ ] System landscape section includes System Inventory, Integration Map, and Cross-System Risks from `architecture-landscape` output
+- [ ] Remediation plan is grouped into Fix Now / Fix Soon / Fix Eventually; Fix Now is populated when any Stale or Conflict finding exists
 
 ## Avoid
 

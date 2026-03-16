@@ -1,6 +1,6 @@
 ---
 name: task-consolidate-services
-description: Microservices consolidation plan - merge over-split services back into fewer, cohesive units. Use when you have too many nano-services, services that always deploy together, services sharing a database without clear boundaries, or more services than your team can operate. Also use when reversing a monolith decomposition that went too far. Not for breaking a monolith apart (use task-migrate-monolith-to-services) and not for upgrading the tech stack of existing services (use task-modernize-legacy).
+description: Produces a consolidation plan for merging over-split microservices into fewer, better-bounded services -- smell detection, merge candidates, data reunification, phased execution with rollback.
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]
@@ -44,6 +44,8 @@ This skill produces a consolidation plan. It does not generate implementation co
 
 Handle partial inputs gracefully. State assumptions explicitly when input is missing.
 
+For inputs naming only 1-3 specific services, skip the full landscape map and focus smell detection on the named services and their immediate dependencies only. If `stack-detect` finds no stack, proceed with stack-agnostic guidance.
+
 ## Depth Levels
 
 | Depth      | When to Use                                           | Sections Produced                                     |
@@ -65,13 +67,15 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 ## Consolidation Model
 
-### 1. Service Landscape Assessment
+### 1. Service Landscape Assessment [standard/deep only]
 
 **Understand the current state before proposing merges.**
 
 Use skill: `stack-detect` to identify the technology stack.
 Use skill: `architecture-guardrail` to assess current boundary quality.
 Use skill: `architecture-landscape` to build the service landscape map -- system inventory, integration map, and cross-system risks. This produces the coupling and ownership data that drives merge candidate identification in Section 2.
+
+If the user provides a service inventory directly, use it as input to `architecture-landscape` to enrich with integration map and cross-system risks.
 
 The `architecture-landscape` output replaces manual analysis of:
 
@@ -110,6 +114,7 @@ For each smell detected, document:
 **Propose which services to merge and into what.**
 
 Use skill: `system-boundary-design` for boundary redesign.
+Use skill: `tradeoff-analysis` for merge vs keep-separate decisions on borderline candidates.
 
 For each merge group:
 
@@ -126,7 +131,7 @@ Produce a merge map:
 | Order Processing | OrderSvc, OrderItemSvc       | OrderService      | Nano service, shared DB     |
 | User Management  | UserSvc, ProfileSvc, AuthSvc | UserService       | Chatty, circular dependency |
 
-### 4. Data Reunification
+### 4. Data Reunification [standard/deep only]
 
 **Merging services means merging data. Plan explicitly.**
 
@@ -150,7 +155,7 @@ For each merge group:
   5. Cleanup: remove old schemas, sync jobs, compatibility code
 - **Consistency during transition** -- how to handle reads/writes while migrating
 
-### 5. Consolidation Phasing
+### 5. Consolidation Phasing [standard/deep only]
 
 **Merge incrementally, not all at once.**
 
@@ -178,7 +183,7 @@ For each consolidation phase:
 - **Verification** -- how to confirm the merge succeeded
 - **Rollback** -- how to revert if the merge fails
 
-### 6. Consumer Migration
+### 6. Consumer Migration [standard/deep only]
 
 **Services have consumers. Plan their transition.**
 
@@ -316,6 +321,8 @@ Duration: {estimate}
 - [ ] Services that should stay separate are explicitly listed with reasons
 - [ ] No big-bang merge -- every phase is incremental
 - [ ] Blast radius increase from merging is acknowledged with mitigations
+- [ ] Service landscape completed before smell detection (Section 1)
+- [ ] If depth = deep: dependency deep-dive and latency model present
 
 ## Avoid
 

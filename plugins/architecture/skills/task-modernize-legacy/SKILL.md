@@ -1,6 +1,6 @@
 ---
 name: task-modernize-legacy
-description: Legacy system modernization plan - upgrading the language version, framework, or patterns of an existing system while preserving its structure. Use when the problem is the technology itself: framework upgrade (Spring Boot 2 to 3, .NET Framework to .NET 8, Rails 4 to 7), language version bump (Java 8 to 21, Python 2 to 3, Node 14 to 22), or modernizing an outdated data layer or auth pattern. Not for splitting a monolith into services (use task-migrate-monolith-to-services), not for consolidating over-split microservices (use task-consolidate-services), and not for a single library/package upgrade (use task-dependency-upgrade).
+description: Produces a staff-level modernization plan for upgrading a legacy system's language, framework, or architectural patterns -- incremental strangler fig migration with behavioral verification, target stack evaluation, and team transition planning.
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]
@@ -64,6 +64,14 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 - Omit empty sections
 
 ## Modernization Model
+
+### 0. Scope Confirmation
+
+Before analysis, confirm the modernization scope:
+
+- If the user mentions "modular architecture", "services", or "microservices" as a target, clarify: "Is the goal to restructure within the monolith (this skill), or to extract into independently deployable services (use `/task-migrate-monolith-to-services`)?"
+- If the user specifies a target stack, note it for validation in Section 3.
+- If the user does not specify depth, default to `standard`. Auto-escalate to `deep` for systems older than 5 years or with more than 50K lines.
 
 ### 1. Legacy System Assessment
 
@@ -134,6 +142,8 @@ For each option, state:
 If the user has specified a target stack, validate the choice against these criteria and flag any concerns.
 
 ### 4. Behavioral Inventory
+
+[standard: produce a summary of key undocumented behaviors; deep: produce the full behavioral matrix below]
 
 **The legacy system's behavior is the specification. Capture it.**
 
@@ -324,9 +334,14 @@ Historical Data: {migrate / archive / cutover date}
 
 ## 7. Team Transition
 
-Skills Gap: {what the team needs to learn}
-Training Plan: {approach and timeline}
-Knowledge Extraction: {how domain knowledge is preserved}
+### Team Transition
+
+| Aspect              | Current State  | Target State        | Action                               | Timeline   |
+| ------------------- | -------------- | ------------------- | ------------------------------------ | ---------- |
+| Language skills     | {current}      | {needed}            | {training approach}                  | {weeks}    |
+| Framework knowledge | {current}      | {needed}            | {approach}                           | {weeks}    |
+| Domain knowledge    | {who holds it} | {documented/tested} | {extraction method}                  | {weeks}    |
+| Staffing model      | {current}      | {during migration}  | {who maintains legacy vs builds new} | {duration} |
 
 ## 8. Risks and Mitigations
 
@@ -346,15 +361,16 @@ Knowledge Extraction: {how domain knowledge is preserved}
 
 ## Self-Check
 
-- [ ] Modernization driver is specific and validated, not "legacy is old"
-- [ ] Target stack selection has trade-off analysis with alternatives
-- [ ] Behavioral inventory captures undocumented behaviors and edge cases
-- [ ] Migration is incremental with strangler fig or equivalent pattern
-- [ ] Every phase has behavioral verification against legacy
-- [ ] Data coexistence strategy is explicit
-- [ ] Team knowledge transition is planned
+- [ ] Legacy system assessment covers integration points, scaling limits, and knowledge concentration (Section 1)
+- [ ] Modernization driver is specific and validated, not "legacy is old" (Section 2)
+- [ ] Target stack selection has trade-off analysis with at least one alternative evaluated (Section 3)
+- [ ] Migration approach (strangler fig, branch by abstraction, etc.) is explicitly chosen and justified (Section 5)
+- [ ] Behavioral inventory captures undocumented behaviors and edge cases (Section 4)
+- [ ] Every migration phase has behavioral verification against legacy (Section 5)
+- [ ] Data coexistence strategy is explicit with consistency guarantees during transition (Section 6)
+- [ ] Team knowledge transition is planned (Section 7)
+- [ ] High-risk scenarios have mitigations, not just risk labels (Section 8)
 - [ ] No big-bang rewrite -- every phase is independently reversible
-- [ ] Second system effect is acknowledged -- scope is migration, not redesign
 
 ## Avoid
 

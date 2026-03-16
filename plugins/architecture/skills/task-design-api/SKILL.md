@@ -1,6 +1,6 @@
 ---
 name: task-design-api
-description: REST API contract design and review - naming conventions, HTTP methods, pagination, error format (RFC 9457), backward compatibility checks, and security requirements per endpoint. Use before implementing an API or when reviewing existing controller code for API design issues. Not for full system architecture design (use task-design-architecture) and not for generating implementation code.
+description: Design or review a REST API contract -- produces an endpoint table, DTO schemas, pagination, error format (RFC 9457), backward compatibility assessment, and per-endpoint security requirements.
 metadata:
   category: architecture
   tags: [api, rest, api-design, contract, specification, review, multi-stack]
@@ -57,6 +57,7 @@ For new designs, clarify:
 - What operations are needed per resource
 - Who consumes this API (internal service, public client, mobile app)
 - Any existing API conventions in the project
+- If the description spans more than 5 resource types, ask the user to prioritize which resources to design first
 
 ### Step 3 - Design / Review
 
@@ -95,6 +96,24 @@ When a resource has a defined lifecycle (e.g., `draft → pending → paid → s
 - POST is not idempotent by default - duplicate requests create duplicate resources
 - For financially or state-sensitive endpoints, support `Idempotency-Key` header: clients generate a unique key per operation; the server returns the same response for repeated requests with the same key
 - Document the deduplication window (e.g., "Idempotency-Key honored for 24 hours")
+
+Use skill: `idempotency` for endpoints with financial or state-critical side effects.
+
+**Multi-Tenancy (when applicable):**
+
+If the API serves multiple tenants, define the tenant isolation pattern:
+
+| Pattern                                            | Use When                                                | Trade-off                                       |
+| -------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------- |
+| Path segment (`/api/v1/tenants/{tenantId}/orders`) | Tenant ID must be explicit in every request             | Verbose URLs; clear isolation                   |
+| JWT claim (tenant derived from auth token)         | Single-tenant context per session                       | Simpler URLs; requires auth on every endpoint   |
+| Header (`X-Tenant-ID`)                             | Service-to-service calls with pre-authenticated context | Easy to forget; requires middleware enforcement |
+
+For each endpoint, verify:
+
+- Tenant isolation: can a request from Tenant A access Tenant B's data?
+- Tenant-scoped rate limiting: are limits per-tenant, not global?
+- Cross-tenant queries: are admin/superuser endpoints explicitly marked?
 
 **Pagination (mandatory for collections):**
 
@@ -229,6 +248,9 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - [ ] DTO/schema definitions use the detected ecosystem's standard approach
 - [ ] No implementation code generated - specification only
 - [ ] If reviewing existing code: every violation states the fix, not just the rule
+- [ ] Framework-specific patterns applied for the detected stack, not generic advice
+- [ ] Idempotency-Key documented on state-mutating endpoints with financial or irreversible side effects
+- [ ] Multi-tenancy isolation pattern defined when API serves multiple tenants
 
 ## Avoid
 

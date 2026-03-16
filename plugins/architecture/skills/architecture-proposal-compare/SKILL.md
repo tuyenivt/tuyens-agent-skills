@@ -16,6 +16,7 @@ user-invocable: false
 - When 2 or more architecture proposals exist for the same problem space
 - When an architecture review reveals a conflict between an existing design doc and a newer proposal
 - When a team needs a structured recommendation, not just a list of pros and cons
+- When the decision involves choosing between architecture styles or patterns (e.g., event-driven vs request-driven) even if no authored proposal documents exist -- treat the options as Proposal A and Proposal B
 
 ## Rules
 
@@ -24,6 +25,7 @@ user-invocable: false
 - Every criterion score must cite evidence from the proposal, not general assumptions
 - Proposals that are missing information on a criterion are scored lower, not skipped
 - If proposals address different scopes, state the scope mismatch before comparing
+- If one proposal is a sketch with fewer than three criteria addressed, state this before the matrix and weight the recommendation accordingly -- a sparse proposal cannot be fairly compared against a complete one.
 
 ## Pattern
 

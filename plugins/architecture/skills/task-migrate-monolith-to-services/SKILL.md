@@ -1,6 +1,6 @@
 ---
 name: task-migrate-monolith-to-services
-description: Monolith decomposition plan - break a monolith into independently deployable services or well-bounded modules. Use when deployment coupling, scaling limits, or team autonomy are the driver for decomposition. Not for consolidating over-split microservices back together (use task-consolidate-services) and not for modernizing the tech stack of the monolith itself (use task-modernize-legacy).
+description: Produces a staff-level migration plan for incrementally decomposing a monolith into independently deployable services or bounded modules using strangler fig, domain-first decomposition, and risk-ordered extraction.
 metadata:
   category: architecture
   tags: [architecture, migration, monolith, microservices, decomposition, strangler-fig]
@@ -52,6 +52,11 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 | `standard` | Default -- migration plan for engineering leadership sign-off | All 8 sections                                             |
 | `deep`     | Large monolith, multi-team, multi-quarter migration           | All 8 sections + dependency deep-dive + failure simulation |
 
+**Deep depth adds (on top of standard):**
+
+- Dependency deep-dive: for each module in the coupling matrix, enumerate all transitive dependencies (code, data, config) and classify as severable or requires-migration
+- Failure simulation: walk through the highest-risk extraction end-to-end, identifying where coexistence creates data inconsistency, latency amplification, or partial failure
+
 ## Rules
 
 - Start with domain analysis, not technical decomposition
@@ -62,6 +67,8 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 - Shared database is the hardest coupling to break -- address it first in planning
 - Do not generate implementation code
 - Omit empty sections
+
+When the target service uses a different language or framework than the monolith, include an interoperability section in Section 3 covering serialization contracts, client library strategy, and contract testing approach.
 
 ## Migration Model
 
@@ -116,6 +123,7 @@ Define the end state.
 Use skill: `architecture-landscape` if the monolith integrates with other systems or the migration affects org-wide services -- build the surrounding landscape before defining target service boundaries to ensure the new service lines account for org-wide coupling.
 Use skill: `data-consistency-modeling` for inter-service consistency strategy.
 Use skill: `resiliency` for fault tolerance between services.
+Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
 Define:
 
@@ -333,9 +341,23 @@ Duration: {estimate}
 
 ## 7. Observability
 
-Migration Dashboard Signals:
-Data Reconciliation Strategy:
-Success Criteria per Phase:
+### Migration Dashboard
+
+| Signal                                 | Threshold       | Source | Action When Breached          |
+| -------------------------------------- | --------------- | ------ | ----------------------------- |
+| Error rate delta (monolith vs service) | > 1% divergence | APM    | Pause extraction, investigate |
+
+### Data Reconciliation
+
+| Data Entity | Comparison Method    | Frequency | Acceptable Drift |
+| ----------- | -------------------- | --------- | ---------------- |
+| {entity}    | Row count + checksum | Hourly    | < 0.1%           |
+
+### Phase Success Criteria
+
+| Phase   | Criterion             | Measurement    | Target      |
+| ------- | --------------------- | -------------- | ----------- |
+| {phase} | {what proves success} | {how measured} | {threshold} |
 
 ## 8. Migration Governance
 
@@ -362,6 +384,10 @@ Cleanup Plan:
 - [ ] Coexistence period addresses data consistency explicitly
 - [ ] No big-bang migration -- every phase is incremental
 - [ ] Operational complexity increase is acknowledged with mitigations
+- [ ] Coupling matrix populated for all major modules (Section 1)
+- [ ] Communication model (sync vs async) defined per service interaction (Section 3)
+- [ ] Observability signals and success criteria defined per extraction phase (Section 7)
+- [ ] Decision gates and rollback triggers specified (Section 8)
 
 ## Avoid
 

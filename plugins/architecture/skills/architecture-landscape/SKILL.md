@@ -109,7 +109,9 @@ After mapping the inventory and integrations, identify:
 
 ### Gaps
 
-- {Systems or integrations that are missing or unclear}
+| Gap                             | Affected Systems             | Impact                   |
+| ------------------------------- | ---------------------------- | ------------------------ |
+| {missing system or integration} | {which systems are affected} | {consequence of the gap} |
 ```
 
 ## Avoid
@@ -119,3 +121,4 @@ After mapping the inventory and integrations, identify:
 - Flagging stack diversity as inherently bad - flag it only when it creates concrete friction
 - Producing a landscape without a risk section - the inventory is an input, not the output
 - Inventing integration details not supported by the source material
+- Listing risks without citing the specific evidence that reveals them (e.g., 'shared DB risk' without naming which services share which database)

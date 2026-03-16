@@ -16,6 +16,7 @@ user-invocable: false
 - Before architecture design to convert vague quality expectations into measurable targets
 - When business context exists but NFRs are implicit or missing
 - When SLO baselines are needed to drive observability and capacity planning sections
+- Output feeds directly into `task-design-architecture` (Section 1 and 6) and `tradeoff-analysis` as constraint inputs
 
 ## Rules
 
@@ -24,6 +25,7 @@ user-invocable: false
 - Compliance and security NFRs must name the specific standard or regulation, not generic categories
 - Conflicting NFRs must be surfaced explicitly - do not silently pick one
 - Missing NFRs are as important as stated ones - call out gaps
+- When business context implies a regulatory domain (payments, healthcare, personal data), name the likely compliance standard and ask for confirmation rather than omitting it
 
 ## Pattern
 
@@ -109,6 +111,8 @@ Compliance: {standards or "none identified"}
 Deployment: {zero-downtime / maintenance window allowed}
 MTTR target: {minutes}
 Log retention: {days}
+Tracing coverage: {percentage of requests traced or specific services}
+Metrics granularity: {per-second / per-minute / per-5-minute}
 
 ### Data
 

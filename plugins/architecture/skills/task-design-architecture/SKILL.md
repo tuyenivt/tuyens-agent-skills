@@ -1,6 +1,6 @@
 ---
 name: task-design-architecture
-description: Architecture design or review - produces a full design proposal for new systems, or evaluates an existing design proposal for boundary quality, failure modes, and guardrails. Not for task planning (use task-scope-breakdown for that).
+description: Produces a staff-level architecture design proposal covering boundaries, failure modes, data consistency, trade-offs, deployment strategy, and guardrails. Also reviews existing design proposals for boundary quality, failure containment, and consistency.
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]
@@ -40,7 +40,7 @@ This skill produces a structured design proposal. It does not generate implement
 > - **New design** - I'll help structure and produce a full architecture proposal
 > - **Review existing** - I'll evaluate the proposal's boundaries, failure modes, consistency, and guardrails
 
-Use the answer to select the appropriate mode below. If the user's initial message already makes the mode obvious (e.g., "here's a design doc, review it" or "I need to design a payment service"), skip the question and proceed directly.
+Use the answer to select the appropriate mode below. If the user's initial message already makes the mode obvious (e.g., "here's a design doc, review it" or "I need to design a payment service"), skip the question and proceed directly. If mode remains unclear after the question, default to New Design Mode.
 
 ### New Design Mode
 
@@ -64,7 +64,7 @@ The user provides an existing design doc, ADR, or architecture proposal. Skip se
 - **Observability Plan** (Section 6) - identify gaps in the proposed observability coverage
 - **Guardrails and Review Guidance** (Section 10) - produce concrete guardrails for implementation
 
-Skip or significantly compress:
+Skip or significantly compress: One paragraph maximum per section, only if a gap or risk is found; omit entirely if none found.
 
 - Section 7 (Performance) - only flag if the proposal has obvious capacity blind spots
 - Section 8 (Deployment) - only flag if rollback or compatibility issues are present
@@ -364,9 +364,10 @@ Downstream Consumers:
 
 ### Components
 
-| Component | Responsibility | Owns       | Depends On | Primary Failure Mode |
-| --------- | -------------- | ---------- | ---------- | -------------------- |
-| Name      | One sentence   | Data/state | Components | How it fails         |
+| Component          | Responsibility                                   | Owns                             | Depends On                      | Primary Failure Mode                   |
+| ------------------ | ------------------------------------------------ | -------------------------------- | ------------------------------- | -------------------------------------- |
+| Name               | One sentence                                     | Data/state                       | Components                      | How it fails                           |
+| NotificationRouter | Routes notifications to channel-specific senders | routing rules, template registry | ChannelSenders, TemplateService | Channel sender timeout; queues back up |
 
 ### Communication Model
 
@@ -483,6 +484,8 @@ Feature Flags:
 
 ## Staff-Level Summary
 
+Each bullet should be specific to this design, not generic advice. Example: 'Key systemic risks: Retry amplification from SMS provider timeouts can overload the outbox worker under burst load.'
+
 - Key systemic risks:
 - Long-term evolution notes:
 - Areas requiring strict review:
@@ -539,6 +542,9 @@ Walk through the failure end-to-end:
 - [ ] Rollback strategy exists; SLO candidate identified in observability plan
 - [ ] Guardrails are concrete rules (not general principles) and detectable during implementation
 - [ ] Design is grounded in stated requirements - no hypothetical future scope
+- [ ] Deployment section states rollout approach and rollback trigger criteria
+- [ ] At least one concrete guardrail exists per module boundary
+- [ ] If depth = deep: capacity model populated per component, at least 2 failure scenarios simulated, evolution notes address traffic doubling
 
 ## Avoid
 
