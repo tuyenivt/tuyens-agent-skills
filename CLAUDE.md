@@ -45,6 +45,9 @@ plugins/
   react/         # React 19+ / TypeScript / Next.js (primary), Vite (secondary)
     skills/      # 10 skills (2 workflow + 8 atomic)
     agents/      # 5 agent definitions
+  vue/           # Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)
+    skills/      # 11 skills (2 workflow + 9 atomic)
+    agents/      # 4 agent definitions
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.
