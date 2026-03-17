@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, java, kotlin, python, rails, node, go, dotnet, rust, react, and vue.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, java, kotlin, python, rails, node, go, dotnet, rust, react, vue, and angular.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -243,6 +243,27 @@
         "tailwind",
         "pinia",
         "composables",
+        "vitest",
+        "playwright"
+      ]
+    },
+    {
+      "name": "angular",
+      "source": "./plugins/angular",
+      "description": "10 skills and 5 agents for Angular 21+ / TypeScript / Angular CLI development.",
+      "version": "1.51.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "angular",
+        "typescript",
+        "signals",
+        "rxjs",
+        "angular-material",
+        "tailwind",
+        "ngrx",
         "vitest",
         "playwright"
       ]

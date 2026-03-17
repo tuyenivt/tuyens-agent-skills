@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `react`, and `vue`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -91,6 +91,13 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install vue@tuyens-agent-skills --scope project
 ```
 
+**Angular project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install angular@tuyens-agent-skills --scope project
+```
+
 **Architecture project:**
 
 ```bash
@@ -134,6 +141,7 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/ski
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/rust/skills" "$HOME/.codex/skills/tuyens-agent-skills-rust-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/react/skills" "$HOME/.codex/skills/tuyens-agent-skills-react-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/vue/skills" "$HOME/.codex/skills/tuyens-agent-skills-vue-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/angular/skills" "$HOME/.codex/skills/tuyens-agent-skills-angular-skills"
 
 # Windows
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-core-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/core/skills"
@@ -150,6 +158,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USER
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rust-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/rust/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-react-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/react/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-vue-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/vue/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-angular-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/angular/skills"
 ```
 
 ## How Skills Work
@@ -243,6 +252,10 @@ React / Next.js (plugin: react)
 Vue / Nuxt (plugin: vue)
   scaffold a new Vue feature          -> /task-vue-new
   debug a Vue issue                   -> /task-vue-debug
+
+Angular (plugin: angular)
+  scaffold a new Angular feature      -> /task-angular-new
+  debug an Angular issue              -> /task-angular-debug
 ```
 
 **Common decision points:**
@@ -275,6 +288,7 @@ Vue / Nuxt (plugin: vue)
 | [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            | 11 skills + 11 agents                  |
 | [react](plugins/react)               | React 19+ / TypeScript / Next.js (primary), Vite (secondary)                                                                                                                        | 10 skills + 5 agents                   |
 | [vue](plugins/vue)                   | Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)                                                                                                                          | 11 skills + 4 agents                   |
+| [angular](plugins/angular)           | Angular 21+ / TypeScript / Angular CLI                                                                                                                                              | 10 skills + 5 agents                   |
 
 ## Notes
 
