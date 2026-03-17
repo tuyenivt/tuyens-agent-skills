@@ -42,6 +42,9 @@ plugins/
   rust/          # Rust 1.94+ / Axum / sqlx
     skills/      # 11 skills (2 workflow + 9 atomic)
     agents/      # 11 agent definitions
+  react/         # React 19+ / TypeScript / Next.js (primary), Vite (secondary)
+    skills/      # 10 skills (2 workflow + 8 atomic)
+    agents/      # 5 agent definitions
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.
