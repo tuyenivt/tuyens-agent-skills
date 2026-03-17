@@ -63,11 +63,11 @@ Handle partial inputs gracefully. If only a file path is given, read the file an
 
 ### Step 1 - Stack and Context Detection
 
-Use skill: `stack-detect` to identify the language and framework. This shapes:
+Use skill: `stack-detect` to identify the language, framework, and `Stack Type`. This shapes:
 
 - Naming convention interpretation
-- Framework lifecycle awareness (e.g., Spring beans, Rails callbacks, NestJS decorators)
-- Common patterns the code may be implementing (middleware, interceptors, repository pattern)
+- Framework lifecycle awareness (e.g., Spring beans, Rails callbacks, NestJS decorators, React hooks, Vue composables, Angular signals)
+- Common patterns the code may be implementing (middleware, interceptors, repository pattern, component composition, state management, data fetching hooks)
 
 Read the target code fully before proceeding.
 

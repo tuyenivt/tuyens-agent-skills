@@ -2,7 +2,7 @@
 name: task-onboard-codebase
 description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack, maps architecture layers and entry points, identifies key patterns and conventions, surfaces tech debt and risk hotspots. Use when joining a new project, taking over an unfamiliar codebase, or doing a pre-implementation survey.
 metadata:
-  category: workflow
+  category: code
   tags: [onboarding, architecture, tech-debt, codebase-analysis, patterns, multi-stack]
   type: workflow
 user-invocable: true
@@ -81,7 +81,9 @@ Produce a **directory map** showing the top 2-3 levels with a one-line annotatio
 
 ### Step 3 - Identify Architecture Pattern
 
-Based on the file layout, naming, and key framework conventions, classify the dominant architectural pattern:
+Based on the file layout, naming, key framework conventions, and detected `Stack Type`, classify the dominant architectural pattern:
+
+**Backend patterns:**
 
 | Pattern           | Signals                                                                        |
 | ----------------- | ------------------------------------------------------------------------------ |
@@ -91,6 +93,16 @@ Based on the file layout, naming, and key framework conventions, classify the do
 | Vertical slice    | Feature folders each containing controller + service + model + test            |
 | Microservice      | Multiple independently deployable services with separate entry points          |
 | Event-driven      | Dominant use of events/messages as primary coupling mechanism                  |
+
+**Frontend patterns:**
+
+| Pattern              | Signals                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| Feature-based        | Feature folders each containing components + hooks/composables + tests                |
+| Atomic Design        | `atoms/`, `molecules/`, `organisms/`, `templates/`, `pages/` directory structure      |
+| Route-based          | Pages/routes as top-level organization, shared components in separate directory       |
+| Module-based         | `modules/` or `features/` directories with self-contained UI + state + API per module |
+| Monolith integration | Frontend embedded within a backend framework (Rails views, Django templates, Inertia) |
 
 State which pattern(s) are in use, with evidence (file paths, naming conventions observed).
 
@@ -115,9 +127,9 @@ Request → [Layer 1] → [Layer 2] → [Data store]
 
 ### Step 5 - Extract Key Patterns and Conventions
 
-Read representative files across the codebase to extract the patterns the team actually uses:
+Read representative files across the codebase to extract the patterns the team actually uses. Focus on the patterns relevant to the detected `Stack Type`.
 
-**Code patterns to identify:**
+**Backend code patterns (when Stack Type is `backend` or `fullstack`):**
 
 - How dependency injection is done (constructor, framework annotation, manual wiring)
 - How errors are handled and propagated
@@ -127,14 +139,24 @@ Read representative files across the codebase to extract the patterns the team a
 - How database transactions are scoped
 - How background jobs or async processing is handled
 
-**Test patterns to identify:**
+Use skill: `backend-coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
+
+**Frontend code patterns (when Stack Type is `frontend` or `fullstack`):**
+
+- Component architecture approach (smart/dumb split, feature components, shared UI library)
+- State management strategy (local state, stores/context, URL state, server state)
+- Data fetching approach (hooks/composables, server components, global fetch wrapper)
+- Routing strategy (file-based, manual configuration, layouts and guards)
+- Styling approach (CSS modules, Tailwind, styled-components, scoped styles, design tokens)
+- Form handling patterns (validation library, submission flow, error display)
+- How accessibility is addressed (semantic HTML discipline, ARIA usage, keyboard navigation)
+
+**Test patterns to identify (all stacks):**
 
 - Unit vs integration vs end-to-end split
-- How test data is created (factories, fixtures, builders)
+- How test data is created (factories, fixtures, builders, MSW handlers)
 - How external dependencies are mocked (library, approach)
 - Test naming conventions
-
-Use skill: `backend-coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
 
 ### Step 6 - Surface Tech Debt and Risk Hotspots
 
@@ -232,16 +254,23 @@ Use skill: `ops-observability` to assess whether the observability setup is suff
 
 ### How This Codebase Does Things
 
-| Concern         | Pattern Observed                            | Location Example         |
-| --------------- | ------------------------------------------- | ------------------------ |
-| DI              | [e.g., constructor injection via wire]      | [file path]              |
-| Error handling  | [e.g., wrapped errors with fmt.Errorf %w]   | [file path]              |
-| Logging         | [e.g., slog structured, request-scoped]     | [file path]              |
-| Config          | [e.g., viper + env vars, no hardcoding]     | [file path]              |
-| Auth            | [e.g., JWT middleware on Gin router groups] | [file path]              |
-| Transactions    | [e.g., GORM WithContext transaction]        | [file path]              |
-| Background jobs | [e.g., Asynq workers in internal/worker/]  | [file path]              |
-| Tests           | [e.g., table-driven, mockery mocks]         | [file path]              |
+| Concern           | Pattern Observed                                | Location Example         |
+| ----------------- | ----------------------------------------------- | ------------------------ |
+| DI                | [e.g., constructor injection via wire]          | [file path]              |
+| Error handling    | [e.g., wrapped errors with fmt.Errorf %w]       | [file path]              |
+| Logging           | [e.g., slog structured, request-scoped]         | [file path]              |
+| Config            | [e.g., viper + env vars, no hardcoding]         | [file path]              |
+| Auth              | [e.g., JWT middleware on Gin router groups]     | [file path]              |
+| Transactions      | [e.g., GORM WithContext transaction]            | [file path]              |
+| Background jobs   | [e.g., Asynq workers in internal/worker/]       | [file path]              |
+| Components        | [e.g., feature-based, smart/dumb split]         | [file path]              |
+| State management  | [e.g., Zustand stores, local useState]          | [file path]              |
+| Data fetching     | [e.g., TanStack Query with MSW for testing]     | [file path]              |
+| Routing           | [e.g., Next.js App Router, file-based]          | [file path]              |
+| Styling           | [e.g., Tailwind CSS with design tokens]         | [file path]              |
+| Tests             | [e.g., table-driven, mockery mocks]             | [file path]              |
+
+_Include only rows relevant to the detected Stack Type. Omit backend rows for frontend-only projects and vice versa._
 
 ## Tech Debt and Risk Hotspots
 

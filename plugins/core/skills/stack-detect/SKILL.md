@@ -103,10 +103,30 @@ If neither step yields a language: language = "unknown". Suggest the user add a 
 
 > **Note for repo maintainers:** Research shows that large or bloated repo context files reduce coding agent task success rates and increase inference cost. Keep your context file lean - the `## Tech Stack` section should be a short list of key-value pairs only. Review and update it whenever the stack changes; stale or incorrect entries are worse than no entry.
 
-### Step 3 - Output
+### Step 3 - Determine Stack Type
+
+Classify the detected stack into one of three types based on the primary framework:
+
+| Stack Type  | Condition                                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend`  | Primary framework is React, Vue, Angular, Svelte, or another SPA/SSR framework with no backend API layer detected                                                                                                    |
+| `backend`   | Primary framework is Spring, Django, FastAPI, Rails, NestJS, Express, Gin, Axum, ASP.NET, or similar server framework                                                                                                |
+| `fullstack` | Both frontend and backend frameworks detected in the same project, OR a meta-framework with server capabilities used (Next.js with API routes/Server Actions, Nuxt with Nitro server routes, Angular with SSR + API) |
+
+**Fullstack heuristics:**
+
+- Next.js project with `app/api/` directory or Server Actions usage -> `fullstack`
+- Nuxt project with `server/` directory -> `fullstack`
+- Monorepo with both `package.json` (React/Vue/Angular) and backend marker files (`build.gradle`, `go.mod`, etc.) -> `fullstack`
+- Next.js/Nuxt project with no server-side routes detected -> `frontend`
+
+When `fullstack` is detected, `Language` and `Framework` reflect the primary stack. Use `Additional` to note the secondary stack.
+
+### Step 4 - Output
 
 ```
 Detected stack:
+  Stack Type: {backend | frontend | fullstack}
   Language: {as declared or detected}
   Framework: {as declared or detected}
   Build tool: {as declared or detected}
@@ -123,6 +143,7 @@ This is the contract that all consuming workflow skills depend on. Do not change
 
 ```
 Detected stack:
+  Stack Type: {backend | frontend | fullstack}
   Language: {string - as declared or "unknown"}
   Framework: {string - as declared or "unknown"}
   Build tool: {string - as declared or "unknown"}
@@ -135,7 +156,8 @@ Source: context-file | file-detection | unknown
 
 **Consuming skill contract:**
 
-- All fields except `Language` and `Framework` are optional - omit if not declared
+- `Stack Type` is always present - workflow skills use this to branch their delegations
+- All fields except `Stack Type`, `Language`, and `Framework` are optional - omit if not declared
 - `Source` is always present - tells consumers how reliable the detection is
 - `file-detection` source is lower confidence than instruction-file sources; consuming skills should note this
 - `unknown` language means no detection succeeded; consuming skills must degrade gracefully
@@ -145,7 +167,7 @@ Source: context-file | file-detection | unknown
 - Never guess - if a field cannot be determined, use `unknown`
 - File-based marker detection is the primary source; agent instruction files are supplemental for details (framework, database, ORM) that marker files cannot provide
 - Do not prompt the user for stack information - detect silently
-- If multiple languages are present (e.g., backend + frontend), report the primary backend language as `language` and note others in `Additional`. Example: `Language: Java`, `Additional: Frontend: TypeScript (React)`. If the CLAUDE.md Tech Stack section lists both, use that as the source of truth; otherwise infer from marker files (e.g., both `build.gradle` and `package.json` present).
+- If multiple languages are present (e.g., backend + frontend), set `Stack Type: fullstack`, report the primary language as `Language`, and note the secondary stack in `Additional`. Example: `Stack Type: fullstack`, `Language: Java`, `Additional: Frontend: TypeScript (React)`. If the CLAUDE.md Tech Stack section lists both, use that as the source of truth; otherwise infer from marker files (e.g., both `build.gradle` and `package.json` present).
 - Cache the result mentally for the duration of the conversation - do not re-detect on every skill invocation
 - Do not validate detected values against any fixed list - pass through as-is
 

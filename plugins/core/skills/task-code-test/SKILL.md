@@ -32,7 +32,9 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 3 - Framework-Specific Test Patterns
 
-After loading stack-detect, apply test patterns using the idioms of the detected ecosystem:
+After loading stack-detect, apply test patterns using the idioms of the detected ecosystem and `Stack Type`.
+
+#### Backend Test Patterns (when Stack Type is `backend` or `fullstack`)
 
 **Unit Tests:**
 
@@ -53,6 +55,31 @@ After loading stack-detect, apply test patterns using the idioms of the detected
 - Use the ecosystem's standard test data mechanism (factories, fixtures, builders, etc.)
 - Prefer factory-based test data over static fixtures for flexibility
 - Keep test data minimal and focused on the scenario being tested
+
+#### Frontend Test Patterns (when Stack Type is `frontend` or `fullstack`)
+
+Use skill: `frontend-testing-patterns` for component testing, MSW mocking, and E2E patterns.
+
+**Component Tests:**
+
+- Test user-visible behavior, not implementation details (query by role/label, not by class/test-id)
+- Cover all render states: loading, error, empty, and populated
+- Test user interactions (click, type, submit) and verify resulting UI changes
+- Use MSW (Mock Service Worker) for API mocking in component tests
+
+**Integration Tests:**
+
+- Test multi-component flows (form submission -> success message, navigation -> page load)
+- Verify data fetching and state management work together correctly
+- Test error boundaries and fallback UI
+
+**E2E Tests:**
+
+- Cover only critical user flows (login, checkout, core CRUD operations)
+- Use the project's E2E framework (Playwright, Cypress, or equivalent)
+- Keep E2E count minimal - these are expensive to maintain
+
+#### Common Patterns (all Stack Types)
 
 **Test Organization:**
 
@@ -83,6 +110,7 @@ Before writing or recommending tests, determine what deserves each layer:
 
 - Critical business flows (checkout, login, data export) only
 - Flows that span multiple services or UI + API together
+- **Frontend**: critical user journeys that span multiple pages/routes
 - Keep this layer small - each test is expensive to write and maintain
 
 **The "test or not" decision:**

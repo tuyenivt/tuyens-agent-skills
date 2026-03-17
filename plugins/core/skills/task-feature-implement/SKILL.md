@@ -2,7 +2,7 @@
 name: task-feature-implement
 description: Universal feature implementation entry point for new functionality requiring multiple coordinated layers (API + service + persistence + tests). Detects your stack and delegates to the appropriate workflow. Use when implementing a new endpoint, resource, domain aggregate, or cross-layer feature.
 metadata:
-  category: backend
+  category: code
   tags: [feature, implementation, scaffold, stack-agnostic]
   type: workflow
 user-invocable: true
@@ -32,6 +32,8 @@ Use skill: stack-detect
 
 Based on the detected stack, invoke the appropriate workflow:
 
+**Backend stacks:**
+
 | Detected Stack              | Delegate to       |
 | --------------------------- | ----------------- |
 | Java / Spring Boot          | `task-spring-new` |
@@ -43,11 +45,23 @@ Based on the detected stack, invoke the appropriate workflow:
 | Go / Gin                    | `task-go-new`     |
 | Rust / Axum                 | `task-rust-new`   |
 
+**Frontend stacks:**
+
+| Detected Stack         | Delegate to        |
+| ---------------------- | ------------------ |
+| React / Next.js / Vite | `task-react-new`   |
+| Vue / Nuxt / Vite      | `task-vue-new`     |
+| Angular                | `task-angular-new` |
+
+**Fullstack projects:** If `Stack Type: fullstack` is detected, determine which side the feature belongs to based on user input. If the feature spans both (e.g., "add a new page with API endpoint"), delegate to the backend workflow for the API layer and the frontend workflow for the UI layer. If unclear, ask the user which side to focus on.
+
 If the detected stack does not match any of the above, proceed with the universal fallback below.
 
 ### Step 3 - Universal Fallback (Unknown Stack)
 
-If no matching stack workflow exists, implement the feature using universal best practices:
+If no matching stack workflow exists, implement the feature using universal best practices. The fallback adapts based on the detected `Stack Type`.
+
+#### Fallback for Backend or Unknown Stack Type
 
 **GATHER** - Confirm before proceeding:
 
@@ -104,15 +118,77 @@ If no matching stack workflow exists, implement the feature using universal best
 - Integration tests: {count}
 ```
 
+#### Fallback for Frontend Stack Type
+
+**GATHER** - Confirm before proceeding:
+
+- Feature name, user-facing behavior, and affected pages/routes
+- Component hierarchy and data requirements
+- State management needs (local, shared, global, URL)
+- Data sources: API endpoints to consume, loading/error states
+- Form inputs and validation rules (if applicable)
+- Accessibility requirements
+
+**DESIGN** - Propose and wait for explicit approval before generating any code:
+
+- Component tree with responsibility annotations
+- Routing changes (new pages, layouts, guards)
+- State management approach (local state, store, URL params)
+- Data fetching strategy (hooks/composables, server components, caching)
+- Form handling approach (validation library, submission flow)
+
+**IMPLEMENT (in order):**
+
+1. **Routing**: new routes, layouts, or navigation entries
+2. **Components**: page components, feature components, shared UI components - each with single responsibility
+3. **State management**: local state first, lift or use stores only when sharing is required
+4. **Data fetching**: loading states, error states, caching, retry logic
+5. **Forms** (if applicable): validation, submission, error display
+6. **Accessibility**: semantic HTML, ARIA attributes, keyboard navigation, focus management
+7. **Tests**: component tests for rendering and interaction; integration tests for data flows; E2E for critical user flows
+
+**VALIDATE:**
+
+- Run the project's test suite and confirm all pass
+- Confirm the implementation matches the approved design
+- Verify accessibility (no missing labels, keyboard navigable, correct heading hierarchy)
+
+**Output:**
+
+```markdown
+## Generated Files
+
+- [ ] Route/Page: [path]
+- [ ] Components: [paths]
+- [ ] State/Store: [path] (if applicable)
+- [ ] Hooks/Composables: [path] (if applicable)
+- [ ] Tests: [paths]
+
+## Routes
+
+| Path | Component | Guard | Description |
+| ---- | --------- | ----- | ----------- |
+| ...  | ...       | ...   | ...         |
+
+## Tests
+
+- Component tests: {count}
+- Integration tests: {count}
+- E2E tests: {count}
+```
+
 ## Self-Check
 
 - [ ] Stack detected and stack-specific workflow invoked (or fallback applied with explanation)
 - [ ] Requirements confirmed and design approved before any code generated
-- [ ] All layers implemented: migration, model, service, controller, DTOs, tests
-- [ ] No data layer entities exposed directly in API responses - DTOs/response structs used
-- [ ] Every endpoint has explicit auth; list endpoints are paginated
-- [ ] Migration is safe: no destructive column changes without expand-contract sequencing
-- [ ] Tests pass; file list, endpoint table, and test count presented
+- [ ] **Backend/fullstack**: All layers implemented: migration, model, service, controller, DTOs, tests
+- [ ] **Backend/fullstack**: No data layer entities exposed directly in API responses - DTOs/response structs used
+- [ ] **Backend/fullstack**: Every endpoint has explicit auth; list endpoints are paginated
+- [ ] **Backend/fullstack**: Migration is safe: no destructive column changes without expand-contract sequencing
+- [ ] **Frontend/fullstack**: Components have single responsibility; no business logic in components
+- [ ] **Frontend/fullstack**: State management approach is appropriate (local first, stores only when needed)
+- [ ] **Frontend/fullstack**: Accessibility verified: semantic HTML, keyboard navigable, ARIA labels
+- [ ] Tests pass; file list, route/endpoint table, and test count presented
 
 ## Avoid
 
@@ -125,6 +201,5 @@ If no matching stack workflow exists, implement the feature using universal best
 ## Notes
 
 - This skill is a dispatcher. The depth and quality of the output depends on the delegated stack workflow.
-- For polyglot monorepos, detect the primary backend stack and note any secondary stacks.
+- For polyglot monorepos or fullstack projects, detect the primary stack and note any secondary stacks. Use `Stack Type` to determine whether to delegate to backend, frontend, or both workflows.
 - If the user wants to skip stack detection (e.g., in a context where it always fails), they can invoke the stack-specific workflow directly.
-

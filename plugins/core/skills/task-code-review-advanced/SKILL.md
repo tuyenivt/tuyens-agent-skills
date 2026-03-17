@@ -84,7 +84,9 @@ Logical correctness, error handling completeness, edge cases affecting state int
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding tests, raise this as an explicit finding - at minimum a [Suggestion], escalate to [High] if the changed code is in a critical path (auth, payments, data integrity). Do not bury this in Key Takeaways - it must appear as a named finding.
 
-After loading stack-detect, apply correctness checks specific to the detected ecosystem:
+After loading stack-detect, apply correctness checks based on `Stack Type`:
+
+#### Backend Correctness (when Stack Type is `backend` or `fullstack`)
 
 - Transaction management patterns appropriate to the framework
 - Concurrency safety for the detected runtime's threading model
@@ -96,11 +98,26 @@ Use skill: `ops-resiliency` for error handling, retry, and fault tolerance patte
 Use skill: `backend-api-guidelines` if the change touches API contracts or HTTP endpoints.
 Use skill: `architecture-concurrency` if concurrency patterns are present in the change.
 
+#### Frontend Correctness (when Stack Type is `frontend` or `fullstack`)
+
+- Rendering correctness: components render the right content for all states (loading, error, empty, populated)
+- State consistency: no stale closures, no state updates on unmounted components, no race conditions between async operations and UI state
+- Memory leaks: event listeners, subscriptions, timers, and observers cleaned up on unmount
+- Side effect isolation: effects/subscriptions have proper dependency arrays and cleanup functions
+- Error boundaries: errors in child components do not crash the entire application
+- Accessibility: interactive elements are keyboard-accessible, ARIA attributes are correct, focus management works
+
+Use skill: `frontend-state-management` to verify state patterns are appropriate.
+Use skill: `frontend-accessibility` for accessibility compliance.
+Use skill: `frontend-api-integration` if the change involves data fetching.
+
 ### Phase C - Architecture Guardrails
 
 Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, bypassing abstractions, boundary erosion, architectural drift.
 
-Apply the layering conventions of the detected framework - presentation → service → data access - using the ecosystem's standard patterns.
+**Backend:** Apply the layering conventions of the detected framework - presentation → service → data access - using the ecosystem's standard patterns.
+
+**Frontend:** Apply component boundary conventions - page components → feature components → shared UI components. Detect: business logic leaking into components, components reaching across feature boundaries, shared state used for single-feature concerns, tightly coupled component hierarchies that prevent reuse.
 
 ### Phase D - AI-Generated Code Quality Control
 
@@ -110,17 +127,27 @@ Key signals: over-abstraction, premature generalization, redundant mapping layer
 ### Phase E - Maintainability and Clarity
 
 Naming that obscures intent, mixed responsibilities, large unreviewable chunks, complex logic without explanation.
-Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
-Use skill: `ops-observability` to check logging, metrics, and tracing coverage.
+
+**Backend/fullstack:** Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
+**All stacks:** Use skill: `ops-observability` to check logging, metrics, and tracing coverage (backend) or error tracking and analytics instrumentation (frontend).
 
 ## Framework-Specific Signals
 
-After loading stack-detect, check for framework-specific signals based on the detected ecosystem. The atomic skills loaded in Phases B-E handle detailed pattern enforcement. In addition, check these staff-level concerns:
+After loading stack-detect, check for framework-specific signals based on the detected ecosystem and `Stack Type`. The atomic skills loaded in Phases B-E handle detailed pattern enforcement. In addition, check these staff-level concerns:
+
+**Backend signals:**
 
 - **Architectural fit**: Does the change follow the framework's recommended layering and DI patterns, or does it introduce a competing pattern?
 - **Concurrency model match**: Are concurrency primitives appropriate for the detected runtime's threading model (e.g., virtual threads vs. thread pools in Java 21+, goroutines vs. OS threads)?
 - **Ecosystem currency**: Does the change use current language features and framework APIs, or does it introduce deprecated patterns that create future migration burden?
 - **ORM entities in API responses**: Are data layer entities exposed directly in API responses instead of using DTOs/serializers?
+
+**Frontend signals:**
+
+- **Component boundary discipline**: Does the change respect component single-responsibility, or does it create god components?
+- **State management escalation**: Does the change introduce global state where local state would suffice, or use prop drilling where context/stores are warranted?
+- **Rendering performance**: Does the change introduce unnecessary re-renders, missing memoization, or heavy computation in render paths?
+- **Ecosystem currency**: Does the change use current framework APIs (e.g., React 19 hooks, Vue 3.5 features, Angular signals), or does it introduce deprecated patterns?
 
 If the detected stack is unfamiliar, apply only the universal review criteria and note the limitation.
 
@@ -189,11 +216,12 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Architecture boundary impact assessed even if no violations found
+- [ ] Architecture boundary impact assessed even if no violations found (including component boundaries for frontend)
 - [ ] AI-generated code evaluated for over-abstraction and verbosity inflation
 - [ ] Findings ordered Blocker > High > Suggestion; no purely stylistic findings without a project standard
 - [ ] Key Takeaways convey systemic risk; Summary alone is enough for an Approve/Request Changes decision
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
+- [ ] Stack Type determined; backend and/or frontend checks applied appropriately
 
 ## Avoid
 
@@ -203,4 +231,3 @@ If the detected stack is unfamiliar, apply only the universal review criteria an
 - Running performance or security sub-workflows when user requested Core scope only
 - Commenting on every file - focus on systemic issues
 - Applying framework conventions from a different stack
-

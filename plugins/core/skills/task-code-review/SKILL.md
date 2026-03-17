@@ -73,13 +73,15 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 3 - Framework-Specific Checks
 
+After loading stack-detect, apply framework-specific review criteria based on the detected `Stack Type`. If `Stack Type: fullstack`, apply both backend and frontend checks to the relevant parts of the change.
+
+#### Backend Checks (when Stack Type is `backend` or `fullstack`)
+
 Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
 Use skill: `architecture-concurrency` if concurrency patterns are present in the change.
 Use skill: `ops-observability` to check logging, metrics, and tracing coverage.
 Use skill: `ops-resiliency` for error handling, retry, and circuit breaker patterns.
 Use skill: `backend-api-guidelines` if the change touches API contracts or HTTP endpoints.
-
-After loading stack-detect, apply framework-specific review criteria based on the detected ecosystem. The atomic skills above handle detailed pattern enforcement. In addition, check these cross-cutting concerns:
 
 **Language and Framework Fit:**
 
@@ -93,6 +95,41 @@ After loading stack-detect, apply framework-specific review criteria based on th
 - No N+1 query patterns (loops that trigger per-row queries)
 - Queries are bounded - no unbounded fetches without pagination or limit
 - Transactions are scoped correctly and not held across I/O
+
+#### Frontend Checks (when Stack Type is `frontend` or `fullstack`)
+
+Use skill: `frontend-state-management` to verify state patterns are appropriate.
+Use skill: `frontend-accessibility` for semantic HTML, ARIA, keyboard, and focus management.
+Use skill: `frontend-api-integration` if the change involves data fetching or API calls.
+
+**Component Design:**
+
+- Components have single responsibility - no god components doing layout + data fetching + business logic
+- Props interface is minimal and well-typed - no prop drilling through 3+ levels
+- Side effects are isolated in hooks/composables/services, not scattered in render/template logic
+- No business logic in components - extract to hooks, composables, or utility functions
+
+**State Management:**
+
+- Local state used by default; lifted or global state only when sharing is required
+- No global state for single-component concerns
+- Derived/computed values used instead of manually syncing state
+- URL state used for user-shareable or bookmarkable state
+
+**Data Fetching:**
+
+- Loading and error states handled for all async operations
+- No fetch calls without error handling or loading indicators
+- Client-side caching considered for repeated fetches
+
+**Accessibility:**
+
+- Semantic HTML elements used (not `<div>` for everything)
+- Interactive elements are keyboard-accessible
+- Form inputs have associated labels
+- Images have alt text; decorative images have empty alt
+
+#### Cross-Cutting Checks (all Stack Types)
 
 **Configuration Hygiene:**
 
@@ -167,12 +204,13 @@ If the detected stack is unfamiliar, apply the universal review criteria from St
 
 ## Self-Check
 
-- [ ] Stack detected and framework-specific checks applied (or noted as unfamiliar)
+- [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
 - [ ] Every finding has a label, location (file:line), and actionable fix
 - [ ] Findings ordered: Blocker > Suggestion > Question > Nitpick
 - [ ] At least one [Praise] included in Done Well
 - [ ] Key Takeaways summarize the overall assessment - Summary alone is enough for an Approve/Request Changes decision
 - [ ] No framework conventions applied from a different stack than detected
+- [ ] Frontend checks (accessibility, state, components) applied when Stack Type is frontend or fullstack
 
 ## Avoid
 

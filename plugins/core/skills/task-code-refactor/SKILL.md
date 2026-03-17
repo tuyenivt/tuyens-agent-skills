@@ -50,10 +50,12 @@ Use judgment - these are signals, not hard rules. A 25-line method with a clear 
 
 ### Step 3 - Framework-Specific Smells
 
+After loading stack-detect, identify smells based on the detected `Stack Type`.
+
+#### Backend Smells (when Stack Type is `backend` or `fullstack`)
+
 Use skill: `backend-coding-standards` to enforce naming, structure, and anti-pattern rules for the detected stack.
 Use skill: `architecture-concurrency` if concurrency patterns are present in the target scope.
-
-After loading stack-detect, identify smells specific to the detected ecosystem. Common categories include:
 
 **Controller/Handler Bloat:**
 
@@ -79,6 +81,33 @@ After loading stack-detect, identify smells specific to the detected ecosystem. 
 
 - Using deprecated test utilities or annotations
 - Missing test isolation (shared state between tests)
+
+#### Frontend Smells (when Stack Type is `frontend` or `fullstack`)
+
+Use skill: `frontend-state-management` to verify state patterns are appropriate.
+
+| Smell                 | Signal                                                                                        | Risk   |
+| --------------------- | --------------------------------------------------------------------------------------------- | ------ |
+| Component Bloat       | Component > 200 lines or handles > 3 responsibilities (layout + fetch + logic)                | High   |
+| Prop Drilling         | Props passed through 3+ intermediate components that don't use them                           | Medium |
+| State Leak            | Global state (store/context) used for concerns local to one component                         | Medium |
+| Effect Spaghetti      | Multiple effects with overlapping dependencies, unclear execution order                       | High   |
+| Render-Logic Coupling | Business logic (validation, transformation, decisions) mixed into render/template             | Medium |
+| Event Handler Bloat   | Inline handlers > 3 lines; complex logic in onClick/onChange/onSubmit                         | Low    |
+| Zombie Subscriptions  | Subscriptions, timers, or listeners not cleaned up on unmount                                 | High   |
+| Style Sprawl          | Inconsistent styling approach across components (mix of inline, CSS modules, utility classes) | Low    |
+
+**Component Architecture Anti-Patterns:**
+
+- Smart/dumb component boundary violated - UI components fetching data or managing global state
+- Feature components reaching across feature boundaries for shared state
+- Circular component dependencies (A imports B, B imports A)
+
+**Test Anti-Patterns:**
+
+- Testing implementation details instead of user-visible behavior
+- Snapshot tests used as primary assertion strategy
+- Missing test coverage for loading, error, and empty states
 
 If the detected stack is unfamiliar, apply the universal smells from Step 2.
 
@@ -142,6 +171,8 @@ Before proposing any refactoring sequence, assess test coverage on the target:
 
 ### Step 7 - Common Refactorings
 
+**Backend refactorings:**
+
 | Smell            | Refactoring            | Cross-Module Risk         |
 | ---------------- | ---------------------- | ------------------------- |
 | Long Method      | Extract Method         | Low (private scope)       |
@@ -150,6 +181,17 @@ Before proposing any refactoring sequence, assess test coverage on the target:
 | Feature Envy     | Move Method            | Medium (changes callers)  |
 | Divergent Change | Split into two classes | High (public boundary)    |
 | Shotgun Surgery  | Inline and consolidate | High (many callers)       |
+
+**Frontend refactorings:**
+
+| Smell                 | Refactoring                                           | Cross-Module Risk          |
+| --------------------- | ----------------------------------------------------- | -------------------------- |
+| Component Bloat       | Extract child components with clear props interface   | Low (local scope)          |
+| Prop Drilling         | Introduce context/store or composition pattern        | Medium (changes consumers) |
+| State Leak            | Internalize state to owning component                 | Low (reduces coupling)     |
+| Effect Spaghetti      | Extract to custom hook/composable with single purpose | Low (private scope)        |
+| Render-Logic Coupling | Extract logic to hook/composable/utility              | Low (private scope)        |
+| Zombie Subscriptions  | Add cleanup functions to effects/onUnmounted          | Low (bug fix)              |
 
 ## Output Format
 

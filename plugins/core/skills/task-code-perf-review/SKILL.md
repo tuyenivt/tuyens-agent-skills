@@ -1,6 +1,6 @@
 ---
 name: task-code-perf-review
-description: Performance review for backend services and React frontends - N+1 queries, missing indexes, slow endpoints, memory leaks, connection pool sizing, and concurrency anti-patterns. Use when an endpoint is slow, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release.
+description: Performance review for backend services and frontend applications - N+1 queries, missing indexes, slow endpoints, unnecessary re-renders, bundle size, Core Web Vitals, memory leaks, and concurrency anti-patterns. Use when an endpoint is slow, a page loads slowly, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release.
 metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack]
@@ -13,8 +13,8 @@ user-invocable: true
 ## When to Use
 
 - Performance issue identification
-- Backend optimization
-- Frontend optimization (React)
+- Backend optimization (database, caching, concurrency)
+- Frontend optimization (rendering, bundle size, Core Web Vitals)
 - Database query optimization
 - Caching strategy review
 
@@ -36,7 +36,9 @@ Default: `standard`. Use `quick` when user targets a specific query or method.
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 - Database Performance (All Backend Stacks)
+### Step 2 - Database Performance (Backend and Fullstack)
+
+Skip this step if `Stack Type: frontend`.
 
 - [ ] N+1 queries detected and resolved
 - [ ] Missing indexes on WHERE/ORDER BY columns
@@ -46,7 +48,9 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - [ ] Query timeout configured
 - [ ] Batch operations for bulk inserts/updates
 
-### Step 3 - Framework-Specific Backend Review
+### Step 3 - Framework-Specific Backend Review (Backend and Fullstack)
+
+Skip this step if `Stack Type: frontend`.
 
 After loading stack-detect, apply performance checks specific to the detected ecosystem:
 
@@ -85,7 +89,9 @@ After loading stack-detect, apply performance checks specific to the detected ec
 
 If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
 
-### Step 4 - Caching Deep Dive (All Stacks)
+### Step 4 - Caching Deep Dive (Backend and Fullstack)
+
+Skip this step if `Stack Type: frontend`.
 
 Use skill: `backend-caching` for cache strategy patterns (key design, invalidation, local vs distributed).
 Use skill: `architecture-concurrency` to validate thread/worker pool sizing and concurrency primitive choices.
@@ -96,27 +102,37 @@ Verify (beyond the basic cache checks in Step 3):
 - [ ] Local cache vs distributed cache decision made explicitly
 - [ ] Cache stampede protection considered for high-traffic keys
 
-### Step 5 - Frontend (React, if applicable)
+### Step 5 - Frontend Performance (Frontend and Fullstack)
 
-Skip this step if the review target is backend-only.
+Skip this step if `Stack Type: backend`.
 
-**Rendering:**
+Use skill: `frontend-performance` for Core Web Vitals, bundle analysis, and rendering optimization.
 
-- [ ] Unnecessary re-renders (missing `React.memo`, `useMemo`, `useCallback`)
-- [ ] Inline objects or functions in JSX causing re-renders
-- [ ] Heavy computations in render path (move to `useMemo` or worker)
+**Rendering (all frontend frameworks):**
 
-**Data:**
+- [ ] Unnecessary re-renders or change detection cycles
+- [ ] Heavy computations in render/template path (move to memoization or web workers)
+- [ ] Missing virtualization for long lists (> 100 items)
+
+**Framework-specific rendering checks:**
+
+- **React**: Missing `React.memo`, `useMemo`, `useCallback`; inline objects/functions in JSX causing re-renders; missing Suspense boundaries for code splitting
+- **Vue**: Expensive operations in computed without caching benefit; reactive dependencies triggering unnecessary updates; missing `v-once` or `v-memo` for static content; `v-for` without `key`
+- **Angular**: Components not using `OnPush` change detection; missing `trackBy` on `@for` loops; large eagerly-loaded modules (use `@defer` or lazy routes); excessive Zone.js change detection cycles
+
+**Data Fetching:**
 
 - [ ] Over-fetching (requesting more data than rendered)
-- [ ] No client-side caching (consider React Query / SWR)
-- [ ] Waterfall requests (parallelize with `Promise.all` or `Suspense`)
+- [ ] No client-side caching (React Query / SWR, Vue Query, Angular HttpClient with cache)
+- [ ] Waterfall requests (parallelize with `Promise.all`, `Suspense`, or framework-specific patterns)
+- [ ] No stale-while-revalidate or prefetching for navigation-critical data
 
-**Assets:**
+**Assets and Bundle:**
 
-- [ ] Unoptimized images (missing `next/image` or equivalent)
+- [ ] Unoptimized images (missing `next/image`, `nuxt-img`, or `NgOptimizedImage`)
 - [ ] No lazy loading for below-the-fold components
-- [ ] Large bundle (check for unintentional full-library imports)
+- [ ] Large bundle (check for unintentional full-library imports, missing tree-shaking)
+- [ ] No code splitting at route level
 
 ### Step 6 - Stateless Design (All Stacks)
 
@@ -138,11 +154,14 @@ Verify:
 
 ## Self-Check
 
-- [ ] Database performance checked: N+1 queries, missing indexes, pagination, pool sizing
-- [ ] Framework-specific concurrency and ORM checks applied for the detected stack
-- [ ] Caching strategy assessed: TTL, invalidation, key design
-- [ ] Frontend step applied if React is in scope; skipped with note if backend-only
-- [ ] Every finding states estimated impact (latency/throughput/memory) not just "this is slow"
+- [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
+- [ ] **Backend/fullstack**: Database performance checked: N+1 queries, missing indexes, pagination, pool sizing
+- [ ] **Backend/fullstack**: Framework-specific concurrency and ORM checks applied for the detected stack
+- [ ] **Backend/fullstack**: Caching strategy assessed: TTL, invalidation, key design
+- [ ] **Frontend/fullstack**: Rendering performance checked with framework-specific patterns (React/Vue/Angular)
+- [ ] **Frontend/fullstack**: Bundle size and code splitting assessed
+- [ ] **Frontend/fullstack**: Data fetching patterns reviewed (caching, waterfalls, over-fetching)
+- [ ] Every finding states estimated impact (latency/throughput/memory/CWV) not just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 
 ## Output Format
@@ -151,7 +170,7 @@ Verify:
 ## Performance Review Summary
 
 **Stack Detected:** [language / framework]
-**Scope:** Backend | Backend + React frontend
+**Scope:** Backend | Frontend | Fullstack
 **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
 ## Findings

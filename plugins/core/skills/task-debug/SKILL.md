@@ -2,7 +2,7 @@
 name: task-debug
 description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow.
 metadata:
-  category: backend
+  category: code
   tags: [debug, troubleshooting, root-cause, stack-agnostic]
   type: workflow
 user-invocable: true
@@ -33,6 +33,8 @@ Use skill: stack-detect
 
 ### Step 2 - Delegate to Stack Workflow
 
+**Backend stacks:**
+
 | Detected Stack              | Delegate to         |
 | --------------------------- | ------------------- |
 | Java / Spring Boot          | `task-spring-debug` |
@@ -44,6 +46,14 @@ Use skill: stack-detect
 | Go / Gin                    | `task-go-debug`     |
 | Rust / Axum                 | `task-rust-debug`   |
 
+**Frontend stacks:**
+
+| Detected Stack         | Delegate to          |
+| ---------------------- | -------------------- |
+| React / Next.js / Vite | `task-react-debug`   |
+| Vue / Nuxt / Vite      | `task-vue-debug`     |
+| Angular                | `task-angular-debug` |
+
 If the detected stack does not match any of the above, continue with the systematic protocol below.
 
 ### Step 3 - Systematic Protocol (Any Stack)
@@ -52,18 +62,21 @@ If the detected stack does not match any of the above, continue with the systema
 
 Identify the error class before reading any code:
 
-| Class                | Signals                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------- |
-| Null/missing value   | NullPointerException, AttributeError NoneType, Cannot read properties of undefined, nil dereference |
-| Type mismatch        | ClassCastException, TypeError, type assertion failed                                                |
-| Constraint violation | UniqueViolation, IntegrityError, foreign key constraint, NOT NULL violation                         |
-| Connection failure   | Connection refused, timeout, pool exhausted, host unreachable                                       |
-| Auth / permission    | 401, 403, token expired, permission denied                                                          |
-| Config / env         | Missing environment variable, file not found, wrong path                                            |
-| Concurrency          | Data race, deadlock, stale read, lost update                                                        |
-| Async / event loop   | Unhandled promise rejection, blocking call in async context, event loop blocked                     |
-| Build / import       | Module not found, circular dependency, missing dependency, compilation error                        |
-| Logic / regression   | No error thrown but output is wrong; "it worked before"                                             |
+| Class                  | Signals                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Null/missing value     | NullPointerException, AttributeError NoneType, Cannot read properties of undefined, nil dereference                |
+| Type mismatch          | ClassCastException, TypeError, type assertion failed                                                               |
+| Constraint violation   | UniqueViolation, IntegrityError, foreign key constraint, NOT NULL violation                                        |
+| Connection failure     | Connection refused, timeout, pool exhausted, host unreachable                                                      |
+| Auth / permission      | 401, 403, token expired, permission denied                                                                         |
+| Config / env           | Missing environment variable, file not found, wrong path                                                           |
+| Concurrency            | Data race, deadlock, stale read, lost update                                                                       |
+| Async / event loop     | Unhandled promise rejection, blocking call in async context, event loop blocked                                    |
+| Build / import         | Module not found, circular dependency, missing dependency, compilation error                                       |
+| Logic / regression     | No error thrown but output is wrong; "it worked before"                                                            |
+| Rendering / hydration  | Hydration mismatch, white screen, component not rendering, SSR/CSR content divergence, blank page after navigation |
+| State / reactivity     | Stale state, infinite re-render loop, reactivity lost, computed not updating, state not reflecting in UI           |
+| Bundle / chunk loading | Chunk loading failed, dynamic import error, tree-shaking removed needed code, HMR not applying                     |
 
 State the class and confidence (HIGH / MEDIUM / LOW) before proceeding.
 
@@ -149,4 +162,3 @@ State one concrete prevention step:
 - Guessing at the problem when the user provides insufficient context - ask for more details
 - Treating symptoms instead of root cause (e.g., adding a null check without understanding why the value is null)
 - Providing multiple fix options without a clear recommendation
-
