@@ -50,9 +50,10 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | Agent                      | Focus                                                                     |
 | -------------------------- | ------------------------------------------------------------------------- |
 | `vue-architect`            | Vue 3/Nuxt 3 architecture: Composition API, SFC design, Pinia, TypeScript |
-| `vue-test-engineer`        | Testing strategy: Vitest, Vue Test Utils, @nuxt/test-utils, Playwright    |
+| `vue-tech-lead`            | Code review with session context - tracks recurring patterns              |
 | `vue-performance-engineer` | Core Web Vitals, Nuxt SSR/SSG, bundle analysis, computed vs method        |
-| `vue-code-reviewer`        | Persistent reviewer with session context - tracks recurring patterns      |
+| `vue-security-engineer`    | XSS prevention, CSP, v-html sanitization, auth patterns, Nuxt middleware  |
+| `vue-test-engineer`        | Testing strategy: Vitest, Vue Test Utils, @nuxt/test-utils, Playwright    |
 
 ## Usage Examples
 

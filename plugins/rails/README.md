@@ -16,16 +16,12 @@ Claude Code plugin for Ruby on Rails projects.
 | Agent                        | Description                                                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rails-architect`            | Ruby on Rails architect for Rails 7+/8, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions. |
-| `rails-tech-lead`            | Rails tech lead for code review, architecture decisions, and engineering standards. Reviews Rails code for conventions, performance, security, and test coverage.                |
-| `rails-reliability-engineer` | Rails reliability engineer for incident analysis in Rails/Sidekiq/PostgreSQL environments. Debugging, postmortem, release planning.                                              |
+| `rails-tech-lead`            | Rails tech lead for code review, refactoring guidance, doc standards, and engineering standards. Reviews Rails code for conventions, performance, security, and test coverage.   |
+| `rails-reliability-engineer` | Rails reliability engineer for incident analysis, runbook standards in Rails/Sidekiq/PostgreSQL environments. Debugging, postmortem, release planning.                           |
 | `rails-security-engineer`    | OWASP Top 10 for Rails, Devise/JWT auth review, Pundit authorization audit, strong parameters, dependency vulnerability scan.                                                    |
 | `rails-performance-engineer` | ActiveRecord N+1 detection, query tuning, Sidekiq throughput, caching strategy, profiling with rack-mini-profiler.                                                               |
-| `rails-refactoring-expert`   | Systematic Rails code improvement: fat model/controller diet, service object extraction, ActiveRecord hygiene, callback elimination.                                             |
-| `rails-technical-writer`     | YARD docs, OpenAPI (rswag), ADRs, and runbooks for Rails/Sidekiq services.                                                                                                       |
 | `rails-test-engineer`        | RSpec strategies, FactoryBot fixtures, Shoulda-matchers, Sidekiq testing, VCR/WebMock, and test pyramid design.                                                                  |
-| `rails-code-reviewer`        | Persistent reviewer with session context - tracks recurring N+1, fat controller, and callback patterns across PRs.                                                               |
 | `rails-sprint-planner`       | Sprint allocation for Rails features with Sidekiq/large-table migration complexity awareness.                                                                                    |
-| `rails-incident-commander`   | Orchestrates incident response, postmortem, and follow-up tracking for Rails/Sidekiq systems.                                                                                    |
 
 ## Workflow Skills
 

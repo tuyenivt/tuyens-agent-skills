@@ -27,14 +27,17 @@ Spring Boot ecosystem provided by the Java plugin.
 
 ## Plugin contents
 
-### Agents (4)
+### Agents (7)
 
-| Agent                       | Description                                                                                                                             |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `kotlin-architect`          | Kotlin + Spring Boot architect. Extends the Java `spring-architect` with Kotlin idioms. Delegates core Spring decisions to Java plugin. |
-| `kotlin-code-reviewer`      | Persistent reviewer extending `java-code-reviewer` with Kotlin idiom enforcement (null safety, coroutines, data class JPA).             |
-| `kotlin-sprint-planner`     | Sprint allocation extending `java-sprint-planner` with Kotlin-specific complexity (coroutine migration, MockK, Kotlin DSL).             |
-| `kotlin-incident-commander` | Incident commander extending `java-incident-commander` with Kotlin-specific failure patterns (!! NPE, coroutine leak, data class JPA).  |
+| Agent                         | Description                                                                                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kotlin-architect`            | Kotlin + Spring Boot architect. Extends the Java `spring-architect` with Kotlin idioms. Delegates core Spring decisions to Java plugin.                  |
+| `kotlin-tech-lead`            | Code review, refactoring guidance, and doc standards extending `java-tech-lead` with Kotlin idiom enforcement (null safety, coroutines, data class JPA). |
+| `kotlin-test-engineer`        | JUnit 5 + MockK + kotest, Testcontainers, Spring test slices with Kotlin DSL.                                                                            |
+| `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM.                                                                                               |
+| `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, GC tuning.                                                                                    |
+| `kotlin-reliability-engineer` | JVM ops, Actuator, HikariCP, incident response, runbook standards with Kotlin-specific failure patterns (!! NPE, coroutine leak, data class JPA).        |
+| `kotlin-sprint-planner`       | Sprint allocation extending `java-sprint-planner` with Kotlin-specific complexity (coroutine migration, MockK, Kotlin DSL).                              |
 
 ### Atomic skills (3)
 
@@ -51,7 +54,7 @@ Spring Boot ecosystem provided by the Java plugin.
 | `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (requirements, design, code, migration, tests, validation) | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
 | `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)                                  | `task-spring-debug` for Java/Spring errors                            |
 
-### Total: 4 agents + 5 skills (intentionally small - this is a companion plugin)
+### Total: 7 agents + 5 skills (intentionally small - this is a companion plugin)
 
 ## Dependency relationship
 

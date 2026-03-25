@@ -48,10 +48,10 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | Agent                        | Focus                                                                  |
 | ---------------------------- | ---------------------------------------------------------------------- |
 | `react-architect`            | React/Next.js architecture: components, data flow, routing, TypeScript |
-| `react-test-engineer`        | Testing strategy: React Testing Library, Vitest, MSW, Playwright       |
+| `react-tech-lead`            | Code review with session context - tracks recurring patterns           |
 | `react-performance-engineer` | Core Web Vitals, bundle analysis, React Profiler, Server Components    |
 | `react-security-engineer`    | XSS prevention, CSP, auth patterns, Server Action validation           |
-| `react-code-reviewer`        | Persistent reviewer with session context - tracks recurring patterns   |
+| `react-test-engineer`        | Testing strategy: React Testing Library, Vitest, MSW, Playwright       |
 
 ## Usage Examples
 

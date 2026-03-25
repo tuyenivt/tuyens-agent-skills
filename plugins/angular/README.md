@@ -49,10 +49,10 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | Agent                          | Focus                                                                   |
 | ------------------------------ | ----------------------------------------------------------------------- |
 | `angular-architect`            | Angular architecture: standalone components, signals, DI, routing, RxJS |
-| `angular-test-engineer`        | Testing strategy: Angular Testing Library, Vitest/Jest, Playwright      |
+| `angular-tech-lead`            | Code review with session context - tracks recurring patterns            |
 | `angular-performance-engineer` | Change detection, bundle analysis, lazy loading, signals migration, CWV |
 | `angular-security-engineer`    | XSS prevention, DomSanitizer, auth guards, HTTP interceptor security    |
-| `angular-code-reviewer`        | Persistent reviewer with session context - tracks recurring patterns    |
+| `angular-test-engineer`        | Testing strategy: Angular Testing Library, Vitest/Jest, Playwright      |
 
 ## Usage Examples
 

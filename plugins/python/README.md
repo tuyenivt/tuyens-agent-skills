@@ -32,19 +32,15 @@ Claude Code plugin for Python development.
 
 ## Agents
 
-| Agent                       | Model  | Description                                                                                      |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure  |
-| python-tech-lead            | sonnet | Code review for Pythonic patterns, type safety, async correctness, test coverage                 |
-| python-reliability-engineer | sonnet | Incident analysis for FastAPI/Django/Celery/PostgreSQL production environments                   |
-| python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan |
-| python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling              |
-| python-refactoring-expert   | sonnet | Systematic Python code improvement: async safety, Pydantic v2 migration, layer boundary cleanup  |
-| python-technical-writer     | sonnet | Docstrings (Google style), FastAPI OpenAPI annotations, ADRs, and runbooks for Python services   |
-| python-test-engineer        | sonnet | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design  |
-| python-code-reviewer        | sonnet | Persistent reviewer with session context - tracks recurring async/FastAPI patterns across PRs    |
-| python-sprint-planner       | sonnet | Sprint allocation for Python features with Alembic/Celery complexity awareness                   |
-| python-incident-commander   | sonnet | Orchestrates incident response, postmortem, and follow-up tracking for FastAPI/Django systems    |
+| Agent                       | Model  | Description                                                                                            |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure        |
+| python-tech-lead            | sonnet | Code review, refactoring guidance, doc standards for Pythonic patterns, type safety, async correctness |
+| python-reliability-engineer | sonnet | Incident analysis, runbook standards for FastAPI/Django/Celery/PostgreSQL production environments      |
+| python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan       |
+| python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
+| python-test-engineer        | sonnet | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
+| python-sprint-planner       | sonnet | Sprint allocation for Python features with Alembic/Celery complexity awareness                         |
 
 ## Framework Detection
 

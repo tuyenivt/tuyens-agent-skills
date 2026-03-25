@@ -47,19 +47,15 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 ## Agents
 
-| Agent                       | Focus                                                                              |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| `spring-architect`          | Spring Boot architecture, JPA, APIs, performance                                   |
-| `java-tech-lead`            | Java/Spring code review, JPA patterns, Virtual Threads                             |
-| `java-test-engineer`        | JUnit 5, Testcontainers, Spring test slices                                        |
-| `java-security-engineer`    | Spring Security 6.x, OWASP for Java                                                |
-| `java-performance-engineer` | JVM/Spring/JPA performance, GC tuning                                              |
-| `java-reliability-engineer` | JVM ops, Actuator, HikariCP, incident response                                     |
-| `java-refactoring-expert`   | Java modernization, Virtual Thread migration                                       |
-| `java-technical-writer`     | JavaDoc, OpenAPI/Swagger, Spring Boot docs                                         |
-| `java-code-reviewer`        | Persistent reviewer with session context - tracks recurring patterns across PRs    |
-| `java-sprint-planner`       | Sprint allocation for Java features with Spring-specific complexity awareness      |
-| `java-incident-commander`   | Orchestrates incident response, postmortem, and follow-up tracking for JVM systems |
+| Agent                       | Focus                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| `spring-architect`          | Spring Boot architecture, JPA, APIs, performance                                            |
+| `java-tech-lead`            | Java/Spring code review, refactoring guidance, doc standards, JPA patterns, Virtual Threads |
+| `java-test-engineer`        | JUnit 5, Testcontainers, Spring test slices                                                 |
+| `java-security-engineer`    | Spring Security 6.x, OWASP for Java                                                         |
+| `java-performance-engineer` | JVM/Spring/JPA performance, GC tuning                                                       |
+| `java-reliability-engineer` | JVM ops, Actuator, HikariCP, incident response, runbook standards                           |
+| `java-sprint-planner`       | Sprint allocation for Java features with Spring-specific complexity awareness               |
 
 ## Usage Examples
 
