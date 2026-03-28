@@ -1,6 +1,6 @@
 ---
 name: task-laravel-debug
-description: Debug Laravel application errors by classifying exceptions, locating root causes, and providing minimal before/after fixes. Covers Eloquent, controllers, queue jobs, migrations, and Pest test failures. Paste a stack trace or describe the unexpected behavior. Not for production incident triage (use task-incident-root-cause for that).
+description: Debug Laravel application errors by classifying exceptions, locating root causes, and providing minimal before/after fixes. Covers Eloquent, controllers, queue jobs, migrations, and Pest test failures.
 agent: php-architect
 metadata:
   category: backend
@@ -9,13 +9,22 @@ metadata:
 user-invocable: true
 ---
 
-## STEP 1 - INTAKE
+## When to Use
 
-Ask for: full stack trace, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip vendor frames) and read that file.
+- Debugging Laravel application errors from stack traces or error messages
+- Classifying and resolving Eloquent, controller, queue, migration, or test failures
+- Tracing data flow issues (e.g., value sent but stored as null)
+- NOT for: production incident triage (use `task-incident-root-cause`)
+- NOT for: performance profiling or slow query optimization
+- NOT for: infrastructure/deployment issues
+
+## Workflow
+
+STEP 1 - INTAKE: Use skill: `stack-detect` to confirm Laravel. Ask for: full stack trace, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip vendor frames) and read that file.
 
 **If partial input**: If the user provides only a description without a stack trace, search the codebase for the relevant file/function and ask clarifying questions. If only an error message is given (no stack trace), check `storage/logs/laravel.log` and match against the classification table below before asking for more context.
 
-## STEP 2 - CLASSIFY
+STEP 2 - CLASSIFY:
 
 Match the error to one of these categories, then load the relevant atomic skill:
 
@@ -30,11 +39,17 @@ Match the error to one of these categories, then load the relevant atomic skill:
 
 ### Controller / HTTP Errors
 
-- `Illuminate\Validation\ValidationException` (422) -> form request rules rejected input. Read the `rules()` method and check the failing field.
-- `Illuminate\Auth\Access\AuthorizationException` (403) -> policy denied access. Check the policy method and the user's state.
-- `Symfony\Component\HttpKernel\Exception\NotFoundHttpException` (404) -> route not found or route model binding failed. Run `php artisan route:list` to verify.
+- `Illuminate\Validation\ValidationException` (422) -> form request rules rejected input. Read the `rules()` method and check the failing field. Use skill: `laravel-api-patterns`.
+- `Illuminate\Auth\Access\AuthorizationException` (403) -> policy denied access. Check the policy method and the user's state. Use skill: `laravel-security-patterns`.
+- `Symfony\Component\HttpKernel\Exception\NotFoundHttpException` (404) -> route not found or route model binding failed. Run `php artisan route:list` to verify. Use skill: `laravel-api-patterns`.
 - `Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException` (405) -> wrong HTTP method for the route. Check `routes/api.php`.
 - `Illuminate\Session\TokenMismatchException` (419) -> CSRF token mismatch. Check session driver and middleware config.
+
+### Data Flow Errors (No Exception)
+
+- Value sent from form/API but stored as null -> check `$fillable` whitelist (missing field?), check `$request->validated()` vs `$request->all()`, check cast/mutator interference. Use skill: `laravel-security-patterns`.
+- Unexpected value transformation -> check `casts()` array, attribute accessor/mutator, `prepareForValidation()` in form request. Use skill: `laravel-eloquent-patterns`.
+- Related data not saving -> check relationship method exists and returns correct type, check foreign key column name matches convention. Use skill: `laravel-eloquent-patterns`.
 
 ### Queue / Job Errors
 
@@ -61,14 +76,14 @@ Match the error to one of these categories, then load the relevant atomic skill:
 - `Mockery\Exception\InvalidCountException` -> mock expectation not met. Check `shouldReceive` count matches actual calls.
 - Database assertion failure (`assertDatabaseHas`) -> wrong table name, column name, or value format.
 
-## STEP 3 - LOCATE
+STEP 3 - LOCATE:
 
 1. Read the stack trace top-to-bottom; find the first application-code frame (skip `vendor/` frames)
 2. Open that source file and read the failing function
-3. Trace the data path: where does the problematic value originate? Follow it through controller -> service -> model
+3. Trace the data path: where does the problematic value originate? Follow it through controller -> service -> model. Use skill: `laravel-service-patterns` for service-layer data flow.
 4. For queue errors: check if the job was dispatched inside a DB transaction
 
-## STEP 4 - ROOT CAUSE
+STEP 4 - ROOT CAUSE:
 
 Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
 
@@ -81,7 +96,7 @@ OrderController.php:25 should use $request->validated() instead of
 $request->all() to pass only validated fields.
 ```
 
-## STEP 5 - FIX
+STEP 5 - FIX:
 
 Provide before/after code. Fix must be minimal and address root cause, not symptoms.
 
@@ -101,7 +116,7 @@ public function store(StoreOrderRequest $request): OrderResource
 }
 ```
 
-## STEP 6 - PREVENTION
+STEP 6 - PREVENTION:
 
 Add a guard so this class of error cannot recur:
 
@@ -122,23 +137,30 @@ Add a guard so this class of error cannot recur:
 
 ```
 ## Error Classification
-[Category]: [specific error type]
+Category: {Eloquent/Database | Controller/HTTP | Queue/Job | Migration | Artisan/Config | Test | Data Flow}
+Error Type: [specific exception or symptom]
 
-## Root Cause (confidence: HIGH/MEDIUM/LOW)
-[Why the error occurs, referencing specific file:line]
+## Root Cause
+Confidence: {HIGH | MEDIUM | LOW}
+File: [file:line]
+[Why the error occurs - explain the cause, not just the symptom]
 
 ## Fix
-[Before/after code blocks]
+[Before/after code blocks - minimal change addressing root cause]
+
+## Affected Files
+[List of files modified by the fix]
 
 ## Prevention
-[Test, model config, or static analysis rule to prevent recurrence]
+Type: {test | model-config | static-analysis | form-request}
+[Specific guard to prevent recurrence]
 ```
 
 ## Self-Check
 
-- [ ] Error classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line; confidence level stated
-- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
-- [ ] Mass assignment addressed by proper `$fillable`, not by `$guarded = []`
-- [ ] Prevention step included (Pest test, model config, or static analysis rule)
-- [ ] For queue jobs: `afterCommit()` and idempotency addressed; for Eloquent: eager loading checked
+- [ ] STEP 1: Stack trace or error description obtained; Laravel confirmed via `stack-detect`
+- [ ] STEP 2: Error classified into a category; relevant atomic skill loaded
+- [ ] STEP 3: Failing source file and function located; data path traced through layers
+- [ ] STEP 4: Root cause explained with confidence level and file:line reference
+- [ ] STEP 5: Minimal before/after fix provided addressing root cause, not symptom
+- [ ] STEP 6: Prevention guard added (Pest test, model config, or static analysis rule)

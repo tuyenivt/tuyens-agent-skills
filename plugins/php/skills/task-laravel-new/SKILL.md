@@ -1,6 +1,6 @@
 ---
 name: task-laravel-new
-description: End-to-end Laravel feature implementation workflow. Generates all layers - migrations, Eloquent models, services/actions, controllers, form requests, API resources, queue jobs, and Pest tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-laravel-debug for errors).
+description: End-to-end Laravel feature implementation workflow. Generates all coordinated layers from migration through Pest tests for new features requiring multiple Laravel components.
 agent: php-architect
 metadata:
   category: backend
@@ -17,20 +17,12 @@ user-invocable: true
 - Scaffolding a complete CRUD or domain-specific resource with production-ready patterns
 - Adding a new domain aggregate requiring REST API, persistence, background jobs, and test coverage
 - Any task requiring coordinated generation of multiple Laravel layers
+- NOT for: single-file bug fixes or isolated errors (use `task-laravel-debug`)
+- NOT for: adding a column to an existing table without new business logic
 
-## Rules
+## Workflow
 
-- Detect Laravel first via `stack-detect` before generating any code
-- API Resources for all responses - never return raw Eloquent models from controllers
-- `$fillable` explicitly defined on every model - never `$guarded = []`
-- Queue jobs dispatched AFTER DB transaction commits via `afterCommit()`, never inside the transaction
-- Transactions: `DB::transaction()` for multi-step operations
-- Each step must complete and be reviewed before proceeding to the next
-- Present the design to the user for approval before generating code
-
-## Implementation
-
-STEP 1 - DETECT FRAMEWORK: Use skill: `stack-detect` to confirm Laravel. Read `composer.json` to verify `laravel/framework` dependency and PHP version.
+STEP 1 - DETECT FRAMEWORK: Use skill: `stack-detect` to confirm Laravel. Read `composer.json` to verify `laravel/framework` dependency and PHP version. If Laravel is not detected, stop and inform the user this workflow requires a Laravel project.
 
 STEP 2 - GATHER: Ask the user these questions before writing any code:
 
@@ -75,6 +67,15 @@ tests/
 STEP 4 - DATABASE: Use skill: `laravel-migration-safety` to generate the migration safely. Include indexes on foreign keys and frequently-filtered columns. For list endpoints, add indexes that support the default sort order.
 
 ```php
+// Bad - missing indexes and foreign key constraints
+Schema::create('orders', function (Blueprint $table) {
+    $table->id();
+    $table->unsignedBigInteger('user_id'); // no FK constraint
+    $table->string('status');              // no index on filtered column
+    $table->timestamps();
+});
+
+// Good - proper constraints and indexes
 Schema::create('orders', function (Blueprint $table) {
     $table->id();
     $table->foreignId('user_id')->constrained()->cascadeOnDelete();
@@ -138,7 +139,7 @@ STEP 7 - CONTROLLERS AND FORM REQUESTS: Resource controllers and validation foll
 
 List endpoints must be paginated. Include filtering on common fields.
 
-STEP 8 - API RESOURCES: Transform Eloquent models to JSON. Never return raw models from controllers.
+STEP 8 - API RESOURCES: Use skill: `laravel-api-patterns` for response transformation. Never return raw models from controllers.
 
 - Use `whenLoaded()` for conditional relationship inclusion
 - Use `whenCounted()` for aggregate data
@@ -161,7 +162,7 @@ STEP 10 - TESTS: Use skill: `laravel-testing-patterns` for Pest patterns. Genera
 
 STEP 11 - VALIDATE: Run `php artisan test`, `php artisan route:list` to verify. Fix any failures before presenting output.
 
-## Output Template
+## Output Format
 
 ```
 ## Files Generated
@@ -198,10 +199,14 @@ STEP 11 - VALIDATE: Run `php artisan test`, `php artisan route:list` to verify. 
 
 ## Self-Check
 
-- [ ] Laravel detected; requirements gathered and design approved before code generation
-- [ ] All layers generated: migration, model, service, controller, form request, API resource, tests
-- [ ] API Resources used for all responses - no raw Eloquent models
-- [ ] `$fillable` defined on every model; no `$guarded = []`
-- [ ] Queue jobs dispatched after DB commit via `afterCommit()`; jobs accept IDs not models
-- [ ] Pest tests pass; routes verified with `php artisan route:list`
-- [ ] Migration includes indexes; list endpoints paginated; output template filled
+- [ ] STEP 1: Laravel detected via `stack-detect`; `composer.json` confirms `laravel/framework`
+- [ ] STEP 2: Requirements gathered from user; all six questions answered
+- [ ] STEP 3: Design presented and approved by user before code generation
+- [ ] STEP 4: Migration created with indexes on FKs and filtered columns; zero-downtime patterns applied
+- [ ] STEP 5: Models have typed relationships, `$fillable` whitelist, `casts()`, backed enums
+- [ ] STEP 6: Business logic in services/actions with `DB::transaction()`; events dispatched for side effects
+- [ ] STEP 7: Thin resource controllers with Form Request validation; domain errors mapped to HTTP status codes
+- [ ] STEP 8: API Resources used for all responses; `whenLoaded()` for conditional relationships
+- [ ] STEP 9: Queue jobs pass IDs not models; `$tries`/`$backoff`/`$timeout` set; `afterCommit()` used
+- [ ] STEP 10: Pest feature + unit tests generated; factories with states; authorization tests included
+- [ ] STEP 11: `php artisan test` passes; `php artisan route:list` verified; output format filled

@@ -7,7 +7,30 @@ metadata:
 user-invocable: false
 ---
 
-## 1. SERVICE CLASSES
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Extracting business logic from controllers (especially controllers > 10-15 lines of logic)
+- Organizing multi-model operations into services or actions
+- Logic reused across multiple contexts (HTTP controller, queue job, artisan command)
+- Decoupling side effects via events and listeners
+- NOT for: simple CRUD with no business rules (keep in controller)
+- NOT for: database query optimization (use laravel-eloquent-patterns)
+
+## Rules
+
+- Controllers must be thin - validate, delegate, respond
+- Services use constructor injection via Laravel container - never `app()` in business logic
+- DTOs must be `readonly` classes - never pass raw `$request` arrays between layers
+- Events for cross-domain side effects - never call unrelated services directly
+- Jobs dispatched inside transactions must use `afterCommit`
+- No circular service dependencies
+- No god services with 20+ methods - split into focused services or actions
+
+## Patterns
+
+### 1. SERVICE CLASSES
 
 Use service classes when a domain has multiple related operations. Thin controllers delegate to services.
 
@@ -59,9 +82,25 @@ class OrderService
 }
 ```
 
-## 2. ACTION CLASSES
+### 2. ACTION CLASSES
 
 Use action classes for single-responsibility operations reused in multiple contexts (controller, job, command).
+
+```php
+// Bad - logic duplicated in controller and artisan command
+// In OrderController:
+$order = Order::create($data);
+$order->items()->createMany($data['items']);
+OrderCreated::dispatch($order);
+
+// In ImportOrdersCommand (same logic copy-pasted):
+$order = Order::create($data);
+$order->items()->createMany($data['items']);
+OrderCreated::dispatch($order);
+
+// Good - reusable Action class (both contexts call the same code)
+$order = app(CreateOrder::class)($dto);
+```
 
 ```php
 class CreateOrder
@@ -100,7 +139,7 @@ $order = app(CreateOrder::class)($dto);
 $order = app(CreateOrder::class)($dto);
 ```
 
-### Service vs Action Decision
+#### Service vs Action Decision
 
 | Scenario                                  | Use           |
 | ----------------------------------------- | ------------- |
@@ -109,9 +148,17 @@ $order = app(CreateOrder::class)($dto);
 | Simple CRUD with no business rules        | Controller    |
 | Side effect triggered by domain event     | Listener      |
 
-## 3. DTOs (Data Transfer Objects)
+### 3. DTOs (Data Transfer Objects)
 
 Use `readonly` classes for DTOs. Avoid passing raw arrays between layers.
+
+```php
+// Bad - passing raw array between layers
+$this->orderService->create($request->all()); // no type safety, mass assignment risk
+
+// Good - typed DTO
+$this->orderService->create(CreateOrderDTO::fromRequest($request));
+```
 
 ```php
 readonly class CreateOrderDTO
@@ -172,7 +219,7 @@ readonly class OrderItemDTO
 }
 ```
 
-### Alternative: spatie/laravel-data
+#### Alternative: spatie/laravel-data
 
 For projects using `spatie/laravel-data`, DTOs also handle validation and transformation:
 
@@ -192,9 +239,38 @@ class CreateOrderData extends Data
 }
 ```
 
-## 4. REPOSITORY PATTERN
+### 4. REPOSITORY PATTERN
 
 Use repositories when you need to abstract data access for testability or when switching between Eloquent and raw queries.
+
+```php
+// Bad - query logic scattered across controllers and services
+class OrderController extends Controller
+{
+    public function index(Request $request): OrderCollection
+    {
+        // Same query duplicated in ReportService, ExportCommand, etc.
+        $orders = Order::where('user_id', $request->user()->id)
+            ->with('items')
+            ->latest()
+            ->paginate(15);
+        return new OrderCollection($orders);
+    }
+}
+
+// Good - centralized in repository
+class OrderController extends Controller
+{
+    public function __construct(
+        private readonly OrderRepositoryInterface $orders,
+    ) {}
+
+    public function index(Request $request): OrderCollection
+    {
+        return new OrderCollection($this->orders->findByUser($request->user()->id));
+    }
+}
+```
 
 ```php
 // Interface
@@ -231,7 +307,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
 $this->app->bind(OrderRepositoryInterface::class, EloquentOrderRepository::class);
 ```
 
-### When to Use Repository vs Direct Eloquent
+#### When to Use Repository vs Direct Eloquent
 
 | Scenario                            | Approach        |
 | ----------------------------------- | --------------- |
@@ -241,7 +317,7 @@ $this->app->bind(OrderRepositoryInterface::class, EloquentOrderRepository::class
 | Team prefers explicit data layer    | Repository      |
 | Simple project, small team          | Direct Eloquent |
 
-## 5. DEPENDENCY INJECTION
+### 5. DEPENDENCY INJECTION
 
 Use constructor injection via Laravel container. Avoid `app()` helper in business logic.
 
@@ -270,7 +346,7 @@ class OrderService
 }
 ```
 
-### Service Provider Registration
+#### Service Provider Registration
 
 ```php
 class AppServiceProvider extends ServiceProvider
@@ -293,9 +369,43 @@ class AppServiceProvider extends ServiceProvider
 }
 ```
 
-## 6. EVENTS AND LISTENERS
+### 6. EVENTS AND LISTENERS
 
 Use events for decoupled side effects. Never call unrelated domains directly from services.
+
+```php
+// Bad - direct cross-domain call inside order service
+class OrderService
+{
+    public function __construct(
+        private readonly EmailService $emailService,
+        private readonly InventoryService $inventoryService,
+        private readonly AnalyticsService $analyticsService,
+    ) {}
+
+    public function create(CreateOrderDTO $dto): Order
+    {
+        $order = Order::create($dto->toArray());
+        $this->emailService->sendConfirmation($order);       // cross-domain
+        $this->inventoryService->decrementStock($order);      // cross-domain
+        $this->analyticsService->trackPurchase($order);       // cross-domain
+        return $order;
+    }
+}
+
+// Good - dispatch event, listeners handle side effects independently
+class OrderService
+{
+    public function create(CreateOrderDTO $dto): Order
+    {
+        return DB::transaction(function () use ($dto) {
+            $order = Order::create($dto->toArray());
+            OrderCreated::dispatch($order);
+            return $order;
+        });
+    }
+}
+```
 
 ```php
 // Event
@@ -333,7 +443,7 @@ class ProcessOrderPayment
 class SendOrderConfirmation { ... }
 ```
 
-### Event vs Direct Call Decision
+#### Event vs Direct Call Decision
 
 | Scenario                                | Use         |
 | --------------------------------------- | ----------- |
@@ -343,14 +453,47 @@ class SendOrderConfirmation { ... }
 | Ordering matters between side effects   | Direct call |
 | Multiple listeners for same trigger     | Event       |
 
-## 7. ANTI-PATTERNS
+### WHEN TO EXTRACT
 
-- ❌ Business logic in controllers (fat controllers)
-- ❌ Business logic in Eloquent accessors/mutators (fat models)
-- ❌ Passing raw `$request` arrays between layers (use DTOs)
-- ❌ `app()` / `resolve()` in business logic (use constructor injection)
-- ❌ God services with 20+ methods (split into actions or focused services)
-- ❌ Direct cross-domain calls from services (use events for decoupling)
-- ❌ Dispatching jobs inside DB transactions (use `afterCommit`)
-- ❌ Anemic services that just proxy Eloquent calls (no value added)
-- ❌ Circular service dependencies (indicates wrong domain boundary)
+| Signal                                               | Extract To                |
+| ---------------------------------------------------- | ------------------------- |
+| Controller method > 10-15 lines of business logic    | Service or Action         |
+| Same logic in 2+ places (controller, job, command)   | Action class              |
+| Multiple related operations on one domain            | Service class             |
+| Side effect for another domain (email, notification) | Event + Listener          |
+| Complex query used in multiple places                | Repository or query scope |
+
+### FILE ORGANIZATION
+
+```
+app/
+  Services/OrderService.php       # Multi-operation domain services
+  Actions/CreateOrder.php          # Single-responsibility reusable actions
+  DTOs/CreateOrderDTO.php          # Readonly data transfer objects
+  Events/OrderCreated.php          # Domain events
+  Listeners/SendOrderConfirmation.php  # Event listeners
+```
+
+## Output Format
+
+```
+## Service Layer Design
+| Class | Type | Responsibility | Dependencies |
+
+Type: {Service | Action | DTO | Event | Listener}
+
+## Extraction Summary
+| Extracted From | Extracted To | Reason |
+```
+
+## Avoid
+
+- Business logic in controllers (fat controllers)
+- Business logic in Eloquent accessors/mutators (fat models)
+- Passing raw `$request` arrays between layers (use DTOs)
+- `app()` / `resolve()` in business logic (use constructor injection)
+- God services with 20+ methods (split into actions or focused services)
+- Direct cross-domain calls from services (use events for decoupling)
+- Dispatching jobs inside DB transactions (use `afterCommit`)
+- Anemic services that just proxy Eloquent calls (no value added)
+- Circular service dependencies (indicates wrong domain boundary)

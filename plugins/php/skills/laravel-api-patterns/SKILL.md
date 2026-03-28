@@ -1,17 +1,64 @@
 ---
 name: laravel-api-patterns
-description: "Laravel API patterns - resource controllers, route model binding, form requests, API Resources, middleware, API versioning, pagination, and exception handling for Laravel 12+."
+description: "Laravel API patterns - resource controllers, route model binding, form requests, API Resources, middleware, API versioning, pagination, filtering, and exception handling for Laravel 12+."
 metadata:
   category: backend
   tags: [php, laravel, api, controllers, form-requests, api-resources, middleware]
 user-invocable: false
 ---
 
-## 1. RESOURCE CONTROLLERS
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Building REST API endpoints for Laravel applications
+- Designing resource controllers, form requests, API resources
+- Implementing pagination, filtering, and search on list endpoints
+- Structuring exception handling and error responses
+- NOT for: business logic (use laravel-service-patterns), database queries (use laravel-eloquent-patterns)
+
+## Rules
+
+- API Resources for all responses - never return raw Eloquent models
+- Form Requests for all validation - never validate inline in controllers
+- Controllers must be thin - delegate business logic to services/actions
+- List endpoints must be paginated
+- Use `$request->validated()` not `$request->all()` when passing to models
+
+## Patterns
+
+### 1. RESOURCE CONTROLLERS
 
 Thin controllers that validate, delegate, and respond. No business logic.
 
 ```php
+// Bad - fat controller with inline logic, no Form Request, returns raw model
+class OrderController extends Controller
+{
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'total' => 'required|numeric',
+            'items' => 'required|array',
+        ]);
+
+        $order = new Order();
+        $order->user_id = $request->user()->id;
+        $order->total = $data['total'];
+        $order->status = 'pending';
+        $order->save();
+
+        foreach ($data['items'] as $item) {
+            $order->items()->create($item);
+        }
+
+        return response()->json($order);
+    }
+}
+```
+
+```php
+// Good - thin controller, Form Request validation, service delegation, API Resource response
 class OrderController extends Controller
 {
     public function __construct(
@@ -58,7 +105,7 @@ class OrderController extends Controller
 }
 ```
 
-## 2. ROUTE MODEL BINDING
+### 2. ROUTE MODEL BINDING
 
 ```php
 // routes/api.php
@@ -79,11 +126,30 @@ Route::get('/orders/{order:uuid}', [OrderController::class, 'show']);
 Route::get('/orders/{order}', [OrderController::class, 'show'])->withTrashed();
 ```
 
-## 3. FORM REQUESTS
+### 3. FORM REQUESTS
 
 Validate and authorize in dedicated request classes. Never validate in controllers or services.
 
 ```php
+// Bad - inline validation in controller
+class OrderController extends Controller
+{
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'total' => 'required|numeric|min:0.01',
+            'items' => 'required|array|min:1',
+            'items.*.product_name' => 'required|string|max:255',
+        ]);
+
+        $order = Order::create($request->all()); // mass assignment risk
+        return response()->json($order);
+    }
+}
+```
+
+```php
+// Good - dedicated Form Request class
 class StoreOrderRequest extends FormRequest
 {
     public function authorize(): bool
@@ -130,11 +196,21 @@ class UpdateOrderRequest extends FormRequest
 }
 ```
 
-## 4. API RESOURCES
+### 4. API RESOURCES
 
 Transform Eloquent models to JSON responses. Never return raw models from controllers.
 
 ```php
+// Bad - returning raw Eloquent model from controller
+public function show(Order $order): JsonResponse
+{
+    return response()->json($order);
+    // Exposes all columns, no control over format, leaks internal structure
+}
+```
+
+```php
+// Good - API Resource with controlled output and conditional loading
 class OrderResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -168,7 +244,7 @@ class OrderItemResource extends JsonResource
 }
 ```
 
-### Resource Collections with Meta
+#### Resource Collections with Meta
 
 ```php
 class OrderCollection extends ResourceCollection
@@ -185,7 +261,7 @@ class OrderCollection extends ResourceCollection
 }
 ```
 
-### Conditional Attributes
+#### Conditional Attributes
 
 ```php
 // Only include when relationship is loaded
@@ -199,7 +275,7 @@ class OrderCollection extends ResourceCollection
 'secret_notes' => $this->when($request->user()->isAdmin(), $this->secret_notes),
 ```
 
-## 5. MIDDLEWARE
+### 5. MIDDLEWARE
 
 ```php
 // Route middleware
@@ -230,7 +306,7 @@ class EnsureOrderOwner
 })
 ```
 
-## 6. API VERSIONING
+### 6. API VERSIONING
 
 ```php
 // Route prefix versioning (recommended)
@@ -250,7 +326,7 @@ app/Http/Controllers/
         OrderController.php
 ```
 
-## 7. PAGINATION
+### 7. PAGINATION
 
 ```php
 // Offset pagination (default - good for most cases)
@@ -272,7 +348,7 @@ Order::simplePaginate(15);
 | `simplePaginate()` | No          | Faster         | "Load more" button, lists       |
 | `cursorPaginate()` | No          | Fastest        | Infinite scroll, large datasets |
 
-## 8. EXCEPTION HANDLING
+### 8. EXCEPTION HANDLING
 
 ```php
 // bootstrap/app.php (Laravel 11+)
@@ -297,7 +373,7 @@ Order::simplePaginate(15);
 })
 ```
 
-### Custom API Exceptions
+#### Custom API Exceptions
 
 ```php
 class InsufficientStockException extends HttpException
@@ -312,14 +388,61 @@ class InsufficientStockException extends HttpException
 }
 ```
 
-## 9. ANTI-PATTERNS
+### 9. SEARCH AND FILTERING
 
-- ❌ Business logic in controllers (delegate to services/actions)
-- ❌ Returning raw Eloquent models from controllers (use API Resources)
-- ❌ Inline validation in controllers (use Form Requests)
-- ❌ `$request->all()` passed to `Model::create()` (mass assignment risk)
-- ❌ Missing `authorize()` in Form Requests (defaults to `false` for safety)
-- ❌ N+1 in API Resources (always eager load relationships before passing to Resource)
-- ❌ Hardcoded pagination limits (allow per_page parameter with max cap)
-- ❌ Returning 200 for errors or 500 for validation failures (use correct HTTP status codes)
-- ❌ `abort(500)` for expected business errors (use 4xx with descriptive messages)
+Use `when()` for conditional query filters and scoped filters on list endpoints.
+
+```php
+// Bad - hardcoded filters, no flexibility
+public function index(): AnonymousResourceCollection
+{
+    $products = Product::where('is_active', true)->paginate();
+    return ProductResource::collection($products);
+}
+```
+
+```php
+// Good - conditional filters with when()
+public function index(Request $request): AnonymousResourceCollection
+{
+    $products = Product::query()
+        ->when($request->query('category_id'), fn($q, $v) => $q->where('category_id', $v))
+        ->when($request->query('min_price'), fn($q, $v) => $q->where('price', '>=', $v))
+        ->when($request->query('max_price'), fn($q, $v) => $q->where('price', '<=', $v))
+        ->when($request->boolean('active_only'), fn($q) => $q->where('is_active', true))
+        ->when($request->query('search'), fn($q, $v) => $q->whereFullText(['name', 'description'], $v))
+        ->with('category')
+        ->latest()
+        ->paginate($request->integer('per_page', 15));
+
+    return ProductResource::collection($products);
+}
+```
+
+## Output Format
+
+```
+## Endpoints
+| Method | Path | Controller Action | Request Class | Response Class | Status |
+
+## Validation Rules
+[Form Request class with rules for each endpoint]
+
+## Response Structure
+[API Resource fields with types and conditional loading]
+
+## Error Responses
+| Error Type | HTTP Status | Response Body |
+```
+
+## Avoid
+
+- Business logic in controllers (delegate to services/actions)
+- Returning raw Eloquent models from controllers (use API Resources)
+- Inline validation in controllers (use Form Requests)
+- `$request->all()` passed to `Model::create()` (mass assignment risk)
+- Missing `authorize()` in Form Requests (defaults to `false` for safety)
+- N+1 in API Resources (always eager load relationships before passing to Resource)
+- Hardcoded pagination limits (allow per_page parameter with max cap)
+- Returning 200 for errors or 500 for validation failures (use correct HTTP status codes)
+- `abort(500)` for expected business errors (use 4xx with descriptive messages)

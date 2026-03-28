@@ -7,12 +7,46 @@ metadata:
 user-invocable: false
 ---
 
-## 1. PEST FUNDAMENTALS
+> Load `Use skill: stack-detect` first to determine the project stack.
 
-Pest is the primary test framework. Use `describe`/`it` syntax for readable test structure.
+## When to Use
+
+- Writing feature tests for Laravel API endpoints (HTTP assertions, database state)
+- Writing unit tests for services, actions, and business logic
+- Testing queue jobs, events, notifications, and external API calls
+- Setting up model factories with states and relationships
+- Configuring CI test pipelines with coverage
+- NOT for: browser/Dusk E2E tests, package testing, performance benchmarks
+
+## Rules
+
+- Use Pest `describe`/`it` syntax over PHPUnit class-based syntax
+- Always use `RefreshDatabase` trait for feature tests - test isolation is non-negotiable
+- Always match test database engine to production (MySQL, not SQLite)
+- Tests must be independent - no `@depends`, no shared mutable state
+- Use model factories with states - never duplicate inline data setup across tests
+- Use facade fakes (`Queue::fake()`, `Event::fake()`) only when testing dispatch - not when testing job/listener logic
+- Never leave `dd()` in test files
+
+## Patterns
+
+### 1. PEST FUNDAMENTALS
 
 ```php
-// Feature test
+// Bad - PHPUnit class-based syntax (verbose, less readable)
+class OrderControllerTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_creates_an_order(): void
+    {
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->postJson('/api/orders', [...]);
+        $this->assertEquals(201, $response->getStatusCode());
+    }
+}
+
+// Good - Pest describe/it syntax (concise, expressive)
 describe('OrderController', function () {
     it('creates an order', function () {
         $user = User::factory()->create();
@@ -53,6 +87,12 @@ describe('OrderController', function () {
 ### Pest Expectations (Fluent Assertions)
 
 ```php
+// Bad - PHPUnit-style assertions (less readable)
+$this->assertEquals(OrderStatus::Pending, $order->status);
+$this->assertCount(3, $order->items);
+$this->assertTrue($order->total > 0);
+
+// Good - Pest fluent expectations
 expect($order->status)->toBe(OrderStatus::Pending);
 expect($order->items)->toHaveCount(3);
 expect($order->total)->toBeGreaterThan(0);
@@ -84,7 +124,7 @@ it('rejects invalid totals', function (mixed $total) {
 })->with('invalid_totals');
 ```
 
-## 2. MODEL FACTORIES
+### 2. MODEL FACTORIES
 
 ```php
 class OrderFactory extends Factory
@@ -142,7 +182,7 @@ $orders = Order::factory()
     ->create();
 ```
 
-## 3. HTTP TESTS
+### 3. HTTP TESTS
 
 ```php
 // GET with assertions
@@ -172,7 +212,7 @@ $this->actingAs($user)
     ->assertNoContent();
 ```
 
-## 4. DATABASE ASSERTIONS
+### 4. DATABASE ASSERTIONS
 
 ```php
 // Always use RefreshDatabase trait
@@ -196,7 +236,7 @@ $this->assertDatabaseCount('orders', 5);
 $this->assertSoftDeleted('orders', ['id' => $order->id]);
 ```
 
-## 5. FACADE MOCKING
+### 5. FACADE MOCKING
 
 ```php
 // Queue fake - verify jobs dispatched without running them
@@ -258,10 +298,20 @@ it('calls payment gateway', function () {
 });
 ```
 
-## 6. TESTING JOBS DIRECTLY
+### 6. TESTING JOBS DIRECTLY
+
+Use `Queue::fake()` to verify dispatch. Test `handle()` directly to verify job logic.
 
 ```php
-// Test job handle() logic directly
+// Bad - using Queue::fake() and expecting the job logic to run
+it('processes payment', function () {
+    Queue::fake();
+    // ... trigger order creation ...
+    // Queue::fake() prevents handle() from running - you can't assert payment state
+    Queue::assertPushed(ProcessPayment::class); // only verifies dispatch, not logic
+});
+
+// Good - test handle() directly for job logic
 it('processes payment for order', function () {
     $order = Order::factory()->create(['status' => OrderStatus::Pending]);
 
@@ -277,7 +327,7 @@ it('processes payment for order', function () {
 });
 ```
 
-## 7. TESTING AUTHORIZATION
+### 7. TESTING AUTHORIZATION
 
 ```php
 it('prevents non-owner from viewing order', function () {
@@ -298,7 +348,87 @@ it('allows owner to view order', function () {
 });
 ```
 
-## 8. TEST ORGANIZATION
+### 8. TESTING TRANSACTIONS AND SIDE EFFECTS
+
+Test that failed operations roll back database changes and that side effects fire correctly.
+
+```php
+// Test transaction rollback on failure
+it('rolls back order when payment fails', function () {
+    Http::fake([
+        'payments.example.com/*' => Http::response(['error' => 'declined'], 422),
+    ]);
+
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->postJson('/api/orders', $validPayload)
+        ->assertStatus(422);
+
+    $this->assertDatabaseMissing('orders', ['user_id' => $user->id]);
+    $this->assertDatabaseCount('order_items', 0);
+});
+
+// Test side-effect state changes (e.g., inventory)
+it('decrements product stock after order', function () {
+    $product = Product::factory()->create(['stock' => 10]);
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->postJson('/api/orders', [
+        'items' => [['product_id' => $product->id, 'quantity' => 3]],
+    ])->assertCreated();
+
+    expect($product->fresh()->stock)->toBe(7);
+});
+```
+
+### 9. UNIT TESTING SERVICES
+
+Test business logic in isolation without HTTP layer.
+
+```php
+// Bad - testing service logic through HTTP endpoint (slow, tests too much)
+it('calculates order total', function () {
+    $user = User::factory()->create();
+    $response = $this->actingAs($user)->postJson('/api/orders', [...]);
+    expect($response->json('data.total'))->toBe('149.97');
+});
+
+// Good - test service directly with explicit dependencies
+it('calculates order total from items', function () {
+    $dto = new CreateOrderDTO(
+        userId: 1,
+        total: '0', // will be calculated
+        items: [
+            new OrderItemDTO(productName: 'A', quantity: 2, unitPrice: '49.99'),
+            new OrderItemDTO(productName: 'B', quantity: 1, unitPrice: '49.99'),
+        ],
+    );
+
+    $service = app(OrderService::class);
+    $order = $service->create($dto);
+
+    expect($order->total)->toBe('149.97');
+    expect($order->items)->toHaveCount(2);
+});
+```
+
+### 10. TEST SCOPE DECISION
+
+| Scope             | What to Test                                        | What to Mock                                 | Use When                            |
+| ----------------- | --------------------------------------------------- | -------------------------------------------- | ----------------------------------- |
+| Feature (HTTP)    | Full request/response cycle, DB state, status codes | External APIs (`Http::fake()`), queues, mail | Endpoint behavior, validation, auth |
+| Feature (Service) | Service method with real DB                         | External APIs, queues                        | Business logic with DB interactions |
+| Unit              | Single class in isolation                           | All dependencies (Mockery)                   | Pure logic, calculations, DTOs      |
+| Job               | `handle()` method directly                          | External services                            | Queue job processing logic          |
+
+### RefreshDatabase vs DatabaseTransactions
+
+| Trait                  | How It Works                                             | Use When                                     |
+| ---------------------- | -------------------------------------------------------- | -------------------------------------------- |
+| `RefreshDatabase`      | Migrates once, wraps each test in transaction + rollback | Default - most feature tests                 |
+| `DatabaseTransactions` | Wraps test in transaction but does NOT migrate           | Tests that need to test transaction behavior |
+
+### 11. TEST ORGANIZATION
 
 ```
 tests/
@@ -326,7 +456,7 @@ uses(Tests\TestCase::class, RefreshDatabase::class)->in('Feature');
 uses(Tests\TestCase::class)->in('Unit');
 ```
 
-## 9. CI AND COVERAGE
+### 12. CI AND COVERAGE
 
 ```xml
 <!-- phpunit.xml -->
@@ -360,15 +490,31 @@ php artisan test --filter=OrderControllerTest
 php artisan test --parallel
 ```
 
-## 10. ANTI-PATTERNS
+## Output Format
 
-- ❌ PHPUnit class-based syntax when Pest is available (use `it()`, `expect()`, `describe()`)
-- ❌ Testing against SQLite when production is MySQL (behavior differences with JSON, dates, constraints)
-- ❌ Missing `RefreshDatabase` trait (test isolation failure)
-- ❌ `@depends` between test methods (tests must be independent)
-- ❌ Mocking everything (test real DB interactions for feature tests)
-- ❌ `Queue::fake()` in tests that need to verify job handle() logic (fake prevents execution)
-- ❌ Shared mutable state between tests
-- ❌ Missing factory states (inline data setup duplicated across tests)
-- ❌ Testing private methods directly (test through public interface)
-- ❌ `dd()` left in test files
+```
+## Test Files
+| File | Type | Tests | Assertions | Fakes/Mocks |
+
+Type: {Feature/HTTP | Feature/Service | Unit | Job}
+
+## Coverage
+Target: [percentage]
+Excluded: [directories]
+
+## Factory States
+| Factory | States | Relationships |
+```
+
+## Avoid
+
+- PHPUnit class-based syntax when Pest is available (use `it()`, `expect()`, `describe()`)
+- Testing against SQLite when production is MySQL (behavior differences with JSON, dates, constraints)
+- Missing `RefreshDatabase` trait (test isolation failure)
+- `@depends` between test methods (tests must be independent)
+- Mocking everything (test real DB interactions for feature tests)
+- `Queue::fake()` in tests that need to verify job `handle()` logic (fake prevents execution)
+- Shared mutable state between tests
+- Missing factory states (inline data setup duplicated across tests)
+- Testing private methods directly (test through public interface)
+- `dd()` left in test files

@@ -7,7 +7,29 @@ metadata:
 user-invocable: false
 ---
 
-## 1. MASS ASSIGNMENT PROTECTION
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Implementing authentication (Sanctum API tokens, SPA sessions)
+- Designing authorization (Policies, Gates, role-based access)
+- Hardening input validation, mass assignment, SQL injection prevention
+- Configuring CSRF, rate limiting, session security
+- NOT for: infrastructure/network security, API gateway configuration, encryption at rest
+
+## Rules
+
+- Always `$fillable` whitelist on models - never `$guarded = []`
+- Always parameterized queries - never interpolate user input into SQL
+- Always use `Hash::make()` for passwords - never md5/sha1
+- Never call `env()` outside config files - breaks config caching
+- Always validate via Form Requests - never trust raw input
+- Always rate limit authentication routes
+- Never store secrets in `.env.example` or version control
+
+## Patterns
+
+### 1. MASS ASSIGNMENT PROTECTION
 
 Always define `$fillable` explicitly. Never use `$guarded = []`.
 
@@ -32,7 +54,7 @@ class Order extends Model
 
 Use Form Requests with validation rules to filter input before it reaches `Model::create()`.
 
-## 2. SQL INJECTION PREVENTION
+### 2. SQL INJECTION PREVENTION
 
 Use parameterized queries or Eloquent. Never interpolate user input into raw SQL.
 
@@ -47,7 +69,7 @@ $orders = Order::whereRaw('status = ?', [$status])->get();
 $orders = Order::where('status', $status)->get(); // Eloquent (preferred)
 ```
 
-### Safe Raw Expressions
+#### Safe Raw Expressions
 
 ```php
 // When DB::raw() is needed, always use bindings
@@ -57,9 +79,9 @@ Order::select(DB::raw('DATE(created_at) as date'), DB::raw('COUNT(*) as count'))
     ->get();
 ```
 
-## 3. AUTHENTICATION
+### 3. AUTHENTICATION
 
-### Sanctum - API Tokens
+#### Sanctum - API Tokens
 
 ```php
 // Issue token
@@ -75,7 +97,7 @@ Route::middleware('auth:sanctum')->group(function () {
 if ($user->tokenCan('orders:write')) { ... }
 ```
 
-### Sanctum - SPA Authentication
+#### Sanctum - SPA Authentication
 
 ```php
 // config/sanctum.php
@@ -90,7 +112,15 @@ if ($user->tokenCan('orders:write')) { ... }
 // 3. Subsequent requests use session cookie
 ```
 
-### Password Hashing
+#### Password Hashing
+
+```php
+// Bad - plain text password storage
+$user->password = $request->password;
+
+// Good - hashed with Hash facade
+$user->password = Hash::make($request->password);
+```
 
 ```php
 // Always use Hash facade (bcrypt by default, argon2 optional)
@@ -102,9 +132,27 @@ $verified = Hash::check($plaintext, $hashed);
 // Never use md5(), sha1(), or plain text
 ```
 
-## 4. AUTHORIZATION
+### 4. AUTHORIZATION
 
-### Policies
+#### Policies
+
+```php
+// Bad - inline authorization in controller
+public function show(Order $order): OrderResource
+{
+    if ($order->user_id !== auth()->id()) {
+        abort(403);
+    }
+    return new OrderResource($order);
+}
+
+// Good - policy-based authorization
+public function show(Order $order): OrderResource
+{
+    $this->authorize('view', $order);
+    return new OrderResource($order);
+}
+```
 
 ```php
 class OrderPolicy
@@ -142,7 +190,7 @@ public function authorize(): bool
 }
 ```
 
-### Gates
+#### Gates
 
 ```php
 // AppServiceProvider or AuthServiceProvider
@@ -157,7 +205,7 @@ if (Gate::allows('access-admin')) { ... }
 Route::middleware('can:access-admin')->group(function () { ... });
 ```
 
-## 5. CSRF PROTECTION
+### 5. CSRF PROTECTION
 
 ```php
 // Web routes: CSRF middleware is active by default
@@ -171,7 +219,15 @@ Route::middleware('can:access-admin')->group(function () { ... });
 })
 ```
 
-## 6. RATE LIMITING
+### 6. RATE LIMITING
+
+```php
+// Bad - unprotected login route
+Route::post('/login', LoginController::class); // no rate limiting = brute force risk
+
+// Good - rate-limited authentication
+Route::post('/login', LoginController::class)->middleware('throttle:auth');
+```
 
 ```php
 // bootstrap/app.php or RouteServiceProvider
@@ -188,7 +244,7 @@ Route::middleware('throttle:api')->group(function () { ... });
 Route::post('/login', LoginController::class)->middleware('throttle:auth');
 ```
 
-## 7. INPUT VALIDATION
+### 7. INPUT VALIDATION
 
 Always validate via Form Requests. Never trust raw input.
 
@@ -216,7 +272,7 @@ class StoreOrderRequest extends FormRequest
 }
 ```
 
-## 8. FILE UPLOADS
+### 8. FILE UPLOADS
 
 ```php
 // Validate file type, size, and store outside public directory
@@ -231,7 +287,7 @@ $path = $request->file('avatar')->store('avatars', 'private');
 return Storage::disk('private')->download($path);
 ```
 
-## 9. SECRETS MANAGEMENT
+### 9. SECRETS MANAGEMENT
 
 ```php
 // Bad - hardcoded secret
@@ -251,14 +307,14 @@ $key = env('STRIPE_KEY'); // breaks config caching
 $key = config('services.stripe.key');
 ```
 
-### Environment File Rules
+#### Environment File Rules
 
 - `.env` is never committed to VCS (in `.gitignore`)
 - `.env.example` contains placeholder values only - no real secrets
 - Use `php artisan config:cache` in production (requires all `env()` calls to be in config files)
 - Encrypt sensitive env values with `php artisan env:encrypt` (Laravel 9+)
 
-## 10. SESSION AND COOKIE SECURITY
+### 10. SESSION AND COOKIE SECURITY
 
 ```php
 // config/session.php
@@ -274,16 +330,71 @@ $request->session()->invalidate();
 $request->session()->regenerateToken();
 ```
 
-## 11. ANTI-PATTERNS
+### 11. AUTH STRATEGY SELECTION
 
-- ❌ `$guarded = []` on any model (mass assignment vulnerability)
-- ❌ `DB::raw()` with user input without parameter binding (SQL injection)
-- ❌ `env()` calls outside config files (breaks config caching, hard to audit)
-- ❌ Inline auth checks in controllers (use Policies)
-- ❌ Missing rate limiting on auth routes (brute force vulnerability)
-- ❌ `APP_DEBUG=true` in production (leaks stack traces and config)
-- ❌ `CORS: allow_origins = ['*']` in production (CSRF risk)
-- ❌ File uploads stored in `public/` without access control
-- ❌ Real secrets in `.env.example`
-- ❌ `md5()` or `sha1()` for password hashing (use `Hash::make()`)
-- ❌ Missing `email:rfc,dns` validation (allows malformed emails)
+| Scenario          | Strategy                              | Package           |
+| ----------------- | ------------------------------------- | ----------------- |
+| Mobile app API    | Sanctum API tokens                    | laravel/sanctum   |
+| SPA (same domain) | Sanctum SPA auth (session + CSRF)     | laravel/sanctum   |
+| Third-party OAuth | Passport with grants                  | laravel/passport  |
+| Social login      | Socialite                             | laravel/socialite |
+| API tokens + SPA  | Dual Sanctum config (separate guards) | laravel/sanctum   |
+
+### 12. MULTI-TENANCY
+
+Tenant isolation via global scopes and tenant-aware policies.
+
+```php
+// Global scope for tenant isolation
+class TenantScope implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        $builder->where('tenant_id', auth()->user()->tenant_id);
+    }
+}
+
+// Apply via model boot
+protected static function booted(): void
+{
+    static::addGlobalScope(new TenantScope());
+}
+
+// Tenant-aware policy
+class OrderPolicy
+{
+    public function view(User $user, Order $order): bool
+    {
+        return $user->tenant_id === $order->tenant_id
+            && ($user->id === $order->user_id || $user->isAdmin());
+    }
+}
+```
+
+## Output Format
+
+```
+## Auth Configuration
+Strategy: {Sanctum tokens | Sanctum SPA | Passport | Dual}
+Guards: [list of auth guards configured]
+
+## Authorization
+| Resource | Policy | Actions | Role Requirements |
+
+## Security Checklist
+| Concern | Status | Implementation |
+```
+
+## Avoid
+
+- `$guarded = []` on any model (mass assignment vulnerability)
+- `DB::raw()` with user input without parameter binding (SQL injection)
+- `env()` calls outside config files (breaks config caching, hard to audit)
+- Inline auth checks in controllers (use Policies)
+- Missing rate limiting on auth routes (brute force vulnerability)
+- `APP_DEBUG=true` in production (leaks stack traces and config)
+- `CORS: allow_origins = ['*']` in production (CSRF risk)
+- File uploads stored in `public/` without access control
+- Real secrets in `.env.example`
+- `md5()` or `sha1()` for password hashing (use `Hash::make()`)
+- Missing `email:rfc,dns` validation (allows malformed emails)

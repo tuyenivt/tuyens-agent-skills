@@ -7,7 +7,29 @@ metadata:
 user-invocable: false
 ---
 
-## 1. RELATIONSHIPS
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Designing Eloquent models with relationships, scopes, casts
+- Preventing N+1 queries and optimizing eager loading
+- Working with large datasets (chunking, cursors, lazy collections)
+- Adding soft deletes, pruning, or MySQL-specific features
+- NOT for: migration DDL (use laravel-migration-safety), raw SQL optimization, API response formatting
+
+## Rules
+
+- Always define typed return types on relationship methods
+- Always use `$fillable` whitelist - never `$guarded = []`
+- Always eager load relationships accessed in loops
+- Use backed enums for status/type columns - never bare strings
+- Use `preventLazyLoading()` in development
+- Add foreign key constraints in migrations for all relationships
+- Never call `::all()` on tables that grow over time
+
+## Patterns
+
+### 1. RELATIONSHIPS
 
 Define all relationships explicitly with return types. Use foreign key constraints in migrations.
 
@@ -29,7 +51,7 @@ Schema::create('order_items', function (Blueprint $table) {
 });
 ```
 
-### Relationship Types
+#### Relationship Types
 
 | Relationship      | Method              | Use When                    |
 | ----------------- | ------------------- | --------------------------- |
@@ -41,7 +63,7 @@ Schema::create('order_items', function (Blueprint $table) {
 | Polymorphic       | `morphTo/morphMany` | Comment on Post or Video    |
 | Many-to-Many Poly | `morphToMany`       | Tag on Post, Video, etc.    |
 
-### Pivot Tables
+#### Pivot Tables
 
 ```php
 // With pivot data
@@ -61,7 +83,7 @@ public function roles(): BelongsToMany
 }
 ```
 
-## 2. EAGER LOADING AND N+1 PREVENTION
+### 2. EAGER LOADING AND N+1 PREVENTION
 
 Always eager load relationships accessed in loops. Use `preventLazyLoading()` in development to catch violations.
 
@@ -79,7 +101,7 @@ foreach ($orders as $order) {
 }
 ```
 
-### Eager Loading Variants
+#### Eager Loading Variants
 
 ```php
 // Nested eager loading
@@ -102,7 +124,7 @@ Order::withCount('items')->get(); // $order->items_count
 Order::withSum('items', 'quantity')->get(); // $order->items_sum_quantity
 ```
 
-### Development Guard
+#### Development Guard
 
 ```php
 // AppServiceProvider::boot()
@@ -110,15 +132,25 @@ Model::preventLazyLoading(! app()->isProduction());
 Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
 ```
 
-## 3. QUERY SCOPES
+### 3. QUERY SCOPES
 
 Use local scopes for reusable query constraints. Avoid global scopes unless truly universal.
 
 ```php
-// Local scope
+// Bad - repeating where clauses inline across controllers
+// In OrderController
+$active = Order::where('status', OrderStatus::Active)
+    ->where('cancelled_at', null)->get();
+
+// In ReportController - same logic duplicated
+$active = Order::where('status', OrderStatus::Active)
+    ->where('cancelled_at', null)->paginate();
+
+// Good - extract to a reusable scope
 public function scopeActive(Builder $query): Builder
 {
-    return $query->where('status', OrderStatus::Active);
+    return $query->where('status', OrderStatus::Active)
+        ->whereNull('cancelled_at');
 }
 
 public function scopeCreatedBetween(Builder $query, Carbon $from, Carbon $to): Builder
@@ -145,12 +177,18 @@ class TenantScope implements Scope
 Order::withoutGlobalScope(TenantScope::class)->get();
 ```
 
-## 4. CASTS AND ATTRIBUTES
+### 4. CASTS AND ATTRIBUTES
 
 Use casts for automatic type conversion. Use `Attribute` class for custom accessors/mutators.
 
 ```php
-// Casts
+// Bad - manual type conversion in controller
+$order = Order::find($id);
+$total = number_format((float) $order->total, 2);
+$metadata = json_decode($order->metadata, true);
+$isGift = (bool) $order->is_gift;
+
+// Good - declare casts once, automatic everywhere
 protected function casts(): array
 {
     return [
@@ -161,7 +199,11 @@ protected function casts(): array
         'is_gift' => 'boolean',
     ];
 }
+// Now $order->total is already a string with 2 decimals,
+// $order->metadata is an array, $order->is_gift is a bool
+```
 
+```php
 // Attribute accessor/mutator (Laravel 9+)
 protected function fullName(): Attribute
 {
@@ -176,7 +218,7 @@ protected function fullName(): Attribute
 }
 ```
 
-### Backed Enums
+#### Backed Enums
 
 ```php
 enum OrderStatus: string
@@ -191,7 +233,7 @@ enum OrderStatus: string
 Order::where('status', OrderStatus::Pending)->get();
 ```
 
-## 5. LARGE DATASETS
+### 5. LARGE DATASETS
 
 Never load entire tables into memory. Use chunking, lazy collections, or cursor.
 
@@ -229,9 +271,20 @@ Order::chunkById(1000, function (Collection $orders) {
 | `lazy()`      | Low        | Yes           | No          |
 | `cursor()`    | Lowest     | No            | No          |
 
-## 6. SOFT DELETES AND PRUNING
+### 6. SOFT DELETES AND PRUNING
 
 ```php
+// Bad - manually checking deleted_at everywhere
+$orders = Order::whereNull('deleted_at')->get();
+
+if ($order->deleted_at !== null) {
+    abort(404);
+}
+
+// To "delete":
+$order->update(['deleted_at' => now()]);
+
+// Good - use SoftDeletes trait, automatic filtering and helpers
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Order extends Model
@@ -239,7 +292,7 @@ class Order extends Model
     use SoftDeletes;
 }
 
-// Query includes only non-deleted
+// Query includes only non-deleted automatically
 Order::all();
 
 // Include soft-deleted
@@ -255,7 +308,7 @@ $order->restore();
 $order->forceDelete();
 ```
 
-### Pruning Old Records
+#### Pruning Old Records
 
 ```php
 use Illuminate\Database\Eloquent\Prunable;
@@ -273,11 +326,16 @@ class Order extends Model
 // Schedule: php artisan model:prune
 ```
 
-## 7. MYSQL-SPECIFIC PATTERNS
+### 7. MYSQL-SPECIFIC PATTERNS
 
-### JSON Columns
+#### JSON Columns
 
 ```php
+// Bad - raw SQL string interpolation for JSON queries
+$method = $request->input('method');
+$orders = DB::select("SELECT * FROM orders WHERE metadata->>'$.shipping_method' = '$method'");
+
+// Good - Eloquent JSON query syntax with automatic parameter binding
 // Migration
 $table->json('metadata')->nullable();
 
@@ -289,7 +347,7 @@ Order::whereJsonContains('metadata->tags', 'urgent')->get();
 $order->update(['metadata->tracking_id' => 'ABC123']);
 ```
 
-### Fulltext Index
+#### Fulltext Index
 
 ```php
 // Migration
@@ -299,7 +357,7 @@ $table->fullText(['title', 'description']);
 Order::whereFullText(['title', 'description'], 'search term')->get();
 ```
 
-### EXPLAIN Analysis
+#### EXPLAIN Analysis
 
 ```php
 // Development debugging
@@ -309,15 +367,95 @@ Order::where('status', 'pending')
     ->dd();
 ```
 
-## 8. ANTI-PATTERNS
+### 8. AGGREGATES AND COUNTS
 
-- ❌ `$guarded = []` on models (mass assignment vulnerability)
-- ❌ Lazy loading in loops (N+1 queries)
-- ❌ `Order::all()` on large tables (memory exhaustion)
-- ❌ Business logic in accessors/mutators (keep models as data layer)
-- ❌ Raw SQL string interpolation (`DB::raw("WHERE id = $id")`) - use bindings
-- ❌ `whereRaw()` with user input without parameter binding
-- ❌ Global scopes for non-universal concerns (hard to debug, forgotten exclusions)
-- ❌ Missing foreign key constraints in migrations (data integrity)
-- ❌ String status columns without backed enums (typo-prone)
-- ❌ `cursor()` when you need eager loading (N+1 trap)
+Use database-level aggregates instead of loading full collections.
+
+```php
+// Bad - loading full collection to count
+$count = $product->reviews->count(); // loads all reviews into memory
+$avg = $product->reviews->avg('rating');
+
+// Good - database-level aggregates
+$products = Product::withCount('reviews')
+    ->withAvg('reviews', 'rating')
+    ->paginate();
+// Access: $product->reviews_count, $product->reviews_avg_rating
+```
+
+```php
+// Other aggregate helpers
+Product::withSum('orderItems', 'quantity')->get();  // $product->order_items_sum_quantity
+Product::withMin('reviews', 'rating')->get();       // $product->reviews_min_rating
+Product::withMax('reviews', 'rating')->get();       // $product->reviews_max_rating
+Product::withExists('reviews')->get();              // $product->reviews_exists
+
+// Filtered aggregates
+Product::withCount(['reviews' => fn($q) => $q->where('rating', '>=', 4)])
+    ->get(); // $product->reviews_count (only 4+ star)
+```
+
+### 9. PAGINATION
+
+Choose the right pagination method based on dataset size and UI needs.
+
+| Method             | SQL            | Use When                        | UI Support     |
+| ------------------ | -------------- | ------------------------------- | -------------- |
+| `paginate()`       | `LIMIT/OFFSET` | Small-medium tables, need total | Page numbers   |
+| `simplePaginate()` | `LIMIT/OFFSET` | Medium tables, no total needed  | Prev/Next only |
+| `cursorPaginate()` | `WHERE id > ?` | Large tables, API endpoints     | Prev/Next only |
+
+```php
+// Standard pagination - runs COUNT(*) query for total
+$orders = Order::with('items')->paginate(25);
+// Response includes: total, per_page, current_page, last_page
+
+// Simple pagination - skips COUNT(*), better for medium tables
+$orders = Order::with('items')->simplePaginate(25);
+// Response includes: per_page, current_page (no total/last_page)
+
+// Cursor pagination - best for large datasets and APIs
+$orders = Order::with('items')
+    ->orderBy('id')
+    ->cursorPaginate(25);
+// Response includes: per_page, cursor, next_cursor, prev_cursor
+```
+
+```php
+// API usage - cursor pagination with JSON resource
+public function index(Request $request): AnonymousResourceCollection
+{
+    $orders = Order::with('items')
+        ->orderBy('id')
+        ->cursorPaginate($request->integer('per_page', 25));
+
+    return OrderResource::collection($orders);
+    // Automatically includes pagination meta and links in JSON response
+}
+```
+
+## Output Format
+
+```
+## Model Design
+| Model | Table | Relationships | Scopes | Casts |
+
+## Query Optimization
+| Endpoint | Eager Loading | Aggregates | Pagination Method |
+
+## Indexes Needed
+| Table | Columns | Type | Reason |
+```
+
+## Avoid
+
+- `$guarded = []` on models (mass assignment vulnerability)
+- Lazy loading in loops (N+1 queries)
+- `Order::all()` on large tables (memory exhaustion)
+- Business logic in accessors/mutators (keep models as data layer)
+- Raw SQL string interpolation (`DB::raw("WHERE id = $id")`) - use bindings
+- `whereRaw()` with user input without parameter binding
+- Global scopes for non-universal concerns (hard to debug, forgotten exclusions)
+- Missing foreign key constraints in migrations (data integrity)
+- String status columns without backed enums (typo-prone)
+- `cursor()` when you need eager loading (N+1 trap)

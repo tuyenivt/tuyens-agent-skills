@@ -7,7 +7,28 @@ metadata:
 user-invocable: false
 ---
 
-## 1. JOB CLASSES
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Designing background job processing for Laravel applications
+- Implementing retry strategies, batching, or job chaining
+- Choosing between Redis and database queue drivers
+- Setting up Horizon monitoring for Redis queues
+- NOT for: scheduled tasks/cron (use Laravel Scheduler), synchronous processing, real-time WebSocket events
+
+## Rules
+
+- Always pass scalar IDs to job constructors - never Eloquent models
+- Always set `$tries`, `$backoff`, and `$timeout` on every job
+- Always implement `failed()` method for error notification
+- Always dispatch jobs after DB commit via `afterCommit()` when inside transactions
+- Jobs must be idempotent - safe to retry without side effects
+- Never use `sync` driver in production
+
+## Patterns
+
+### 1. JOB CLASSES
 
 ```php
 class ProcessPayment implements ShouldQueue
@@ -39,7 +60,7 @@ class ProcessPayment implements ShouldQueue
 }
 ```
 
-### Job Arguments
+#### Job Arguments
 
 ```php
 // Bad - passing Eloquent model (serialization issues, stale data)
@@ -52,7 +73,21 @@ new ProcessPayment($order->id);
 new SendInvoice(orderId: $order->id, email: $user->email);
 ```
 
-## 2. DISPATCH PATTERNS
+### 2. DISPATCH PATTERNS
+
+```php
+// Bad - dispatch inside transaction without afterCommit (job races the commit)
+DB::transaction(function () use ($order) {
+    $order->save();
+    ProcessPayment::dispatch($order->id); // may execute before commit
+});
+
+// Good - afterCommit ensures job runs after transaction commits
+DB::transaction(function () use ($order) {
+    $order->save();
+    ProcessPayment::dispatch($order->id)->afterCommit();
+});
+```
 
 ```php
 // Basic dispatch
@@ -79,7 +114,7 @@ class ProcessOrderPayment
 }
 ```
 
-## 3. RETRY STRATEGIES
+### 3. RETRY STRATEGIES
 
 ```php
 // Fixed retry count with escalating backoff
@@ -103,11 +138,26 @@ public function handle(): void
 }
 ```
 
-## 4. UNIQUE JOBS
+#### Retry Strategy Selection
+
+| Strategy              | Use When                                  | Example                                |
+| --------------------- | ----------------------------------------- | -------------------------------------- |
+| Fixed tries + backoff | Known transient failures (API timeouts)   | `$tries = 3; $backoff = [10, 60, 300]` |
+| retryUntil deadline   | Must complete within time window          | `return now()->addHours(24)`           |
+| Manual release        | Conditional retry based on exception type | `$this->release(60)` in catch block    |
+| ShouldBeUnique        | Only one instance per entity in queue     | Payment processing per order           |
+
+### 4. UNIQUE JOBS
 
 Prevent duplicate jobs from being dispatched.
 
 ```php
+// Bad - no uniqueness constraint, duplicate jobs flood the queue
+ProcessPayment::dispatch($order->id); // dispatched on "order.created"
+ProcessPayment::dispatch($order->id); // dispatched again on "payment.retry"
+// Two jobs process the same order concurrently - double charge risk
+
+// Good - ShouldBeUnique prevents duplicates per order
 class ProcessPayment implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
@@ -123,7 +173,7 @@ class ProcessPayment implements ShouldQueue, ShouldBeUnique
 }
 ```
 
-## 5. JOB BATCHING
+### 5. JOB BATCHING
 
 ```php
 use Illuminate\Bus\Batch;
@@ -150,7 +200,7 @@ $batch = Bus::batch([
 ->dispatch();
 ```
 
-## 6. JOB CHAINING
+### 6. JOB CHAINING
 
 Sequential execution where each job depends on the previous.
 
@@ -165,7 +215,7 @@ Bus::chain([
 // If any job fails, remaining jobs are skipped
 ```
 
-## 7. RATE LIMITING
+### 7. RATE LIMITING
 
 ```php
 // Define rate limiter
@@ -186,9 +236,9 @@ class SendInvoice implements ShouldQueue
 }
 ```
 
-## 8. QUEUE DRIVER SELECTION
+### 8. QUEUE DRIVER SELECTION
 
-### Redis Driver (Recommended)
+#### Redis Driver (Recommended)
 
 ```php
 // config/queue.php
@@ -201,7 +251,7 @@ class SendInvoice implements ShouldQueue
 ],
 ```
 
-### Database Driver (Simpler Setup)
+#### Database Driver (Simpler Setup)
 
 ```php
 // Create jobs table
@@ -221,7 +271,7 @@ class SendInvoice implements ShouldQueue
 // php artisan queue:failed-table && php artisan migrate
 ```
 
-### Driver Comparison
+#### Driver Comparison
 
 | Feature          | Redis          | Database        |
 | ---------------- | -------------- | --------------- |
@@ -232,7 +282,7 @@ class SendInvoice implements ShouldQueue
 | Unique jobs      | Atomic locks   | DB locks        |
 | Best for         | Production     | Small apps, dev |
 
-### Database Driver Tuning
+#### Database Driver Tuning
 
 ```php
 // Polling interval - higher = less DB load, more latency
@@ -244,7 +294,38 @@ command=php artisan queue:work database --sleep=3 --tries=3 --timeout=90
 command=php artisan queue:work database --sleep=1
 ```
 
-## 9. FAILED JOB HANDLING
+### 9. FAILED JOB HANDLING
+
+```php
+// Bad - no failed() method, failures go unnoticed
+class ProcessPayment implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(PaymentService $paymentService): void
+    {
+        $paymentService->charge(Order::findOrFail($this->orderId));
+    }
+    // No failed() method - job silently lands in failed_jobs table
+}
+
+// Good - failed() notifies the team immediately
+class ProcessPayment implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(PaymentService $paymentService): void
+    {
+        $paymentService->charge(Order::findOrFail($this->orderId));
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Notification::route('slack', config('services.slack.webhook'))
+            ->notify(new JobFailedNotification($this->orderId, $exception));
+    }
+}
+```
 
 ```php
 // List failed jobs
@@ -263,19 +344,7 @@ command=php artisan queue:work database --sleep=1
 // php artisan queue:prune-failed --hours=48
 ```
 
-### Custom Failed Job Handling
-
-```php
-// In job class
-public function failed(\Throwable $exception): void
-{
-    // Send alert, compensating transaction, etc.
-    Notification::route('slack', config('services.slack.webhook'))
-        ->notify(new JobFailedNotification($this->orderId, $exception));
-}
-```
-
-## 10. PRIORITY QUEUES
+### 10. PRIORITY QUEUES
 
 ```php
 // Dispatch to specific queue
@@ -286,7 +355,7 @@ SendNewsletter::dispatch($id)->onQueue('low');
 // php artisan queue:work --queue=critical,default,low
 ```
 
-## 11. HORIZON (Redis Only)
+### 11. HORIZON (Redis Only)
 
 ```php
 // config/horizon.php
@@ -305,15 +374,52 @@ SendNewsletter::dispatch($id)->onQueue('low');
 ],
 ```
 
-## 12. ANTI-PATTERNS
+### 12. IDEMPOTENCY
 
-- ❌ Passing Eloquent models as job constructor arguments (serialization, stale data)
-- ❌ Dispatching jobs inside DB transactions without `afterCommit()` (job processes before commit)
-- ❌ Missing `$tries` and `$backoff` on jobs (infinite retries or no retry)
-- ❌ Missing `failed()` method (silent failures)
-- ❌ Missing `$timeout` on long-running jobs (hangs worker)
-- ❌ Large payloads in job arguments (pass IDs, fetch in handle)
-- ❌ Non-idempotent jobs (duplicate processing on retry)
-- ❌ No monitoring on failed jobs table (failures go unnoticed)
-- ❌ `sync` driver in production (blocks the request)
-- ❌ Not setting `--memory` flag on workers (OOM risk)
+Jobs must be safe to retry without causing duplicate side effects.
+
+```php
+// Bad - non-idempotent: charges customer again on retry
+public function handle(PaymentService $paymentService): void
+{
+    $order = Order::findOrFail($this->orderId);
+    $paymentService->charge($order); // duplicate charge on retry!
+}
+
+// Good - idempotent: check before processing
+public function handle(PaymentService $paymentService): void
+{
+    $order = Order::findOrFail($this->orderId);
+    if ($order->isPaid()) {
+        return; // already processed, skip
+    }
+    $paymentService->charge($order);
+}
+```
+
+## Output Format
+
+```
+## Job Classes
+| Job | Queue | Trigger | Tries | Timeout | Unique |
+
+## Queue Configuration
+Driver: {redis | database}
+Monitoring: {Horizon | manual}
+
+## Retry Strategy
+| Job | Strategy | Backoff | Failed Handler |
+```
+
+## Avoid
+
+- Passing Eloquent models as job constructor arguments (serialization, stale data)
+- Dispatching jobs inside DB transactions without `afterCommit()` (job processes before commit)
+- Missing `$tries` and `$backoff` on jobs (infinite retries or no retry)
+- Missing `failed()` method (silent failures)
+- Missing `$timeout` on long-running jobs (hangs worker)
+- Large payloads in job arguments (pass IDs, fetch in handle)
+- Non-idempotent jobs (duplicate processing on retry)
+- No monitoring on failed jobs table (failures go unnoticed)
+- `sync` driver in production (blocks the request)
+- Not setting `--memory` flag on workers (OOM risk)
