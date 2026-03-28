@@ -42,6 +42,9 @@ plugins/
   rust/          # Rust 1.94+ / Axum / sqlx
     skills/      # 11 skills (2 workflow + 9 atomic)
     agents/      # 7 agent definitions
+  php/           # PHP 8.5 / Laravel 12+
+    skills/      # 9 skills (2 workflow + 7 atomic)
+    agents/      # 7 agent definitions
   react/         # React 19+ / TypeScript / Next.js (primary), Vite (secondary)
     skills/      # 10 skills (2 workflow + 8 atomic)
     agents/      # 5 agent definitions

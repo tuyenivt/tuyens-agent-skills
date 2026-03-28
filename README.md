@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -75,6 +75,13 @@ claude plugin install dotnet@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install rust@tuyens-agent-skills --scope project
+```
+
+**PHP / Laravel project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install php@tuyens-agent-skills --scope project
 ```
 
 **React / Next.js project:**
@@ -205,6 +212,10 @@ Rust / Axum (plugin: rust)
   scaffold a new Rust feature         -> /task-rust-new
   debug a Rust issue                  -> /task-rust-debug
 
+PHP / Laravel (plugin: php)
+  scaffold a new Laravel feature      -> /task-laravel-new
+  debug a Laravel issue               -> /task-laravel-debug
+
 React / Next.js (plugin: react)
   scaffold a new React feature        -> /task-react-new
   debug a React issue                 -> /task-react-debug
@@ -232,23 +243,24 @@ Angular (plugin: angular)
 
 ## Plugin Catalog
 
-| Plugin                               | Focus                                                                                                                                                                               | Includes                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 43 skills                              |
-| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                               |
-| [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                              |
-| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                               |
-| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         | 12 skills + 7 agents                   |
-| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                                                                                                     | 5 skills + 7 agents (requires `java`)  |
-| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 | 9 skills + 7 agents                    |
-| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                                                                                                                  | 8 skills + 7 agents                    |
-| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           | 10 skills + 7 agents                   |
-| [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      | 9 skills + 7 agents                    |
-| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                                                                                               | 11 skills + 7 agents                   |
-| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            | 11 skills + 7 agents                   |
-| [react](plugins/react)               | React 19+ / TypeScript / Next.js (primary), Vite (secondary)                                                                                                                        | 10 skills + 5 agents                   |
-| [vue](plugins/vue)                   | Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)                                                                                                                          | 11 skills + 5 agents                   |
-| [angular](plugins/angular)           | Angular 21+ / TypeScript / Angular CLI                                                                                                                                              | 10 skills + 5 agents                   |
+| Plugin                               | Focus                                                                                                                                                                               | Includes                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 43 skills                             |
+| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                              |
+| [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                             |
+| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                              |
+| [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         | 12 skills + 7 agents                  |
+| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                                                                                                     | 5 skills + 7 agents (requires `java`) |
+| [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 | 9 skills + 7 agents                   |
+| [rails](plugins/rails)               | Ruby on Rails 7+/8                                                                                                                                                                  | 8 skills + 7 agents                   |
+| [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           | 10 skills + 7 agents                  |
+| [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      | 9 skills + 7 agents                   |
+| [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                                                                                               | 11 skills + 7 agents                  |
+| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            | 11 skills + 7 agents                  |
+| [php](plugins/php)                   | PHP 8.5 / Laravel 12+                                                                                                                                                               | 9 skills + 7 agents                   |
+| [react](plugins/react)               | React 19+ / TypeScript / Next.js (primary), Vite (secondary)                                                                                                                        | 10 skills + 5 agents                  |
+| [vue](plugins/vue)                   | Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)                                                                                                                          | 11 skills + 5 agents                  |
+| [angular](plugins/angular)           | Angular 21+ / TypeScript / Angular CLI                                                                                                                                              | 10 skills + 5 agents                  |
 
 ## Notes
 
@@ -274,6 +286,7 @@ ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/node/skill
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/go/skills" "$HOME/.codex/skills/tuyens-agent-skills-go-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/dotnet/skills" "$HOME/.codex/skills/tuyens-agent-skills-dotnet-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/rust/skills" "$HOME/.codex/skills/tuyens-agent-skills-rust-skills"
+ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/php/skills" "$HOME/.codex/skills/tuyens-agent-skills-php-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/react/skills" "$HOME/.codex/skills/tuyens-agent-skills-react-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/vue/skills" "$HOME/.codex/skills/tuyens-agent-skills-vue-skills"
 ln -s "$HOME/.claude/plugins/marketplaces/tuyens-agent-skills/plugins/angular/skills" "$HOME/.codex/skills/tuyens-agent-skills-angular-skills"
@@ -291,6 +304,7 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-node-skills" "%USERPR
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-go-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/go/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-dotnet-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/dotnet/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-rust-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/rust/skills"
+mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-php-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/php/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-react-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/react/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-vue-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/vue/skills"
 mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-angular-skills" "%USERPROFILE%\.claude\plugins\marketplaces\tuyens-agent-skills/plugins/angular/skills"
