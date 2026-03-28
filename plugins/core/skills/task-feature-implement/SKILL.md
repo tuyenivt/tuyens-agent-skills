@@ -34,16 +34,17 @@ Based on the detected stack, invoke the appropriate workflow:
 
 **Backend stacks:**
 
-| Detected Stack              | Delegate to       |
-| --------------------------- | ----------------- |
-| Java / Spring Boot          | `task-spring-new` |
-| Kotlin / Spring Boot        | `task-kotlin-new` |
-| .NET / ASP.NET Core         | `task-dotnet-new` |
-| Python / FastAPI or Django  | `task-python-new` |
-| Ruby / Rails                | `task-rails-new`  |
-| Node.js / NestJS or Express | `task-node-new`   |
-| Go / Gin                    | `task-go-new`     |
-| Rust / Axum                 | `task-rust-new`   |
+| Detected Stack              | Delegate to        |
+| --------------------------- | ------------------ |
+| Java / Spring Boot          | `task-spring-new`  |
+| Kotlin / Spring Boot        | `task-kotlin-new`  |
+| .NET / ASP.NET Core         | `task-dotnet-new`  |
+| Python / FastAPI or Django  | `task-python-new`  |
+| Ruby / Rails                | `task-rails-new`   |
+| Node.js / NestJS or Express | `task-node-new`    |
+| Go / Gin                    | `task-go-new`      |
+| Rust / Axum                 | `task-rust-new`    |
+| PHP / Laravel               | `task-laravel-new` |
 
 **Frontend stacks:**
 

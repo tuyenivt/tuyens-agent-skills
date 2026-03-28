@@ -35,16 +35,17 @@ Use skill: stack-detect
 
 **Backend stacks:**
 
-| Detected Stack              | Delegate to         |
-| --------------------------- | ------------------- |
-| Java / Spring Boot          | `task-spring-debug` |
-| Kotlin / Spring Boot        | `task-kotlin-debug` |
-| .NET / ASP.NET Core         | `task-dotnet-debug` |
-| Python / FastAPI or Django  | `task-python-debug` |
-| Ruby / Rails                | `task-rails-debug`  |
-| Node.js / NestJS or Express | `task-node-debug`   |
-| Go / Gin                    | `task-go-debug`     |
-| Rust / Axum                 | `task-rust-debug`   |
+| Detected Stack              | Delegate to          |
+| --------------------------- | -------------------- |
+| Java / Spring Boot          | `task-spring-debug`  |
+| Kotlin / Spring Boot        | `task-kotlin-debug`  |
+| .NET / ASP.NET Core         | `task-dotnet-debug`  |
+| Python / FastAPI or Django  | `task-python-debug`  |
+| Ruby / Rails                | `task-rails-debug`   |
+| Node.js / NestJS or Express | `task-node-debug`    |
+| Go / Gin                    | `task-go-debug`      |
+| Rust / Axum                 | `task-rust-debug`    |
+| PHP / Laravel               | `task-laravel-debug` |
 
 **Frontend stacks:**
 

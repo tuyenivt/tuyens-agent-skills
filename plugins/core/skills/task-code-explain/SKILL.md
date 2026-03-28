@@ -66,7 +66,7 @@ Handle partial inputs gracefully. If only a file path is given, read the file an
 Use skill: `stack-detect` to identify the language, framework, and `Stack Type`. This shapes:
 
 - Naming convention interpretation
-- Framework lifecycle awareness (e.g., Spring beans, Rails callbacks, NestJS decorators, React hooks, Vue composables, Angular signals)
+- Framework lifecycle awareness (e.g., Spring beans, Rails callbacks, NestJS decorators, React hooks, Vue composables, Angular signals, Laravel service providers / middleware / Eloquent observers)
 - Common patterns the code may be implementing (middleware, interceptors, repository pattern, component composition, state management, data fetching hooks)
 
 Read the target code fully before proceeding.
@@ -101,18 +101,18 @@ Use skill: `architecture-guardrail` to identify whether the code respects expect
 
 Surface behavior that will surprise a developer who has not read this code carefully:
 
-| Gotcha Type               | Examples                                                                                           |
-| ------------------------- | -------------------------------------------------------------------------------------------------- |
-| Silent failures           | Returns null/empty instead of throwing; swallows exceptions                                        |
-| Hidden state dependencies | Behavior changes based on external state (DB flags, feature toggles, request context)              |
-| Ordering requirements     | Method A must be called before method B; initialization order matters                              |
-| Thread safety assumptions | Not thread-safe; requires external synchronization; assumes single-threaded access                 |
-| Mutability surprises      | Modifies the input parameter; returns a shared mutable reference                                   |
-| Implicit retries          | Retries internally without the caller knowing; can amplify downstream load                         |
-| Async traps               | Blocking call inside async context; unhandled promise rejection path; fire-and-forget side effects |
-| Lazy evaluation           | Computation deferred; result differs depending on when it is accessed                              |
-| Caching behavior          | Result is cached; stale data may be returned; cache is not invalidated on writes                   |
-| Framework magic           | Behavior injected by framework lifecycle (Spring `@Transactional`, Rails `before_action`, etc.)    |
+| Gotcha Type               | Examples                                                                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Silent failures           | Returns null/empty instead of throwing; swallows exceptions                                                                   |
+| Hidden state dependencies | Behavior changes based on external state (DB flags, feature toggles, request context)                                         |
+| Ordering requirements     | Method A must be called before method B; initialization order matters                                                         |
+| Thread safety assumptions | Not thread-safe; requires external synchronization; assumes single-threaded access                                            |
+| Mutability surprises      | Modifies the input parameter; returns a shared mutable reference                                                              |
+| Implicit retries          | Retries internally without the caller knowing; can amplify downstream load                                                    |
+| Async traps               | Blocking call inside async context; unhandled promise rejection path; fire-and-forget side effects                            |
+| Lazy evaluation           | Computation deferred; result differs depending on when it is accessed                                                         |
+| Caching behavior          | Result is cached; stale data may be returned; cache is not invalidated on writes                                              |
+| Framework magic           | Behavior injected by framework lifecycle (Spring `@Transactional`, Rails `before_action`, Laravel `$casts` / observers, etc.) |
 
 List only the gotchas that actually apply to this code.
 

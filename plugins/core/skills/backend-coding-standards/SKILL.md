@@ -33,6 +33,7 @@ Every language has established naming conventions. Apply the conventions of the 
 - **Case style**: Use the naming convention standard for the detected language (e.g., camelCase, snake_case, PascalCase, kebab-case)
 - **Consistency**: Do not mix naming styles from different languages within the same codebase
 - **Descriptiveness**: Short names in small scopes; descriptive names in larger scopes
+- **PHP/Laravel**: PSR-12 coding style, camelCase for methods/variables, PascalCase for classes, snake_case for database columns and config keys. Laravel conventions: singular model names (`Order`), plural table names (`orders`), `{Model}Controller`, `{Model}Request`, `{Model}Resource`
 
 ## Dependency Management
 

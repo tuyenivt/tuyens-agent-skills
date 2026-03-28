@@ -110,7 +110,7 @@ Every fallback must log the original failure at WARN level - silent fallbacks hi
 
 After loading stack-detect, apply resilience patterns using the libraries and idioms of the detected ecosystem:
 
-- Use the ecosystem's standard resilience library (e.g., Resilience4j for Java, Polly for .NET, retriable/stoplight for Ruby, gobreaker for Go, tenacity for Python)
+- Use the ecosystem's standard resilience library (e.g., Resilience4j for Java, Polly for .NET, retriable/stoplight for Ruby, gobreaker for Go, tenacity for Python, Guzzle retry middleware for PHP)
 - Apply circuit breaker, retry, and timeout patterns using the framework's decorator, middleware, or annotation mechanism
 - For background job frameworks, leverage built-in retry with exponential backoff where available
 - For HTTP clients, use middleware-based timeout and retry configuration native to the ecosystem

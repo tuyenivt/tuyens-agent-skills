@@ -54,6 +54,7 @@ log({
 ### Distributed Trace Context Propagation
 
 Propagate trace context across service boundaries using standard headers:
+
 - **W3C `traceparent`** (recommended, OpenTelemetry default)
 - **`b3` / `x-b3-traceid`** (Zipkin, still common in older Spring Cloud deployments)
 - **`uber-trace-id`** (Jaeger)
@@ -64,8 +65,8 @@ The receiving service must extract the incoming trace context and create child s
 
 After loading stack-detect, apply structured logging using the libraries and patterns of the detected ecosystem:
 
-- Use the framework's standard or recommended logging library (e.g., SLF4J, log/slog, Rails.logger, Python logging, Elixir Logger)
-- Use the framework's mechanism for request-scoped context propagation (e.g., MDC, context.Context, CurrentAttributes, contextvars)
+- Use the framework's standard or recommended logging library (e.g., SLF4J, log/slog, Rails.logger, Python logging, Elixir Logger, Laravel Log facade / Monolog)
+- Use the framework's mechanism for request-scoped context propagation (e.g., MDC, context.Context, CurrentAttributes, contextvars, Laravel middleware context)
 - Configure JSON output formatting using the ecosystem's standard encoder or formatter
 
 ## Metrics
@@ -86,11 +87,11 @@ http_request_duration_seconds{method="POST", endpoint="/api/orders"}
 
 **Metric types and when to use each:**
 
-| Type      | Use For                                 | Example                             |
-| --------- | --------------------------------------- | ----------------------------------- |
-| Counter   | Cumulative totals that only go up       | Total requests, total errors        |
-| Histogram | Distribution of values (latency, sizes) | Request duration, response size     |
-| Gauge     | Values that go up and down              | Active connections, queue depth     |
+| Type      | Use For                                 | Example                         |
+| --------- | --------------------------------------- | ------------------------------- |
+| Counter   | Cumulative totals that only go up       | Total requests, total errors    |
+| Histogram | Distribution of values (latency, sizes) | Request duration, response size |
+| Gauge     | Values that go up and down              | Active connections, queue depth |
 
 **Business metrics** -- define at least one metric per critical business operation (e.g., `orders_completed_total`, `payment_success_rate`). These detect revenue-impacting issues that RED metrics alone may miss.
 
@@ -108,11 +109,11 @@ Add trace spans for key operations to make the request lifecycle visible:
 
 **Sampling strategy** -- tracing every request is expensive at scale. Choose based on traffic volume:
 
-| Strategy    | Use When                                        | Trade-off                            |
-| ----------- | ----------------------------------------------- | ------------------------------------ |
-| Head-based  | Moderate traffic; decision made at request start | Simple; may miss rare errors         |
-| Tail-based  | High traffic; decision made after request ends   | Captures errors/slow requests; costly |
-| Always-on   | Low traffic or debugging                        | Full visibility; high storage cost   |
+| Strategy   | Use When                                         | Trade-off                             |
+| ---------- | ------------------------------------------------ | ------------------------------------- |
+| Head-based | Moderate traffic; decision made at request start | Simple; may miss rare errors          |
+| Tail-based | High traffic; decision made after request ends   | Captures errors/slow requests; costly |
+| Always-on  | Low traffic or debugging                         | Full visibility; high storage cost    |
 
 Start with head-based sampling at 10-20% for high-traffic services. Always sample 100% of errored or slow requests regardless of strategy.
 

@@ -52,6 +52,7 @@ After loading stack-detect, apply layer violation detection using the idioms of 
 - In frameworks with annotation-based architectures (e.g., Spring), controllers should delegate to service classes, not access repositories directly
 - In MVC frameworks (e.g., Rails, Django, Phoenix), controllers/actions should be thin - business logic belongs in service objects or model methods
 - In handler-based architectures (e.g., Go HTTP frameworks, Express), handlers should delegate to service packages, not perform business logic or direct DB access
+- In Laravel, controllers should be thin - delegate business logic to service/action classes, not Eloquent models directly. Avoid fat models with business logic in accessors/mutators, business logic in migrations, or direct DB queries in Blade views
 - Framework-specific violations (e.g., fat controllers, business logic in callbacks, circular package imports) should be detected based on the conventions of the detected ecosystem
 
 If the detected stack is unfamiliar, apply the universal layering principles above and recommend the user verify against their framework's documentation.

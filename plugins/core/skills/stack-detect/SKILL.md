@@ -28,6 +28,7 @@ Check for well-known marker files in the project root. This is reliable, zero-co
 | `pyproject.toml` / `requirements.txt`           | Python ecosystem                  |
 | `mix.exs`                                       | Elixir ecosystem                  |
 | `*.csproj` / `*.sln`                            | .NET ecosystem                    |
+| `composer.json` / `composer.lock`               | PHP ecosystem                     |
 | `Makefile`                                      | Check further - could be anything |
 
 #### Frontend meta-framework marker files (higher specificity than `package.json`)

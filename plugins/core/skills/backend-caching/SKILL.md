@@ -55,6 +55,7 @@ When a popular key expires, many concurrent requests all miss and simultaneously
 
 **1. Lock-based refresh (singleflight)**
 Only one request fetches from the backend; others wait and reuse the result. Use the ecosystem's singleflight primitive (Go `golang.org/x/sync/singleflight`, Java `ConcurrentHashMap.computeIfAbsent`, Redis `SET NX` distributed lock):
+
 ```
 on cache miss:
   acquire lock(key, ttl=fetch_timeout)
@@ -66,6 +67,7 @@ on cache miss:
 
 **2. Probabilistic early expiry (XFetch)**
 Randomly refresh a cache entry before it expires, with probability increasing as TTL approaches zero. No locking needed:
+
 ```
 remaining_ttl = key_expires_at - now()
 if random() < (fetch_cost / remaining_ttl):
@@ -104,7 +106,7 @@ Well-designed cache keys prevent collisions, enable targeted invalidation, and s
 
 After loading stack-detect, apply caching patterns using the libraries and idioms of the detected ecosystem:
 
-- Use the framework's cache abstraction if available (e.g., Spring Cache annotations, Rails.cache, Django cache framework)
+- Use the framework's cache abstraction if available (e.g., Spring Cache annotations, Rails.cache, Django cache framework, Laravel Cache facade)
 - For in-process caching, use the ecosystem's standard bounded cache library with eviction policies
 - For distributed caching, use Redis or Memcached with the ecosystem's standard client
 - For view/fragment caching, use the framework's built-in template caching if available
