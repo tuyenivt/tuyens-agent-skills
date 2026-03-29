@@ -179,11 +179,54 @@ public class OrderAuditListener {
 }
 ```
 
+### Kafka Retry with @RetryableTopic
+
+`@RetryableTopic` creates retry topics and a dead-letter topic automatically - no manual DLT configuration needed:
+
+```java
+@Component
+public class FulfillmentConsumer {
+
+    @RetryableTopic(
+        attempts = "3",
+        backoff = @Backoff(delay = 1000, multiplier = 2),
+        autoCreateTopics = "true",
+        dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
+    @KafkaListener(topics = "order.placed", groupId = "fulfillment-service")
+    public void onOrderPlaced(OrderPlacedEvent event) {
+        if (fulfillmentRepo.existsByOrderId(event.orderId())) return;
+        fulfillmentService.initiate(event.orderId());
+    }
+
+    @DltHandler
+    public void handleDlt(OrderPlacedEvent event) {
+        log.error("Order {} exhausted retries, moved to DLT", event.orderId());
+        alertService.notifyOps("fulfillment-failure", event.orderId());
+    }
+}
+```
+
 ## Stack-Specific Guidance
 
 - **Kafka**: Use `spring-kafka`, configure `ConcurrentKafkaListenerContainerFactory` with Virtual Thread executor; use `@RetryableTopic` for automatic retry + DLT setup
 - **RabbitMQ**: Use `spring-boot-starter-amqp`; configure `SimpleRabbitListenerContainerFactory` with `defaultRequeueRejected(false)` so failures route to DLQ
 - **Spring Events**: `@TransactionalEventListener` with `AFTER_COMMIT` phase prevents handlers from running on rolled-back transactions
+
+## Output Format
+
+When applying messaging patterns, document the configuration:
+
+```
+Broker: {Kafka | RabbitMQ | Spring Events}
+Topic/Queue: {name}
+Producer: {class}
+Consumer: {class}
+Delivery Guarantee: {at-least-once | at-most-once | exactly-once via outbox}
+Idempotency Check: {description of how duplicates are detected}
+DLT/DLQ: {configured | not needed - reason}
+Retry: {attempts, backoff strategy}
+```
 
 ## Avoid
 

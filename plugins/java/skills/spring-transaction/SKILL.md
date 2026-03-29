@@ -157,6 +157,19 @@ public void processBatch(List<Order> orders) {
 }
 ```
 
+## Output Format
+
+When applying transaction patterns, document the boundary:
+
+```
+Method: {class.method}
+Propagation: {REQUIRED | REQUIRES_NEW | ...}
+Read-Only: {yes | no}
+Rollback: {default | rollbackFor = Exception.class | custom}
+Timeout: {seconds | none}
+Reason: {why this configuration was chosen}
+```
+
 ## Avoid
 
 - `@Transactional` on controllers or repositories

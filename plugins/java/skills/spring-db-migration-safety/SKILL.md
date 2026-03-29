@@ -92,6 +92,15 @@ CREATE INDEX CONCURRENTLY idx_orders_customer ON orders(customer_id);
 ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
+**Flyway + CONCURRENTLY caveat**: PostgreSQL's `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. Flyway wraps each migration in a transaction by default. To use CONCURRENTLY, disable the transaction for that migration file:
+
+```java
+// Implement FlywayCallback or use Flyway 10+ per-script configuration:
+// V20250213_1100__create_index_orders_customer.sql
+-- flyway:executeInTransaction=false
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+```
+
 ### 2. Flyway Conventions
 
 Naming pattern: `V{yyyyMMdd}_{HHmm}__{description}.sql`
@@ -294,6 +303,20 @@ Dependency ordering in CI/CD - shared schema migrations run first:
 ```
 
 Backward-compatibility rule: every migration applied in release N must be safe to run while release N-1 code is still serving traffic.
+
+## Output Format
+
+When generating migrations, document each file:
+
+```
+Migration: {filename}
+Type: {DDL | DML}
+Operation: {ADD COLUMN | ADD INDEX | BACKFILL | DROP COLUMN | RENAME | CONSTRAINT}
+Table: {table name}
+Locks Table: {yes | no}
+Backward Compatible: {yes | no - why}
+Rollback: {auto-reversible | manual rollback provided | N/A}
+```
 
 ## Checklist
 

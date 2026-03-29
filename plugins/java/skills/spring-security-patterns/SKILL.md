@@ -325,6 +325,19 @@ class SecurityIntegrationTest {
 }
 ```
 
+## Output Format
+
+When applying security patterns, document the configuration:
+
+```
+Endpoint: {path pattern}
+Auth: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
+CSRF: {enabled | disabled - reason}
+Session: {STATELESS | IF_REQUIRED}
+CORS Origins: {list or "N/A"}
+JWT Issuer: {issuer URI or "N/A"}
+```
+
 ## Avoid
 
 - `WebSecurityConfigurerAdapter` - removed in Spring Security 6

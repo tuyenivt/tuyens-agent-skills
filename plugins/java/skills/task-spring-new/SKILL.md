@@ -22,6 +22,7 @@ user-invocable: true
 - **Partial input**: If the user provides only a feature name without details, ask for entity fields, relationships, and operations before proceeding to design.
 - **No database**: If the feature does not require persistence (e.g., proxy/aggregation endpoint), skip entity, repository, migration steps; generate only controller, service, DTOs, and tests.
 - **Existing entity**: If the user references an entity that already exists, read the existing entity class and extend it rather than creating a new one. Skip the migration step if no schema change is needed.
+- **Referenced entity doesn't exist**: If the feature has a relationship to an entity not yet in the codebase (e.g., `@ManyToOne` to `Category`), ask the user whether to generate the referenced entity or assume it already exists.
 - **Maven project**: If the project uses Maven instead of Gradle, replace `./gradlew` commands with `./mvnw` equivalents in validation step.
 
 ## Rules
@@ -41,19 +42,25 @@ user-invocable: true
 
 ## Implementation
 
-STEP 1 - GATHER: feature name, package base, operations (CRUD/custom), async messaging needs, entity relationships, validation constraints, API visibility
+STEP 1 - GATHER: feature name, package base, operations (CRUD/custom search/filter), async messaging needs, entity relationships, validation constraints (required, unique, range, format), API visibility (public/authenticated/role-restricted)
 
-STEP 2 - DESIGN: propose endpoints (method + URI + DTOs + status), entity fields, service methods, transaction boundaries. Present for user approval before generating code.
+STEP 2 - DESIGN: propose endpoints (method + URI + query params + DTOs + status), entity fields with types and constraints, service methods, transaction boundaries. Include custom filter/search endpoints (e.g., `GET /api/v1/products?categoryId=5`). Present for user approval before generating code.
 
-STEP 3 - ENTITY + MIGRATION: Use skill: `spring-jpa-performance`, `spring-db-migration-safety`. Generate entity class with audit fields; Flyway migration with indexes for FK and filter columns. LAZY fetch by default.
+STEP 3 - ENTITY + MIGRATION: Use skill: `spring-jpa-performance`, `spring-db-migration-safety`. Generate entity class with:
 
-STEP 4 - REPOSITORY: Use skill: `spring-jpa-performance`. Extend `JpaRepository<{Name}, Long>`. JPQL `@Query` for custom methods; `Specification` for dynamic filters; `Page<>` for pagination.
+- Audit fields via `@MappedSuperclass` base entity: `createdAt` (`@CreatedDate`), `updatedAt` (`@LastModifiedDate`) with `@EntityListeners(AuditingEntityListener.class)` and `@EnableJpaAuditing` on a config class
+- Bean Validation annotations mapping from gathered constraints: `@NotBlank`, `@NotNull`, `@Positive`, `@Size`, etc.
+- JPA `@Column` constraints: `nullable = false` for required fields, `unique = true` for unique fields, `precision`/`scale` for `BigDecimal` (e.g., `@Column(precision = 19, scale = 4)` for monetary values)
+- LAZY fetch by default on all associations
+- Flyway migration with column types matching JPA annotations (e.g., `NUMERIC(19,4)` for `BigDecimal`), indexes on FK columns, unique constraint columns, and frequently filtered columns
 
-STEP 5 - SERVICE: Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-DTO mapping in-class. Business exceptions from common base.
+STEP 4 - REPOSITORY: Use skill: `spring-jpa-performance`. Extend `JpaRepository<{Name}, Long>`. Use derived query methods for simple filters (e.g., `Page<Product> findByCategoryId(Long categoryId, Pageable pageable)`). Use JPQL `@Query` only when derived method names become unwieldy. Use `Specification` only when the endpoint supports multiple optional filter parameters. `Page<>` for all list endpoints.
 
-STEP 6 - CONTROLLER: Use skill: `backend-api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
+STEP 5 - SERVICE: Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-to-DTO mapping via static factory method on the response DTO record: `public static XxxResponse from(Xxx entity)`. Business exceptions from common base.
 
-STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover happy path, not-found, validation, error responses.
+STEP 6 - CONTROLLER: Use skill: `backend-api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `@RequestParam` for filter/search parameters (e.g., `@RequestParam(required = false) Long categoryId`). `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
+
+STEP 7 - TESTS: Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover: happy path, not-found, validation errors (missing required fields, invalid values), unique constraint violations (409 Conflict), filter/search endpoints, error responses.
 
 STEP 8 - VALIDATE: `./gradlew compileJava compileTestJava`. Present file list, endpoints, test count, any warnings.
 
@@ -87,13 +94,14 @@ Present a checklist of generated files:
 
 ## Endpoints
 
-| Method | URI                      | Status | Description      |
-| ------ | ------------------------ | ------ | ---------------- |
-| GET    | /api/v1/{resources}      | 200    | List (paginated) |
-| GET    | /api/v1/{resources}/{id} | 200    | Get by ID        |
-| POST   | /api/v1/{resources}      | 201    | Create           |
-| PUT    | /api/v1/{resources}/{id} | 200    | Update           |
-| DELETE | /api/v1/{resources}/{id} | 204    | Delete           |
+| Method | URI                                  | Status | Description            |
+| ------ | ------------------------------------ | ------ | ---------------------- |
+| GET    | /api/v1/{resources}                  | 200    | List (paginated)       |
+| GET    | /api/v1/{resources}?{filter}={value} | 200    | Filter (if applicable) |
+| GET    | /api/v1/{resources}/{id}             | 200    | Get by ID              |
+| POST   | /api/v1/{resources}                  | 201    | Create                 |
+| PUT    | /api/v1/{resources}/{id}             | 200    | Update                 |
+| DELETE | /api/v1/{resources}/{id}             | 204    | Delete                 |
 
 ## Tests
 

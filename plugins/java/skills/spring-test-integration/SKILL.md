@@ -202,6 +202,31 @@ class TestFixtureConfig {
 }
 ```
 
+### Mocking External HTTP Services with WireMock
+
+For services that call external APIs (payment gateways, notification services), use WireMock instead of mocking the client class - it verifies the actual HTTP request/response cycle:
+
+```java
+@SpringBootTest(webEnvironment = RANDOM_PORT)
+@WireMockTest(httpPort = 8089)
+class PaymentIntegrationTest extends AbstractIntegrationTest {
+
+    @Test
+    void shouldProcessPaymentSuccessfully() {
+        stubFor(post(urlPathEqualTo("/api/charges"))
+            .willReturn(okJson("{\"status\": \"success\", \"chargeId\": \"ch_123\"}")));
+
+        var result = paymentGateway.charge(new ChargeRequest(orderId, amount));
+
+        assertThat(result.status()).isEqualTo("success");
+        verify(postRequestedFor(urlPathEqualTo("/api/charges"))
+            .withRequestBody(matchingJsonPath("$.amount")));
+    }
+}
+```
+
+Use `@MockitoBean` for unit tests where you only care about the service logic. Use WireMock for integration tests where the HTTP contract matters.
+
 ### Mockito in Virtual Thread Context
 
 Mockito is safe with Virtual Threads - no thread-local issues. For async/Virtual Thread tests, use Awaitility:
@@ -295,6 +320,18 @@ Always activate test profile explicitly:
 class OrderIntegrationTest extends AbstractIntegrationTest {
     // ...
 }
+```
+
+## Output Format
+
+When recommending test strategy, document the test plan:
+
+```
+Layer: {Controller | Service | Repository | Integration}
+Slice: {@WebMvcTest | @DataJpaTest | @SpringBootTest | Plain JUnit 5}
+Containers: {Postgres | Kafka | Redis | WireMock | none}
+Mocking: {manual mock() | @MockitoBean | WireMock | none}
+Cases: {list of test scenarios}
 ```
 
 ## Avoid

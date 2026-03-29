@@ -16,6 +16,7 @@ user-invocable: false
 - Optimizing data access layer queries
 - Preventing N+1 query problems
 - Reducing memory footprint of large result sets
+- Building dynamic filter/search queries with multiple optional parameters
 
 ## Rules
 
@@ -26,6 +27,7 @@ user-invocable: false
 - Detect and eliminate N+1 queries
 - Keep entities small, avoid heavy logic inside entities
 - Add indexes on WHERE/ORDER BY/JOIN columns (see core plugin's `backend-db-indexing` for general index strategy)
+- Set `spring.jpa.open-in-view=false` in all environments - open-in-view silently masks lazy loading issues by keeping the Hibernate session open through the controller layer, causing unpredictable N+1 queries in the view
 
 ## Pattern
 
@@ -137,6 +139,36 @@ For large datasets with stable sort order, use keyset pagination (scroll queries
 List<Order> findNextPage(@Param("lastId") Long lastId, Pageable pageable);
 ```
 
+### Dynamic Filters with Specification
+
+When an endpoint supports multiple optional filter parameters, use `Specification` to compose them dynamically rather than writing a combinatorial explosion of repository methods:
+
+```java
+public class ProductSpecifications {
+    public static Specification<Product> hasCategory(Long categoryId) {
+        return (root, query, cb) -> categoryId == null ? null : cb.equal(root.get("category").get("id"), categoryId);
+    }
+
+    public static Specification<Product> priceBetween(BigDecimal min, BigDecimal max) {
+        return (root, query, cb) -> {
+            if (min != null && max != null) return cb.between(root.get("price"), min, max);
+            if (min != null) return cb.greaterThanOrEqualTo(root.get("price"), min);
+            if (max != null) return cb.lessThanOrEqualTo(root.get("price"), max);
+            return null; // null spec is ignored by Spring Data
+        };
+    }
+}
+
+// In service:
+public Page<ProductResponse> search(Long categoryId, BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable) {
+    Specification<Product> spec = Specification.where(hasCategory(categoryId))
+        .and(priceBetween(minPrice, maxPrice));
+    return productRepository.findAll(spec, pageable).map(ProductResponse::from);
+}
+```
+
+Use derived query methods (e.g., `findByCategoryId`) for simple single-parameter filters. Switch to `Specification` only when the endpoint has 2+ optional filter parameters.
+
 ### Second-Level Cache
 
 Enable for entities that are read-heavy and rarely change (e.g., product catalog, configuration):
@@ -161,6 +193,17 @@ public class Product {
 ```
 
 Only cache entities with low write frequency - cache invalidation on every update negates the benefit for write-heavy entities.
+
+## Output Format
+
+When applying JPA performance patterns, document the optimization:
+
+```
+Optimization: {N+1 Fix | Projection | Batch Fetch | Specification Filter | Cache | Pagination}
+Entity: {entity name}
+Change: {description of what was changed}
+Query Count: {before} → {after} (estimated)
+```
 
 ## Avoid
 

@@ -30,7 +30,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 ## Atomic Skills (Reusable Patterns)
 
-9 atomic skills provide focused, reusable Java/Spring Boot patterns. These are hidden from the slash menu (`user-invocable: false`) and referenced by workflow skills and agents.
+10 atomic skills provide focused, reusable Java/Spring Boot patterns. These are hidden from the slash menu (`user-invocable: false`) and referenced by workflow skills and agents.
 
 | Skill                            | Purpose                                                                 |
 | -------------------------------- | ----------------------------------------------------------------------- |

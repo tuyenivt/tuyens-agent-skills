@@ -72,18 +72,22 @@ Identify the error category to guide investigation:
 
 **Runtime exception** → identify exception type and likely cause:
 
-| Exception                         | Likely Cause                         | Load Skill                              |
-| --------------------------------- | ------------------------------------ | --------------------------------------- |
-| `NullPointerException`            | Null reference in call chain         | -                                       |
-| `LazyInitializationException`     | JPA session/transaction scope issue  | Use skill: `spring-jpa-performance`     |
-| `DataIntegrityViolationException` | DB constraint violation              | Use skill: `spring-db-migration-safety` |
-| `HttpMessageNotReadableException` | JSON deserialization failure         | -                                       |
-| `TransactionSystemException`      | Nested exception in `@Transactional` | Use skill: `spring-transaction`         |
-| `NoSuchBeanDefinitionException`   | Spring context wiring issue          | -                                       |
-| Virtual Thread pinning            | `synchronized` block in VT context   | -                                       |
-| Kafka consumer lag / DLT messages | Consumer error, redelivery loop      | Use skill: `spring-messaging-patterns`  |
-| RabbitMQ DLQ / unacked messages   | Consumer throwing, no DLQ config     | Use skill: `spring-messaging-patterns`  |
-| Outbox event not published        | Scheduled publisher or TX issue      | Use skill: `spring-messaging-patterns`  |
+| Exception                                 | Likely Cause                             | Load Skill                              |
+| ----------------------------------------- | ---------------------------------------- | --------------------------------------- |
+| `NullPointerException`                    | Null reference in call chain             | -                                       |
+| `LazyInitializationException`             | JPA session/transaction scope issue      | Use skill: `spring-jpa-performance`     |
+| `DataIntegrityViolationException`         | DB constraint violation                  | Use skill: `spring-db-migration-safety` |
+| `HttpMessageNotReadableException`         | JSON deserialization failure             | -                                       |
+| `HttpMediaTypeNotSupportedException`      | Wrong Content-Type header                | -                                       |
+| `MethodArgumentTypeMismatchException`     | Path/query param type conversion failure | -                                       |
+| `MissingServletRequestParameterException` | Required query param absent              | -                                       |
+| `TransactionSystemException`              | Nested exception in `@Transactional`     | Use skill: `spring-transaction`         |
+| `NoSuchBeanDefinitionException`           | Spring context wiring issue              | -                                       |
+| `BeanCurrentlyInCreationException`        | Circular dependency                      | -                                       |
+| Virtual Thread pinning                    | `synchronized` block in VT context       | -                                       |
+| Kafka consumer lag / DLT messages         | Consumer error, redelivery loop          | Use skill: `spring-messaging-patterns`  |
+| RabbitMQ DLQ / unacked messages           | Consumer throwing, no DLQ config         | Use skill: `spring-messaging-patterns`  |
+| Outbox event not published                | Scheduled publisher or TX issue          | Use skill: `spring-messaging-patterns`  |
 
 **Test failure** → analyze assertion mismatch, check test setup and mocks
 
@@ -94,7 +98,8 @@ Identify the error category to guide investigation:
 1. Read the stack trace to identify the **source file and line number**
 2. Open the file and surrounding context (~50 lines above and below)
 3. Trace the call chain from entry point: **controller → service → repository**
-4. Identify which layer the bug is in (Controller | Service | Repository | Configuration | Build)
+4. Check **configuration files** (`application.yml`, `application.properties`, security config, async config) when the error could be config-related (e.g., `LazyInitializationException` often caused by `spring.jpa.open-in-view=false` without proper fetch strategy, `NoSuchBeanDefinitionException` from missing component scan)
+5. Identify which layer the bug is in (Controller | Service | Repository | Configuration | Build)
 
 ### Step 4 - Root Cause Analysis
 
@@ -127,6 +132,7 @@ Identify the error category to guide investigation:
 - **Multiple errors**: If the input contains multiple errors, identify the root error (usually the earliest in the chain or the "Caused by") and focus on that. Mention secondary errors only if they are independent.
 - **No source code available**: If the stack trace points to framework internals only, explain the framework behavior and ask the user for the application code that triggered it.
 - **Intermittent/non-deterministic bug**: Note that the issue may be concurrency-related; ask for thread dump or load conditions if confidence is LOW.
+- **Virtual Thread pinning**: If the user suspects pinning, suggest running with `-Djdk.tracePinnedThreads=short` JVM flag to get pinning diagnostics, or check JFR events for `jdk.VirtualThreadPinned`.
 
 ## Output
 

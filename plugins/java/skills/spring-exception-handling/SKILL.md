@@ -1,6 +1,6 @@
 ---
 name: spring-exception-handling
-description: Spring Boot @ControllerAdvice and ProblemDetail (RFC 7807) - domain exception hierarchy, HTTP status mapping, and error response consistency.
+description: Spring Boot @RestControllerAdvice and ProblemDetail (RFC 9457) - domain exception hierarchy, HTTP status mapping, DataIntegrityViolationException handling, and error response consistency.
 metadata:
   category: backend
   tags: [error-handling, rest, http, controller]
@@ -28,16 +28,16 @@ user-invocable: false
 
 ## Domain Exception to HTTP Status Mapping
 
-| Exception Class | HTTP Status | When to Use |
-| --------------- | ----------- | ----------- |
-| `ValidationException` | 400 Bad Request | Input validation failure |
-| `AuthenticationException` | 401 Unauthorized | Missing or invalid credentials |
-| `AccessDeniedException` | 403 Forbidden | Authenticated but not authorized |
-| `NotFoundException` / `EntityNotFoundException` | 404 Not Found | Resource does not exist |
-| `ConflictException` | 409 Conflict | State conflict (duplicate, optimistic lock) |
-| `UnprocessableEntityException` | 422 Unprocessable Entity | Semantically invalid (valid format, invalid business state) |
-| `RateLimitException` | 429 Too Many Requests | Rate limit exceeded |
-| `RuntimeException` (unexpected) | 500 Internal Server Error | System failure - log with stack trace |
+| Exception Class                                 | HTTP Status               | When to Use                                                 |
+| ----------------------------------------------- | ------------------------- | ----------------------------------------------------------- |
+| `ValidationException`                           | 400 Bad Request           | Input validation failure                                    |
+| `AuthenticationException`                       | 401 Unauthorized          | Missing or invalid credentials                              |
+| `AccessDeniedException`                         | 403 Forbidden             | Authenticated but not authorized                            |
+| `NotFoundException` / `EntityNotFoundException` | 404 Not Found             | Resource does not exist                                     |
+| `ConflictException`                             | 409 Conflict              | State conflict (duplicate, optimistic lock)                 |
+| `UnprocessableEntityException`                  | 422 Unprocessable Entity  | Semantically invalid (valid format, invalid business state) |
+| `RateLimitException`                            | 429 Too Many Requests     | Rate limit exceeded                                         |
+| `RuntimeException` (unexpected)                 | 500 Internal Server Error | System failure - log with stack trace                       |
 
 ## Domain Exception Hierarchy
 
@@ -153,6 +153,17 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    // Database constraint violation: 409 (e.g., unique constraint on email, SKU)
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+            "A record with the given value already exists");
+        pd.setTitle("Conflict");
+        pd.setProperty("traceId", MDC.get("traceId"));
+        return pd;
+    }
+
     // System exception: 500, log with stack trace
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception ex) {
@@ -172,6 +183,18 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+```
+
+## Output Format
+
+When applying exception handling patterns, document the mapping:
+
+```
+Exception: {exception class}
+HTTP Status: {status code and name}
+Error Code: {domain error code}
+Logged: {yes (ERROR) | yes (WARN) | no}
+Response Detail: {what the client sees}
 ```
 
 ## Avoid

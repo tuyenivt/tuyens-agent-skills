@@ -195,6 +195,32 @@ public String handleException(Exception ex) {
 }
 ```
 
+### Message Size and Rate Limiting
+
+Configure limits on the broker to prevent abuse:
+
+```java
+@Override
+public void configureWebSocketTransport(WebSocketTransportRegistration registry) {
+    registry.setMessageSizeLimit(64 * 1024)       // 64 KB max message
+            .setSendBufferSizeLimit(512 * 1024)    // 512 KB send buffer
+            .setSendTimeLimit(20 * 1000);           // 20 sec send timeout
+}
+```
+
+## Output Format
+
+When implementing WebSocket patterns, document the configuration:
+
+```
+Endpoint: {WebSocket path}
+Protocol: {STOMP | raw WebSocket}
+Auth: {handshake JWT | session | none}
+Topics: {list of /topic and /queue destinations}
+Heartbeat: {interval in ms}
+Message Limit: {max size}
+```
+
 ## Avoid
 
 - `synchronized` blocks in message handlers - blocks Virtual Threads; use `ReentrantLock` or concurrent collections

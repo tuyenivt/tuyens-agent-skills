@@ -179,6 +179,38 @@ public class OrderService {
 }
 ```
 
+### Retry for Transient Failures
+
+For async operations that should retry on transient failures (e.g., email service timeout), combine `@Async` with `@Retryable`:
+
+```java
+@Async("asyncTaskExecutor")
+@Retryable(retryFor = MailSendException.class, maxAttempts = 3, backoff = @Backoff(delay = 2000, multiplier = 2))
+public void sendConfirmationEmail(Long orderId) {
+    emailClient.sendOrderConfirmation(orderId);
+}
+
+@Recover
+public void recoverSendEmail(MailSendException ex, Long orderId) {
+    log.error("Failed to send confirmation email for order {} after retries", orderId, ex);
+    // persist to retry queue or alert ops
+}
+```
+
+Requires `@EnableRetry` on a configuration class and `spring-retry` dependency.
+
+## Output Format
+
+When applying async patterns, document the configuration:
+
+```
+Operation: {what is being done async}
+Executor: {executor bean name}
+Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
+Error Handling: {AsyncUncaughtExceptionHandler | exceptionally() | @Recover}
+Idempotent: {yes | no - why}
+```
+
 ## Avoid
 
 - Using async for critical transaction logic

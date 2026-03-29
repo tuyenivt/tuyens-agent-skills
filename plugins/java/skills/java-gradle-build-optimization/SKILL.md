@@ -69,6 +69,7 @@ Configure `gradle.properties`:
 org.gradle.parallel=true
 org.gradle.caching=true
 org.gradle.configuration-cache=true
+org.gradle.configuration-cache.problems=warn
 org.gradle.daemon.idletimeout=600000
 org.gradle.jvmargs=-Xmx2g -XX:+UseG1GC
 ```
@@ -186,7 +187,9 @@ BOM import via `platform()`:
 
 ```kotlin
 dependencies {
-    implementation(platform(libs.spring.boot.starter.web))
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.0"))
+    // or from version catalog:
+    implementation(platform(libs.spring.boot.bom))
 }
 ```
 
@@ -241,6 +244,17 @@ CI cache directories:
 ```
 
 Use `--no-daemon` in CI - daemon wastes memory in ephemeral runners.
+
+## Output Format
+
+When applying Gradle optimizations, document the changes:
+
+```
+Optimization: {version catalog | build cache | configuration cache | parallel | convention plugin | dependency scope}
+File: {file path}
+Change: {description}
+Impact: {build time | dependency management | maintainability}
+```
 
 ## Avoid
 
