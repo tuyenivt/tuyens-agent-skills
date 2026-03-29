@@ -18,6 +18,25 @@ user-invocable: true
 - NOT for: performance profiling or slow query optimization
 - NOT for: infrastructure/deployment issues
 
+## Edge Cases
+
+- **Vendor-only stack trace**: If all frames are in `vendor/`, the error originates from misconfiguration or incorrect usage of a package. Check the last application-code call that invoked the vendor method.
+- **No stack trace available**: Check `storage/logs/laravel.log` (latest entries), `failed_jobs` table for queue errors, and `php artisan schedule:list` for scheduler issues.
+- **Error only in production**: Compare `config/app.php` settings between environments. Check `APP_ENV`, `APP_DEBUG`, config caching (`php artisan config:cache`), and route caching.
+- **Intermittent errors**: Likely race condition or connection pool exhaustion. Check `DB_POOL` settings and whether the error correlates with traffic spikes.
+- **Xdebug not available**: Use `dd()`, `dump()`, `Log::debug()`, or `php artisan tinker` for interactive debugging. Install Laravel Telescope for development.
+
+## Debugging Tools
+
+| Tool                     | Use When                                          | Command / Access                   |
+| ------------------------ | ------------------------------------------------- | ---------------------------------- |
+| `php artisan tinker`     | Interactive REPL - test queries, models, services | `php artisan tinker`               |
+| Laravel Telescope        | Inspect requests, queries, jobs, events in dev    | `/telescope` route                 |
+| Laravel Debugbar         | In-browser query count, timing, N+1 detection     | Auto-injects into HTML responses   |
+| `storage/logs/`          | Application logs, stack traces                    | `tail -f storage/logs/laravel.log` |
+| `failed_jobs` table      | Queue job failure history                         | `php artisan queue:failed`         |
+| `php artisan route:list` | Verify route registration and middleware          | `php artisan route:list`           |
+
 ## Workflow
 
 STEP 1 - INTAKE: Use skill: `stack-detect` to confirm Laravel. Ask for: full stack trace, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip vendor frames) and read that file.

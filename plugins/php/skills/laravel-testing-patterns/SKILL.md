@@ -412,7 +412,69 @@ it('calculates order total from items', function () {
 });
 ```
 
-### 10. TEST SCOPE DECISION
+### 10. TESTING WEBHOOKS
+
+Test webhook endpoints by crafting payloads and verifying signature handling, idempotency, and async dispatch.
+
+```php
+describe('StripeWebhookController', function () {
+    it('processes valid webhook with correct signature', function () {
+        Queue::fake();
+
+        $payload = json_encode([
+            'type' => 'payment_intent.succeeded',
+            'data' => ['object' => ['id' => 'pi_123', 'metadata' => ['order_id' => '1']]],
+        ]);
+
+        $timestamp = time();
+        $secret = config('services.stripe.webhook_secret');
+        $signature = 't=' . $timestamp . ',v1=' . hash_hmac(
+            'sha256',
+            $timestamp . '.' . $payload,
+            $secret,
+        );
+
+        $this->postJson('/webhooks/stripe', [], [
+            'Stripe-Signature' => $signature,
+            'Content-Type' => 'application/json',
+        ])->assertOk();
+
+        Queue::assertPushed(ProcessStripeEvent::class);
+    });
+
+    it('rejects webhook with invalid signature', function () {
+        $this->postJson('/webhooks/stripe', [], [
+            'Stripe-Signature' => 't=123,v1=invalid',
+            'Content-Type' => 'application/json',
+        ])->assertForbidden();
+    });
+
+    it('rejects webhook with missing signature', function () {
+        $this->postJson('/webhooks/stripe')
+            ->assertForbidden();
+    });
+});
+```
+
+#### Webhook Idempotency Test
+
+```php
+it('skips duplicate webhook events', function () {
+    $eventId = 'evt_123';
+
+    // First call - processes
+    WebhookEvent::create(['provider_event_id' => $eventId, 'type' => 'payment_intent.succeeded']);
+
+    // Job should detect duplicate and return early
+    $job = new ProcessStripeEvent('payment_intent.succeeded', ['id' => $eventId], $eventId);
+    $job->handle();
+
+    // Assert no duplicate processing occurred
+    $this->assertDatabaseCount('webhook_events', 1);
+});
+```
+
+### 11. TEST SCOPE DECISION
 
 | Scope             | What to Test                                        | What to Mock                                 | Use When                            |
 | ----------------- | --------------------------------------------------- | -------------------------------------------- | ----------------------------------- |
@@ -428,7 +490,7 @@ it('calculates order total from items', function () {
 | `RefreshDatabase`      | Migrates once, wraps each test in transaction + rollback | Default - most feature tests                 |
 | `DatabaseTransactions` | Wraps test in transaction but does NOT migrate           | Tests that need to test transaction behavior |
 
-### 11. TEST ORGANIZATION
+### 12. TEST ORGANIZATION
 
 ```
 tests/
@@ -456,7 +518,7 @@ uses(Tests\TestCase::class, RefreshDatabase::class)->in('Feature');
 uses(Tests\TestCase::class)->in('Unit');
 ```
 
-### 12. CI AND COVERAGE
+### 13. CI AND COVERAGE
 
 ```xml
 <!-- phpunit.xml -->
@@ -518,3 +580,5 @@ Excluded: [directories]
 - Missing factory states (inline data setup duplicated across tests)
 - Testing private methods directly (test through public interface)
 - `dd()` left in test files
+- Webhook tests without signature verification (tests pass but production rejects unsigned requests)
+- Missing idempotency tests for webhook handlers (duplicate events cause double processing)

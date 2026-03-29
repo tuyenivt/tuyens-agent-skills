@@ -20,6 +20,26 @@ user-invocable: true
 - NOT for: single-file bug fixes or isolated errors (use `task-laravel-debug`)
 - NOT for: adding a column to an existing table without new business logic
 
+## Edge Cases
+
+- **Partial input**: If the user provides only a feature name without details, ask for entity fields, relationships, and operations before proceeding to design.
+- **Existing model**: If the user references a model that already exists, read the existing model class and extend it rather than creating a new one. Skip the migration step if no schema change is needed.
+- **No database**: If the feature does not require persistence (e.g., proxy/aggregation endpoint), skip model, migration, and factory steps; generate only controller, service, DTOs, and tests.
+- **Webhook endpoint**: If the feature receives external callbacks (e.g., Stripe, payment provider), use the webhook controller pattern from `laravel-api-patterns` instead of standard resource controllers.
+- **Status transitions**: If the feature has state changes (e.g., pending -> processing -> shipped), use the state machine pattern from `laravel-service-patterns` with transition validation.
+
+## Rules
+
+- Constructor injection only - never `app()` in business logic
+- `readonly` classes for all DTOs - never pass raw `$request` arrays between layers
+- `$fillable` whitelist on models - never `$guarded = []`
+- Backed enums for all status/type columns - never bare strings
+- API Resources for all responses - never return raw Eloquent models
+- Form Requests for all validation - never validate inline in controllers
+- Present design for user approval before generating any code
+- Each step must complete and be reviewed before proceeding to the next
+- Run `php artisan test` after all files are generated
+
 ## Workflow
 
 STEP 1 - DETECT FRAMEWORK: Use skill: `stack-detect` to confirm Laravel. Read `composer.json` to verify `laravel/framework` dependency and PHP version. If Laravel is not detected, stop and inform the user this workflow requires a Laravel project.
@@ -30,8 +50,10 @@ STEP 2 - GATHER: Ask the user these questions before writing any code:
 2. What are the main entities/models? (fields, relationships, constraints)
 3. Are there external integrations? (payment APIs, email, third-party services)
 4. Are background jobs needed? (async processing, notifications, scheduled tasks)
-5. Does the feature need authentication/authorization?
-6. Are there status transitions? (e.g., order: pending -> processing -> completed)
+5. Does the feature need authentication/authorization? (who can access what?)
+6. Are there status transitions? (list all states and valid transitions, e.g., pending -> processing -> shipped)
+7. Are there webhook endpoints? (external callbacks from payment providers, etc.)
+8. Is there concurrent access? (inventory, seat reservations - needs locking strategy)
 
 STEP 3 - DESIGN: Propose the implementation layers and present for user approval before generating code.
 
@@ -40,6 +62,8 @@ Use skill: `laravel-eloquent-patterns` for model/relationship design.
 Use skill: `laravel-service-patterns` for service/action/DTO design.
 **If background jobs needed**: Use skill: `laravel-queue-patterns` for job design.
 **If auth needed**: Use skill: `laravel-security-patterns` for auth/policy design.
+**If status transitions**: Use skill: `laravel-service-patterns` (section 7) for state machine pattern.
+**If webhook endpoints**: Use skill: `laravel-api-patterns` (section 10) for webhook controller pattern and `laravel-security-patterns` (section 12) for signature verification.
 
 Present a file tree showing what will be generated:
 
@@ -200,8 +224,8 @@ STEP 11 - VALIDATE: Run `php artisan test`, `php artisan route:list` to verify. 
 ## Self-Check
 
 - [ ] STEP 1: Laravel detected via `stack-detect`; `composer.json` confirms `laravel/framework`
-- [ ] STEP 2: Requirements gathered from user; all six questions answered
-- [ ] STEP 3: Design presented and approved by user before code generation
+- [ ] STEP 2: Requirements gathered from user; all eight questions answered
+- [ ] STEP 3: Design presented and approved by user before code generation; webhook/state machine patterns included if applicable
 - [ ] STEP 4: Migration created with indexes on FKs and filtered columns; zero-downtime patterns applied
 - [ ] STEP 5: Models have typed relationships, `$fillable` whitelist, `casts()`, backed enums
 - [ ] STEP 6: Business logic in services/actions with `DB::transaction()`; events dispatched for side effects

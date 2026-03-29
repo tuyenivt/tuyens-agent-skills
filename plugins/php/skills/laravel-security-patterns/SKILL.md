@@ -340,7 +340,85 @@ $request->session()->regenerateToken();
 | Social login      | Socialite                             | laravel/socialite |
 | API tokens + SPA  | Dual Sanctum config (separate guards) | laravel/sanctum   |
 
-### 12. MULTI-TENANCY
+### 12. WEBHOOK SIGNATURE VERIFICATION
+
+Always verify webhook signatures from external providers. Never trust raw payloads without cryptographic verification.
+
+```php
+// Bad - no signature verification, trusts any payload
+Route::post('/webhooks/stripe', function (Request $request) {
+    $data = $request->json(); // anyone can send fake events
+    Order::find($data['order_id'])->update(['status' => 'paid']);
+});
+
+// Good - verify HMAC signature before processing
+class StripeWebhookController extends Controller
+{
+    public function __invoke(Request $request): JsonResponse
+    {
+        $payload = $request->getContent();
+        $signature = $request->header('Stripe-Signature');
+        $secret = config('services.stripe.webhook_secret');
+
+        try {
+            $event = \Stripe\Webhook::constructEvent($payload, $signature, $secret);
+        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            Log::warning('Stripe webhook signature verification failed', [
+                'ip' => $request->ip(),
+            ]);
+            return response()->json(['error' => 'Invalid signature'], 403);
+        }
+
+        // Process only after verification
+        ProcessStripeEvent::dispatch($event->type, $event->data->object->toArray());
+
+        return response()->json(['received' => true]);
+    }
+}
+```
+
+#### Generic HMAC Verification (Non-Stripe Providers)
+
+```php
+// For providers that use simple HMAC-SHA256 signatures
+class WebhookSignatureMiddleware
+{
+    public function handle(Request $request, Closure $next, string $configKey): Response
+    {
+        $secret = config("services.{$configKey}.webhook_secret");
+        $expected = hash_hmac('sha256', $request->getContent(), $secret);
+        $received = $request->header('X-Webhook-Signature');
+
+        if (! hash_equals($expected, $received)) {
+            abort(403, 'Invalid webhook signature');
+        }
+
+        return $next($request);
+    }
+}
+```
+
+#### Idempotency for Webhooks
+
+Providers may send the same event multiple times. Store processed event IDs to prevent duplicate processing:
+
+```php
+// In the job that processes webhook events
+public function handle(): void
+{
+    // Idempotency check - skip if already processed
+    if (WebhookEvent::where('provider_event_id', $this->eventId)->exists()) {
+        return;
+    }
+
+    DB::transaction(function () {
+        WebhookEvent::create(['provider_event_id' => $this->eventId, 'type' => $this->eventType]);
+        // ... process the event
+    });
+}
+```
+
+### 13. MULTI-TENANCY
 
 Tenant isolation via global scopes and tenant-aware policies.
 
@@ -397,4 +475,7 @@ Guards: [list of auth guards configured]
 - File uploads stored in `public/` without access control
 - Real secrets in `.env.example`
 - `md5()` or `sha1()` for password hashing (use `Hash::make()`)
+- Trusting webhook payloads without signature verification (forged events)
+- Using `==` instead of `hash_equals()` for signature comparison (timing attack)
+- Missing webhook idempotency (duplicate event processing)
 - Missing `email:rfc,dns` validation (allows malformed emails)

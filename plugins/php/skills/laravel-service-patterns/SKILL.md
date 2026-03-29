@@ -453,6 +453,96 @@ class SendOrderConfirmation { ... }
 | Ordering matters between side effects   | Direct call |
 | Multiple listeners for same trigger     | Event       |
 
+### 7. STATE MACHINE / STATUS TRANSITIONS
+
+Use a dedicated method or action to enforce valid status transitions. Never allow arbitrary status updates.
+
+```php
+// Bad - status updated directly with no transition validation
+$order->update(['status' => OrderStatus::Shipped]);
+// Allows invalid transitions: Pending -> Shipped (skipping Processing)
+
+// Good - transition method validates allowed transitions
+class OrderService
+{
+    private const TRANSITIONS = [
+        OrderStatus::Pending->value => [OrderStatus::Processing, OrderStatus::Cancelled],
+        OrderStatus::Processing->value => [OrderStatus::Shipped, OrderStatus::Cancelled],
+        OrderStatus::Shipped->value => [OrderStatus::Delivered],
+        OrderStatus::Delivered->value => [],
+        OrderStatus::Cancelled->value => [],
+    ];
+
+    public function transition(Order $order, OrderStatus $to): Order
+    {
+        $allowed = self::TRANSITIONS[$order->status->value] ?? [];
+
+        if (! in_array($to, $allowed, true)) {
+            throw new InvalidStatusTransitionException($order->status, $to);
+        }
+
+        return DB::transaction(function () use ($order, $to) {
+            $from = $order->status;
+            $order->update(['status' => $to]);
+
+            OrderStatusChanged::dispatch($order, $from, $to);
+
+            return $order;
+        });
+    }
+}
+```
+
+```php
+// Custom exception for invalid transitions
+class InvalidStatusTransitionException extends DomainException
+{
+    public function __construct(
+        public readonly OrderStatus $from,
+        public readonly OrderStatus $to,
+    ) {
+        parent::__construct("Cannot transition from {$from->value} to {$to->value}");
+    }
+}
+```
+
+#### State Machine Placement
+
+| Complexity                                         | Place Transition Logic In             |
+| -------------------------------------------------- | ------------------------------------- |
+| Simple (3-5 states)                                | Service method with const map         |
+| Complex (6+ states)                                | Dedicated Action class                |
+| Very complex (guards, side effects per transition) | `spatie/laravel-model-states` package |
+
+#### Transition Events
+
+Dispatch a typed event on each transition so listeners can react to specific changes:
+
+```php
+class OrderStatusChanged
+{
+    use Dispatchable, SerializesModels;
+
+    public function __construct(
+        public readonly Order $order,
+        public readonly OrderStatus $from,
+        public readonly OrderStatus $to,
+    ) {}
+}
+
+// Listener reacts to specific transitions
+class HandleOrderShipped
+{
+    public function handle(OrderStatusChanged $event): void
+    {
+        if ($event->to !== OrderStatus::Shipped) {
+            return;
+        }
+        SendShippingNotification::dispatch($event->order->id);
+    }
+}
+```
+
 ### WHEN TO EXTRACT
 
 | Signal                                               | Extract To                |
@@ -497,3 +587,5 @@ Type: {Service | Action | DTO | Event | Listener}
 - Dispatching jobs inside DB transactions (use `afterCommit`)
 - Anemic services that just proxy Eloquent calls (no value added)
 - Circular service dependencies (indicates wrong domain boundary)
+- Direct status field updates without transition validation (allows invalid state changes)
+- Status transition logic in controllers or models (belongs in services/actions)

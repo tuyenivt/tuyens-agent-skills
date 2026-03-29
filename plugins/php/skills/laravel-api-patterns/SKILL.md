@@ -419,6 +419,72 @@ public function index(Request $request): AnonymousResourceCollection
 }
 ```
 
+### 10. WEBHOOK CONTROLLERS
+
+Webhook endpoints receive external callbacks (Stripe, payment providers, etc.). They differ from standard API endpoints: no auth middleware, signature verification instead, immediate 200 response, async processing.
+
+```php
+// Bad - processes webhook synchronously, no signature verification
+Route::post('/webhooks/stripe', function (Request $request) {
+    $event = json_decode($request->getContent());
+    // Process inline - blocks the response, no verification
+    $order = Order::find($event->data->object->metadata->order_id);
+    $order->update(['status' => 'paid']);
+    return response('OK');
+});
+```
+
+```php
+// Good - verify signature, respond fast, process async
+class StripeWebhookController extends Controller
+{
+    public function __invoke(Request $request): JsonResponse
+    {
+        // 1. Verify signature (see laravel-security-patterns for details)
+        $payload = $request->getContent();
+        $signature = $request->header('Stripe-Signature');
+
+        try {
+            $event = \Stripe\Webhook::constructEvent(
+                $payload,
+                $signature,
+                config('services.stripe.webhook_secret'),
+            );
+        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            return response()->json(['error' => 'Invalid signature'], 403);
+        }
+
+        // 2. Dispatch to queue for async processing
+        ProcessStripeEvent::dispatch($event->type, $event->data->object->toArray());
+
+        // 3. Respond 200 immediately - Stripe retries on non-2xx
+        return response()->json(['received' => true]);
+    }
+}
+```
+
+```php
+// Route - no auth middleware, CSRF excluded
+Route::post('/webhooks/stripe', StripeWebhookController::class)
+    ->middleware('throttle:webhook');
+
+// Dedicated rate limiter for webhooks
+RateLimiter::for('webhook', function (Request $request) {
+    return Limit::perMinute(120)->by($request->ip());
+});
+```
+
+#### Webhook Controller Rules
+
+| Concern        | Pattern                                                  |
+| -------------- | -------------------------------------------------------- |
+| Authentication | Signature verification, not Sanctum/session              |
+| Response time  | Return 200 immediately, process async via queue          |
+| Idempotency    | Store processed event IDs, skip duplicates               |
+| CSRF           | Exclude from CSRF middleware                             |
+| Rate limiting  | Separate limiter (higher than API, lower than unlimited) |
+| Retry behavior | Provider retries on non-2xx; ensure idempotency          |
+
 ## Output Format
 
 ```
@@ -446,3 +512,6 @@ public function index(Request $request): AnonymousResourceCollection
 - Hardcoded pagination limits (allow per_page parameter with max cap)
 - Returning 200 for errors or 500 for validation failures (use correct HTTP status codes)
 - `abort(500)` for expected business errors (use 4xx with descriptive messages)
+- Processing webhooks synchronously in the controller (dispatch to queue, respond 200 fast)
+- Webhook endpoints with auth:sanctum middleware (use signature verification instead)
+- Missing webhook signature verification (accepts forged payloads)

@@ -367,7 +367,68 @@ Order::where('status', 'pending')
     ->dd();
 ```
 
-### 8. AGGREGATES AND COUNTS
+### 8. LOCKING AND CONCURRENCY
+
+Use database locks to prevent race conditions on concurrent updates (inventory, seat reservations, balance changes).
+
+```php
+// Bad - race condition: two requests read stock=10, both decrement to 9
+$product = Product::find($id);
+if ($product->stock >= $quantity) {
+    $product->decrement('stock', $quantity); // lost update
+}
+
+// Good - pessimistic lock: SELECT ... FOR UPDATE holds row lock until commit
+DB::transaction(function () use ($productId, $quantity) {
+    $product = Product::lockForUpdate()->findOrFail($productId);
+
+    if ($product->stock < $quantity) {
+        throw new InsufficientStockException($product->name, $quantity, $product->stock);
+    }
+
+    $product->decrement('stock', $quantity);
+});
+```
+
+#### Atomic Updates (No Lock Needed)
+
+For simple increments/decrements where you don't need to read-then-write:
+
+```php
+// Good - atomic SQL UPDATE, no race condition
+Product::where('id', $productId)
+    ->where('stock', '>=', $quantity) // guard in WHERE clause
+    ->decrement('stock', $quantity);
+
+// Check if update succeeded (affected rows > 0)
+$affected = Product::where('id', $productId)
+    ->where('stock', '>=', $quantity)
+    ->update(['stock' => DB::raw("stock - {$quantity}")]);
+
+if ($affected === 0) {
+    throw new InsufficientStockException(...);
+}
+```
+
+#### Locking Strategy Selection
+
+| Scenario                      | Strategy                             |
+| ----------------------------- | ------------------------------------ |
+| Simple increment/decrement    | Atomic `WHERE` + `UPDATE` (no lock)  |
+| Read-check-write (inventory)  | `lockForUpdate()` in transaction     |
+| High-contention hot rows      | Atomic update or queue serialization |
+| Optimistic concurrency (rare) | Version column check on update       |
+
+#### Shared Lock (Read Lock)
+
+```php
+// Shared lock: prevents writes but allows other reads
+$order = Order::sharedLock()->find($id);
+// Use when you need consistent reads within a transaction
+// but don't need to update the row
+```
+
+### 9. AGGREGATES AND COUNTS
 
 Use database-level aggregates instead of loading full collections.
 
@@ -395,7 +456,7 @@ Product::withCount(['reviews' => fn($q) => $q->where('rating', '>=', 4)])
     ->get(); // $product->reviews_count (only 4+ star)
 ```
 
-### 9. PAGINATION
+### 10. PAGINATION
 
 Choose the right pagination method based on dataset size and UI needs.
 
@@ -459,3 +520,5 @@ public function index(Request $request): AnonymousResourceCollection
 - Missing foreign key constraints in migrations (data integrity)
 - String status columns without backed enums (typo-prone)
 - `cursor()` when you need eager loading (N+1 trap)
+- Decrementing without `WHERE` guard or lock (race condition / negative stock)
+- `lockForUpdate()` outside a `DB::transaction()` (lock is released immediately)
