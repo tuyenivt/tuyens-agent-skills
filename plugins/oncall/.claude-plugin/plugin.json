@@ -1,6 +1,6 @@
 {
   "name": "oncall",
-  "version": "1.59.0",
+  "version": "1.60.0",
   "description": "Incident response plugin: root cause analysis, postmortem, and on-call handoff workflows. Requires core plugin.",
   "author": {
     "name": "Tuyen"

@@ -1,6 +1,6 @@
 ---
 name: go-migration-safety
-description: "Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, embedding in Go binary, CI validation."
+description: "Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, CHECK constraints, embedding in Go binary, CI validation."
 metadata:
   category: backend
   tags: [go, migration, postgresql, golang-migrate, ddl, zero-downtime]
@@ -9,10 +9,13 @@ user-invocable: false
 
 # Go Migration Safety
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Setting up database migrations for a new Go service
 - Reviewing a migration for production safety (locking risks, rollback coverage)
+- Adding CHECK constraints for status/enum columns
 - Debugging a failed migration or a schema drift issue
 - Embedding migrations in the Go binary for automated startup sequencing
 
@@ -23,6 +26,7 @@ user-invocable: false
 - Never mix DDL (schema changes) and DML (data changes) in the same file - they have different rollback characteristics
 - Never write a `down` that drops a column or table without a backup or a compensating migration - data loss is permanent
 - Zero-downtime DDL: add before delete, never rename in place
+- `CREATE INDEX CONCURRENTLY` and `VALIDATE CONSTRAINT` cannot run inside a transaction - use `-- migrate: no transaction` at the top of those files
 
 ## File Naming
 
@@ -81,21 +85,65 @@ ALTER TABLE users VALIDATE CONSTRAINT users_phone_not_null;
 
 Do NOT use `ALTER TABLE users ALTER COLUMN phone SET NOT NULL` on tables with millions of rows - it acquires `AccessExclusiveLock` and scans the entire table.
 
+**PostgreSQL 11+ shortcut**: `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT 'value'` is instant for new columns (no table rewrite) because PostgreSQL stores the default in the catalog. This is safe for new columns only - it does NOT apply to `ALTER COLUMN SET NOT NULL` on existing columns.
+
+### Adding a CHECK Constraint (status/enum columns)
+
+For status columns with known valid values, add a CHECK constraint to prevent invalid data at the database level:
+
+```sql
+-- up: NOT VALID skips scanning existing rows - instant, no lock
+-- migrate: no transaction
+ALTER TABLE payments ADD CONSTRAINT payments_status_check
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed')) NOT VALID;
+
+-- Separate migration to validate existing rows:
+-- migrate: no transaction
+ALTER TABLE payments VALIDATE CONSTRAINT payments_status_check;
+
+-- down:
+ALTER TABLE payments DROP CONSTRAINT payments_status_check;
+```
+
+When adding a new status value later, drop and re-create the constraint:
+
+```sql
+-- migrate: no transaction
+ALTER TABLE payments DROP CONSTRAINT payments_status_check;
+ALTER TABLE payments ADD CONSTRAINT payments_status_check
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'refunded')) NOT VALID;
+ALTER TABLE payments VALIDATE CONSTRAINT payments_status_check;
+```
+
 ### Adding an Index (use CONCURRENTLY)
 
 ```sql
 -- up: CONCURRENTLY builds without locking writes
+-- migrate: no transaction
 CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 
 -- down:
 DROP INDEX CONCURRENTLY IF EXISTS idx_users_email;
 ```
 
-Note: `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. golang-migrate runs each file in a transaction by default - add `-- migrate: no transaction` at the top of the file:
+Note: `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. golang-migrate runs each file in a transaction by default - add `-- migrate: no transaction` at the top of the file.
+
+### Composite Indexes
+
+Common for lookups that filter on multiple columns (e.g., payments by user + status):
 
 ```sql
 -- migrate: no transaction
-CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+CREATE INDEX CONCURRENTLY idx_payments_user_status ON payments(user_id, status);
+```
+
+Column order matters: put the most selective (highest cardinality) column first, or the column that appears in equality conditions before range conditions.
+
+### Unique Index for Idempotency Keys
+
+```sql
+-- migrate: no transaction
+CREATE UNIQUE INDEX CONCURRENTLY idx_payments_idempotency_key ON payments(idempotency_key);
 ```
 
 ### Renaming a Column (expand-contract, never in-place rename)
@@ -203,33 +251,36 @@ migrate -path ./migrations -database "$TEST_DB_URL" up
 
 This catches: syntax errors, missing down migrations, and migrations that fail on re-apply.
 
-## Anti-Patterns
-
-```sql
--- Bad: GORM AutoMigrate in production startup
-db.AutoMigrate(&User{}, &Order{})
-
--- Bad: down migration that destroys data without backup step
--- 000005_add_user_type.down.sql
-ALTER TABLE users DROP COLUMN user_type; -- no backup, no compensating migration
-
--- Bad: mixing DDL and DML (different rollback behavior)
-ALTER TABLE users ADD COLUMN score INT DEFAULT 0;
-UPDATE users SET score = calculate_score(id); -- DML in same file
-
--- Bad: in-place rename (breaks running app instances)
-ALTER TABLE users RENAME COLUMN name TO full_name; -- running app breaks immediately
-
--- Bad: adding NOT NULL without a default or backfill step
-ALTER TABLE users ADD COLUMN phone VARCHAR(20) NOT NULL; -- fails if table has rows
-```
-
 ## Edge Cases
 
 - **Dirty migration state**: if a migration fails mid-way, golang-migrate marks the version as "dirty" - use `migrate force <version>` to reset to the last known good version, then fix and re-run
 - **Concurrent migration runs**: multiple app instances starting simultaneously can race on migrations - use a single migration runner (init container, CLI job) or rely on golang-migrate's advisory lock
 - **Empty down migration**: if a migration cannot be safely reversed (e.g., dropped column with data), write a down file that raises an error explaining why manual intervention is needed rather than leaving it empty
 - **Large table backfills**: batch `UPDATE` statements to avoid long-running transactions and WAL bloat - use `WHERE id BETWEEN ... AND ...` or a cursor-based approach
+- **Adding a status value to CHECK constraint**: requires dropping and re-creating the constraint (see pattern above). Plan for this when designing status columns - consider whether the constraint is worth the maintenance cost
+
+## Output Format
+
+```
+## Migration Plan
+
+### Migration Files
+| Version | File | Type | Lock Level | Notes |
+|---------|------|------|-----------|-------|
+| 000N | create_payments | DDL | ShareRowExclusive | new table |
+| 000N+1 | add_payments_status_check | DDL | None (NOT VALID) | CHECK constraint |
+| 000N+2 | validate_payments_status_check | DDL | ShareUpdateExclusive | validate existing rows |
+| 000N+3 | add_payments_indexes | DDL | None (CONCURRENTLY) | idempotency_key unique, user_id+status composite |
+
+### Safety Assessment
+| Risk | Mitigation |
+|------|-----------|
+| Table lock on large table | {NOT VALID + VALIDATE / CONCURRENTLY / batched backfill} |
+| Data loss on rollback | {compensating migration / backup step} |
+
+### Rollback Plan
+[down migration description for each step]
+```
 
 ## Avoid
 
@@ -239,3 +290,4 @@ ALTER TABLE users ADD COLUMN phone VARCHAR(20) NOT NULL; -- fails if table has r
 - Mixing DDL and DML in the same migration file
 - `CREATE INDEX` without `CONCURRENTLY` on large tables in production
 - Skipping `down` migrations - they are required for safe rollbacks
+- `ALTER COLUMN SET NOT NULL` on large tables - use CHECK constraint with NOT VALID instead

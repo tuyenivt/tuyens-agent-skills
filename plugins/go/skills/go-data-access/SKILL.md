@@ -1,6 +1,6 @@
 ---
 name: go-data-access
-description: "Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling. When to use GORM vs sqlx. Both can coexist."
+description: "Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling, upserts, and repository interface patterns. When to use GORM vs sqlx. Both can coexist."
 metadata:
   category: backend
   tags: [go, gorm, sqlx, database, postgresql, repository]
@@ -9,11 +9,14 @@ user-invocable: false
 
 # Go Data Access
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Designing the data access layer for a new Go service
 - Reviewing ORM usage for N+1, missing transactions, or pool misconfiguration
 - Choosing between GORM and sqlx for a specific query type
+- Implementing idempotent writes with upsert patterns
 - Debugging slow queries or connection exhaustion
 
 ## Rules
@@ -21,8 +24,10 @@ user-invocable: false
 - Never use `AutoMigrate` in production - use versioned migration files instead
 - Always configure connection pool limits - zero means unlimited, which will exhaust the database
 - Always close `*sql.Rows` - use `defer rows.Close()` immediately after checking the open error
+- Always pass `context.Context` to queries - use `db.WithContext(ctx)` for GORM, `db.QueryxContext(ctx, ...)` for sqlx
 - Transactions must be explicitly committed or rolled back - always use `defer tx.Rollback()` and only return after `tx.Commit()`
 - N+1: use `Preload` for associations you know you'll access; use `Joins` when filtering by association fields
+- Define repository interfaces in the consumer (service) package, not in the repository package
 
 ## When to Use GORM vs sqlx
 
@@ -36,7 +41,31 @@ user-invocable: false
 
 Both can share the same `*sql.DB` connection pool via `db.DB()`.
 
-## GORM Patterns
+## Patterns
+
+### Repository Interface (defined in consumer package)
+
+The service package defines the interface it needs. The repository package implements it. This keeps the dependency direction clean:
+
+```go
+// service/payment.go - consumer defines what it needs
+type PaymentRepository interface {
+    FindByID(ctx context.Context, id string) (*Payment, error)
+    Create(ctx context.Context, payment *Payment) error
+    CreateIdempotent(ctx context.Context, payment *Payment) (*Payment, error)
+    UpdateStatus(ctx context.Context, id string, status string) error
+    List(ctx context.Context, limit, offset int) ([]Payment, int64, error)
+}
+
+// repository/payment.go - implementation
+type paymentRepo struct {
+    db *gorm.DB
+}
+
+func NewPaymentRepository(db *gorm.DB) PaymentRepository {
+    return &paymentRepo{db: db}
+}
+```
 
 ### Model Definition
 
@@ -94,6 +123,41 @@ func (r *orderRepo) CreateWithItems(ctx context.Context, order *Order, items []I
 }
 ```
 
+### Upsert with Idempotency Key
+
+For operations that must be idempotent (payment processing, webhook handling), use GORM's `OnConflict` clause:
+
+```go
+func (r *paymentRepo) CreateIdempotent(ctx context.Context, payment *Payment) (*Payment, error) {
+    result := r.db.WithContext(ctx).
+        Clauses(clause.OnConflict{
+            Columns:   []clause.Column{{Name: "idempotency_key"}},
+            DoNothing: true,
+        }).Create(payment)
+    if result.Error != nil {
+        return nil, fmt.Errorf("createIdempotent: %w", result.Error)
+    }
+    if result.RowsAffected == 0 {
+        // Already exists - fetch and return the existing record
+        var existing Payment
+        if err := r.db.WithContext(ctx).Where("idempotency_key = ?", payment.IdempotencyKey).First(&existing).Error; err != nil {
+            return nil, fmt.Errorf("fetch existing payment: %w", err)
+        }
+        return &existing, nil
+    }
+    return payment, nil
+}
+```
+
+For sqlx with raw SQL:
+
+```sql
+INSERT INTO payments (id, idempotency_key, amount, status)
+VALUES (:id, :idempotency_key, :amount, :status)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING *;
+```
+
 ### Scopes for Reusable Query Logic
 
 ```go
@@ -109,6 +173,24 @@ func PaginatedBy(page, pageSize int) func(*gorm.DB) *gorm.DB {
 
 // Usage
 db.Scopes(ActiveUsers, PaginatedBy(2, 20)).Find(&users)
+```
+
+### List with Count (Pagination)
+
+```go
+func (r *paymentRepo) List(ctx context.Context, limit, offset int) ([]Payment, int64, error) {
+    var payments []Payment
+    var total int64
+
+    db := r.db.WithContext(ctx).Model(&Payment{})
+    if err := db.Count(&total).Error; err != nil {
+        return nil, 0, fmt.Errorf("count payments: %w", err)
+    }
+    if err := db.Limit(limit).Offset(offset).Order("created_at DESC").Find(&payments).Error; err != nil {
+        return nil, 0, fmt.Errorf("list payments: %w", err)
+    }
+    return payments, total, nil
+}
 ```
 
 ### Hooks (Use Sparingly)
@@ -204,27 +286,36 @@ sqlDB.SetConnMaxIdleTime(1 * time.Minute) // close connections idle longer than 
 - `MaxIdleConns`: set to ~40% of MaxOpenConns to avoid connection churn
 - `ConnMaxLifetime`: always set - prevents stale connections after DB restarts or load balancer failovers
 
-## Anti-Patterns
+## Edge Cases
 
-```go
-// Bad: AutoMigrate in production (drops columns, causes locks)
-db.AutoMigrate(&User{})
+- **GORM soft delete**: `gorm.Model` embeds `DeletedAt` which enables soft delete automatically. `db.Delete(&user)` sets `deleted_at` rather than removing the row. Use `db.Unscoped().Delete(&user)` for hard delete. Queries automatically filter out soft-deleted rows
+- **GORM zero-value updates**: `db.Save(&user)` updates all fields including zero values. Use `db.Model(&user).Updates(map[string]any{...})` to update only specific fields
+- **sqlx StructScan with NULL**: nullable columns must use pointer types or `sql.NullString`/`sql.NullInt64` in the scan target, or the scan will fail
 
-// Bad: new connection per request (exhausts DB connections)
-func handler(w http.ResponseWriter, r *http.Request) {
-    db, _ := gorm.Open(...)
-    defer db.Close() // this is wasteful and slow
-}
+## Output Format
 
-// Bad: forgetting to close rows (connection leak)
-rows, _ := db.Raw("SELECT ...").Rows()
-// no defer rows.Close()
+```
+## Data Access Design
 
-// Bad: no pool limits (unlimited connections will crash the DB under load)
-db, _ := gorm.Open(...)
-// missing SetMaxOpenConns
+### Models
+| Model | Table | Associations | Soft Delete? |
+|-------|-------|-------------|-------------|
+| {Name} | {table_name} | {has-many/belongs-to} | {yes/no} |
 
-// Bad: mixing AutoMigrate and manual migrations (schema drift)
+### Repository Interface
+| Method | GORM/sqlx | Query Type |
+|--------|-----------|------------|
+| FindByID | GORM | single record lookup |
+| List | GORM | paginated list with count |
+| CreateIdempotent | GORM | upsert with ON CONFLICT |
+| GetReport | sqlx | aggregate reporting query |
+
+### Connection Pool
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| MaxOpenConns | {n} | {why} |
+| MaxIdleConns | {n} | {why} |
+| ConnMaxLifetime | {duration} | {why} |
 ```
 
 ## Avoid
@@ -235,13 +326,5 @@ db, _ := gorm.Open(...)
 - Hooks for non-trivial business logic
 - GORM for complex reporting queries - use sqlx
 - Transactions without deferred rollback
-
-## Self-Check
-
-- [ ] GORM used for CRUD with associations; sqlx used for complex reporting queries
-- [ ] Connection pool configured immediately after opening (`SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime`)
-- [ ] All `*sql.Rows` closed with `defer rows.Close()` after checking the open error
-- [ ] Transactions use `defer tx.Rollback()` with explicit `tx.Commit()` on success
-- [ ] N+1 prevented with `Preload` for known associations or `Joins` for filtered queries
-- [ ] Repository interface defined in the consumer (service) package
-- [ ] No `AutoMigrate` in production code
+- Missing `WithContext(ctx)` on GORM queries
+- Defining repository interfaces in the repository package instead of the consumer (service) package

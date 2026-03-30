@@ -1,19 +1,22 @@
 ---
 name: go-gin-patterns
-description: "Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, graceful shutdown, health endpoints."
+description: "Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, webhook handlers, rate limiting, graceful shutdown, health endpoints."
 metadata:
   category: backend
-  tags: [go, gin, http, middleware, routing, pagination]
+  tags: [go, gin, http, middleware, routing, pagination, webhook]
 user-invocable: false
 ---
 
 # Go Gin Patterns
+
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
 - Structuring a new Gin HTTP service or reviewing an existing one
 - Implementing middleware (auth, logging, rate limiting, error handling)
 - Designing consistent API request/response contracts
+- Implementing webhook endpoints that need raw body reading and signature validation
 - Adding health and readiness endpoints for Kubernetes or load balancers
 - Implementing graceful shutdown for zero-downtime deploys
 
@@ -24,6 +27,7 @@ user-invocable: false
 - Never use `gin.Default()` in production - it registers logger and recovery middleware you can't control; use `gin.New()` and attach explicitly
 - Never concatenate host and port as strings - use `net.JoinHostPort`
 - Return consistent response envelopes for all endpoints (success and error)
+- For webhook endpoints, read the raw body before any JSON binding - `ShouldBindJSON` consumes the body and breaks signature validation
 
 ## Patterns
 
@@ -40,8 +44,14 @@ func NewRouter(cfg *Config, deps *Dependencies) *gin.Engine {
     r.GET("/health", handlers.Health)
     r.GET("/ready", handlers.Ready(deps.DB))
 
+    // Webhook endpoints - signature validation, no JWT auth
+    webhooks := r.Group("/api/v1/webhooks")
+    webhooks.POST("/stripe", middleware.WebhookSignature(cfg.StripeWebhookSecret), handlers.StripeWebhook(deps.PaymentService))
+
+    // API endpoints - JWT auth required
     v1 := r.Group("/api/v1")
     v1.Use(middleware.Auth(cfg.JWTSecret))
+    v1.Use(middleware.RateLimit(cfg.RateLimit))
     {
         users := v1.Group("/users")
         users.GET("", handlers.ListUsers(deps.UserService))
@@ -142,6 +152,49 @@ c.JSON(http.StatusOK, SuccessResponse{
 })
 ```
 
+### Webhook Handler (Raw Body + Signature Validation)
+
+Webhook endpoints from external services (Stripe, GitHub, etc.) require reading the raw body for signature validation. `ShouldBindJSON` consumes the body, so webhook handlers must use a different pattern:
+
+```go
+// Middleware: validate webhook signature before handler runs
+func WebhookSignature(secret string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        body, err := c.GetRawData()
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResponse{Error: "invalid body"})
+            return
+        }
+        sig := c.GetHeader("Stripe-Signature")
+        if _, err := webhook.ConstructEvent(body, sig, secret); err != nil {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid signature"})
+            return
+        }
+        c.Set("webhook_body", body)
+        c.Next()
+    }
+}
+
+// Handler: reads pre-validated body from context
+func StripeWebhook(svc PaymentService) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        body := c.MustGet("webhook_body").([]byte)
+        var event stripe.Event
+        if err := json.Unmarshal(body, &event); err != nil {
+            c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid event"})
+            return
+        }
+        if err := svc.HandleWebhookEvent(c.Request.Context(), event); err != nil {
+            c.Error(err)
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"received": true})
+    }
+}
+```
+
+Webhook endpoints should NOT be behind JWT auth middleware - they use their own signature-based authentication.
+
 ### Custom Middleware
 
 ```go
@@ -168,6 +221,42 @@ func Logger() gin.HandlerFunc {
             "status", c.Writer.Status(),
             "duration", time.Since(start),
         )
+    }
+}
+```
+
+### Rate Limiting Middleware
+
+```go
+func RateLimit(rps int) gin.HandlerFunc {
+    limiter := rate.NewLimiter(rate.Limit(rps), rps)
+    return func(c *gin.Context) {
+        if !limiter.Allow() {
+            c.AbortWithStatusJSON(http.StatusTooManyRequests, ErrorResponse{Error: "rate limit exceeded"})
+            return
+        }
+        c.Next()
+    }
+}
+
+// Per-client rate limiting (by IP or API key)
+func PerClientRateLimit(rps int) gin.HandlerFunc {
+    var mu sync.Mutex
+    clients := make(map[string]*rate.Limiter)
+    return func(c *gin.Context) {
+        key := c.ClientIP()
+        mu.Lock()
+        lim, ok := clients[key]
+        if !ok {
+            lim = rate.NewLimiter(rate.Limit(rps), rps)
+            clients[key] = lim
+        }
+        mu.Unlock()
+        if !lim.Allow() {
+            c.AbortWithStatusJSON(http.StatusTooManyRequests, ErrorResponse{Error: "rate limit exceeded"})
+            return
+        }
+        c.Next()
     }
 }
 ```
@@ -216,28 +305,37 @@ func Run(r *gin.Engine, cfg *Config) error {
 }
 ```
 
-## Anti-Patterns
+## Edge Cases
 
-```go
-// Bad: business logic in handler
-func GetUser(c *gin.Context) {
-    id := c.Param("id")
-    var user User
-    db.Where("id = ? AND deleted_at IS NULL", id).First(&user) // DB logic in handler
-    c.JSON(200, user) // no error handling, no envelope
-}
+- **Path parameter conflicts**: `/:id` and `/new` on the same group conflict - Gin treats `/new` as a value for `:id`. Use different prefixes or reorder routes
+- **Empty body on POST**: `ShouldBindJSON` with an empty body returns an error. If a POST endpoint accepts no body, don't use `ShouldBindJSON`
+- **Context cancellation in middleware**: if the client disconnects mid-request, `c.Request.Context()` is cancelled. Long-running handlers should check `ctx.Err()` periodically
+- **Webhook replay attacks**: validate webhook timestamp (Stripe includes `t=` in the signature header) to reject old events. Most webhook libraries handle this automatically within a tolerance window
 
-// Bad: c.JSON in service layer
-func (s *UserService) Create(req CreateUserRequest) {
-    // ...
-    c.JSON(201, user) // service cannot access gin context
-}
+## Output Format
 
-// Bad: gin.Default() in production
-r := gin.Default() // Logger and Recovery middlewares you can't configure
+```
+## API Design
 
-// Bad: string concatenation for address
-srv.Addr = cfg.Host + ":" + cfg.Port // use net.JoinHostPort instead
+### Endpoints
+| Method | Path | Auth | Request | Response | Status |
+|--------|------|------|---------|----------|--------|
+| GET    | /api/v1/{resource} | JWT | query params | SuccessResponse{[]T} + PaginationMeta | 200 |
+| POST   | /api/v1/{resource} | JWT | CreateRequest | SuccessResponse{T} | 201 |
+| POST   | /api/v1/webhooks/{provider} | Signature | raw body | {"received": true} | 200 |
+
+### Middleware Stack
+| Middleware | Scope | Purpose |
+|-----------|-------|---------|
+| Logger | global | request logging |
+| Recovery | global | panic recovery |
+| ErrorHandler | global | centralized error mapping |
+| Auth | /api/v1 | JWT validation |
+| WebhookSignature | /webhooks | signature validation |
+
+### Response Envelope
+- Success: `{"data": ..., "meta": ...}`
+- Error: `{"error": "...", "code": "..."}`
 ```
 
 ## Avoid
@@ -245,16 +343,8 @@ srv.Addr = cfg.Host + ":" + cfg.Port // use net.JoinHostPort instead
 - Business logic or database access in handler functions
 - Calling `c.JSON` outside of handler layer
 - `gin.Default()` - use `gin.New()` with explicit middleware
-- Concatenating host:port as strings
+- Concatenating host:port as strings - use `net.JoinHostPort`
 - No pagination limits (unbounded list endpoints)
 - Missing graceful shutdown (in-flight requests dropped on SIGTERM)
-
-## Self-Check
-
-- [ ] Handlers contain no business logic or direct DB access - they orchestrate services
-- [ ] All endpoints return a consistent response envelope (`SuccessResponse` / `ErrorResponse`)
-- [ ] List endpoints implement pagination with defaults and upper-bound limits
-- [ ] `gin.New()` used instead of `gin.Default()` with explicit middleware registration
-- [ ] Graceful shutdown implemented with `signal.Notify` and `srv.Shutdown`
-- [ ] Health and readiness endpoints present at `/health` and `/ready`
-- [ ] `net.JoinHostPort` used for address construction
+- Using `ShouldBindJSON` on webhook endpoints (consumes body, breaks signature validation)
+- Putting webhook endpoints behind JWT auth middleware (they use signature-based auth)

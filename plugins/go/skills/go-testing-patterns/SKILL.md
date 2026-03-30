@@ -1,6 +1,6 @@
 ---
 name: go-testing-patterns
-description: "Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify, interface mocking, t.Parallel, benchmarks, and testing/synctest."
+description: "Go testing: table-driven tests, httptest for Gin handlers and webhooks, testcontainers-go for integration, testify, interface mocking, t.Parallel, test fixtures, benchmarks, and testing/synctest."
 metadata:
   category: backend
   tags: [go, testing, httptest, testcontainers, testify, benchmarks]
@@ -9,11 +9,14 @@ user-invocable: false
 
 # Go Testing Patterns
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Designing a test strategy for a new Go service
 - Writing unit tests for handlers, services, or domain logic
 - Writing integration tests against a real PostgreSQL database
+- Testing webhook handlers with signature validation
 - Reviewing test quality - coverage gaps, brittle tests, or slow suites
 
 ## Rules
@@ -50,6 +53,44 @@ func TestValidateEmail(t *testing.T) {
             err := ValidateEmail(tt.email)
             if tt.wantErr {
                 require.Error(t, err)
+            } else {
+                require.NoError(t, err)
+            }
+        })
+    }
+}
+```
+
+### Table-Driven Tests for State Transitions
+
+When testing state machines (e.g., payment status), cover all valid and invalid transitions:
+
+```go
+func TestPaymentTransition(t *testing.T) {
+    t.Parallel()
+
+    tests := []struct {
+        name      string
+        from      string
+        to        string
+        wantErr   bool
+        errTarget error
+    }{
+        {name: "pending to processing", from: "pending", to: "processing", wantErr: false},
+        {name: "processing to completed", from: "processing", to: "completed", wantErr: false},
+        {name: "processing to failed", from: "processing", to: "failed", wantErr: false},
+        {name: "pending to completed (skip)", from: "pending", to: "completed", wantErr: true, errTarget: ErrInvalidTransition},
+        {name: "completed to pending (reverse)", from: "completed", to: "pending", wantErr: true, errTarget: ErrInvalidTransition},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            t.Parallel()
+            svc := NewPaymentService(mockRepo(tt.from))
+            err := svc.Transition(context.Background(), "pay_123", tt.to)
+            if tt.wantErr {
+                require.Error(t, err)
+                assert.ErrorIs(t, err, tt.errTarget)
             } else {
                 require.NoError(t, err)
             }
@@ -107,6 +148,67 @@ func TestGetUser_NotFound(t *testing.T) {
 }
 ```
 
+### Webhook Handler Tests (Signature Validation)
+
+Webhook handlers require testing with raw bodies and valid/invalid signatures:
+
+```go
+func TestStripeWebhook_ValidSignature(t *testing.T) {
+    t.Parallel()
+
+    secret := "whsec_test_secret"
+    payload := []byte(`{"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_123"}}}`)
+
+    // Generate a valid signature (use Stripe's test helper or compute HMAC)
+    sig := computeStripeSignature(t, payload, secret)
+
+    mockSvc := &MockPaymentService{
+        HandleWebhookEventFn: func(ctx context.Context, event stripe.Event) error {
+            assert.Equal(t, "payment_intent.succeeded", event.Type)
+            return nil
+        },
+    }
+
+    r := gin.New()
+    r.POST("/webhooks/stripe", WebhookSignature(secret), StripeWebhook(mockSvc))
+
+    w := httptest.NewRecorder()
+    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
+    req.Header.Set("Stripe-Signature", sig)
+    r.ServeHTTP(w, req)
+
+    assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestStripeWebhook_InvalidSignature(t *testing.T) {
+    t.Parallel()
+
+    r := gin.New()
+    r.POST("/webhooks/stripe", WebhookSignature("whsec_test"), StripeWebhook(nil))
+
+    w := httptest.NewRecorder()
+    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", strings.NewReader(`{}`))
+    req.Header.Set("Stripe-Signature", "invalid")
+    r.ServeHTTP(w, req)
+
+    assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestStripeWebhook_MissingSignature(t *testing.T) {
+    t.Parallel()
+
+    r := gin.New()
+    r.POST("/webhooks/stripe", WebhookSignature("whsec_test"), StripeWebhook(nil))
+
+    w := httptest.NewRecorder()
+    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", strings.NewReader(`{}`))
+    // No Stripe-Signature header
+    r.ServeHTTP(w, req)
+
+    assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+```
+
 ### Interface Mocking (define in consumer, implement in test)
 
 ```go
@@ -132,6 +234,38 @@ func (m *MockUserRepository) Save(ctx context.Context, user *User) error {
 ```
 
 For larger projects, use `mockery` or `gomock` to generate mocks from interfaces automatically.
+
+### Test Fixtures
+
+For services with complex domain objects, use builder functions to create valid test data:
+
+```go
+func newTestPayment(opts ...func(*Payment)) *Payment {
+    p := &Payment{
+        ID:             "pay_test_123",
+        Amount:         1000,
+        Currency:       "usd",
+        Status:         "pending",
+        IdempotencyKey: "idk_" + uuid.New().String(),
+        CreatedAt:      time.Now(),
+    }
+    for _, opt := range opts {
+        opt(p)
+    }
+    return p
+}
+
+func withStatus(status string) func(*Payment) {
+    return func(p *Payment) { p.Status = status }
+}
+
+func withAmount(amount int64) func(*Payment) {
+    return func(p *Payment) { p.Amount = amount }
+}
+
+// Usage
+payment := newTestPayment(withStatus("completed"), withAmount(5000))
+```
 
 ### Integration Tests with testcontainers-go
 
@@ -173,11 +307,42 @@ func TestUserRepo_Integration(t *testing.T) {
 }
 ```
 
+### Testing Idempotent Upserts
+
+```go
+func TestPaymentRepo_CreateIdempotent(t *testing.T) {
+    // ... testcontainers setup ...
+
+    t.Run("first create succeeds", func(t *testing.T) {
+        payment := newTestPayment()
+        result, err := repo.CreateIdempotent(ctx, payment)
+        require.NoError(t, err)
+        assert.Equal(t, payment.IdempotencyKey, result.IdempotencyKey)
+    })
+
+    t.Run("duplicate returns existing without error", func(t *testing.T) {
+        payment := newTestPayment()
+        first, err := repo.CreateIdempotent(ctx, payment)
+        require.NoError(t, err)
+
+        // Same idempotency key, different amount
+        duplicate := newTestPayment(withAmount(9999))
+        duplicate.IdempotencyKey = payment.IdempotencyKey
+
+        second, err := repo.CreateIdempotent(ctx, duplicate)
+        require.NoError(t, err)
+        assert.Equal(t, first.ID, second.ID)
+        assert.Equal(t, first.Amount, second.Amount) // original amount preserved
+    })
+}
+```
+
 ### TestMain for Suite-Level Setup
 
 ```go
 func TestMain(m *testing.M) {
     // One-time setup before any tests in the package run
+    gin.SetMode(gin.TestMode) // suppress debug logging in tests
     pool, resource := setupTestDatabase()
 
     code := m.Run()
@@ -225,33 +390,37 @@ func TestDebounce(t *testing.T) {
 }
 ```
 
-## Anti-Patterns
-
-```go
-// Bad: no t.Parallel - tests run serially, suite takes 10x longer
-func TestSomething(t *testing.T) {
-    // missing t.Parallel()
-}
-
-// Bad: testing private functions - tests the implementation, not the behavior
-func TestparseToken(t *testing.T) { ... } // lowercase = private
-
-// Bad: mocking the database directly (brittle, misses real query behavior)
-mockDB.On("Query", ...).Return(...)
-
-// Bad: time.Sleep for async assertions (flaky on slow CI)
-go doAsyncWork()
-time.Sleep(100 * time.Millisecond)
-assert.Equal(t, expected, result)
-// use channels, synctest, or testcontainers wait strategies instead
-```
-
 ## Edge Cases
 
 - **t.Parallel with shared state**: subtests sharing a loop variable must capture it (Go < 1.22) or use `t.Parallel()` only when each subtest is truly independent - shared mocks or counters need synchronization
 - **testcontainers port mapping**: container internal port differs from host-mapped port - always use `container.MappedPort()` or `ConnectionString()`, never hardcode ports
 - **Gin test mode**: set `gin.SetMode(gin.TestMode)` in `TestMain` or init to suppress debug logging and avoid misleading output in CI
 - **Cleanup ordering**: `t.Cleanup` functions run in LIFO order - register container termination before DB connection close to avoid connection errors during teardown
+- **Webhook test signatures**: use the provider's test helpers or compute HMAC-SHA256 manually. Do not hardcode signatures - they include a timestamp that must match
+
+## Output Format
+
+```
+## Test Strategy
+
+### Test Coverage
+| Layer | Type | Count | Key Scenarios |
+|-------|------|-------|--------------|
+| Service | Unit (table-driven) | {n} | {happy path, transitions, errors} |
+| Handler | httptest | {n} | {CRUD, webhook sig validation} |
+| Repository | Integration (testcontainers) | {n} | {CRUD, upsert idempotency} |
+| Benchmark | Performance | {n} | {hot path functions} |
+
+### Test Fixtures
+| Fixture | Builder | Variants |
+|---------|---------|----------|
+| {Payment} | newTestPayment() | withStatus, withAmount |
+
+### Mock Interfaces
+| Interface | Package | Mock Strategy |
+|-----------|---------|--------------|
+| {PaymentRepository} | service | function-field struct |
+```
 
 ## Avoid
 
@@ -260,3 +429,4 @@ assert.Equal(t, expected, result)
 - Mocking the database - use `testcontainers-go` for real query validation
 - Missing `t.Parallel()` on independent tests - suites become unnecessarily slow
 - Shared global state between tests - each test must be independently runnable
+- Hardcoding webhook signatures in tests - compute them dynamically
