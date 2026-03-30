@@ -1,27 +1,58 @@
 ---
 name: kotlin-idioms
-description: "Idiomatic Kotlin patterns for Spring Boot projects: data classes for DTOs, null safety over Optional, scope functions (let/apply/run/also), sealed class error hierarchies, inline value classes, and Kotlin-Java interop annotations."
+description: "Idiomatic Kotlin patterns for Spring Boot projects: data classes for DTOs, null safety over Optional, scope functions (let/apply/run/also), sealed class error hierarchies, inline value classes, Kotlin-Java interop annotations, and JPA plugin configuration."
 user-invocable: false
 ---
 
 # Kotlin Idioms for Spring Boot
 
+> Load `Use skill: stack-detect` first to determine the project stack.
+
 ## When to Use
 
 - Writing DTOs, domain models, or error hierarchies in a Kotlin + Spring Boot project
+- Converting Java code (Optional, Lombok @Data, streams) to idiomatic Kotlin
 - Reviewing Kotlin code for Java-isms (Optional, getters/setters, streams)
 - Designing type-safe wrappers for IDs and primitive value types
 - Working with nullable types from Java libraries or JPA entities
+- Configuring Kotlin compiler plugins for JPA/Spring compatibility
+
+Not for coroutine patterns (see `kotlin-coroutines-spring`) or test patterns (see `kotlin-testing-patterns`).
 
 ## Rules
 
-- Use `data class` for DTOs and value objects; use regular `class` for JPA entities (`data class` and JPA proxies are incompatible)
+- Use `data class` for DTOs, value objects, and `@ConfigurationProperties` classes; use regular `class` for JPA entities (`data class` and Hibernate proxies are incompatible)
 - Use `T?` instead of `Optional<T>` - Kotlin null safety is more expressive and idiomatic
 - Use `!!` only when a null value is a programmer bug and you want an immediate crash - never for business logic
 - Use Kotlin stdlib collection operations (`map`, `filter`, `groupBy`) instead of Java streams
 - Use `@JvmStatic`, `@JvmField`, `@JvmOverloads` when Kotlin code must be called from Java or Spring frameworks
+- Configure `kotlin-jpa` and `kotlin-allopen` (or `kotlin-spring`) Gradle plugins - without them JPA entities fail at runtime with cryptic errors
+- Prefer `val` over `var` everywhere except JPA entity mutable fields (status, timestamps)
+- Limit scope function nesting to 2 levels maximum - extract to named functions beyond that
 
 ## Patterns
+
+### Gradle Plugin Configuration (Required for JPA)
+
+Kotlin classes are `final` by default and have no no-arg constructors. JPA and Spring require both. These plugins fix it at compile time:
+
+```kotlin
+// build.gradle.kts
+plugins {
+    kotlin("plugin.spring") version "..."   // opens @Component, @Service, @Configuration, etc.
+    kotlin("plugin.jpa") version "..."      // generates no-arg constructors for @Entity, @Embeddable, @MappedSuperclass
+}
+
+// Optional: extend allopen for custom annotations
+allOpen {
+    annotation("jakarta.persistence.Entity")
+    annotation("jakarta.persistence.MappedSuperclass")
+    annotation("jakarta.persistence.Embeddable")
+}
+```
+
+Without `kotlin-jpa`: `org.hibernate.InstantiationException: No default constructor for entity`
+Without `kotlin-spring`: `BeanNotOfRequiredTypeException` or `could not initialize proxy` on `@Transactional` classes
 
 ### Data Class for DTOs (not JPA entities)
 
@@ -40,7 +71,7 @@ data class OrderResponse(
     val createdAt: Instant,
 )
 
-// Bad: data class for JPA entity - Hibernate proxies don't work well with equals/hashCode based on all fields
+// Bad: data class for JPA entity - Hibernate proxies don't work with equals/hashCode on all fields
 @Entity
 data class Order( // avoid - use regular class
     @Id @GeneratedValue val id: Long = 0,
@@ -48,15 +79,43 @@ data class Order( // avoid - use regular class
     var status: OrderStatus,
 )
 
-// Good: regular class for JPA entity
+// Good: regular class for JPA entity with ID-based equals/hashCode
 @Entity
 class Order(
-    @Id @GeneratedValue val id: Long = 0,
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long = 0,
     val userId: Long,
     var status: OrderStatus = OrderStatus.PENDING,
+    @Column(updatable = false)
+    val createdAt: Instant = Instant.now(),
 ) {
-    override fun equals(other: Any?) = other is Order && id == other.id
+    override fun equals(other: Any?) = other is Order && id != 0L && id == other.id
     override fun hashCode() = id.hashCode()
+}
+```
+
+### ConfigurationProperties with Data Class
+
+```kotlin
+// Good: type-safe configuration binding
+@ConfigurationProperties(prefix = "app.orders")
+data class OrderProperties(
+    val maxItemsPerOrder: Int = 50,
+    val defaultCurrency: String = "USD",
+    val expirationHours: Long = 24,
+    val retry: RetryProperties = RetryProperties(),
+) {
+    data class RetryProperties(
+        val maxAttempts: Int = 3,
+        val delayMs: Long = 1000,
+    )
+}
+
+// Bad: Java-style mutable config class
+@ConfigurationProperties(prefix = "app.orders")
+class OrderProperties {
+    var maxItemsPerOrder: Int = 50  // unnecessary mutability
+    var defaultCurrency: String = "USD"
 }
 ```
 
@@ -82,6 +141,14 @@ val config = System.getenv("DATABASE_URL")
 ```
 
 ### Scope Functions
+
+| Function | Receiver | Return        | Use For                               |
+| -------- | -------- | ------------- | ------------------------------------- |
+| `let`    | `it`     | Lambda result | Null-safe transforms, local scope     |
+| `apply`  | `this`   | Object itself | Object configuration (builder-style)  |
+| `run`    | `this`   | Lambda result | Computing a value from object context |
+| `also`   | `it`     | Object itself | Side effects (logging, events)        |
+| `with`   | `this`   | Lambda result | Multiple operations on same object    |
 
 ```kotlin
 // let - transform a nullable value or create a local scope
@@ -110,19 +177,25 @@ val order = repo.save(newOrder)
 ### Sealed Classes for Error Hierarchies
 
 ```kotlin
-sealed class ApiResult<out T> {
-    data class Success<T>(val data: T) : ApiResult<T>()
-    data class NotFound(val message: String) : ApiResult<Nothing>()
-    data class ValidationError(val errors: List<String>) : ApiResult<Nothing>()
-    data class InternalError(val cause: Throwable) : ApiResult<Nothing>()
+sealed class OrderError {
+    data class NotFound(val orderId: Long) : OrderError()
+    data class ValidationFailed(val errors: List<String>) : OrderError()
+    data class InsufficientStock(val itemId: Long, val available: Int) : OrderError()
+    data object Unauthorized : OrderError()
 }
 
 // Exhaustive when - compiler enforces all cases are handled
-fun handleResult(result: ApiResult<Order>): ResponseEntity<*> = when (result) {
-    is ApiResult.Success -> ResponseEntity.ok(result.data)
-    is ApiResult.NotFound -> ResponseEntity.notFound().build<Unit>()
-    is ApiResult.ValidationError -> ResponseEntity.badRequest().body(result.errors)
-    is ApiResult.InternalError -> ResponseEntity.internalServerError().build<Unit>()
+fun handleError(error: OrderError): ResponseEntity<*> = when (error) {
+    is OrderError.NotFound -> ResponseEntity.status(404).body(mapOf("error" to "Order ${error.orderId} not found"))
+    is OrderError.ValidationFailed -> ResponseEntity.badRequest().body(error.errors)
+    is OrderError.InsufficientStock -> ResponseEntity.status(409).body("Item ${error.itemId}: only ${error.available} available")
+    is OrderError.Unauthorized -> ResponseEntity.status(403).build<Unit>()
+}
+
+// Sealed interface for result types (Kotlin 1.5+)
+sealed interface ApiResult<out T> {
+    data class Success<T>(val data: T) : ApiResult<T>
+    data class Failure(val error: OrderError) : ApiResult<Nothing>
 }
 ```
 
@@ -146,7 +219,38 @@ fun getOrder(orderId: Long): Order
 fun getUser(userId: Long): User
 ```
 
+### Extension Functions for Domain Operations
+
+```kotlin
+// Good: extension functions for entity mapping and domain logic
+fun Order.toResponse() = OrderResponse(
+    id = id,
+    status = status,
+    total = total,
+    createdAt = createdAt,
+)
+
+fun CreateOrderRequest.toEntity() = Order(
+    userId = userId,
+    status = OrderStatus.PENDING,
+)
+
+// Good: extension functions on collections for domain-specific operations
+fun List<Order>.totalRevenue(): BigDecimal = sumOf { it.total }
+fun List<Order>.activeOnly(): List<Order> = filter { it.status == OrderStatus.ACTIVE }
+
+// Bad: utility class with static methods (Java-ism)
+class OrderUtils {
+    companion object {
+        @JvmStatic
+        fun toResponse(order: Order) = OrderResponse(...)  // use extension function instead
+    }
+}
+```
+
 ### Kotlin-Java Interop Annotations
+
+Use these when Kotlin code must be consumed by Java code or Spring framework internals:
 
 ```kotlin
 // @JvmStatic: allows Java to call companion object functions without .Companion
@@ -195,9 +299,9 @@ val result = orders.asSequence()
 
 ## Edge Cases
 
-**Scope function nesting**: Never nest more than 2 scope functions. If you find yourself writing `x?.let { it.run { ... } }`, extract to a named function instead.
+**Kotlin JPA plugin missing**: If you see `No default constructor for entity` or `Entity class is final`, the fix is Gradle plugin configuration (see Patterns above), not manual `open` modifiers or empty constructors.
 
-**Data class copy() with JPA**: Even for DTOs, be careful with `copy()` on classes that hold mutable collections - `copy()` is a shallow copy. The new instance shares the same list reference.
+**Data class copy() with JPA**: Even for DTOs, `copy()` is a shallow copy. The new instance shares the same list reference as the original. Deep-copy mutable collections explicitly when needed.
 
 **Inline value classes with Jackson**: Jackson requires the `jackson-module-kotlin` module and may need `@JsonCreator` or `@JvmInline` to serialize/deserialize inline value classes correctly. Test serialization round-trips when introducing value classes to API boundaries.
 
@@ -209,6 +313,37 @@ val name: String = javaService.getName() // compiles but crashes if null
 val name: String? = javaService.getName() // safe - forces null handling
 ```
 
+**Sealed class exhaustiveness with `when`**: If you use `when` as a statement (not expression), the compiler does NOT enforce exhaustiveness. Always assign the `when` result to a variable or use it as a return value to get compile-time safety.
+
+**Spring `@Value` injection**: Use `@Value("\${property.name}")` (escaped dollar sign in Kotlin) or prefer `@ConfigurationProperties` data classes for type-safe, refactoring-friendly configuration.
+
+## Output Format
+
+```
+## Kotlin Idiom Review
+
+### Gradle Plugins
+- [ ] `kotlin-jpa` configured: {yes | no | not applicable}
+- [ ] `kotlin-spring` (allopen) configured: {yes | no | not applicable}
+
+### Conversions Applied
+| Java Pattern | Kotlin Idiom | Files Changed |
+|--------------|--------------|---------------|
+| Optional<T> | T? | {list} |
+| @Data DTO | data class | {list} |
+| @Data Entity | class + equals/hashCode | {list} |
+| Java streams | Kotlin stdlib | {list} |
+| Lombok builder | apply / named params | {list} |
+| Utility class | Extension functions | {list} |
+
+### Null Safety
+- Platform types (T!) treated as nullable at call sites: {yes | no}
+- !! usage: {count, each justified}
+
+### Warnings
+- {any edge cases encountered}
+```
+
 ## Avoid
 
 - `Optional<T>` - use Kotlin nullable types
@@ -217,3 +352,6 @@ val name: String? = javaService.getName() // safe - forces null handling
 - Java streams - use Kotlin stdlib collection operations
 - Java-style getters/setters - use Kotlin properties
 - Nested scope functions beyond 2 levels deep - extract to named functions instead
+- Manual `open` on JPA entities or Spring beans - use `kotlin-spring` and `kotlin-jpa` plugins
+- Utility classes with static methods - use extension functions
+- `@Value` for complex configuration - use `@ConfigurationProperties` data classes

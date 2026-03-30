@@ -41,18 +41,18 @@ Spring Boot ecosystem provided by the Java plugin.
 
 ### Atomic skills (3)
 
-| Skill                      | Description                                                                                                                 |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `kotlin-idioms`            | Data classes, null safety, extension functions, scope functions, sealed classes, inline value classes, Kotlin-Java interop  |
-| `kotlin-coroutines-spring` | Suspend functions in services, Flow streaming, coroutine-aware transactions, Virtual Thread interop, structured concurrency |
-| `kotlin-testing-patterns`  | MockK mocking, kotest matchers, @MockkBean, coroutine testing with runTest/turbine                                          |
+| Skill                      | Description                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kotlin-idioms`            | Data classes, null safety, extension functions, scope functions, sealed classes, inline value classes, JPA plugin config, @ConfigurationProperties, Kotlin-Java interop   |
+| `kotlin-coroutines-spring` | Suspend functions in services, Flow streaming, coroutine-aware transactions, Virtual Thread interop, structured concurrency, CoroutineScope beans, retry/timeout patterns |
+| `kotlin-testing-patterns`  | MockK mocking (coEvery/coVerify), kotest matchers, @MockkBean, Testcontainers integration, test fixture factories, coroutine testing with runTest/Turbine                 |
 
 ### Workflow skills (2)
 
-| Skill               | Description                                                                                                       | Delegates to Java plugin                                              |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (requirements, design, code, migration, tests, validation) | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
-| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin config)                                  | `task-spring-debug` for Java/Spring errors                            |
+| Skill               | Description                                                                                                                                              | Delegates to Java plugin                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with edge cases | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
+| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables              | `task-spring-debug` for Java/Spring errors                            |
 
 ### Total: 7 agents + 5 skills (intentionally small - this is a companion plugin)
 

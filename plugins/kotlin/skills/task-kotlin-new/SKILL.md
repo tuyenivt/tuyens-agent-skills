@@ -18,6 +18,19 @@ user-invocable: true
 - Adding a new domain aggregate with REST API, persistence, coroutines, and test coverage
 - Any daily coding task that requires coordinated generation of multiple Spring Boot layers in Kotlin
 
+Not for single-file changes (edit directly), isolated bug fixes (use `task-kotlin-debug`), or Java-only features (use `task-spring-new`).
+
+## Edge Cases
+
+- **Partial input**: User gives a vague feature name without details. Ask targeted questions in STEP 1 - never guess field names, types, or relationships
+- **No database**: Feature has no persistence (e.g., external API aggregation). Skip STEP 3 (entity + migration) and STEP 4 (repository). Generate service and controller only
+- **Existing entity**: User says "add endpoints for Order" and the entity already exists. Read the existing entity class and extend rather than creating a new one. Check for existing DTOs and repositories too
+- **Referenced entity doesn't exist**: Design references another entity (e.g., `User`) that isn't in the codebase yet. Ask the user whether to create it or use a plain ID reference
+- **Maven project**: Steps reference `./gradlew` but the project uses Maven. Detect `pom.xml` vs `build.gradle.kts` and adjust build commands (`./mvnw` or `mvn`)
+- **Bulk operations**: User needs batch create/update/delete. Use `@Transactional` with `saveAll()`, add a dedicated bulk endpoint (POST/PUT to collection URI), and validate collection size limits
+- **Coroutine vs blocking**: Not all endpoints need `suspend`. If the service layer is entirely blocking (JPA/JDBC), use regular functions. Add `suspend` only when the service path genuinely uses coroutines (parallel calls, Flow, R2DBC)
+- **Kotlin enum serialization**: When using Kotlin enums in API requests/responses, ensure Jackson serializes by name (default) or configure `@JsonValue` for custom serialization
+
 ## Rules
 
 - Constructor injection only - never `@Autowired` fields
@@ -27,12 +40,15 @@ user-invocable: true
 - No `synchronized` blocks - breaks Virtual Threads; use `ReentrantLock` if needed
 - Use `suspend` endpoints only when the service path is coroutine-based
 - Use `@MockkBean` not `@MockBean`; `coEvery`/`coVerify` for `suspend` function mocks
+- Configure `kotlin-jpa` and `kotlin-spring` Gradle plugins if not already present
 - Each step must complete and be reviewed before proceeding to the next
 - Present the design to the user for approval before generating code
 
 ## Implementation
 
-### STEP 1 - GATHER REQUIREMENTS (MANDATORY)
+### STEP 1 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
+
+Use skill: `stack-detect` to confirm the project is Kotlin + Spring Boot and identify framework versions, database, and build tool.
 
 Collect and confirm:
 
@@ -55,19 +71,22 @@ Propose and wait for approval:
 - Service methods and transaction boundaries
 - Coroutine scope decisions (suspend vs blocking, Flow vs List)
 - Error model and validation behavior
+- Kotlin enum types for status/category fields
 
 Only generate code after user approves design.
 
 ### STEP 3 - ENTITY + MIGRATION
 
-Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID).
+Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID, `kotlin-jpa`/`kotlin-spring` plugin check).
 
 Use skill: `spring-db-migration-safety` for zero-downtime migration safety.
 
 Generate:
 
-- Entity: Kotlin class (not data class) with JPA annotations, audit fields
+- Entity: Kotlin class (not data class) with JPA annotations, audit fields, ID-based equals/hashCode
+- Kotlin enum for status/type fields (if applicable)
 - Flyway migration with indexes for FK and filter columns
+- Verify `kotlin-jpa` and `kotlin-spring` plugins in `build.gradle.kts`
 
 Entity changes must always include a migration.
 
@@ -92,8 +111,9 @@ Generate service with business rules and mapping:
 - Constructor injection only
 - `@Service @Transactional(readOnly = true)`
 - `@Transactional` on mutating methods only
-- Entity-DTO mapping in-class
+- Entity-DTO mapping via extension functions (e.g., `Entity.toResponse()`)
 - Business exceptions from common base
+- `suspend` only when service path is coroutine-based (parallel calls, Flow, R2DBC)
 
 ### STEP 6 - CONTROLLER + DTO
 
@@ -110,29 +130,49 @@ Rules:
 
 - Use `suspend` endpoints only when service path is coroutine-based
 - Never return entities directly
+- Use Kotlin named parameters in DTO constructors for clarity
 
 ### STEP 7 - ERROR HANDLING + SECURITY CHECK
 
 Use skill: `spring-exception-handling` for error mapping patterns.
 
 - Apply consistent error mapping (use existing `@ControllerAdvice` or create if absent)
+- Map domain exceptions to HTTP status codes:
+
+| Domain Error          | HTTP Status |
+| --------------------- | ----------- |
+| NotFound              | 404         |
+| ValidationFailed      | 400         |
+| Conflict/DuplicateKey | 409         |
+| Unauthorized          | 403         |
+| BusinessRuleViolation | 422         |
+
 - Confirm endpoint auth requirements are explicit before finalizing
 
 ### STEP 8 - TESTS
 
-Use skill: `kotlin-testing-patterns` for MockK, kotest, and coroutine test patterns.
+Use skill: `kotlin-testing-patterns` for MockK, kotest, Testcontainers, and coroutine test patterns.
 
 Generate all three layers:
 
-- Unit tests: MockK with `coEvery`/`coVerify` for suspend functions; kotest matchers
-- Repository integration tests: `@DataJpaTest` + Testcontainers
+- Unit tests: MockK with `coEvery`/`coVerify` for suspend functions; kotest matchers; test fixture factories
+- Repository integration tests: `@DataJpaTest` + Testcontainers (PostgreSQLContainer or project-specific)
 - Controller/API tests: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
 
-Cover happy path, not-found, validation errors, and error responses.
+Cover: happy path, not-found, validation errors, error responses, and edge cases from domain logic.
 
 ### STEP 9 - VALIDATE
 
-Run: `./gradlew compileKotlin compileTestKotlin test`
+Run the appropriate build command:
+
+- Gradle: `./gradlew compileKotlin compileTestKotlin test`
+- Maven: `./mvnw compile test-compile test`
+
+Verify:
+
+- All tests pass
+- No compilation warnings about unsafe casts or unchecked operations
+- No detekt or ktlint violations (if configured)
 
 ### STEP 10 - OUTPUT SUMMARY
 
@@ -144,6 +184,7 @@ Present the output format below.
 ## Generated Files
 
 - [ ] Entity: `src/main/kotlin/.../entity/{Name}.kt`
+- [ ] Enum: `src/main/kotlin/.../entity/{StatusEnum}.kt` (if applicable)
 - [ ] DTO: `src/main/kotlin/.../dto/{Name}Request.kt`
 - [ ] DTO: `src/main/kotlin/.../dto/{Name}Response.kt`
 - [ ] Repository: `src/main/kotlin/.../repository/{Name}Repository.kt`
@@ -173,10 +214,23 @@ Present the output format below.
 
 ## Self-Check
 
-- [ ] Requirements gathered and design approved before any code generated
+- [ ] Stack detected and requirements gathered; design approved before any code generated
 - [ ] All layers generated: entity, Flyway migration, repository, service, controller, DTOs, tests
-- [ ] Kotlin class (not data class) for JPA entities; `data class` for DTOs; constructor injection only; no `synchronized` blocks
+- [ ] `kotlin-jpa` and `kotlin-spring` Gradle plugins verified; Kotlin class (not data class) for JPA entities
+- [ ] `data class` for DTOs; constructor injection only; no `synchronized` blocks
 - [ ] `suspend` used consistently where needed; MockK with `coEvery`/`coVerify` for suspend functions
 - [ ] `@MockkBean` used (not `@MockBean`); Testcontainers for integration tests
-- [ ] `./gradlew compileKotlin compileTestKotlin test` passes
+- [ ] `./gradlew compileKotlin compileTestKotlin test` (or Maven equivalent) passes
 - [ ] Migration includes indexes; list endpoints paginated; file list, endpoint table, and test count presented
+
+## Avoid
+
+- Generating code before design approval
+- `data class` for JPA entities
+- `@Autowired` field injection
+- `synchronized` blocks (breaks Virtual Threads)
+- Exposing JPA entities in API responses
+- `@MockBean` instead of `@MockkBean`
+- `every`/`verify` for suspend functions instead of `coEvery`/`coVerify`
+- Skipping Flyway migration when entity changes
+- Manual `open` modifiers on entities/services instead of Kotlin compiler plugins
