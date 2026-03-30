@@ -31,16 +31,17 @@ user-invocable: false
 
 Failures propagate through:
 
-| Channel                    | Mechanism                                                    |
-| -------------------------- | ------------------------------------------------------------ |
-| Synchronous call           | HTTP/gRPC timeout or error cascading up the call chain       |
-| Connection pool            | Exhaustion in one consumer starves others sharing the pool   |
-| Message queue              | Poison message, consumer lag, dead letter overflow           |
-| Shared database            | Lock contention, connection exhaustion, slow query blocking  |
-| Cache                      | Stampede on eviction, stale data causing logic errors        |
-| Circuit breaker            | Open circuit redirecting load to fallback or alternate paths |
-| Thread/virtual thread pool | Exhaustion blocking unrelated work on shared executor        |
-| Event bus                  | Failed event handler blocking downstream consumers           |
+| Channel                    | Mechanism                                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Synchronous call           | HTTP/gRPC timeout or error cascading up the call chain                                                                            |
+| Connection pool            | Exhaustion in one consumer starves others sharing the pool                                                                        |
+| Message queue              | Poison message, consumer lag, dead letter overflow                                                                                |
+| Shared database            | Lock contention, connection exhaustion, slow query blocking                                                                       |
+| Cache                      | Stampede on eviction, stale data causing logic errors                                                                             |
+| Circuit breaker            | Open circuit redirecting load to fallback or alternate paths                                                                      |
+| Thread/virtual thread pool | Exhaustion blocking unrelated work on shared executor                                                                             |
+| Event bus                  | Failed event handler blocking downstream consumers                                                                                |
+| Infrastructure feedback    | Health check failure triggering restart/scaling, load balancer eviction, auto-remediation systems amplifying the original problem |
 
 ### Sync/Async Boundary Transitions
 
@@ -50,7 +51,18 @@ When a propagation path crosses a sync/async boundary, the failure mechanism cha
 - **Async -> sync**: Consumers may block waiting for a response from a downstream sync service. If the downstream is slow, consumers accumulate, depleting the worker pool.
 - **Queue backlog as secondary blast radius**: A down consumer (Service C) does not immediately affect the producer (Service B), but if the queue is unbounded, Service B's memory or send buffer will eventually exhaust - trace this path explicitly.
 
+### Amplification Loops
+
+Propagation can be circular (A -> B -> A), where downstream effects worsen the original failure:
+
+- Connection pool exhaustion -> health check failure -> autoscaling -> more instances competing for same connection pool -> faster exhaustion
+- Service timeout -> client retries -> increased load on failing service -> more timeouts
+- Memory pressure -> GC pauses -> request timeouts -> retry storm -> more memory pressure
+
+When mapping propagation, check whether any path forms a cycle. Amplification loops prevent self-healing and can turn a partial outage into a total outage. The containment strategy must break the loop (circuit breaker, retry budget, load shedding) rather than just mitigate a single link.
+
 Example mixed-boundary trace:
+
 ```
 1. Service C (consumer) is down
 2. -> Message queue: backlog grows (messages accumulate, no consumer)

@@ -86,6 +86,8 @@ Use skill: `ops-backward-compatibility` to assess application-level compatibilit
 | Backfill existing rows  | Variable   | Medium-High - batch sizing critical          |
 | Split or merge tables   | Very High  | Very high - requires dual-write phase        |
 
+**Compound migrations:** When a single migration request contains multiple change types, classify each sub-change separately. State the dependency order (which changes must complete before others can begin). The overall risk level is the highest individual risk level among the sub-changes.
+
 State the type and risk level before continuing.
 
 ### Step 2 - Lock Risk Assessment

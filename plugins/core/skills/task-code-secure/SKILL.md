@@ -10,6 +10,10 @@ user-invocable: true
 
 # Code Secure
 
+## Purpose
+
+Security-focused review targeting OWASP Top 10 vulnerabilities, authentication/authorization gaps, input validation, data protection, and framework-specific security patterns. Produces findings with attack scenarios and specific remediations.
+
 ## When to Use
 
 - Security reviews of code changes
@@ -27,14 +31,18 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 2 - OWASP Quick Check (All Stacks)
 
-| Risk                      | Check                                                 |
-| ------------------------- | ----------------------------------------------------- |
-| Broken Access Control     | Auth on all endpoints                                 |
-| Injection                 | Parameterized queries, no string concatenation in SQL |
-| Cryptographic Failures    | No weak algorithms, proper key management             |
-| Security Misconfiguration | Secure headers (CORS, CSP, HSTS)                      |
-| SSRF                      | Validate/allowlist external URLs                      |
-| XSS                       | Output encoding, no raw HTML injection                |
+| Risk                          | Check                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Broken Access Control         | Auth on all endpoints                                                                                       |
+| Injection                     | Parameterized queries, no string concatenation in SQL                                                       |
+| Cryptographic Failures        | No weak algorithms, proper key management                                                                   |
+| Security Misconfiguration     | Secure headers (CORS, CSP, HSTS)                                                                            |
+| SSRF                          | Validate/allowlist external URLs                                                                            |
+| XSS                           | Output encoding, no raw HTML injection                                                                      |
+| Insecure Design (A04)         | Authorization model defined; no direct object references without access check                               |
+| Vulnerable Components (A06)   | Dependencies checked for known CVEs; no outdated packages with security patches available                   |
+| Data Integrity Failures (A08) | Deserialization inputs validated; CI/CD pipeline integrity                                                  |
+| Logging & Monitoring (A09)    | Security events logged (login failures, access denied, input validation failure); no sensitive data in logs |
 
 ### Step 3 - Framework-Specific Security Review
 
@@ -67,6 +75,13 @@ After loading stack-detect, apply security checks specific to the detected ecosy
 - Framework-specific admin/debug endpoints are secured or disabled in production
 
 If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and recommend the user consult their framework's security documentation.
+
+**Cloud Storage (when file storage is S3, GCS, Azure Blob, or equivalent):**
+
+- Bucket/container access policy is private; no public read unless explicitly required
+- Signed URLs scoped to specific objects with short expiry (minutes, not hours)
+- Content-Disposition: attachment header set on served files to prevent browser rendering of uploaded HTML/SVG
+- Virus/malware scanning pipeline for uploaded files (or document the accepted risk)
 
 ### Step 4 - Data Protection (All Stacks)
 

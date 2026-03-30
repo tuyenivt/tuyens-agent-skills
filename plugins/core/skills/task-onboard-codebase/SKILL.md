@@ -118,6 +118,8 @@ For each significant module or bounded context found:
 - **Entry points** - controllers, consumers, scheduled jobs, CLI commands
 - **Data access** - ORM entities, repositories, raw queries - what pattern is used
 
+- **External integrations** - third-party services the system depends on (payment providers, email services, analytics, etc.), where the integration code lives, how credentials are managed, and how failures are handled
+
 Identify the **primary request/event flow** for the most important operation in the codebase (e.g., the main user-facing action) and trace it through the layers:
 
 ```
@@ -138,6 +140,8 @@ Read representative files across the codebase to extract the patterns the team a
 - How authentication and authorization are enforced (middleware, annotations, filters)
 - How database transactions are scoped
 - How background jobs or async processing is handled
+- How caching is implemented (library, strategy, invalidation, what is cached and what is not)
+- How async/background processing is structured (task discovery, queue topology, retry configuration, monitoring)
 
 Use skill: `backend-coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
 

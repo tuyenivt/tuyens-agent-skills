@@ -42,6 +42,17 @@ When these marker files are found alongside `package.json`, they refine the dete
 | `angular.json`                                                    | Angular            |
 | `remix.config.*` or `app/root.tsx` + `@remix-run` in package.json | React (Remix)      |
 
+**ORM / Data Layer Markers:**
+
+| Marker File(s)                        | Detected ORM / Data Layer |
+| ------------------------------------- | ------------------------- |
+| `prisma/schema.prisma`                | Prisma                    |
+| `drizzle.config.ts`                   | Drizzle                   |
+| `ormconfig.json`, `data-source.ts`    | TypeORM                   |
+| `sequelize.config.js`, `.sequelizerc` | Sequelize                 |
+
+When `tsconfig.json` is present alongside `package.json`, refine Language to TypeScript.
+
 #### Deeper detection via package.json dependencies (still file-based)
 
 When `package.json` is found but no meta-framework marker file exists, inspect `dependencies`/`devDependencies` keys:
@@ -119,6 +130,7 @@ Classify the detected stack into one of three types based on the primary framewo
 - Next.js project with `app/api/` directory or Server Actions usage -> `fullstack`
 - Nuxt project with `server/` directory -> `fullstack`
 - Monorepo with both `package.json` (React/Vue/Angular) and backend marker files (`build.gradle`, `go.mod`, etc.) -> `fullstack`
+- Next.js project with a database ORM detected (Prisma, Drizzle, TypeORM) is classified as `fullstack`, even without explicit `app/api/` routes (Server Components can access the database directly)
 - Next.js/Nuxt project with no server-side routes detected -> `frontend`
 
 When `fullstack` is detected, `Language` and `Framework` reflect the primary stack. Use `Additional` to note the secondary stack.

@@ -64,6 +64,22 @@ For each saga step:
 - Compensating action (how to undo if a later step fails)
 - Idempotency guarantee (safe to retry)
 
+**Saga step ordering:**
+
+- Place compensatable steps before non-compensatable steps (e.g., send email or push notification last - cannot unsend)
+- Place the most likely-to-fail step early to minimize compensation scope
+- Identify the **pivot transaction** - the step after which the saga commits to forward-only completion (no compensation). Steps before the pivot can be compensated; steps after the pivot must succeed or be retried indefinitely.
+- Example ordering: reserve inventory (compensatable) -> charge payment (pivot) -> send confirmation email (non-compensatable, forward-only)
+
+**External API steps in sagas:**
+
+When a saga step calls an external API (payment gateway, third-party service):
+
+- Always use an idempotency key on the external API call so it is safe to retry after network failure
+- Store the external API response in the local DB atomically (outbox pattern for the call result)
+- Design compensation as a separate API call (e.g., refund endpoint), not a transaction rollback
+- Handle the "response lost" scenario: the external API may have succeeded even if the HTTP call timed out - check the external status before compensating to avoid double-charging or double-refunding
+
 ### Good: Explicit consistency choice with trade-off
 
 ```
@@ -132,3 +148,6 @@ Always produce the Boundaries Assessed table. Omit "No Risks Found" if risks wer
 - Distributed transactions (2PC) when saga or outbox suffices
 - Schema changes that break backward compatibility during deployment
 - Ignoring idempotency requirements for at-least-once delivery patterns
+- Placing non-compensatable steps (email, notification) before compensatable steps in a saga (cannot undo if a later step fails)
+- Calling external APIs within a saga step without an idempotency key (unsafe to retry)
+- Compensating an external API call without first checking its current status (risk of double-refund or reversal of a successful operation)

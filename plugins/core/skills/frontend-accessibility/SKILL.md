@@ -58,14 +58,15 @@ Problem: Not keyboard accessible, no role announced, no focus management.
 
 Use ARIA only when no native HTML element provides the semantics needed:
 
-| Need               | Use Native Element | ARIA Fallback (only if native is impossible)        |
-| ------------------ | ------------------ | --------------------------------------------------- |
-| Button             | `<button>`         | `role="button"` + `tabindex="0"` + keydown          |
-| Navigation         | `<nav>`            | `role="navigation"`                                 |
-| Dialog/modal       | `<dialog>`         | `role="dialog"` + `aria-modal="true"`               |
-| Tab interface      | None exists        | `role="tablist"` + `role="tab"` + `role="tabpanel"` |
-| Live update        | None exists        | `aria-live="polite"` or `aria-live="assertive"`     |
-| Expandable section | `<details>`        | `aria-expanded` + `aria-controls`                   |
+| Need                   | Use Native Element | ARIA Fallback (only if native is impossible)                          |
+| ---------------------- | ------------------ | --------------------------------------------------------------------- |
+| Button                 | `<button>`         | `role="button"` + `tabindex="0"` + keydown                            |
+| Navigation             | `<nav>`            | `role="navigation"`                                                   |
+| Dialog/modal           | `<dialog>`         | `role="dialog"` + `aria-modal="true"`                                 |
+| Tab interface          | None exists        | `role="tablist"` + `role="tab"` + `role="tabpanel"`                   |
+| Live update            | None exists        | `aria-live="polite"` or `aria-live="assertive"`                       |
+| Expandable section     | `<details>`        | `aria-expanded` + `aria-controls`                                     |
+| Custom dropdown/select | `<select>`         | `role="listbox"` + `role="option"` children + `aria-activedescendant` |
 
 **Key ARIA rules:**
 
@@ -77,15 +78,16 @@ Use ARIA only when no native HTML element provides the semantics needed:
 
 Every interactive component must support keyboard operation:
 
-| Component | Expected Keys                                            |
-| --------- | -------------------------------------------------------- |
-| Button    | Enter, Space to activate                                 |
-| Link      | Enter to follow                                          |
-| Menu      | Arrow keys to navigate, Enter to select, Escape to close |
-| Dialog    | Escape to close, Tab trapped within dialog               |
-| Tabs      | Arrow keys to switch tabs, Tab to enter/exit tab list    |
-| Combobox  | Arrow keys to navigate, Enter to select, Escape to close |
-| Checkbox  | Space to toggle                                          |
+| Component               | Expected Keys                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| Button                  | Enter, Space to activate                                                                       |
+| Link                    | Enter to follow                                                                                |
+| Menu                    | Arrow keys to navigate, Enter to select, Escape to close                                       |
+| Dialog                  | Escape to close, Tab trapped within dialog                                                     |
+| Tabs                    | Arrow keys to switch tabs, Tab to enter/exit tab list                                          |
+| Combobox                | Arrow keys to navigate, Enter to select, Escape to close                                       |
+| Listbox/Custom Dropdown | Arrow keys to navigate options, Enter to select, Escape to close, Type-ahead to jump to option |
+| Checkbox                | Space to toggle                                                                                |
 
 ### Focus Management
 
@@ -111,6 +113,23 @@ Every interactive component must support keyboard operation:
 <a href="#main-content" class="sr-only focus:not-sr-only"
   >Skip to main content</a
 >
+```
+
+### Inline Action Status Announcements
+
+**Bad** - Status communicated only by color change:
+
+```
+<button style={success ? {color: "green"} : {color: "red"}}>Add to Cart</button>
+```
+
+Problem: Color-only status is invisible to screen readers and users with color vision deficiency.
+
+**Good** - Status announced with text and aria-live:
+
+```
+<button onClick={addToCart}>Add to Cart</button>
+<span role="status" aria-live="polite">{status === "success" ? "Added to cart" : status === "error" ? "Failed to add - try again" : ""}</span>
 ```
 
 ### Color and Contrast

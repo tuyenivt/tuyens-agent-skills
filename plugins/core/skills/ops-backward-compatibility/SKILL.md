@@ -31,22 +31,23 @@ user-invocable: false
 
 ### Compatibility Assessment Matrix (All Stacks)
 
-| Contract Type | Change Kind            | Compatible | Action Required                          |
-| ------------- | ---------------------- | ---------- | ---------------------------------------- |
-| REST API      | Add optional field     | Yes        | Deploy provider first                    |
-| REST API      | Add required field     | No         | Version API or expand-contract           |
-| REST API      | Remove field           | No         | Verify no consumers read it, then remove |
-| REST API      | Rename field           | No         | Add new + deprecate old + remove later   |
-| REST API      | Change field type      | No         | Version API                              |
-| REST API      | Change endpoint path   | No         | Redirect old + deploy new                |
-| Event schema  | Add optional field     | Yes        | Consumers must tolerate unknown fields   |
-| Event schema  | Remove field           | No         | Verify no consumers, two-phase removal   |
-| Event schema  | Change field semantics | No         | New event type or versioned schema       |
-| DB schema     | Add nullable column    | Yes        | Migration then code                      |
-| DB schema     | Add NOT NULL column    | No         | Add nullable + backfill + add constraint |
-| DB schema     | Drop column            | No         | Remove code reads + verify + drop        |
-| DB schema     | Rename column          | No         | Add new + migrate + drop old             |
-| DB schema     | Change column type     | No         | Expand-contract migration                |
+| Contract Type | Change Kind            | Compatible | Action Required                                                                              |
+| ------------- | ---------------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| REST API      | Add optional field     | Yes        | Deploy provider first                                                                        |
+| REST API      | Add required field     | No         | Version API or expand-contract                                                               |
+| REST API      | Remove field           | No         | Verify no consumers read it, then remove                                                     |
+| REST API      | Rename field           | No         | Add new + deprecate old + remove later                                                       |
+| REST API      | Change field type      | No         | Version API                                                                                  |
+| REST API      | Change endpoint path   | No         | Redirect old + deploy new                                                                    |
+| Event schema  | Add optional field     | Yes        | Consumers must tolerate unknown fields                                                       |
+| Event schema  | Remove field           | No         | Verify no consumers, two-phase removal                                                       |
+| Event schema  | Change field semantics | No         | New event type or versioned schema                                                           |
+| Event schema  | Add required field     | No         | Expand-contract: add as optional first, consumers update to handle it, then enforce required |
+| DB schema     | Add nullable column    | Yes        | Migration then code                                                                          |
+| DB schema     | Add NOT NULL column    | No         | Add nullable + backfill + add constraint                                                     |
+| DB schema     | Drop column            | No         | Remove code reads + verify + drop                                                            |
+| DB schema     | Rename column          | No         | Add new + migrate + drop old                                                                 |
+| DB schema     | Change column type     | No         | Expand-contract migration                                                                    |
 
 ### Stack-Specific Guidance
 

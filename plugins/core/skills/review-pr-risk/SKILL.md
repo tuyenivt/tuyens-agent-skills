@@ -30,19 +30,22 @@ Evaluate these risk signals from the diff, PR description, or prose summary (wha
 
 ### Risk Signals
 
-| Signal                         | Weight | Description                                           |
-| ------------------------------ | ------ | ----------------------------------------------------- |
-| Cross-module changes           | High   | Changes spanning 2+ modules or packages               |
-| Shared state mutation          | High   | Modifying global state, singletons, or shared caches  |
-| Database/schema changes        | High   | Migrations, index changes, entity modifications       |
-| Public API changes             | High   | Endpoint signatures, request/response contracts       |
-| Transaction boundary changes   | High   | New/modified transaction boundaries, isolation levels |
-| Async/event flow changes       | Medium | New event publishers, listeners, message handlers     |
-| Config or feature flag changes | Medium | Application properties, environment config            |
-| New external dependencies      | Medium | New libraries, external service integrations          |
-| Security-adjacent changes      | High   | Auth, authorization, input validation, crypto         |
-| Test-only changes              | Low    | Only test files modified                              |
-| Documentation-only changes     | Low    | Only docs/comments modified                           |
+| Signal                         | Weight | Description                                                 |
+| ------------------------------ | ------ | ----------------------------------------------------------- |
+| Cross-module changes           | High   | Changes spanning 2+ modules or packages                     |
+| Shared state mutation          | High   | Modifying global state, singletons, or shared caches        |
+| Database/schema changes        | High   | Migrations, index changes, entity modifications             |
+| Public API changes             | High   | Endpoint signatures, request/response contracts             |
+| Transaction boundary changes   | High   | New/modified transaction boundaries, isolation levels       |
+| Async/event flow changes       | Medium | New event publishers, listeners, message handlers           |
+| Config or feature flag changes | Medium | Application properties, environment config                  |
+| New external dependencies      | Medium | New libraries, external service integrations                |
+| Security-adjacent changes      | High   | Auth, authorization, input validation, crypto               |
+| PR size (lines changed)        | Medium | > 500 lines increases review fatigue and defect miss rate   |
+| Missing test changes           | Medium | High-risk code changes without corresponding test additions |
+| Author unfamiliarity           | Low    | Author's first PR to these modules or to the repository     |
+| Test-only changes              | Low    | Only test files modified                                    |
+| Documentation-only changes     | Low    | Only docs/comments modified                                 |
 
 ### Classification
 
@@ -72,18 +75,22 @@ between modules, evaluating the transitive closure of affected components...
 
 ## Output Format
 
-This is the contract that consuming workflow skills depend on. Callers parse the `Risk Level:` line to make routing and framing decisions. Keep it to two lines maximum.
+This is the contract that consuming workflow skills depend on. Callers parse the `Risk Level:` line to make routing and framing decisions. Keep it to three lines maximum.
 
 ```
 Risk Level: {Low | Medium | High | Critical}
 Signals: {comma-separated list of triggered risk signals, 1-2 sentences max}
+Action: {split PR | add tests before merge | require additional reviewer}
 ```
+
+The `Action:` line is optional - include it only when a specific action is warranted by the risk signals.
 
 **Examples:**
 
 ```
 Risk Level: High
 Signals: Public API contract change (POST /orders), database schema migration on orders table.
+Action: require additional reviewer
 ```
 
 ```
@@ -91,7 +98,7 @@ Risk Level: Low
 Signals: Test-only changes, no shared state or API modifications.
 ```
 
-Never exceed two lines. Never omit the `Signals:` line - consuming skills use it for reviewer guidance.
+Never exceed four lines. Never omit the `Signals:` line - consuming skills use it for reviewer guidance.
 
 ## Avoid
 

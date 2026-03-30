@@ -10,6 +10,10 @@ user-invocable: true
 
 # Code Test
 
+## Purpose
+
+Design test strategy, assess coverage gaps, and generate test scaffolds for a module or service. Prioritizes testing by business risk rather than coverage numbers. Adapts test patterns to the detected stack's ecosystem.
+
 ## When to Use
 
 - Test coverage evaluation
@@ -183,6 +187,12 @@ Quick-reference checklist consolidating the key checks from above:
 - [ ] Slow tests (integration, E2E) can be skipped in fast feedback loops
 
 ## Output Format
+
+**Which output to produce:**
+- User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
+- User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
+- User asks "test strategy", "test plan", or coverage is below 50% -> Strategy Doc (optionally include Coverage Assessment)
+- If unclear, produce Strategy Doc as the default.
 
 Produce one or more of the following depending on what was requested:
 

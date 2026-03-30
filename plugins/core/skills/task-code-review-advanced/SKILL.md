@@ -76,13 +76,17 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - Use skill: `review-blast-radius` to assess failure propagation scope
 - Output risk level and blast radius before proceeding to findings
 
-**Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, skip Phases C-D and produce a streamlined output with Phase B findings only. This avoids over-reviewing trivial changes with the staff-level process.
+**Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth, middleware, API contracts, shared libraries, service boundaries), skip Phases C-D and produce a streamlined output with Phase B findings only. This avoids over-reviewing trivial changes with the staff-level process. If any architecture-relevant file is touched, proceed with the full workflow regardless of risk level.
 
 ### Phase B - Correctness and Safety
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, unsafe shared state mutation, transaction boundary correctness.
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding tests, raise this as an explicit finding - at minimum a [Suggestion], escalate to [High] if the changed code is in a critical path (auth, payments, data integrity). Do not bury this in Key Takeaways - it must appear as a named finding.
+
+**Migration PRs (pattern change, not just code change):**
+- Use skill: `ops-backward-compatibility` to assess impact on existing clients, active sessions, or in-flight requests
+- Verify rollback path exists and is documented
 
 After loading stack-detect, apply correctness checks based on `Stack Type`:
 
@@ -114,6 +118,12 @@ Use skill: `frontend-api-integration` if the change involves data fetching.
 ### Phase C - Architecture Guardrails
 
 Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, bypassing abstractions, boundary erosion, architectural drift.
+
+**Multi-service PRs (when change spans 2+ services):**
+- Check API contract compatibility between services after the change
+- Verify deployment can be done in any order (or document required order)
+- Check for shared library version alignment
+- Use skill: `ops-backward-compatibility` for any changed inter-service contracts
 
 **Backend:** Apply the layering conventions of the detected framework - presentation → service → data access - using the ecosystem's standard patterns.
 

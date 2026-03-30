@@ -10,6 +10,10 @@ user-invocable: true
 
 # Code Refactor
 
+## Purpose
+
+Produce a safe, step-by-step refactoring plan for a specific code target. Assesses code smells, cross-module risk, and test coverage before proposing any changes. Each refactoring step is independently committable with tests between steps.
+
 ## When to Use
 
 - Code smell identification and resolution
@@ -159,6 +163,8 @@ Before proposing any refactoring sequence, assess test coverage on the target:
   - Write characterization tests that capture current behavior without asserting correctness
   - Only after those tests pass, proceed with the refactoring plan
 - State this clearly: "Target has insufficient test coverage. Recommend writing characterization tests first before refactoring."
+
+Use the prioritization framework from `task-code-test` Step 5 to order characterization tests by risk. If the target is structurally untestable (dependencies cannot be mocked or isolated), the Test First plan must include a minimal "testability refactoring" step (e.g., extract interface for external clients) before the characterization tests.
 
 ### Step 6 - Safe Refactoring Steps
 

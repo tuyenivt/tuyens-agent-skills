@@ -49,7 +49,7 @@ Presentation (Controllers/Handlers) → Service/Business Logic → Data Access (
 
 After loading stack-detect, apply layer violation detection using the idioms of the detected stack. For example:
 
-- In frameworks with annotation-based architectures (e.g., Spring), controllers should delegate to service classes, not access repositories directly
+- In frameworks with annotation/decorator-based architectures (e.g., Spring, NestJS), controllers should delegate to service classes, not access repositories directly
 - In MVC frameworks (e.g., Rails, Django, Phoenix), controllers/actions should be thin - business logic belongs in service objects or model methods
 - In handler-based architectures (e.g., Go HTTP frameworks, Express), handlers should delegate to service packages, not perform business logic or direct DB access
 - In Laravel, controllers should be thin - delegate business logic to service/action classes, not Eloquent models directly. Avoid fat models with business logic in accessors/mutators, business logic in migrations, or direct DB queries in Blade views
@@ -65,6 +65,7 @@ Detect new coupling between previously independent modules:
 - Shared mutable state between modules
 - Circular dependencies (A → B → A)
 - Feature module depending on another feature module's internals
+- Cross-runtime imports: frontend code importing backend modules or vice versa in a monorepo (breaks build, leaks server internals to client bundle)
 
 ### Boundary Erosion (All Stacks)
 
@@ -74,6 +75,7 @@ Detect gradual weakening of established abstractions:
 - Exposing implementation details through return types
 - Domain logic leaking into infrastructure layer
 - Configuration values used directly instead of through abstraction
+- Shared utility module growing unbounded (>20 files or mixed domains) - indicates missing domain boundaries. Split into domain-specific utility modules or extract into proper service/library packages.
 
 ### Drift Detection (All Stacks)
 

@@ -23,7 +23,7 @@ user-invocable: false
 - Test behavior, not implementation - tests should assert what the user sees and does, not internal component state
 - Use Testing Library queries that reflect how users find elements (by role, label, text) - not test IDs or CSS selectors as primary strategy
 - Every test must be independent - no shared mutable state between tests, no order dependencies
-- Mock at the network boundary (MSW or HTTP interceptors), not at the module level - module mocks hide integration bugs
+- Mock at the network boundary (MSW or HTTP interceptors), not at the module level - module mocks hide integration bugs. **Exception:** Module-level mocking is appropriate for third-party SDKs that render their own UI in iframes (Stripe Elements, Google Maps, reCAPTCHA) and for browser APIs without test equivalents (IntersectionObserver, ResizeObserver, navigator.geolocation)
 - Snapshot tests are only for regression detection on stable, leaf components - never snapshot large component trees or frequently changing UI
 - E2E tests cover critical user journeys only - do not duplicate unit/integration coverage in e2e
 
@@ -164,6 +164,56 @@ E2E tests should:
 - Avoid testing visual details covered by component tests
 - Use realistic but deterministic test data
 
+### Testing Third-Party Integrations
+
+Third-party SDKs that render their own UI (Stripe Elements, PayPal buttons, Google Maps, reCAPTCHA) operate outside your component tree - often in iframes. You cannot query their inputs with Testing Library.
+
+**Bad** - Trying to interact with Stripe Elements via Testing Library:
+
+```
+// Stripe Elements renders in an iframe - this will fail
+const cardInput = screen.getByLabelText("Card number")
+await userEvent.type(cardInput, "4242424242424242")
+```
+
+**Good** - Mock the SDK at the module level, test your integration boundary:
+
+```
+// Mock the third-party SDK module
+jest.mock("@stripe/react-stripe-js", () => ({
+  CardElement: ({ onChange }) => (
+    <input data-testid="mock-card" onChange={() => onChange({ complete: true })} />
+  ),
+  useStripe: () => ({ createPaymentMethod: jest.fn().mockResolvedValue({ paymentMethod: { id: "pm_test" } }) }),
+  useElements: () => ({ getElement: jest.fn() }),
+}))
+
+// Test YOUR code's behavior when the SDK reports success/failure
+await userEvent.click(screen.getByRole("button", { name: "Pay" }))
+expect(await screen.findByText("Payment successful")).toBeInTheDocument()
+```
+
+**Testing strategy for third-party integrations:**
+
+1. **Component tests**: Mock the SDK at the module level - test that your code reacts correctly to SDK success, failure, and loading states
+2. **Integration boundary tests**: Unit-test the functions that call SDK methods (e.g., your `processPayment()` wrapper) with a mocked SDK client
+3. **E2E tests**: Use the provider's test mode (Stripe test keys, Google Maps test environment) for full integration validation in Playwright
+
+### Test Data Factories
+
+For complex domain objects, create factory functions rather than inline object literals:
+
+```
+// Factory with sensible defaults and overrides
+function createMockProduct(overrides = {}) {
+  return { id: "prod_1", name: "Widget", price: 999, currency: "USD", inStock: true, ...overrides }
+}
+
+// Usage in tests - only specify what matters for this test
+const expensiveProduct = createMockProduct({ price: 99999 })
+const outOfStock = createMockProduct({ inStock: false })
+```
+
 ## Stack-Specific Guidance
 
 After loading stack-detect, apply testing patterns using the libraries and idioms of the detected ecosystem:
@@ -216,7 +266,7 @@ Consuming workflow skills depend on this structure.
 
 - Testing implementation details (internal state, method calls, component internals)
 - Using CSS selectors or test IDs as primary query strategy (brittle, not user-centric)
-- Module-level mocking that skips real HTTP code paths (hides integration bugs)
+- Module-level mocking for your own API calls (hides integration bugs) - use MSW instead. Module mocking is acceptable only for third-party SDKs with iframe-based UIs and browser APIs
 - Snapshot testing large or frequently changing component trees (meaningless churn)
 - Duplicating component-level assertions in e2e tests (slow, redundant)
 - Tests that depend on execution order or shared mutable state (flaky)

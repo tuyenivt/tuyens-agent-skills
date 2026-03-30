@@ -58,6 +58,26 @@ For any change that includes both a schema migration and code changes, verify th
 
 Flag any plan where a destructive migration (DROP COLUMN, DROP TABLE, RENAME) is deployed before or simultaneously with the code change that removes the reference. The safe sequence is always: deploy code that tolerates the absence → verify no reads/writes → run destructive migration.
 
+**Backfill-before-read pattern:**
+
+When new code requires populated data in a new column (not just the column's existence), the deploy sequence must include a backfill phase:
+
+1. Add nullable column (migration) - deploy
+2. Deploy and run backfill job to populate existing rows
+3. Verify backfill is complete (no NULL values in rows that need data)
+4. Deploy code that reads the column
+
+Never deploy code that assumes a column is populated before the backfill is verified complete. Flag this sequence violation as High risk.
+
+### Multi-Service Schema Changes
+
+When multiple services read from the same database table, schema changes require cross-service coordination:
+
+- **Additive changes** (new nullable column, new table): Deploy migration first - other services will ignore the new column. No coordination needed.
+- **Behavioral changes** (new NOT NULL constraint, new default): Verify all reading services tolerate the new behavior before applying the migration.
+- **Destructive changes** (drop column, rename): Deploy all consuming services to stop reading the column first, verify no reads/writes from any service, then apply the migration.
+- **Document affected services** in the rollout plan: list every service that reads from or writes to the affected table and its required deploy order.
+
 ### Feature Flag Design
 
 Use skill: `ops-feature-flags` for flag lifecycle, gradual rollout strategy, rollback procedures, and cleanup discipline.
@@ -129,3 +149,5 @@ Always produce Rollout Plan, Rollback Triggers, and Rollback Plan - these three 
 - Big-bang deployments for high-blast-radius changes
 - Feature flags without expiry dates (flag debt)
 - Rollback plans that require data migration to undo
+- Deploying code that assumes a column is populated before backfill is verified complete
+- Schema changes affecting tables read by multiple services without documenting the affected services and deploy order

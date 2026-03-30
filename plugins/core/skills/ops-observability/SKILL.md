@@ -66,6 +66,7 @@ The receiving service must extract the incoming trace context and create child s
 After loading stack-detect, apply structured logging using the libraries and patterns of the detected ecosystem:
 
 - Use the framework's standard or recommended logging library (e.g., SLF4J, log/slog, Rails.logger, Python logging, Elixir Logger, Laravel Log facade / Monolog)
+- **Go**: `log/slog` with `slog.JSONHandler` for structured logging, `context.Context` for request-scoped values and trace propagation, `go.opentelemetry.io/otel` for distributed tracing, `prometheus/client_golang` or OTel metrics for Prometheus-compatible metrics
 - Use the framework's mechanism for request-scoped context propagation (e.g., MDC, context.Context, CurrentAttributes, contextvars, Laravel middleware context)
 - Configure JSON output formatting using the ecosystem's standard encoder or formatter
 
@@ -131,6 +132,16 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 
 If the detected stack is unfamiliar, apply the universal principles above and recommend the user consult their ecosystem's observability tooling documentation.
 
+### Alerting Principles
+
+Observability signals are only valuable if someone acts on them. Define alerts for:
+
+- **Error rate:** Alert when error rate exceeds SLO burn rate (not on individual errors)
+- **Latency:** Alert when p99 latency exceeds threshold for sustained period (e.g., > 500ms for 5 minutes)
+- **Saturation:** Alert when resource utilization approaches limits (connection pool > 80%, disk > 90%)
+- Page for **symptoms** (error rate spike, latency degradation), not **causes** (CPU high, memory high)
+- Use multi-window burn rate alerting for SLO-based alerts to reduce false positives
+
 ---
 
 ## Output Format
@@ -169,3 +180,4 @@ Omit "No Gaps Found" if gaps were listed.
 - Logging too much (noise) or too little (blind spots)
 - Missing correlation IDs across service boundaries
 - Metrics without alerting thresholds defined
+- Observability signals (metrics, logs, traces) without corresponding alerting rules (nobody sees the signals until manual investigation)

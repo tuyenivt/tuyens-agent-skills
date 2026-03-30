@@ -28,18 +28,21 @@ user-invocable: false
 
 ### Failure Types
 
-| Type                             | Signals                                                              |
-| -------------------------------- | -------------------------------------------------------------------- |
-| Logic bug                        | Wrong output, incorrect state transition, failed assertion           |
-| Concurrency issue                | Intermittent failures, data races, deadlocks, pinned virtual threads |
-| Transaction boundary error       | Partial writes, phantom reads, rollback failures, lost updates       |
-| DB performance degradation       | Slow queries, lock contention, connection pool exhaustion            |
-| N+1 or query overload            | Request latency spike proportional to data size, high query count    |
-| External dependency failure      | Timeout, 5xx from downstream, DNS failure, certificate expiry        |
-| Misconfiguration                 | Wrong env value, missing property, feature flag mismatch             |
-| Resource exhaustion              | OOM, thread pool full, file descriptor limit, disk full              |
-| Deployment/config drift          | Works in staging not prod, recent deploy correlates with failure     |
-| Architectural boundary violation | Unexpected coupling, layer bypass causing cascading failure          |
+| Type                                 | Signals                                                                                                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Logic bug                            | Wrong output, incorrect state transition, failed assertion                                                                 |
+| Concurrency issue                    | Intermittent failures, data races, deadlocks, pinned virtual threads                                                       |
+| Transaction boundary error           | Partial writes, phantom reads, rollback failures, lost updates                                                             |
+| DB performance degradation           | Slow queries, lock contention, connection pool exhaustion                                                                  |
+| N+1 or query overload                | Request latency spike proportional to data size, high query count                                                          |
+| External dependency failure          | Timeout, 5xx from downstream, DNS failure, certificate expiry                                                              |
+| Misconfiguration                     | Wrong env value, missing property, feature flag mismatch                                                                   |
+| Resource exhaustion                  | OOM, thread pool full, file descriptor limit, disk full                                                                    |
+| Deployment/config drift              | Works in staging not prod, recent deploy correlates with failure                                                           |
+| Architectural boundary violation     | Unexpected coupling, layer bypass causing cascading failure                                                                |
+| Resource contention / noisy neighbor | Two workloads competing for shared resource pool, one degrading the other (batch vs OLTP, new feature vs existing traffic) |
+
+**When multiple failure types apply:** Identify the **root type** (the type that, if resolved, would resolve all others) and list it first. Subsequent types are **symptom types** caused by the root. This ordering guides the investigation toward the root cause rather than symptoms.
 
 ### Failure Scope
 

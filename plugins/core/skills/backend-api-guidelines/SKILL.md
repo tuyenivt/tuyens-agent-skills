@@ -27,6 +27,7 @@ user-invocable: false
 - Paginate all collection endpoints - never return unbounded lists. Use cursor-based pagination for large or frequently updated datasets (stable ordering, no skipped rows); use offset-based only for small datasets with infrequent mutations.
 - Version APIs when making breaking changes (`/v1/`, `/v2/` or header-based). Deprecate old versions with a sunset date in the response header (`Sunset: Sat, 01 Jan 2027 00:00:00 GMT`).
 - Never expose ORM entities / model objects directly in responses - always use DTOs / serializers / response structs
+- Resource identifiers belong in the URL path (`/users/123`), not in query parameters (`/users?id=123`). Query parameters are for filtering, sorting, and pagination on collection endpoints.
 - For non-idempotent POST endpoints (payments, order creation, message sends), support an `Idempotency-Key` header. Store the key + response for the deduplication window (typically 24h). Return the same response on replay without re-executing the operation.
 
 ---
@@ -108,3 +109,6 @@ Omit "No Violations Found" if violations were listed.
 - Inconsistent status codes across endpoints
 - Missing pagination on collection endpoints
 - Error responses that leak stack traces or internal details
+- Generic success envelopes (`{status: "success", data: {...}}`) - return the resource directly with HTTP status code conveying success/failure; reserve structured wrappers for error responses (RFC 9457)
+- Using PUT for partial field updates - PUT replaces the entire resource; use PATCH for partial updates
+- Resource identifiers in query parameters instead of URL path segments

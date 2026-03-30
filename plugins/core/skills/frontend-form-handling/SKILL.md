@@ -137,7 +137,7 @@ Problem: Shows errors while the user is still typing, creating a frustrating exp
 **State management:**
 
 - Store all step data in a single form state object (not per-step state)
-- Validate each step's fields on "Next" before advancing
+- Validate each step's fields on "Next" before advancing - validate only the current step's fields (React Hook Form: `trigger(["field1", "field2"])`; Angular: validate the nested `FormGroup` for that step)
 - Allow "Back" navigation without losing entered data
 - Show step progress indicator with step labels
 
@@ -156,6 +156,16 @@ Problem: Shows errors while the user is still typing, creating a frustrating exp
 - For long forms: save draft to localStorage/sessionStorage on each step change
 - Restore from storage on page reload with a "Resume where you left off?" prompt
 - Clear storage on successful submission
+- **Sensitive fields (payment, PCI, SSN):** Never persist to localStorage or sessionStorage. Use payment provider tokenization (Stripe Elements, Braintree Drop-in) so raw card data never enters your form state. Clear sensitive field values from the form state object when navigating away from that step.
+
+### Sensitive Field Handling
+
+Forms that collect payment, identity, or other sensitive data require additional precautions:
+
+- **Tokenize, do not store:** Use payment provider embedded widgets (Stripe Elements, Braintree Drop-in, PayPal buttons) that handle card data in their own iframe - raw card numbers should never touch your form state or your server
+- **Exclude from persistence:** When persisting multi-step form data to localStorage, explicitly omit sensitive fields. Only persist non-sensitive steps (personal info, address) and re-collect sensitive input if the user returns
+- **Clear on navigation:** When the user navigates away from a step containing sensitive fields, clear those values from the form state object
+- **Autocomplete attributes:** Use appropriate `autocomplete` values (`cc-number`, `cc-exp`, `cc-csc`) to help browsers autofill securely, but never prefill these from your own storage
 
 ### Dirty Tracking
 
@@ -254,3 +264,5 @@ Consuming workflow skills depend on this structure.
 - Resetting the entire form on a single field's server error (data loss)
 - Multi-step forms that lose data on "Back" navigation (broken UX)
 - Showing all validation errors on page load before user interaction (overwhelming)
+- Persisting sensitive form data (payment card numbers, CVV, SSN) to localStorage or sessionStorage (PCI compliance violation)
+- Handling raw card data in your form state instead of using payment provider tokenization (Stripe Elements, Braintree)

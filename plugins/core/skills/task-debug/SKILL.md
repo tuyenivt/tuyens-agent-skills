@@ -12,6 +12,13 @@ user-invocable: true
 
 Universal entry point for debugging errors. Detects the project stack and delegates to the matching stack-specific debug workflow. For unknown stacks, runs the systematic protocol below.
 
+## When to Use
+
+- Broken or crashing code with a stack trace, exception, or error log
+- Test failures or build errors
+- Unexpected behavior that used to work correctly
+- Runtime errors with a reproducible (or intermittent) trigger
+
 **Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `task-incident-root-cause`), performance analysis without a concrete error (use `task-code-perf-review`).
 
 ## Inputs
@@ -80,6 +87,13 @@ Identify the error class before reading any code:
 | Bundle / chunk loading | Chunk loading failed, dynamic import error, tree-shaking removed needed code, HMR not applying                     |
 
 State the class and confidence (HIGH / MEDIUM / LOW) before proceeding.
+
+**Pattern analysis (for intermittent or non-deterministic errors):**
+If the error does not reproduce on every request, analyze the pattern before reading code:
+1. Frequency: what percentage of requests fail?
+2. Timing: does it correlate with peak load, time of day, or specific operations?
+3. Correlation: do failures correlate with high connection pool usage, memory pressure, GC pauses, or recent deployments?
+4. State the hypothesized operational cause (connection exhaustion, race condition, cache eviction, timeout) before proceeding to LOCATE. This hypothesis guides where to look in code.
 
 #### LOCATE
 

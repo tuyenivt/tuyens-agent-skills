@@ -58,6 +58,14 @@ When the change is a version upgrade rather than a code change, the standard con
 3. **Phased rollout for shared parent dependencies**: In a monorepo with a shared parent POM or root build file, upgrade one module first and run its full test suite before propagating to other modules.
 4. **Deprecated API removal window**: If consumers use APIs that are deprecated in the new version, flag them - they may be removed in the next major version.
 
+**Upgrade blockers:** When a transitive dependency has no version compatible with the target upgrade:
+- **Wait**: Monitor the dependency's release timeline; defer the upgrade if a compatible release is imminent
+- **Find alternative**: Replace the incompatible dependency with a compatible alternative that provides equivalent functionality
+- **Shim/bridge**: Use a compatibility adapter if the incompatible API surface is small
+- **Fork (last resort)**: Maintain a patched fork temporarily; track the upstream for when a compatible version is released
+
+Document the blocker, the chosen strategy, and the conditions under which the workaround can be removed.
+
 ### Deployment Ordering
 
 - **Provider before consumer** for additive changes

@@ -96,6 +96,36 @@ Well-designed cache keys prevent collisions, enable targeted invalidation, and s
 - **Keep keys under 250 bytes** -- some cache backends truncate or reject longer keys
 - **Never embed user-controlled input directly** -- sanitize or hash to prevent key injection
 
+**Bad** - Non-deterministic or opaque cache key:
+```
+product.toString()    // "Product@3f2a1b" - collisions between instances
+JSON.stringify(query) // key order not guaranteed across runs
+```
+
+**Good** - Structured, deterministic key:
+```
+`catalog:product:${productId}:v1`
+`catalog:search:${sha256(sortedParams)}`
+```
+
+### Cache Warming
+
+For predictable traffic spikes (flash sales, launches), preload known-hot keys before the event:
+- Run a background job that pre-fetches and caches the N most-likely-accessed items
+- Stagger TTLs to avoid synchronized expiration (add jitter)
+- Verify cache population before opening traffic to the event
+
+### TTL Sizing Guidance
+
+| Data change frequency        | Suggested TTL range | Examples                          |
+| ---------------------------- | ------------------- | --------------------------------- |
+| Near-real-time               | 1-10 seconds        | Inventory counts, live prices     |
+| Infrequent changes           | 5-60 minutes        | Product catalog, user profiles    |
+| Rarely changes               | 1-24 hours          | Reference data, feature flags     |
+| Static until explicit change | Event-based invalidation | Config, CMS content          |
+
+Stagger TTLs to avoid synchronized expiration storms: add jitter (TTL +/- random 10%).
+
 ### Cache Levels
 
 - **In-process cache**: Fastest, but per-instance only (not shared across replicas)

@@ -79,6 +79,8 @@ The idempotency check and business operation must be atomic. Without atomicity, 
 
 Use `INSERT ... ON CONFLICT` (PostgreSQL), `INSERT IGNORE` (MySQL), or database-level advisory locks to ensure only one request processes a given key.
 
+**In-flight duplicate handling:** When an idempotency key exists with `status = 'processing'` (the original request is still in progress), the duplicate request should return `409 Conflict` or `202 Accepted` with a `Retry-After` header. Do not start a second execution of the same operation.
+
 ### Event/Message Idempotency
 
 For message consumers and event handlers:
@@ -86,6 +88,8 @@ For message consumers and event handlers:
 - Use a deduplication table keyed by message ID or natural business key
 - Check-and-insert atomically within the processing transaction
 - Consider consumer group semantics of the message broker
+
+**Out-of-order event handling:** Events from external systems (webhooks, message queues) may arrive out of order. Idempotent handlers should check the current entity state before applying the event. For example, a `payment_intent.succeeded` webhook should verify the order is still in a state that expects payment confirmation, not blindly update to PAID.
 
 ## Stack-Specific Guidance
 

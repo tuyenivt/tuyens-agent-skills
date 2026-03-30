@@ -136,6 +136,61 @@ mutate({
 - Scroll position restoration on back navigation
 - A way to reach the page footer
 
+### Request Coordination
+
+When a component needs data from multiple independent endpoints, fetch in parallel rather than sequentially:
+
+**Bad** - Waterfall fetching (sequential requests):
+
+```
+// Each request waits for the previous one - total time is sum of all requests
+const user = await fetchUser(id)
+const notifications = await fetchNotifications(id)
+const activity = await fetchActivity(id)
+```
+
+**Good** - Parallel fetching (independent requests):
+
+```
+// Independent requests fire simultaneously - total time is the slowest request
+const [user, notifications, activity] = await Promise.all([
+  fetchUser(id),
+  fetchNotifications(id),
+  fetchActivity(id),
+])
+
+// With TanStack Query: use useQueries for parallel independent queries
+const results = useQueries({
+  queries: [
+    { queryKey: ["user", id], queryFn: () => fetchUser(id) },
+    { queryKey: ["notifications", id], queryFn: () => fetchNotifications(id) },
+    { queryKey: ["activity", id], queryFn: () => fetchActivity(id) },
+  ],
+})
+```
+
+**Dependent queries** (when one query needs the result of another):
+
+```
+// Fetch user first, then fetch user's orders using the user's ID
+const { data: user } = useQuery({ queryKey: ["user", id], queryFn: () => fetchUser(id) })
+const { data: orders } = useQuery({
+  queryKey: ["orders", user?.id],
+  queryFn: () => fetchOrders(user.id),
+  enabled: !!user,  // only runs when user data is available
+})
+```
+
+### Retry Configuration
+
+Configure retry limits to prevent infinite retry loops that can cascade into backend overload:
+
+- **Queries (reads):** Retry up to 3 times with exponential backoff. TanStack Query: `retry: 3, retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000)`
+- **Mutations (writes):** Do not retry by default - mutations may not be idempotent. Only retry with an explicit idempotency key
+- **4xx errors:** Do not retry (client error, retrying will not help). Exception: 429 (rate limited) should retry after the `Retry-After` header duration
+- **5xx errors:** Retry with backoff (server may recover)
+- **Network errors:** Retry with backoff (connection may be restored)
+
 ### Request Deduplication and Caching
 
 - Data-fetching libraries (TanStack Query, SWR, Apollo) deduplicate by default using query keys
@@ -222,3 +277,6 @@ Consuming workflow skills depend on this structure.
 - Firing requests without cancellation on unmount (memory leaks, state updates on unmounted components)
 - Infinite scroll without keyboard-accessible alternative (accessibility violation)
 - Refetching all data on every component render (missing query keys or staleTime configuration)
+- Infinite or uncapped retries on failed requests (causes cascading backend load; cap at 3 retries with backoff)
+- Retrying mutations without idempotency keys (risk of duplicate writes)
+- Sequential fetching of independent data sources when they could be fetched in parallel (waterfall requests)

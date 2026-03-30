@@ -114,6 +114,14 @@ Backfill requirements:
 
 **Never deploy migration and application code that requires the migration atomically** - rolling deployments mean some instances still run old code after the migration runs.
 
+### Ordering Multiple Migrations
+
+When planning multiple schema changes in the same release:
+- Additive, fast operations first (new nullable columns, new tables)
+- Long-running operations (backfills, CONCURRENTLY indexes) as separate, independently deployable migrations
+- Destructive operations last, after a verification period
+- Never bundle a fast DDL with a slow backfill in the same migration file
+
 ## Output Format
 
 When surfacing migration safety analysis:
@@ -167,3 +175,8 @@ When surfacing migration safety analysis:
 - Adding NOT NULL constraints directly on large PostgreSQL tables (use NOT VALID + VALIDATE CONSTRAINT)
 - Assuming CREATE INDEX is fast on large tables (use CONCURRENTLY or online DDL)
 - Running destructive migrations (DROP COLUMN/TABLE) before confirming zero reads/writes to the old structure
+
+**Unique constraint vs. unique index:**
+- `CREATE UNIQUE INDEX CONCURRENTLY` does not block reads/writes (preferred for zero-downtime)
+- `ALTER TABLE ADD CONSTRAINT ... UNIQUE` takes ACCESS EXCLUSIVE lock (blocks everything)
+- Preferred approach: create the index CONCURRENTLY first, then attach it as a constraint: `ALTER TABLE ADD CONSTRAINT ... UNIQUE USING INDEX idx_name`

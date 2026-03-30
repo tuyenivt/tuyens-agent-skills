@@ -44,6 +44,10 @@ What happens to data if this change has a bug?
 - **Moderate** -- Writes to shared state, but recoverable (soft deletes, audit trail)
 - **Wide** -- Irreversible writes, data corruption risk, no rollback path
 
+For schema changes classified as Wide data scope, consult `ops-backward-compatibility` for expand-contract migration mechanics and `backend-db-migration` for lock risk assessment.
+
+When the changed component is a core model that appears in API responses, the data scope change implies a code scope expansion on every API that serializes the model. Assess both dimensions together.
+
 ### 3. User Scope
 
 How many users or systems are affected?

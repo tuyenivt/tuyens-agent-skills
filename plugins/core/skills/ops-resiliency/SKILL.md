@@ -96,15 +96,33 @@ Retries amplify load. Without a budget, a 3-retry policy across 3 services in a 
 
 When a dependency fails, degrade gracefully rather than propagating the failure:
 
-| Pattern          | Use When                      | Example                                                                |
-| ---------------- | ----------------------------- | ---------------------------------------------------------------------- |
-| Cached fallback  | Stale data is acceptable      | Return cached product catalog when catalog-service is down             |
-| Default value    | A reasonable default exists   | Return default shipping estimate when shipping-service times out       |
-| Partial response | Some data is better than none | Return order without recommendations when recommendation-service fails |
-| Queue for later  | Operation can be deferred     | Queue the notification for retry instead of failing the order          |
-| Fail fast        | No safe degradation exists    | Return 503 immediately rather than waiting for a timeout               |
+| Pattern           | Use When                                                     | Example                                                                |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------- |
+| Cached fallback   | Stale data is acceptable                                     | Return cached product catalog when catalog-service is down             |
+| Default value     | A reasonable default exists                                  | Return default shipping estimate when shipping-service times out       |
+| Partial response  | Some data is better than none                                | Return order without recommendations when recommendation-service fails |
+| Queue for later   | Operation can be deferred                                    | Queue the notification for retry instead of failing the order          |
+| Provider failover | Multiple providers for same capability (payment, SMS, email) | Route to secondary when primary circuit breaks                         | Payment gateways, notification services, CDN |
+| Fail fast         | No safe degradation exists                                   | Return 503 immediately rather than waiting for a timeout               |
 
 Every fallback must log the original failure at WARN level - silent fallbacks hide degradation until it compounds.
+
+### Provider Failover
+
+When multiple providers exist for the same capability, configure circuit breakers per provider and a routing layer that falls back to the next provider when the current one's circuit is open:
+
+1. Try primary provider
+2. If primary circuit is open, route to secondary
+3. If secondary circuit is open, route to tertiary
+4. If all circuits are open, fail fast with clear error to the user
+
+### Parallel vs Sequential External Calls
+
+When calling multiple independent external services, consider the timeout budget:
+
+- **Sequential:** Total time = sum of all timeouts. Use only when calls depend on each other.
+- **Parallel with all-must-succeed:** Total time = slowest call. Use when all results are needed.
+- **Parallel with first-success:** Total time = fastest call. Use for provider failover with speed priority.
 
 ## Stack-Specific Guidance
 

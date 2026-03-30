@@ -10,6 +10,10 @@ user-invocable: true
 
 # Performance Review
 
+## Purpose
+
+Identify and prioritize performance bottlenecks across backend services, database queries, and frontend rendering. Produces findings ordered by impact with estimated latency/throughput effects and concrete fixes.
+
 ## When to Use
 
 - Performance issue identification
@@ -47,6 +51,9 @@ Skip this step if `Stack Type: frontend`.
 - [ ] Connection pool sizing appropriate
 - [ ] Query timeout configured
 - [ ] Batch operations for bulk inserts/updates
+- [ ] Full-text search patterns appropriate (no leading-wildcard LIKE on large tables - use full-text index, trigram index, or search engine)
+
+Use skill: `backend-db-indexing` for detailed index analysis on flagged queries.
 
 ### Step 3 - Framework-Specific Backend Review (Backend and Fullstack)
 

@@ -46,6 +46,8 @@ This skill explains existing code. It does not review it for quality, suggest re
 
 Default depth: `standard`.
 
+Infer depth from caller context when not explicit: onboarding or documentation context suggests `deep`; quick question or debugging triage suggests `quick`.
+
 Handle partial inputs gracefully. If only a file path is given, read the file and determine scope.
 
 ## Rules

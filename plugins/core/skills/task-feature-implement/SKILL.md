@@ -10,7 +10,9 @@ user-invocable: true
 
 # Feature Implementation
 
-Stack-agnostic entry point for end-to-end feature implementation. Detects the project stack and delegates to the right stack-specific workflow.
+## Purpose
+
+Universal entry point for implementing new features that span multiple layers. Detects the project stack and delegates to the appropriate stack-specific workflow. Provides a comprehensive fallback workflow when no stack-specific skill exists.
 
 **Not for:** Bug fixes (use `task-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes.
 
@@ -55,6 +57,12 @@ Based on the detected stack, invoke the appropriate workflow:
 | Angular                | `task-angular-new` |
 
 **Fullstack projects:** If `Stack Type: fullstack` is detected, determine which side the feature belongs to based on user input. If the feature spans both (e.g., "add a new page with API endpoint"), delegate to the backend workflow for the API layer and the frontend workflow for the UI layer. If unclear, ask the user which side to focus on.
+
+**Fullstack coordination (when the feature spans backend + frontend):**
+1. Run DESIGN for both sides first - agree on the API contract (endpoints, request/response shapes, status codes) before either side begins implementation.
+2. Implement backend first so the frontend can integrate against real endpoints.
+3. If parallel development is needed, define the API contract explicitly and use mock data on the frontend until the backend is ready.
+4. Include an integration test that exercises the full flow from UI action to database persistence.
 
 If the detected stack does not match any of the above, proceed with the universal fallback below.
 

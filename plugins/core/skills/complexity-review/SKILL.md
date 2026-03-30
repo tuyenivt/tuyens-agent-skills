@@ -31,14 +31,16 @@ user-invocable: false
 
 Common complexity signals across all ecosystems:
 
-| Signal                                         | Threshold                                     | Fix                                                                                        |
-| ---------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Long method/function                           | > 20-40 lines (varies by language convention) | Extract methods/functions by responsibility                                                |
-| Deeply nested conditionals                     | > 3 levels                                    | Guard clauses, early returns, pattern matching                                             |
-| Large file/class/module                        | > 200-300 lines                               | Split by responsibility                                                                    |
-| Constructor/initializer with many dependencies | > 5 params                                    | Facade or reorganize responsibilities                                                      |
-| Long switch/case or if-else chain              | > 10 branches                                 | Map lookup, strategy pattern, or polymorphism                                              |
-| External service calls in one method           | > 3 calls                                     | Coordinator pattern - extract to orchestration layer with explicit error handling per call |
+| Signal                                           | Threshold                                                                                        | Fix                                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Long method/function                             | > 20-40 lines (varies by language convention)                                                    | Extract methods/functions by responsibility                                                |
+| Deeply nested conditionals                       | > 3 levels                                                                                       | Guard clauses, early returns, pattern matching                                             |
+| Large file/class/module                          | > 200-300 lines                                                                                  | Split by responsibility                                                                    |
+| Function/method/constructor with many parameters | > 5 params                                                                                       | Facade or reorganize responsibilities                                                      |
+| Long switch/case or if-else chain                | > 10 branches                                                                                    | Map lookup, strategy pattern, or polymorphism                                              |
+| Deep inheritance/mixin chain                     | > 3-4 levels                                                                                     | Composition over inheritance; extract cross-cutting behavior into mixins or decorators     |
+| Error handling complexity                        | Broad catch-all (bare except, catch(Exception)), empty catch blocks, nested try/catch > 2 levels | Specific exception types, error handler delegation, Result/Either types                    |
+| External service calls in one method             | > 3 calls                                                                                        | Coordinator pattern - extract to orchestration layer with explicit error handling per call |
 
 Note: Exact thresholds vary by ecosystem. Some languages are naturally more verbose than others. After loading stack-detect, calibrate thresholds to the norms of the detected language.
 

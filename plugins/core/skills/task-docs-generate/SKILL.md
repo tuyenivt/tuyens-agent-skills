@@ -10,6 +10,10 @@ user-invocable: true
 
 # Documentation Generator
 
+## Purpose
+
+Generate or improve project documentation by assessing current documentation quality, identifying gaps, and producing targeted documentation artifacts. Prioritizes fixing stale docs before writing new ones.
+
 ## When to Use
 
 - README creation or improvement
@@ -163,6 +167,49 @@ For public or consumed APIs, generate a changelog entry per version or release:
 ### Breaking Changes
 
 - [None] or [explicit list - breaking changes require a version bump and migration guide]
+```
+
+#### Event Documentation (for services that produce or consume events)
+
+```markdown
+# Event: [Event Name]
+
+**Topic:** [Kafka topic / queue name]
+**Direction:** Consumed / Produced / Both
+**Consumer Group:** [group ID]
+
+## Schema
+[JSON schema or example payload]
+
+## Trigger
+[What causes this event to be produced / when is it consumed]
+
+## Processing
+[Business logic summary when consumed]
+
+## Failure Handling
+- Retry policy: [backoff strategy, max retries]
+- Dead letter queue: [topic name, monitoring]
+- Manual intervention: [when and how to replay or skip]
+```
+
+#### External Integration Documentation
+
+```markdown
+# Integration: [Provider Name]
+
+**Type:** REST API / SDK / Webhook
+**Environments:** [sandbox URL, production URL]
+**Credentials:** [where stored, how rotated]
+
+## Endpoints Used
+| Method | Path | Purpose |
+
+## Failure Modes
+| Scenario | Detection | Recovery |
+
+## Rate Limits
+[limits and throttling strategy]
 ```
 
 #### Document the Why (Inline Architecture Comments)

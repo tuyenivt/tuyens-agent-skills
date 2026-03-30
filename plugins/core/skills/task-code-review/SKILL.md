@@ -10,6 +10,10 @@ user-invocable: true
 
 # Code Review
 
+## Purpose
+
+Standard code review for pull requests - correctness, readability, maintainability, and test coverage. Auto-detects project stack and applies framework-specific checks. Delegates to specialized reviews (performance, security) when scope includes them.
+
 ## When to Use
 
 - Pull request reviews
@@ -39,6 +43,11 @@ Default: `standard`. Use `quick` when user asks for "quick look", "sanity check"
 
 Default: **Basic** (if the user doesn't specify, run Basic only).
 
+**Scope escalation signals:** If the change involves any of the following, recommend the user add the corresponding scope:
+- File uploads, auth flows, user input deserialization, secrets handling -> recommend +Security
+- Bulk operations, new database queries, new endpoints with large payloads -> recommend +Perf
+- Both signal categories present -> recommend Full
+
 ## Workflow
 
 ### Step 1 - Detect Stack
@@ -52,6 +61,12 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 - Does what it's supposed to do
 - Edge cases handled (empty input, nulls, boundary values)
 - Error paths considered - external calls, I/O, and parsing have failure handling
+
+**Bulk operations (if applicable):**
+- Partial failure handling defined (skip-and-continue vs. all-or-nothing)
+- Idempotency for retryable bulk operations
+- Transaction boundaries appropriate (not one giant transaction, not one per row)
+- Background processing for operations that exceed request timeout
 
 **Readability:**
 

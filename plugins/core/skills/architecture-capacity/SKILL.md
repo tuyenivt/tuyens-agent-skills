@@ -33,9 +33,10 @@ user-invocable: false
 1. **Traffic profile** -- requests per second (RPS) at steady state and peak
 2. **Per-request cost** -- CPU time, memory, DB queries, network calls per request type
 3. **Resource budget** -- available CPU, memory, connections, throughput per component
-4. **Saturation point** -- at what RPS does each component hit its limit
-5. **Bottleneck** -- the component with the lowest saturation point
-6. **Scaling strategy** -- how to increase the bottleneck's capacity
+4. **External dependencies** -- Identify external API rate limits (payment gateways, third-party services, SaaS APIs) as hard ceilings that cannot be scaled by adding internal resources. The overall system throughput is capped by the lowest external rate limit on the critical path.
+5. **Saturation point** -- at what RPS does each component hit its limit
+6. **Bottleneck** -- the component with the lowest saturation point
+7. **Scaling strategy** -- how to increase the bottleneck's capacity
 
 ### Good: Specific estimation with bottleneck identification
 
@@ -80,6 +81,18 @@ Recovery time: 30,000 / (1500 - 500) = 30 seconds (assuming producer drops to 50
 ```
 
 If the backlog exceeds the queue's memory/disk limit, the producer blocks or drops messages. Size the queue to hold at least one full peak burst. If recovery time exceeds the interval between peaks, the system cannot keep up and requires more consumers or producer-side throttling.
+
+### Connection Pool Saturation
+
+Max throughput through a connection pool:
+
+```
+pool_throughput = pool_size / avg_query_duration
+Example: 100 connections / 50ms avg = 2,000 queries/sec
+```
+
+When saturated: new requests queue (if pool has wait queue) or fail immediately (if no wait queue or timeout reached).
+Mitigation: increase pool size (up to DB max_connections limit), reduce query duration, offload reads to replicas, add connection pooler (PgBouncer, ProxySQL).
 
 ### Cost Awareness
 

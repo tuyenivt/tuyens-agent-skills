@@ -99,6 +99,32 @@ const itemCount = computed(() => store.items.length)
 const totalPrice = computed(() => store.items.reduce((sum, i) => sum + i.price, 0))
 ```
 
+For expensive derivations (filtering, sorting, grouping large collections), use memoized selectors (`useMemo` in React, `computed` in Vue, `computed` signal in Angular, `createSelector` with Redux/Pinia) to avoid recomputation on every render. For trivial derivations (`.length`, boolean checks), direct computation is fine - no memoization needed.
+
+### Selector Pattern
+
+Subscribe to specific slices of global state rather than the entire store to avoid unnecessary re-renders:
+
+**Bad** - Full store subscription:
+
+```
+// Re-renders on ANY store change, even unrelated fields
+const state = useStore()
+return <div>Theme: {state.theme}</div>
+```
+
+**Good** - Selective subscription:
+
+```
+// Re-renders only when theme changes
+const theme = useStore(s => s.theme)
+return <div>Theme: {theme}</div>
+```
+
+This applies across libraries: Redux `useSelector(s => s.theme)`, Zustand `useStore(s => s.theme)`, Pinia `storeToRefs(useStore())`.
+
+**React Context performance note:** Context re-renders all consumers when the value object changes. Split large contexts into focused contexts (ThemeContext, AuthContext, LayoutContext) or use a state library with selectors instead.
+
 ### State Normalization
 
 For entity collections (users, products, orders), normalize to prevent nested duplicates:

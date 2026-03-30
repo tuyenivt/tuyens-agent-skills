@@ -111,15 +111,48 @@ Flags are temporary. Every flag must have:
 
 **Stale flag risk:** A flag at 100% that is not cleaned up within one sprint becomes invisible technical debt. The conditional code path stays in production, adding cognitive overhead and a future failure surface.
 
+## Flag Interactions
+
+When multiple flags are active in the same code path, behavior combinations grow exponentially (2^n for n boolean flags):
+
+- Document which flag combinations are valid and tested
+- Test critical flag combinations explicitly (especially flags that modify the same data flow)
+- Limit concurrent active flags in a single code path to 2-3 maximum
+- When adding a new flag to a path with existing flags, review how they interact before deployment
+
+## Code-Level Flag Patterns
+
+Keep flag evaluation at the boundary, not scattered through business logic:
+
+**Bad** - Flag conditionals scattered across the codebase:
+
+```
+// 10 files each check the same flag in different ways
+if (flags.newRecommendations) { ... } // in cart.js
+if (flags.newRecommendations) { ... } // in checkout.js
+if (flags.newRecommendations) { ... } // in analytics.js
+```
+
+**Good** - Single toggle point with strategy pattern:
+
+```
+// One decision point, implementation swapped at the boundary
+const engine = flags.newRecommendations
+  ? new NewRecommendationEngine()
+  : new LegacyRecommendationEngine()
+// All downstream code uses the engine interface, unaware of the flag
+```
+
 ## Anti-Patterns
 
-| Anti-Pattern                                               | Risk                            | Fix                                                                  |
-| ---------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
-| Flag with no cleanup plan                                  | Accumulates indefinitely        | Set cleanup date at flag creation                                    |
-| Database writes inside flag conditional without dual-write | Data inconsistency on rollback  | Use dual-write or separate writes from flag scope                    |
-| Flag that bypasses auth or security checks                 | Security gap                    | Never use flags to bypass security - use separate auth configuration |
-| Flag per environment without a single source of truth      | Config drift                    | Centralize flag state; environment overrides only for testing        |
-| Flag that controls multiple unrelated behaviors            | Impossible to roll back cleanly | One flag, one behavior                                               |
+| Anti-Pattern                                                 | Risk                                                   | Fix                                                                                                 |
+| ------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Flag with no cleanup plan                                    | Accumulates indefinitely                               | Set cleanup date at flag creation                                                                   |
+| Database writes inside flag conditional without dual-write   | Data inconsistency on rollback                         | Use dual-write or separate writes from flag scope                                                   |
+| Flag that bypasses auth or security checks                   | Security gap                                           | Never use flags to bypass security - use separate auth configuration                                |
+| Flag per environment without a single source of truth        | Config drift                                           | Centralize flag state; environment overrides only for testing                                       |
+| Flag that controls multiple unrelated behaviors              | Impossible to roll back cleanly                        | One flag, one behavior                                                                              |
+| Multiple flags in same code path without combination testing | Untested behavior combinations, exponential edge cases | Document flag interactions; test critical combinations; limit concurrent flags to 2-3 per code path |
 
 ## Output Format
 

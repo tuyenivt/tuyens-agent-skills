@@ -23,6 +23,7 @@ user-invocable: false
 - Follow the naming conventions of the detected language (do not mix styles)
 - Prefer explicit over clever - readability over brevity
 - One responsibility per file/class/module - no god objects
+- No god functions: individual functions/methods exceeding 50-80 lines should be decomposed regardless of class size
 
 ---
 
@@ -55,6 +56,7 @@ After loading stack-detect, check for anti-patterns specific to the detected eco
 - **Testing anti-patterns**: Using deprecated test utilities or patterns that the framework has superseded
 - **Performance anti-patterns**: Connection pool misconfiguration, missing query optimization, improper caching
 - **Security anti-patterns**: Disabled security features, exposed internals, missing input validation
+- **Structural anti-patterns**: Circular imports/dependencies between modules, files placed in the wrong architectural layer directory (e.g., service classes in a controllers/ directory), package structure that contradicts the layered architecture
 
 If the detected stack is unfamiliar, apply the universal rules above and recommend the user verify against their framework's documentation and linting tools.
 
@@ -113,3 +115,5 @@ Omit the Anti-Patterns section if none detected. Omit "No Issues Found" if viola
 - Magic numbers without named constants
 - Dead code left in "just in case" - delete it
 - Comments that restate the code instead of explaining why
+- Circular imports between modules (refactor to extract shared types, use dependency injection, or restructure module boundaries)
+- Placing files in directories that contradict their architectural role (e.g., service classes in a controllers/ directory)

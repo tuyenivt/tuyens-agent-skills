@@ -97,6 +97,53 @@ Consuming workflow skills depend on this structure to surface concurrency issues
 
 Omit "No Issues Found" if issues were listed.
 
+## Database-Level Concurrency
+
+When concurrent requests modify the same database rows, in-process synchronization (mutexes, channels) is insufficient because the race spans multiple application instances. Use database-level strategies:
+
+| Strategy               | Mechanism                                                        | When to Use                                          |
+| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- |
+| Pessimistic locking    | `SELECT ... FOR UPDATE` - holds row lock until transaction end   | Short-lived transactions with high contention        |
+| Optimistic locking     | Version column checked at UPDATE time; retry on conflict         | Read-heavy workloads, low contention                 |
+| Serializable isolation | Database detects and aborts conflicting transactions             | Complex invariants across multiple rows              |
+| Advisory locks         | Application-level locks managed by DB (e.g., `pg_advisory_lock`) | Cross-process coordination without row-level locking |
+
+**Bad** - In-process mutex for a database race:
+
+```
+// This mutex only protects within a single process instance
+mu.Lock()
+inventory := db.GetInventory(productID)
+if inventory.Qty >= orderQty {
+    db.SetInventory(productID, inventory.Qty - orderQty)
+}
+mu.Unlock()
+```
+
+Problem: Two application instances can both read the same inventory and both decrement, overselling the product.
+
+**Good** - Database-level optimistic locking:
+
+```
+// Version column prevents lost updates across all instances
+result := db.Exec(
+    "UPDATE inventory SET qty = qty - ?, version = version + 1 WHERE product_id = ? AND version = ? AND qty >= ?",
+    orderQty, productID, currentVersion, orderQty,
+)
+if result.RowsAffected == 0 {
+    // Conflict or insufficient stock - retry or fail
+}
+```
+
+### Distributed Locking
+
+When mutual exclusion must span multiple application instances (e.g., webhook deduplication, scheduled job coordination):
+
+- Redis `SET NX` with TTL for simple distributed locks
+- Idempotency keys for webhook and event deduplication (preferred over distributed locks when possible)
+- Distributed locks are inherently fragile - prefer idempotent operations over lock-based coordination when the design allows it
+- If using distributed locks, always set a TTL to prevent deadlocks from crashed holders
+
 ## Testing Concurrent Code
 
 Concurrency bugs often manifest only under contention. Test strategies that surface them:
@@ -116,3 +163,5 @@ Concurrency bugs often manifest only under contention. Test strategies that surf
 - Mixing concurrency paradigms unnecessarily within a single module
 - Using blocking operations inside lightweight/cooperative concurrency contexts
 - Ignoring cancellation/timeout propagation across concurrent boundaries
+- Using in-process mutexes/locks for database-level race conditions (does not protect across multiple application instances)
+- Distributed locks without TTL (deadlock risk if the lock holder crashes)

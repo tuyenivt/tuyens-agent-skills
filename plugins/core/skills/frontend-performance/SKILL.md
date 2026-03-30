@@ -32,6 +32,8 @@ user-invocable: false
 
 ## Patterns
 
+**Prioritize by impact:** Address issues in this order: (1) LCP blockers (largest impact on perceived speed), (2) CLS sources (visual stability), (3) INP/interaction delays, (4) bundle size reduction, (5) render optimization. Within each category, fix the issue with the largest measured or estimated impact first.
+
 ### Core Web Vitals Targets
 
 | Metric | What It Measures          | Good    | Needs Improvement | Poor    |
@@ -108,6 +110,21 @@ Problem: No lazy loading, no responsive sizing, PNG format, no dimensions (cause
 />
 ```
 
+### INP (Interaction to Next Paint)
+
+INP measures responsiveness - the time from user interaction to the next visual update. Target: < 200ms.
+
+**Common INP problems:**
+- Long tasks (> 50ms) blocking the main thread during interaction
+- Synchronous layout reads forcing reflow (`offsetHeight`, `getBoundingClientRect` inside loops)
+- Expensive event handlers without debouncing
+
+**Fixes:**
+- Break up long synchronous work with `requestIdleCallback`, `scheduler.yield()`, or `setTimeout(fn, 0)` to yield to the browser
+- Debounce expensive event handlers (search, resize, scroll): 150-300ms for search input, `requestAnimationFrame` for scroll/resize
+- Avoid forced reflows: batch DOM reads before DOM writes, never interleave read-write-read patterns
+- Move heavy computation to Web Workers for truly CPU-bound work
+
 ### Render Performance
 
 **Expensive re-renders** - Identify and fix unnecessary renders:
@@ -157,10 +174,12 @@ Beyond route-level code splitting, lazy-load heavy components:
 
 ### Font Optimization
 
-- Use `font-display: swap` to prevent invisible text during font loading
-- Preload critical fonts: `<link rel="preload" href="font.woff2" as="font" crossorigin>`
-- Subset fonts to include only needed character sets
 - Limit font families to 2-3 maximum; limit weights to what is actually used
+- Self-host fonts for performance (eliminates third-party DNS lookup and connection). Use `@fontsource` packages or `next/font` (Next.js) for automatic self-hosting and optimization
+- Combine font requests: if using Google Fonts CDN, combine families into a single URL parameter
+- Preload the critical font file(s): `<link rel="preload" href="font.woff2" as="font" type="font/woff2" crossorigin>`
+- Use `font-display: swap` to prevent invisible text during font loading
+- Subset fonts to include only the character ranges needed for the content language
 
 ### CLS Prevention
 

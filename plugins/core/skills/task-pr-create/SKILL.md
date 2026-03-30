@@ -99,6 +99,7 @@ Compose the description following the Output Format below.
 - Include the exact test command for the detected stack
 - Add manual verification steps for UI/API changes
 - Add migration steps if a DB migration is included
+- If the change introduces a new infrastructure dependency (Redis, database, message broker), include the dependency setup step in the test plan (e.g., "Ensure Redis is running: `docker-compose up -d redis`")
 
 **Checklist rules:**
 
@@ -136,6 +137,11 @@ If nothing was found, omit the section entirely - do not add empty placeholders.
 - [ ] [Manual verification step 1 - e.g., "Call POST /api/v1/orders and verify 201 response"]
 - [ ] [Manual verification step 2 - e.g., "Check that existing orders are unaffected"]
 - [ ] [Migration step if applicable - e.g., "Run `./gradlew flywayMigrate` on staging before deploying"]
+
+### Deployment Notes
+_{Include only if the change has deployment-time implications: new infrastructure dependencies, configuration changes, behavioral changes to existing endpoints, or feature flag requirements. Omit entirely if not applicable.}_
+
+- {deployment consideration}
 
 ### Checklist
 
