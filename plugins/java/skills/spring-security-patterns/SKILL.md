@@ -30,7 +30,7 @@ user-invocable: false
 - Constructor injection only (`@RequiredArgsConstructor`)
 - Externalize security configuration (issuer URIs, allowed origins) via `@Value` or `@ConfigurationProperties`
 
-## Pattern
+## Patterns
 
 ### Security Filter Chain
 
@@ -263,6 +263,25 @@ http.headers(headers -> headers
     .frameOptions(frame -> frame.deny())
 )
 ```
+
+### Webhook Endpoint Security
+
+Webhook endpoints from external services (Stripe, GitHub) use signature-based authentication instead of JWT/OAuth2. Exclude them from the standard security filter chain and verify signatures in the controller or a dedicated filter:
+
+```java
+@Bean
+@Order(0) // highest priority - before API security chain
+SecurityFilterChain webhookSecurityFilterChain(HttpSecurity http) throws Exception {
+    return http
+        .securityMatcher("/webhooks/**")
+        .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+        .csrf(AbstractHttpConfigurer::disable)
+        .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
+        .build();
+}
+```
+
+Signature validation happens in the webhook service, not in Spring Security - the signing mechanism is provider-specific (HMAC-SHA256 for Stripe, SHA-256 for GitHub).
 
 ### Testing Security
 

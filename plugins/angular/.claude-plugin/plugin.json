@@ -1,6 +1,6 @@
 {
   "name": "angular",
-  "version": "1.60.0",
+  "version": "1.61.0",
   "description": "Claude Code plugin for Angular 21+ / TypeScript / Angular CLI development. Standalone components, signals, RxJS, Angular Material/CDK, Tailwind CSS. Designed to work with core plugin.",
   "author": {
     "name": "Tuyen"

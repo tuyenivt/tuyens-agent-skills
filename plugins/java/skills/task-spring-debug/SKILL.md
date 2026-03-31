@@ -88,6 +88,10 @@ Identify the error category to guide investigation:
 | Kafka consumer lag / DLT messages         | Consumer error, redelivery loop          | Use skill: `spring-messaging-patterns`  |
 | RabbitMQ DLQ / unacked messages           | Consumer throwing, no DLQ config         | Use skill: `spring-messaging-patterns`  |
 | Outbox event not published                | Scheduled publisher or TX issue          | Use skill: `spring-messaging-patterns`  |
+| `OptimisticLockException`                 | Concurrent update on `@Version` entity   | Use skill: `spring-transaction`         |
+| `ConstraintViolationException`            | Bean Validation failed before DB insert  | -                                       |
+| `PaymentDeclinedException` (domain)       | External payment gateway declined charge | Use skill: `spring-exception-handling`  |
+| `WebSocketHandshakeException`             | WS auth or CORS failure                  | Use skill: `spring-websocket`           |
 
 **Test failure** → analyze assertion mismatch, check test setup and mocks
 

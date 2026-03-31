@@ -15,6 +15,7 @@ user-invocable: false
 
 - Centralizing error handling across REST APIs
 - Mapping business exceptions to appropriate HTTP status codes
+- Wrapping third-party API errors (Stripe, payment gateways) into domain exceptions
 - Ensuring consistent error response format
 
 ## Rules
@@ -80,7 +81,7 @@ public class DuplicateEmailException extends DomainException {
 }
 ```
 
-## Pattern
+## Patterns
 
 Bad - Scattered error handling:
 
@@ -172,6 +173,64 @@ public class GlobalExceptionHandler {
         pd.setDetail("An unexpected error occurred");
         pd.setProperty("traceId", MDC.get("traceId"));
         return pd;
+    }
+}
+```
+
+### Wrapping External API Errors
+
+Third-party APIs (Stripe, payment gateways, etc.) return their own exception types. Wrap them into domain exceptions at the integration boundary so callers never depend on the external library:
+
+```java
+// Bad: leaking Stripe exception into service layer
+@Service
+public class PaymentService {
+    public PaymentResult charge(PaymentRequest req) {
+        try {
+            return stripeClient.charge(req);
+        } catch (StripeException e) {
+            throw e; // caller must import com.stripe.exception
+        }
+    }
+}
+
+// Good: classify and wrap at the boundary
+@Component
+@RequiredArgsConstructor
+public class StripePaymentGateway implements PaymentGateway {
+
+    public PaymentResult charge(PaymentRequest req) {
+        try {
+            var charge = stripeClient.createCharge(req.amount(), req.currency());
+            return PaymentResult.success(charge.getId());
+        } catch (CardException e) {
+            throw new PaymentDeclinedException(req.orderId(), e.getDeclineCode());
+        } catch (RateLimitException e) {
+            throw new PaymentRetryableException(req.orderId(), "Rate limited", e);
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(req.orderId(), e.getMessage(), e);
+        }
+    }
+}
+```
+
+### Retryable vs Permanent Error Classification
+
+When calling external services, callers need to know whether to retry. Use a marker interface or base class:
+
+```java
+public class RetryableException extends DomainException {
+    protected RetryableException(String message, HttpStatus status, String errorCode) {
+        super(message, status, errorCode);
+    }
+    public boolean isRetryable() { return true; }
+}
+
+public class PaymentRetryableException extends RetryableException {
+    public PaymentRetryableException(Long orderId, String reason, Throwable cause) {
+        super("Payment temporarily failed for order %d: %s".formatted(orderId, reason),
+              HttpStatus.SERVICE_UNAVAILABLE, "PAYMENT_RETRYABLE");
+        initCause(cause);
     }
 }
 ```

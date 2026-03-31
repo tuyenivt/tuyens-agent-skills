@@ -27,7 +27,7 @@ user-invocable: false
 - Acknowledge only after successful processing; let exceptions trigger redelivery
 - Virtual Thread compatibility: Kafka/RabbitMQ listener thread pools should use Virtual Threads
 
-## Pattern
+## Patterns
 
 ### Spring Kafka - Producer
 
@@ -203,6 +203,57 @@ public class FulfillmentConsumer {
     public void handleDlt(OrderPlacedEvent event) {
         log.error("Order {} exhausted retries, moved to DLT", event.orderId());
         alertService.notifyOps("fulfillment-failure", event.orderId());
+    }
+}
+```
+
+### Webhook Event Processing
+
+External services (Stripe, GitHub) push events via webhooks. Process them as message consumers with the same idempotency and retry rules:
+
+```java
+@RestController
+@RequestMapping("/webhooks")
+@RequiredArgsConstructor
+public class StripeWebhookController {
+
+    private final StripeWebhookService webhookService;
+
+    @PostMapping("/stripe")
+    public ResponseEntity<Void> handleStripe(
+            @RequestBody String rawBody,
+            @RequestHeader("Stripe-Signature") String signature) {
+        webhookService.verifySignature(rawBody, signature);
+        var event = webhookService.parse(rawBody);
+
+        // Idempotency: check if event already processed
+        if (webhookService.isProcessed(event.getId())) {
+            return ResponseEntity.ok().build();
+        }
+
+        webhookService.process(event);
+        return ResponseEntity.ok().build();
+    }
+}
+```
+
+Webhook handlers must be idempotent - Stripe retries failed deliveries up to 3 days. Store processed event IDs in a `webhook_events` table with a unique constraint on the event ID.
+
+### Mixed Required/Optional Async Notifications
+
+When some notifications are required (email confirmation) and others are best-effort (SMS, push), use separate handling:
+
+```java
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onPaymentCompleted(PaymentCompletedEvent event) {
+    // Required: publish to Kafka for downstream services
+    kafkaTemplate.send("payment.completed", event.paymentId().toString(), event);
+
+    // Best-effort: send notifications, log failures but don't fail
+    try {
+        notificationService.sendSms(event.userPhone(), "Payment confirmed");
+    } catch (Exception e) {
+        log.warn("Optional SMS notification failed for payment {}", event.paymentId(), e);
     }
 }
 ```

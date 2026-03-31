@@ -18,6 +18,7 @@ user-invocable: false
 - Structuring a multi-module Spring Boot project
 - Standardizing dependency versions across modules
 - Configuring CI/CD pipelines for Gradle projects
+- Resolving dependency conflicts between Stripe/payment SDKs and Spring Boot managed versions
 
 ## Rules
 
@@ -29,7 +30,7 @@ user-invocable: false
 - Minimize `api()` dependency scope - prefer `implementation()`
 - Commit Gradle wrapper files (`gradlew`, `gradle-wrapper.jar`) to version control
 
-## Pattern
+## Patterns
 
 ### Version Catalog
 

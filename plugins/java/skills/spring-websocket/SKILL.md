@@ -14,8 +14,9 @@ user-invocable: false
 ## When to Use
 
 - Real-time bidirectional communication (chat, notifications, live updates)
-- Server-sent events to connected clients
+- Server-sent events to connected clients (e.g., order status updates, payment confirmations)
 - Implementing STOMP messaging over WebSocket
+- Live dashboard updates for admin or monitoring panels
 
 ## Rules
 
@@ -28,7 +29,7 @@ user-invocable: false
 - Limit message size and rate to prevent abuse
 - Use Virtual Thread-compatible patterns (no synchronized)
 
-## Pattern
+## Patterns
 
 ### Configuration
 

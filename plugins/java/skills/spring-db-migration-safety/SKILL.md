@@ -30,7 +30,7 @@ user-invocable: false
 - Migrations must be backward-compatible with the N-1 version of the application code
 - Use feature flags to gate schema-dependent code paths during expand-then-contract deployments
 
-## Pattern
+## Patterns
 
 ### 1. Zero-Downtime DDL Rules
 
@@ -100,6 +100,26 @@ ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLAC
 -- flyway:executeInTransaction=false
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
+
+### Idempotency Key and CHECK Constraint Migrations
+
+For payment/order features that need idempotency and status validation:
+
+```sql
+-- V20250213_1200__add_idempotency_key_to_payments.sql
+ALTER TABLE payments ADD COLUMN idempotency_key VARCHAR(255);
+
+-- V20250213_1210__create_unique_index_idempotency_key.sql
+-- flyway:executeInTransaction=false
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_payments_idempotency_key
+    ON payments(idempotency_key);
+
+-- V20250213_1220__add_status_check_constraint.sql
+ALTER TABLE payments ADD CONSTRAINT payments_status_check
+    CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'));
+```
+
+CHECK constraints prevent invalid status values at the database level - a safety net when application-level validation is bypassed (e.g., manual SQL, migration scripts).
 
 ### 2. Flyway Conventions
 

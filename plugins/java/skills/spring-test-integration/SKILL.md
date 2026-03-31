@@ -31,7 +31,7 @@ user-invocable: false
 - Never use `Thread.sleep()` in async tests - use Awaitility
 - Never use `@DirtiesContext` - redesign the test instead
 
-## Pattern
+## Patterns
 
 ### Test Slice Selection Guide
 
@@ -251,6 +251,38 @@ Bad - blocks test unreliably:
 orderService.processAsync(orderId);
 Thread.sleep(2000); // Flaky, slow, unreliable
 assertThat(orderRepository.findById(orderId).get().getStatus()).isEqualTo(OrderStatus.COMPLETED);
+```
+
+### Testing Idempotency and State Transitions
+
+For features with idempotency requirements (e.g., payment processing), test that duplicate requests return the same result:
+
+```java
+@Test
+void shouldReturnExistingPaymentForDuplicateIdempotencyKey() {
+    var request = PaymentTestFixtures.aPaymentRequest("idem-key-123");
+
+    // First call creates the payment
+    var first = paymentService.processPayment(request);
+    assertThat(first.status()).isEqualTo(PaymentStatus.COMPLETED);
+
+    // Second call with same idempotency key returns existing
+    var second = paymentService.processPayment(request);
+    assertThat(second.id()).isEqualTo(first.id());
+    assertThat(paymentRepository.findAllByIdempotencyKey("idem-key-123")).hasSize(1);
+}
+```
+
+For state machine transitions, test both valid and invalid transitions:
+
+```java
+@Test
+void shouldRejectInvalidStateTransition() {
+    var order = orderRepository.save(OrderTestFixtures.anOrder(OrderStatus.DELIVERED));
+
+    assertThatThrownBy(() -> orderService.transition(order.getId(), OrderStatus.PENDING))
+        .isInstanceOf(InvalidStateTransitionException.class);
+}
 ```
 
 ### Assertion Patterns

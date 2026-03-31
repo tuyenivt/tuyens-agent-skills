@@ -27,7 +27,9 @@ user-invocable: false
 - Prefer `@TransactionalEventListener` over `@EventListener` when the event must fire after commit
 - `@Async` self-invocation is silently ignored - call through a Spring proxy (injected bean)
 
-## ThreadPoolTaskExecutor Configuration
+## Patterns
+
+### ThreadPoolTaskExecutor Configuration
 
 Always define an explicit executor - Spring's default `SimpleAsyncTaskExecutor` creates a new thread per invocation:
 
@@ -58,7 +60,7 @@ public class NotificationService {
 }
 ```
 
-## Virtual Threads (Spring Boot 3.5+ / Java 21+)
+### Virtual Threads (Spring Boot 3.5+ / Java 21+)
 
 Replace the thread pool executor with a virtual thread executor for I/O-bound async tasks:
 
@@ -71,7 +73,7 @@ public Executor asyncTaskExecutor() {
 
 Virtual threads have no max-pool overhead - each task gets its own lightweight thread. Do not use for CPU-bound work (no throughput gain and context-switch overhead).
 
-## Self-Invocation Pitfall
+### Self-Invocation Pitfall
 
 `@Async` is applied via Spring AOP proxy. Calling an `@Async` method from the same class bypasses the proxy - the method runs synchronously with no error:
 
@@ -98,7 +100,7 @@ public class ReportService {
 }
 ```
 
-## Exception Handling in Async Methods
+### Exception Handling in Async Methods
 
 Unchecked exceptions in `@Async` methods are silently swallowed unless you set an `AsyncUncaughtExceptionHandler`:
 
@@ -124,7 +126,7 @@ reportAsyncService.buildReport(id)
     });
 ```
 
-## Transactional Event Listener
+### Transactional Event Listener
 
 Use `@TransactionalEventListener` when the async handler must run only after the publishing transaction commits (prevents processing events from rolled-back transactions):
 
@@ -153,7 +155,7 @@ public class OrderCreatedListener {
 
 Default phase is `AFTER_COMMIT`. Use `AFTER_ROLLBACK` for compensating actions.
 
-## Pattern
+### Async Outside Transaction
 
 Bad - Blocking task within transaction:
 
@@ -198,6 +200,13 @@ public void recoverSendEmail(MailSendException ex, Long orderId) {
 ```
 
 Requires `@EnableRetry` on a configuration class and `spring-retry` dependency.
+
+## Edge Cases
+
+- **SecurityContext not propagated**: `@Async` methods run on a different thread - `SecurityContextHolder` is empty by default. Use `SecurityContextHolder.setStrategyName(MODE_INHERITABLETHREADLOCAL)` or pass the principal explicitly as a method parameter
+- **MDC/tracing context lost**: SLF4J MDC is thread-local. Wrap the async executor with `MDCTaskDecorator` to copy trace IDs to async threads
+- **Transaction already committed**: `@TransactionalEventListener(AFTER_COMMIT)` fires after the transaction commits. If the async handler needs to read the entity, it must re-fetch from the database - the original entity reference may be detached
+- **Retry exhaustion**: When `@Retryable` exhausts all attempts and no `@Recover` method exists, the exception is silently swallowed. Always define a `@Recover` fallback
 
 ## Output Format
 

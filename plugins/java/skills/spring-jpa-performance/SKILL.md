@@ -29,7 +29,7 @@ user-invocable: false
 - Add indexes on WHERE/ORDER BY/JOIN columns (see core plugin's `backend-db-indexing` for general index strategy)
 - Set `spring.jpa.open-in-view=false` in all environments - open-in-view silently masks lazy loading issues by keeping the Hibernate session open through the controller layer, causing unpredictable N+1 queries in the view
 
-## Pattern
+## Patterns
 
 ### N+1 Detection and Fix
 
@@ -168,6 +168,18 @@ public Page<ProductResponse> search(Long categoryId, BigDecimal minPrice, BigDec
 ```
 
 Use derived query methods (e.g., `findByCategoryId`) for simple single-parameter filters. Switch to `Specification` only when the endpoint has 2+ optional filter parameters.
+
+### Pessimistic Locking for Critical Writes
+
+For operations where optimistic locking is insufficient (e.g., decrementing stock, balance deductions), use pessimistic locking to prevent concurrent overwrites:
+
+```java
+@Lock(LockModeType.PESSIMISTIC_WRITE)
+@Query("SELECT p FROM Product p WHERE p.id = :id")
+Optional<Product> findByIdForUpdate(Long id);
+```
+
+Use pessimistic locks only for short-lived transactions on single rows. For bulk operations, prefer optimistic locking with `@Version` and retry on `OptimisticLockException`.
 
 ### Second-Level Cache
 

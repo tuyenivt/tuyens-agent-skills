@@ -16,6 +16,7 @@ user-invocable: false
 - Managing consistency boundaries for database operations
 - Coordinating multiple operations that must succeed together
 - Controlling transaction scope and propagation
+- Ensuring atomicity for payment processing or state machine transitions
 
 ## Rules
 
@@ -29,7 +30,9 @@ user-invocable: false
 - Rollback on runtime exception only
 - Explicit rollback rules for checked exceptions
 
-## Pattern
+## Patterns
+
+### Transaction Scope
 
 Bad - Transactions in controller, nested:
 
@@ -57,8 +60,6 @@ public class OrderService {
     }
 }
 ```
-
-## Common Pitfalls
 
 ### Self-Invocation Proxy Bypass
 
@@ -142,6 +143,43 @@ public class OrderQueryService {
         Order order = orderRepo.findById(id).orElseThrow();
         order.setStatus(status);
         return OrderDto.from(orderRepo.save(order));
+    }
+}
+```
+
+### Idempotent Write with Optimistic Locking
+
+For operations that must be idempotent (e.g., payment processing), combine find-or-create with `@Version` to prevent double-processing:
+
+```java
+@Transactional
+public PaymentResponse processPayment(PaymentRequest req) {
+    // Idempotency check - return existing if already processed
+    var existing = paymentRepository.findByIdempotencyKey(req.idempotencyKey());
+    if (existing.isPresent()) {
+        return PaymentResponse.from(existing.get());
+    }
+
+    Payment payment = Payment.from(req);
+    payment = paymentRepository.save(payment);
+    paymentGateway.charge(payment); // external call AFTER save
+    payment.setStatus(PaymentStatus.COMPLETED);
+    return PaymentResponse.from(paymentRepository.save(payment));
+}
+```
+
+If two concurrent requests arrive with the same idempotency key, the unique constraint on `idempotency_key` prevents double-insert. Catch `DataIntegrityViolationException` and re-fetch:
+
+```java
+@Transactional
+public PaymentResponse processPayment(PaymentRequest req) {
+    try {
+        return doProcess(req);
+    } catch (DataIntegrityViolationException e) {
+        // Concurrent insert won - return the existing record
+        return paymentRepository.findByIdempotencyKey(req.idempotencyKey())
+            .map(PaymentResponse::from)
+            .orElseThrow(() -> new PaymentGatewayException("Unexpected conflict", e));
     }
 }
 ```
