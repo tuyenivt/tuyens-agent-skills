@@ -1,6 +1,6 @@
 ---
 name: rails-security-patterns
-description: "Rails security hardening patterns covering strong parameters, Devise/JWT authentication, Pundit authorization, CSRF/XSS prevention, SQL injection guards, Rack::Attack rate limiting, and credentials management."
+description: Rails security hardening patterns covering strong parameters, Devise/JWT authentication, Pundit authorization, CSRF/XSS prevention, SQL injection guards, Rack::Attack rate limiting, and credentials management.
 metadata:
   category: backend
   tags: [ruby, rails, security, authentication, authorization]
@@ -16,8 +16,32 @@ user-invocable: false
 - Implementing rate limiting for public or login endpoints
 - Auditing templates or API responses for XSS/injection risks
 - Setting up Rails credentials for secrets management
+- Designing role-based access policies (admin, owner, public)
 
-## 1. Strong Parameters
+## Rules
+
+- Never use `params.permit!` or `params.to_unsafe_h` - always whitelist attributes explicitly
+- Never permit `:id` in strong params - attackers can change record ownership
+- Every controller action that reads or mutates a resource must call `authorize`
+- Every index/list action must use `policy_scope` to filter records by user permissions
+- Use `after_action :verify_authorized` and `after_action :verify_policy_scoped` in ApplicationController
+- Use parameterized queries for all user input - never string interpolation in `where`
+- Store all secrets in Rails credentials - never hardcode in source or config files
+- Never use `html_safe` or `raw` on user-provided content
+
+## Patterns
+
+### Strong Parameters
+
+Bad - permits everything (mass assignment vulnerability):
+
+```ruby
+def order_params
+  params.permit!
+end
+```
+
+Good - explicit whitelist:
 
 ```ruby
 class OrdersController < ApplicationController
@@ -27,20 +51,16 @@ class OrdersController < ApplicationController
     params.require(:order).permit(:total, :status, :customer_id, metadata: {})
   end
 end
-
-# ❌ NEVER: params.permit! or params.to_unsafe_h
-# ❌ NEVER: permit(:id) - attackers can change record IDs
 ```
 
-## 2. Authentication - Devise + JWT
+### Authentication - Devise + JWT
 
 ```ruby
 # Gemfile
 gem "devise"
 gem "devise-jwt"
 
-# Standard Devise setup for session-based auth
-# For API-only:
+# API-only JWT setup
 class User < ApplicationRecord
   devise :database_authenticatable, :registerable,
          :jwt_authenticatable, jwt_revocation_strategy: JwtDenylist
@@ -55,17 +75,34 @@ config.jwt do |jwt|
 end
 ```
 
-## 3. Authorization - Pundit
+### Authorization - Pundit
+
+Bad - no authorization check:
+
+```ruby
+class OrdersController < ApplicationController
+  def show
+    @order = Order.find(params[:id])
+    render json: @order # anyone can view any order
+  end
+end
+```
+
+Good - Pundit policy with role-based access:
 
 ```ruby
 # app/policies/order_policy.rb
 class OrderPolicy < ApplicationPolicy
   def show?
-    record.customer_id == user.id || user.admin?
+    user.admin? || record.user_id == user.id
+  end
+
+  def fulfill?
+    user.admin?
   end
 
   def update?
-    record.customer_id == user.id && record.pending?
+    record.user_id == user.id && record.pending?
   end
 
   class Scope < Scope
@@ -73,33 +110,50 @@ class OrderPolicy < ApplicationPolicy
       if user.admin?
         scope.all
       else
-        scope.where(customer_id: user.id)
+        scope.where(user_id: user.id)
       end
     end
   end
 end
 
-# Controller
+# Controller with authorization
 class OrdersController < ApplicationController
   def show
     @order = Order.find(params[:id])
     authorize @order
+    render json: OrderSerializer.new(@order)
   end
 
   def index
-    @orders = policy_scope(Order)
+    @orders = policy_scope(Order).page(params[:page])
+    render json: OrderSerializer.new(@orders)
+  end
+
+  def fulfill
+    @order = Order.find(params[:id])
+    authorize @order
+    result = FulfillOrder.new(order: @order).call
+    if result.success?
+      render json: OrderSerializer.new(result.value)
+    else
+      render json: { errors: result.errors }, status: :unprocessable_entity
+    end
   end
 end
 
-# Ensure authorization in every action
+# ApplicationController enforcement
 class ApplicationController < ActionController::Base
   include Pundit::Authorization
   after_action :verify_authorized, except: :index
   after_action :verify_policy_scoped, only: :index
+
+  rescue_from Pundit::NotAuthorizedError do |_exception|
+    render json: { error: "Forbidden" }, status: :forbidden
+  end
 end
 ```
 
-## 4. CSRF Protection
+### CSRF Protection
 
 ```ruby
 # Default: enabled for all non-GET requests
@@ -111,21 +165,21 @@ end
 class Api::BaseController < ActionController::API
   # No CSRF needed - stateless token auth
 end
-
-# ❌ NEVER: skip_before_action :verify_authenticity_token globally
 ```
 
-## 5. XSS Prevention
+### XSS Prevention
+
+Bad - rendering user content without escaping:
 
 ```ruby
-# Rails auto-escapes output in ERB by default
-<%= user.name %> # ✅ Safe - auto-escaped
-
-# ❌ Dangerous - only use for trusted content
 <%= raw user.bio %>
 <%= user.bio.html_safe %>
+```
 
-# ✅ Sanitize user HTML
+Good - auto-escaping (default) and sanitize for allowed HTML:
+
+```ruby
+<%= user.name %>  # auto-escaped by Rails
 <%= sanitize user.bio, tags: %w[p br strong em] %>
 
 # Content Security Policy
@@ -139,21 +193,25 @@ Rails.application.configure do
 end
 ```
 
-## 6. SQL Injection
+### SQL Injection Prevention
+
+Bad - string interpolation in queries:
 
 ```ruby
-# ✅ Parameterized queries
+User.where("email = '#{params[:email]}'") # SQL INJECTION
+```
+
+Good - parameterized queries:
+
+```ruby
 User.where("email = ?", params[:email])
 User.where(email: params[:email])
 
-# ✅ Sanitize for LIKE
+# Sanitize for LIKE patterns
 User.where("name LIKE ?", "%#{User.sanitize_sql_like(params[:q])}%")
-
-# ❌ NEVER: string interpolation in queries
-User.where("email = '#{params[:email]}'") # SQL INJECTION!
 ```
 
-## 7. Rate Limiting - Rack::Attack
+### Rate Limiting - Rack::Attack
 
 ```ruby
 # Gemfile
@@ -168,7 +226,7 @@ Rack::Attack.throttle("logins/ip", limit: 5, period: 20.seconds) do |req|
   req.ip if req.path == "/api/v1/login" && req.post?
 end
 
-# Block bad actors
+# Block repeated auth failures
 Rack::Attack.blocklist("block bad IPs") do |req|
   Rack::Attack::Fail2Ban.filter("bad-#{req.ip}", maxretry: 3, findtime: 10.minutes, bantime: 1.hour) do
     req.path == "/api/v1/login" && req.post? && req.env["rack.attack.match_data"]
@@ -176,7 +234,7 @@ Rack::Attack.blocklist("block bad IPs") do |req|
 end
 ```
 
-## 8. Rails Credentials
+### Rails Credentials
 
 ```ruby
 # Edit credentials
@@ -188,16 +246,26 @@ Rails.application.credentials.dig(:aws, :secret_key)
 
 # Per-environment credentials
 EDITOR=vim rails credentials:edit --environment production
-
-# ❌ NEVER: hardcode secrets in code or config files
-# ❌ NEVER: commit .env files with real secrets
 ```
 
-## Anti-Patterns
+## Output Format
 
-- ❌ `skip_before_action :verify_authenticity_token` globally
-- ❌ String interpolation in `where` clauses
-- ❌ `params.permit!` - allows mass assignment of any attribute
-- ❌ Hardcoded secrets in source code
-- ❌ Missing authorization checks (`authorize` / `policy_scope`)
-- ❌ `html_safe` on user-provided content
+When applying security patterns, document each measure:
+
+```
+Pattern: {Strong Params | Pundit Policy | CSRF | Rate Limiting | Credentials | XSS Prevention | SQL Injection Guard}
+Resource: {controller or model name}
+Change: {description of what was applied}
+Risk Mitigated: {mass assignment | unauthorized access | injection | brute force | secret exposure}
+```
+
+## Avoid
+
+- `skip_before_action :verify_authenticity_token` globally - disables CSRF for all actions
+- String interpolation in `where` clauses - SQL injection vector
+- `params.permit!` or `to_unsafe_h` - allows mass assignment of any attribute
+- Hardcoded secrets in source code or config files - use Rails credentials
+- Missing `authorize` / `policy_scope` calls - any user can access any resource
+- `html_safe` or `raw` on user-provided content - XSS vulnerability
+- Pundit policies that only check `user.admin?` without owner access - overly restrictive for resource owners
+- Missing `rescue_from Pundit::NotAuthorizedError` - leaks stack traces to clients

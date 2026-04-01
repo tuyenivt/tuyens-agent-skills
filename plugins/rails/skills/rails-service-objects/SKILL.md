@@ -1,6 +1,6 @@
 ---
 name: rails-service-objects
-description: "Service object design patterns for Rails. Covers extraction criteria, verb-based naming, the .call interface with Result objects, input boundary validation, error handling, and service composition."
+description: Service object design patterns for Rails. Covers extraction criteria, verb-based naming, the .call interface with Result objects, input boundary validation, error handling, and service composition.
 metadata:
   category: backend
   tags: [ruby, rails, service-objects, architecture, patterns]
@@ -14,82 +14,101 @@ user-invocable: false
 - Extracting business logic that spans multiple models or external APIs
 - Creating a new feature that involves multi-step mutations with transactions
 - Refactoring fat controllers or models with >10 lines of business logic
-- Composing multiple operations into an orchestrator (e.g., checkout flow)
+- Composing multiple operations into an orchestrator (e.g., order fulfillment flow)
 - Wrapping external API calls with error handling and Result objects
 
-## When to Extract
+## Rules
 
-- Business logic > 10 lines in a controller or model
-- Multi-model operations (create order + update inventory + notify)
-- External API interactions
-- Complex calculations or transformations
-- Logic that needs independent testing
+- One service, one responsibility - name with a verb describing the action
+- Always return a `Result` object, never raw values or exceptions for expected failures
+- Wrap multi-model mutations in `ActiveRecord::Base.transaction`
+- Dispatch Sidekiq jobs AFTER the transaction commits, never inside it - if the job fires before commit, the worker may read stale data or a row that does not exist yet
+- Validate inputs at the boundary (in `initialize` or a `validate_inputs!` method)
+- Place services in `app/services/`, namespaced by domain if needed
+- Keep services under 100 lines - decompose into smaller services if larger
 
-## Naming Convention
+## Patterns
 
-Verb-based, singular purpose. Place in `app/services/`.
+### When to Extract
+
+Extract to a service when:
+
+| Signal                                        | Example                                  |
+| --------------------------------------------- | ---------------------------------------- |
+| Business logic > 10 lines in controller/model | Order total calculation with discounts   |
+| Multi-model operations                        | Create order + update inventory + notify |
+| External API interactions                     | Payment gateway, shipping API            |
+| Complex calculations                          | Tax calculation, pricing rules           |
+| Logic needing independent testing             | Fulfillment eligibility checks           |
+
+### Naming Convention
+
+Verb-based, singular purpose. Place in `app/services/`:
 
 ```
 app/services/
+  fulfill_order.rb
   create_order.rb
   process_payment.rb
-  sync_inventory.rb
   orders/
     calculate_total.rb
     apply_discount.rb
 ```
 
-## .call Interface
+### .call Interface with Result Object
+
+Bad - returning raw values and raising for expected failures:
 
 ```ruby
-# app/services/create_order.rb
 class CreateOrder
-  def initialize(customer:, items:, coupon_code: nil)
-    @customer = customer
-    @items = items
-    @coupon_code = coupon_code
-  end
-
   def call
-    ActiveRecord::Base.transaction do
-      order = build_order
-      apply_discount(order) if @coupon_code
-      order.save!
-      enqueue_confirmation(order)
-      Result.success(order)
-    end
-  rescue ActiveRecord::RecordInvalid => e
-    Result.failure(e.record.errors.full_messages)
-  rescue Coupon::ExpiredError
-    Result.failure(["Coupon code has expired"])
-  end
-
-  private
-
-  def build_order
-    Order.new(
-      customer: @customer,
-      line_items: @items.map { |item| LineItem.new(item) },
-      total: calculate_total
-    )
-  end
-
-  def apply_discount(order)
-    coupon = Coupon.find_by!(code: @coupon_code)
-    order.total *= (1 - coupon.discount_percentage / 100.0)
-  end
-
-  def calculate_total
-    @items.sum { |item| item[:price] * item[:quantity] }
-  end
-
-  def enqueue_confirmation(order)
-    OrderConfirmationJob.perform_async(order.id)
+    order = Order.create!(params) # raises on validation failure
+    order # returns raw AR object
   end
 end
 ```
 
-## Result Object
+Good - Result object with transaction and post-commit dispatch:
+
+```ruby
+# app/services/fulfill_order.rb
+class FulfillOrder
+  def initialize(order:, fulfilled_by: nil)
+    @order = order
+    @fulfilled_by = fulfilled_by
+    validate_inputs!
+  end
+
+  def call
+    ActiveRecord::Base.transaction do
+      @order.update!(status: :processing, fulfilled_at: Time.current)
+      decrement_inventory
+    end
+    # AFTER transaction commits - worker will find the committed row
+    ShipmentNotificationJob.perform_async(@order.id)
+    Result.success(@order.reload)
+  rescue ActiveRecord::RecordInvalid => e
+    Result.failure(e.record.errors.full_messages)
+  rescue Inventory::InsufficientStockError => e
+    Result.failure([e.message])
+  end
+
+  private
+
+  def validate_inputs!
+    raise ArgumentError, "Order is required" unless @order
+    raise ArgumentError, "Order must be confirmed to fulfill" unless @order.confirmed?
+  end
+
+  def decrement_inventory
+    @order.order_items.includes(:product).each do |item|
+      InventoryService.new(product: item.product).decrement!(item.quantity)
+    end
+  end
+end
+```
+
+### Result Object
 
 ```ruby
 # app/services/result.rb
@@ -120,19 +139,17 @@ class Result
 end
 ```
 
-## Controller Usage
+### Controller Usage
 
 ```ruby
 class OrdersController < ApplicationController
-  def create
-    result = CreateOrder.new(
-      customer: current_user,
-      items: order_params[:items],
-      coupon_code: order_params[:coupon_code]
-    ).call
+  def fulfill
+    order = Order.find(params[:id])
+    authorize order
+    result = FulfillOrder.new(order: order, fulfilled_by: current_user).call
 
     if result.success?
-      render json: result.value, status: :created
+      render json: OrderSerializer.new(result.value), status: :ok
     else
       render json: { errors: result.errors }, status: :unprocessable_entity
     end
@@ -140,7 +157,7 @@ class OrdersController < ApplicationController
 end
 ```
 
-## Input Validation at Boundary
+### Input Validation at Boundary
 
 ```ruby
 class ProcessPayment
@@ -169,7 +186,9 @@ class ProcessPayment
 end
 ```
 
-## Composition (Orchestrator Services)
+### Composition (Orchestrator Services)
+
+When a workflow composes multiple services, use early return on failure to short-circuit:
 
 ```ruby
 # app/services/checkout.rb
@@ -191,18 +210,31 @@ class Checkout
     return payment_result if payment_result.failure?
 
     ClearCart.new(cart: @cart).call
-    NotifyWarehouse.new(order: result.value).call
-
     Result.success(result.value)
   end
 end
 ```
 
-## Anti-Patterns
+## Output Format
 
-- ❌ Wrapper around a single ActiveRecord method - just call the method directly
-- ❌ God services - >100 lines means you need to decompose
-- ❌ Services that only call other services - unnecessary indirection
-- ❌ Services without a clear single responsibility
-- ❌ Using service objects for simple CRUD - controllers handle that fine
-- ❌ Returning raw exceptions - use Result objects for expected failures
+When generating a service object, document:
+
+```
+Service: {class name}
+Location: app/services/{file_name}.rb
+Responsibility: {one-sentence description of what it does}
+Transaction: {Yes | No} - {which models are mutated}
+Sidekiq Jobs: {job names dispatched after commit, or "None"}
+Result: Success({value type}) | Failure({error scenarios})
+```
+
+## Avoid
+
+- Wrapper around a single ActiveRecord method - just call the method directly
+- God services >100 lines - decompose into smaller focused services
+- Services that only call other services without adding logic - unnecessary indirection
+- Services without a clear single responsibility
+- Using service objects for simple CRUD - controllers handle that fine
+- Returning raw exceptions - use Result objects for expected failures
+- Dispatching Sidekiq jobs inside a transaction block - worker races the commit
+- Missing input validation - fail fast with `ArgumentError` on invalid inputs
