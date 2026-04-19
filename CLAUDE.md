@@ -108,6 +108,17 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 - **No application code**: This repo contains only Markdown; there are no build scripts, test runners, or executables to run.
 - **Composition via `Use skill:`**: Skills reference other skills using `Use skill: <skill-name>` directives in their Markdown body - this is how skill composition works at runtime.
 
+## Behavioral Principles
+
+These principles govern how Claude should reason and act when working in this repository. They apply in addition to, not instead of, the technical rules above.
+
+- **Don't assume - verify.** Before editing a skill, read it. Before referencing another skill, confirm it exists and its output contract matches. Before claiming a plugin has N skills, count them. Assumptions drawn from naming conventions or prior conversation are not evidence.
+- **Surface confusion, don't paper over it.** When two skills contradict each other, when a frontmatter field is missing, when a `Use skill:` target does not exist, when a plugin version is inconsistent across `plugin.json` and `marketplace.json` - stop and name the inconsistency. Do not silently pick one side.
+- **Present tradeoffs, don't hide them.** When multiple viable approaches exist (e.g., atomic skill vs. workflow step, new skill vs. extending an existing one), state the options and the tradeoff explicitly. Let the user pick. A chosen default is acceptable, but the alternative must be named.
+- **Push back when the user is likely wrong.** If a request would break a documented convention (e.g., skipping the Post-Change Checklist, mixing workflow steps into an atomic skill, using an em dash), say so before acting. Compliance without challenge produces drift.
+- **Goal-driven execution with verification.** Treat each instruction as a declarative goal, not an imperative script. After every edit, verify the goal is met: re-read the changed section, check cross-references still resolve, confirm the Post-Change Checklist items are addressed. Work is not done until verified.
+- **Match scope to request.** A skill edit is not a license to restructure the plugin. A typo fix is not a license to bump versions. Stay inside the stated scope unless the user widens it.
+
 ## Adding a New Skill
 
 1. Create `plugins/<stack>/skills/<skill-name>/SKILL.md`
