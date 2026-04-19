@@ -57,49 +57,53 @@ Claude: "Before implementing, I need to clarify:
 
 **Bad:**
 
-```python
-# User asked for "a function to calculate discount"
-class DiscountStrategy(ABC):
-    @abstractmethod
-    def calculate(self, amount: float) -> float: ...
+```java
+// User asked for "a method to calculate discount"
+public interface DiscountStrategy {
+    BigDecimal calculate(BigDecimal amount);
+}
 
-class PercentageDiscount(DiscountStrategy): ...
-class FixedDiscount(DiscountStrategy): ...
+public class PercentageDiscount implements DiscountStrategy { ... }
+public class FixedDiscount implements DiscountStrategy { ... }
 
-@dataclass
-class DiscountConfig:
-    strategy: DiscountStrategy
-    min_purchase: float = 0.0
-    max_discount: float = float('inf')
+@Data
+public class DiscountConfig {
+    private DiscountStrategy strategy;
+    private BigDecimal minPurchase = BigDecimal.ZERO;
+    private BigDecimal maxDiscount = BigDecimal.valueOf(Long.MAX_VALUE);
+}
 
-class DiscountCalculator:
-    def apply_discount(self, amount: float) -> float: ...
+@Service
+public class DiscountCalculator {
+    public BigDecimal applyDiscount(BigDecimal amount, DiscountConfig config) { ... }
+}
 ```
 
 **Good:**
 
-```python
-def calculate_discount(amount: float, percent: float) -> float:
-    return amount * (percent / 100)
+```java
+public BigDecimal calculateDiscount(BigDecimal amount, int percentOff) {
+    return amount.multiply(BigDecimal.valueOf(percentOff).divide(BigDecimal.valueOf(100)));
+}
 ```
 
-Add complexity only when a second discount type is actually required.
+Add the strategy pattern only when a second discount type is actually required.
 
 ### Pattern 3 - Surgical changes: match existing style
 
 **Bad:**
 
 ```
-User: "Add logging to the upload function."
-Claude: [adds logging, AND adds type hints, changes single quotes to double quotes,
-         reformats whitespace, adds a docstring - the function wasn't touched for any of those]
+User: "Add logging to the uploadFile method."
+Claude: [adds logging, AND adds @Slf4j annotation, renames local variables to camelCase,
+         reformats the method body, adds a Javadoc block - none of those were requested]
 ```
 
 **Good:**
 
 ```
-Claude: [adds only the logger import and log lines, matches existing single-quote style,
-         leaves everything else exactly as found]
+Claude: [adds only the log.info/log.error calls, uses the existing Logger field already
+         in the class, leaves everything else exactly as found]
 ```
 
 ### Pattern 4 - Surface conflicts instead of picking silently
@@ -107,15 +111,16 @@ Claude: [adds only the logger import and log lines, matches existing single-quot
 **Bad:**
 
 ```
-CLAUDE.md says "use async/await everywhere"; the file being edited uses .then() chains
-throughout. Claude silently converts some to async/await, leaves others, producing a mixed file.
+CLAUDE.md says "all repositories must use constructor injection"; the class being edited
+uses @Autowired field injection throughout. Claude silently converts some fields, leaves
+others, producing an inconsistent class.
 ```
 
 **Good:**
 
 ```
-"This file uses .then() chains but CLAUDE.md mandates async/await. Do you want me to
-(a) convert the whole file, (b) match the file's existing style, or (c) leave it as-is?"
+"This class uses @Autowired field injection but CLAUDE.md mandates constructor injection.
+Do you want me to (a) convert the whole class, (b) match the existing style, or (c) leave it as-is?"
 ```
 
 ### Pattern 5 - Present tradeoffs before deciding
