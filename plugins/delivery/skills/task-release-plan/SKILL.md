@@ -8,6 +8,8 @@ metadata:
 user-invocable: true
 ---
 
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+
 # Release Plan -- Staff Edition
 
 ## Purpose

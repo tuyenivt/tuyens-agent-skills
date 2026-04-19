@@ -75,13 +75,14 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Atomic Skills
 
-30 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+31 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 ### Core Utility
 
-| Skill          | Description                                                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stack-detect` | Detect project tech stack from marker files and the repo context file - extracts any declared properties as key-value pairs. Stack-agnostic. |
+| Skill                   | Description                                                                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `behavioral-principles` | Cross-cutting behavioral guardrails loaded at the start of every workflow - verify assumptions, surface confusion, present tradeoffs, push back on likely-wrong requests, and match scope to the request. |
+| `stack-detect`          | Detect project tech stack from marker files and the repo context file - extracts any declared properties as key-value pairs. Stack-agnostic.                                                              |
 
 ### Architecture
 

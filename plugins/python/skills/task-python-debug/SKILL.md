@@ -9,6 +9,8 @@ metadata:
 user-invocable: true
 ---
 
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+
 ## STEP 1 - INTAKE
 
 Ask for: full traceback, the source file where the error originates, framework (FastAPI or Django), and what the user expected to happen. If a traceback is provided, identify the first application-code frame (skip library frames) and read that file.

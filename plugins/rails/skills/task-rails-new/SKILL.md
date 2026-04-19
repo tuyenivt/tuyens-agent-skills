@@ -9,6 +9,8 @@ metadata:
 user-invocable: true
 ---
 
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+
 ## When to Use
 
 - Implementing a new Rails feature end-to-end (migration -> model -> service -> controller -> tests)

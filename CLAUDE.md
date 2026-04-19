@@ -11,7 +11,7 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 43 skills: 13 workflow (task-*) + 30 atomic
+    skills/      # 44 skills: 13 workflow (task-*) + 31 atomic
   delivery/      # Release planning and delivery coordination
     skills/      # 6 workflow skills
   architecture/  # Stack-agnostic architecture design and re-architecture
@@ -128,6 +128,12 @@ These principles govern how Claude should reason and act when working in this re
 4. For atomic skills: set `user-invocable: false`
 5. Write skill body following the content standards below
 6. Update the plugin's `README.md` skill table
+
+### Workflow Skill Contract Convention
+
+**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-new`), stack-agnostic workflows (e.g., `task-release-plan`, `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
+
+Workflow skills that also adapt output to the project tech stack should load `Use skill: stack-detect` as Step 2 (immediately after behavioral-principles). Workflows that do not depend on the stack (e.g., delivery, release, database-migration-plan workflows) should skip stack-detect entirely.
 
 ### Atomic Skill Contract Convention
 

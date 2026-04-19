@@ -9,6 +9,8 @@ metadata:
 user-invocable: true
 ---
 
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+
 ## STEP 1 - INTAKE
 
 Ask for: full backtrace or compiler error, the source file where the error originates, and what the user expected to happen. If a backtrace is provided, identify the first application-code frame (skip standard library and crate frames) and read that file. For compiler errors, read the file and line referenced in the error.

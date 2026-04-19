@@ -9,6 +9,8 @@ metadata:
 user-invocable: true
 ---
 
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+
 ## When to Use
 
 - Diagnosing Rails application errors from stack traces or log output
