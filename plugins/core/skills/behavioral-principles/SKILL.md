@@ -57,37 +57,23 @@ Claude: "Before implementing, I need to clarify:
 
 **Bad:**
 
-```java
-// User asked for "a method to calculate discount"
-public interface DiscountStrategy {
-    BigDecimal calculate(BigDecimal amount);
-}
-
-public class PercentageDiscount implements DiscountStrategy { ... }
-public class FixedDiscount implements DiscountStrategy { ... }
-
-@Data
-public class DiscountConfig {
-    private DiscountStrategy strategy;
-    private BigDecimal minPurchase = BigDecimal.ZERO;
-    private BigDecimal maxDiscount = BigDecimal.valueOf(Long.MAX_VALUE);
-}
-
-@Service
-public class DiscountCalculator {
-    public BigDecimal applyDiscount(BigDecimal amount, DiscountConfig config) { ... }
-}
+```
+User asked for "a function to calculate discount"
+Claude creates:
+  - a DiscountStrategy interface with two implementations
+  - a DiscountConfig class with min/max thresholds
+  - a DiscountCalculator service wiring it all together
+  (4 files, ~80 lines for a single calculation)
 ```
 
 **Good:**
 
-```java
-public BigDecimal calculateDiscount(BigDecimal amount, int percentOff) {
-    return amount.multiply(BigDecimal.valueOf(percentOff).divide(BigDecimal.valueOf(100)));
-}
+```
+Claude creates one function:
+  calculateDiscount(amount, percentOff) -> amount * percentOff / 100
 ```
 
-Add the strategy pattern only when a second discount type is actually required.
+Add the strategy/interface layer only when a second discount type is actually required.
 
 ### Pattern 3 - Surgical changes: match existing style
 
@@ -186,16 +172,32 @@ Each step is independently verifiable. Start with step 1?"
 
 This skill does not produce a distinct textual artifact. Its output is the behavior of the consuming workflow: every subsequent step should demonstrably follow Rules 1-7.
 
-Consuming workflows can reference this skill in their self-check items, e.g.:
+Consuming workflows **must** include these exact self-check items in their Self-Check section:
 
 ```
 - [ ] Stated assumptions before acting (Rule 1)
 - [ ] Wrote only the minimum code needed (Rule 2)
 - [ ] Touched only what the request required (Rule 3)
 - [ ] Surfaced any conflicts between requirements (Rule 4)
-- [ ] Stayed within requested scope (Rules 3, 5)
+- [ ] Presented tradeoffs before choosing an approach (Rule 5)
+- [ ] Pushed back on likely-wrong requests instead of complying silently (Rule 6)
 - [ ] Verified goal met after each step (Rule 7)
 ```
+
+Items that did not apply to a given workflow run should be checked and annotated `(N/A - no conflicts found)` rather than removed, so consuming workflows maintain a consistent checklist shape.
+
+## Edge Cases
+
+**When rules conflict with each other:**
+
+- Rule 1 (ask before assuming) vs. proportionality on trivial tasks: if the change is a one-liner with unambiguous intent, state your assumption inline ("Assuming you want X since Y") rather than blocking on a question. This satisfies Rule 1 without over-questioning.
+- Rule 2 (simplicity) vs. Rule 7 (verification): do not skip verification to save time. A simple change still needs a verify step, even if the step is just "re-read the changed line."
+- Rule 3 (surgical) vs. Rule 4 (surface confusion): if you discover a pre-existing inconsistency while making a surgical change, name it but do not fix it unless the user asks. Surface the confusion without expanding the blast radius.
+- Rule 5 (tradeoffs) vs. Rule 6 (push back): when the user's request is actively harmful (not just suboptimal), lead with pushback (Rule 6), not with a neutral tradeoff list. Present the safe alternatives after the objection, not before.
+
+**When the user overrides your pushback:**
+
+If you push back (Rule 6) and the user insists, comply - but state what you're giving up. Do not silently comply and do not push back more than once on the same point.
 
 ## Avoid
 
