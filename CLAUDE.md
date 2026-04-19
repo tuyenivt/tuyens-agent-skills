@@ -112,12 +112,13 @@ Many core workflow skills begin with `Use skill: stack-detect`, which reads the 
 
 These principles govern how Claude should reason and act when working in this repository. They apply in addition to, not instead of, the technical rules above.
 
-- **Don't assume - verify.** Before editing a skill, read it. Before referencing another skill, confirm it exists and its output contract matches. Before claiming a plugin has N skills, count them. Assumptions drawn from naming conventions or prior conversation are not evidence.
+- **Think before acting.** State assumptions explicitly before editing. If a request has multiple interpretations, present them - don't pick silently. If something is unclear, stop and name it. Read a skill before editing it; confirm a referenced skill exists before citing it; count skills before claiming a number.
+- **Simplicity first.** Make the minimum change that satisfies the request. No speculative additions, no restructuring beyond the stated scope. If an edit touches 10 files but 3 would do, use 3.
+- **Surgical changes.** Touch only what the request requires. Don't improve adjacent skills, bump unrelated versions, or reformat files that weren't the target. Match existing conventions even if you'd do it differently.
 - **Surface confusion, don't paper over it.** When two skills contradict each other, when a frontmatter field is missing, when a `Use skill:` target does not exist, when a plugin version is inconsistent across `plugin.json` and `marketplace.json` - stop and name the inconsistency. Do not silently pick one side.
 - **Present tradeoffs, don't hide them.** When multiple viable approaches exist (e.g., atomic skill vs. workflow step, new skill vs. extending an existing one), state the options and the tradeoff explicitly. Let the user pick. A chosen default is acceptable, but the alternative must be named.
 - **Push back when the user is likely wrong.** If a request would break a documented convention (e.g., skipping the Post-Change Checklist, mixing workflow steps into an atomic skill, using an em dash), say so before acting. Compliance without challenge produces drift.
 - **Goal-driven execution with verification.** Treat each instruction as a declarative goal, not an imperative script. After every edit, verify the goal is met: re-read the changed section, check cross-references still resolve, confirm the Post-Change Checklist items are addressed. Work is not done until verified.
-- **Match scope to request.** A skill edit is not a license to restructure the plugin. A typo fix is not a license to bump versions. Stay inside the stated scope unless the user widens it.
 
 ## Adding a New Skill
 
