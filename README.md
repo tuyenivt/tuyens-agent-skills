@@ -317,4 +317,4 @@ mklink /J "%USERPROFILE%\.codex\skills\tuyens-agent-skills-angular-skills" "%USE
 
 ## License
 
-MIT
+This project is proprietary. All rights reserved.
