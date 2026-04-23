@@ -1,6 +1,6 @@
 ---
 name: task-adr-create
-description: Write an Architecture Decision Record documenting a significant design choice: context, alternatives evaluated, trade-offs, consequences, and review triggers. Produces a ready-to-commit `.md` file.
+description: "Write an Architecture Decision Record documenting a significant design choice: context, alternatives evaluated, trade-offs, consequences, and review triggers. Produces a ready-to-commit `.md` file."
 metadata:
   category: workflow
   tags: [adr, architecture, decisions, trade-offs, documentation]
