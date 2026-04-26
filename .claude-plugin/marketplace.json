@@ -85,6 +85,24 @@
       ]
     },
     {
+      "name": "spec",
+      "source": "./plugins/spec",
+      "description": "Spec-Driven Development (SDD) plugin: produces persistent per-feature artifacts (spec.md, plan.md, tasks.md) under .specs/<slug>/. Mirrors Spec Kit phases with speckit-aware and standalone modes. Depends only on core.",
+      "version": "1.66.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "spec-driven-development",
+        "sdd",
+        "speckit",
+        "specification",
+        "planning",
+        "stack-agnostic"
+      ]
+    },
+    {
       "name": "java",
       "source": "./plugins/java",
       "description": "12 skills and 7 agents for Java 21+ / Spring Boot 3.5+ development.",
