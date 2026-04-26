@@ -37,7 +37,7 @@ Detection is evidence-based (marker files plus optional CLI presence on `$PATH`)
 
 ## Workflow Skills
 
-Eight workflow skills (`task-spec-*`) covering the SDD pipeline. (Scaffold in progress; skills land incrementally.)
+Ten workflow skills covering the SDD pipeline, multi-agent orchestration, and post-implementation evaluation. (Scaffold in progress; skills land incrementally.)
 
 | Skill                    | Description                                                                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -52,13 +52,19 @@ Eight workflow skills (`task-spec-*`) covering the SDD pipeline. (Scaffold in pr
 
 ## Atomic Skills
 
-Three atomic skills provide focused patterns used by spec workflows. Hidden from the slash menu (`user-invocable: false`).
+Nine atomic skills provide focused patterns used by spec workflows and spec-aware consumers. Hidden from the slash menu (`user-invocable: false`).
 
-| Skill                 | Description                                                                                           |
-| --------------------- | ----------------------------------------------------------------------------------------------------- |
-| `speckit-detect`      | Detect whether Spec Kit is installed (`.specify/` directory or `speckit` CLI on `$PATH`); choose mode |
-| `spec-artifact-paths` | Resolve `.specs/<slug>/*` paths, derive slugs, create directories on first write                      |
-| `spec-review`         | Audit `spec.md` for unmeasurable acceptance criteria, missing NFR coverage, conflicting requirements  |
+| Skill                    | Description                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `speckit-detect`         | Detect whether Spec Kit is installed (`.specify/` directory or `speckit` CLI on `$PATH`); choose mode                                                                                                                    |
+| `spec-artifact-paths`    | Resolve `.specs/<slug>/*` paths, derive slugs, create directories on first write                                                                                                                                         |
+| `spec-review`            | Audit `spec.md` for unmeasurable acceptance criteria, missing NFR coverage, conflicting requirements                                                                                                                     |
+| `spec-aware-preamble`    | Detect whether the current feature has `.specs/<slug>/` artifacts; emit a mode (`no-spec`, `spec-only`, `spec+plan`, `full-spec`) for stack workflows to branch on, replacing GATHER/DESIGN with spec-as-source-of-truth |
+| `agent-handoff-contract` | Define the YAML envelope every agent step writes to `.specs/<slug>/handoffs/<NN>-<step>-<agent>.md` during orchestrated multi-agent runs - the filesystem is the orchestration bus                                       |
+| `fix-loop-controller`    | Read the handoff directory after each step and decide loop / proceed / pause-for-amendment / escalate; enforces the iteration cap (default 3, hard cap 5)                                                                |
+| `eval-test-runner`       | Detect the project's test command from the stack, run it with a timeout, parse output into structured pass/fail/coverage counts                                                                                          |
+| `eval-spec-coverage`     | Map every acceptance criterion and NFR in `spec.md` to test/code evidence; emit per-criterion verdicts (covered / uncovered / violated / out-of-scope-drift)                                                             |
+| `eval-scorer`            | Aggregate test, coverage, and review signals into a single 0-100 score plus `pass` / `needs-fix` / `fail` status; hard-fail signals (drift, AC violation) override the weighted score                                    |
 
 ## Spec-Aware Workflow Contract
 
