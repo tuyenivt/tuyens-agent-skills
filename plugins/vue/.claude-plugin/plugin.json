@@ -1,6 +1,6 @@
 {
   "name": "vue",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "description": "Claude Code plugin for Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary) development. Composition API, Pinia, composables, TanStack Query Vue, Tailwind CSS. Designed to work with core plugin.",
   "author": {
     "name": "Tuyen"
