@@ -11,11 +11,11 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 44 skills: 13 workflow (task-*) + 31 atomic
+    skills/      # 46 skills: 13 workflow (task-*) + 33 atomic
   delivery/      # Release planning and delivery coordination
     skills/      # 6 workflow skills
   architecture/  # Stack-agnostic architecture design and re-architecture
-    skills/      # 15 skills: 9 workflow + 6 atomic
+    skills/      # 13 skills: 9 workflow + 4 atomic
   oncall/        # Incident response workflows
     skills/      # 7 skills: 4 workflow + 3 atomic
   java/          # Java 21+ / Spring Boot 3.5+
@@ -87,6 +87,19 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 - `core` is required by all other plugins
 - `kotlin` additionally requires `java`
+
+## Skill Placement: When a Skill Belongs in `core`
+
+Use this rule to decide where a new or existing skill should live. A skill belongs in `core` when **all** of the following hold:
+
+1. It is an **atomic** skill (`user-invocable: false`), not a workflow.
+2. It is referenced by skills or agents in **two or more other plugins**, OR is needed by a `core` workflow.
+3. It is **stack-agnostic** - no language- or framework-specific guidance baked in.
+4. It does **not** encode a single plugin's domain identity (e.g., ADRs are architecture's identity; release plans are delivery's identity).
+
+Workflow skills (`task-*`) stay in the plugin whose domain they represent. If another plugin needs the same capability, it composes the same atomic building blocks rather than depending on the workflow.
+
+When a skill fails any condition, leave it where it is. When it satisfies all four, the move is a directory rename - skills are resolved by name, not path, so `Use skill: <name>` references continue to work.
 
 ## Stack Detection Pattern
 

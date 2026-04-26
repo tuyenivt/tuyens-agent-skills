@@ -75,7 +75,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Atomic Skills
 
-31 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+33 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 ### Core Utility
 
@@ -90,6 +90,8 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `architecture-concurrency`      | Concurrency patterns adapted to the detected stack - threading models, synchronization, safe concurrency |
 | `architecture-data-consistency` | Consistency strategy selection across data boundaries                                                    |
+| `nfr-specification`             | Elicit and structure NFRs from business context into measurable SLOs and constraints                     |
+| `tradeoff-analysis`             | Structured architectural decision and trade-off documentation                                            |
 
 ### Performance
 

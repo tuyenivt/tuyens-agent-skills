@@ -20,14 +20,12 @@ Stack-agnostic architecture design plugin for Claude Code. Provides system desig
 
 ## Atomic Skills
 
-6 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+4 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 | Skill                           | Description                                                                                                     | Composed By                                                                                                              |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `system-boundary-design`        | Formal boundary modeling for module and service decomposition                                                   | `task-design-architecture`, `task-migrate-monolith-to-services`, `task-consolidate-services`                             |
-| `tradeoff-analysis`             | Structured architectural decision and trade-off documentation                                                   | `task-design-architecture`, `task-adr-create`, `task-modernize-legacy`                                                   |
 | `strangler-fig-pattern`         | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases | `task-migrate-monolith-to-services`, `task-consolidate-services`, `task-modernize-legacy`                                |
-| `nfr-specification`             | Elicit and structure NFRs from business context into measurable SLOs and constraints                            | `task-design-architecture` (Section 1), `task-architecture-docs-audit`                                                   |
 | `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks         | `task-consolidate-services` (Section 1), `task-migrate-monolith-to-services` (Section 3), `task-architecture-docs-audit` |
 | `architecture-proposal-compare` | Compare 2-3 architecture proposals against a fixed criteria set and produce a ranked recommendation             | `task-design-architecture` (review mode, multiple proposals), `task-architecture-docs-audit`                             |
 
@@ -35,6 +33,8 @@ Stack-agnostic architecture design plugin for Claude Code. Provides system desig
 
 The architecture workflow skills compose with these core atomics via `Use skill:`:
 
+- `nfr-specification` - elicit and structure NFRs from business context into measurable SLOs and constraints
+- `tradeoff-analysis` - structured architectural decision and trade-off documentation
 - `architecture-guardrail` - layer violation and boundary erosion detection
 - `architecture-capacity` - throughput estimation and scaling analysis
 - `architecture-data-consistency` - consistency strategy across data boundaries
