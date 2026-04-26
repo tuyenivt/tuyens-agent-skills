@@ -9,6 +9,8 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+>
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, classify the bug as one of: (a) **spec violation** - code disagrees with an acceptance criterion or NFR; fix the code; (b) **spec gap** - the buggy behavior is undefined by the spec; surface as a proposed amendment to `spec.md` rather than guessing intent; (c) **out-of-scope drift** - code path executes behavior the spec excludes; remove or gate the path. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
 
 # Debug
 

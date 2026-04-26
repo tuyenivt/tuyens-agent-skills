@@ -9,6 +9,8 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+>
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the change being shipped, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, derive the PR Summary from `spec.md`'s problem statement, the Test Plan from acceptance criteria, and the linked context from `plan.md`'s Decisions Worth Recording - do not re-elicit any of these from the user. Reference the slug and the completed task IDs from `tasks.md`. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
 
 # PR Description Generator
 
