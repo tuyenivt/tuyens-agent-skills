@@ -12,7 +12,16 @@ user-invocable: true
 
 # Spec - Checklist
 
-Produces a structured **requirements-quality** checklist from `spec.md`. Where `task-spec-analyze` checks consistency _between_ artifacts, this workflow checks the **internal quality** of `spec.md` alone: are acceptance criteria measurable, are NFRs covered, are pronouns concrete, are out-of-scope items explicit, are stories falsifiable. The output is a pass/fail checklist the user can sign off on (or hand to a reviewer) before running `task-spec-plan`.
+Produces structured **requirements-quality** checklists from `spec.md`. Where `task-spec-analyze` checks consistency _between_ artifacts, this workflow checks the **internal quality** of `spec.md` alone.
+
+> **CRITICAL CONCEPT - "Unit Tests for English":** Checklist items test the **requirements themselves** (clarity, completeness, consistency, measurability, coverage), NOT whether the system works. This is the line that separates a checklist from a test plan.
+>
+> ❌ Wrong: "Verify the button clicks correctly" / "Test error handling works" / "Confirm the API returns 200"
+> ✅ Right: "Are visual hierarchy requirements defined for all card types? [Completeness]" / "Is 'fast loading' quantified with specific timing thresholds? [Clarity, Spec §NFR-2]" / "Are hover state requirements consistent across all interactive elements? [Consistency]"
+>
+> Items must be in **question form**, end with a quality dimension in brackets, and (for ≥80% of items) cite a spec reference like `[Spec §FR-1]` or a marker like `[Gap]` / `[Ambiguity]` / `[Conflict]`.
+
+Output is one or more themed checklist files under `.specs/<slug>/checklists/` (e.g., `requirements.md`, `ux.md`, `api.md`, `security.md`, `performance.md`). Each file has a verdict the user can sign off on (or hand to a reviewer) before running `task-spec-plan`.
 
 ## When to Use
 
@@ -26,6 +35,7 @@ Produces a structured **requirements-quality** checklist from `spec.md`. Where `
 ## Inputs
 
 - The feature slug (required) - workflow reads `.specs/<slug>/spec.md`
+- Optional `--theme <name>` to emit a single themed checklist file (`ux`, `api`, `security`, `performance`, `accessibility`, ...). Filename = `.specs/<slug>/checklists/<theme>.md`. Default theme is `requirements` (the canonical six-category quality pass).
 - Optional `--strict` to fail the checklist on any minor finding (default: pass on majors/minors, fail only on blockers)
 - Optional `--non-interactive` to emit the checklist and exit without recommending next commands
 
@@ -72,7 +82,17 @@ If `summary.status == needs-rewrite` (any blocker), stop and recommend the user 
 
 ### STEP 6 - Build the Checklist
 
-Group findings by category (matching `spec-review`'s six categories) and turn each into a checklist item. For categories with **no findings**, emit a passing checkbox; for categories with findings, emit a failing checkbox plus the finding details and a remediation pointer.
+Group findings by category and turn each into a **question-form** checklist item that tests the requirements themselves, not the implementation. For categories with **no findings**, emit a passing question-form checkbox; for categories with findings, emit a failing question-form checkbox plus the finding details and remediation pointer.
+
+**Item-writing rules (non-negotiable):**
+
+- Question form only: "Are X requirements defined for Y?", "Is `<vague term>` quantified?", "Can `<criterion>` be objectively measured?", "Does the spec define `<missing aspect>`?"
+- End each item with a bracketed quality dimension: `[Completeness]`, `[Clarity]`, `[Consistency]`, `[Measurability]`, `[Coverage]`, `[Edge Case]`, `[Ambiguity]`, `[Conflict]`, `[Assumption]`, `[Gap]`
+- ≥80% of items must include a spec reference like `[Spec §FR-1]` or a `[Gap]` marker if the requirement is missing
+- Numbered IDs `CHK001`, `CHK002`, ... incrementing across the file. In amend mode, continue from the highest existing ID rather than restarting.
+- Forbidden verbs at item start: `Verify`, `Test`, `Confirm`, `Check that the system <does something>`. These mark implementation tests, not requirement tests.
+
+For `--theme <name>`, narrow the categories to that theme (e.g., `ux` → visual hierarchy / interaction states / accessibility / fallback states; `api` → error formats / rate limits / auth consistency / versioning; `security` → authn coverage / data protection / threat model; `performance` → quantified metrics / load conditions / degradation).
 
 **Categories and pass criteria:**
 
@@ -126,37 +146,35 @@ In `--non-interactive` mode, skip the next-command suggestion.
 
 ### Acceptance Criteria Measurability
 
-- [x] Every acceptance criterion has a measurable threshold
-- [ ] No vague verbs ("fast", "scalable", "user-friendly") without numbers
+- [x] CHK001 - Are acceptance criteria thresholds quantified with specific numbers? [Measurability, Spec §AC1-AC5]
+- [ ] CHK002 - Is "fast" in AC4 quantified with a specific latency target? [Clarity, Ambiguity, Spec §AC4]
   - Finding F-003 (major): "AC4: response should be fast" - no threshold. Remediation: `task-spec-clarify`.
 
 ### NFR Coverage
 
-- [x] Performance targets stated (latency, throughput)
-- [x] Availability target stated
-- [ ] Security NFRs name a specific standard or regulation
+- [x] CHK003 - Are performance targets (latency, throughput) defined for all critical paths? [Completeness, Spec §NFR-1]
+- [x] CHK004 - Is the availability target specified with a measurable SLO? [Measurability, Spec §NFR-2]
+- [ ] CHK005 - Does the spec name a specific compliance standard for the PII it handles? [Gap, Coverage]
   - Finding F-007 (major): no compliance standard named despite PII handling. Remediation: `task-spec-clarify`.
-- [x] Observability requirements stated
+- [x] CHK006 - Are observability requirements specified for failure modes? [Coverage, Spec §NFR-4]
 
 ### Conflict-Freeness
 
-- [x] No internally contradictory requirements
+- [x] CHK007 - Are requirements free of internal contradictions across sections? [Consistency]
 
 ### Ambiguity
 
-- [x] All domain terms defined or self-evident
-- [ ] No undefined pronouns ("the user", "it") with multiple referents
+- [x] CHK008 - Are domain terms defined or self-evident in context? [Clarity]
+- [ ] CHK009 - Is the referent of "they" in AC2/AC3 explicitly disambiguated? [Ambiguity, Spec §AC2-§AC3]
   - Finding F-011 (minor): "they receive a notification" - "they" ambiguous between AC2 and AC3 actors.
 
 ### Out-of-Scope Clarity
 
-- [x] Out-of-scope section is non-empty
-- [x] Out-of-scope items are explicit, not just absent
+- [x] CHK010 - Is the out-of-scope section non-empty and explicit about non-goals? [Completeness, Spec §Out-of-Scope]
 
 ### Story Strength
 
-- [x] Every story uses the "As a / I want / so that" structure
-- [x] Every story has a concrete role and value clause
+- [x] CHK011 - Does every story follow "As a / I want / so that" structure with a concrete role and value? [Completeness, Spec §User-Stories]
 
 ### Marketplace Additions
 
@@ -177,7 +195,11 @@ In `--non-interactive` mode, skip the next-command suggestion.
 - [ ] In speckit-installed mode, did not silently edit Spec Kit's output - additions appended in a labeled section
 - [ ] Used `spec-review` as the source of findings - did not invent ad-hoc quality checks
 - [ ] Stopped on `needs-rewrite` (blocker present) rather than producing a misleading checklist
-- [ ] Every one of the six categories has a checkbox row (pass or fail)
+- [ ] Every checklist item is in question form, ends with a `[Quality Dimension]` tag, and (≥80%) cites a spec section or `[Gap]`-style marker
+- [ ] No item starts with forbidden verbs (`Verify`, `Test`, `Confirm`, `Check that the system ...`) - those mark implementation tests, not requirement tests
+- [ ] Item IDs (`CHK001`...) increment continuously across amend sessions, never restart
+- [ ] Default theme writes `requirements.md`; `--theme <name>` writes `<theme>.md` under `.specs/<slug>/checklists/`
+- [ ] Every one of the six categories has a checkbox row (pass or fail) for the default `requirements` theme
 - [ ] Failing categories cite the specific finding ID, severity, and remediation workflow
 - [ ] `checklist.md` is append-only - prior sessions preserved
 - [ ] Final summary printed with per-category pass/fail, composite verdict, and next-command suggestion

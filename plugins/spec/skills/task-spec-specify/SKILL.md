@@ -86,14 +86,27 @@ Drive a structured elicitation. Ask only the questions whose answers are not alr
 
 Write the document to the resolved path using the template in **Output Format** below. Create parent directories as needed (via `spec-artifact-paths` write semantics). Set the document's declared name to match the slug input so future workflows can detect collisions.
 
-### STEP 7 - Summarize
+When the user could not give a confident answer to a question whose answer materially affects scope, embed a **`[NEEDS CLARIFICATION: <specific question>]`** marker inline at the relevant location in `spec.md`. Cap markers at **3 total**, prioritized **scope > security/privacy > UX > technical detail**. If more than three candidates exist, fold the lower-priority ones into `Open Questions` (which is unbounded) and pick reasonable defaults for them, recording the assumption in the relevant section.
+
+### STEP 7 - Inline Quality Validation
+
+Before reporting completion, run a self-validation pass against `spec.md`:
+
+1. Write a sibling checklist file at `.specs/<slug>/checklists/requirements.md` (create parent dir if needed) listing the standard quality items: no implementation details, focused on user value, all mandatory sections present, no `[NEEDS CLARIFICATION]` left, every AC testable + measurable, every story has acceptance criteria, edge cases identified, scope bounded, dependencies and assumptions noted.
+2. Mark each item pass/fail by re-reading the spec you just wrote.
+3. **If items fail (other than `[NEEDS CLARIFICATION]`):** edit the spec to address them. Re-run the check. **Maximum 3 iterations.** After 3, record remaining issues in the checklist's Notes section and warn the user.
+4. **If `[NEEDS CLARIFICATION]` markers remain:** print them to chat (max 3) and ask the user one at a time, then update the spec verbatim with each answer. Re-run validation after all are resolved.
+5. The checklist file is created here in lightweight form; users who want the full themed checklist run `task-spec-checklist <slug>` next.
+
+### STEP 8 - Summarize
 
 Print a short summary to chat:
 
-- Path written
-- Story count, acceptance-criteria count, open-question count
+- Path written (and `checklists/requirements.md` path)
+- Story count, acceptance-criteria count, open-question count, `[NEEDS CLARIFICATION]` count
+- Validation iterations run; checklist pass/fail counts
 - Mode used (speckit-installed or standalone)
-- Suggested next command: `task-spec-clarify <slug>` if open questions exist, otherwise `task-spec-plan <slug>`
+- Suggested next command: `task-spec-clarify <slug>` if open questions or markers remain, otherwise `task-spec-checklist <slug>` (full quality pass) or `task-spec-plan <slug>`
 
 ## Output Format
 
@@ -160,7 +173,9 @@ Each criterion references a story and is independently testable.
 - [ ] NFR section populated via `nfr-specification` (or explicitly waived per category with reason)
 - [ ] Out-of-scope section is non-empty (an empty out-of-scope list is almost always wrong)
 - [ ] Conflicts between user answers were surfaced, not silently resolved
-- [ ] Final summary printed with story/AC/open-question counts and next-command suggestion
+- [ ] `[NEEDS CLARIFICATION]` markers capped at 3, prioritized scope > security/privacy > UX > tech
+- [ ] Inline quality validation ran (max 3 iterations); `checklists/requirements.md` written alongside spec
+- [ ] Final summary printed with story/AC/open-question/marker counts, validation results, and next-command suggestion
 
 ## Avoid
 

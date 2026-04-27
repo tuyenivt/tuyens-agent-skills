@@ -94,10 +94,14 @@ Capture which signals apply. The signals drive task size and reveal tasks that w
 
 ### STEP 8 - Generate Tasks
 
-Group tasks by phase. Order within and across phases by dependency. For each task:
+**Primary organization is by user story** so each story phase is an independently testable, shippable increment. Phase 1 (Setup) and Phase 2 (Foundational) are shared prerequisites; Phase 3+ is one phase per user story in priority order (P1, P2, P3...) from `spec.md`. The final phase is Polish / cross-cutting concerns. **MVP = User Story 1 alone.**
 
-- **ID:** `T<NN>` - stable identifier referenced by `task-spec-implement` and progress markers
-- **Name:** Short, action-oriented (`Implement <X>`, `Add <Y>`, `Migrate <Z>`)
+For each task:
+
+- **ID:** `T<NNN>` - stable identifier referenced by `task-spec-implement` and progress markers
+- **Story label:** `[US1]` / `[US2]` / ... - REQUIRED for tasks inside a user-story phase; NO label for Setup, Foundational, or Polish phases
+- **Parallel marker:** `[P]` - include ONLY if the task touches different files than its peers and has no incomplete dependencies
+- **Name:** Short, action-oriented (`Implement <X>`, `Add <Y>`, `Migrate <Z>`) - MUST include the exact target file path
 - **Type:** `data` | `service` | `api` | `frontend` | `validation` | `ops`
 - **Description:** One or two sentences - what to build, not how
 - **Satisfies:** Acceptance criterion IDs from `spec.md` (e.g., `AC1, AC3`) or NFR category
@@ -106,24 +110,35 @@ Group tasks by phase. Order within and across phases by dependency. For each tas
 - **Scope:** `must-have` | `nice-to-have` | `risk-reduction`
 - **Status:** `[ ]` (set by `task-spec-implement` as it progresses; always `[ ]` on first write)
 
-Default phase order (omit empty phases):
+**Checklist line format (the one-line rendering of each task block's header):**
 
-| Phase                 | Typical contents                                                                |
-| --------------------- | ------------------------------------------------------------------------------- |
-| **1. Foundation**     | Migrations (expand phase), shared interfaces, feature flag scaffolding          |
-| **2. Data**           | Entities, repositories, indexes, backfill jobs                                  |
-| **3. Service**        | Domain logic, business rules, idempotency, state machines                       |
-| **4. API / Frontend** | Endpoints (backend) or component contracts and pages (frontend)                 |
-| **5. Validation**     | Unit, integration, contract, and E2E tests; load tests if NFRs require          |
-| **6. Ops Readiness**  | Observability hooks, runbooks, feature-flag rollout plan, rollback verification |
-| **7. Cleanup**        | Migrations (contract phase), flag retirement, deprecation removals              |
+```text
+- [ ] T<NNN> [P?] [US?] <Name with file path>
+```
+
+Examples:
+
+- `- [ ] T001 Create project structure per implementation plan` (Setup, no story label)
+- `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.ts` (Foundational, parallelizable)
+- `- [ ] T012 [P] [US1] Create User model in src/models/user.ts` (User Story 1, parallelizable)
+- `- [ ] T014 [US1] Implement UserService in src/services/user_service.ts` (User Story 1, sequential)
+
+Phase structure (omit empty phases):
+
+| Phase                             | Typical contents                                                                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Setup**                      | Project init, dependency setup, lint/test scaffolding (no story label)                                                                             |
+| **2. Foundational**               | Blocking prerequisites for ALL stories: migrations (expand phase), shared interfaces, feature-flag scaffolding (no story label)                    |
+| **3+. User Story `<n>` (P`<n>`)** | One phase per story in priority order. Within: data → service → api/frontend → validation, all tagged `[USn]`. Each phase = independent increment. |
+| **Final. Polish**                 | Cross-cutting: observability hooks, runbooks, perf tuning, deprecation removals, contract-phase migrations (no story label)                        |
 
 Rules:
 
-- Every task must trace to a spec acceptance criterion or NFR via the `Satisfies` field. A task with no traceability is either a bug in the plan or scope creep - flag it, do not silently include it.
+- Every story phase must be independently completable - do not let US2 silently depend on US3 work. Cross-story dependencies belong in Foundational.
+- Every task must trace to a spec acceptance criterion or NFR via `Satisfies`. A task with no traceability is either a bug in the plan or scope creep - flag it, do not silently include it.
 - XL tasks must be flagged with a recommendation to break down further.
-- Frontend-only or backend-only features omit phases that do not apply.
-- Tests are **tasks**, not an afterthought. Every API task should have a paired validation task or be combined into a single `api+test` task with both responsibilities listed.
+- Tests are **tasks**, not an afterthought. Every api/service task should have a paired validation task in the same story phase.
+- Mark `[P]` only when the task is truly safe to parallelize: different files AND no `Depends on` ahead of it in the queue.
 - If `delivery` plugin is installed and the breakdown spans multiple sprints, soft-suggest invoking `task-scope-breakdown` for cross-feature sequencing - do not run it automatically.
 
 ### STEP 9 - Traceability Check
@@ -142,9 +157,12 @@ For each gap:
 - Stop and ask the user (when the gap implies a plan change)
 - Record as a **proposed plan amendment** in the output (when minor, the user can re-run `task-spec-plan` later)
 
-### STEP 10 - Critical Path
+### STEP 10 - Critical Path and MVP
 
-Identify the critical path - the longest chain of dependent tasks. This drives `task-spec-implement`'s ordering and tells the user where to focus risk-reduction effort.
+Identify two things:
+
+- **Critical path:** the longest chain of dependent tasks across the whole feature. Drives `task-spec-implement` ordering and reveals where to focus risk reduction.
+- **MVP scope:** Setup + Foundational + User Story 1 (P1) only. This is the smallest shippable slice. Surface this explicitly in the summary so the user can choose to ship US1 before starting US2.
 
 ### STEP 11 - Write tasks.md and Summarize
 
@@ -177,42 +195,65 @@ Print a short summary:
 - <Signal>: <impact in one line>
 - ...
 
-## Phase 1 - Foundation
+## Phase 1 - Setup
 
-### T01 - <Task Name>
+- [ ] T001 Create project structure per implementation plan
+- [ ] T002 [P] Configure linting and formatting in tooling/
 
-- **Type:** data | service | api | frontend | validation | ops
+(detail blocks for each task follow the same format as story-phase tasks below)
+
+## Phase 2 - Foundational
+
+(blocking prerequisites for ALL user stories - migrations, shared interfaces, flag scaffolding)
+
+- [ ] T005 Apply expand-phase migration in db/migrations/
+- [ ] T006 [P] Add feature-flag scaffolding in src/flags/
+
+## Phase 3 - User Story 1 (P1) - <Story Title>
+
+**Story goal:** <one line - what value US1 delivers on its own>
+**Independent test criteria:** <how to verify US1 works without US2/US3>
+
+- [ ] T010 [P] [US1] Create User model in src/models/user.ts
+- [ ] T011 [US1] Implement UserService in src/services/user_service.ts
+- [ ] T012 [US1] Add validation tests for UserService in tests/services/user_service.test.ts
+
+### T010 - Create User model
+
+- **Type:** data
 - **Description:** <what to build>
-- **Satisfies:** AC1, AC3 (or NFR-Performance)
-- **Depends on:** none
+- **Satisfies:** AC1, AC3
+- **Depends on:** T005
 - **Size:** S | M | L | XL
 - **Scope:** must-have | nice-to-have | risk-reduction
 - **Status:** [ ]
 
-### T02 - ...
+### T011 - ...
 
-## Phase 2 - Data
+## Phase 4 - User Story 2 (P2) - <Story Title>
 
-(repeat task block)
+**Story goal:** ...
+**Independent test criteria:** ...
 
-## Phase 3 - Service
+(same task block layout, all tagged `[US2]`)
 
-## Phase 4 - API / Frontend
+## Phase N - Polish
 
-## Phase 5 - Validation
+(cross-cutting: observability, runbooks, contract-phase migrations, deprecation removals)
 
-## Phase 6 - Ops Readiness
-
-## Phase 7 - Cleanup
+- [ ] T040 Wire structured logging in src/observability/
 
 ## Dependency Order
 
-1. T01 (no deps)
-2. T02 (no deps, parallel with T01)
-3. T03 (requires T01)
-4. ...
+1. T001 (Setup, no deps)
+2. T002 [P] (Setup, parallel with T001)
+3. T005 (Foundational, requires T001)
+4. T010 [US1] (requires T005)
+5. ...
 
-**Critical path:** T01 -> T03 -> T07 -> T12 (estimated: M + L + M + S)
+**Critical path:** T001 → T005 → T010 → T011 → T020 (estimated: M + L + M + S)
+
+**MVP scope (ship US1 alone):** Phase 1 + Phase 2 + Phase 3 (User Story 1).
 
 ## Traceability Matrix
 
@@ -239,14 +280,19 @@ Print a short summary:
 - [ ] Aborted cleanly if `plan.md` did not exist
 - [ ] In speckit-installed mode, did not silently edit Spec Kit's output - traceability gaps surfaced as suggestions
 - [ ] Complexity signal scan completed before task generation
+- [ ] Tasks organized primarily by user story (Phase 3+ = one phase per US in priority order)
+- [ ] Every story-phase task carries a `[USn]` label; Setup/Foundational/Polish tasks do not
+- [ ] `[P]` markers applied only to tasks with no `Depends on` ahead of them and disjoint file scope
+- [ ] Every task line includes an exact target file path
 - [ ] Every task has ID, type, description, Satisfies, Depends on, Size, Scope, and Status fields
 - [ ] Every acceptance criterion in `spec.md` has at least one task referencing it
 - [ ] Every NFR verification step in `plan.md` has a matching validation task
 - [ ] No task touches an out-of-scope item
+- [ ] No story-phase task silently depends on another story's work (cross-story prereqs hoisted to Foundational)
 - [ ] XL tasks flagged for further breakdown
-- [ ] Dependency graph acyclic; critical path identified
+- [ ] Dependency graph acyclic; critical path identified; MVP scope (Setup + Foundational + US1) called out
 - [ ] Traceability matrix produced
-- [ ] Final summary printed with task count, phase breakdown, critical path, next-command suggestion
+- [ ] Final summary printed with task count, phase breakdown, critical path, MVP scope, next-command suggestion
 
 ## Avoid
 

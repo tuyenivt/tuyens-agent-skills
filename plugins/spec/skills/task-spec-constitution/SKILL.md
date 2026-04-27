@@ -122,7 +122,36 @@ If `constitution.md` already exists and the user chose **amend**:
 
 Write to the resolved path using the template in **Output Format** below. In amend mode, preserve prior text and append a dated revision section; never delete prior content (especially Archived appendix entries).
 
-### STEP 9 - Summarize
+**Constitution version (semantic):** maintain a `Constitution Version: vX.Y.Z` line near the top.
+
+- **MAJOR (X):** principle removed/redefined or governance changed in a backward-incompatible way
+- **MINOR (Y):** new principle or section added, or materially expanded guidance
+- **PATCH (Z):** clarification, wording, typo, non-semantic refinement
+
+If the bump type is ambiguous, propose your reasoning and the chosen bump in chat before finalizing.
+
+### STEP 9 - Sync Impact Report and Downstream Propagation
+
+Prepend (or refresh, in amend mode) a **Sync Impact Report** as an HTML comment at the top of `constitution.md` capturing:
+
+- Version change: `<old> → <new>`
+- Modified principles (old title → new title if renamed)
+- Added sections / removed sections
+- Templates and artifacts requiring updates, each marked `✅ updated` or `⚠ pending` with file path
+- Deferred TODOs (any placeholders intentionally left as `TODO(<FIELD>): <reason>`)
+
+Then run a **downstream propagation scan** against artifacts that depend on the constitution. For each, surface (do **not** auto-edit) what needs updating:
+
+| Target                                         | Check                                                                                                |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Existing `.specs/<slug>/spec.md` files         | Any AC/NFR that contradicts a new/changed principle - flag for `task-spec-clarify`                   |
+| Existing `.specs/<slug>/plan.md` files         | Any architecture choice or tech-stack pin that conflicts with the new constitution                   |
+| `CLAUDE.md` (project)                          | Any "Tech Stack" or "Behavioral Principles" section drift from the new constitution                  |
+| Spec Kit templates (in speckit-installed mode) | `.specify/templates/{plan,spec,tasks}-template.md` and `.specify/templates/commands/*.md` references |
+
+Output the propagation results in the Sync Impact Report. The user (not this workflow) edits the affected artifacts.
+
+### STEP 10 - Summarize
 
 Print a short summary to chat:
 
@@ -141,9 +170,24 @@ Print a short summary to chat:
 `constitution.md` template (standalone mode; speckit-installed mode defers to Spec Kit's template, with proposed additions printed to chat for manual merge):
 
 ```markdown
+<!--
+Sync Impact Report (refreshed each amend):
+- Version change: v0.0.0 → v0.1.0
+- Modified principles: <list, with renames as "old → new">
+- Added sections: <list>
+- Removed sections: <list>
+- Downstream propagation:
+  - .specs/<slug>/spec.md ⚠ pending (AC4 may conflict with new compliance principle)
+  - CLAUDE.md ✅ updated (Tech Stack section synced)
+  - .specify/templates/plan-template.md ⚠ pending (Constitution Check block stale)
+- Deferred TODOs: TODO(RATIFICATION_DATE): unknown adoption date
+-->
+
 # Project Constitution
 
-- **Last updated:** <YYYY-MM-DD>
+- **Constitution Version:** v0.1.0
+- **Ratification date:** <YYYY-MM-DD or TODO>
+- **Last amended:** <YYYY-MM-DD>
 - **Sources synthesized:** CLAUDE.md, behavioral-principles, backend-coding-standards, ops-engineering-governance, frontend-accessibility (or list per project)
 - **Scope:** all | backend | frontend | ops | security
 
@@ -219,7 +263,10 @@ Print a short summary to chat:
 - [ ] In amend mode: changed rules placed in "Pending Reconciliation" for user decision; removed rules moved to "Archived", never deleted
 - [ ] No content duplicated from `behavioral-principles` (constitution is project-specific)
 - [ ] Sections with no rules omitted (empty sections add noise)
-- [ ] Final summary printed with sections, rule counts, sources, conflicts, and next-command suggestion
+- [ ] `Constitution Version: vX.Y.Z` bumped per MAJOR/MINOR/PATCH semantics; ambiguous bumps justified in chat
+- [ ] Sync Impact Report prepended (or refreshed) as HTML comment, including downstream propagation results
+- [ ] Downstream propagation scan ran against existing specs, plans, CLAUDE.md, and (if applicable) Spec Kit templates - findings surfaced, NOT auto-edited
+- [ ] Final summary printed with sections, rule counts, sources, conflicts, version bump, propagation status, and next-command suggestion
 
 ## Avoid
 
