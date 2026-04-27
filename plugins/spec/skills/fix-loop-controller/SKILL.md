@@ -1,6 +1,6 @@
 ---
 name: fix-loop-controller
-description: Decide whether an orchestrated multi-agent run should loop back to the dev step, escalate to the user, or proceed. Reads the handoff directory written by upstream agents, classifies the latest envelope, applies iteration caps, and emits a structured next-step decision. Composed by `task-orchestrate`.
+description: Decide whether an orchestrated multi-agent run should loop back to the dev step, escalate to the user, or proceed. Reads the handoff directory written by upstream agents, classifies the latest envelope, applies iteration caps, and emits a structured next-step decision. Composed by `task-spec-orchestrate`.
 metadata:
   category: spec
   tags: [spec, sdd, orchestration, fix-loop, control]
@@ -9,15 +9,15 @@ user-invocable: false
 
 # Fix Loop Controller
 
-> This atomic is composed by `task-orchestrate` - do not invoke directly. It reads handoff envelopes following `agent-handoff-contract` and emits a routing decision; it never writes envelopes itself.
+> This atomic is composed by `task-spec-orchestrate` - do not invoke directly. It reads handoff envelopes following `agent-handoff-contract` and emits a routing decision; it never writes envelopes itself.
 
 ## When to Use
 
-- Inside `task-orchestrate` after every step that can fail or surface issues (`test`, `review`, `fix`)
+- Inside `task-spec-orchestrate` after every step that can fail or surface issues (`test`, `review`, `fix`)
 - When orchestration needs to decide between: continue forward, loop back to `dev` with feedback, or stop and surface to user
 - When iteration counts must be checked against the configured cap before another loop is permitted
 
-**Not for:** Initial step routing (the orchestrator chooses the first step itself), single-agent skills, ad-hoc agent runs outside `task-orchestrate`.
+**Not for:** Initial step routing (the orchestrator chooses the first step itself), single-agent skills, ad-hoc agent runs outside `task-spec-orchestrate`.
 
 ## Rules
 
@@ -32,12 +32,12 @@ user-invocable: false
 
 ## Inputs
 
-| Input                | Source                                                                                                                                                                                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `handoffs_dir`       | Resolved via `Use skill: spec-artifact-paths` for the current slug                                                                                                                                                                                               |
-| `iteration_cap`      | Caller-supplied (default 3, hard cap 5). Values above 5 are clamped down with a warning                                                                                                                                                                          |
-| `latest_envelope`    | The highest-ordinal file in `handoffs_dir`. Required - if missing, return `error: no-envelopes`                                                                                                                                                                  |
-| `evaluation_sidecar` | Optional. When `task-orchestrate` runs with `--with-evaluation`, it writes `<NN>-review-score.yaml` next to the matching review envelope. Controller reads this sidecar AFTER identifying the latest envelope and routes on `score.status` as the primary signal |
+| Input                | Source                                                                                                                                                                                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handoffs_dir`       | Resolved via `Use skill: spec-artifact-paths` for the current slug                                                                                                                                                                                                    |
+| `iteration_cap`      | Caller-supplied (default 3, hard cap 5). Values above 5 are clamped down with a warning                                                                                                                                                                               |
+| `latest_envelope`    | The highest-ordinal file in `handoffs_dir`. Required - if missing, return `error: no-envelopes`                                                                                                                                                                       |
+| `evaluation_sidecar` | Optional. When `task-spec-orchestrate` runs with `--with-evaluation`, it writes `<NN>-review-score.yaml` next to the matching review envelope. Controller reads this sidecar AFTER identifying the latest envelope and routes on `score.status` as the primary signal |
 
 ## Decision Procedure
 
@@ -134,7 +134,7 @@ escalation: <object with status, blocking_questions, suggested_actions; only whe
 errors: <list of strings, only when decision is "error">
 ```
 
-This is parsed by `task-orchestrate` to choose its next step. No prose output - the contract is the YAML.
+This is parsed by `task-spec-orchestrate` to choose its next step. No prose output - the contract is the YAML.
 
 ## Handling Edge Cases
 

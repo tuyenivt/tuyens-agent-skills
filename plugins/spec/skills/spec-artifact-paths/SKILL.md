@@ -56,7 +56,7 @@ For project root `<root>` and feature slug `<slug>`:
 | `tasks`          | `<root>/.specs/<slug>/tasks.md`          | `task-spec-tasks` (writer), `task-spec-implement` (updater) |
 | `analysis`       | `<root>/.specs/<slug>/analysis.md`       | `task-spec-analyze`                                         |
 | `checklist`      | `<root>/.specs/<slug>/checklist.md`      | `task-spec-checklist`                                       |
-| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         | `task-orchestrate` (Phase C)                                |
+| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         | `task-spec-orchestrate` (Phase C)                           |
 | `evaluation`     | `<root>/.specs/<slug>/evaluation.md`     | `task-spec-evaluate` (Phase C)                              |
 
 Workflows MUST use these logical names when referencing paths in their bodies, so a future move of the convention (e.g., to `docs/specs/`) is a single change here.

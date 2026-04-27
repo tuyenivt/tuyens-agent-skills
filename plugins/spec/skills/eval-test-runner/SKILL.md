@@ -1,6 +1,6 @@
 ---
 name: eval-test-runner
-description: Detect the project's test command from the stack, run it, and parse the output into a structured pass/fail/coverage record. Composed by `task-spec-evaluate` to feed the scorer. Opt-in - only invoked when the user runs an evaluation explicitly or via `task-orchestrate --with-evaluation`.
+description: Detect the project's test command from the stack, run it, and parse the output into a structured pass/fail/coverage record. Composed by `task-spec-evaluate` to feed the scorer. Opt-in - only invoked when the user runs an evaluation explicitly or via `task-spec-orchestrate --with-evaluation`.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, testing, test-runner]
@@ -17,7 +17,7 @@ user-invocable: false
 
 - Inside `task-spec-evaluate` after orchestration has produced code and tests
 - When the user explicitly asks to "run the evaluation" or "score this implementation"
-- When `task-orchestrate` is invoked with `--with-evaluation` and reaches the evaluation step
+- When `task-spec-orchestrate` is invoked with `--with-evaluation` and reaches the evaluation step
 
 **Not for:** Routine local test runs (those are the user's job), CI orchestration, generating tests (that's `task-code-test`), running tests as part of the `test` agent step in orchestration (that agent invokes its stack's standard test command directly without this atomic).
 

@@ -1,6 +1,6 @@
 ---
 name: agent-handoff-contract
-description: Define the structured handoff envelope every agent step writes to `.specs/<slug>/handoffs/<NN>-<step>-<agent>.md` during orchestrated multi-agent runs. Single-source contract so architect -> dev -> test -> review pipelines have a stable, inspectable bus on the filesystem (no central state machine). Read by `task-orchestrate` and `fix-loop-controller`.
+description: Define the structured handoff envelope every agent step writes to `.specs/<slug>/handoffs/<NN>-<step>-<agent>.md` during orchestrated multi-agent runs. Single-source contract so architect -> dev -> test -> review pipelines have a stable, inspectable bus on the filesystem (no central state machine). Read by `task-spec-orchestrate` and `fix-loop-controller`.
 metadata:
   category: spec
   tags: [spec, sdd, orchestration, agents, handoff, contract]
@@ -9,15 +9,15 @@ user-invocable: false
 
 # Agent Handoff Contract
 
-> This atomic is composed by `task-orchestrate` and consumed by `fix-loop-controller` - do not invoke directly. Per-stack agents (architect, tech-lead, test-engineer, reviewer) write envelopes following this contract when they participate in an orchestrated run.
+> This atomic is composed by `task-spec-orchestrate` and consumed by `fix-loop-controller` - do not invoke directly. Per-stack agents (architect, tech-lead, test-engineer, reviewer) write envelopes following this contract when they participate in an orchestrated run.
 
 ## When to Use
 
-- Inside `task-orchestrate` after each agent step completes, to record what the agent did and what the next agent needs to know
+- Inside `task-spec-orchestrate` after each agent step completes, to record what the agent did and what the next agent needs to know
 - Inside `fix-loop-controller` to read prior handoffs and decide whether to loop back, escalate, or proceed
-- Whenever a stack agent (e.g., `spring-architect`, `react-tech-lead`) participates in a multi-agent pipeline initiated from `task-orchestrate`
+- Whenever a stack agent (e.g., `spring-architect`, `react-tech-lead`) participates in a multi-agent pipeline initiated from `task-spec-orchestrate`
 
-**Not for:** Single-agent skills invoked directly by the user, ad-hoc agent runs outside `task-orchestrate`, in-conversation handoffs (those are ephemeral and need no envelope).
+**Not for:** Single-agent skills invoked directly by the user, ad-hoc agent runs outside `task-spec-orchestrate`, in-conversation handoffs (those are ephemeral and need no envelope).
 
 ## Rules
 
@@ -134,7 +134,7 @@ notes_excerpt: <up to 200 chars - first line of the body for quick scan>
 
 ## Reading the Handoff Directory
 
-A consuming workflow (`task-orchestrate`, `fix-loop-controller`, or any agent that needs upstream context) reads the directory in order:
+A consuming workflow (`task-spec-orchestrate`, `fix-loop-controller`, or any agent that needs upstream context) reads the directory in order:
 
 1. `ls` the `handoffs_dir`, sort by ordinal, parse frontmatter for each file
 2. Build a timeline: `[ordinal -> { step, agent, status, next, satisfies, outputs }]`

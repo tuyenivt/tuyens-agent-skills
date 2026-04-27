@@ -39,16 +39,18 @@ Detection is evidence-based (marker files plus optional CLI presence on `$PATH`)
 
 Ten workflow skills covering the SDD pipeline, multi-agent orchestration, and post-implementation evaluation. (Scaffold in progress; skills land incrementally.)
 
-| Skill                    | Description                                                                                           |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `task-spec-constitution` | Generate or update `.specs/constitution.md` from existing standards skills + repo `CLAUDE.md`         |
-| `task-spec-specify`      | Elicit requirements; write `spec.md` (problem, users, stories, acceptance criteria, NFRs)             |
-| `task-spec-clarify`      | Re-read `spec.md`, surface ambiguities, append answers to `clarifications.md`, update `spec.md`       |
-| `task-spec-plan`         | Read `spec.md` + `clarifications.md`; produce `plan.md` (architecture, data model, API, alternatives) |
-| `task-spec-tasks`        | Read `plan.md`; produce ordered `tasks.md` (data -> service -> API -> tests)                          |
-| `task-spec-analyze`      | Cross-check `spec <-> plan <-> tasks` for missing acceptance criteria, untested stories, gaps         |
-| `task-spec-implement`    | Read `tasks.md`; delegate per-task to existing stack workflows in `--spec` mode; mark tasks complete  |
-| `task-spec-checklist`    | Generate a requirements-quality checklist (clarity, testability, conflict-freeness) from `spec.md`    |
+| Skill                    | Description                                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-spec-constitution` | Generate or update `.specs/constitution.md` from existing standards skills + repo `CLAUDE.md`                                                               |
+| `task-spec-specify`      | Elicit requirements; write `spec.md` (problem, users, stories, acceptance criteria, NFRs)                                                                   |
+| `task-spec-clarify`      | Re-read `spec.md`, surface ambiguities, append answers to `clarifications.md`, update `spec.md`                                                             |
+| `task-spec-plan`         | Read `spec.md` + `clarifications.md`; produce `plan.md` (architecture, data model, API, alternatives)                                                       |
+| `task-spec-tasks`        | Read `plan.md`; produce ordered `tasks.md` (data -> service -> API -> tests)                                                                                |
+| `task-spec-analyze`      | Cross-check `spec <-> plan <-> tasks` for missing acceptance criteria, untested stories, gaps                                                               |
+| `task-spec-implement`    | Read `tasks.md`; delegate per-task to existing stack workflows in `--spec` mode; mark tasks complete                                                        |
+| `task-spec-checklist`    | Generate a requirements-quality checklist (clarity, testability, conflict-freeness) from `spec.md`                                                          |
+| `task-spec-orchestrate`  | Run the architect -> dev -> test -> review pipeline with bounded fix loop; agents write append-only handoff envelopes under `.specs/<slug>/handoffs/`       |
+| `task-spec-evaluate`     | Run project tests, map ACs/NFRs to evidence, aggregate with review verdicts into a single score (`pass` / `needs-fix` / `fail`); appends to `evaluation.md` |
 
 ## Atomic Skills
 
