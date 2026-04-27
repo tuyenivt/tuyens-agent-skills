@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -126,6 +126,13 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install oncall@tuyens-agent-skills --scope project
 ```
 
+**Spec-Driven Development (any stack, opt-in):**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install spec@tuyens-agent-skills --scope project
+```
+
 > `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
 
 ## How Skills Work
@@ -175,6 +182,22 @@ I want to...
   check for performance issues      -> /task-code-perf-review
   triage tech debt by ROI           -> /task-debt-triage [delivery]
   assess a dependency upgrade       -> /task-dependency-upgrade [delivery]
+```
+
+### Spec-Driven Development (plugin: spec, opt-in)
+
+```
+I want to...
+  set project-wide governance rules     -> /task-spec-constitution
+  capture a feature's requirements      -> /task-spec-specify
+  resolve ambiguities in a spec         -> /task-spec-clarify
+  produce an implementation plan        -> /task-spec-plan
+  break a plan into ordered tasks       -> /task-spec-tasks
+  cross-check spec/plan/tasks           -> /task-spec-analyze
+  audit requirements quality            -> /task-spec-checklist
+  execute tasks one at a time           -> /task-spec-implement
+  run multi-agent pipeline w/ fix loop  -> /task-spec-orchestrate
+  score implementation against spec     -> /task-spec-evaluate
 ```
 
 ### Stack-Specific Skills (language plugins)
@@ -249,6 +272,7 @@ Angular (plugin: angular)
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                              |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                             |
 | [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                              |
+| [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring | 19 skills                             |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         | 12 skills + 7 agents                  |
 | [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                                                                                                     | 5 skills + 7 agents (requires `java`) |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 | 9 skills + 7 agents                   |

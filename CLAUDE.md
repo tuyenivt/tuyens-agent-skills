@@ -18,6 +18,8 @@ plugins/
     skills/      # 13 skills: 9 workflow + 4 atomic
   oncall/        # Incident response workflows
     skills/      # 7 skills: 4 workflow + 3 atomic
+  spec/          # Spec-Driven Development (any stack, opt-in)
+    skills/      # 19 skills: 10 workflow + 9 atomic
   java/          # Java 21+ / Spring Boot 3.5+
     skills/      # 12 skills (2 workflow + 10 atomic)
     agents/      # 7 agent definitions
@@ -87,6 +89,7 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 - `core` is required by all other plugins
 - `kotlin` additionally requires `java`
+- `spec` requires only `core`; per-stack agents are supplied by whichever stack plugins are installed (e.g., `java`, `python`, `react`)
 
 ## Skill Placement: When a Skill Belongs in `core`
 
@@ -104,6 +107,35 @@ When a skill fails any condition, leave it where it is. When it satisfies all fo
 ## Stack Detection Pattern
 
 Many core workflow skills begin with `Use skill: stack-detect`, which reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is the primary mechanism by which skills adapt their output to different ecosystems.
+
+## Spec-Driven Development
+
+The `spec` plugin adds an optional Spec-Driven Development (SDD) pipeline mirroring GitHub Spec Kit. It is opt-in - install the plugin only when a project wants spec-first delivery; nothing in `core` or the stack plugins depends on it.
+
+**Artifact convention.** All SDD artifacts for a feature live under `.specs/<slug>/`:
+
+```
+.specs/<slug>/
+  spec.md              # what + why (acceptance criteria, NFRs, out-of-scope)
+  clarifications.md    # append-only Q&A log from task-spec-clarify
+  plan.md              # how (architecture, tech choices, contracts)
+  tasks.md             # ordered, dependency-aware execution list
+  analysis.md          # cross-artifact consistency findings (append-only)
+  checklist.md         # requirements-quality gate (append-only)
+  constitution.md      # project principles (append-only amendments)
+  evaluation.md        # post-implementation scoring (append-only)
+  handoffs/            # orchestration envelopes <NN>-<step>-<agent>.md
+```
+
+Append-only files preserve iteration history; comparing runs is part of the workflow.
+
+**Dual-mode (speckit / standalone).** `speckit-detect` decides whether the consuming project already has Spec Kit installed. When Spec Kit is present, SDD workflows defer to its templates and slash commands; otherwise they run standalone using the artifact layout above. Both modes produce the same `.specs/<slug>/` shape.
+
+**Spec-aware workflow contract.** Existing stack workflows (e.g., `task-spring-new`, `task-react-new`) accept a `--spec <slug>` flag. When set, they load `Use skill: spec-aware-preamble` to ingest the spec artifacts and skip their own GATHER/DESIGN steps - the spec is the source of truth. When unset, workflows run their normal interactive flow.
+
+**Orchestration model.** `task-spec-orchestrate` sequences architect → dev → test → review using per-stack agents. Agents communicate by appending YAML envelopes to `handoffs/` (filesystem-as-bus, no central state machine; see `agent-handoff-contract`). After each step `fix-loop-controller` reads the directory and decides `proceed` / `loop` / `pause-for-amendment` / `escalate`. Default fix-loop budget is 3 iterations; hard cap 5.
+
+**Opt-in evaluation.** `task-spec-evaluate` shells out to run the project's tests (`eval-test-runner`), maps every AC and NFR to evidence (`eval-spec-coverage`), and aggregates with review verdicts (`eval-scorer`) into a single `pass` / `needs-fix` / `fail` status appended to `evaluation.md`. When `task-spec-orchestrate` is invoked with `--with-evaluation`, the score is written as a sidecar `<NN>-review-score.yaml` next to each review envelope and becomes the primary fix-loop signal (sidecar wins over envelope status when both exist).
 
 ## Environment
 
