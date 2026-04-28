@@ -121,7 +121,7 @@ The `spec` plugin adds an optional Spec-Driven Development (SDD) pipeline mirror
   plan.md              # how (architecture, tech choices, contracts)
   tasks.md             # ordered, dependency-aware execution list
   analysis.md          # cross-artifact consistency findings (append-only)
-  checklist.md         # requirements-quality gate (append-only)
+  checklists/          # requirements-quality gate; one append-only file per theme (default: requirements.md)
   constitution.md      # project principles (append-only amendments)
   evaluation.md        # post-implementation scoring (append-only)
   handoffs/            # orchestration envelopes <NN>-<step>-<agent>.md

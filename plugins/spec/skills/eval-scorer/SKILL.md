@@ -1,6 +1,6 @@
 ---
 name: eval-scorer
-description: Aggregate test-run output, spec-coverage verdicts, and review-agent verdicts from the handoff directory into a single weighted score plus pass/fail/needs-fix status. Composed by `task-spec-evaluate` and consumed by `fix-loop-controller` (after #18) as the primary loop signal.
+description: Aggregate test-run output, spec-coverage verdicts, and review-agent verdicts from the handoff directory into a single weighted score plus pass/fail/needs-fix status. Composed by `task-spec-evaluate` and consumed by `fix-loop-controller` as the primary loop signal when an evaluation sidecar is present.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, scoring, aggregation]
@@ -12,7 +12,7 @@ user-invocable: false
 ## When to Use
 
 - Inside `task-spec-evaluate` after `eval-test-runner` and `eval-spec-coverage` have completed
-- When orchestration needs a single signal to gate the fix loop (post-#18 wiring)
+- When orchestration needs a single signal to gate the fix loop (sidecar wiring under `--with-evaluation`)
 - When the user asks for "the score" of an implementation against its spec
 
 **Not for:** Producing the test result (use `eval-test-runner`), producing the coverage map (use `eval-spec-coverage`), reviewing skill quality (that's `skill-creator`'s eval domain).
@@ -22,7 +22,7 @@ user-invocable: false
 - Score is a single integer 0-100, derived from three sub-scores using fixed weights (below)
 - Status is derived from explicit thresholds, not from the score alone - any single hard-fail signal forces `fail` regardless of overall number
 - Hard-fail signals override the weighted score: `ac_violated > 0`, `out_of_scope_drift > 0`, or `test_run.status == fail/timeout/error` set status to `fail` even if the weighted score is high
-- The atomic does not interpret what to DO with the score - that is `fix-loop-controller`'s job in #18
+- The atomic does not interpret what to DO with the score - that is `fix-loop-controller`'s job
 - Weights are explicit and stable; if changed, the change is a versioned amendment, not a silent tweak
 
 ## Inputs
@@ -128,9 +128,9 @@ score:
   recommendation: <one sentence: "loop and fix X", "escalate to user", "ship it">
 ```
 
-## Decision Surface for `fix-loop-controller` (post-#18)
+## Decision Surface for `fix-loop-controller`
 
-After #18 lands, `fix-loop-controller` will read `score.status` instead of (or in addition to) the latest envelope's status:
+When an evaluation sidecar is present, `fix-loop-controller` reads `score.status` instead of (or in addition to) the latest envelope's status:
 
 | `score.status` | Controller behavior                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------- |
@@ -160,4 +160,3 @@ The scorer itself does not perform this routing; it only emits the inputs.
 
 - The single-number score is deliberately rough. Its role is to make the loop signal mechanical (`needs-fix` vs `pass`), not to be a meaningful quality grade. Detailed quality lives in `eval-spec-coverage` verdicts and review envelopes.
 - Pairs with `eval-test-runner` and `eval-spec-coverage` upstream and `fix-loop-controller` downstream. Changes to the weights or bands ripple to those consumers - bump the contract version (in `notes`) when changing.
-- Per merging-spec.md §13.3, this scoring model is intentionally simple. It will evolve with usage; future versions may add per-stack calibration or trend-over-iterations signals.

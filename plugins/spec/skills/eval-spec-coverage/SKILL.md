@@ -17,7 +17,7 @@ user-invocable: false
 
 - Inside `task-spec-evaluate` after `eval-test-runner` has produced a test result
 - When the user asks "does this implementation satisfy the spec?"
-- When orchestration needs a spec-coverage signal to gate the fix loop (after #18)
+- When orchestration needs a spec-coverage signal to gate the fix loop (under `--with-evaluation`)
 
 **Not for:** Code-coverage measurement (use `eval-test-runner`'s coverage field), generating new tests (use `task-code-test`), reviewing requirements quality (use `spec-review`).
 

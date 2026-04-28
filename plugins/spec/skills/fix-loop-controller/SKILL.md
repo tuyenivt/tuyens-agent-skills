@@ -28,7 +28,7 @@ user-invocable: false
 - A `status: failed` envelope routes to `loop` only if the iteration cap has not been reached; otherwise routes to `escalate`
 - A `status: complete` envelope with non-empty `proposed_amendments` routes to `pause-for-amendment` - the user must accept, reject, or edit the amendment before the pipeline resumes
 - The controller does not read code, run tests, or invoke agents - it only reads handoff frontmatter (and the evaluation sidecar, when present) and emits a decision
-- **Signal priority:** when both an evaluation sidecar and a review envelope exist for the same ordinal, the sidecar wins. The review envelope's `status` becomes secondary - it is used only for feedback synthesis content, not for the decision. This is the post-#18 contract; before #18, only the envelope existed
+- **Signal priority:** when both an evaluation sidecar and a review envelope exist for the same ordinal, the sidecar wins. The review envelope's `status` becomes secondary - it is used only for feedback synthesis content, not for the decision. When no sidecar exists, the controller routes purely on envelope status (the original contract)
 
 ## Inputs
 
@@ -46,7 +46,7 @@ user-invocable: false
 3. If two envelopes share the same ordinal -> emit `error: contract-violation` with the offending ordinals. Stop.
 4. Identify the **latest envelope** (highest ordinal).
 5. Count `fix_iterations = number of envelopes with step == "fix"`.
-6. **Evaluation sidecar check (post-#18):** if the latest envelope has `step: review`, look for a sidecar `<NN>-review-score.yaml` at the same ordinal. If present and parseable, route via the **Evaluation Decision Table** below; the score is the primary signal. If the sidecar is missing, errored, or marks `status: error`, fall back to the standard envelope-based decision table (the pre-#18 behavior).
+6. **Evaluation sidecar check:** if the latest envelope has `step: review`, look for a sidecar `<NN>-review-score.yaml` at the same ordinal. If present and parseable, route via the **Evaluation Decision Table** below; the score is the primary signal. If the sidecar is missing, errored, or marks `status: error`, fall back to the standard envelope-based decision table.
 7. For all other cases (no review envelope, no sidecar, sidecar errored), apply the standard Decision Table below using the latest envelope's `status` and `next` fields.
 
 ## Decision Table
@@ -64,7 +64,7 @@ user-invocable: false
 
 `proceed-done` and `proceed-next` are different on purpose: `proceed-done` ends the orchestration; `proceed-next` continues it.
 
-## Evaluation Decision Table (post-#18, when sidecar is present)
+## Evaluation Decision Table (when sidecar is present)
 
 When the latest envelope is `step: review` AND a parseable `<NN>-review-score.yaml` sidecar exists at the matching ordinal, the controller routes on `score.status` from the sidecar **instead of** the envelope status. The review envelope's content still feeds feedback synthesis, but it does not drive the decision.
 

@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Spec
 
-Spec-Driven Development (SDD) plugin for Claude Code. Produces persistent per-feature artifacts under `.specs/<feature-slug>/` (`spec.md`, `clarifications.md`, `plan.md`, `tasks.md`, `analysis.md`, `checklist.md`) so requirements, plans, and task lists survive across sessions instead of living only in chat. The pipeline mirrors [GitHub Spec Kit](https://github.com/github/spec-kit): `constitution -> specify -> clarify -> plan -> tasks -> analyze -> implement` plus an optional `checklist`.
+Spec-Driven Development (SDD) plugin for Claude Code. Produces persistent per-feature artifacts under `.specs/<feature-slug>/` (`spec.md`, `clarifications.md`, `plan.md`, `tasks.md`, `analysis.md`, `checklists/`) so requirements, plans, and task lists survive across sessions instead of living only in chat. The pipeline mirrors [GitHub Spec Kit](https://github.com/github/spec-kit): `constitution -> specify -> clarify -> plan -> tasks -> analyze -> implement` plus an optional `checklist`.
 
 Depends only on the `core` plugin.
 
@@ -19,7 +19,7 @@ The other plugins in this marketplace are a menu of independent workflows (`task
     plan.md                  # architecture, data model, API, alternatives, risks
     tasks.md                 # ordered implementation tasks (data -> service -> API -> tests)
     analysis.md              # cross-artifact consistency report
-    checklist.md             # requirements-quality checklist
+    checklists/              # requirements-quality checklists (themed: requirements.md, ux.md, ...)
     handoffs/                # (later phase) per-step agent handoff envelopes
     evaluation.md            # (later phase) test + spec coverage scoring
 ```

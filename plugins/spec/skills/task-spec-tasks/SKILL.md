@@ -106,7 +106,7 @@ For each task:
 - **Description:** One or two sentences - what to build, not how
 - **Satisfies:** Acceptance criterion IDs from `spec.md` (e.g., `AC1, AC3`) or NFR category
 - **Depends on:** Other task IDs (or `none`)
-- **Size:** S (half day), M (1-2 days), L (3-5 days), XL (>5 days - flag for breakdown)
+- **Size:** S (small / single concern), M (medium / a few related concerns), L (large / multiple coordinated changes), XL (too large - flag for breakdown). These are relative t-shirt sizes, not calendar estimates - consuming workflows turn them into time only when the user explicitly asks.
 - **Scope:** `must-have` | `nice-to-have` | `risk-reduction`
 - **Status:** `[ ]` (set by `task-spec-implement` as it progresses; always `[ ]` on first write)
 

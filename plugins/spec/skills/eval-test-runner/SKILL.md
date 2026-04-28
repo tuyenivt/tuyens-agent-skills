@@ -128,6 +128,6 @@ test_run:
 
 ## Notes
 
-- The atomic shells out, which crosses the marketplace's "markdown-only" line per merging-spec.md §13.5. This is intentional and opt-in: it only runs when the user explicitly invokes evaluation.
+- The atomic shells out to invoke the project's test runner, which is the only place in the `spec` plugin that executes external commands. This is intentional and opt-in: it only runs when the user explicitly invokes evaluation.
 - Parser implementations live in the runner ecosystem (Surefire reports, JSON reporters); this skill prescribes which parser to use, not how to implement it. Claude reads the output following the parser's known schema.
 - Single source of truth for the test command: this atomic. Other skills that need to "run the tests" should compose this atomic, not duplicate the table above.

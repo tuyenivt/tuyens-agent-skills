@@ -47,17 +47,17 @@ Examples:
 
 For project root `<root>` and feature slug `<slug>`:
 
-| Logical Name     | Path                                     | Owner                                                       |
-| ---------------- | ---------------------------------------- | ----------------------------------------------------------- |
-| `constitution`   | `<root>/.specs/constitution.md`          | `task-spec-constitution`                                    |
-| `spec`           | `<root>/.specs/<slug>/spec.md`           | `task-spec-specify` (writer), all (reader)                  |
-| `clarifications` | `<root>/.specs/<slug>/clarifications.md` | `task-spec-clarify`                                         |
-| `plan`           | `<root>/.specs/<slug>/plan.md`           | `task-spec-plan`                                            |
-| `tasks`          | `<root>/.specs/<slug>/tasks.md`          | `task-spec-tasks` (writer), `task-spec-implement` (updater) |
-| `analysis`       | `<root>/.specs/<slug>/analysis.md`       | `task-spec-analyze`                                         |
-| `checklist`      | `<root>/.specs/<slug>/checklist.md`      | `task-spec-checklist`                                       |
-| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         | `task-spec-orchestrate`                                     |
-| `evaluation`     | `<root>/.specs/<slug>/evaluation.md`     | `task-spec-evaluate`                                        |
+| Logical Name     | Path                                     | Owner                                                                                              |
+| ---------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `constitution`   | `<root>/.specs/constitution.md`          | `task-spec-constitution`                                                                           |
+| `spec`           | `<root>/.specs/<slug>/spec.md`           | `task-spec-specify` (writer), all (reader)                                                         |
+| `clarifications` | `<root>/.specs/<slug>/clarifications.md` | `task-spec-clarify`                                                                                |
+| `plan`           | `<root>/.specs/<slug>/plan.md`           | `task-spec-plan`                                                                                   |
+| `tasks`          | `<root>/.specs/<slug>/tasks.md`          | `task-spec-tasks` (writer), `task-spec-implement` (updater)                                        |
+| `analysis`       | `<root>/.specs/<slug>/analysis.md`       | `task-spec-analyze`                                                                                |
+| `checklists_dir` | `<root>/.specs/<slug>/checklists/`       | `task-spec-checklist` (themed files), `task-spec-specify` (writes `requirements.md` on first pass) |
+| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         | `task-spec-orchestrate`                                                                            |
+| `evaluation`     | `<root>/.specs/<slug>/evaluation.md`     | `task-spec-evaluate`                                                                               |
 
 Workflows MUST use these logical names when referencing paths in their bodies, so a future move of the convention (e.g., to `docs/specs/`) is a single change here.
 
@@ -81,7 +81,7 @@ paths:
   plan: <root>/.specs/<slug>/plan.md
   tasks: <root>/.specs/<slug>/tasks.md
   analysis: <root>/.specs/<slug>/analysis.md
-  checklist: <root>/.specs/<slug>/checklist.md
+  checklists_dir: <root>/.specs/<slug>/checklists/
   handoffs_dir: <root>/.specs/<slug>/handoffs/
   evaluation: <root>/.specs/<slug>/evaluation.md
 existence:
@@ -90,7 +90,7 @@ existence:
   plan: true | false
   tasks: true | false
   analysis: true | false
-  checklist: true | false
+  checklists_dir: true | false
   evaluation: true | false
 notes: |
   Free-form. Required when an existing slug collides with a different feature name input,

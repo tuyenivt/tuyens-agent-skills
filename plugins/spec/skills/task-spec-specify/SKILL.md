@@ -92,7 +92,7 @@ When the user could not give a confident answer to a question whose answer mater
 
 Before reporting completion, run a self-validation pass against `spec.md`:
 
-1. Write a sibling checklist file at `.specs/<slug>/checklists/requirements.md` (create parent dir if needed) listing the standard quality items: no implementation details, focused on user value, all mandatory sections present, no `[NEEDS CLARIFICATION]` left, every AC testable + measurable, every story has acceptance criteria, edge cases identified, scope bounded, dependencies and assumptions noted.
+1. Write a sibling checklist file at `<checklists_dir>/requirements.md` (resolved via `spec-artifact-paths`; create the directory if needed) listing the standard quality items: no implementation details, focused on user value, all mandatory sections present, no `[NEEDS CLARIFICATION]` left, every AC testable + measurable, every story has acceptance criteria, edge cases identified, scope bounded, dependencies and assumptions noted.
 2. Mark each item pass/fail by re-reading the spec you just wrote.
 3. **If items fail (other than `[NEEDS CLARIFICATION]`):** edit the spec to address them. Re-run the check. **Maximum 3 iterations.** After 3, record remaining issues in the checklist's Notes section and warn the user.
 4. **If `[NEEDS CLARIFICATION]` markers remain:** print them to chat (max 3) and ask the user one at a time, then update the spec verbatim with each answer. Re-run validation after all are resolved.
@@ -160,7 +160,7 @@ Each criterion references a story and is independently testable.
 
 (Empty on first write. Amend mode appends dated entries; nothing is deleted.)
 
-- <YYYY-MM-DD>: <summary of change> (by `task-spec-clarify` | `task-spec-amend` | manual)
+- <YYYY-MM-DD>: <summary of change> (by `task-spec-clarify` | `task-spec-specify` amend | manual)
 ```
 
 ## Self-Check

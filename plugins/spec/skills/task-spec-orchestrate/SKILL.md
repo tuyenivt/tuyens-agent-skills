@@ -111,7 +111,7 @@ Pass the slug. The workflow runs `eval-test-runner` -> `eval-spec-coverage` -> `
 
 Write the score back to the handoff directory as a sidecar file (NOT a numbered envelope) at `<handoffs_dir>/<NN>-review-score.yaml` where `<NN>` matches the ordinal of the review envelope just verified. The sidecar is read by `fix-loop-controller` in the next iteration; it is not itself an envelope and does not increment the ordinal.
 
-If `task-spec-evaluate` aborts (e.g., `no-runner-detected`), do NOT halt orchestration. Surface the gap as a one-line warning in the eventual final summary, write a sidecar with `status: error` and `reason: <abort reason>`, and continue. The fix-loop controller will treat a missing/errored sidecar by falling back to the review envelope's `status` (the pre-#18 behavior).
+If `task-spec-evaluate` aborts (e.g., `no-runner-detected`), do NOT halt orchestration. Surface the gap as a one-line warning in the eventual final summary, write a sidecar with `status: error` and `reason: <abort reason>`, and continue. The fix-loop controller treats a missing/errored sidecar by falling back to the review envelope's `status`.
 
 ### STEP 8 - Loop
 

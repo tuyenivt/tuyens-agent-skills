@@ -26,7 +26,7 @@ Re-reads an existing `spec.md`, identifies ambiguous, conflicting, missing, or u
 ## Inputs
 
 - The feature slug (required) - the workflow reads `.specs/<slug>/spec.md`
-- Optional scope: `--blockers-only` to ask only about `blocker`-severity findings; default asks blockers + majors
+- Optional scope: `--blockers-only` to ask only about `blocker`-severity findings; default asks blockers + majors; `--all` to also ask about `minor` findings
 - Optional `--non-interactive` for environments where the workflow should produce the findings list and stop without Q&A
 
 **Insufficient input handling:** If no slug is provided, list available slugs under `.specs/` and ask which one. If the slug exists but has no `spec.md`, stop and suggest `task-spec-specify` instead.

@@ -14,13 +14,13 @@ user-invocable: true
 
 Score the produced implementation against the spec for a feature. Runs the project's tests, maps every acceptance criterion and NFR to its evidence, aggregates with review-agent verdicts, and emits a single status (`pass` / `needs-fix` / `fail`) plus a numeric score. Result is appended to `.specs/<slug>/evaluation.md` so the user can compare iterations.
 
-This workflow shells out to run tests (`pytest`, `npm test`, `mvn test`, ...). It is opt-in and only runs when invoked explicitly or via `task-spec-orchestrate --with-evaluation`. Per merging-spec.md §13.5, this is the marketplace's first foray into "the system grades itself" and stays opt-in by design.
+This workflow shells out to run tests (`pytest`, `npm test`, `mvn test`, ...). It is opt-in and only runs when invoked explicitly or via `task-spec-orchestrate --with-evaluation`. Letting the system grade itself stays opt-in by design - it executes external commands, so the user must ask for it.
 
 ## When to Use
 
 - After `task-spec-orchestrate` (or `task-spec-implement`) has produced code and tests for a feature
 - When the user wants to know "does this implementation actually satisfy the spec?"
-- When orchestration uses evaluation as the fix-loop signal (post-#18 wiring)
+- When orchestration uses evaluation as the fix-loop signal (sidecar wiring under `--with-evaluation`)
 - To compare iterations - re-running this workflow appends a new dated section to `evaluation.md`; prior runs are preserved
 
 **Not for:** Reviewing requirements quality (use `task-spec-checklist`), cross-artifact consistency (use `task-spec-analyze`), code review (use `task-code-review`), running tests in CI (this workflow is for ad-hoc evaluation, not pipeline integration).
@@ -86,7 +86,7 @@ Otherwise: list `handoffs_dir`, find all envelopes with `step: review`. The late
 - Read its `status`, count blockers from the body, capture `proposed_amendments`.
 - Construct the `review_verdicts` object passed to `eval-scorer`.
 
-If no review envelope exists (orchestration never ran review, or `--skip-review` was used), pass `review_verdicts = null`. The scorer redistributes the review weight.
+If no review envelope exists (orchestration never ran review, e.g. it was invoked with `--skip-review`, or implementation was manual without orchestration), pass `review_verdicts = null`. The scorer redistributes the review weight.
 
 ### STEP 8 - Score
 
@@ -162,7 +162,7 @@ Print to chat:
 - The Recommendation line from the scorer
 - The path to `evaluation.md` (so the user can read the full report)
 - If `pass`: nothing further. The user may ship.
-- If `needs-fix`: the top 3 blocking issues and a suggestion to re-invoke `task-spec-orchestrate <slug>` (which will see the score and loop, post-#18).
+- If `needs-fix`: the top 3 blocking issues and a suggestion to re-invoke `task-spec-orchestrate <slug> --with-evaluation` (the orchestrator will see the sidecar score and loop).
 - If `fail`: the hard-fail triggers and a suggestion to either fix the structural issue (drift, violated AC) or escalate.
 
 ## Output Format
@@ -201,6 +201,6 @@ The chat output is a brief summary; the durable artifact is `evaluation.md`. Bot
 
 ## Notes
 
-- This workflow is the natural last step of `task-spec-orchestrate --with-evaluation` (#18 wires it as the loop signal). It is also useful standalone after manual implementation, where `changed_files` is null and the report focuses on test + coverage signals.
+- This workflow is the natural last step of `task-spec-orchestrate --with-evaluation`, which wires the sidecar score as the loop signal. It is also useful standalone after manual implementation, where `changed_files` is null and the report focuses on test + coverage signals.
 - The append-only `evaluation.md` makes iteration progress visible: a feature that goes from `score 62 / needs-fix` to `score 91 / pass` over three iterations has its history right in the file.
 - Pairs with `task-spec-analyze` (consistency check, structural) and `task-spec-checklist` (requirements quality, pre-implementation). `task-spec-evaluate` is the post-implementation grade; the other two are pre-implementation gates.

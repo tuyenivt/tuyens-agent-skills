@@ -1,6 +1,6 @@
 ---
 name: task-spec-checklist
-description: Generate a requirements-quality checklist for `spec.md` - "unit tests for English." Runs `spec-review` against the spec and produces a per-category pass/fail checklist (acceptance measurability, NFR coverage, conflict-freeness, ambiguity, out-of-scope clarity, story strength) the user can sign off on. Writes `checklist.md`. Speckit-aware - delegates to `/speckit.checklist` when Spec Kit is installed.
+description: Generate a requirements-quality checklist for `spec.md` - "unit tests for English." Runs `spec-review` against the spec and produces a per-category pass/fail checklist (acceptance measurability, NFR coverage, conflict-freeness, ambiguity, out-of-scope clarity, story strength) the user can sign off on. Writes themed files under `.specs/<slug>/checklists/` (default `requirements.md`). Speckit-aware - delegates to `/speckit.checklist` when Spec Kit is installed.
 metadata:
   category: spec
   tags: [spec, sdd, checklist, quality, requirements]
@@ -57,7 +57,7 @@ Capture `mode`. Subsequent steps branch on it.
 
 Use skill: spec-artifact-paths
 
-Capture `spec` and `checklist` paths plus existence flags. If `spec.md` does not exist, abort with a clear message recommending `task-spec-specify`. If `checklist.md` already exists, ask the user whether to **replace**, **amend** (preserve history with a new session), or **abort** - default to amend.
+Capture `spec` and `checklists_dir` paths plus existence flags. The themed checklist file path is `<checklists_dir>/<theme>.md` (default theme is `requirements`, so the default file is `<checklists_dir>/requirements.md`). If `spec.md` does not exist, abort with a clear message recommending `task-spec-specify`. If the target themed file already exists, ask the user whether to **replace**, **amend** (preserve history with a new session), or **abort** - default to amend.
 
 ### STEP 4 - Branch on Mode
 
@@ -111,9 +111,9 @@ For `--theme <name>`, narrow the categories to that theme (e.g., `ux` → visual
 - **Conditional pass:** all blockers resolved, but majors remain - reviewer must sign off knowing the gaps
 - **Fail:** any blocker present (treat as a hard stop)
 
-### STEP 7 - Write checklist.md
+### STEP 7 - Write the themed checklist file
 
-Write to the resolved path using the template in **Output Format** below. In amend mode, append a new `## Session <timestamp>` block; never delete prior sessions.
+Write to `<checklists_dir>/<theme>.md` using the template in **Output Format** below (default theme `requirements` → `requirements.md`). Create `checklists_dir` if it does not yet exist. In amend mode, append a new `## Session <timestamp>` block; never delete prior sessions.
 
 ### STEP 8 - Summarize
 
@@ -131,7 +131,7 @@ In `--non-interactive` mode, skip the next-command suggestion.
 
 ## Output Format
 
-`checklist.md` template (standalone mode; speckit-installed mode defers to Spec Kit's template, with marketplace additions appended):
+Themed checklist file template, written to `<checklists_dir>/<theme>.md` (standalone mode; speckit-installed mode defers to Spec Kit's template, with marketplace additions appended):
 
 ```markdown
 # Requirements Checklist - <Feature Name>
@@ -198,10 +198,10 @@ In `--non-interactive` mode, skip the next-command suggestion.
 - [ ] Every checklist item is in question form, ends with a `[Quality Dimension]` tag, and (≥80%) cites a spec section or `[Gap]`-style marker
 - [ ] No item starts with forbidden verbs (`Verify`, `Test`, `Confirm`, `Check that the system ...`) - those mark implementation tests, not requirement tests
 - [ ] Item IDs (`CHK001`...) increment continuously across amend sessions, never restart
-- [ ] Default theme writes `requirements.md`; `--theme <name>` writes `<theme>.md` under `.specs/<slug>/checklists/`
-- [ ] Every one of the six categories has a checkbox row (pass or fail) for the default `requirements` theme
+- [ ] Default theme writes `requirements.md`; `--theme <name>` writes `<theme>.md` under `<checklists_dir>` (resolved via `spec-artifact-paths`)
+- [ ] Every one of the six canonical categories has a checkbox row (pass or fail) for the default `requirements` theme; the optional **Marketplace Additions** section appears only in speckit-installed mode
 - [ ] Failing categories cite the specific finding ID, severity, and remediation workflow
-- [ ] `checklist.md` is append-only - prior sessions preserved
+- [ ] The themed checklist file is append-only - prior sessions preserved
 - [ ] Final summary printed with per-category pass/fail, composite verdict, and next-command suggestion
 
 ## Avoid
