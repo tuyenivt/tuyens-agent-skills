@@ -100,13 +100,29 @@ Rules during composition:
 - For polyglot or fullstack features, produce one plan with clearly labeled backend / frontend sections rather than two separate plans.
 - If `architecture` plugin is installed and the feature is non-trivial, soft-suggest invoking `task-design-architecture` for a deeper design pass; do not run it automatically.
 
-### STEP 8 - Plan-Spec Cross-Check
+### STEP 8 - NFR Feasibility Sanity Check
+
+Before writing, do a back-of-envelope check on every quantitative NFR. The goal is to catch arithmetically infeasible targets _now_ - before tasks are generated and code is written against an impossible budget. Common failure mode: a spec NFR like "p95 upload-to-visible < 2s for 5MB on a 10Mbps connection" passes review by inspection, but raw transfer alone is `5 MB * 8 / 10 Mbps ≈ 4s`, so the budget is impossible regardless of the plan.
+
+For each NFR with a number in it, run a one-line feasibility check:
+
+| NFR pattern                                                | Sanity formula                                                                              | If it fails                                                                                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload/download latency at a given file size and bandwidth | `file_bits / bandwidth_bps` is the floor                                                    | Flag in **Proposed Spec Amendments**: ask the user whether the budget is server-side-only, applies to typical files, or the bandwidth assumption needs revising |
+| Throughput target (RPS, writes/sec)                        | Multiply by per-request cost (CPU ms, DB latency); compare to capacity of a single instance | Flag if the target requires multi-instance scaling not in plan, or per-request cost is higher than the budget allows                                            |
+| Storage volume targets (GB, retention windows)             | `users * avg_size * retention` against budget                                               | Flag if growth model conflicts with retention/cost constraints                                                                                                  |
+| Read latency under cache miss (p99)                        | Storage round-trip + serialization floor                                                    | Flag if target is below the floor                                                                                                                               |
+
+Record each check briefly in the plan's NFR Mapping table (`Feasibility:` column) - this is the audit trail showing the math was done. If a check fails, **do not silently weaken the NFR in the plan**; surface it as a Proposed Spec Amendment for the user to resolve.
+
+### STEP 9 - Plan-Spec Cross-Check
 
 Before writing, verify:
 
 - Every user story in `spec.md` is addressed by at least one architecture component or API endpoint
 - Every acceptance criterion has a plan element it can be tested against
 - Every NFR category has a corresponding plan section entry (or an explicit waiver with reason)
+- Every quantitative NFR survived the STEP 8 feasibility check (or its failure is recorded as a proposed spec amendment)
 - No plan element touches an out-of-scope item
 - No plan element conflicts with another (e.g., "stateless service" + "in-memory session cache")
 
@@ -116,11 +132,11 @@ For each gap, do **one** of:
 - Stop and ask the user (when the gap implies a spec change)
 - Mark as a **proposed spec amendment** in the plan's revisions section (when minor, defer to `task-spec-clarify`)
 
-### STEP 9 - Write plan.md
+### STEP 10 - Write plan.md
 
 Write to the resolved path using the template in **Output Format** below. In amend mode, preserve prior text and append a dated revision section; never delete prior content.
 
-### STEP 10 - Summarize
+### STEP 11 - Summarize
 
 Print a short summary to chat:
 
@@ -161,10 +177,10 @@ Print a short summary to chat:
 
 ## NFR Mapping
 
-| NFR Category | Spec Target         | Plan Element                           | Verification                 |
-| ------------ | ------------------- | -------------------------------------- | ---------------------------- |
-| Performance  | <e.g., p95 < 200ms> | <e.g., read-through cache on hot path> | <e.g., load test in Phase 4> |
-| ...          | ...                 | ...                                    | ...                          |
+| NFR Category | Spec Target         | Plan Element                           | Feasibility (back-of-envelope)                                                               | Verification                 |
+| ------------ | ------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------- |
+| Performance  | <e.g., p95 < 200ms> | <e.g., read-through cache on hot path> | <e.g., transfer floor 4s @ 10Mbps for 5MB - INFEASIBLE; flagged in Proposed Spec Amendments> | <e.g., load test in Phase 4> |
+| ...          | ...                 | ...                                    | <one-line check or `n/a` for non-quantitative NFRs>                                          | ...                          |
 
 ## Alternatives Considered
 
@@ -214,6 +230,7 @@ Print a short summary to chat:
 - [ ] Every user story is addressed by at least one architecture component or API endpoint
 - [ ] Every acceptance criterion has a plan element testable against it
 - [ ] Every NFR category has a plan entry or explicit waiver with reason
+- [ ] Every quantitative NFR ran through STEP 8 feasibility check; infeasible targets are recorded as proposed spec amendments rather than silently absorbed by the plan
 - [ ] Every significant decision has an Alternatives Considered entry from `tradeoff-analysis`
 - [ ] No plan element touches an out-of-scope item
 - [ ] Proposed spec amendments listed (or empty section retained); spec.md not edited from this workflow
@@ -227,6 +244,7 @@ Print a short summary to chat:
 - Skipping the Alternatives Considered section because "the choice was obvious" - record at least one rejected option
 - Overwriting an existing `plan.md` without offering replace/amend/abort
 - Auto-running `task-adr-create` or `task-design-architecture` - both are user-driven decisions
+- Silently absorbing an arithmetically infeasible NFR (e.g., a latency budget below the raw network transfer floor) - the STEP 8 check exists to catch these; failures must be surfaced as proposed spec amendments, never quietly worked around in the plan
 
 ## Notes
 

@@ -110,18 +110,22 @@ For each task:
 - **Scope:** `must-have` | `nice-to-have` | `risk-reduction`
 - **Status:** `[ ]` (set by `task-spec-implement` as it progresses; always `[ ]` on first write)
 
-**Checklist line format (the one-line rendering of each task block's header):**
+**One-line task format (the ONLY rendering - do not duplicate as a separate detail block below):**
 
 ```text
-- [ ] T<NNN> [P?] [US?] <Name with file path>
+- [ ] T<NNN> [P?] [US?] <Name with file path> - <type>, <size>, <scope>. Satisfies <ACs/NFRs>. Deps: <task ids or none>.
+  <One-sentence description if name alone is not self-explanatory.>
 ```
+
+The metadata (type, size, scope, satisfies, deps) lives on the same line as the checkbox. Use the optional indented description sparingly - only when the name + file path do not convey what to build. Do **not** emit a separate `### T<NNN> - <Name>` heading block repeating the same fields below; that duplication is the most common bloat in spec-driven tasks.md files and makes them unreadable at scale.
 
 Examples:
 
-- `- [ ] T001 Create project structure per implementation plan` (Setup, no story label)
-- `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.ts` (Foundational, parallelizable)
-- `- [ ] T012 [P] [US1] Create User model in src/models/user.ts` (User Story 1, parallelizable)
-- `- [ ] T014 [US1] Implement UserService in src/services/user_service.ts` (User Story 1, sequential)
+- `- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.`
+- `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.ts - service, M, must-have. Satisfies AC5. Deps: T001.`
+- `- [ ] T012 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.`
+- `- [ ] T014 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T012.`
+  Coordinates validation, persistence, and external storage calls; thin wrapper over the repository.
 
 Phase structure (omit empty phases):
 
@@ -197,51 +201,38 @@ Print a short summary:
 
 ## Phase 1 - Setup
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 [P] Configure linting and formatting in tooling/
-
-(detail blocks for each task follow the same format as story-phase tasks below)
+- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
+- [ ] T002 [P] Configure linting and formatting in tooling/ - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
 
 ## Phase 2 - Foundational
 
 (blocking prerequisites for ALL user stories - migrations, shared interfaces, flag scaffolding)
 
-- [ ] T005 Apply expand-phase migration in db/migrations/
-- [ ] T006 [P] Add feature-flag scaffolding in src/flags/
+- [ ] T005 Apply expand-phase migration in db/migrations/2026XX_add_users.sql - data, S, must-have. Satisfies AC1, AC3. Deps: T001.
+- [ ] T006 [P] Add feature-flag scaffolding in src/flags/ - ops, S, risk-reduction. Satisfies NFR-Rollout. Deps: T001.
 
 ## Phase 3 - User Story 1 (P1) - <Story Title>
 
 **Story goal:** <one line - what value US1 delivers on its own>
 **Independent test criteria:** <how to verify US1 works without US2/US3>
 
-- [ ] T010 [P] [US1] Create User model in src/models/user.ts
-- [ ] T011 [US1] Implement UserService in src/services/user_service.ts
-- [ ] T012 [US1] Add validation tests for UserService in tests/services/user_service.test.ts
-
-### T010 - Create User model
-
-- **Type:** data
-- **Description:** <what to build>
-- **Satisfies:** AC1, AC3
-- **Depends on:** T005
-- **Size:** S | M | L | XL
-- **Scope:** must-have | nice-to-have | risk-reduction
-- **Status:** [ ]
-
-### T011 - ...
+- [ ] T010 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.
+- [ ] T011 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T010.
+      Coordinates validation, persistence, and password hashing.
+- [ ] T012 [US1] Add validation tests for UserService in tests/services/user_service.test.ts - validation, S, must-have. Satisfies AC1, AC4. Deps: T011.
 
 ## Phase 4 - User Story 2 (P2) - <Story Title>
 
 **Story goal:** ...
 **Independent test criteria:** ...
 
-(same task block layout, all tagged `[US2]`)
+(same one-line layout, all tagged `[US2]`)
 
 ## Phase N - Polish
 
 (cross-cutting: observability, runbooks, contract-phase migrations, deprecation removals)
 
-- [ ] T040 Wire structured logging in src/observability/
+- [ ] T040 Wire structured logging in src/observability/ - ops, S, risk-reduction. Satisfies NFR-Observability. Deps: T011.
 
 ## Dependency Order
 
@@ -297,6 +288,7 @@ Print a short summary:
 ## Avoid
 
 - Generating implementation code in task descriptions - describe what to build, not how
+- Duplicating each task as both a one-line checkbox AND a `### T<NNN>` detail block - the one-line form already carries every required field, repeating it is the most common reason `tasks.md` becomes unreadable at scale
 - Tasks without `Satisfies` traceability - either fix the plan, ask the user, or drop the task
 - Calendar-time estimates ("3 hours") instead of relative sizes (S/M/L/XL) unless explicitly requested
 - Treating tests as a single trailing task - validation work belongs alongside the code it covers

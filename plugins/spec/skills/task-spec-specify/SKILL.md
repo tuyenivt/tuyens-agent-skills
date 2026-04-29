@@ -65,15 +65,15 @@ Continue to STEP 5.
 
 Drive a structured elicitation. Ask only the questions whose answers are not already in the provided context. Cover:
 
-| Section                 | What to elicit                                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------------------------------- |
-| **Problem statement**   | The user-facing pain or business gap. One paragraph, plain language, no implementation hints.         |
-| **Target users**        | Primary user role(s) and any secondary roles. Internal vs external, authenticated vs anonymous.       |
-| **User stories**        | "As a <role>, I want <capability>, so that <value>." One per distinct outcome.                        |
-| **Acceptance criteria** | Falsifiable, testable conditions. Every story must have at least one. Use measurable thresholds.      |
-| **Non-functional**      | Run `Use skill: nfr-specification` to populate performance, availability, scalability, security, etc. |
-| **Out of scope**        | Explicit list of things this feature deliberately does NOT do. Prevents scope creep in later phases.  |
-| **Open questions**      | Items the user could not answer; flagged for `task-spec-clarify` to resolve.                          |
+| Section                 | What to elicit                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Problem statement**   | The user-facing pain or business gap. One paragraph, plain language, no implementation hints.                                                                                                                                                                                                                                                                                                                                                         |
+| **Target users**        | Primary user role(s) and any secondary roles. Internal vs external, authenticated vs anonymous.                                                                                                                                                                                                                                                                                                                                                       |
+| **User stories**        | "As a <role>, I want <capability>, so that <value>." One per distinct outcome.                                                                                                                                                                                                                                                                                                                                                                        |
+| **Acceptance criteria** | Falsifiable, testable conditions. Every story must have at least one. Use measurable thresholds.                                                                                                                                                                                                                                                                                                                                                      |
+| **Non-functional**      | Run `Use skill: nfr-specification` to populate categories that materially apply to this feature. **Omit categories that do not apply** rather than emitting a placeholder ("Geographic distribution: not required for v1") - empty subsections are noise. A v1 internal CRUD feature usually warrants Performance + Security + Storage; Availability/Scalability/Compliance/Accessibility are added only when there is a real requirement to capture. |
+| **Out of scope**        | Explicit list of things this feature deliberately does NOT do. Prevents scope creep in later phases.                                                                                                                                                                                                                                                                                                                                                  |
+| **Open questions**      | Items the user could not answer; flagged for `task-spec-clarify` to resolve.                                                                                                                                                                                                                                                                                                                                                                          |
 
 **Rules during elicitation:**
 
@@ -144,7 +144,7 @@ Each criterion references a story and is independently testable.
 
 ## Non-Functional Requirements
 
-<NFR table populated by `nfr-specification` - performance, availability, scalability, security, compliance, observability, accessibility>
+<NFR table populated by `nfr-specification`. Include only categories that materially apply: typically Performance and Security; add Availability/Scalability/Compliance/Observability/Accessibility/Storage/Privacy when there is a real requirement to record. Do NOT emit a placeholder line per category - omit categories that do not apply rather than writing "not required for v1".>
 
 ## Out of Scope
 
@@ -170,7 +170,7 @@ Each criterion references a story and is independently testable.
 - [ ] In speckit-installed mode, did not silently edit Spec Kit's output - additions presented for user merge
 - [ ] Every user story has at least one acceptance criterion
 - [ ] Every acceptance criterion is falsifiable with a measurable threshold
-- [ ] NFR section populated via `nfr-specification` (or explicitly waived per category with reason)
+- [ ] NFR section populated via `nfr-specification`; categories that do not materially apply were omitted (not stubbed with "not required" placeholders)
 - [ ] Out-of-scope section is non-empty (an empty out-of-scope list is almost always wrong)
 - [ ] Conflicts between user answers were surfaced, not silently resolved
 - [ ] `[NEEDS CLARIFICATION]` markers capped at 3, prioritized scope > security/privacy > UX > tech
@@ -184,6 +184,7 @@ Each criterion references a story and is independently testable.
 - Using vague verbs in acceptance criteria ("fast", "scalable", "user-friendly") without measurable thresholds
 - Overwriting an existing `spec.md` without offering replace/amend/abort
 - Treating "no open questions" as a goal - genuine ambiguity should be captured rather than papered over
+- Emitting NFR subsections that say "not required for v1" or "no multi-region requirement stated" - these are noise; omit the category entirely if it does not apply, and let `task-spec-clarify` add it later if reality changes
 
 ## Notes
 
