@@ -21,7 +21,7 @@ Cross-PR semantic conflict detection for tech leads managing concurrent active b
 - **Integration ordering risks** -- PRs that must merge in a specific order to avoid a broken intermediate state
 - **Blast radius overlap** -- when two PRs touch the same high-risk areas, their combined blast radius is larger than either alone
 
-This skill detects conflicts before merge. It does not review individual PR quality (use `/task-code-review` or `/task-code-review-advanced` for that).
+This skill detects conflicts before merge. It does not review individual PR quality (use `/task-code-review` for that).
 
 ## When to Use
 

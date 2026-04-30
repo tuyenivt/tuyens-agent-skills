@@ -152,8 +152,7 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 
 ```
 I want to...
-  review code (standard PR)         -> /task-code-review
-  review code (high-risk / AI-gen)  -> /task-code-review-advanced
+  review code (PR / AI-gen)         -> /task-code-review
   implement a feature               -> /task-feature-implement (dispatches to stack-specific)
   fix a bug or crash                -> /task-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown [delivery]
@@ -177,7 +176,7 @@ I want to...
   consolidate over-split services   -> /task-consolidate-services [architecture]
   modernize a legacy system         -> /task-modernize-legacy [architecture]
   assess risk before writing code   -> /task-design-risk-analysis [architecture]
-  assess risk after writing code    -> /task-code-review-advanced
+  assess risk after writing code    -> /task-code-review
   check for security issues         -> /task-code-secure
   check for performance issues      -> /task-code-perf-review
   triage tech debt by ROI           -> /task-debt-triage [delivery]
@@ -268,7 +267,7 @@ Angular (plugin: angular)
 
 | Plugin                               | Focus                                                                                                                                                                               | Includes                              |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 46 skills                             |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 45 skills                             |
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                              |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                             |
 | [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                              |

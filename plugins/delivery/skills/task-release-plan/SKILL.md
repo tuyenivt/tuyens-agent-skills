@@ -67,7 +67,7 @@ Before starting the analysis, ask the user which scope they need:
 | Scope    | What runs                                                      |
 | -------- | -------------------------------------------------------------- |
 | Core     | Phases 1-8 only (risk, compatibility, rollout, rollback, etc.) |
-| + Review | Core + delegate to skill: `task-code-review-advanced`          |
+| + Review | Core + delegate to skill: `task-code-review`                   |
 | + Perf   | Core + delegate to skill: `task-code-perf-review`              |
 | Full     | Core + Review + Performance                                    |
 
