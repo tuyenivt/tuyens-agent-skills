@@ -28,7 +28,7 @@
     {
       "name": "delivery",
       "source": "./plugins/delivery",
-      "description": "6 workflow skills for software delivery: release planning, go-live monitoring, scope breakdown, tech debt triage, dependency upgrade assessment, and cross-PR conflict detection.",
+      "description": "5 workflow skills for software delivery: release planning, go-live monitoring, scope breakdown, tech debt triage, and dependency upgrade assessment.",
       "version": "1.75.0",
       "author": {
         "name": "Tuyen",

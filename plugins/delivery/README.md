@@ -4,16 +4,15 @@ Software delivery plugin for Claude Code: release planning, go-live monitoring, 
 
 ## Workflow Skills
 
-6 workflow skills (`task-*`) for delivery planning and coordination.
+5 workflow skills (`task-*`) for delivery planning and coordination.
 
-| Skill                       | Description                                                                                                                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-release-plan`         | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
-| `task-release-validate`     | Post-deploy go-live monitoring runbook. Time-boxed checkpoints, Go/No-Go decisions, canary advancement, and rollback triggers. Run after deploying, not before.                  |
-| `task-scope-breakdown`      | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
-| `task-debt-prioritize`      | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
-| `task-dependency-upgrade`   | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
-| `task-pr-conflict-analysis` | Detect semantic conflicts across concurrent active PRs - logical incompatibilities, shared state mutations, and integration ordering risks.                                      |
+| Skill                     | Description                                                                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-release-plan`       | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
+| `task-release-validate`   | Post-deploy go-live monitoring runbook. Time-boxed checkpoints, Go/No-Go decisions, canary advancement, and rollback triggers. Run after deploying, not before.                  |
+| `task-scope-breakdown`    | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
+| `task-debt-prioritize`    | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
+| `task-dependency-upgrade` | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
 
 ## Atomic Skills
 
@@ -21,28 +20,28 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 
 ### Core Atomics Used by Delivery Workflows
 
-| Core Atomic                     | Used By                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------ |
-| `stack-detect`                  | `task-release-plan`, `task-scope-breakdown`                              |
-| `review-blast-radius`           | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
-| `ops-backward-compatibility`    | `task-release-plan`, `task-scope-breakdown`                              |
-| `dependency-impact-analysis`    | `task-release-plan`, `task-scope-breakdown`, `task-pr-conflict-analysis` |
-| `review-change-risk`            | `task-scope-breakdown`                                                   |
-| `backend-db-migration`          | `task-release-plan`, `task-scope-breakdown`                              |
-| `ops-feature-flags`             | `task-release-plan`, `task-release-validate`, `task-scope-breakdown`     |
-| `ops-release-safety`            | `task-release-plan`                                                      |
-| `review-pr-risk`                | `task-release-plan`                                                      |
-| `ops-failure-classification`    | `task-release-plan`, `task-release-validate`                             |
-| `architecture-capacity`         | `task-release-plan`                                                      |
-| `ops-engineering-governance`    | `task-release-plan`                                                      |
-| `backend-api-guidelines`        | `task-release-plan`                                                      |
-| `architecture-data-consistency` | `task-release-plan`                                                      |
-| `backend-idempotency`           | `task-release-plan`                                                      |
-| `backend-db-indexing`           | `task-release-plan`                                                      |
-| `ops-resiliency`                | `task-release-plan`, `task-release-validate`                             |
-| `ops-observability`             | `task-release-plan`, `task-release-validate`                             |
-| `backend-caching`               | `task-release-plan`                                                      |
-| `architecture-concurrency`      | `task-release-plan`                                                      |
+| Core Atomic                     | Used By                                                              |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `stack-detect`                  | `task-release-plan`, `task-scope-breakdown`                          |
+| `review-blast-radius`           | `task-release-plan`, `task-release-validate`, `task-scope-breakdown` |
+| `ops-backward-compatibility`    | `task-release-plan`, `task-scope-breakdown`                          |
+| `dependency-impact-analysis`    | `task-release-plan`, `task-scope-breakdown`                          |
+| `review-change-risk`            | `task-scope-breakdown`                                               |
+| `backend-db-migration`          | `task-release-plan`, `task-scope-breakdown`                          |
+| `ops-feature-flags`             | `task-release-plan`, `task-release-validate`, `task-scope-breakdown` |
+| `ops-release-safety`            | `task-release-plan`                                                  |
+| `review-pr-risk`                | `task-release-plan`                                                  |
+| `ops-failure-classification`    | `task-release-plan`, `task-release-validate`                         |
+| `architecture-capacity`         | `task-release-plan`                                                  |
+| `ops-engineering-governance`    | `task-release-plan`                                                  |
+| `backend-api-guidelines`        | `task-release-plan`                                                  |
+| `architecture-data-consistency` | `task-release-plan`                                                  |
+| `backend-idempotency`           | `task-release-plan`                                                  |
+| `backend-db-indexing`           | `task-release-plan`                                                  |
+| `ops-resiliency`                | `task-release-plan`, `task-release-validate`                         |
+| `ops-observability`             | `task-release-plan`, `task-release-validate`                         |
+| `backend-caching`               | `task-release-plan`                                                  |
+| `architecture-concurrency`      | `task-release-plan`                                                  |
 
 ## Usage Examples
 
@@ -82,10 +81,4 @@ Feature: User authentication overhaul - migrate from session-based to JWT
 ```
 /task-dependency-upgrade
 Upgrade: Spring Boot 3.3 -> 3.5
-```
-
-**Check concurrent PR conflicts before batch-merging:**
-
-```
-/task-pr-conflict-analysis
 ```

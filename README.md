@@ -161,7 +161,6 @@ I want to...
   design an API contract            -> /task-design-api [architecture]
   write tests                       -> /task-code-test
   create a PR description           -> /task-pr-create
-  check concurrent PR conflicts     -> /task-pr-conflict-analysis [delivery]
   plan a production release         -> /task-release-plan [delivery]
   investigate an active incident    -> /task-incident-root-cause [oncall]
   write a postmortem                -> /task-incident-postmortem (run after root-cause) [oncall]
