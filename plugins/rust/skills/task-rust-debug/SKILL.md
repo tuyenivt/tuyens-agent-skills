@@ -1,6 +1,6 @@
 ---
 name: task-rust-debug
-description: Diagnose and fix Rust application errors from panic backtraces, compiler errors, borrow checker violations, async/await issues, and sqlx failures. Paste a backtrace or describe unexpected behavior. Not for production incident analysis (use task-incident-root-cause).
+description: Diagnose and fix Rust application errors from panic backtraces, compiler errors, borrow checker violations, async/await issues, and sqlx failures. Paste a backtrace or describe unexpected behavior. Not for production incident analysis (use /task-oncall-start).
 agent: rust-architect
 metadata:
   category: backend

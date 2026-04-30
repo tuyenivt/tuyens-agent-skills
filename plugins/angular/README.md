@@ -85,8 +85,3 @@ The following workflows are provided by `core` (install separately):
 - `/task-code-refactor` - Refactoring plan
 - `/task-code-perf-review` - Performance review
 - `/task-docs-generate` - Documentation generation
-- `/task-incident-root-cause` - Incident root cause analysis
-- `/task-incident-postmortem` - Post-incident postmortem
-- `/task-release-plan` - Production release planning
-- `/task-design-risk-analysis` - Proactive risk assessment
-- `/task-design-architecture` - Architecture design proposal

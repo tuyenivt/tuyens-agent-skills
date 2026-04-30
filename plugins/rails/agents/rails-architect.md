@@ -119,4 +119,4 @@ end
 - Use skill: `rails-security-patterns` for auth, policy, and input validation design
 - Use skill: `rails-testing-patterns` for RSpec architecture and factory design
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
+For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

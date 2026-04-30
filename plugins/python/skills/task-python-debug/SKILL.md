@@ -1,6 +1,6 @@
 ---
 name: task-python-debug
-description: Debug Python application errors by classifying tracebacks, locating root causes, and providing minimal before/after fixes. Covers FastAPI, Django, SQLAlchemy, Celery, and async errors. Paste a traceback or describe the unexpected behavior. Not for production incident triage (use task-incident-root-cause for that).
+description: Debug Python application errors by classifying tracebacks, locating root causes, and providing minimal before/after fixes. Covers FastAPI, Django, SQLAlchemy, Celery, and async errors. Paste a traceback or describe the unexpected behavior. Not for production incident triage (use /task-oncall-start for that).
 agent: python-architect
 metadata:
   category: backend
@@ -22,33 +22,39 @@ Ask for: full traceback, the source file where the error originates, framework (
 Match the error to one of these categories, then load the relevant atomic skill:
 
 ### Async / Event Loop Errors
+
 - `MissingGreenlet: greenlet_spawn has not been called` → lazy-loading a relationship after async session closes. Use skill: `python-sqlalchemy-patterns` (section 6 - async session safety).
 - `RuntimeError: no running event loop` → calling async code from sync context. Use skill: `python-async-patterns`.
 - `TypeError: object X can't be used in 'await' expression` → forgot `async def` or awaiting a non-coroutine.
 - `DetachedInstanceError` → accessing expired attributes after session close (sync equivalent of MissingGreenlet).
 
 ### SQLAlchemy / Database Errors
+
 - `sqlalchemy.exc.IntegrityError` → constraint violation (unique, FK, NOT NULL). Check the constraint name in the error message to identify which column/table.
 - `sqlalchemy.exc.OperationalError` → DB connection issue, pool exhausted. Check `pool_size`, `max_overflow`, connection string. Use skill: `python-sqlalchemy-patterns` (section 5 - connection pooling).
 - `sqlalchemy.exc.StaleDataError` → concurrent update conflict, check optimistic locking.
 
 ### FastAPI / Pydantic Errors
+
 - `pydantic.ValidationError` → request body/query params don't match schema. Read the error's `.errors()` list - it shows exactly which field failed and why.
 - DI errors: `ImportError` or `AttributeError` in a `Depends()` chain → circular import, missing package, or dependency returns None. Prevention: pytest fixture that imports and instantiates all service modules.
 - `AttributeError: 'NoneType'` on injected dep → `Depends()` function returns None instead of a value.
 
 ### Django Errors
+
 - `AppRegistryNotReady` → accessing models before `django.setup()`; check `INSTALLED_APPS` order and `AppConfig.ready()`.
 - `django.core.exceptions.ValidationError` → model-level validation failure.
 - `django.db.utils.IntegrityError` → same as SQLAlchemy constraint issues.
 
 ### Celery Errors
+
 - `celery.exceptions.Retry` → task retrying, check retry config and the original exception. Use skill: `python-celery-patterns` (section 2 - retry strategy).
 - `celery.exceptions.MaxRetriesExceededError` → all retries exhausted, check idempotency and dead letter queue.
 - `kombu.exceptions.OperationalError` → broker connection lost (Redis/RabbitMQ down).
 - Task hangs silently → check `soft_time_limit` / `time_limit` are set.
 
 ### Import / Environment Errors
+
 - `ImportError` / `ModuleNotFoundError` → missing dependency, wrong virtualenv, circular import. Check: `pip list | grep <package>`, verify virtualenv is activated.
 
 ## STEP 3 - LOCATE
@@ -90,6 +96,7 @@ async def get_order(session: AsyncSession, order_id: int) -> Order | None:
 ## STEP 6 - PREVENTION
 
 Add a guard so this class of error cannot recur:
+
 - **pytest test** that exercises the exact code path
 - **Type hint** or `lazy="raise"` on relationships to catch N+1/lazy loads in development
 - **Linting rule** (ruff/flake8) if applicable

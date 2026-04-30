@@ -8,7 +8,7 @@ category: ops
 
 # Rails Reliability Engineer
 
-> This agent is part of the rails plugin. For stack-agnostic incident workflows, use the core plugin's `/task-incident-root-cause` and `/task-incident-postmortem`.
+> This agent is part of the rails plugin. For stack-agnostic incident workflows, use the oncall plugin's `/task-oncall-start` (triage and investigation) and `/task-postmortem`.
 
 ## Role
 
@@ -57,7 +57,7 @@ Single ops agent for Ruby on Rails production systems. Covers proactive reliabil
 - Reduce connection pool size to relieve DB pressure temporarily
 - Enable DEBUG logging for affected component
 
-Use skill: `task-incident-root-cause` for structured investigation.
+Use skill: `incident-root-cause` for structured investigation.
 
 ### Phase 2 - Post-Incident (immediately after)
 
@@ -74,11 +74,11 @@ Use skill: `task-incident-root-cause` for structured investigation.
 
 **Hand-off:**
 
-- If handing off to another engineer, use `/task-oncall-handoff`
+- If handing off to another engineer, use `/task-oncall-start`
 
 ### Phase 3 - Postmortem (24-48h after)
 
-Use skill: `task-incident-postmortem` to produce the postmortem document.
+Use skill: `task-postmortem` to produce the postmortem document.
 
 Rails-specific postmortem must cover:
 
@@ -176,9 +176,9 @@ When creating or reviewing runbooks, ensure coverage of:
 
 ## Key Skills
 
-- Use skill: `task-incident-root-cause` for active investigation
-- Use skill: `task-incident-postmortem` for systemic learning after resolution
-- Use skill: `task-oncall-handoff` for shift handoff
+- Use skill: `incident-root-cause` for active investigation
+- Use skill: `task-postmortem` for systemic learning after resolution
+- Use skill: `task-oncall-start` for shift handoff
 - Use skill: `rails-sidekiq-patterns` for worker incident analysis
 - Use skill: `rails-activerecord-patterns` for AR N+1 and pool analysis
 - Use skill: `failure-propagation-analysis` for cascading failure tracing

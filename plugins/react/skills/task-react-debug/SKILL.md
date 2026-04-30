@@ -23,7 +23,7 @@ user-invocable: true
 - Test failure you can't figure out
 - Behavior that doesn't match expectations (no error, but wrong result)
 
-**Not for**: Production incident response with containment and blast radius assessment - use `task-incident-root-cause` instead.
+**Not for**: Production incident response with containment and blast radius assessment - use `/task-oncall-start` instead.
 
 **Approach**: Classify before fixing. Understand the error, trace through the codebase, explain why (not just what), and apply the smallest correct change aligned with project patterns.
 

@@ -34,9 +34,9 @@ Most oncall time is lost by treating everything as an incident or jumping to deb
 - You received a page, alert, or Slack message and need to decide what to do
 - A support ticket or user report landed in the oncall queue
 - A teammate forwarded something with "can you look at this?"
-- You're not sure whether to use `task-incident-root-cause`, `task-debug`, or something else
+- You're not sure whether to use `incident-root-cause`, `task-debug`, or something else
 
-For known incidents, go directly to `task-incident-root-cause`. For known non-incident investigations, go directly to `task-oncall-investigate`.
+For known incidents, go directly to `incident-root-cause`. For known non-incident investigations, go directly to `oncall-investigate`.
 
 ## Inputs
 
@@ -162,14 +162,14 @@ Use skill: `stack-detect`
 
 ### Step 2 - Classify Work Type
 
-| Type                               | Signals                                                                                       | Route to                                             |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Active incident**                | Service down, error rate spike, multiple users affected, SLA breach, data loss risk           | `task-incident-root-cause`                           |
-| **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-debug`                                         |
-| **Operational investigation**      | "Why did X happen?", batch job missed, queue backed up, unexpected behavior for specific case | `task-oncall-investigate`                            |
-| **User / support request**         | Single user issue, access problem, data question, "why can't I see X?"                        | `task-oncall-investigate`                            |
-| **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `task-oncall-investigate` or `task-code-perf-review` |
-| **Monitoring / alerting question** | Alert fired but unclear why, alert seems false positive, dashboard anomaly                    | `task-oncall-investigate`                            |
+| Type                               | Signals                                                                                       | Route to                                        |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Active incident**                | Service down, error rate spike, multiple users affected, SLA breach, data loss risk           | `incident-root-cause`                           |
+| **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-debug`                                    |
+| **Operational investigation**      | "Why did X happen?", batch job missed, queue backed up, unexpected behavior for specific case | `oncall-investigate`                            |
+| **User / support request**         | Single user issue, access problem, data question, "why can't I see X?"                        | `oncall-investigate`                            |
+| **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `oncall-investigate` or `task-code-perf-review` |
+| **Monitoring / alerting question** | Alert fired but unclear why, alert seems false positive, dashboard anomaly                    | `oncall-investigate`                            |
 
 Apply the highest matching type. If signals are mixed, classify as **Active incident** to err on the side of urgency.
 
@@ -214,7 +214,7 @@ Ongoing: {Yes | No | Unknown}
 
 ### Recommended Workflow
 
-Use: {task-incident-root-cause | task-debug | task-oncall-investigate | task-code-perf-review}
+Use: {incident-root-cause | task-debug | oncall-investigate | task-code-perf-review}
 
 ### Context Package
 

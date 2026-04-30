@@ -21,7 +21,7 @@ Daily developer debugging: paste an error, get a fix. This is not incident respo
 - **Explain why, not just what** - root cause understanding prevents repeat bugs
 - **Minimal fix** - smallest correct change, aligned with project patterns
 
-For production incident analysis with containment and blast radius assessment, use `task-incident-root-cause` instead.
+For production incident analysis with containment and blast radius assessment, use `/task-oncall-start` instead.
 
 ## When to Use
 

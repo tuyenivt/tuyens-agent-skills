@@ -169,4 +169,4 @@ class Order extends Model
 - Use skill: `laravel-testing-patterns` for Pest test design and factory patterns
 - Use skill: `laravel-security-patterns` for auth, validation, and secrets handling
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
+For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

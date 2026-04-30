@@ -1,6 +1,6 @@
 ---
-name: task-incident-postmortem
-description: Post-incident postmortem for systemic prevention after an incident is resolved and root cause is known. Use after resolution - not during an active incident (use task-incident-root-cause for that). Produces enforceable guardrails, not just action items. Requires a completed root cause analysis as input.
+name: task-postmortem
+description: Post-incident postmortem for systemic prevention after an incident is resolved and root cause is known. Use after resolution - not during an active incident (use /task-oncall-start for that). Produces enforceable guardrails, not just action items. Requires a completed root cause analysis as input.
 metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]
@@ -24,7 +24,7 @@ Staff-level postmortem that converts incident data into systemic improvements:
 
 This skill runs AFTER an incident has been resolved and root cause analysis is complete. It focuses on prevention and structural reinforcement, not debugging.
 
-Use skill: `task-incident-root-cause` for active incident investigation and root cause analysis.
+Use skill: `incident-root-cause` for active incident investigation and root cause analysis.
 
 ## When to Use
 
@@ -58,17 +58,17 @@ Default: `standard`. Use `quick` for minor incidents or when stakeholders need a
 
 ## Inputs
 
-| Input                   | Required | Description                                                        |
-| ----------------------- | -------- | ------------------------------------------------------------------ |
-| Incident summary        | Yes      | What happened, severity, duration, user impact                     |
-| Root cause analysis     | Yes      | Output from root cause investigation or `task-incident-root-cause` |
-| Timeline                | No       | Sequence of events from detection to resolution                    |
-| Logs or metrics summary | No       | Key signals observed during the incident                           |
-| Recent PR diff          | No       | Changes deployed before the incident                               |
-| Deployment context      | No       | Deploy timestamp, version, environment details                     |
-| Containment actions     | No       | What was done to stop the bleeding                                 |
-| Business impact         | No       | Revenue, SLA, customer trust, regulatory implications              |
-| Past incident history   | No       | Required for `deep` depth - prior incidents of the same class      |
+| Input                   | Required | Description                                                   |
+| ----------------------- | -------- | ------------------------------------------------------------- |
+| Incident summary        | Yes      | What happened, severity, duration, user impact                |
+| Root cause analysis     | Yes      | Output from root cause investigation or `incident-root-cause` |
+| Timeline                | No       | Sequence of events from detection to resolution               |
+| Logs or metrics summary | No       | Key signals observed during the incident                      |
+| Recent PR diff          | No       | Changes deployed before the incident                          |
+| Deployment context      | No       | Deploy timestamp, version, environment details                |
+| Containment actions     | No       | What was done to stop the bleeding                            |
+| Business impact         | No       | Revenue, SLA, customer trust, regulatory implications         |
+| Past incident history   | No       | Required for `deep` depth - prior incidents of the same class |
 
 Handle partial inputs gracefully. When input is missing, state what additional data would strengthen the analysis.
 

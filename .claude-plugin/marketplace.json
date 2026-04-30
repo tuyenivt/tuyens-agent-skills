@@ -67,7 +67,7 @@
     {
       "name": "oncall",
       "source": "./plugins/oncall",
-      "description": "8 skills (4 workflow + 3 atomic) for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
+      "description": "7 skills (2 workflow + 5 atomic) for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
       "version": "1.75.0",
       "author": {
         "name": "Tuyen",

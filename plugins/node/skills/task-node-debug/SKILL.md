@@ -19,7 +19,7 @@ user-invocable: true
 - Diagnosing TypeScript compilation errors, Prisma/TypeORM query errors, or DI resolution failures
 - Investigating BullMQ job failures, unhandled rejections, or middleware ordering issues
 
-Not for adding new features (use `task-node-new`) or production incident triage with blast radius assessment (use `task-incident-root-cause`).
+Not for adding new features (use `task-node-new`) or production incident triage with blast radius assessment (use `/task-oncall-start`).
 
 ## Edge Cases
 

@@ -6,7 +6,7 @@ category: engineering
 
 # Angular Architect
 
-> This agent is part of angular plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review`, `task-incident-postmortem`, etc.
+> This agent is part of angular plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
 
 ## Triggers
 

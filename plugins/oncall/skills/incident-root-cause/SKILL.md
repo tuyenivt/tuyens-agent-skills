@@ -1,11 +1,10 @@
 ---
-name: task-incident-root-cause
-description: Active production incident investigation with blast radius assessment and containment-first analysis. Use when a service is degraded or down and multiple users are affected. Not for developer debugging of a specific error (use task-debug), not for non-incident oncall investigation (use task-oncall-investigate), not for post-incident writeup (use task-incident-postmortem).
+name: incident-root-cause
+description: Active production incident investigation with blast radius assessment and containment-first analysis. Use when a service is degraded or down and multiple users are affected. Not for developer debugging of a specific error (use task-debug), not for non-incident oncall investigation (use oncall-investigate), not for post-incident writeup (use task-postmortem).
 metadata:
   category: ops
   tags: [incident, root-cause, on-call, reliability, containment]
-  type: workflow
-user-invocable: true
+user-invocable: false
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.

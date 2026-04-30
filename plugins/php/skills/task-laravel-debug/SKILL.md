@@ -16,7 +16,7 @@ user-invocable: true
 - Debugging Laravel application errors from stack traces or error messages
 - Classifying and resolving Eloquent, controller, queue, migration, or test failures
 - Tracing data flow issues (e.g., value sent but stored as null)
-- NOT for: production incident triage (use `task-incident-root-cause`)
+- NOT for: production incident triage (use `/task-oncall-start`)
 - NOT for: performance profiling or slow query optimization
 - NOT for: infrastructure/deployment issues
 

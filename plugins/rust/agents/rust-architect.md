@@ -80,12 +80,12 @@ Background processing:
 
 ## Clean Architecture Layer Rules
 
-| Layer      | Allowed imports                     | Forbidden                     |
-| ---------- | ----------------------------------- | ----------------------------- |
-| handler    | service (trait), dto, axum          | repository, model, DB types   |
-| service    | repository (trait), model, dto      | handler, axum, sqlx           |
-| repository | model, DB driver (sqlx)             | handler, service, dto         |
-| model      | stdlib, serde, sqlx::FromRow        | everything above              |
+| Layer      | Allowed imports                | Forbidden                   |
+| ---------- | ------------------------------ | --------------------------- |
+| handler    | service (trait), dto, axum     | repository, model, DB types |
+| service    | repository (trait), model, dto | handler, axum, sqlx         |
+| repository | model, DB driver (sqlx)        | handler, service, dto       |
+| model      | stdlib, serde, sqlx::FromRow   | everything above            |
 
 ## Trait Design Pattern
 
@@ -149,4 +149,4 @@ impl OrderRepository for PgOrderRepository {
 - Use skill: `rust-messaging-patterns` for Kafka consumer, AMQP, and worker pool design
 - Use skill: `rust-security-patterns` for JWT auth, input validation, and cargo-audit
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
+For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

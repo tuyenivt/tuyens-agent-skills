@@ -179,4 +179,4 @@ class OrderRepository:
 - Use skill: `python-testing-patterns` for pytest fixtures, async tests, and factory design
 - Use skill: `python-security-patterns` for auth, Pydantic validation, and secrets handling
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`, `/task-incident-postmortem`, `/task-incident-root-cause`.
+For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

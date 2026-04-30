@@ -1,11 +1,10 @@
 ---
-name: task-oncall-investigate
-description: Structured investigation for non-incident oncall work - user requests, support tickets, operational questions, unexpected behavior, and performance concerns. Not for active incidents with service degradation or user impact (use task-incident-root-cause for that).
+name: oncall-investigate
+description: Structured investigation for non-incident oncall work - user requests, support tickets, operational questions, unexpected behavior, and performance concerns. Not for active incidents with service degradation or user impact (use /task-oncall-start for that).
 metadata:
   category: ops
   tags: [oncall, investigation, user-request, operational, performance, support]
-  type: workflow
-user-invocable: true
+user-invocable: false
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
@@ -22,7 +21,7 @@ Structured investigation for oncall work that is not an active incident:
 - **Performance concerns** -- slow response or high latency without outage
 - **Monitoring questions** -- alert fired, not clear if it's real or a false positive
 
-This skill is for understanding why something happened, not for containing an active production failure. Use `task-incident-root-cause` for active incidents with blast radius and containment urgency.
+This skill is for understanding why something happened, not for containing an active production failure. Use `incident-root-cause` for active incidents with blast radius and containment urgency.
 
 ## When to Use
 
@@ -84,7 +83,7 @@ Narrow investigation to the specific case before broadening:
 - Check error logs and metrics for the same code path - elevated error rates suggest wider impact
 - If the issue traces to a deploy, config change, or migration, assume all users on that code path are potentially affected until proven otherwise
 
-If more than one user is affected and the issue is ongoing, reassess whether this should be escalated to `task-incident-root-cause`.
+If more than one user is affected and the issue is ongoing, reassess whether this should be escalated to `incident-root-cause`.
 
 ### Step 4 - Check Expected Behavior
 
@@ -201,7 +200,7 @@ Time Window: {when the issue occurred or was observed}
 - [ ] Proactive blast radius check performed - confirmed whether the issue is isolated or silently affecting others
 - [ ] Finding is conclusive (Bug | Working as designed | Config | Data) or states what is needed to reach a conclusion
 - [ ] Recommended action is concrete and actionable
-- [ ] Scope reassessed - if more than one user is affected and ongoing, `task-incident-root-cause` may be more appropriate
+- [ ] Scope reassessed - if more than one user is affected and ongoing, `incident-root-cause` may be more appropriate
 
 ## Avoid
 

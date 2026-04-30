@@ -162,9 +162,8 @@ I want to...
   write tests                       -> /task-code-test
   create a PR description           -> /task-pr-create
   plan a production release         -> /task-release-plan [delivery]
-  investigate an active incident    -> /task-incident-root-cause [oncall]
-  write a postmortem                -> /task-incident-postmortem (run after root-cause) [oncall]
-  hand off an on-call shift         -> /task-oncall-handoff [oncall]
+  write a postmortem                -> /task-postmortem (run after root-cause) [oncall]
+  hand off an on-call shift         -> /task-oncall-start [oncall]
   onboard to a codebase             -> /task-onboard-codebase
   understand a file or function     -> /task-code-explain
   plan a database migration         -> /task-db-migration-plan
@@ -269,7 +268,7 @@ Angular (plugin: angular)
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 45 skills                             |
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                              |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                             |
-| [oncall](plugins/oncall)             | Incident response: root cause analysis, postmortem, on-call handoff                                                                                                                 | 5 skills                              |
+| [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       | 7 skills                              |
 | [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring | 19 skills                             |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         | 12 skills + 7 agents                  |
 | [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects                                                                                                                                     | 5 skills + 7 agents (requires `java`) |

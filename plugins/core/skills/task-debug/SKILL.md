@@ -23,7 +23,7 @@ Universal entry point for debugging errors. Detects the project stack and delega
 - Unexpected behavior that used to work correctly
 - Runtime errors with a reproducible (or intermittent) trigger
 
-**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `task-incident-root-cause`), performance analysis without a concrete error (use `task-code-perf-review`).
+**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `/task-oncall-start`), performance analysis without a concrete error (use `task-code-perf-review`).
 
 ## Inputs
 
@@ -94,6 +94,7 @@ State the class and confidence (HIGH / MEDIUM / LOW) before proceeding.
 
 **Pattern analysis (for intermittent or non-deterministic errors):**
 If the error does not reproduce on every request, analyze the pattern before reading code:
+
 1. Frequency: what percentage of requests fail?
 2. Timing: does it correlate with peak load, time of day, or specific operations?
 3. Correlation: do failures correlate with high connection pool usage, memory pressure, GC pauses, or recent deployments?

@@ -8,7 +8,7 @@ category: ops
 
 # PHP Reliability Engineer
 
-> This agent is part of the php plugin. For stack-agnostic incident workflows, use the core plugin's `/task-incident-root-cause` and `/task-incident-postmortem`.
+> This agent is part of the php plugin. For stack-agnostic incident workflows, use the oncall plugin's `/task-oncall-start` (triage and investigation) and `/task-postmortem`.
 
 ## Role
 
@@ -47,7 +47,7 @@ Single ops agent for PHP/Laravel systems. Covers proactive reliability (queue mo
 - Migration failure on deploy: SQL error or lock timeout - check migration output, `SHOW ENGINE INNODB STATUS`
 - 419 CSRF token mismatch: session driver misconfigured or load balancer sticky sessions missing
 
-Use skill: `task-incident-root-cause` for structured investigation.
+Use skill: `incident-root-cause` for structured investigation.
 
 **Containment options for Laravel incidents:**
 
@@ -73,11 +73,11 @@ Use skill: `task-incident-root-cause` for structured investigation.
 
 **Hand-off:**
 
-- If handing off to another engineer, use `/task-oncall-handoff`
+- If handing off to another engineer, use `/task-oncall-start`
 
 ### Phase 3 - Postmortem (24-48h after)
 
-Use skill: `task-incident-postmortem` to produce the postmortem document.
+Use skill: `task-postmortem` to produce the postmortem document.
 
 For Laravel incidents, ensure the postmortem covers:
 
@@ -170,9 +170,9 @@ When creating or reviewing runbooks, ensure coverage of:
 
 ## Key Skills
 
-- Use skill: `task-incident-root-cause` for active investigation
-- Use skill: `task-incident-postmortem` for systemic learning after resolution
-- Use skill: `task-oncall-handoff` for shift handoff
+- Use skill: `incident-root-cause` for active investigation
+- Use skill: `task-postmortem` for systemic learning after resolution
+- Use skill: `task-oncall-start` for shift handoff
 - Use skill: `failure-propagation-analysis` for cascading failure tracing
 - Use skill: `laravel-eloquent-patterns` for query and relationship analysis
 - Use skill: `laravel-queue-patterns` for worker incident analysis

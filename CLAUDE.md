@@ -17,7 +17,7 @@ plugins/
   architecture/  # Stack-agnostic architecture design and re-architecture
     skills/      # 13 skills: 9 workflow + 4 atomic
   oncall/        # Incident response workflows
-    skills/      # 7 skills: 4 workflow + 3 atomic
+    skills/      # 7 skills: 2 workflow + 5 atomic
   spec/          # Spec-Driven Development (any stack, opt-in)
     skills/      # 19 skills: 10 workflow + 9 atomic
   java/          # Java 21+ / Spring Boot 3.5+

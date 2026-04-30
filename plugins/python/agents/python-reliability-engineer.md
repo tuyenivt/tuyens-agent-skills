@@ -8,7 +8,7 @@ category: ops
 
 # Python Reliability Engineer
 
-> This agent is part of the python plugin. For stack-agnostic incident workflows, use the core plugin's `/task-incident-root-cause` and `/task-incident-postmortem`.
+> This agent is part of the python plugin. For stack-agnostic incident workflows, use the oncall plugin's `/task-oncall-start` (triage and investigation) and `/task-postmortem`.
 
 ## Role
 
@@ -46,7 +46,7 @@ Single ops agent for Python/FastAPI/Django systems. Covers proactive reliability
 - Alembic migration failure on startup: SQL error or lock timeout - check migration log output
 - 422 Unprocessable Entity spike: Pydantic validation breaking on bad input - check request logs, validation error details
 
-Use skill: `task-incident-root-cause` for structured investigation.
+Use skill: `incident-root-cause` for structured investigation.
 
 **Containment options for Python incidents:**
 
@@ -72,11 +72,11 @@ Use skill: `task-incident-root-cause` for structured investigation.
 
 **Hand-off:**
 
-- If handing off to another engineer, use `/task-oncall-handoff`
+- If handing off to another engineer, use `/task-oncall-start`
 
 ### Phase 3 - Postmortem (24-48h after)
 
-Use skill: `task-incident-postmortem` to produce the postmortem document.
+Use skill: `task-postmortem` to produce the postmortem document.
 
 For Python incidents, ensure the postmortem covers:
 
@@ -175,9 +175,9 @@ When creating or reviewing runbooks, ensure coverage of:
 
 ## Key Skills
 
-- Use skill: `task-incident-root-cause` for active investigation
-- Use skill: `task-incident-postmortem` for systemic learning after resolution
-- Use skill: `task-oncall-handoff` for shift handoff
+- Use skill: `incident-root-cause` for active investigation
+- Use skill: `task-postmortem` for systemic learning after resolution
+- Use skill: `task-oncall-start` for shift handoff
 - Use skill: `failure-propagation-analysis` for cascading failure tracing
 - Use skill: `python-async-patterns` for async incident analysis
 - Use skill: `python-celery-patterns` for worker incident analysis

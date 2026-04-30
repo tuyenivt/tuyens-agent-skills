@@ -31,7 +31,7 @@ This skill is for the window _after_ deployment. For pre-deploy planning, use `/
 - After advancing a canary to the next traffic percentage
 - When a release plan (from `/task-release-plan`) was produced and you need the live monitoring version of it
 
-Not for pre-deploy planning (use `task-release-plan`) or writing postmortems (use `task-incident-postmortem`).
+Not for pre-deploy planning (use `task-release-plan`) or writing postmortems (use `task-postmortem`).
 
 ## Inputs
 
@@ -243,4 +243,3 @@ Conditions to close:
 - Reproducing the full release plan - reference it, don't repeat it
 - Advancing canary based on time alone - advancement requires signal validation
 - Omitting downstream service signals for releases that affect consumers
-
