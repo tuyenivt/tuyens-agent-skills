@@ -33,7 +33,7 @@ This skill runs BEFORE deployment. It focuses on risk identification and rollout
 - When deploying changes that affect shared resources or public APIs
 - When traffic patterns are expected to change significantly
 
-Not for post-deploy monitoring (use `task-release-validate`) or pre-implementation risk assessment (use `task-design-risk-analysis`).
+Not for post-deploy monitoring (handled by SRE/oncall) or pre-implementation risk assessment (use `task-design-risk-analysis`).
 
 ## Depth Levels
 
