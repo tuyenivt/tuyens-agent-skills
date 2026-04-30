@@ -6,12 +6,12 @@ Software delivery plugin for Claude Code: release planning, scope breakdown, tec
 
 4 workflow skills (`task-*`) for delivery planning and coordination.
 
-| Skill                     | Description                                                                                                                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-release-plan`       | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
-| `task-scope-breakdown`    | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
-| `task-debt-prioritize`    | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
-| `task-dependency-upgrade` | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
+| Skill                  | Description                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-release-plan`    | Staff-level production release planning. Supports `quick`, `standard`, and `deep` depth levels with canary metrics and rollback drill plan.                                      |
+| `task-scope-breakdown` | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
+| `task-debt-prioritize` | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
+| `task-upgrade-plan`    | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
 
 ## Atomic Skills
 
@@ -69,6 +69,6 @@ Feature: User authentication overhaul - migrate from session-based to JWT
 **Assess a dependency upgrade:**
 
 ```
-/task-dependency-upgrade
+/task-upgrade-plan
 Upgrade: Spring Boot 3.3 -> 3.5
 ```

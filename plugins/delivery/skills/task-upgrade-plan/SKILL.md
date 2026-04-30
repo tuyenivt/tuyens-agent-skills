@@ -1,5 +1,5 @@
 ---
-name: task-dependency-upgrade
+name: task-upgrade-plan
 description: Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation. Use before upgrading a major framework version, when a dependency has CVEs requiring upgrade, or when evaluating whether an upgrade is worth the disruption.
 metadata:
   category: planning

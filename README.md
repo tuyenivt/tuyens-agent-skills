@@ -178,7 +178,7 @@ I want to...
   check for security issues         -> /task-code-secure
   check for performance issues      -> /task-code-perf-review
   triage tech debt by ROI           -> /task-debt-triage [delivery]
-  assess a dependency upgrade       -> /task-dependency-upgrade [delivery]
+  assess a version upgrade          -> /task-upgrade-plan [delivery]
 ```
 
 ### Spec-Driven Development (plugin: spec, opt-in)
@@ -259,7 +259,7 @@ Angular (plugin: angular)
 - "Risk analysis" vs "Advanced review" - risk analysis is pre-code (proposed change). Advanced review is post-code (actual diff).
 - "Debt triage" vs "Code review" - debt triage ranks existing debt by blast radius, change frequency, and team pain to produce a prioritized backlog. Code review evaluates a specific PR or file for quality. Use debt triage before a planning session, not as a substitute for PR review.
 - "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.
-- "Dependency upgrade" vs "Feature implement" - dependency upgrade assesses the risk and effort of a version bump and produces a Go/No-Go recommendation. Feature implement writes the migration code. Run upgrade assessment first.
+- "Upgrade plan" vs "Feature implement" - upgrade plan assesses the risk and effort of a version bump and produces a Go/No-Go recommendation. Feature implement writes the migration code. Run upgrade plan first.
 
 ## Plugin Catalog
 
