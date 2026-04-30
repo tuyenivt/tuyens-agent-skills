@@ -1,6 +1,6 @@
 {
   "name": "spec",
-  "version": "1.73.0",
+  "version": "1.74.0",
   "description": "Spec-Driven Development (SDD) plugin: produces persistent per-feature artifacts (spec.md, plan.md, tasks.md) under .specs/<slug>/. Pipeline mirrors Spec Kit (constitution, specify, clarify, plan, tasks, analyze, implement, checklist) with speckit-aware and standalone modes. Depends only on core.",
   "author": {
     "name": "Tuyen"

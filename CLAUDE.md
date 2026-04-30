@@ -260,6 +260,3 @@ After any change that affects plugin content (skills, agents, structure, convent
 
 1. **`CLAUDE.md`**: Update if the change affects repository structure, conventions, naming rules, design principles, or workflow guidance documented here.
 2. **Root `README.md` and affected plugin `README.md`**: Reflect any added/removed/renamed skills, agents, or structural changes.
-3. **Version bump**: Increment the version in **all** plugins (including `core`) to the next universal version whenever any plugin has substantive changes. Update both:
-   - Each plugin's `plugins/<name>/.claude-plugin/plugin.json`
-   - The marketplace registry at `.claude-plugin/marketplace.json` (same version on every plugin entry)
