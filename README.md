@@ -153,7 +153,7 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 ```
 I want to...
   review code (PR / AI-gen)         -> /task-code-review
-  implement a feature               -> /task-feature-implement (dispatches to stack-specific)
+  implement a feature               -> /task-implement (dispatches to stack-specific)
   fix a bug or crash                -> /task-code-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown [delivery]
   fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode) [delivery]
@@ -163,7 +163,7 @@ I want to...
   create a PR description           -> /task-pr-create
   write a postmortem                -> /task-postmortem (run after root-cause) [oncall]
   hand off an on-call shift         -> /task-oncall-start [oncall]
-  onboard to a codebase             -> /task-onboard-codebase
+  onboard to a codebase             -> /task-onboard
   understand a file or function     -> /task-code-explain
   plan a database migration         -> /task-db-migration-plan
   refactor safely                   -> /task-code-refactor
@@ -173,9 +173,9 @@ I want to...
   modernize a legacy system         -> /task-modernize-legacy [architecture]
   assess risk before writing code   -> /task-design-risk-analysis [architecture]
   assess risk after writing code    -> /task-code-review
-  check for security issues         -> /task-code-secure-review
-  check for performance issues      -> /task-code-perf-review
-  check for observability gaps      -> /task-code-observability-review
+  check for security issues         -> /task-code-review-security
+  check for performance issues      -> /task-code-review-perf
+  check for observability gaps      -> /task-code-review-observability
   triage tech debt by ROI           -> /task-debt-triage [delivery]
   assess a version upgrade          -> /task-upgrade-plan [delivery]
 ```
@@ -250,7 +250,7 @@ Angular (plugin: angular)
 
 **Common decision points:**
 
-- "Implement" vs "scaffold" - `/task-feature-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
+- "Implement" vs "scaffold" - `/task-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
 - "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.

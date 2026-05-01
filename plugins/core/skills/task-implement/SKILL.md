@@ -1,5 +1,5 @@
 ---
-name: task-feature-implement
+name: task-implement
 description: Universal feature implementation entry point for new functionality requiring multiple coordinated layers (API + service + persistence + tests). Detects your stack and delegates to the appropriate workflow. Use when implementing a new endpoint, resource, domain aggregate, or cross-layer feature.
 metadata:
   category: code
@@ -18,7 +18,7 @@ user-invocable: true
 
 Universal entry point for implementing new features that span multiple layers. Detects the project stack and delegates to the appropriate stack-specific workflow. Provides a comprehensive fallback workflow when no stack-specific skill exists.
 
-**Not for:** Bug fixes (use `task-code-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes.
+**Not for:** Bug fixes (use `task-code-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes, feature discovery (use `task-spec-write`).
 
 ## Inputs
 

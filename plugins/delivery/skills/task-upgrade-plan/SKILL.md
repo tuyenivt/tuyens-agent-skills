@@ -22,7 +22,7 @@ Structured upgrade assessment for tech leads deciding whether and how to upgrade
 - **Rollback plan** -- define rollback criteria and procedure before the upgrade starts
 - **Go / No-Go recommendation** -- a clear recommendation with reasoning, not just a list of findings
 
-This skill produces an upgrade assessment. It does not write migration code (use `/task-feature-implement` for the implementation phase).
+This skill produces an upgrade assessment. It does not write migration code (use `/task-implement` for the implementation phase).
 
 ## When to Use
 
@@ -32,7 +32,7 @@ This skill produces an upgrade assessment. It does not write migration code (use
 - When evaluating whether an upgrade is worth the disruption relative to the benefit
 - Before upgrading a build tool, runtime, or language version
 
-Not for writing migration code (use `task-feature-implement` after this assessment) or whole-system tech stack modernization (use `task-modernize-legacy`).
+Not for writing migration code (use `task-implement` after this assessment) or whole-system tech stack modernization (use `task-modernize-legacy`).
 
 ## Inputs
 
@@ -268,4 +268,4 @@ State the primary reason for the recommendation.
 - Estimating effort before surfacing compatibility blockers
 - Vague rollback plans ("just revert the version")
 - Producing a changelog summary instead of a focused impact analysis
-- Writing migration code (use `task-feature-implement` after this assessment)
+- Writing migration code (use `task-implement` after this assessment)

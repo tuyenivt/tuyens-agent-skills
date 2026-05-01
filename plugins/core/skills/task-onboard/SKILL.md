@@ -1,5 +1,5 @@
 ---
-name: task-onboard-codebase
+name: task-onboard
 description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack, maps architecture and ecosystem, captures the local bootstrap and contribution workflow, extracts conventions, and surfaces risk hotspots and first-PR safe zones. Use when joining a new project, taking over an unfamiliar codebase, or doing a pre-implementation survey.
 metadata:
   category: code

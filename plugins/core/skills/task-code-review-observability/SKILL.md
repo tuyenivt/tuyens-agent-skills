@@ -1,5 +1,5 @@
 ---
-name: task-code-observability-review
+name: task-code-review-observability
 description: Observability review for backend services and frontend applications - structured logging, RED metrics, distributed tracing, correlation ID propagation, SLO definition, alerting coverage, and error tracking instrumentation. Use when an outage was hard to diagnose, before a release of a new service, when adopting OpenTelemetry, or when production behavior is invisible to the team.
 metadata:
   category: review
@@ -24,7 +24,7 @@ Identify and prioritize observability gaps across backend services and frontend 
 - Audit of an existing service whose production behavior is opaque
 - Reviewing instrumentation added by AI-generated code (often missing trace context, logging-only without metrics)
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-secure-review`), performance issues with a known bottleneck (use `task-code-perf-review`), active incident investigation (use oncall plugin's `incident-root-cause`).
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), performance issues with a known bottleneck (use `task-code-review-perf`), active incident investigation (use oncall plugin's `incident-root-cause`).
 
 ## Depth Levels
 

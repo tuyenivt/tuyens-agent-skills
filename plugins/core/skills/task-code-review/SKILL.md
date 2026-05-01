@@ -33,7 +33,7 @@ Staff-level code review that prioritizes system risk over style. AI-generated co
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** Architecture/design review of new systems (use `task-design-architecture`), security-only audits (use `task-code-secure-review`), performance-only review (use `task-code-perf-review`).
+**Not for:** Architecture/design review of new systems (use `task-design-architecture`), security-only audits (use `task-code-review-security`), performance-only review (use `task-code-review-perf`).
 
 ## Depth Levels
 
@@ -62,9 +62,9 @@ Default: `standard`. Use `quick` when user asks for "quick review", "sanity chec
 | Scope            | What runs                                                                      |
 | ---------------- | ------------------------------------------------------------------------------ |
 | Core             | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
-| + Perf           | Core + delegate to skill: `task-code-perf-review`                              |
-| + Security       | Core + delegate to skill: `task-code-secure-review`                            |
-| + Observability  | Core + delegate to skill: `task-code-observability-review`                     |
+| + Perf           | Core + delegate to skill: `task-code-review-perf`                              |
+| + Security       | Core + delegate to skill: `task-code-review-security`                          |
+| + Observability  | Core + delegate to skill: `task-code-review-observability`                     |
 | Full             | Core + Performance + Security + Observability                                  |
 
 Default: **Core**. If invoked with an explicit scope argument (e.g., `/task-code-review +perf`), skip the question and use that scope directly.
@@ -170,9 +170,9 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 
 ### Step 2 - Delegate (if scope includes)
 
-- **+Perf**: delegate to `task-code-perf-review`
-- **+Security**: delegate to `task-code-secure-review`
-- **+Observability**: delegate to `task-code-observability-review`
+- **+Perf**: delegate to `task-code-review-perf`
+- **+Security**: delegate to `task-code-review-security`
+- **+Observability**: delegate to `task-code-review-observability`
 
 ## Framework-Specific Signals
 

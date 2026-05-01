@@ -98,7 +98,7 @@ notes: |
 
 ## Consuming Workflow Contract
 
-A consuming workflow (e.g., `task-spring-new`, `task-react-new`, `task-feature-implement`) branches on `mode`:
+A consuming workflow (e.g., `task-spring-new`, `task-react-new`, `task-implement`) branches on `mode`:
 
 | Mode        | Behavior                                                                                                                                                       |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |

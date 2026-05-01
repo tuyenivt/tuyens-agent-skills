@@ -20,7 +20,7 @@ Drives a feature from `tasks.md` to working code, one task at a time. Each task 
 - To resume an interrupted implementation (workflow auto-detects the next `[ ]` task)
 - When the user wants the spec pipeline to run end-to-end execution after `task-spec-plan` and `task-spec-tasks`
 
-**Not for:** Authoring requirements (use `task-spec-specify`), generating the plan or task list (use `task-spec-plan`, `task-spec-tasks`), one-off feature implementation outside the SDD pipeline (use `task-feature-implement` or stack-specific `task-*-new` directly), bug fixes (use `task-code-debug`).
+**Not for:** Authoring requirements (use `task-spec-specify`), generating the plan or task list (use `task-spec-plan`, `task-spec-tasks`), one-off feature implementation outside the SDD pipeline (use `task-implement` or stack-specific `task-*-new` directly), bug fixes (use `task-code-debug`).
 
 ## Inputs
 
@@ -91,7 +91,7 @@ Map the task's `Type` and the detected stack to a stack workflow:
 | `frontend`                 | React -> `task-react-new`; Vue -> `task-vue-new`; Angular -> `task-angular-new`                                                                                                                                                             |
 | `validation`               | Same stack workflow as the task it validates (each `task-*-new` covers tests for its stack). For pure cross-cutting test work, soft-suggest `task-code-test` if it has gained spec-aware mode.                                              |
 | `ops`                      | No single stack workflow. Run inline using core atomics (`ops-observability`, `ops-feature-flags`, `ops-release-safety`) and the relevant per-stack `<stack>-*` atomics. Do not invent a missing workflow.                                  |
-| Unknown stack              | Fall back to `task-feature-implement` (which itself delegates or runs the universal fallback).                                                                                                                                              |
+| Unknown stack              | Fall back to `task-implement` (which itself delegates or runs the universal fallback).                                                                                                                                                      |
 
 For polyglot or fullstack features where the task is ambiguous (`api` task in a fullstack repo could mean backend API or frontend client), read the task description and the plan's API contract to decide. If still ambiguous, ask the user once and remember for the rest of this workflow run.
 

@@ -23,7 +23,7 @@ Universal entry point for debugging errors. Detects the project stack and delega
 - Unexpected behavior that used to work correctly
 - Runtime errors with a reproducible (or intermittent) trigger
 
-**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `/task-oncall-start`), performance analysis without a concrete error (use `task-code-perf-review`).
+**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `/task-oncall-start`), performance analysis without a concrete error (use `task-code-review-perf`).
 
 ## Inputs
 

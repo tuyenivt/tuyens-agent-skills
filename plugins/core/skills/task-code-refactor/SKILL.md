@@ -23,7 +23,7 @@ Produce a safe, step-by-step refactoring plan for a specific code target. Assess
 - Safe refactoring planning
 - Code quality improvement
 
-**Not for:** Deciding which debt to tackle first (use `task-debt-prioritize`), feature changes (use `task-feature-implement`), architecture-level restructuring (use `task-design-architecture`).
+**Not for:** Deciding which debt to tackle first (use `task-debt-prioritize`), feature changes (use `task-implement`), architecture-level restructuring (use `task-design-architecture`).
 
 ## Inputs
 

@@ -168,7 +168,7 @@ Use skill: `stack-detect`
 | **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-code-debug`                               |
 | **Operational investigation**      | "Why did X happen?", batch job missed, queue backed up, unexpected behavior for specific case | `oncall-investigate`                            |
 | **User / support request**         | Single user issue, access problem, data question, "why can't I see X?"                        | `oncall-investigate`                            |
-| **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `oncall-investigate` or `task-code-perf-review` |
+| **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `oncall-investigate` or `task-code-review-perf` |
 | **Monitoring / alerting question** | Alert fired but unclear why, alert seems false positive, dashboard anomaly                    | `oncall-investigate`                            |
 
 Apply the highest matching type. If signals are mixed, classify as **Active incident** to err on the side of urgency.
@@ -214,7 +214,7 @@ Ongoing: {Yes | No | Unknown}
 
 ### Recommended Workflow
 
-Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-perf-review}
+Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-review-perf}
 
 ### Context Package
 

@@ -6,7 +6,7 @@ category: quality
 
 # Java Security Engineer
 
-> This agent is part of java plugin. For stack-agnostic security review, use the core plugin's `/task-code-secure-review`.
+> This agent is part of java plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 

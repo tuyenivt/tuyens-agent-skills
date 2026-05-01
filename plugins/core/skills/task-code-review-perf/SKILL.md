@@ -1,5 +1,5 @@
 ---
-name: task-code-perf-review
+name: task-code-review-perf
 description: Performance review for backend services and frontend applications - N+1 queries, missing indexes, slow endpoints, unnecessary re-renders, bundle size, Core Web Vitals, memory leaks, and concurrency anti-patterns. Use when an endpoint is slow, a page loads slowly, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release.
 metadata:
   category: review
@@ -24,7 +24,7 @@ Identify and prioritize performance bottlenecks across backend services, databas
 - Database query optimization
 - Caching strategy review
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-secure-review`), observability gaps (use `task-code-observability-review`), pre-implementation risk planning (use `task-design-risk-analysis`).
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), observability gaps (use `task-code-review-observability`), pre-implementation risk planning (use `task-design-risk-analysis`).
 
 ## Depth Levels
 

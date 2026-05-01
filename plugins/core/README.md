@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Core
 
-Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from marker files and your repo context file, then adapts universal engineering principles to the detected ecosystem. Includes universal `task-feature-implement` and `task-code-debug` entry points that delegate to stack-specific workflows.
+Stack-agnostic Claude Code core plugin providing ops, governance, and framework-aware workflows for **any** tech stack. Detects the project stack from marker files and your repo context file, then adapts universal engineering principles to the detected ecosystem. Includes universal `task-implement` and `task-code-debug` entry points that delegate to stack-specific workflows.
 
 ## Stack Detection
 
@@ -59,16 +59,16 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                            | Description                                                                                                                                                                                                                                                           |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`         | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                                                                                                                                             |
+| `task-implement`                 | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                                                                                                                                             |
 | `task-code-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                                                                                                                                         |
 | `task-code-explain`              | Explain a specific file, function, or module - what it does, where it sits in the flow, why it exists, non-obvious gotchas, key invariants, and what to double-check before modifying it.                                                                             |
 | `task-db-migration-plan`         | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment.                                                                                                                  |
-| `task-onboard-codebase`          | Codebase onboarding for engineers new to a project - detect stack, capture local bootstrap and contribution workflow, map architecture and ecosystem, extract patterns, flag tech debt and first-PR safe zones. Supports `Focus: first-pr / architect-survey / full`. |
+| `task-onboard`                   | Codebase onboarding for engineers new to a project - detect stack, capture local bootstrap and contribution workflow, map architecture and ecosystem, extract patterns, flag tech debt and first-PR safe zones. Supports `Focus: first-pr / architect-survey / full`. |
 | `task-code-refactor`             | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                                                                                                                                       |
 | `task-code-review`               | Staff-level code review for pull requests with risk assessment, architecture boundary protection, AI-generated code quality control, and stack-adapted checks. Supports `quick`, `standard`, and `deep` depth levels.                                                 |
-| `task-code-perf-review`          | Performance review for backend and frontend. Auto-detects stack and adapts performance checks. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                                 |
-| `task-code-secure-review`        | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                                                                                                                                  |
-| `task-code-observability-review` | Observability review covering structured logging, RED metrics, distributed tracing, correlation propagation, and SLO/alerting coverage. Auto-detects stack. Supports `quick`, `standard`, and `deep` depth levels.                                                    |
+| `task-code-review-perf`          | Performance review for backend and frontend. Auto-detects stack and adapts performance checks. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                                 |
+| `task-code-review-security`      | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                                                                                                                                  |
+| `task-code-review-observability` | Observability review covering structured logging, RED metrics, distributed tracing, correlation propagation, and SLO/alerting coverage. Auto-detects stack. Supports `quick`, `standard`, and `deep` depth levels.                                                    |
 | `task-code-test`                 | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                                                                                                                                            |
 
 ## Atomic Skills
@@ -151,14 +151,14 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 | Workflow                         | Atomic Skills Used                                                                                                                                                                                                                                            |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-feature-implement`         | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
+| `task-implement`                 | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
 | `task-code-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
-| `task-onboard-codebase`          | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
+| `task-onboard`                   | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
 | `task-code-refactor`             | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                                              |
 | `task-code-review`               | `stack-detect`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility` |
-| `task-code-perf-review`          | `stack-detect`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
-| `task-code-secure-review`        | `stack-detect`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                                                        |
-| `task-code-observability-review` | `stack-detect`, `ops-observability`                                                                                                                                                                                                                           |
+| `task-code-review-perf`          | `stack-detect`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
+| `task-code-review-security`      | `stack-detect`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                                                        |
+| `task-code-review-observability` | `stack-detect`, `ops-observability`                                                                                                                                                                                                                           |
 | `task-code-test`                 | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`                                                                                                                                                                                          |
 | `task-code-explain`              | `stack-detect`, `architecture-guardrail`, `architecture-concurrency`, `complexity-review`                                                                                                                                                                     |
 | `task-db-migration-plan`         | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`                                                                                   |
@@ -167,20 +167,20 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 Atomics used by the most workflows - highest customization leverage:
 
-| Atomic Skill                 | Used By                                                                                                                           | Count |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| `stack-detect`               | all except `task-db-migration-plan`                                                                                               | 10    |
-| `ops-observability`          | `task-onboard-codebase`, `task-code-review`, `task-code-perf-review`, `task-code-secure-review`, `task-code-observability-review` | 5     |
-| `architecture-guardrail`     | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-explain`                                            | 4     |
-| `backend-coding-standards`   | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-test`                                               | 4     |
-| `ops-resiliency`             | `task-code-review`, `task-code-perf-review`, `task-code-secure-review`                                                            | 3     |
-| `architecture-concurrency`   | `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-code-explain`                                            | 4     |
-| `backend-api-guidelines`     | `task-code-review`, `task-code-secure-review`, `task-code-test`                                                                   | 3     |
-| `backend-db-indexing`        | `task-code-perf-review`, `task-db-migration-plan`                                                                                 | 2     |
-| `review-blast-radius`        | `task-code-review`, `task-db-migration-plan`                                                                                      | 2     |
-| `ops-backward-compatibility` | `task-db-migration-plan`                                                                                                          | 1     |
-| `dependency-impact-analysis` | `task-db-migration-plan`, `task-onboard-codebase`                                                                                 | 2     |
-| `review-change-risk`         | `task-db-migration-plan`                                                                                                          | 1     |
+| Atomic Skill                 | Used By                                                                                                                    | Count |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----- |
+| `stack-detect`               | all except `task-db-migration-plan`                                                                                        | 10    |
+| `ops-observability`          | `task-onboard`, `task-code-review`, `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability` | 5     |
+| `architecture-guardrail`     | `task-onboard`, `task-code-refactor`, `task-code-review`, `task-code-explain`                                              | 4     |
+| `backend-coding-standards`   | `task-onboard`, `task-code-refactor`, `task-code-review`, `task-code-test`                                                 | 4     |
+| `ops-resiliency`             | `task-code-review`, `task-code-review-perf`, `task-code-review-security`                                                   | 3     |
+| `architecture-concurrency`   | `task-code-refactor`, `task-code-review`, `task-code-review-perf`, `task-code-explain`                                     | 4     |
+| `backend-api-guidelines`     | `task-code-review`, `task-code-review-security`, `task-code-test`                                                          | 3     |
+| `backend-db-indexing`        | `task-code-review-perf`, `task-db-migration-plan`                                                                          | 2     |
+| `review-blast-radius`        | `task-code-review`, `task-db-migration-plan`                                                                               | 2     |
+| `ops-backward-compatibility` | `task-db-migration-plan`                                                                                                   | 1     |
+| `dependency-impact-analysis` | `task-db-migration-plan`, `task-onboard`                                                                                   | 2     |
+| `review-change-risk`         | `task-db-migration-plan`                                                                                                   | 1     |
 
 ## Usage Examples
 
@@ -210,29 +210,28 @@ Scope options - asks interactively if not specified:
 **Performance review:**
 
 ```
-/task-code-perf-review
+/task-code-review-perf
 [paste code or file path]
 ```
 
 **Onboard to a new codebase:**
 
 ```
-/task-onboard-codebase
+/task-onboard
 ```
 
 Reads the repo, detects stack, captures local bootstrap and contribution workflow, maps architecture and ecosystem topology, extracts the team's actual patterns, and surfaces tech debt hotspots, first-PR safe zones, and operational gaps.
 
 ```
-/task-onboard-codebase
+/task-onboard
 Focus: first-pr
 ```
 
 Optimizes the report for an engineer who needs to ship their first PR quickly: leads with Local Quickstart, contribution workflow, and recommended safe entry areas.
 
 ```
-/task-onboard-codebase
+/task-onboard
 Focus: architect-survey
 Scope: payments module
 Known pain points: checkout flow is slow and poorly tested
 ```
-

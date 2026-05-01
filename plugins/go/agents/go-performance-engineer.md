@@ -6,7 +6,7 @@ category: engineering
 
 # Go Performance Engineer
 
-> This agent is part of go plugin. For stack-agnostic performance review, use the core plugin's `/task-code-perf-review`.
+> This agent is part of go plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

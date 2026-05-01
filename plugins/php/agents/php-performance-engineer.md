@@ -6,7 +6,7 @@ category: engineering
 
 # PHP Performance Engineer
 
-> This agent is part of the php plugin. For stack-agnostic performance review, use the core plugin's `/task-code-perf-review`.
+> This agent is part of the php plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

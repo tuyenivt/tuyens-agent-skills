@@ -79,7 +79,7 @@ Steps: Page loads fine on refresh, but shows hydration error on client navigatio
 The following workflows are provided by `core` (install separately):
 
 - `/task-code-review` - Staff-level code review with risk assessment, framework-aware
-- `/task-code-secure-review` - Security review
+- `/task-code-review-security` - Security review
 - `/task-code-test` - Test strategy
 - `/task-code-refactor` - Refactoring plan
-- `/task-code-perf-review` - Performance review
+- `/task-code-review-perf` - Performance review
