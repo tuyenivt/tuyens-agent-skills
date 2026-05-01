@@ -55,8 +55,6 @@ Atomic skills provide focused, reusable .NET patterns. These are hidden from the
 | `dotnet-test-engineer`        | xUnit, Testcontainers, WebApplicationFactory, Bogus                                             |
 | `dotnet-security-engineer`    | JWT auth, policy-based authz, OWASP for .NET                                                    |
 | `dotnet-performance-engineer` | EF Core optimization, async patterns, caching, profiling                                        |
-| `dotnet-reliability-engineer` | Health checks, Polly, Serilog, incident response, runbook standards                             |
-| `dotnet-sprint-planner`       | Sprint allocation for .NET features with EF Core migration and MassTransit complexity           |
 
 ## Usage Examples
 

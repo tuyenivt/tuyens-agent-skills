@@ -54,8 +54,6 @@ Atomic skills provide focused, reusable Java/Spring Boot patterns. These are hid
 | `java-test-engineer`        | JUnit 5, Testcontainers, Spring test slices                                                 |
 | `java-security-engineer`    | Spring Security 6.x, OWASP for Java                                                         |
 | `java-performance-engineer` | JVM/Spring/JPA performance, GC tuning                                                       |
-| `java-reliability-engineer` | JVM ops, Actuator, HikariCP, incident response, runbook standards                           |
-| `java-sprint-planner`       | Sprint allocation for Java features with Spring-specific complexity awareness               |
 
 ## Usage Examples
 

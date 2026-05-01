@@ -36,11 +36,9 @@ Claude Code plugin for PHP development.
 | ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
 | php-architect            | sonnet | Designs Laravel APIs, Eloquent models, service/action layers, queue pipelines, project structure |
 | php-tech-lead            | sonnet | Code review, refactoring guidance, Laravel conventions, type safety, architectural decisions     |
-| php-reliability-engineer | sonnet | Incident analysis, runbook standards for Laravel/MySQL/Redis production environments             |
 | php-security-engineer    | sonnet | OWASP Top 10 for PHP/Laravel, auth review, mass assignment, SQL injection, dependency scanning   |
 | php-performance-engineer | sonnet | Eloquent query tuning, MySQL EXPLAIN analysis, queue throughput, caching strategy, N+1 detection |
 | php-test-engineer        | sonnet | Pest/PHPUnit strategies, model factories, HTTP testing, mocking Laravel facades                  |
-| php-sprint-planner       | sonnet | Sprint allocation for Laravel features with migration/queue complexity awareness                 |
 
 ## Framework Detection
 

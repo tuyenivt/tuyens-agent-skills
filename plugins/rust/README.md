@@ -17,11 +17,9 @@ Claude Code plugin for Rust development.
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `rust-architect`            | Rust architect for Axum, sqlx, clean architecture, and production Rust patterns. Designs features, structures projects, makes architecture decisions.  |
 | `rust-tech-lead`            | Rust tech lead for code review, refactoring guidance, doc standards. Reviews for idiomatic Rust, error handling, ownership safety, and async patterns. |
-| `rust-reliability-engineer` | Rust reliability engineer for incident analysis, runbook standards in Rust/Axum/PostgreSQL environments. Tokio runtime profiling, task leak detection. |
 | `rust-security-engineer`    | OWASP Top 10 for Rust, JWT/Axum auth middleware review, input validation, cargo audit dependency scanning.                                             |
 | `rust-performance-engineer` | Tokio task leak detection, sqlx query tuning, memory allocation analysis, profiling, connection pool sizing.                                           |
 | `rust-test-engineer`        | Unit test strategies, tokio::test, testcontainers, mockall, and cargo clippy discipline for Rust/Axum services.                                        |
-| `rust-sprint-planner`       | Sprint allocation for Rust features with sqlx/Kafka/async complexity awareness and dependency sequencing.                                              |
 
 ## Workflow Skills
 

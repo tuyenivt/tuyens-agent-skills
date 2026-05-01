@@ -36,8 +36,6 @@ Spring Boot ecosystem provided by the Java plugin.
 | `kotlin-test-engineer`        | JUnit 5 + MockK + kotest, Testcontainers, Spring test slices with Kotlin DSL.                                                                            |
 | `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM.                                                                                               |
 | `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, GC tuning.                                                                                    |
-| `kotlin-reliability-engineer` | JVM ops, Actuator, HikariCP, incident response, runbook standards with Kotlin-specific failure patterns (!! NPE, coroutine leak, data class JPA).        |
-| `kotlin-sprint-planner`       | Sprint allocation extending `java-sprint-planner` with Kotlin-specific complexity (coroutine migration, MockK, Kotlin DSL).                              |
 
 ### Atomic skills (3)
 

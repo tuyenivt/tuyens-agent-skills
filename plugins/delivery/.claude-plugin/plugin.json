@@ -1,6 +1,6 @@
 {
   "name": "delivery",
-  "version": "1.78.0",
+  "version": "1.79.0",
   "description": "Software delivery plugin: scope breakdown and tech debt triage.",
   "author": {
     "name": "Tuyen"

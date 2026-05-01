@@ -36,11 +36,9 @@ Claude Code plugin for Python development.
 | --------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
 | python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure        |
 | python-tech-lead            | sonnet | Code review, refactoring guidance, doc standards for Pythonic patterns, type safety, async correctness |
-| python-reliability-engineer | sonnet | Incident analysis, runbook standards for FastAPI/Django/Celery/PostgreSQL production environments      |
 | python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan       |
 | python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
 | python-test-engineer        | sonnet | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
-| python-sprint-planner       | sonnet | Sprint allocation for Python features with Alembic/Celery complexity awareness                         |
 
 ## Framework Detection
 
