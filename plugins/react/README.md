@@ -83,4 +83,3 @@ The following workflows are provided by `core` (install separately):
 - `/task-code-test` - Test strategy
 - `/task-code-refactor` - Refactoring plan
 - `/task-code-perf-review` - Performance review
-- `/task-docs-generate` - Documentation generation

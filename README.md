@@ -167,7 +167,6 @@ I want to...
   onboard to a codebase             -> /task-onboard-codebase
   understand a file or function     -> /task-code-explain
   plan a database migration         -> /task-db-migration-plan
-  write documentation               -> /task-docs-generate
   refactor safely                   -> /task-code-refactor
   record an architecture decision   -> /task-adr-create [architecture]
   decompose monolith into services  -> /task-migrate-monolith-to-services [architecture]

@@ -55,7 +55,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-13 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+12 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                            | Description                                                                                                                                                                                                                                                           |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -71,7 +71,6 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `task-code-secure-review`        | Security review covering OWASP Top 10, auth, and stack-specific vulnerabilities. Auto-detects stack.                                                                                                                                                                  |
 | `task-code-observability-review` | Observability review covering structured logging, RED metrics, distributed tracing, correlation propagation, and SLO/alerting coverage. Auto-detects stack. Supports `quick`, `standard`, and `deep` depth levels.                                                    |
 | `task-code-test`                 | Test strategy, scaffolds, and quality review. Auto-detects stack and adapts test patterns.                                                                                                                                                                            |
-| `task-docs-generate`             | Documentation generation (README, API docs, runbooks) for any stack                                                                                                                                                                                                   |
 
 ## Atomic Skills
 
@@ -163,7 +162,6 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-code-secure-review`        | `stack-detect`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                                                        |
 | `task-code-observability-review` | `stack-detect`, `ops-observability`                                                                                                                                                                                                                           |
 | `task-code-test`                 | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`                                                                                                                                                                                          |
-| `task-docs-generate`             | `stack-detect`, `backend-api-guidelines`, `backend-coding-standards`                                                                                                                                                                                          |
 | `task-code-explain`              | `stack-detect`, `architecture-guardrail`, `architecture-concurrency`, `complexity-review`                                                                                                                                                                     |
 | `task-db-migration-plan`         | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`                                                                                   |
 
@@ -176,10 +174,10 @@ Atomics used by the most workflows - highest customization leverage:
 | `stack-detect`               | all except `task-db-migration-plan`                                                                                               | 10    |
 | `ops-observability`          | `task-onboard-codebase`, `task-code-review`, `task-code-perf-review`, `task-code-secure-review`, `task-code-observability-review` | 5     |
 | `architecture-guardrail`     | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-explain`                                            | 4     |
-| `backend-coding-standards`   | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-test`, `task-docs-generate`                         | 5     |
+| `backend-coding-standards`   | `task-onboard-codebase`, `task-code-refactor`, `task-code-review`, `task-code-test`                                               | 4     |
 | `ops-resiliency`             | `task-code-review`, `task-code-perf-review`, `task-code-secure-review`                                                            | 3     |
 | `architecture-concurrency`   | `task-code-refactor`, `task-code-review`, `task-code-perf-review`, `task-code-explain`                                            | 4     |
-| `backend-api-guidelines`     | `task-code-review`, `task-code-secure-review`, `task-code-test`, `task-docs-generate`                                             | 4     |
+| `backend-api-guidelines`     | `task-code-review`, `task-code-secure-review`, `task-code-test`                                                                   | 3     |
 | `backend-db-indexing`        | `task-code-perf-review`, `task-db-migration-plan`                                                                                 | 2     |
 | `review-blast-radius`        | `task-code-review`, `task-db-migration-plan`                                                                                      | 2     |
 | `ops-backward-compatibility` | `task-db-migration-plan`                                                                                                          | 1     |

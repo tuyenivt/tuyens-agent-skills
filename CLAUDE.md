@@ -11,7 +11,7 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 47 skills: 13 workflow (task-*) + 34 atomic
+    skills/      # 46 skills: 12 workflow (task-*) + 34 atomic
   delivery/      # Release planning and delivery coordination
     skills/      # 6 workflow skills
   architecture/  # Stack-agnostic architecture design and re-architecture
