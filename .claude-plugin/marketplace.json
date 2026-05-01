@@ -9,7 +9,7 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "47 skills (13 workflow + 34 atomic) for multi-stack development - auto-detects any tech stack",
+      "description": "45 skills (11 workflow + 34 atomic) for multi-stack development - auto-detects any tech stack",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",

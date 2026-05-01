@@ -9,7 +9,7 @@ user-invocable: false
 
 # Spec-Aware Preamble
 
-> This atomic is composed by stack-specific `task-*-new` workflows and other spec-aware workflows (`task-code-test`, `task-code-review`, `task-pr-create`, `task-code-debug`) - do not invoke directly.
+> This atomic is composed by stack-specific `task-*-new` workflows and other spec-aware workflows (`task-code-test`, `task-code-review`, `task-code-debug`) - do not invoke directly.
 
 ## When to Use
 

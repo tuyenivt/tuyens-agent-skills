@@ -55,7 +55,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-12 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+11 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                            | Description                                                                                                                                                                                                                                                           |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,7 +64,6 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 | `task-code-explain`              | Explain a specific file, function, or module - what it does, where it sits in the flow, why it exists, non-obvious gotchas, key invariants, and what to double-check before modifying it.                                                                             |
 | `task-db-migration-plan`         | Safe database migration planning - zero-downtime strategy, expand-contract sequencing, rollback plan, backfill estimation, and lock risk assessment.                                                                                                                  |
 | `task-onboard-codebase`          | Codebase onboarding for engineers new to a project - detect stack, capture local bootstrap and contribution workflow, map architecture and ecosystem, extract patterns, flag tech debt and first-PR safe zones. Supports `Focus: first-pr / architect-survey / full`. |
-| `task-pr-create`                 | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                                                                                                                                      |
 | `task-code-refactor`             | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                                                                                                                                       |
 | `task-code-review`               | Staff-level code review for pull requests with risk assessment, architecture boundary protection, AI-generated code quality control, and stack-adapted checks. Supports `quick`, `standard`, and `deep` depth levels.                                                 |
 | `task-code-perf-review`          | Performance review for backend and frontend. Auto-detects stack and adapts performance checks. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                                 |
@@ -155,7 +154,6 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-feature-implement`         | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
 | `task-code-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
 | `task-onboard-codebase`          | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
-| `task-pr-create`                 | `stack-detect`, `review-pr-risk`                                                                                                                                                                                                                              |
 | `task-code-refactor`             | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                                              |
 | `task-code-review`               | `stack-detect`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility` |
 | `task-code-perf-review`          | `stack-detect`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
@@ -238,15 +236,3 @@ Scope: payments module
 Known pain points: checkout flow is slow and poorly tested
 ```
 
-**Generate PR description from diff:**
-
-```
-/task-pr-create
-```
-
-Auto-reads `git diff main...HEAD` and commit messages. Produces title, summary, risk level, test plan, and linked tickets/ADRs.
-
-```
-/task-pr-create
-Branch: feature/PROJ-123-add-payment-flow
-```
