@@ -1,6 +1,6 @@
 ---
 name: incident-root-cause
-description: Active production incident investigation with blast radius assessment and containment-first analysis. Use when a service is degraded or down and multiple users are affected. Not for developer debugging of a specific error (use task-debug), not for non-incident oncall investigation (use oncall-investigate), not for post-incident writeup (use task-postmortem).
+description: Active production incident investigation with blast radius assessment and containment-first analysis. Use when a service is degraded or down and multiple users are affected. Not for developer debugging of a specific error (use task-code-debug), not for non-incident oncall investigation (use oncall-investigate), not for post-incident writeup (use task-postmortem).
 metadata:
   category: ops
   tags: [incident, root-cause, on-call, reliability, containment]

@@ -80,7 +80,7 @@ Steps: Added ProductService but forgot to add providedIn: 'root'
 The following workflows are provided by `core` (install separately):
 
 - `/task-code-review` - Staff-level code review with risk assessment, framework-aware
-- `/task-code-secure` - Security review
+- `/task-code-secure-review` - Security review
 - `/task-code-test` - Test strategy
 - `/task-code-refactor` - Refactoring plan
 - `/task-code-perf-review` - Performance review

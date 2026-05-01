@@ -147,7 +147,7 @@ Classify the finding and recommend a clear next action:
 
 | Finding                                 | Recommended Action                                                                    |
 | --------------------------------------- | ------------------------------------------------------------------------------------- |
-| **Bug confirmed**                       | Provide reproduction steps and link to `task-debug` for fix                           |
+| **Bug confirmed**                       | Provide reproduction steps and link to `task-code-debug` for fix                      |
 | **Expected behavior**                   | Document why the behavior is correct; draft response to requester                     |
 | **Config or flag issue**                | Identify the specific config change needed; assess change risk                        |
 | **Data issue**                          | Identify the data correction needed; assess whether a hotfix or migration is required |
@@ -209,6 +209,6 @@ Time Window: {when the issue occurred or was observed}
 - Fishing through logs without a specific hypothesis
 - Reporting "I checked the logs and didn't find anything" without stating what signal was missing
 - Scope creep - investigate the specific case first, then broaden only if evidence points to a systemic issue
-- Using `task-debug` unless the investigation confirms a code bug with a clear stack trace or reproduction path
+- Using `task-code-debug` unless the investigation confirms a code bug with a clear stack trace or reproduction path
 - For data issues: checking only the database without verifying what the API or UI actually returns - the issue may be in the query layer, caching, or rendering, not in storage
 - Assuming a single-user report means the issue is isolated - always run a proactive blast radius check before concluding scope

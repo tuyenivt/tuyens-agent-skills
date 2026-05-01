@@ -6,7 +6,7 @@ category: quality
 
 # Vue Security Engineer
 
-> This agent is part of vue plugin. For stack-agnostic security review, use the core plugin's `/task-code-secure`.
+> This agent is part of vue plugin. For stack-agnostic security review, use the core plugin's `/task-code-secure-review`.
 
 ## Triggers
 

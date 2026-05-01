@@ -36,7 +36,7 @@ This skill explains existing code so an engineer picking up a ticket can modify 
 
 - Mapping a whole codebase or large subsystem - use `task-onboard-codebase` for that (it covers architecture, patterns, tech debt hotspots, and conventions across the whole repo)
 - Code quality review or suggesting improvements - use `task-code-review` for that
-- Broken or crashing code diagnosis - use `task-debug` for that
+- Broken or crashing code diagnosis - use `task-code-debug` for that
 
 ## Inputs
 

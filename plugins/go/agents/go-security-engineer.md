@@ -6,7 +6,7 @@ category: quality
 
 # Go Security Engineer
 
-> This agent is part of go plugin. For stack-agnostic security review, use the core plugin's `/task-code-secure`.
+> This agent is part of go plugin. For stack-agnostic security review, use the core plugin's `/task-code-secure-review`.
 
 ## Triggers
 

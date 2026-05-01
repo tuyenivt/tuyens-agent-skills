@@ -18,7 +18,7 @@ user-invocable: true
 
 Universal entry point for implementing new features that span multiple layers. Detects the project stack and delegates to the appropriate stack-specific workflow. Provides a comprehensive fallback workflow when no stack-specific skill exists.
 
-**Not for:** Bug fixes (use `task-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes.
+**Not for:** Bug fixes (use `task-code-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes.
 
 ## Inputs
 

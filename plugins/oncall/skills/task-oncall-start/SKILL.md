@@ -34,7 +34,7 @@ Most oncall time is lost by treating everything as an incident or jumping to deb
 - You received a page, alert, or Slack message and need to decide what to do
 - A support ticket or user report landed in the oncall queue
 - A teammate forwarded something with "can you look at this?"
-- You're not sure whether to use `incident-root-cause`, `task-debug`, or something else
+- You're not sure whether to use `incident-root-cause`, `task-code-debug`, or something else
 
 For known incidents, go directly to `incident-root-cause`. For known non-incident investigations, go directly to `oncall-investigate`.
 
@@ -165,7 +165,7 @@ Use skill: `stack-detect`
 | Type                               | Signals                                                                                       | Route to                                        |
 | ---------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | **Active incident**                | Service down, error rate spike, multiple users affected, SLA breach, data loss risk           | `incident-root-cause`                           |
-| **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-debug`                                    |
+| **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-code-debug`                               |
 | **Operational investigation**      | "Why did X happen?", batch job missed, queue backed up, unexpected behavior for specific case | `oncall-investigate`                            |
 | **User / support request**         | Single user issue, access problem, data question, "why can't I see X?"                        | `oncall-investigate`                            |
 | **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `oncall-investigate` or `task-code-perf-review` |
@@ -214,7 +214,7 @@ Ongoing: {Yes | No | Unknown}
 
 ### Recommended Workflow
 
-Use: {incident-root-cause | task-debug | oncall-investigate | task-code-perf-review}
+Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-perf-review}
 
 ### Context Package
 
@@ -252,7 +252,7 @@ Use: {incident-root-cause | task-debug | oncall-investigate | task-code-perf-rev
 - Spending more than 2 minutes on classification for Critical/High severity - route immediately
 - Treating every alert as an incident - most oncall work is investigation, not incident response
 - Starting debugging before classifying - classification shapes what to look for
-- Routing to `task-debug` when there is no stack trace or reproducible error
+- Routing to `task-code-debug` when there is no stack trace or reproducible error
 - Skipping the "recent change?" check - this is the fastest path to resolution for many issues
 - Starting an oncall rotation without reviewing handoff notes and current system health
 - Assuming "no alerts = all healthy" at shift start - check dashboards to confirm

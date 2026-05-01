@@ -154,7 +154,7 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 I want to...
   review code (PR / AI-gen)         -> /task-code-review
   implement a feature               -> /task-feature-implement (dispatches to stack-specific)
-  fix a bug or crash                -> /task-debug (dispatches to stack-specific)
+  fix a bug or crash                -> /task-code-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown [delivery]
   fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode) [delivery]
   design a system or architecture   -> /task-design-architecture [architecture]
@@ -175,8 +175,9 @@ I want to...
   modernize a legacy system         -> /task-modernize-legacy [architecture]
   assess risk before writing code   -> /task-design-risk-analysis [architecture]
   assess risk after writing code    -> /task-code-review
-  check for security issues         -> /task-code-secure
+  check for security issues         -> /task-code-secure-review
   check for performance issues      -> /task-code-perf-review
+  check for observability gaps      -> /task-code-observability-review
   triage tech debt by ROI           -> /task-debt-triage [delivery]
   assess a version upgrade          -> /task-upgrade-plan [delivery]
 ```
@@ -251,9 +252,9 @@ Angular (plugin: angular)
 
 **Common decision points:**
 
-- "Implement" vs "scaffold" - `/task-feature-implement` and `/task-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
+- "Implement" vs "scaffold" - `/task-feature-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
 - "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
-- "Debug" vs "Explain" - if something is broken, use `/task-debug`. If it works but you don't understand it, use `/task-code-explain`.
+- "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.
 - "Risk analysis" vs "Advanced review" - risk analysis is pre-code (proposed change). Advanced review is post-code (actual diff).
@@ -265,7 +266,7 @@ Angular (plugin: angular)
 
 | Plugin                               | Focus                                                                                                                                                                               | Includes                              |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 45 skills                             |
+| [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            | 47 skills                             |
 | [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              | 5 skills                              |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization | 10 skills                             |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       | 7 skills                              |

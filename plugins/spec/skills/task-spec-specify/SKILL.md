@@ -20,7 +20,7 @@ Captures the **what** and **why** of a feature as a persistent artifact, before 
 - Re-specifying an existing feature whose original requirements have drifted
 - Producing a portable artifact for handoff between contributors or sessions
 
-**Not for:** Architecture or technical design (use `task-spec-plan`), API-only specifications (use `task-design-api`), system-level architecture (use `task-design-architecture`), bug reports (use `task-debug`).
+**Not for:** Architecture or technical design (use `task-spec-plan`), API-only specifications (use `task-design-api`), system-level architecture (use `task-design-architecture`), bug reports (use `task-code-debug`).
 
 ## Inputs
 

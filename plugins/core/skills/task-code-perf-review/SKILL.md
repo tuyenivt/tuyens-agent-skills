@@ -24,7 +24,7 @@ Identify and prioritize performance bottlenecks across backend services, databas
 - Database query optimization
 - Caching strategy review
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-secure`), pre-implementation risk planning (use `task-design-risk-analysis`).
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-secure-review`), observability gaps (use `task-code-observability-review`), pre-implementation risk planning (use `task-design-risk-analysis`).
 
 ## Depth Levels
 

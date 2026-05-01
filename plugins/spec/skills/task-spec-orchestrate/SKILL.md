@@ -20,7 +20,7 @@ Drive a feature from a stable spec to reviewed, tested code by sequencing per-st
 - The user wants the full multi-agent pipeline rather than one-task-at-a-time delegation via `task-spec-implement`
 - Resuming a previously interrupted orchestration (re-invoke with the same slug; the workflow reads existing envelopes and continues from the next ordinal)
 
-**Not for:** Single-task execution (use `task-spec-implement` or stack-specific `task-*-new` directly), features without a spec (use `task-feature-implement`), code review of an existing PR (use `task-code-review`), debugging a broken build (use `task-debug`).
+**Not for:** Single-task execution (use `task-spec-implement` or stack-specific `task-*-new` directly), features without a spec (use `task-feature-implement`), code review of an existing PR (use `task-code-review`), debugging a broken build (use `task-code-debug`).
 
 ## Inputs
 

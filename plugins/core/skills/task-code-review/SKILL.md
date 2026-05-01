@@ -33,7 +33,7 @@ Staff-level code review that prioritizes system risk over style. AI-generated co
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** Architecture/design review of new systems (use `task-design-architecture`), security-only audits (use `task-code-secure`), performance-only review (use `task-code-perf-review`).
+**Not for:** Architecture/design review of new systems (use `task-design-architecture`), security-only audits (use `task-code-secure-review`), performance-only review (use `task-code-perf-review`).
 
 ## Depth Levels
 
@@ -59,12 +59,13 @@ Default: `standard`. Use `quick` when user asks for "quick review", "sanity chec
 
 ## Scope
 
-| Scope      | What runs                                                                      |
-| ---------- | ------------------------------------------------------------------------------ |
-| Core       | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
-| + Perf     | Core + delegate to skill: `task-code-perf-review`                              |
-| + Security | Core + delegate to skill: `task-code-secure`                                   |
-| Full       | Core + Performance + Security                                                  |
+| Scope            | What runs                                                                      |
+| ---------------- | ------------------------------------------------------------------------------ |
+| Core             | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
+| + Perf           | Core + delegate to skill: `task-code-perf-review`                              |
+| + Security       | Core + delegate to skill: `task-code-secure-review`                            |
+| + Observability  | Core + delegate to skill: `task-code-observability-review`                     |
+| Full             | Core + Performance + Security + Observability                                  |
 
 Default: **Core**. If invoked with an explicit scope argument (e.g., `/task-code-review +perf`), skip the question and use that scope directly.
 
@@ -74,7 +75,8 @@ Depth and scope are independent. Example: `quick` depth with `+security` scope =
 
 - File uploads, auth flows, user input deserialization, secrets handling -> recommend +Security
 - Bulk operations, new database queries, new endpoints with large payloads -> recommend +Perf
-- Both signal categories present -> recommend Full
+- New service, new external dependency, new async/queue boundary, or change to logging/metrics/tracing wiring -> recommend +Observability
+- Multiple signal categories present -> recommend Full
 
 ## Workflow
 
@@ -169,7 +171,8 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 ### Step 2 - Delegate (if scope includes)
 
 - **+Perf**: delegate to `task-code-perf-review`
-- **+Security**: delegate to `task-code-secure`
+- **+Security**: delegate to `task-code-secure-review`
+- **+Observability**: delegate to `task-code-observability-review`
 
 ## Framework-Specific Signals
 

@@ -81,7 +81,7 @@ Steps: Added a computed with the same name as a prop
 The following workflows are provided by `core` (install separately):
 
 - `/task-code-review` - Staff-level code review with risk assessment, framework-aware
-- `/task-code-secure` - Security review
+- `/task-code-secure-review` - Security review
 - `/task-code-test` - Test strategy
 - `/task-code-refactor` - Refactoring plan
 - `/task-code-perf-review` - Performance review

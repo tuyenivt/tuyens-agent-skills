@@ -6,7 +6,7 @@ Depends only on the `core` plugin.
 
 ## Why SDD
 
-The other plugins in this marketplace are a menu of independent workflows (`task-debug`, `task-code-review`, `task-spring-new`, ...). They take chat input, run, and emit chat output - the "spec" lives only in the user's head between commands. The `spec` plugin adds the missing glue: a linear pipeline whose phases produce named artifacts that the next phase consumes. Once a feature has a `spec.md` and `plan.md`, downstream stack workflows (`task-spring-new`, `task-react-new`, etc.) can consume them directly and skip their own gather/design phases.
+The other plugins in this marketplace are a menu of independent workflows (`task-code-debug`, `task-code-review`, `task-spring-new`, ...). They take chat input, run, and emit chat output - the "spec" lives only in the user's head between commands. The `spec` plugin adds the missing glue: a linear pipeline whose phases produce named artifacts that the next phase consumes. Once a feature has a `spec.md` and `plan.md`, downstream stack workflows (`task-spring-new`, `task-react-new`, etc.) can consume them directly and skip their own gather/design phases.
 
 ## Artifact Convention
 
@@ -74,7 +74,7 @@ Once a feature has artifacts under `.specs/<slug>/`, downstream workflows in oth
 
 > If a `spec.md` (and optionally `plan.md`, `tasks.md`) exists for the current feature, the workflow reads it first and skips its own GATHER/DESIGN phase. If not, the workflow behaves as it does today.
 
-In practice this means stack workflows (`task-spring-new`, `task-python-new`, `task-react-new`, ...) gain an optional `--spec <slug>` mode. When invoked from `task-spec-implement`, they run in this mode and skip re-eliciting requirements. Beyond the `task-*-new` family, the same pattern extends to `task-code-test` (generate tests from acceptance criteria), `task-code-review` (cross-check the diff against the spec), `task-pr-create` (use spec summary as PR description), and `task-debug` (distinguish spec violations from spec gaps).
+In practice this means stack workflows (`task-spring-new`, `task-python-new`, `task-react-new`, ...) gain an optional `--spec <slug>` mode. When invoked from `task-spec-implement`, they run in this mode and skip re-eliciting requirements. Beyond the `task-*-new` family, the same pattern extends to `task-code-test` (generate tests from acceptance criteria), `task-code-review` (cross-check the diff against the spec), `task-pr-create` (use spec summary as PR description), and `task-code-debug` (distinguish spec violations from spec gaps).
 
 When a spec-aware workflow finds a proposed change that conflicts with an NFR or touches an out-of-scope item, it must **stop and surface the conflict** rather than silently proceeding. Spec is the source of truth; the discipline is what keeps that from becoming lip service.
 

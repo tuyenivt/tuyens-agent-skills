@@ -1,5 +1,5 @@
 ---
-name: task-debug
+name: task-code-debug
 description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow.
 metadata:
   category: code

@@ -26,7 +26,7 @@ Design test strategy, assess coverage gaps, and generate test scaffolds for a mo
 - Test pyramid balance assessment
 - Generating test scaffolds
 
-**Not for:** General code quality review (use `task-code-review`), performance testing (use `task-code-perf-review`), security testing (use `task-code-secure`).
+**Not for:** General code quality review (use `task-code-review`), performance testing (use `task-code-perf-review`), security testing (use `task-code-secure-review`).
 
 ## Workflow
 

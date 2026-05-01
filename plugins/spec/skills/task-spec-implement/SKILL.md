@@ -20,7 +20,7 @@ Drives a feature from `tasks.md` to working code, one task at a time. Each task 
 - To resume an interrupted implementation (workflow auto-detects the next `[ ]` task)
 - When the user wants the spec pipeline to run end-to-end execution after `task-spec-plan` and `task-spec-tasks`
 
-**Not for:** Authoring requirements (use `task-spec-specify`), generating the plan or task list (use `task-spec-plan`, `task-spec-tasks`), one-off feature implementation outside the SDD pipeline (use `task-feature-implement` or stack-specific `task-*-new` directly), bug fixes (use `task-debug`).
+**Not for:** Authoring requirements (use `task-spec-specify`), generating the plan or task list (use `task-spec-plan`, `task-spec-tasks`), one-off feature implementation outside the SDD pipeline (use `task-feature-implement` or stack-specific `task-*-new` directly), bug fixes (use `task-code-debug`).
 
 ## Inputs
 
