@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, Architecture Decision Record (ADR) creation, re-architecture workflows (monolith decomposition, microservices consolidation, legacy system modernization), diagram generation, and docs repo auditing.
+Stack-agnostic architecture design plugin for Claude Code. Provides system design, API contract design, pre-implementation risk analysis, Architecture Decision Record (ADR) creation, re-architecture workflows (monolith decomposition, microservices consolidation, legacy system modernization), diagram generation, docs repo auditing, database migration planning, and dependency upgrade assessment.
 
 ## Workflow Skills
 
@@ -17,6 +17,8 @@ Workflow skills (`task-*`) for architecture design, re-architecture, and docs-re
 | `task-migrate-monolith-to-services` | Monolith to microservices/modular services decomposition migration plan with domain boundaries, extraction order, and data ownership transfer.                                                                        |
 | `task-consolidate-services`         | Microservices consolidation - merge over-split services into fewer, well-bounded services with data reunification and consumer migration.                                                                             |
 | `task-modernize-legacy`             | Legacy system modernization - migrate from outdated language/framework to modern stack with behavioral verification and incremental cutover.                                                                          |
+| `task-db-migration-plan`            | Database migration strategy for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk assessment, data backfill estimation, and rollback plan.                                        |
+| `task-upgrade-plan`                 | Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation.                                   |
 
 ## Atomic Skills
 
@@ -75,6 +77,8 @@ All workflow skills depend on core atomics for stack detection, guardrail enforc
 | `task-migrate-monolith-to-services` | `architecture-landscape` (optional, Section 3), `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-observability`, `ops-engineering-governance`, `ops-release-safety`, `ops-feature-flags`                                                                                                    |
 | `task-consolidate-services`         | `architecture-landscape`, `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-feature-flags`                                                                                                                                                                                                                     |
 | `task-modernize-legacy`             | `strangler-fig-pattern`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-feature-flags`                                                                                                                                                                                                                                  |
+| `task-db-migration-plan`            | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`                                                                                                                                                                                                                                                                                                                                                                      |
+| `task-upgrade-plan`                 | `stack-detect`, `ops-backward-compatibility`, `review-blast-radius`, `ops-release-safety`, `dependency-impact-analysis`                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Usage Examples
 
@@ -171,4 +175,20 @@ Driver: 15 sync calls per login request, distributed monolith, all share the sam
 /task-modernize-legacy
 System: PHP 5.6 monolith on Apache, custom MVC framework, MySQL with stored procedures
 Driver: Can't hire PHP 5.6 developers, framework has no community support, scaling ceiling at 200 RPS
+```
+
+**Plan a complex database schema migration:**
+
+```
+/task-db-migration-plan
+Change: Rename user_id column to account_id across orders table (50M rows, multi-service)
+Database: PostgreSQL
+Deployment: Rolling, zero-downtime required
+```
+
+**Assess a dependency upgrade:**
+
+```
+/task-upgrade-plan
+Upgrade: Spring Boot 3.3 -> 3.5
 ```

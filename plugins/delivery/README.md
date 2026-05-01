@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Delivery
 
-Software delivery plugin for Claude Code: release planning, scope breakdown, tech debt triage, and dependency upgrade assessment.
+Software delivery plugin for Claude Code: scope breakdown and tech debt triage.
 
 ## Workflow Skills
 
@@ -10,7 +10,6 @@ Workflow skills (`task-*`) for delivery planning and coordination.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-scope-breakdown` | Break a feature or epic into implementable tasks with dependency ordering, relative sizing, and scope creep risk flags. Surfaces hidden complexity before implementation starts. |
 | `task-debt-prioritize` | Prioritize technical debt by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog.                                                       |
-| `task-upgrade-plan`    | Assess a library or platform version upgrade - breaking changes, migration effort, compatibility, and Go/No-Go recommendation.                                                   |
 
 ## Atomic Skills
 
@@ -43,9 +42,3 @@ Feature: User authentication overhaul - migrate from session-based to JWT
 /task-debt-prioritize
 ```
 
-**Assess a dependency upgrade:**
-
-```
-/task-upgrade-plan
-Upgrade: Spring Boot 3.3 -> 3.5
-```

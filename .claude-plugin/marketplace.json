@@ -10,7 +10,7 @@
       "name": "core",
       "source": "./plugins/core",
       "description": "Stack-agnostic skills for multi-stack development - auto-detects any tech stack",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -28,8 +28,8 @@
     {
       "name": "delivery",
       "source": "./plugins/delivery",
-      "description": "Workflow skills for software delivery: release planning, scope breakdown, tech debt triage, and upgrade assessment.",
-      "version": "1.77.0",
+      "description": "Workflow skills for software delivery: scope breakdown and tech debt triage.",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -38,15 +38,14 @@
         "delivery",
         "scope-breakdown",
         "tech-debt",
-        "upgrade-plan",
         "stack-agnostic"
       ]
     },
     {
       "name": "architecture",
       "source": "./plugins/architecture",
-      "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, ADR creation, diagram generation, docs repo auditing, and re-architecture (monolith decomposition, service consolidation, legacy modernization).",
-      "version": "1.77.0",
+      "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, ADR creation, diagram generation, docs repo auditing, re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, and dependency upgrade assessment.",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -59,6 +58,8 @@
         "adr",
         "diagrams",
         "docs-repo",
+        "db-migration",
+        "upgrade-plan",
         "stack-agnostic"
       ]
     },
@@ -66,7 +67,7 @@
       "name": "oncall",
       "source": "./plugins/oncall",
       "description": "Workflow and atomic skills for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -86,7 +87,7 @@
       "name": "spec",
       "source": "./plugins/spec",
       "description": "Spec-Driven Development (SDD) plugin: produces persistent per-feature artifacts (spec.md, plan.md, tasks.md) under .specs/<slug>/. Mirrors Spec Kit phases with speckit-aware and standalone modes. Depends only on core.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -104,7 +105,7 @@
       "name": "java",
       "source": "./plugins/java",
       "description": "Skills and agents for Java 21+ / Spring Boot 3.5+ development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -122,7 +123,7 @@
       "name": "kotlin",
       "source": "./plugins/kotlin",
       "description": "Skills and agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires java plugin.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -140,7 +141,7 @@
       "name": "python",
       "source": "./plugins/python",
       "description": "Skills and agents for Python 3.11+ / FastAPI / Django development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -151,7 +152,7 @@
       "name": "rails",
       "source": "./plugins/rails",
       "description": "Skills and agents for Ruby on Rails 7+/8 development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -162,7 +163,7 @@
       "name": "node",
       "source": "./plugins/node",
       "description": "Skills and agents for Node.js/TypeScript development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -183,7 +184,7 @@
       "name": "go",
       "source": "./plugins/go",
       "description": "Skills and agents for Go/Gin development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -194,7 +195,7 @@
       "name": "dotnet",
       "source": "./plugins/dotnet",
       "description": "Skills and agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -214,7 +215,7 @@
       "name": "rust",
       "source": "./plugins/rust",
       "description": "Skills and agents for Rust 1.94+ / Axum / sqlx development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -225,7 +226,7 @@
       "name": "react",
       "source": "./plugins/react",
       "description": "Skills and agents for React 19+ / TypeScript / Next.js development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -246,7 +247,7 @@
       "name": "vue",
       "source": "./plugins/vue",
       "description": "Skills and agents for Vue 3.5+ / TypeScript / Nuxt 3 development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -267,7 +268,7 @@
       "name": "angular",
       "source": "./plugins/angular",
       "description": "Skills and agents for Angular 21+ / TypeScript / Angular CLI development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -288,7 +289,7 @@
       "name": "php",
       "source": "./plugins/php",
       "description": "Skills and agents for PHP 8.5 / Laravel 12+ development.",
-      "version": "1.77.0",
+      "version": "1.78.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"

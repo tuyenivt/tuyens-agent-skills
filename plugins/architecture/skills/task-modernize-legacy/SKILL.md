@@ -22,7 +22,7 @@ Staff-level planning for modernizing a legacy system by migrating to a new langu
 - **Behavioral preservation** -- the new system must do what the old system does, including undocumented behaviors
 - **Risk-ordered migration** -- migrate capabilities in the order that minimizes blast radius
 
-This skill produces a modernization plan. It does not generate implementation code. For database-specific migration, use `task-db-migration-plan` from the core plugin.
+This skill produces a modernization plan. It does not generate implementation code. For database-specific migration, use `task-db-migration-plan`.
 
 ## When to Use
 
@@ -225,7 +225,7 @@ Address:
 
 **Calendar-critical systems:** For systems with mandatory processing windows (payroll on the 1st/15th, month-end closes, regulatory reporting deadlines), explicitly identify blackout periods during which no data migration, schema change, or cutover may occur. Schedule all risky migration phases in the windows between these dates, and add a "pre-blackout freeze" buffer of at least 3 business days.
 
-This section focuses on application-level data coexistence. For detailed database migration planning (schema changes, zero-downtime DDL, rollback scripts), use `task-db-migration-plan` from the core plugin.
+This section focuses on application-level data coexistence. For detailed database migration planning (schema changes, zero-downtime DDL, rollback scripts), use `task-db-migration-plan`.
 
 ### 7. Team and Knowledge Transition
 
