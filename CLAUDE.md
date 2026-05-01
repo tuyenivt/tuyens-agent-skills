@@ -147,7 +147,7 @@ These principles govern how Claude should reason and act when working in this re
 
 ### Workflow Skill Contract Convention
 
-**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-new`), stack-agnostic workflows (e.g., `task-release-plan`, `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
+**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-new`), stack-agnostic workflows (e.g., `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
 
 Workflow skills that also adapt output to the project tech stack should load `Use skill: stack-detect` as Step 2 (immediately after behavioral-principles). Workflows that do not depend on the stack (e.g., delivery, release, database-migration-plan workflows) should skip stack-detect entirely.
 

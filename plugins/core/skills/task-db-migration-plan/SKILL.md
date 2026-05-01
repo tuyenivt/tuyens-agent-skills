@@ -24,7 +24,7 @@ Safe database migration planning for production systems, optimized for zero-down
 
 This skill produces a migration execution plan. It does not generate ORM model code or migration scripts.
 
-**Not for:** Simple additive changes (just write the migration), writing migration files (use stack-specific `task-*-new`), release rollout planning (use `task-release-plan`).
+**Not for:** Simple additive changes (just write the migration), writing migration files (use stack-specific `task-*-new`).
 
 ## When to Use
 

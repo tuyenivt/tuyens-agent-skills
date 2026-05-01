@@ -36,11 +36,9 @@
       },
       "tags": [
         "delivery",
-        "release-planning",
-        "go-live-monitoring",
         "scope-breakdown",
         "tech-debt",
-        "dependency-upgrade",
+        "upgrade-plan",
         "stack-agnostic"
       ]
     },
