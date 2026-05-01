@@ -4,7 +4,7 @@ Stack-agnostic architecture design plugin for Claude Code. Provides system desig
 
 ## Workflow Skills
 
-9 workflow skills (`task-*`) for architecture design, re-architecture, and docs-repo workflows. Invoked as slash commands.
+Workflow skills (`task-*`) for architecture design, re-architecture, and docs-repo workflows. Invoked as slash commands.
 
 | Skill                               | Description                                                                                                                                                                                                           |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -20,7 +20,7 @@ Stack-agnostic architecture design plugin for Claude Code. Provides system desig
 
 ## Atomic Skills
 
-4 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 | Skill                           | Description                                                                                                     | Composed By                                                                                                              |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |

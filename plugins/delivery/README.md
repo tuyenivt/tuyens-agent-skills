@@ -4,7 +4,7 @@ Software delivery plugin for Claude Code: release planning, scope breakdown, tec
 
 ## Workflow Skills
 
-4 workflow skills (`task-*`) for delivery planning and coordination.
+Workflow skills (`task-*`) for delivery planning and coordination.
 
 | Skill                  | Description                                                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

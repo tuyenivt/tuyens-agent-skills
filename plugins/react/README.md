@@ -30,7 +30,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 ## Atomic Skills (Reusable Patterns)
 
-8 atomic skills provide focused, reusable React patterns. These are hidden from the slash menu (`user-invocable: false`) and referenced by workflow skills and agents.
+Atomic skills provide focused, reusable React patterns. These are hidden from the slash menu (`user-invocable: false`) and referenced by workflow skills and agents.
 
 | Skill                      | Purpose                                                                                        |
 | -------------------------- | ---------------------------------------------------------------------------------------------- |

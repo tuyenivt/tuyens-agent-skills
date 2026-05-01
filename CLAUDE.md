@@ -11,51 +11,22 @@ This is a **Claude Code plugin marketplace repository** - a collection of agent 
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-    skills/      # 45 skills: 11 workflow (task-*) + 34 atomic
   delivery/      # Release planning and delivery coordination
-    skills/      # 6 workflow skills
   architecture/  # Stack-agnostic architecture design and re-architecture
-    skills/      # 13 skills: 9 workflow + 4 atomic
   oncall/        # Incident response workflows
-    skills/      # 7 skills: 2 workflow + 5 atomic
   spec/          # Spec-Driven Development (any stack, opt-in)
-    skills/      # 19 skills: 10 workflow + 9 atomic
   java/          # Java 21+ / Spring Boot 3.5+
-    skills/      # 12 skills (2 workflow + 10 atomic)
-    agents/      # 7 agent definitions
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
-    skills/      # 11 skills (2 workflow + 9 atomic)
-    agents/      # 7 agent definitions
   kotlin/        # Thin companion to java plugin (requires core + java)
-    skills/      # 5 skills (2 workflow + 3 atomic)
-    agents/      # 7 agent definitions
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
-    skills/      # 9 skills (2 workflow + 7 atomic)
-    agents/      # 7 agent definitions
   rails/         # Ruby on Rails 7+/8
-    skills/      # 8 skills (2 workflow + 6 atomic)
-    agents/      # 7 agent definitions
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
-    skills/      # 10 skills (2 workflow + 8 atomic)
-    agents/      # 7 agent definitions
   go/            # Go 1.25+ / Gin / GORM+sqlx
-    skills/      # 9 skills (2 workflow + 7 atomic)
-    agents/      # 7 agent definitions
   rust/          # Rust 1.94+ / Axum / sqlx
-    skills/      # 11 skills (2 workflow + 9 atomic)
-    agents/      # 7 agent definitions
   php/           # PHP 8.5 / Laravel 12+
-    skills/      # 9 skills (2 workflow + 7 atomic)
-    agents/      # 7 agent definitions
   react/         # React 19+ / TypeScript / Next.js (primary), Vite (secondary)
-    skills/      # 10 skills (2 workflow + 8 atomic)
-    agents/      # 5 agent definitions
   vue/           # Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)
-    skills/      # 11 skills (2 workflow + 9 atomic)
-    agents/      # 5 agent definitions
   angular/       # Angular 21+ / TypeScript / Angular CLI
-    skills/      # 10 skills (2 workflow + 8 atomic)
-    agents/      # 5 agent definitions
 ```
 
 Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.

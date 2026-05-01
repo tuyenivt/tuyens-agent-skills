@@ -4,7 +4,7 @@ Incident response and investigation plugin for Claude Code: triage, investigatio
 
 ## Workflow Skills
 
-2 workflow skills (`task-*`) for oncall work.
+Workflow skills (`task-*`) for oncall work.
 
 | Skill               | Description                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -13,7 +13,7 @@ Incident response and investigation plugin for Claude Code: triage, investigatio
 
 ## Atomic Skills
 
-5 atomic skills provide focused patterns used exclusively by oncall workflows. Hidden from the slash menu (`user-invocable: false`).
+Atomic skills provide focused patterns used exclusively by oncall workflows. Hidden from the slash menu (`user-invocable: false`).
 
 | Skill                   | Description                                                                                                                                                  |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |

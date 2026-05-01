@@ -9,7 +9,7 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "45 skills (11 workflow + 34 atomic) for multi-stack development - auto-detects any tech stack",
+      "description": "Stack-agnostic skills for multi-stack development - auto-detects any tech stack",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -28,7 +28,7 @@
     {
       "name": "delivery",
       "source": "./plugins/delivery",
-      "description": "4 workflow skills for software delivery: release planning, scope breakdown, tech debt triage, and upgrade assessment.",
+      "description": "Workflow skills for software delivery: release planning, scope breakdown, tech debt triage, and upgrade assessment.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -67,7 +67,7 @@
     {
       "name": "oncall",
       "source": "./plugins/oncall",
-      "description": "7 skills (2 workflow + 5 atomic) for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
+      "description": "Workflow and atomic skills for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -105,7 +105,7 @@
     {
       "name": "java",
       "source": "./plugins/java",
-      "description": "12 skills and 7 agents for Java 21+ / Spring Boot 3.5+ development.",
+      "description": "Skills and agents for Java 21+ / Spring Boot 3.5+ development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -123,7 +123,7 @@
     {
       "name": "kotlin",
       "source": "./plugins/kotlin",
-      "description": "5 skills and 7 agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires java plugin.",
+      "description": "Skills and agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires java plugin.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -141,7 +141,7 @@
     {
       "name": "python",
       "source": "./plugins/python",
-      "description": "9 skills and 7 agents for Python 3.11+ / FastAPI / Django development.",
+      "description": "Skills and agents for Python 3.11+ / FastAPI / Django development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -152,7 +152,7 @@
     {
       "name": "rails",
       "source": "./plugins/rails",
-      "description": "8 skills and 7 agents for Ruby on Rails 7+/8 development.",
+      "description": "Skills and agents for Ruby on Rails 7+/8 development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -163,7 +163,7 @@
     {
       "name": "node",
       "source": "./plugins/node",
-      "description": "10 skills and 7 agents for Node.js/TypeScript development.",
+      "description": "Skills and agents for Node.js/TypeScript development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -184,7 +184,7 @@
     {
       "name": "go",
       "source": "./plugins/go",
-      "description": "9 skills and 7 agents for Go/Gin development.",
+      "description": "Skills and agents for Go/Gin development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -195,7 +195,7 @@
     {
       "name": "dotnet",
       "source": "./plugins/dotnet",
-      "description": "11 skills and 7 agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture.",
+      "description": "Skills and agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -215,7 +215,7 @@
     {
       "name": "rust",
       "source": "./plugins/rust",
-      "description": "11 skills and 7 agents for Rust 1.94+ / Axum / sqlx development.",
+      "description": "Skills and agents for Rust 1.94+ / Axum / sqlx development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -226,7 +226,7 @@
     {
       "name": "react",
       "source": "./plugins/react",
-      "description": "10 skills and 5 agents for React 19+ / TypeScript / Next.js development.",
+      "description": "Skills and agents for React 19+ / TypeScript / Next.js development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -247,7 +247,7 @@
     {
       "name": "vue",
       "source": "./plugins/vue",
-      "description": "11 skills and 5 agents for Vue 3.5+ / TypeScript / Nuxt 3 development.",
+      "description": "Skills and agents for Vue 3.5+ / TypeScript / Nuxt 3 development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -268,7 +268,7 @@
     {
       "name": "angular",
       "source": "./plugins/angular",
-      "description": "10 skills and 5 agents for Angular 21+ / TypeScript / Angular CLI development.",
+      "description": "Skills and agents for Angular 21+ / TypeScript / Angular CLI development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",
@@ -289,7 +289,7 @@
     {
       "name": "php",
       "source": "./plugins/php",
-      "description": "9 skills and 7 agents for PHP 8.5 / Laravel 12+ development.",
+      "description": "Skills and agents for PHP 8.5 / Laravel 12+ development.",
       "version": "1.77.0",
       "author": {
         "name": "Tuyen",

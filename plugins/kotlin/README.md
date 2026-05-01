@@ -54,7 +54,6 @@ Spring Boot ecosystem provided by the Java plugin.
 | `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with edge cases | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
 | `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables              | `task-spring-debug` for Java/Spring errors                            |
 
-### Total: 7 agents + 5 skills (intentionally small - this is a companion plugin)
 
 ## Dependency relationship
 

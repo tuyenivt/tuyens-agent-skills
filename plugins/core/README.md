@@ -55,7 +55,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Workflow Skills
 
-11 workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
+Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. Invoked as slash commands.
 
 | Skill                            | Description                                                                                                                                                                                                                                                           |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -73,7 +73,7 @@ Whatever you declare in your instruction file, the plugin uses - it does not val
 
 ## Atomic Skills
 
-34 atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
+Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`user-invocable: false`) and referenced only by workflow skills.
 
 ### Core Utility
 
