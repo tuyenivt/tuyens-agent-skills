@@ -36,19 +36,37 @@ Identify and prioritize observability gaps across backend services and frontend 
 
 Default: `standard`. Use `quick` when the user targets a specific file or endpoint.
 
+## Invocation
+
+Accepts the same diff-targeting arguments as `task-code-review`:
+
+| Invocation                                 | Meaning                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `/task-code-review-observability`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
+| `/task-code-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
+| `/task-code-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+
+When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+
 ## Workflow
 
 ### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 - Run Observability Atomic
+### Step 2 - Resolve the Diff Under Review
+
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+
+If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+
+### Step 3 - Run Observability Atomic
 
 Use skill: `ops-observability` to assess structured logging, RED metrics, distributed tracing, correlation ID propagation, and SLO definition for the detected stack.
 
 This is the primary source of findings. The remaining steps complement it with cross-cutting concerns the atomic does not own.
 
-### Step 3 - Structured Logging Review (All Stacks)
+### Step 4 - Structured Logging Review (All Stacks)
 
 Verify the code under review:
 
@@ -58,7 +76,7 @@ Verify the code under review:
 - [ ] Log levels used correctly: `error` for actionable failures, `warn` for recoverable anomalies, `info` for state transitions, `debug` for verbose diagnostics
 - [ ] No log spam in hot loops or per-request inner functions
 
-### Step 4 - Metrics Coverage (Backend and Fullstack)
+### Step 5 - Metrics Coverage (Backend and Fullstack)
 
 Skip this step if `Stack Type: frontend`.
 
@@ -69,7 +87,7 @@ Skip this step if `Stack Type: frontend`.
 - [ ] No high-cardinality labels (user ID, request ID, raw URL with parameters) - these blow up storage and break aggregation
 - [ ] Database query and external HTTP call latency tracked separately from total request duration
 
-### Step 5 - Distributed Tracing (Backend and Fullstack)
+### Step 6 - Distributed Tracing (Backend and Fullstack)
 
 Skip this step if `Stack Type: frontend` and the application has no backend-for-frontend or server-side rendering.
 
@@ -80,7 +98,7 @@ Skip this step if `Stack Type: frontend` and the application has no backend-for-
 - [ ] Trace context is **propagated** across service boundaries via standard headers (W3C `traceparent`, `b3`, or `uber-trace-id`) - the receiving service must extract and create child spans, not generate a new trace ID
 - [ ] Sampling strategy is appropriate for traffic volume (head-based 10-20% for high traffic; always sample errors and slow requests at 100%)
 
-### Step 6 - Frontend Observability (Frontend and Fullstack)
+### Step 7 - Frontend Observability (Frontend and Fullstack)
 
 Skip this step if `Stack Type: backend`.
 
@@ -91,7 +109,7 @@ Skip this step if `Stack Type: backend`.
 - [ ] No PII in analytics events or error reports (sanitize before send)
 - [ ] Trace context propagated from frontend to backend on outbound API calls (W3C `traceparent` header) when distributed tracing spans the full stack
 
-### Step 7 - SLO and Alerting Coverage (All Stacks, Deep Depth)
+### Step 8 - SLO and Alerting Coverage (All Stacks, Deep Depth)
 
 Run this step at `deep` depth or when the user explicitly requests SLO/alert coverage. At `standard` depth, summarize gaps without exhaustive enumeration.
 
@@ -104,7 +122,7 @@ Run this step at `deep` depth or when the user explicitly requests SLO/alert cov
 
 Flag services with no defined SLO as a **High** observability gap - without an SLO, alerting thresholds are arbitrary.
 
-### Step 8 - Correlation and Context Propagation (All Stacks)
+### Step 9 - Correlation and Context Propagation (All Stacks)
 
 - [ ] Request-scoped context (correlation ID, trace ID, user ID where appropriate) propagated through the framework's mechanism (MDC, `context.Context`, `CurrentAttributes`, `contextvars`, middleware context)
 - [ ] Background jobs and queue consumers extract trace context from the message envelope - not generate a new trace
@@ -113,6 +131,10 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 ## Self-Check
 
 - [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
+- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
 - [ ] **All stacks**: Structured logging assessed: mandatory fields, no sensitive data, correct log levels
 - [ ] **Backend/fullstack**: RED metrics coverage checked; cardinality concerns flagged
 - [ ] **Backend/fullstack**: Distributed tracing reviewed: spans on key operations, context propagation across services, sampling strategy
@@ -161,6 +183,7 @@ _Omit sections with no findings._
 
 ## Avoid
 
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reporting "missing log" findings without stating what becomes invisible
 - Recommending more logging without considering log volume cost and alerting noise
 - Suggesting metrics with high-cardinality labels (request ID, user ID, raw URL) - these break aggregation and cost

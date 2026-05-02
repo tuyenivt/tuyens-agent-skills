@@ -25,13 +25,31 @@ Security-focused review targeting OWASP Top 10 vulnerabilities, authentication/a
 
 **Not for:** General PR review (use `task-code-review`), performance issues (use `task-code-review-perf`), observability gaps (use `task-code-review-observability`).
 
+## Invocation
+
+Accepts the same diff-targeting arguments as `task-code-review`:
+
+| Invocation                            | Meaning                                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `/task-code-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
+| `/task-code-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
+| `/task-code-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+
+When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+
 ## Workflow
 
 ### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 - OWASP Quick Check (All Stacks)
+### Step 2 - Resolve the Diff Under Review
+
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+
+If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+
+### Step 3 - OWASP Quick Check (All Stacks)
 
 | Risk                          | Check                                                                                                       |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -46,7 +64,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 | Data Integrity Failures (A08) | Deserialization inputs validated; CI/CD pipeline integrity                                                  |
 | Logging & Monitoring (A09)    | Security events logged (login failures, access denied, input validation failure); no sensitive data in logs |
 
-### Step 3 - Framework-Specific Security Review
+### Step 4 - Framework-Specific Security Review
 
 After loading stack-detect, apply security checks specific to the detected ecosystem:
 
@@ -76,7 +94,7 @@ After loading stack-detect, apply security checks specific to the detected ecosy
 - TLS enforced in production
 - Framework-specific admin/debug endpoints are secured or disabled in production
 
-If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and recommend the user consult their framework's security documentation.
+If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and recommend the user consult their framework's security documentation.
 
 **Cloud Storage (when file storage is S3, GCS, Azure Blob, or equivalent):**
 
@@ -85,7 +103,7 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and reco
 - Content-Disposition: attachment header set on served files to prevent browser rendering of uploaded HTML/SVG
 - Virus/malware scanning pipeline for uploaded files (or document the accepted risk)
 
-### Step 4 - Data Protection (All Stacks)
+### Step 5 - Data Protection (All Stacks)
 
 - Sensitive data not logged (passwords, tokens, PII)
 - Encryption for sensitive fields at rest
@@ -102,6 +120,10 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 2 and reco
 
 ## Self-Check
 
+- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
 - [ ] Every OWASP Top 10 category checked - not just the ones with obvious findings
 - [ ] Auth enforcement verified on every endpoint, not just spot-checked
 - [ ] No secrets, tokens, or credentials found in code or config files
@@ -153,6 +175,7 @@ _Omit severity sections with no findings. If all sections are omitted, state "No
 
 ## Avoid
 
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reporting vulnerabilities without an attack scenario ("input is not validated" vs "attacker can inject SQL via the search parameter")
 - Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
 - Recommending security measures that conflict with the framework's built-in security model

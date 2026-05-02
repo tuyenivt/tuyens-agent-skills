@@ -120,16 +120,17 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 
 ### Governance
 
-| Skill                        | Description                                                                                                |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `backend-api-guidelines`     | REST API design - resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem. |
-| `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                              |
-| `review-blast-radius`        | Failure propagation and change impact scope assessment                                                     |
-| `review-change-risk`         | Pre-implementation risk domain classification for proposed changes                                         |
-| `backend-coding-standards`   | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                        |
-| `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                           |
-| `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention               |
-| `review-pr-risk`             | Lightweight heuristic PR risk classification based on change signals                                       |
+| Skill                        | Description                                                                                                                                                                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend-api-guidelines`     | REST API design - resource naming, HTTP methods, error handling, pagination. Adapts to detected ecosystem.                                                                                                                                            |
+| `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                                                                                                                                                                         |
+| `review-blast-radius`        | Failure propagation and change impact scope assessment                                                                                                                                                                                                |
+| `review-change-risk`         | Pre-implementation risk domain classification for proposed changes                                                                                                                                                                                    |
+| `review-precondition-check`  | Gate code-review workflows: verify clean working tree, non-trunk head, locally-resolvable head ref, and confirm head vs current branch when they differ. Returns minimal `(base_ref, head_ref)` handle. Local git only - no `gh` CLI or platform API. |
+| `backend-coding-standards`   | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                                                                                                                                                                   |
+| `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                                                                                                                                                                      |
+| `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention                                                                                                                                                          |
+| `review-pr-risk`             | Lightweight heuristic PR risk classification based on change signals                                                                                                                                                                                  |
 
 ### Frontend
 
@@ -148,18 +149,18 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 ### Workflow → Atomics
 
-| Workflow                         | Atomic Skills Used                                                                                                                                                                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-implement`                 | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
-| `task-code-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                  |
-| `task-onboard`                   | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
-| `task-code-refactor`             | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                                              |
-| `task-code-review`               | `stack-detect`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility` |
-| `task-code-review-perf`          | `stack-detect`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
-| `task-code-review-security`      | `stack-detect`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                                                        |
-| `task-code-review-observability` | `stack-detect`, `ops-observability`                                                                                                                                                                                                                           |
-| `task-code-test`                 | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`                                                                                                                                                                                          |
-| `task-code-explain`              | `stack-detect`, `architecture-guardrail`, `architecture-concurrency`, `complexity-review`                                                                                                                                                                     |
+| Workflow                         | Atomic Skills Used                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task-implement`                 | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                               |
+| `task-code-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                               |
+| `task-onboard`                   | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                                               |
+| `task-code-refactor`             | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                                                                           |
+| `task-code-review`               | `stack-detect`, `review-precondition-check`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility` |
+| `task-code-review-perf`          | `stack-detect`, `review-precondition-check`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
+| `task-code-review-security`      | `stack-detect`, `review-precondition-check`, `ops-observability`, `ops-resiliency`, `backend-idempotency`, `backend-api-guidelines`                                                                                                                                                        |
+| `task-code-review-observability` | `stack-detect`, `review-precondition-check`, `ops-observability`                                                                                                                                                                                                                           |
+| `task-code-test`                 | `stack-detect`, `backend-coding-standards`, `backend-api-guidelines`                                                                                                                                                                                                                       |
+| `task-code-explain`              | `stack-detect`, `architecture-guardrail`, `architecture-concurrency`, `complexity-review`                                                                                                                                                                                                  |
 
 ### Atomic → Used By
 
@@ -176,6 +177,7 @@ Atomics used by the most workflows - highest customization leverage:
 | `backend-api-guidelines`     | `task-code-review`, `task-code-review-security`, `task-code-test`                                                          |
 | `backend-db-indexing`        | `task-code-review-perf`                                                                                                    |
 | `review-blast-radius`        | `task-code-review`                                                                                                         |
+| `review-precondition-check`  | `task-code-review`, `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability`                 |
 | `dependency-impact-analysis` | `task-onboard`                                                                                                             |
 
 ## Usage Examples
@@ -183,17 +185,19 @@ Atomics used by the most workflows - highest customization leverage:
 **Staff-level code review (auto-detects framework, includes risk assessment):**
 
 ```
-/task-code-review
-[paste code or file path]
+/task-code-review                        # current feature branch vs base (fails fast on trunk)
+/task-code-review pr-50273               # PR fetched locally: git fetch origin pull/50273/head:pr-50273
+/task-code-review feature/my-branch      # named branch vs base (cross-review or named self-review)
 ```
 
 Scope options - asks interactively if not specified:
 
 ```
-/task-code-review +perf            # Core + performance review
-/task-code-review +security        # Core + security review
-/task-code-review +observability   # Core + observability review
-/task-code-review full             # Core + performance + security + observability
+/task-code-review +perf                        # Core + performance review
+/task-code-review +security                    # Core + security review
+/task-code-review +observability               # Core + observability review
+/task-code-review full                         # Core + performance + security + observability
+/task-code-review pr-50273 +security deep      # compose: PR + security + deep depth
 ```
 
 **Test strategy:**

@@ -78,11 +78,39 @@ Depth and scope are independent. Example: `quick` depth with `+security` scope =
 - New service, new external dependency, new async/queue boundary, or change to logging/metrics/tracing wiring -> recommend +Observability
 - Multiple signal categories present -> recommend Full
 
+## Invocation
+
+The slash command accepts an optional argument identifying the diff to review:
+
+| Invocation                   | Meaning                                                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/task-code-review`          | Review current branch vs its base - fails fast if on a trunk branch (`main`/`master`/`develop`); commit or switch to a feature branch first                                           |
+| `/task-code-review <branch>` | Review `<branch>` vs its base (3-dot diff) - cross-review a teammate's branch checked out locally, or self-review a named branch from any session                                     |
+| `/task-code-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` - run `git fetch origin pull/<N>/head:pr-<N>` first (user runs it; see `review-precondition-check` for GitLab/Bitbucket variants) |
+
+Scope and depth flags (`+perf`, `+security`, `+observability`, `full`, `quick`, `deep`) compose with any of the above. Example: `/task-code-review pr-50273 +security deep`.
+
 ## Workflow
 
 ### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
+
+### Step 2 - Resolve the Diff Under Review
+
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). It returns a minimal handle with `base_ref`, `head_ref`, `current_branch`, and `head_matches_current` once all preconditions pass.
+
+If the precondition check stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim to the user and stop. Do not run any state-changing git command from this workflow.
+
+Once approved, read the diff and commit log directly using the returned refs:
+
+- Diff: `git diff <base_ref>...<head_ref>`
+- Files changed: `git diff --name-status <base_ref>...<head_ref>`
+- Commit log: `git log --oneline <base_ref>..<head_ref>` (2-dot - commits unique to the head)
+
+Always read the commit log alongside the diff. On branches with many small commits, the log carries author intent (e.g., "wip", "revert X", "actually fix it") that the aggregate diff hides. Cap log output at 50 commits; if more, show the first 25 and last 5 with a `... (N commits omitted) ...` marker. If the diff exceeds ~2000 changed lines, emit the full file list and commit log but only quote diff hunks for files findings cite.
+
+All subsequent phases operate on this read-once diff and log; do not re-derive them.
 
 ### Phase A - PR Risk Snapshot (run first)
 
@@ -168,7 +196,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 **Backend/fullstack:** Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
 **All stacks:** Use skill: `ops-observability` to check logging, metrics, and tracing coverage (backend) or error tracking and analytics instrumentation (frontend).
 
-### Step 2 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 3 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -183,14 +211,14 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Subagent prompt contract.** Each subagent prompt must include:
 
-- The exact diff or PR reference under review (same input the main thread received)
+- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
 - The depth level (`quick` | `standard` | `deep`)
 - The pre-detected stack from Step 1 (so the subagent does not re-run `stack-detect`)
 - Instruction to return findings using the standard Output Format from its own skill
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 3 - Synthesize (only if Step 2 ran)
+### Step 4 - Synthesize (only if Step 3 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -312,6 +340,10 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 ## Self-Check
 
 - [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
+- [ ] `review-precondition-check` ran at Step 2; preconditions passed (clean tree, non-trunk head, head ref exists locally) and `base_ref` / `head_ref` / `current_branch` / `head_matches_current` were captured
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>`, then reused by all later phases (and shared with subagents) - no re-issuing of git commands mid-review
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Every Blocker states a system risk, not just a code observation
 - [ ] Architecture boundary impact assessed even if no violations found (including component boundaries for frontend)
@@ -329,6 +361,7 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 
 ## Avoid
 
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reviewing without reading the full diff first
 - Applying conventions from one stack to another (e.g., Java conventions on Go code)
 - Nitpicking style where no project standard exists

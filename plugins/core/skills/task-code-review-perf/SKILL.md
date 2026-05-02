@@ -36,13 +36,31 @@ Identify and prioritize performance bottlenecks across backend services, databas
 
 Default: `standard`. Use `quick` when user targets a specific query or method.
 
+## Invocation
+
+Accepts the same diff-targeting arguments as `task-code-review`:
+
+| Invocation                        | Meaning                                                                                               |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `/task-code-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
+| `/task-code-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
+| `/task-code-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+
+When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+
 ## Workflow
 
 ### Step 1 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
-### Step 2 - Database Performance (Backend and Fullstack)
+### Step 2 - Resolve the Diff Under Review
+
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+
+If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+
+### Step 3 - Database Performance (Backend and Fullstack)
 
 Skip this step if `Stack Type: frontend`.
 
@@ -57,7 +75,7 @@ Skip this step if `Stack Type: frontend`.
 
 Use skill: `backend-db-indexing` for detailed index analysis on flagged queries.
 
-### Step 3 - Framework-Specific Backend Review (Backend and Fullstack)
+### Step 4 - Framework-Specific Backend Review (Backend and Fullstack)
 
 Skip this step if `Stack Type: frontend`.
 
@@ -98,20 +116,20 @@ After loading stack-detect, apply performance checks specific to the detected ec
 
 If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
 
-### Step 4 - Caching Deep Dive (Backend and Fullstack)
+### Step 5 - Caching Deep Dive (Backend and Fullstack)
 
 Skip this step if `Stack Type: frontend`.
 
 Use skill: `backend-caching` for cache strategy patterns (key design, invalidation, local vs distributed).
 Use skill: `architecture-concurrency` to validate thread/worker pool sizing and concurrency primitive choices.
 
-Verify (beyond the basic cache checks in Step 3):
+Verify (beyond the basic cache checks in Step 4):
 
 - [ ] Cache key design avoids collisions and hot keys
 - [ ] Local cache vs distributed cache decision made explicitly
 - [ ] Cache stampede protection considered for high-traffic keys
 
-### Step 5 - Frontend Performance (Frontend and Fullstack)
+### Step 6 - Frontend Performance (Frontend and Fullstack)
 
 Skip this step if `Stack Type: backend`.
 
@@ -143,14 +161,14 @@ Use skill: `frontend-performance` for Core Web Vitals, bundle analysis, and rend
 - [ ] Large bundle (check for unintentional full-library imports, missing tree-shaking)
 - [ ] No code splitting at route level
 
-### Step 6 - Stateless Design (All Stacks)
+### Step 7 - Stateless Design (All Stacks)
 
 - [ ] No server-side session state (use JWT/tokens)
 - [ ] Externalized session if needed (Redis)
 - [ ] No static mutable state
 - [ ] Idempotent operations where possible
 
-### Step 7 - Observability (All Stacks)
+### Step 8 - Observability (All Stacks)
 
 Use skill: `ops-observability` for metrics and monitoring patterns.
 
@@ -164,6 +182,10 @@ Verify:
 ## Self-Check
 
 - [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
+- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
 - [ ] **Backend/fullstack**: Database performance checked: N+1 queries, missing indexes, pagination, pool sizing
 - [ ] **Backend/fullstack**: Framework-specific concurrency and ORM checks applied for the detected stack
 - [ ] **Backend/fullstack**: Caching strategy assessed: TTL, invalidation, key design
@@ -208,6 +230,7 @@ _Omit sections with no findings._
 
 ## Avoid
 
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reporting performance issues without estimated impact ("this is slow" vs "adds ~200ms per request")
 - Premature optimization on cold paths - focus on hot paths and measured bottlenecks
 - Recommending caching without addressing invalidation strategy
