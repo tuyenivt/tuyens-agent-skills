@@ -59,13 +59,13 @@ Default: `standard`. Use `quick` when user asks for "quick review", "sanity chec
 
 ## Scope
 
-| Scope            | What runs                                                                      |
-| ---------------- | ------------------------------------------------------------------------------ |
-| Core             | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
-| + Perf           | Core + delegate to skill: `task-code-review-perf`                              |
-| + Security       | Core + delegate to skill: `task-code-review-security`                          |
-| + Observability  | Core + delegate to skill: `task-code-review-observability`                     |
-| Full             | Core + Performance + Security + Observability                                  |
+| Scope           | What runs                                                                      |
+| --------------- | ------------------------------------------------------------------------------ |
+| Core            | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
+| + Perf          | Core + delegate to skill: `task-code-review-perf`                              |
+| + Security      | Core + delegate to skill: `task-code-review-security`                          |
+| + Observability | Core + delegate to skill: `task-code-review-observability`                     |
+| Full            | Core + Performance + Security + Observability                                  |
 
 Default: **Core**. If invoked with an explicit scope argument (e.g., `/task-code-review +perf`), skip the question and use that scope directly.
 
@@ -168,11 +168,37 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 **Backend/fullstack:** Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
 **All stacks:** Use skill: `ops-observability` to check logging, metrics, and tracing coverage (backend) or error tracking and analytics instrumentation (frontend).
 
-### Step 2 - Delegate (if scope includes)
+### Step 2 - Delegate Extra Scopes in Parallel (if scope includes)
 
-- **+Perf**: delegate to `task-code-review-perf`
-- **+Security**: delegate to `task-code-review-security`
-- **+Observability**: delegate to `task-code-review-observability`
+If scope is **Core only**, skip this step.
+
+For any selected extra scope, spawn an independent subagent **in parallel** with the main thread (which continues running Phases A-E for Core). Subagents run concurrently with each other and with Core, not sequentially. This keeps wall-clock latency close to the slowest single review rather than the sum of all reviews.
+
+| Scope                | Subagents spawned                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Core + Perf          | 1 subagent running `task-code-review-perf`                                                                             |
+| Core + Security      | 1 subagent running `task-code-review-security`                                                                         |
+| Core + Observability | 1 subagent running `task-code-review-observability`                                                                    |
+| Full                 | 3 subagents running `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability` in parallel |
+
+**Subagent prompt contract.** Each subagent prompt must include:
+
+- The exact diff or PR reference under review (same input the main thread received)
+- The depth level (`quick` | `standard` | `deep`)
+- The pre-detected stack from Step 1 (so the subagent does not re-run `stack-detect`)
+- Instruction to return findings using the standard Output Format from its own skill
+
+**Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
+
+### Step 3 - Synthesize (only if Step 2 ran)
+
+Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
+
+- **Deduplicate cross-cutting findings.** The same issue may surface in multiple scopes (e.g., a synchronous external call in a hot path can be flagged by both Core/Phase B and Perf). Keep one entry, citing all scopes that raised it.
+- **Severity wins.** When the same finding has different labels across scopes, use the highest severity (`Blocker` > `High` > `Suggestion` > `Question`).
+- **Preserve `file:line` citations** from the originating subagent.
+- **Order findings by severity, not by scope.** Do not produce a "Perf section, then Security section" report; produce one merged Findings list.
+- **Note missing scopes.** If any subagent failed, add a single line under Summary: `Scope incomplete: <scope> review did not complete`.
 
 ## Framework-Specific Signals
 
@@ -297,6 +323,9 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 - [ ] No framework conventions applied from a different stack than detected
 - [ ] Frontend checks (accessibility, state, components) applied when Stack Type is frontend or fullstack
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
+- [ ] For non-Core scopes, extra scopes ran as parallel subagents (not sequentially) and received the pre-detected stack
+- [ ] Subagent findings are merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports are not appended
+- [ ] Any failed/missing subagent scope is noted under Summary as `Scope incomplete: <scope>`
 
 ## Avoid
 
@@ -307,3 +336,5 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 - Blocking on personal preference rather than correctness, risk, or maintainability
 - Commenting on every file - focus on the most impactful findings
 - Running performance or security sub-workflows when user requested Core scope only
+- Running multiple extra scopes sequentially when they could spawn in parallel as independent subagents
+- Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
