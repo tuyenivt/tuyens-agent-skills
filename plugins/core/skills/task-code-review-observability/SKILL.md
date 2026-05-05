@@ -143,6 +143,7 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 - [ ] **All stacks**: Context propagation across async boundaries and service boundaries verified
 - [ ] Every finding states the missing signal AND what becomes invisible without it - not just "add a log here"
 - [ ] Findings ordered by severity; quick wins separated from structural changes
+- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no observability gaps exist)
 
 ## Output Format
 
@@ -175,6 +176,16 @@ _Omit sections with no findings._
 ## Recommendations
 
 [Structural improvements not tied to a specific finding - e.g., "Adopt OpenTelemetry for tracing across all services", "Define SLOs for the checkout service", "Replace homegrown correlation ID with W3C traceparent"]
+
+## Next Steps
+
+Prioritized action list. Each item tagged `[Implement]` (localized instrumentation addition - apply directly) or `[Delegate]` (cross-service tracing rollout, SLO definition workshop, or alerting overhaul worth spawning a subagent for). Order: High > Medium > Low Severity.
+
+1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `trace_id` and `user_id` to structured logger in payment handler"]
+2. **[Delegate]** [High] [scope: cross-service] - [one-line action, e.g., "Wire W3C traceparent propagation across order/payment/notification services - spawn tracing rollout subagent"]
+3. **[Implement]** [Medium] file:line - [one-line action]
+
+_Omit this section if no observability gaps were found._
 
 ## No Gaps Found
 

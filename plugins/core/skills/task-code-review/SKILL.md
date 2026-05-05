@@ -227,6 +227,7 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Preserve `file:line` citations** from the originating subagent.
 - **Order findings by severity, not by scope.** Do not produce a "Perf section, then Security section" report; produce one merged Findings list.
 - **Note missing scopes.** If any subagent failed, add a single line under Summary: `Scope incomplete: <scope> review did not complete`.
+- **Merge Next Steps.** Combine the parent's Core Next Steps with each subagent's Next Steps into one prioritized list under the parent's `## Next Steps`. Preserve the `[Implement]` / `[Delegate]` tags from the originating skill; deduplicate items that map to the same fix; re-sort by severity across all scopes (Blocker/Critical > High > Medium/Suggestion > Low).
 
 ## Framework-Specific Signals
 
@@ -302,6 +303,16 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 ## Key Takeaways
 
 - 2-4 concise bullets summarizing systemic impact and what to address before merge.
+
+## Next Steps
+
+Prioritized action list. Each item tagged `[Implement]` (straightforward fix - apply directly or have Claude apply) or `[Delegate]` (multi-file refactor, cross-service change, or scoped sub-review worth spawning a subagent for). Order: Blockers > High > Suggestions.
+
+1. **[Implement]** [Blocker] file:line - [one-line action, e.g., "Move signature verification to first line of handler"]
+2. **[Delegate]** [High] [scope: multi-service] - [one-line action, e.g., "Refactor shared auth middleware across 3 services - spawn subagent for cross-service contract check"]
+3. **[Implement]** [Suggestion] file:line - [one-line action]
+
+_Omit this section if there are no actionable findings._
 ```
 
 **Example finding (good depth):**
@@ -358,6 +369,7 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 - [ ] For non-Core scopes, extra scopes ran as parallel subagents (not sequentially) and received the pre-detected stack
 - [ ] Subagent findings are merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports are not appended
 - [ ] Any failed/missing subagent scope is noted under Summary as `Scope incomplete: <scope>`
+- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
 
 ## Avoid
 

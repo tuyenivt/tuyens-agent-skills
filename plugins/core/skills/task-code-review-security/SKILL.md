@@ -131,6 +131,7 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and reco
 - [ ] Framework-specific checks applied for the detected stack
 - [ ] Every finding states an attack scenario, not just a code observation
 - [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
+- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
 
 ## Output Format
 
@@ -171,6 +172,16 @@ _Omit severity sections with no findings. If all sections are omitted, state "No
 ## Recommendations
 
 [Prioritized improvements that are not specific findings but would strengthen the overall posture - e.g., "Add rate limiting to all auth endpoints", "Enable HSTS in production config"]
+
+## Next Steps
+
+Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
+
+1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Replace string concatenation with parameterized query in user search"]
+2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Audit and upgrade vulnerable transitive deps - spawn dependency-review subagent"]
+3. **[Implement]** [Medium] file:line - [one-line action]
+
+_Omit this section if no security issues were found._
 ```
 
 ## Avoid

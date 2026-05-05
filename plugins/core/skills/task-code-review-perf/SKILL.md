@@ -194,6 +194,7 @@ Verify:
 - [ ] **Frontend/fullstack**: Data fetching patterns reviewed (caching, waterfalls, over-fetching)
 - [ ] Every finding states estimated impact (latency/throughput/memory/CWV) not just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
+- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
 
 ## Output Format
 
@@ -226,6 +227,16 @@ _Omit sections with no findings._
 ## Recommendations
 
 [Structural improvements not tied to a specific finding - e.g., "Add query result caching for the product catalog endpoint", "Enable connection pool monitoring"]
+
+## Next Steps
+
+Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, schema migration, or load-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+
+1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `selectinload(User.orders)` to fix N+1 in /users endpoint"]
+2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add composite index on (tenant_id, created_at) - spawn DB migration subagent"]
+3. **[Implement]** [Medium] file:line - [one-line action]
+
+_Omit this section if there are no actionable findings._
 ```
 
 ## Avoid
