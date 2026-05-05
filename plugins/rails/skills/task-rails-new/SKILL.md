@@ -159,6 +159,13 @@ Strong params, pagination on list endpoints, delegate all business logic to serv
 
 Response shaping for all API responses. Separate serializers per resource. Never return raw ActiveRecord objects from endpoints.
 
+Detect the project's serializer library before generating files. In order of preference for new Rails 7.2+ projects:
+
+1. **Existing convention** - if the project already uses one (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`), match it.
+2. **No existing serializer** - default to `alba` (fast, JSON:API-optional, actively maintained). Add `gem "alba"` and generate `app/serializers/<resource>_serializer.rb` extending `Alba::Resource`.
+
+Never return `render json: @order` directly - always pipe through the chosen serializer so response shape is explicit and stable.
+
 ### STEP 8 - SECURITY
 
 Use skill: `rails-security-patterns`. Generate:

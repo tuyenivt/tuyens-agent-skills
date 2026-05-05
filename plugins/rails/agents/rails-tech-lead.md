@@ -1,6 +1,6 @@
 ---
 name: rails-tech-lead
-description: Holistic Rails 7+/8 quality gate - code review, architectural compliance, Rails conventions, refactoring guidance, and documentation standards across PRs.
+description: Holistic Rails 7.2+ quality gate - code review, architectural compliance, Rails conventions, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 category: quality

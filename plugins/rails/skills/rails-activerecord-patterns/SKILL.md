@@ -1,6 +1,6 @@
 ---
 name: rails-activerecord-patterns
-description: ActiveRecord query optimization and association patterns for Rails 7+/8. Covers N+1 prevention, scopes, counter_cache, batch processing, connection pooling, and PostgreSQL-specific features.
+description: ActiveRecord query optimization and association patterns for Rails 7.2+. Covers N+1 prevention, scopes, counter_cache, batch processing, connection pooling, and PostgreSQL-specific features.
 metadata:
   category: backend
   tags: [ruby, rails, activerecord, postgresql, performance]
@@ -108,7 +108,24 @@ class Order < ApplicationRecord
 end
 ```
 
+### Normalization
+
+Use `normalizes` to canonicalize attributes on assignment - replaces hand-rolled `before_validation` callbacks for trim/downcase patterns:
+
+```ruby
+class User < ApplicationRecord
+  normalizes :email, with: ->(email) { email.strip.downcase }
+  normalizes :phone, with: ->(p) { p.gsub(/\D/, "") }
+end
+
+User.normalize_value_for(:email, " A@B.COM ") # => "a@b.com"
+```
+
+Finder methods (`find_by`, `where`) apply normalization to the lookup value, so `User.find_by(email: " A@B.COM ")` matches the stored row.
+
 ### Associations
+
+`belongs_to` is required by default since Rails 5 (`config.active_record.belongs_to_required_by_default = true`). Pass `optional: true` only for genuinely nullable parents - do not add it reflexively.
 
 Bad - missing dependent option and counter_cache:
 
@@ -213,7 +230,7 @@ production:
 
 ```ruby
 # JSONB with GIN index
-class AddMetadataToOrders < ActiveRecord::Migration[7.1]
+class AddMetadataToOrders < ActiveRecord::Migration[7.2]
   def change
     add_column :orders, :metadata, :jsonb, default: {}, null: false
     add_index :orders, :metadata, using: :gin

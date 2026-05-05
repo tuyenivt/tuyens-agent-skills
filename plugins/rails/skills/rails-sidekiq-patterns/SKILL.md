@@ -126,6 +126,28 @@ end
 
 Prefer explicit post-transaction dispatch in services over `after_commit` callbacks - callbacks are harder to trace and test. Use callbacks only when the dispatch must always happen on a specific model transition regardless of which service triggers it.
 
+When a service is itself called inside a caller's transaction, dispatching "after the local block" still fires before the outer commit. Either restructure so the service owns the outermost transaction, or use the `after_commit_everywhere` gem / `ActiveRecord::Base.connection.add_transaction_record(...)` to defer until the true outer commit:
+
+```ruby
+require "after_commit_everywhere"
+
+class FulfillOrder
+  include AfterCommitEverywhere
+
+  def call
+    ActiveRecord::Base.transaction do
+      @order.update!(status: :processing)
+      after_commit { ShipmentNotificationJob.perform_async(@order.id) }
+    end
+    Result.success(@order.reload)
+  end
+end
+```
+
+### Sidekiq vs ActiveJob
+
+Direct `Sidekiq::Job` (the new name for `Sidekiq::Worker` since Sidekiq 6.3+) gives access to Sidekiq-specific features: `sidekiq_options`, `sidekiq_retry_in`, `unique_for`, batches. ActiveJob's `ApplicationJob` adds an abstraction layer that loses these. Default to `Sidekiq::Job` unless you need to swap backends or use Action Mailer's `deliver_later` (which goes through ActiveJob).
+
 ### Queue Priority
 
 ```yaml

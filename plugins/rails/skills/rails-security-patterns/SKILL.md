@@ -53,6 +53,35 @@ class OrdersController < ApplicationController
 end
 ```
 
+For arrays of scalars and arrays of nested attributes, use the explicit array syntax - omitting the brackets silently drops the input:
+
+```ruby
+# Array of scalars: tag_ids: []
+# Array of nested params: items: [[:product_id, :quantity]]
+params.require(:order).permit(:total, tag_ids: [], items: [[:product_id, :quantity]])
+```
+
+### Authentication - Built-in `authenticate_by`
+
+For projects that don't need Devise's full feature set, Rails 7.2+ ships timing-safe authentication via `authenticate_by`. It compares the password digest in constant time, defeating user-enumeration timing attacks that naive `find_by(email: ...)` then `authenticate(password)` exposes:
+
+```ruby
+class User < ApplicationRecord
+  has_secure_password
+  normalizes :email, with: ->(e) { e.strip.downcase }
+end
+
+# Constant-time auth - same duration whether email exists or not
+user = User.authenticate_by(email: params[:email], password: params[:password])
+```
+
+Bad - leaks user existence via timing:
+
+```ruby
+user = User.find_by(email: params[:email]) # fast when user missing
+user&.authenticate(params[:password])       # slow only when user found
+```
+
 ### Authentication - Devise + JWT
 
 ```ruby

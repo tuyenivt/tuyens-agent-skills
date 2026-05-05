@@ -4,7 +4,7 @@ Claude Code plugin for Ruby on Rails projects.
 
 ## Stack
 
-- Rails 7+/8
+- Rails 7.2+
 - Ruby 3.2+
 - RSpec
 - Sidekiq
@@ -15,7 +15,7 @@ Claude Code plugin for Ruby on Rails projects.
 
 | Agent                        | Description                                                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rails-architect`            | Ruby on Rails architect for Rails 7+/8, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions. |
+| `rails-architect`            | Ruby on Rails architect for Rails 7.2+, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions. |
 | `rails-tech-lead`            | Rails tech lead for code review, refactoring guidance, doc standards, and engineering standards. Reviews Rails code for conventions, performance, security, and test coverage.   |
 | `rails-security-engineer`    | OWASP Top 10 for Rails, Devise/JWT auth review, Pundit authorization audit, strong parameters, dependency vulnerability scan.                                                    |
 | `rails-performance-engineer` | ActiveRecord N+1 detection, query tuning, Sidekiq throughput, caching strategy, profiling with rack-mini-profiler.                                                               |

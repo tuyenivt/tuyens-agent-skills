@@ -36,7 +36,7 @@ user-invocable: false
 Bad - adding a non-concurrent index on a large table (locks reads/writes):
 
 ```ruby
-class AddIndexToOrders < ActiveRecord::Migration[7.1]
+class AddIndexToOrders < ActiveRecord::Migration[7.2]
   def change
     add_index :orders, :status # blocks the table
   end
@@ -46,7 +46,7 @@ end
 Good - concurrent index with `disable_ddl_transaction!`:
 
 ```ruby
-class AddIndexToOrdersStatus < ActiveRecord::Migration[7.1]
+class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
 
   def change
@@ -61,7 +61,7 @@ The `strong_migrations` gem automatically blocks unsafe operations. Override wit
 # Gemfile
 gem "strong_migrations"
 
-class AddIndexToOrders < ActiveRecord::Migration[7.1]
+class AddIndexToOrders < ActiveRecord::Migration[7.2]
   def change
     safety_assured do
       add_index :orders, :customer_id, algorithm: :concurrently
@@ -82,14 +82,14 @@ Good - three-step pattern:
 
 ```ruby
 # Step 1: Add nullable column with default
-class AddStatusToOrders < ActiveRecord::Migration[7.1]
+class AddStatusToOrders < ActiveRecord::Migration[7.2]
   def change
     add_column :orders, :status, :string, default: "pending"
   end
 end
 
 # Step 2: Backfill (separate migration)
-class BackfillOrderStatus < ActiveRecord::Migration[7.1]
+class BackfillOrderStatus < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
 
   def up
@@ -102,19 +102,39 @@ class BackfillOrderStatus < ActiveRecord::Migration[7.1]
 end
 
 # Step 3: Add NOT NULL constraint
-class AddNotNullToOrderStatus < ActiveRecord::Migration[7.1]
+class AddNotNullToOrderStatus < ActiveRecord::Migration[7.2]
   def change
     change_column_null :orders, :status, false
   end
 end
 ```
 
+**Large tables (>1M rows): use a NOT NULL check constraint instead of `change_column_null`.** Direct `change_column_null` rewrites the table and holds an `ACCESS EXCLUSIVE` lock for the duration. A `NOT VALID` check constraint validates new rows immediately and lets you validate existing rows without blocking writes:
+
+```ruby
+# Step 3a: Add unvalidated constraint (fast, no full-table scan)
+class AddOrderStatusNotNullCheck < ActiveRecord::Migration[7.2]
+  def change
+    add_check_constraint :orders, "status IS NOT NULL", name: "orders_status_null", validate: false
+  end
+end
+
+# Step 3b: Validate constraint (no write lock, scans table)
+class ValidateOrderStatusNotNullCheck < ActiveRecord::Migration[7.2]
+  def change
+    validate_check_constraint :orders, name: "orders_status_null"
+  end
+end
+```
+
+The `strong_migrations` gem flags `change_column_null` on large tables and recommends this exact pattern.
+
 ### Adding a Timestamp Column to an Existing Table
 
 Good - nullable timestamp with partial index (e.g., `fulfilled_at` on orders):
 
 ```ruby
-class AddFulfilledAtToOrders < ActiveRecord::Migration[7.1]
+class AddFulfilledAtToOrders < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
 
   def change
@@ -130,7 +150,7 @@ end
 Partial indexes reduce index size by only indexing relevant rows. Useful for status columns where queries target non-terminal states:
 
 ```ruby
-class AddPartialIndexOnOrderStatus < ActiveRecord::Migration[7.1]
+class AddPartialIndexOnOrderStatus < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
 
   def change
@@ -185,7 +205,7 @@ class Order < ApplicationRecord
 end
 
 # Deploy 2: Remove column
-class RemoveLegacyFieldFromOrders < ActiveRecord::Migration[7.1]
+class RemoveLegacyFieldFromOrders < ActiveRecord::Migration[7.2]
   def change
     safety_assured { remove_column :orders, :legacy_field, :string }
   end
@@ -195,7 +215,7 @@ end
 ### Creating Tables with Proper Conventions
 
 ```ruby
-class CreateOrders < ActiveRecord::Migration[7.1]
+class CreateOrders < ActiveRecord::Migration[7.2]
   def change
     create_table :orders do |t|
       t.references :user, null: false, foreign_key: true
@@ -210,7 +230,7 @@ class CreateOrders < ActiveRecord::Migration[7.1]
   end
 end
 
-class CreateOrderItems < ActiveRecord::Migration[7.1]
+class CreateOrderItems < ActiveRecord::Migration[7.2]
   def change
     create_table :order_items do |t|
       t.references :order, null: false, foreign_key: true
@@ -250,14 +270,14 @@ Good - add FK without full validation, then validate separately:
 
 ```ruby
 # Migration 1: Add FK (no validation - fast)
-class AddForeignKeyToOrders < ActiveRecord::Migration[7.1]
+class AddForeignKeyToOrders < ActiveRecord::Migration[7.2]
   def change
     add_foreign_key :orders, :users, validate: false
   end
 end
 
 # Migration 2: Validate FK (no lock)
-class ValidateOrdersUserFk < ActiveRecord::Migration[7.1]
+class ValidateOrdersUserFk < ActiveRecord::Migration[7.2]
   def change
     validate_foreign_key :orders, :users
   end

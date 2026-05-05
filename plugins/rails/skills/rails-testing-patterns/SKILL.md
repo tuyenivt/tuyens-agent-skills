@@ -1,6 +1,6 @@
 ---
 name: rails-testing-patterns
-description: RSpec testing patterns for Rails 7+/8. Covers the test type hierarchy (model, request, system, service specs), FactoryBot with traits, shoulda-matchers, Sidekiq job testing, Pundit policy specs, VCR/WebMock for external APIs, and shared examples.
+description: RSpec testing patterns for Rails 7.2+. Covers the test type hierarchy (model, request, system, service specs), FactoryBot with traits, shoulda-matchers, Sidekiq job testing, Pundit policy specs, VCR/WebMock for external APIs, and shared examples.
 metadata:
   category: backend
   tags: [ruby, rails, rspec, testing, factorybot]
@@ -334,18 +334,18 @@ Shoulda::Matchers.configure do |config|
 end
 ```
 
-### DatabaseCleaner
+### Test Database Isolation
+
+Prefer Rails' built-in transactional fixtures over the `database_cleaner` gem. System specs share the connection between the test thread and the Capybara server thread, so a single transaction works for JS-driven tests too:
 
 ```ruby
-# spec/support/database_cleaner.rb
+# spec/rails_helper.rb
 RSpec.configure do |config|
-  config.before(:suite) { DatabaseCleaner.clean_with(:truncation) }
-  config.before(:each) { DatabaseCleaner.strategy = :transaction }
-  config.before(:each, js: true) { DatabaseCleaner.strategy = :truncation }
-  config.before(:each) { DatabaseCleaner.start }
-  config.after(:each) { DatabaseCleaner.clean }
+  config.use_transactional_fixtures = true
 end
 ```
+
+Only reach for `database_cleaner-active_record` with the `:truncation` strategy if you have legitimate cross-connection state (e.g., a separate analytics DB written to inside the test) - and document why. Adding it preemptively trades speed for nothing on a modern Rails app.
 
 ### Sidekiq Testing
 

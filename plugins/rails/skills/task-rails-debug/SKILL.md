@@ -75,10 +75,10 @@ Run `bin/rails zeitwerk:check` to verify. Prevention: add `Rails.application.eag
 
 **Sidekiq Errors:**
 
-| Error                             | Likely Cause                                     | Skill                    |
-| --------------------------------- | ------------------------------------------------ | ------------------------ |
-| Sidekiq job failure               | Non-serializable args, missing idempotency guard | `rails-sidekiq-patterns` |
-| `ActiveJob::DeserializationError` | Record deleted between enqueue and execution     | `rails-sidekiq-patterns` |
+| Error                             | Likely Cause                                                                                                | Skill                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Sidekiq job failure               | Non-serializable args, missing idempotency guard                                                            | `rails-sidekiq-patterns` |
+| `ActiveJob::DeserializationError` | Record deleted, OR job enqueued inside a DB transaction that hasn't committed yet (worker races the commit) | `rails-sidekiq-patterns` |
 
 **Nil Reference Errors:**
 
