@@ -79,13 +79,15 @@ If any required input is missing, ask before writing:
 - **No alternatives provided**: "What other approaches did you consider? An ADR without alternatives documents an outcome, not a decision."
 - **Status unclear**: default to `Proposed` - the author or team lead marks it `Accepted` after review.
 - **Context vague**: ask "What situation or constraint made this decision necessary right now?"
-- **Decision already implemented**: 'Is this decision already in production, or is it being proposed for approval?' Default to `Proposed` if unclear; set `Accepted` only when the author confirms it is already implemented.
+- **Decide vs justify check**: Ask 'Is this decision already implemented, or is the ADR being written before the change lands?' ADRs are most valuable as a forcing function for the decision itself, not as after-the-fact justification. If already implemented, ask whether the author has revisited the alternatives with fresh eyes - if not, prompt them to before proceeding, and note in the ADR's References that the rationale was reconstructed post-implementation. Default status to `Proposed` if unclear; set `Accepted` only when the author confirms it is already implemented and reviewed.
 
 ### Step 3 - Analyse Trade-Offs
 
 Use skill: `stack-detect`
 
-Use skill: `tradeoff-analysis`
+**If three or more alternatives are provided**, use skill: `architecture-proposal-compare` to produce a side-by-side criteria matrix across all options. Treat each alternative as a proposal. The matrix becomes the basis of the Alternatives Considered section in Step 4 and is the artifact stakeholders use to see that the decision was made on evidence rather than preference. Then use skill: `tradeoff-analysis` on the chosen option only, to deepen its costs and risks for the Consequences section.
+
+**If only two alternatives are provided**, skip `architecture-proposal-compare` (the matrix overhead is not worth it for a binary choice) and use skill: `tradeoff-analysis` on each alternative.
 
 For each alternative (including the chosen option), evaluate:
 
@@ -96,7 +98,7 @@ For each alternative (including the chosen option), evaluate:
 
 The chosen option must have the same rigour applied as the rejected ones - document its costs, not just its benefits.
 
-The `tradeoff-analysis` output provides the structured evaluation of each alternative. Use this output to populate the Alternatives Considered and Consequences sections in Step 4.
+Use the `tradeoff-analysis` output (and `architecture-proposal-compare` matrix when produced) to populate the Alternatives Considered and Consequences sections in Step 4.
 
 ### Step 4 - Write the ADR
 
