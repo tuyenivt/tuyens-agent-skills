@@ -63,6 +63,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | `task-code-debug`                | Universal debugging entry point. Detects stack and delegates to `task-{stack}-debug`, or runs systematic classify-locate-fix.                                                                                                                                                                                                                                       |
 | `task-code-explain`              | Explain a specific file, function, or module - what it does, where it sits in the flow, why it exists, non-obvious gotchas, key invariants, and what to double-check before modifying it.                                                                                                                                                                           |
 | `task-onboard`                   | Codebase onboarding for engineers new to a project - detect stack, capture local bootstrap and contribution workflow, map architecture and ecosystem, extract patterns, flag tech debt and first-PR safe zones. Supports `Focus: first-pr / architect-survey / full`.                                                                                               |
+| `task-pr-create`                 | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                                                                                                                                                                                                                                    |
 | `task-code-refactor`             | Safe refactoring plan with risk assessment. Auto-detects stack and adapts refactoring patterns.                                                                                                                                                                                                                                                                     |
 | `task-code-review`               | Staff-level code review for pull requests with risk assessment, architecture boundary protection, AI-generated code quality control, and stack-adapted checks. Supports `quick`, `standard`, and `deep` depth levels. Extra scopes (`+perf`, `+security`, `+observability`, `full`) run as parallel subagents and are merged into a single severity-ordered report. |
 | `task-code-review-perf`          | Performance review for backend and frontend. Auto-detects stack and adapts performance checks. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                                                                                                                               |
@@ -154,6 +155,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-implement`                 | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                               |
 | `task-code-debug`                | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                               |
 | `task-onboard`                   | `stack-detect`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                                               |
+| `task-pr-create`                 | `stack-detect`, `review-pr-risk`                                                                                                                                                                                                                                                           |
 | `task-code-refactor`             | `stack-detect`, `backend-coding-standards`, `architecture-concurrency`, `architecture-guardrail`                                                                                                                                                                                           |
 | `task-code-review`               | `stack-detect`, `review-precondition-check`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility` |
 | `task-code-review-perf`          | `stack-detect`, `review-precondition-check`, `backend-caching`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`                                                                                                                                                     |
@@ -234,4 +236,15 @@ Optimizes the report for an engineer who needs to ship their first PR quickly: l
 Focus: architect-survey
 Scope: payments module
 Known pain points: checkout flow is slow and poorly tested
+```
+
+```
+/task-pr-create
+```
+
+Auto-reads `git diff main...HEAD` and commit messages. Produces title, summary, risk level, test plan, and linked tickets/ADRs.
+
+```
+/task-pr-create
+Branch: feature/PROJ-123-add-payment-flow
 ```
