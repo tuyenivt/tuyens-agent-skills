@@ -57,6 +57,8 @@ Staff-level code review that prioritizes system risk over style. AI-generated co
 
 Default: `standard`. Use `quick` when user asks for "quick review", "sanity check", or "is this safe?". Use `deep` when user asks for "full review", "architecture review", or "Principal sign-off".
 
+**Auto-promote to `deep`:** After Phase A computes blast radius, if `Blast Radius` is `Wide` or `Critical` and the user did not explicitly pass `quick`, promote depth from `standard` to `deep` automatically. Surface this in Summary as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`. Pass `quick` explicitly to suppress.
+
 ## Scope
 
 | Scope           | What runs                                                                      |
@@ -67,16 +69,18 @@ Default: `standard`. Use `quick` when user asks for "quick review", "sanity chec
 | + Observability | Core + delegate to skill: `task-code-review-observability`                     |
 | Full            | Core + Performance + Security + Observability                                  |
 
-Default: **Core**. If invoked with an explicit scope argument (e.g., `/task-code-review +perf`), skip the question and use that scope directly.
+Default: **Core with auto-escalation** (see below). If invoked with an explicit scope argument (e.g., `/task-code-review +perf`, `full`, or `core-only`), skip auto-escalation and use that scope directly.
 
 Depth and scope are independent. Example: `quick` depth with `+security` scope = risk snapshot + security findings only.
 
-**Scope escalation signals:** If the change involves any of the following, recommend the user add the corresponding scope:
+**Scope auto-escalation:** After Step 2 (diff resolution) and before Phase A, scan the file list and diff hunks for the following signals and **automatically promote scope** unless the user passed an explicit scope flag or `core-only`:
 
-- File uploads, auth flows, user input deserialization, secrets handling -> recommend +Security
-- Bulk operations, new database queries, new endpoints with large payloads -> recommend +Perf
-- New service, new external dependency, new async/queue boundary, or change to logging/metrics/tracing wiring -> recommend +Observability
-- Multiple signal categories present -> recommend Full
+- File uploads, auth/authn/authz flows, params/strong params, SQL/raw queries, user input deserialization, secrets/credentials handling, background jobs with user input -> auto-add +Security
+- Bulk operations, new database queries, new indexes/migrations, new endpoints with large payloads, loops over collections that hit I/O -> auto-add +Perf
+- New service, new external dependency, new async/queue boundary, change to logging/metrics/tracing wiring -> auto-add +Observability
+- Two or more signal categories present -> promote to Full
+
+Surface the promotion in Summary as `Scope auto-escalated: Core -> <scope> (signals: <list>)`. Pass `core-only` explicitly to suppress (e.g., `/task-code-review core-only`).
 
 ## Invocation
 
@@ -269,6 +273,8 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** [language / framework]
+**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 
 ## High-Impact Findings
 
@@ -355,6 +361,8 @@ _Omit this section if there are no actionable findings._
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>`, then reused by all later phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
+- [ ] Scope auto-escalation evaluated after Step 2; promotion (or `core-only` suppression) recorded in Summary
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Every Blocker states a system risk, not just a code observation
 - [ ] Architecture boundary impact assessed even if no violations found (including component boundaries for frontend)
@@ -380,6 +388,7 @@ _Omit this section if there are no actionable findings._
 - Providing vague feedback without a concrete fix ("this could be better")
 - Blocking on personal preference rather than correctness, risk, or maintainability
 - Commenting on every file - focus on the most impactful findings
-- Running performance or security sub-workflows when user requested Core scope only
+- Running performance or security sub-workflows when user passed `core-only` (auto-escalation must be suppressed by explicit user flag)
+- Treating auto-escalation signals as advisory recommendations the user must opt into - the default is to promote scope and let the user opt out via `core-only`
 - Running multiple extra scopes sequentially when they could spawn in parallel as independent subagents
 - Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
