@@ -144,6 +144,10 @@ class FulfillOrder
 end
 ```
 
+### Sidekiq vs Rake Task
+
+Sidekiq jobs give you retries, a dead set, a UI, and per-job concurrency. Rake tasks are simpler and run in the foreground - good for ops-triggered work and cron-driven maintenance. A rake task can fan out to Sidekiq jobs for large batches. See `rails-rake-task-patterns` for the decision matrix and fan-out pattern.
+
 ### Sidekiq vs ActiveJob
 
 Direct `Sidekiq::Job` (the new name for `Sidekiq::Worker` since Sidekiq 6.3+) gives access to Sidekiq-specific features: `sidekiq_options`, `sidekiq_retry_in`, `unique_for`, batches. ActiveJob's `ApplicationJob` adds an abstraction layer that loses these. Default to `Sidekiq::Job` unless you need to swap backends or use Action Mailer's `deliver_later` (which goes through ActiveJob).

@@ -22,7 +22,7 @@ user-invocable: false
 
 - One structural change per migration - do not mix adding columns with adding indexes
 - Every migration must be reversible - use `change` method or explicit `up`/`down`
-- Separate data migrations from schema migrations - use maintenance_tasks or `db/data_migrate/` pattern
+- Separate data migrations from schema migrations - use maintenance_tasks, `db/data_migrate/`, or a rake task (see `rails-rake-task-patterns`)
 - Always include `timestamps` on new tables
 - Always add indexes on foreign key columns and frequently-filtered columns
 - Use `disable_ddl_transaction!` for all `CONCURRENTLY` operations

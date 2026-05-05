@@ -35,6 +35,7 @@ Not for:
 - **API-only app**: If the project inherits from `ActionController::API`, skip CSRF configuration and session-based auth patterns.
 - **State machine transitions**: Feature has explicit status transitions (e.g., pending -> confirmed -> shipped). Generate transition validation in the service layer and enum with explicit integer mapping.
 - **Inventory/counter operations**: Feature decrements or increments a counter on another model. Wrap in a transaction with the status change; dispatch jobs after commit.
+- **Backfill or maintenance task**: Feature requires populating a new column on existing rows, or a recurring maintenance/report job. Use skill: `rails-rake-task-patterns` to generate a thin rake task that delegates to a service, with dry-run and production confirmation guards.
 
 ## Rules
 
@@ -142,6 +143,8 @@ end
 ```
 
 If Sidekiq needed: Use skill: `rails-sidekiq-patterns`
+
+If a rake task is needed for backfill, recurring maintenance, or ops-triggered work: Use skill: `rails-rake-task-patterns`. Generate the task as a thin shell that delegates to the service.
 
 ### STEP 6 - CONTROLLERS
 
