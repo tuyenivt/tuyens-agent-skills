@@ -217,6 +217,12 @@ Kotlin / Spring Boot (plugin: kotlin, requires java)
 Python / FastAPI / Django (plugin: python)
   scaffold a new Python feature       -> /task-python-new
   debug a Python issue                -> /task-python-debug
+  Python staff-level code review      -> /task-python-review
+  Python performance review           -> /task-python-review-perf
+  Python security review              -> /task-python-review-security
+  Python observability review         -> /task-python-review-observability
+  Python test strategy / scaffolds    -> /task-python-test
+  Python refactor plan                -> /task-python-refactor
 
 Ruby on Rails (plugin: rails)
   scaffold a new Rails feature        -> /task-rails-new

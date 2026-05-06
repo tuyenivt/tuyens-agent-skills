@@ -13,10 +13,16 @@ Claude Code plugin for Python development.
 
 ## Workflow Skills
 
-| Skill             | Agent            | Description                                              |
-| ----------------- | ---------------- | -------------------------------------------------------- |
-| task-python-new   | python-architect | End-to-end feature implementation across all layers      |
-| task-python-debug | python-architect | Debug tracebacks, logs, Celery errors, and test failures |
+| Skill                             | Agent                       | Description                                                                                                          |
+| --------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| task-python-new                   | python-architect            | End-to-end feature implementation across all layers                                                                  |
+| task-python-debug                 | python-architect            | Debug tracebacks, logs, Celery errors, and test failures                                                             |
+| task-python-review                | python-tech-lead            | Python staff-level code review umbrella - Phases A-E with FastAPI/Django idioms; spawns parallel scope subagents     |
+| task-python-review-perf           | python-performance-engineer | SQLAlchemy / Django ORM N+1, async event-loop blocking, Celery throughput, migration safety                          |
+| task-python-review-security       | python-security-engineer    | FastAPI OAuth2 / JWT, Django auth / DRF permissions, Pydantic v2 mass assignment, ORM injection, OWASP Top 10        |
+| task-python-review-observability  | python-tech-lead            | structlog, OpenTelemetry SDK + auto-instrumentation, Prometheus client, error-tracker SDKs (library-level focus)     |
+| task-python-test                  | python-test-engineer        | pytest strategy / scaffolding (httpx ASGITransport, DRF APIClient, Testcontainers, factory_boy, Celery testing)      |
+| task-python-refactor              | python-tech-lead            | Refactor plan: fat routers/views, anemic services, sync-in-async, Django signal abuse, Celery idempotency, with gates|
 
 ## Atomic Skills (internal, not user-invocable)
 
