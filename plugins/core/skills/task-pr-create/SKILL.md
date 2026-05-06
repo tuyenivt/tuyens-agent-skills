@@ -38,28 +38,51 @@ This skill writes the PR description. It does not open or submit the PR.
 
 | Input                    | Required | Source                                                        |
 | ------------------------ | -------- | ------------------------------------------------------------- |
-| Git diff or file list    | Yes      | `git diff main...HEAD` or paste diff directly                 |
-| Commit messages          | Yes      | `git log main...HEAD --oneline`                               |
+| Git diff or file list    | Yes      | `git diff <base>...HEAD` or paste diff directly               |
+| Commit messages          | Yes      | `git log <base>...HEAD --oneline`                             |
 | Ticket / issue reference | No       | Branch name, commit message, or user-provided (e.g. JIRA-123) |
 | ADR references           | No       | Mentioned in commit messages or `docs/adr/` directory         |
 | Related PRs              | No       | User-provided or referenced in commit messages                |
 
-If no diff is provided, run `git diff main...HEAD` to obtain it. If the base branch is not `main`, ask the user for the base branch before proceeding.
+The base branch is detected in Step 1 - the user does not need to supply it unless detection fails.
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Resolve Branch and Base
+
+Establish the `(base_ref, head_ref)` pair before any diff is read. PR creation runs against the current feature branch only - there is no `pr-<N>` mode here.
+
+1. **Resolve head:** `head_ref = HEAD`; capture `current_branch = git rev-parse --abbrev-ref HEAD`.
+2. **Reject trunk heads:** if `current_branch` matches `main`, `master`, `develop`, or `trunk` (case-insensitive), stop:
+
+   ```text
+   You are on `<current_branch>`, which is a trunk branch. There is nothing scoped to describe in a PR.
+
+   Switch to your feature branch (`git checkout <feature-branch>`) and re-run.
+   ```
+
+3. **Detect base:** resolve `base_ref` in this order, stopping at the first that succeeds:
+   1. `git symbolic-ref refs/remotes/origin/HEAD` (typically `refs/remotes/origin/main`).
+   2. `git rev-parse --verify origin/main`, then `origin/master`, then `origin/develop`.
+   3. `git rev-parse --verify main`, then `master`, then `develop`.
+4. **Ask only if ambiguous:** if none of the above resolve, ask the user which branch is the base. Do not silently pick.
+
+Record `base_ref` (a name, e.g. `origin/main`) for use in Step 3. The consuming diff/log commands use `<base_ref>...HEAD`.
+
+### Step 2 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and tooling. This informs test plan language (e.g., "run `./gradlew test`" vs `pytest` vs `go test ./...`).
 
-### Step 2 - Gather Context
+### Step 3 - Gather Context
 
-Run or ask for:
+Using `base_ref` from Step 1, run or ask for:
 
-1. **Diff**: `git diff main...HEAD` (or supplied by user)
-2. **Commits**: `git log main...HEAD --oneline --no-merges`
-3. **Branch name**: `git rev-parse --abbrev-ref HEAD`
-4. **Changed files**: `git diff main...HEAD --name-only`
+1. **Diff**: `git diff <base_ref>...HEAD` (or supplied by user)
+2. **Commits**: `git log <base_ref>...HEAD --oneline --no-merges`
+3. **Branch name**: `current_branch` from Step 1
+4. **Changed files**: `git diff <base_ref>...HEAD --name-only`
+
+If the diff is empty (no commits ahead of base), stop and tell the user there is nothing to describe.
 
 Extract from the above:
 
@@ -67,7 +90,7 @@ Extract from the above:
 - **ADR references**: mentions of `ADR-`, `adr/`, or `docs/decisions/` in commits or diff
 - **Related PRs**: mentions of `PR #`, `pull/`, or sibling branch names in commits
 
-### Step 3 - Classify Risk
+### Step 4 - Classify Risk
 
 Use skill: `review-pr-risk`
 
@@ -79,7 +102,7 @@ Risk: Low | Medium | High | Critical  -  [1-2 sentence rationale]
 
 This appears verbatim in the PR description to orient reviewers immediately.
 
-### Step 4 - Write PR Description
+### Step 5 - Write PR Description
 
 Compose the description following the Output Format below.
 
@@ -110,7 +133,7 @@ Compose the description following the Output Format below.
 - Only include items relevant to this specific PR
 - Skip items that don't apply (don't list empty boxes for non-applicable items)
 
-### Step 5 - Surface Linked Context
+### Step 6 - Surface Linked Context
 
 At the bottom of the PR description, add a **Linked Context** section only if at least one of the following exists:
 
@@ -177,10 +200,13 @@ Related: #[PR number or branch]
 - If the diff is empty or the branch has no commits ahead of base, say so and stop
 - If the diff is too large to summarize meaningfully (500+ files), ask the user to scope the input
 - Do not include personal opinions about code quality - this is documentation, not review
-- Risk classification from Step 3 must be the only risk assessment - do not add a second one inline
+- Risk classification from Step 4 must be the only risk assessment - do not add a second one inline
 
 ## Self-Check
 
+- [ ] Branch and base resolved in Step 1; trunk-branch HEAD rejected; base auto-detected (or asked for when ambiguous)
+- [ ] Stack detected in Step 2 and reflected in the test plan
+- [ ] Diff and commits gathered using the resolved `base_ref`, not a hardcoded `main`
 - [ ] Title is imperative mood, under 72 characters, with type prefix
 - [ ] Summary explains the "why" not the "how" - no line-by-line diff description
 - [ ] Risk classification present with rationale
