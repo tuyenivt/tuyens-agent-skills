@@ -64,6 +64,7 @@ If a stack-specific observability review workflow exists for the detected stack,
 | Java / Spring Boot   | `task-spring-review-observability` |
 | Python               | `task-python-review-observability` |
 | Node.js / TypeScript | `task-node-review-observability`   |
+| React                | `task-react-review-observability`  |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

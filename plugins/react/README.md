@@ -23,10 +23,16 @@ Claude Code plugin for React 19+ / TypeScript / Next.js (primary), Vite (seconda
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill              | Purpose                                                                       |
-| ------------------ | ----------------------------------------------------------------------------- |
-| `task-react-new`   | End-to-end React feature implementation (components + state + data + tests)   |
-| `task-react-debug` | Debug React errors (hydration, hooks, render loops, Server Components, build) |
+| Skill                             | Purpose                                                                                                                                   | Agent                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `task-react-new`                  | End-to-end React feature implementation (components + state + data + tests)                                                               | `react-architect`            |
+| `task-react-debug`                | Debug React errors (hydration, hooks, render loops, Server Components, build)                                                             | `react-tech-lead`            |
+| `task-react-review`               | Staff-level umbrella review with Phases A-E; spawns parallel perf / security / observability subagents                                    | `react-tech-lead`            |
+| `task-react-review-perf`          | Core Web Vitals (LCP / INP / CLS), bundle, hydration, RSC vs Client boundary, TanStack Query cache, ISR / `revalidate`                    | `react-performance-engineer` |
+| `task-react-review-security`      | XSS via `dangerouslySetInnerHTML`, CSP / nonce, Server Action validation, `NEXT_PUBLIC_` leakage, open redirect, OWASP (React lens)       | `react-security-engineer`    |
+| `task-react-review-observability` | `web-vitals`, Sentry browser SDK + error boundaries, OTel browser, Next.js `instrumentation.ts`, RUM, structured client logging           | `react-tech-lead`            |
+| `task-react-test`                 | Test strategy / coverage assessment / scaffolds with Vitest + RTL + MSW + Playwright; Server Component testing strategy                   | `react-test-engineer`        |
+| `task-react-refactor`             | Step-by-step refactor plan for god components, prop drilling, `useEffect` overuse, Client → Server conversion, etc.; Vitest coverage gate | `react-tech-lead`            |
 
 ## Atomic Skills (Reusable Patterns)
 

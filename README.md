@@ -263,6 +263,12 @@ PHP / Laravel (plugin: php)
 React / Next.js (plugin: react)
   scaffold a new React feature        -> /task-react-new
   debug a React issue                 -> /task-react-debug
+  staff-level code review             -> /task-react-review
+  performance review                  -> /task-react-review-perf
+  security review                     -> /task-react-review-security
+  observability review                -> /task-react-review-observability
+  test strategy / coverage / scaffolds-> /task-react-test
+  refactoring plan                    -> /task-react-refactor
 
 Vue / Nuxt (plugin: vue)
   scaffold a new Vue feature          -> /task-vue-new

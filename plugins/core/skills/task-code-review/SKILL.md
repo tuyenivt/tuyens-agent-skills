@@ -119,6 +119,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | Java / Spring Boot   | `task-spring-review` |
 | Python               | `task-python-review` |
 | Node.js / TypeScript | `task-node-review`   |
+| React                | `task-react-review`  |
 
 When delegating, pass:
 
