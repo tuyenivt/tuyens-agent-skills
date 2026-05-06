@@ -78,6 +78,10 @@ Refactoring without test coverage is a rewrite with extra steps. Identify the te
 
 **Output of this step:** explicit coverage status using one of the three labels. Do not proceed past Step 4 if status is `Inadequate`.
 
+**Preview rules when Inadequate.** Step 4's smell catalog still runs to populate the Smells Identified and Sibling Smells (Out of Scope) preview - that is what the catalog is for. The refusal is on producing Steps 1+, not on diagnostic output. The preview helps the author scope the follow-up `task-react-test` invocation (e.g., "we know we'll need filter-validation tests because there's a god component with filter logic").
+
+**Bug-fix smuggled into a refactor request.** If the user's prose mixes "refactor X" with "and also fix that the filter does not persist on refresh," stop and surface the conflict: refactoring assumes behavior preservation, so a behavior change must either (a) be a separate PR ahead of the refactor, or (b) be explicitly labeled `coupled-fix` in Step 6 with its own test gate. Do not silently fold it into an extraction step.
+
 ### Step 4 - Identify React Smells
 
 Inspect the target for these React-specific smells. Use judgment - these are signals, not hard rules.
@@ -97,17 +101,18 @@ Inspect the target for these React-specific smells. Use judgment - these are sig
 
 **Hook smells:**
 
-| Smell                                     | Signal                                                                                                                                   | Risk   |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Fat Hook                                  | Custom hook with 8+ params and 12+ return fields - extract or split                                                                      | High   |
-| `useEffect` for Derived State             | `useEffect(() => setX(a + b), [a, b])` - compute during render: `const x = a + b`                                                        | High   |
-| `useEffect` for Event Handling            | `useEffect(() => { if (clicked) doThing() }, [clicked])` triggered by `setClicked` in `onClick` - just call `doThing()` from the handler | High   |
-| Missing `useEffect` Cleanup               | Subscriptions / observers / intervals without a return cleanup function - memory leak across re-renders                                  | High   |
-| Stale Closure / Wrong Deps                | `useEffect(..., [])` while reading props / state - eslint-disabled `react-hooks/exhaustive-deps` without comment                         | High   |
-| `useState` for Derived Value              | State that is always computed from other state / props - eliminate; compute during render                                                | Medium |
-| `useMemo` / `useCallback` on Cheap Values | Memoization on primitives / cheap operations - costs more than it saves                                                                  | Low    |
-| `useState` for URL-Synced State           | Filters, page, sort kept in `useState` instead of search params - breaks deep-linking, breaks back-button, doesn't survive reload        | Medium |
-| Hooks Called Conditionally                | `if (x) { useState(...) }` or hooks after early returns - violates Rules of Hooks (eslint catches this; flag any disable)                | High   |
+| Smell                                     | Signal                                                                                                                                            | Risk   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Fat Hook                                  | Custom hook with 8+ params and 12+ return fields - extract or split                                                                               | High   |
+| `useEffect` for Derived State             | `useEffect(() => setX(a + b), [a, b])` - compute during render: `const x = a + b`                                                                 | High   |
+| `useEffect` for Event Handling            | `useEffect(() => { if (clicked) doThing() }, [clicked])` triggered by `setClicked` in `onClick` - just call `doThing()` from the handler          | High   |
+| Missing `useEffect` Cleanup               | Subscriptions / observers / intervals without a return cleanup function - memory leak across re-renders                                           | High   |
+| Stale Closure / Wrong Deps                | `useEffect(..., [])` while reading props / state - eslint-disabled `react-hooks/exhaustive-deps` without comment                                  | High   |
+| `useState` for Derived Value              | State that is always computed from other state / props - eliminate; compute during render                                                         | Medium |
+| `useState` for Lifetime Constant          | `const [config] = useState({...})` initialized once and never set - move to a module-level constant, `useMemo`, or a `useRef` if identity matters | Low    |
+| `useMemo` / `useCallback` on Cheap Values | Memoization on primitives / cheap operations - costs more than it saves                                                                           | Low    |
+| `useState` for URL-Synced State           | Filters, page, sort kept in `useState` instead of search params - breaks deep-linking, breaks back-button, doesn't survive reload                 | Medium |
+| Hooks Called Conditionally                | `if (x) { useState(...) }` or hooks after early returns - violates Rules of Hooks (eslint catches this; flag any disable)                         | High   |
 
 **Data fetching smells:**
 
@@ -206,6 +211,39 @@ Each refactoring step must be:
 3. Remove `"use client"` from the original layout / page; replace the inlined interactivity with `<NewClientComponent />`
 4. Verify the parent now compiles as a Server Component (no hooks, no event handlers, no `window`); fix or hoist any leakage
 5. Run tests; assert observable behavior unchanged (RTL component tests for the leaf, Playwright E2E for route-level)
+
+> **Mixed-interactivity case.** When the original Client Component has interactivity scattered across the tree (filters at the top, table rows in the middle, pagination at the bottom - each holding state) you cannot pull it down to a single leaf. Instead, identify each interactive island, extract each one as its own `"use client"` component, and have the Server Component parent compose them. The parent stays a Server Component; it passes server-fetched data into each Client island as props. If two islands must share state, hoist that shared state into a Client `<Provider>` that wraps only the islands that need it - not the whole route.
+
+**Recipe: Move filter / pagination / sort state to URL search params (Next.js + React Router)**
+
+This is a behavior-aware refactor: moving filter state to the URL means refresh, deep links, and back-button now preserve filter state. That is a UX contract change. Treat it as `coupled-fix` Step 1 in the plan and tell the user explicitly so the change is not surprising.
+
+1. Define the URL contract: which params, types, defaults (e.g., `status: 'open' | 'closed' | 'all' = 'all'`, `page: number = 1`, `q: string = ''`). Validate via Zod / a small parser; reject malformed values to defaults rather than crashing on bad input
+2. Replace each `useState` filter with a read from search params via `useSearchParams()` (Next.js) / `useSearchParams` from React Router
+3. Replace each `setFilter(...)` call with a `router.push(\`?\${params.toString()}\`)`(Next.js) /`setSearchParams(params)`(React Router); on Next.js, prefer`router.replace` for filters that should not pollute history
+4. Update the data fetcher: query keys / Server Component fetches now derive from search params (`['orders', { status, page }]`); the URL is the source of truth
+5. Run tests: deep-linking (`/orders?status=open` renders filtered list immediately), back-button restores prior filter, refresh preserves filter, validation fallback for malformed params
+6. (Coupled-fix) Note that this changes back-button behavior - document in PR description; check that no analytics depend on the old in-memory state
+
+**Recipe: Replace fan-out `useEffect` fetches with Server Component fetch + `Promise.all` (Next.js) or parallel TanStack queries**
+
+The smell: a Client Component with three `useEffect(() => fetch(...), [])` blocks for `/api/orders`, `/api/users`, `/api/billing` - serial waterfall (component renders, hydrates, fires three requests, each blocking its render path on its own).
+
+1. **If the parent could be a Server Component** (and would do so once the consuming subtree is moved to a Client leaf - see the `"use client"` recipe): hoist the three fetches to the Server Component. Use `await Promise.all([getOrders(), getUsers(), getBilling()])` so they run in parallel server-side. Pass the resolved data as props to the (now smaller) Client Component
+2. **Otherwise** (real client-only fetch): replace each `useEffect` with `useQuery({ queryKey, queryFn })` - `useQueries([...])` for explicit fan-out. Set `staleTime` (default 0 = refetch on every mount) and `gcTime` deliberately based on data volatility (e.g., `staleTime: 60_000` for typical reads; longer for catalog / config)
+3. Add cache invalidation on writes that mutate the fetched data: `useMutation({ onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }) })`
+4. Add Suspense boundaries (`<Suspense fallback={<Skeleton />}>`) so the slow fetch streams while the fast ones render - especially valuable in Next.js Server Components
+5. Run tests: empty / loading / error states (the `useEffect` version probably under-tested these); concurrent fan-out asserted via mock latency
+
+**Recipe: Virtualize a long list**
+
+When the target renders > 500 rows in steady state and the diff under refactor is touching the rendering path, virtualization belongs in the plan. Treat as a separate refactor target if the user did not name it - do not bundle silently.
+
+1. Choose the primitive: `@tanstack/react-virtual` (modern, framework-agnostic, supports horizontal + grid) or `react-window` (lighter, simpler API). Match what the project already uses if any
+2. Replace the rendered list with the virtualizer's render path; reserve container height (`h-screen`, fixed `--vh`, or measured) - virtualization does not work without a known viewport
+3. Verify keyboard navigation, screen-reader announcement, and scroll-restoration still work - virtualization can break all three; use the library's accessibility mode (`@tanstack/react-virtual` `aria-rowcount` / `aria-rowindex` semantics)
+4. Run tests: `userEvent` keyboard navigation, screen-reader announcement (`vitest-axe` for accessibility tree), scroll restoration on back-navigation
+5. Measure the LCP / INP impact (RUM if available, else Lighthouse run before / after)
 
 **Recipe: Extract custom hook from fat component**
 
@@ -383,6 +421,8 @@ _Omit this section if the target file has no other smells._
 - [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
 - [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
 - [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin` (Step 3)
+- [ ] When refusal triggered (Inadequate), Step 4 catalog still ran to produce the Smells preview; not skipped (Step 3)
+- [ ] Bug-fix smuggled into a refactor request was surfaced and split into a separate PR or labeled `coupled-fix` - never silently folded (Step 3)
 - [ ] React-specific smells identified using Step 4 catalog (component, hook, data fetching, state, Server Action, accessibility, test) (Step 4)
 - [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
 - [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 6)

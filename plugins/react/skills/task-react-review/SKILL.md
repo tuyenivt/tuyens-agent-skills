@@ -152,10 +152,14 @@ Logical correctness, error handling completeness, edge cases affecting UI integr
 - [ ] **`useEffect` cleanup**: subscriptions / observers / intervals return a cleanup function; flag missing cleanup as a [High] memory-leak finding
 - [ ] **Missing `key` on lists / `key={index}`**: `.map((item, index) => <Row key={index} />)` is wrong on a reorderable / filterable / removable list - reconciliation breaks. `key={item.id}` (stable) is right. Flag both
 - [ ] **`"use client"` placement (Next.js)**: directive is at the leaf of the tree (a small interactive component), not the root of a layout / page. A root-level `"use client"` pulls the entire descendent tree into the client bundle and defeats RSC. Flag as a [High] correctness + perf finding
+- [ ] **Unnecessary `"use client"` (Next.js)**: a Client Component file with no hook, event handler, browser API, or `useState` / `useEffect` / `useRef` - revert to Server Component. The umbrella review owns presence (it's a code smell signaling confused mental model); `task-react-review-perf` owns the bundle-cost depth
 - [ ] **State / hooks in Server Component (Next.js)**: any `useState` / `useEffect` / `useRef` in a file without `"use client"` is a build error - flag as a code smell that signals confused mental model even if the build catches it
 - [ ] **Server Component data leak**: Server Component passing entire ORM rows (Prisma model / TypeORM entity) as a prop to a Client Component serializes internal fields (`passwordHash`, `mfaSecret`) into the page HTML. Project to a DTO at the data layer or before passing the prop
-- [ ] **Server Action input validation (Next.js)**: every `'use server'` function or `<form action={...}>` target validates input via Zod / `zod-form-data` `.strict()` at the top, before any auth or DB call. Missing validation is a [High] / [Blocker] depending on whether the action mutates data; raw `Object.fromEntries(formData)` going into `prisma.x.update({ data })` is a critical mass-assignment finding
+- [ ] **Server Action input validation (Next.js)**: every `'use server'` function or `<form action={...}>` target validates input via Zod / `zod-form-data` `.strict()` at the top, before any auth or DB call. Missing validation is a [High] / [Blocker] depending on whether the action mutates data; raw `Object.fromEntries(formData)` going into `prisma.x.update({ data })` is a critical mass-assignment finding (`{ role: 'admin' }` in a FormData wins)
 - [ ] **Server Action authorization (Next.js)**: every Server Action that mutates data calls `await auth()` (or session equivalent) at the top and verifies the principal can act on the resource (object-level scoping, not just authenticated). An IDOR via Server Action is the same severity as IDOR via REST endpoint
+- [ ] **`'use server'` file exports only Server Actions (Next.js)**: a file with the `'use server'` directive at the top makes every export network-callable. Re-exporting a utility (`export { formatOrderId } from './utils'`) silently exposes that utility as an authentication-less, validation-less network endpoint. Flag any non-action export in a `'use server'` module as [High] - the depth (exploit walkthrough) belongs to `task-react-review-security`, but the umbrella review owns presence/absence
+- [ ] **Server Action return value leaks server-only fields**: `return order` where `order` is a full Prisma row leaks `internalNotes` / `paymentMethodToken` back through the Server Action response into client-visible state. Project to a DTO before returning, or use Prisma `select` / `omit`
+- [ ] **`middleware.ts` change widens the public surface**: a new entry in `matcher` exclusions (`'/api/test/*'`, `'/internal/*'`) without a security comment justifying why the route is exempt from auth is a [High]. The depth (whether the route should be public) belongs to security review; the umbrella owns presence
 - [ ] **`dangerouslySetInnerHTML` on user input**: any usage where the HTML originates from user input, URL params, or external API must be sanitized (`DOMPurify` client / `sanitize-html` server). Flag as Critical when the content path is user-controllable
 - [ ] **Open redirect**: `redirect(searchParams.get('returnTo'))` (Next.js) / `navigate(returnTo)` (React Router) without allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`)
 - [ ] **`NEXT_PUBLIC_*` for secrets**: `process.env.NEXT_PUBLIC_*` referencing API keys, DB URLs, or signing secrets compiles into the client bundle - flagged as Critical
@@ -225,7 +229,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 - [ ] **Hardcoded URLs / API endpoints**: in env vars / config, not inline (allows env-specific behavior)
 - [ ] **Component length**: components > 200 lines reviewed for extraction; extract sub-components, custom hooks, or move logic to utility functions
 - [ ] **Conditional rendering ladders**: > 3 nested `&&` / ternary in JSX → extract to a function returning JSX or a sub-component; readability degrades fast
-- [ ] **Logging / error reporting hygiene**: no `console.log` in render path; `console.error` only in dev / error boundary fallbacks; production errors go through Sentry / RUM SDK with correlation. The observability subagent owns depth (sample rates, attribution, instrumentation API), but surface obvious offenders here as Core findings
+- [ ] **Logging / error reporting hygiene**: surface obvious offenders as Core findings - `console.log` in a render body (called on every render, leaks PII into devtools and may be picked up by RUM forwarders), `console.log(JSON.stringify(largeObject))` of any non-trivial payload (the serialization cost itself is noticeable), `console.error` outside of error boundary fallbacks / dev paths, production errors not routed through Sentry / RUM SDK. The observability subagent owns depth (sample rates, attribution, instrumentation API); do not duplicate that audit here. If observability is not in scope this run, still surface obvious offenders so they are not lost
 
 Use skill: `frontend-coding-standards` if the project has one (otherwise rely on TS strict + ESLint + project-specific conventions).
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-react-review-observability` subagent owns depth).
@@ -320,6 +324,7 @@ _Summary commentary on systemic patterns. **Do not restate individual findings h
 - Boundary impact:
 - Coupling change:
 - Drift detected:
+- Server / Client data flow: _(Next.js)_ when 3+ findings cluster around ORM rows being passed across the Server → Client boundary, name the systemic pattern here ("Server Components consistently pass full ORM rows across the Client boundary; introduce a DTO layer at app/lib/dto/\*\*.ts") rather than producing N near-identical findings
 
 ## Maintainability Notes
 
@@ -368,6 +373,10 @@ _Omit this section if there are no actionable findings._
 - [ ] Phase B - TypeScript strict + hooks rules + `useEffect` discipline + `key` checks applied
 - [ ] Phase B - `"use client"` placement audited (Next.js); leaf-level placement preferred
 - [ ] Phase B - Server Action input validation + authorization checked (object-level scoping, not just authenticated)
+- [ ] Phase B - `'use server'` file checked for non-action exports (every export becomes a network endpoint)
+- [ ] Phase B - Server Action return values checked for ORM-row leakage to client
+- [ ] Phase B - `middleware.ts` `matcher` exclusions checked for justification when widened
+- [ ] Phase B - Unnecessary `"use client"` (no client-only need) flagged as a code smell distinct from root-of-layout placement
 - [ ] Phase B - `dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*` secrets, Server Component → Client Component prop projection checked
 - [ ] Phase B - accessibility (form labels, dialog ARIA, image alt, error boundary presence) checked
 - [ ] Phase B - state categorization (URL / server / local) and context boundaries reviewed

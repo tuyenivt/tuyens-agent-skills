@@ -120,6 +120,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 - [ ] **Auth library chosen and consistent**: Auth.js (NextAuth.js v5+) / Clerk / Lucia / `iron-session` - one path through the codebase, not mixed
 - [ ] **Session check at every protected boundary**: `middleware.ts` for route-level gating; Server Components call `auth()` / `getServerSession()` at the top and redirect on null; Server Actions and Route Handlers call session check **inside** the handler (middleware does not run for Server Actions in some versions - verify). NEVER trust client-side `useSession` for authorization decisions
+- [ ] **Middleware `matcher` widening**: a change that adds `/api/users/*` (or any privileged path) to a public allowlist - or removes it from a protected list - silently exempts the route from auth. Flag any `matcher` change that broadens the public surface as Critical unless the route handler does its own `auth()` check inside. The depth (whether the route should be public) is a product decision; the review confirms the auth path is intact regardless of who decides
 - [ ] **Password hashing**: when this app handles password auth (not just OAuth), `bcrypt` (cost ≥ 10) or `argon2` for the hash; flag `crypto.createHash('sha256')` or homebrew
 - [ ] **JWT verification (when used)**: `jose.jwtVerify(token, key, { algorithms: ['HS256' | 'RS256'], issuer, audience })` - explicit `algorithms` allowlist; never accept `alg: none`
 - [ ] **Cookie config**: session cookies are `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'` (or `'strict'` for high-sensitivity flows); flag tokens stored in `localStorage` (XSS-readable)
@@ -166,25 +167,30 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 **Both frameworks (when accepting any input from the URL):**
 
-- [ ] **`URLSearchParams` / route params validated**: typed via Zod before use; flag direct `parseInt(searchParams.get('id'))` without bounds + null check
+- [ ] **`URLSearchParams` / route params validated**: typed via Zod before use; flag direct `parseInt(searchParams.get('id'))` without bounds + null check. Dynamic route segments (`/api/users/[id]/route.ts` exposing `params.id`) are the same surface - validate the shape (UUID, integer, slug pattern) before passing to ORM, not after; flag `prisma.user.findUnique({ where: { id: params.id } })` without a Zod parse on `params`
+- [ ] **`JSON.parse(userInput)` flowing into ORM**: a Server Action / Route Handler that does `JSON.parse(formData.get('config') as string)` and then spreads / passes the result into Prisma is a mass-assignment + prototype-pollution surface. Validate via Zod after parsing; never `prisma.x.update({ data: parsedJson })` directly
 - [ ] **No `dangerouslySetInnerHTML` on untrusted strings**: any usage of `dangerouslySetInnerHTML={{ __html: x }}` where `x` originates from user input, URL params, or external API must be sanitized via `DOMPurify.sanitize(html)` (or `sanitize-html` server-side) - strict allowlist; never `__html: marked(userInput)` without a sanitizer
 
 ### Step 8 - Common React Vulnerability Patterns
 
 - [ ] **`dangerouslySetInnerHTML` audit**: every site must have either a sanitizer in the chain or a code comment justifying why the input is trusted (e.g., "static markdown from the repo, processed at build time"). Never `{__html: userMarkdown}` without `DOMPurify`
+- [ ] **Sanitizer config not too permissive**: `DOMPurify.sanitize(html, { ADD_TAGS: ['iframe'], ADD_ATTR: ['onload'] })` defeats the purpose. Flag any `ADD_TAGS` containing `iframe` / `script` / `object` / `embed` / `style` without a documented allowlist; flag any `ADD_ATTR` containing event handlers (`onload`, `onclick`, `onerror`) or URL-bearing attrs (`src`, `href`) when the source is user-controllable. Default `DOMPurify.sanitize(html)` is the safe baseline; deviations need justification
 - [ ] **`href={userControlledUrl}`**: validate scheme is `http(s):` (block `javascript:`, `data:`, `vbscript:`); `<Link href>` (Next.js) and `<a href>` both are vectors when href comes from user data. URL allowlist for cross-origin nav
 - [ ] **Open redirect**: `redirect(searchParams.get('returnTo'))` (Next.js Server Component) / `navigate(returnTo)` (React Router) without allowlist or relative-path-only check is an open redirect. Validate: `url.startsWith('/') && !url.startsWith('//')` and not a protocol-relative URL
 - [ ] **`NEXT_PUBLIC_*` for secrets**: any `process.env.NEXT_PUBLIC_*` that names an API key, database URL, or signing secret is a critical finding - those compile into the client bundle and ship to every browser. Server-only secrets use unprefixed env vars and are accessed only from Server Components / Route Handlers / Server Actions / middleware
 - [ ] **`'use server'` modules export only Server Actions**: a `"use server"` file that re-exports a non-action utility makes that utility a Server Action callable from the network. Each export must be a real Server Action with auth + validation; nothing else
 - [ ] **JSON serialization of secrets to Client Components**: a Server Component fetching `prisma.user.findUnique({ where: { id } })` and passing the entire row as a prop to a Client Component serializes `passwordHash`, `mfaSecret`, etc. into the page HTML. Project to a DTO before passing the prop - or use Prisma `select` / `omit` (Prisma 5+) at the query layer
 - [ ] **CSP set with sensible defaults**: `default-src 'self'`; `script-src 'self' 'nonce-XXX' 'strict-dynamic'`; `style-src 'self' 'unsafe-inline'` (Tailwind / cva accepts; trades XSS-via-CSS for ergonomics, document the choice); `img-src 'self' data: <CDN>`; `connect-src 'self' <API>`; `frame-ancestors 'none'`. Next.js 15+ supports `nonce` via `headers().get('x-nonce')` or middleware-injected
+- [ ] **CSP delivery channel**: prefer HTTP response header (via `next.config.js` `headers()` or `middleware.ts`) over `<meta http-equiv="Content-Security-Policy">`. The meta variant cannot enforce `frame-ancestors`, `report-uri` / `report-to`, or `sandbox`, and it kicks in only after the parser reaches it - any inline script before the meta tag escapes CSP. Flag `<meta>`-delivered CSP on a server-rendered app as Medium unless the project documents why
+- [ ] **CSP wildcards**: `default-src *` or `script-src *` is effectively no CSP. Any wildcard host in `script-src` / `connect-src` / `frame-src` is a finding; named CDN hosts only. `img-src 'self' data: https:` is a common compromise but flag the trailing `https:` as a Low - it allows any HTTPS image source
 - [ ] **`unsafe-eval` / `unsafe-inline` for scripts**: not allowed in production CSP for `script-src`; any presence is a finding. Dev mode may need `unsafe-eval` for HMR - guard with `process.env.NODE_ENV !== 'production'`
 - [ ] **`eval` / `new Function(string)` in client**: any occurrence is a critical finding; obfuscation libraries / template engines that use `new Function` (e.g., `lodash.template`) flagged
 - [ ] **Prototype pollution via spread**: `Object.assign(target, JSON.parse(userInput))`, `{...defaults, ...userJson}` on data the client received - same risks as Node, in client code. Trust boundary is "data fetched from your API" vs "data from `URLSearchParams` / `postMessage` / external".
 - [ ] **`postMessage` listeners validate origin**: `window.addEventListener('message', e => { if (e.origin !== EXPECTED) return; ... })` - missing origin check is universal XSS via parent / iframe
 - [ ] **Third-party scripts**: every `<Script src="https://...">` (Next.js) / `<script src>` justified; SRI (`integrity` attribute) for any non-first-party script; analytics / chat widgets reviewed for what data they exfiltrate
-- [ ] **Image / media `src` allowlist (Next.js)**: `next.config.js` `images.domains` / `remotePatterns` listed; flag changes that add a domain without justification (image proxy can be SSRF if not careful)
+- [ ] **Image / media `src` allowlist (Next.js)**: `next.config.js` `images.domains` / `remotePatterns` listed; flag changes that add a domain without justification (image proxy can be SSRF if not careful). Wildcards (`hostname: '*.example.com'`) are a finding - if any subdomain is takeoverable (`old-blog.example.com` no longer claimed), it becomes an XSS / phishing source. Pin specific hostnames; if wildcard is required, document the subdomain governance posture
 - [ ] **iframe sandbox**: any `<iframe>` rendering external content includes `sandbox="allow-scripts allow-same-origin..."` with the minimum allowlist; flag `<iframe src>` without `sandbox`
+- [ ] **iframe `src` from user input**: `<iframe src={searchParams.get('embed')}>` is a phishing / clickjacking surface even with `sandbox`. Validate against an allowlist of expected hosts; do not accept arbitrary URLs
 - [ ] **`window.opener` leak**: external `<a href target="_blank">` includes `rel="noopener noreferrer"`; Next.js `<Link>` is fine for internal links
 
 ### Step 9 - Data Protection
@@ -217,7 +223,11 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Authorization drift sweep**: every new Server Action / Route Handler in the diff calls `auth()` and verifies object-level ownership when applicable
 - [ ] Input validation reviewed for every changed Server Action / Route Handler; Zod / `zod-form-data` `.strict()` confirmed
 - [ ] `dangerouslySetInnerHTML`, `href` / redirect targets, open-redirect, `'use server'` exports, `NEXT_PUBLIC_*` audited when the diff touches them
-- [ ] CSP / security headers / cookie config reviewed when middleware or `next.config.js` headers changed
+- [ ] CSP / security headers / cookie config reviewed when middleware or `next.config.js` headers changed; CSP delivery channel (header vs `<meta>`), wildcards (`*` in `script-src`), and sanitizer config (`DOMPurify` `ADD_TAGS` / `ADD_ATTR`) audited
+- [ ] Middleware `matcher` exclusions audited: any path widened to public must have its own in-handler `auth()` check; otherwise Critical
+- [ ] Dynamic route params (`[id]`, `[slug]`) validated via Zod before reaching ORM; `JSON.parse(userInput)` into Prisma flagged as mass-assignment + prototype-pollution surface
+- [ ] Image `remotePatterns` wildcards (`*.example.com`) audited for subdomain-takeover risk
+- [ ] iframe `src` from user input audited (phishing / clickjacking, beyond `sandbox` presence)
 - [ ] Server Component → Client Component prop projection reviewed: no entire ORM rows passed; DTOs / `select`-projected fields only
 - [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
 - [ ] Every finding includes an attack scenario, "regression risk" rationale (for missing-control gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
@@ -263,7 +273,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 - **Location:** [file:line]
 - **Issue:** [vulnerability described in React terms - e.g., "Server Action `updateProfile` in app/account/actions.ts accepts `formData` directly into `prisma.user.update({ data: Object.fromEntries(formData) })` - mass-assignment lets a client submit `{ role: 'admin' }` and elevate privileges because there is no Zod schema enforcing the shape"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" — for missing-control gaps; (c) "Topology-dependent: depends on whether the CDN strips the X-Forwarded-Host header" — for infra-flavored findings. Pick one and label which.]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for missing-control gaps; (c) "Topology-dependent: depends on whether the CDN strips the X-Forwarded-Host header" - for infra-flavored findings. Pick one and label which.]
 - **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
 - **Fix:** [specific React remediation with code example - Zod schema for Server Action input, `nonce` in CSP, `DOMPurify.sanitize` wrapper, etc.]
 

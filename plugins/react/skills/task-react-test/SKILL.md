@@ -111,15 +111,93 @@ Use skill: `react-testing-patterns` for the canonical patterns referenced below.
 
 - `setupServer(...handlers)` in `src/test/setup.ts`; `server.listen({ onUnhandledRequest: 'error' })` to fail loud on missed stubs
 - Handler per endpoint, not per test - tests override per-test via `server.use(http.get('...', resolver))`
+- **Reset handlers in `afterEach`**: `server.resetHandlers()` removes per-test overrides so they do not leak. Without this, tests pass in isolation and fail in suite order. Goes in `vitest.setup.ts` next to `server.listen`
 - Run MSW for both Vitest and Playwright (Playwright via `msw` browser worker or just point Playwright at a mocked backend)
 
+**`renderWithProviders` helper (canonical shape):**
+
+A shared helper avoids re-wrapping providers in every test and keeps test output comparable across the suite. Put it in `src/test/render.tsx`:
+
+```tsx
+import { render, RenderOptions } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactElement, ReactNode } from "react";
+
+interface ProviderOptions {
+  queryClient?: QueryClient;
+  // Add: theme, auth, router-state shape, etc. - based on what real layouts provide
+}
+
+export function renderWithProviders(
+  ui: ReactElement,
+  {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    }),
+    ...renderOptions
+  }: ProviderOptions & RenderOptions = {},
+) {
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  }
+  return { queryClient, ...render(ui, { wrapper: Wrapper, ...renderOptions }) };
+}
+```
+
+Tests then call `renderWithProviders(<OrderForm />)` and receive the standard RTL return plus the `queryClient` for assertion (e.g., `queryClient.getQueryData(['orders'])`). Each test gets a fresh client because the default factory runs per-call.
+
 **Server Action tests (Next.js):**
+
+There are two flavors. Run **both** when the action has both validation logic and a UI surface that calls it.
+
+_Flavor 1 - Direct unit test of the action function:_
 
 - Server Actions are async functions - test as a plain function: `const result = await updateProfile(formData)`
 - Construct `FormData` in the test: `const fd = new FormData(); fd.set('name', 'Alice');`
 - Mock the session: a wrapper around `auth()` that returns a fixture user; assert that unauthenticated calls reject before any DB / external call
 - Assert validation: invalid input throws / returns the expected error shape; valid input mutates and returns the expected next state
 - The DB layer is the boundary - either use a Testcontainers Postgres + real Prisma (slow, accurate) or stub the data layer per test. Match the project's existing approach
+
+_Flavor 2 - Component test that mocks the action import:_
+
+- The component imports the action: `import { createOrder } from './actions'`. Mock it: `vi.mock('./actions', () => ({ createOrder: vi.fn() }))`
+- Assert the action was called with the expected arguments after a `userEvent.click` on the submit button - this verifies the wiring (form → action) without re-running the action's logic (which Flavor 1 already covered)
+- Pair with `useFormStatus` / `useOptimistic` testing - see "React 19 form primitives" below
+
+**React 19 form primitives in tests (`useOptimistic`, `useFormStatus`, `use()`):**
+
+- `useFormStatus`: render the form, click submit, and during the in-flight period assert the submit button is `aria-disabled` / shows a spinner. Make the mocked action return a `Promise` that resolves after a tick so the in-flight UI is observable: `vi.mocked(createOrder).mockImplementation(() => new Promise(r => setTimeout(() => r({ ok: true }), 10)))`. Use `await screen.findByRole('button', { name: /submitting/i })` to wait for the in-flight state, then `await waitFor(() => expect(...))` for the resolved state
+- `useOptimistic`: type the form, click submit, then **immediately** assert the optimistic UI shows ("Order #42 created") - before awaiting the action's resolution. After the action rejects (`vi.mocked(createOrder).mockRejectedValueOnce(new Error('boom'))`), assert the rollback (the optimistic row disappears, error toast shows). Optimistic rollback is the most under-tested branch; do not skip
+- `use()` (data unwrapping): not testable through RTL when the consumer is a Server Component. Test the data function in unit; trust Next.js to feed it through the `use()` boundary; verify the rendered output via Playwright
+
+**TanStack Query in tests:**
+
+- Create a fresh `QueryClient` per test - shared clients leak cache across tests and produce order-dependent failures: `const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })`. Wrap the rendered component with `<QueryClientProvider client={queryClient}>` (do this in the `renderWithProviders` helper)
+- Disable retries (`retry: false`) so error-state tests fail fast
+- Assert `queryClient.invalidateQueries(...)` was called after a mutation - either via spying on the client or by asserting the refetched UI state after `useMutation` resolves
+
+**`next/navigation` mock pattern (Next.js App Router component tests):**
+
+- `next/navigation` hooks (`useRouter`, `useSearchParams`, `usePathname`) cannot run outside Next.js without a mock. Stub at module level:
+
+  ```ts
+  vi.mock("next/navigation", () => ({
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+    useSearchParams: () => new URLSearchParams(),
+    usePathname: () => "/dashboard/orders",
+  }));
+  ```
+
+- For tests that assert navigation, capture the spy: `const push = vi.fn(); vi.mocked(useRouter).mockReturnValue({ push, ... })`
+- The Pages Router (`next/router`) has its own mock surface - check the existing `vitest.setup.ts` for the pattern the project uses
+
+**`Sentry.captureException` mock (or any error-tracker):**
+
+- `vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), captureMessage: vi.fn(), setUser: vi.fn() }))`
+- Assert `captureException` was called with the expected `Error` after the component's error path runs
+- Reset mocks in `beforeEach` (`vi.clearAllMocks()`) to avoid cross-test bleed
 
 **Playwright E2E (`e2e/*.spec.ts`):**
 
@@ -157,6 +235,18 @@ Use skill: `react-testing-patterns` for the canonical patterns referenced below.
 - Filter + list interactions (filter changes update list, URL syncs, deep link works)
 - Form flows (multi-step wizard, validation across steps)
 - Optimistic-update flows (mutate → see immediate UI change → rollback on error)
+
+**Multi-step form / wizard testing strategy:**
+
+A single integration test that walks the full path (step 1 → 2 → 3 → submit) is the spine. Add focused component tests for each step's validation. Cover at minimum:
+
+- **Forward navigation:** valid input on step N advances to step N+1; the submit button is disabled until each step's validation passes
+- **Backward navigation preserves state:** step 1 → step 2 → back to step 1 → fields still populated. This is the most-broken behavior in practice
+- **Cross-step validation:** a field on step 3 that depends on a step 1 value (e.g., shipping cost depends on item count) computes correctly when step 1 is edited via back-navigation
+- **Cancel / reset:** discarding the wizard clears state; a "Save Draft" path persists state separately
+- **Submit flow:** the final submit calls the Server Action with the accumulated form state from all steps; assert the action was called with the merged payload
+
+For wizards using a state machine (XState, Zustand, `useReducer`), unit-test the machine separately - that is the lowest-overhead place to assert all the transitions. The component test then asserts the wiring, not the transitions.
 
 **What deserves an E2E test:**
 
@@ -226,6 +316,7 @@ When starting from low test coverage, prioritize by React-specific risk:
 - [ ] No real network calls (assert MSW unhandled fails the test); no real filesystem (`fs.writeFile` in component tests is a smell)
 - [ ] CI runs Vitest + Playwright in parallel; Playwright sharded across workers for speed
 - [ ] Visual regression (if used): Chromatic / Percy / Playwright screenshots gated to `main`-branch builds, not every PR (cost vs signal)
+- [ ] Storybook integration (if Storybook 8+ is in repo): stories doubling as tests via `play` functions (`@storybook/test`) or the Vitest-Storybook integration (`@storybook/experimental-addon-test`) - reuses interaction logic across docs and CI without duplicating the setup. Worth proposing when stories already exist for the components the user wants to scaffold tests for; do not impose if the project does not already use Storybook
 
 ## React Review Checklist
 
@@ -343,7 +434,13 @@ Produce ready-to-run Vitest test files using project conventions. Each scaffold 
 - [ ] Component scaffolds use `userEvent` (not `fireEvent`)
 - [ ] Component scaffolds cover happy path + error + empty + loading states
 - [ ] Hook scaffolds use `renderHook` with proper provider wrapper; cover state transitions and cleanup
-- [ ] Server Action scaffolds: validation, authorization, happy path
+- [ ] Server Action scaffolds: validation, authorization, happy path - both the unit-test flavor (action as function) and the component-test flavor (action mocked via `vi.mock`) when both apply
+- [ ] React 19 form primitives covered: `useFormStatus` pending state observed via slow-promise mock; `useOptimistic` rollback branch tested explicitly (not just the success path)
+- [ ] TanStack Query: fresh `QueryClient` per test (or via `renderWithProviders` factory); `retry: false` to fail error tests fast
+- [ ] `next/navigation` mocked consistently (`useRouter` / `useSearchParams` / `usePathname`) for App Router component tests; navigation assertions capture the spy
+- [ ] Error tracker (`Sentry.captureException`) mocked when the component handles errors; assertion that capture happened on the error path
+- [ ] MSW handlers reset in `afterEach` (`server.resetHandlers()`) so per-test overrides do not leak
+- [ ] Multi-step wizards: forward + backward + cross-step validation + submit-with-merged-payload all covered (not just the linear happy path)
 - [ ] E2E scaffolds use `getByRole` selectors and `storageState` for auth setup
 - [ ] No `as any` in mocks; typed `vi.mock` factory or proper module mock
 - [ ] Accessibility check (`axe`) included for route-level / page-level scaffolds

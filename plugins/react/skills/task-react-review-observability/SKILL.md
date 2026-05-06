@@ -108,8 +108,8 @@ For diffs touching only one of these surfaces (a new route but no Sentry change,
 
 Inspect web-vitals wiring and any reporter callsite in the diff:
 
-- [ ] **`web-vitals` library installed and reporter wired**: `import { onLCP, onINP, onCLS, onTTFB, onFCP } from 'web-vitals'` with each metric posted to the analytics / RUM endpoint. Next.js: `useReportWebVitals` from `next/web-vitals` works for Pages Router; App Router uses the same hook in a Client Component placed in `app/layout.tsx`. Vite: wire in `src/main.tsx` after `createRoot`
-- [ ] **All four core metrics reported**: LCP, INP (replaced FID in 2024), CLS, plus optional TTFB and FCP. INP must be present; missing INP signals stale config (FID-only)
+- [ ] **`web-vitals` library installed and reporter wired**: `import { onLCP, onINP, onCLS, onTTFB, onFCP } from 'web-vitals'` with each metric posted to the analytics / RUM endpoint. Next.js: `useReportWebVitals` from `next/web-vitals` works in both routers; App Router needs a small Client Component (`<WebVitalsReporter />`) imported into `app/layout.tsx` because `useReportWebVitals` is a hook and `layout.tsx` is a Server Component by default. Vite: wire in `src/main.tsx` after `createRoot`
+- [ ] **All four core metrics reported**: LCP, INP (replaced FID in 2024), CLS, plus optional TTFB and FCP. INP must be present; missing INP signals stale config (FID-only or `web-vitals` < 4.0). Confirm `web-vitals` is at v4+ in `package.json` - v2.x exports `getFID` not `onINP`
 - [ ] **Attribution build used for slow paths**: `web-vitals/attribution` provides element-level / event-target attribution for LCP / INP / CLS - much more useful than a bare metric value. Recommend swapping `web-vitals` import for `web-vitals/attribution` if RUM data is uninformative
 - [ ] **Reporter has a transport**: metric is `fetch`'d / `navigator.sendBeacon`'d to a real endpoint (RUM / analytics); a `console.log` reporter is dev-only. Use `sendBeacon` (or `fetch` with `keepalive: true`) so the report survives page unload
 - [ ] **Sample rate applied at the reporter, not at metric collection**: collect every metric (cheap), throttle reporting (downstream cost). Do not gate `onLCP` itself behind a sample
@@ -128,7 +128,10 @@ Inspect SDK config and error boundary placement:
 - [ ] **Error boundary tree (Next.js App Router)**: `app/global-error.tsx` (catches errors during render, including layout); `app/**/error.tsx` per route segment (catches per-route render errors). Both must exist for full coverage; the root error boundary requires `"use client"` and renders inside `<html>` / `<body>`
 - [ ] **Error boundary (Vite)**: top-level `<ErrorBoundary>` (Sentry's `Sentry.ErrorBoundary` or React 19+ built-in) at root; per-route via React Router `errorElement`
 - [ ] **Error boundary surfaces user-facing fallback**: not just a blank screen - "Something went wrong, please refresh" with a retry action. Reset key for navigation-driven recovery
-- [ ] **Sample rate explicit**: `tracesSampleRate`, `profilesSampleRate`, `replaysSessionSampleRate` per env; not `1.0` in prod for tracing on a high-traffic app (cost + sampling-induced noise)
+- [ ] **Error boundary captures explicitly to Sentry**: Next.js `app/**/error.tsx` and `app/global-error.tsx` do NOT auto-report to Sentry - the boundary's body must call `Sentry.captureException(error)` (or `useEffect(() => Sentry.captureException(error), [error])` in the function component). A boundary that renders a fallback but does not capture loses the diagnostic; flag as High
+- [ ] **Sample rate explicit**: `tracesSampleRate`, `profilesSampleRate`, `replaysSessionSampleRate` per env; not `1.0` in prod for tracing on a high-traffic app (cost + sampling-induced noise). Prefer a `tracesSampler` callback when a few high-volume routes (`/api/health`, `/api/ping`) need lower sample than the default
+- [ ] **Sentry Replay vs. CSP `nonce`**: Sentry Session Replay injects inline scripts at runtime. A strict CSP (`script-src 'self' 'nonce-XXX'`) without `'unsafe-inline'` blocks Replay. When the diff adds Replay to a project with strict CSP (or vice versa), flag the conflict and recommend either adopting Sentry's CSP-compatible setup or scoping Replay to non-CSP routes
+- [ ] **`Sentry.captureMessage` / `captureException` payloads do not include PII**: `extra: { user: session.user }` ships email, phone, address, and any other session-attached field to Sentry. Project the captured user to `{ id }` (or `{ id, role }`) before passing through `extra` / `setContext`. The `Sentry.setUser` flow is the right channel for identification - `extra` should only carry diagnostic detail not already on `setUser`
 - [ ] **Ignored errors documented**: `ignoreErrors: [...]` lists noise classes (browser extension errors, ResizeObserver loop limit, network errors during navigation); each entry has a comment justifying
 - [ ] **Source maps uploaded**: build pipeline uploads source maps to Sentry (Next.js Sentry plugin / Vite Sentry plugin) so stack traces are deobfuscated; absent means production stack traces are unreadable
 - [ ] **Source maps NOT served publicly**: `productionBrowserSourceMaps: false` (Next.js default); Vite default is to embed source maps only on `--sourcemap`. Public source maps are an information disclosure risk
@@ -145,9 +148,9 @@ _Skipped at `quick` depth unless the diff touches OTel config or `instrumentatio
 
 **Server-side (Next.js `instrumentation.ts`):**
 
-- [ ] **`instrumentation.ts` registers OTel SDK**: `@opentelemetry/sdk-node` `NodeSDK` with `@vercel/otel` (the recommended wrapper) or manual `NodeSDK` setup. Initialized in `register()` for the `nodejs` runtime; for Edge runtime, OTel support is limited - document the gap
+- [ ] **`instrumentation.ts` registers OTel SDK**: `@opentelemetry/sdk-node` `NodeSDK` with `@vercel/otel` (the recommended wrapper) or manual `NodeSDK` setup. Initialized in `register()` for the `nodejs` runtime; for Edge runtime, OTel support is limited - document the gap. When the project chose raw `NodeSDK` over `@vercel/otel`, also confirm: (a) graceful shutdown via `sdk.shutdown()` on `SIGTERM`, (b) `BatchSpanProcessor` (not `SimpleSpanProcessor` which blocks the event loop), (c) explicit Edge-runtime fallback for routes marked `runtime = 'edge'`
 - [ ] **Auto-instrumentations**: HTTP, fetch, Prisma / pg, ioredis - same as a Node service, applied to Next.js Server Components / Route Handlers / Server Actions
-- [ ] **Sampling explicit**: `ParentBasedSampler(TraceIdRatioBasedSampler(0.1))` per env; not left at default
+- [ ] **Sampling explicit and noise-aware**: `ParentBasedSampler(TraceIdRatioBasedSampler(0.1))` per env; not left at default. For repos where a few high-volume / low-signal routes dominate (health checks, prefetches, asset routes), prefer a custom `Sampler` that returns `RECORD_AND_SAMPLED` for business routes and `DROP` for noise - flat ratio sampling burns budget on noise
 - [ ] **Resource attributes populated**: `service.name`, `service.version`, `deployment.environment` - from build metadata / env vars
 - [ ] **Trace context propagation**: Next.js Route Handlers receive `traceparent` from upstream; Server Actions inherit context from the request that triggered them; verify auto-instrumentation does this without manual wrapping
 
@@ -199,9 +202,11 @@ When invoked at `deep`, evaluate:
 - [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review
 - [ ] When `head_matches_current` was false, explicit user approval was obtained (skipped when invoked as a subagent - the parent already gated)
 - [ ] Instrumentation surfaces (web-vitals reporter, error boundary tree, Sentry / OTel SDK init, structured logger, RUM SDK) read directly before applying checklists; Surface Map produced
-- [ ] Web Vitals (LCP / INP / CLS / TTFB / FCP) reporting verified; INP present (not legacy FID); attribution build recommended where slow paths exist
-- [ ] Error boundary tree assessed: `app/global-error.tsx` + per-route `error.tsx` (Next.js App Router) / route `errorElement` (Vite + React Router); Sentry SDK wired with framework integration
-- [ ] OpenTelemetry assessed: browser SDK + auto-instrumentation, Next.js `instrumentation.ts` for server, sampling explicit, source maps uploaded but not served
+- [ ] Web Vitals (LCP / INP / CLS / TTFB / FCP) reporting verified; INP present (not legacy FID); `web-vitals` v4+ confirmed; attribution build recommended where slow paths exist
+- [ ] Error boundary tree assessed: `app/global-error.tsx` + per-route `error.tsx` (Next.js App Router) / route `errorElement` (Vite + React Router); Sentry SDK wired with framework integration; boundary explicitly calls `Sentry.captureException` (Next.js does not auto-capture)
+- [ ] OpenTelemetry assessed: browser SDK + auto-instrumentation, Next.js `instrumentation.ts` for server, sampling explicit and noise-aware, source maps uploaded but not served; raw `NodeSDK` setups have shutdown + BatchSpanProcessor + Edge fallback
+- [ ] Sentry Replay vs. CSP `nonce` conflict checked when both surfaces appear in the diff
+- [ ] `Sentry.captureMessage` / `captureException` `extra` / `setContext` payloads checked for PII (project user objects to `{ id }` before passing)
 - [ ] Structured client logging assessed: no `console.log` in prod paths, sensitive-field redaction, RUM events for business-critical actions
 - [ ] User identity / session correlation assessed: `Sentry.setUser` / tags / context for tenant / role / flag, no PII in high-cardinality tags
 - [ ] RUM integration assessed when a RUM SDK is in use: SPA navigation tracked, custom events for journeys, privacy / DNT respected

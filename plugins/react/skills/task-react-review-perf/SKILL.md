@@ -119,7 +119,8 @@ Inspect every changed component for:
 - [ ] **Inline style objects**: `style={{ color: 'red' }}` allocates per render; for hot paths prefer Tailwind / CSS Modules / cva variants - constant class strings, no per-render allocation
 - [ ] **Heavy synchronous work in render**: parsing, sorting, filtering large arrays, JSON serialization in render body. Move to `useMemo` (with real cost) or precompute outside the component
 - [ ] **`useState` initializer not lazy when expensive**: `useState(expensiveCompute())` runs on every render; use `useState(() => expensiveCompute())` for one-shot init
-- [ ] **List virtualization absent for long lists**: rendering 1000+ items without `@tanstack/react-virtual` / `react-window` causes long initial render and laggy scroll; flag for any list with `> 100` items in steady state
+- [ ] **Inline anonymous components inside parent body**: `function Row({ data }) {...}` declared inside the parent's render function (`function Table() { function Row(...) {} return <ul>{rows.map(d => <Row data={d} />)}</ul> }`) is recreated every parent render - new function identity each time, which (a) makes `React.memo(Row)` a no-op, (b) destroys any `useState` inside `Row` between renders, (c) breaks reconciliation. Move the inner component to module scope (or a sibling file) so its identity is stable
+- [ ] **List virtualization absent for long lists**: rendering 1000+ items (or 100+ rows of complex content - charts, sub-tables, rich JSX) without `@tanstack/react-virtual` / `react-window` causes long initial render and laggy scroll. Threshold scales with row complexity: simple row × 1000+ or complex row × 100+. Flag steady-state lists, not transient ones (e.g., a search-result dropdown showing 50 items is fine without virtualization)
 
 ### Step 5 - Bundle Size and Code Splitting
 
@@ -132,7 +133,8 @@ Use skill: `react-component-patterns` for split boundaries; use skill: `react-ne
 - [ ] **Barrel-file imports defeating tree-shake**: `import { X } from '@/components'` where `@/components/index.ts` re-exports 50 things drags the whole barrel in if not configured for tree-shaking. Prefer direct path imports (`@/components/X`) on the hot path
 - [ ] **Polyfills / shims duplicated**: `core-js`, regenerator-runtime, `whatwg-fetch` duplicated across deps; check `package.json` `browserslist` is sane
 - [ ] **CSS-in-JS runtime cost**: `styled-components` / `emotion` add runtime cost for styles + an extra render pass on hydration; flag as a Medium finding when added to a project that was Tailwind / CSS Modules. Tailwind / CSS Modules are zero-runtime; cva is build-time class concat
-- [ ] **Tree-shake friendly imports**: `import isEqual from 'lodash/isEqual'` (or `lodash-es`); never `import _ from 'lodash'`. `import { format } from 'date-fns'` not `import * as df from 'date-fns'`
+- [ ] **Tree-shake friendly imports**: `import isEqual from 'lodash/isEqual'` (or `lodash-es`); never `import _ from 'lodash'`. `import { format } from 'date-fns'` not `import * as df from 'date-fns'`. Named imports also matter for large libs like `recharts`, `framer-motion`, `@radix-ui/*` - `import * as recharts from 'recharts'` pulls every chart variant even if the diff uses one
+- [ ] **Charting / rich-editor / map libraries dynamically imported**: `recharts`, `chart.js`, `apexcharts`, `tiptap`, `slate`, `quill`, `mapbox-gl`, `leaflet` rarely belong in the initial bundle - they belong below the fold or behind interaction. Wrap with `next/dynamic(() => import('./ReportChart'), { ssr: false })` (Next.js) or `lazy()` + `<Suspense>` (Vite). Flag eager imports as a Medium even when the page genuinely uses the chart - the LCP impact is the same
 
 > **Impact heuristic - bundle blast radius.** A 50KB gzip dependency on the home route adds ~50KB transferred on every cold visit (every visitor, every device). On 3G that is ~1.3s longer download; on cable ~50ms; the worst case dominates LCP for budget-constrained users. Phrase the impact as "+<N>KB on every cold visitor of every route that imports this," not "the bundle got bigger."
 
@@ -146,7 +148,9 @@ Use skill: `react-data-fetching` for canonical patterns.
 - [ ] **Tag-based revalidation**: long-cached data revalidated via `revalidateTag('orders')` after Server Action mutations; not relying on full-route `revalidatePath` for fine-grained updates
 - [ ] **`unstable_cache` for non-fetch IO**: ORM queries / file reads / Redis lookups in Server Components wrapped in `unstable_cache(fn, key, { revalidate, tags })` - else they hit the DB on every render
 - [ ] **Parallel data fetching**: Server Component awaits `await Promise.all([getA(), getB()])` for independent fetches, not sequential `const a = await getA(); const b = await getB();` - waterfall doubles latency
+- [ ] **N+1 fan-out over a list**: `await Promise.all(items.map(item => getDetail(item.id)))` parallelizes N requests but is still N round-trips. Flag and recommend a batched query (`getDetailsByIds(items.map(i => i.id))`) or DataLoader-style batching. Pure parallelism does not save the database
 - [ ] **Suspense streaming used**: long-running fetches in Server Components wrapped in `<Suspense fallback={<Skeleton />}>` so the rest of the page streams immediately; not blocking the entire route on the slowest query
+- [ ] **LCP element not inside Suspense fallback**: the hero image / above-the-fold content must not be deferred behind `<Suspense fallback={<Skeleton />}>` - that defers the LCP element itself. Suspense belongs around below-the-fold or non-critical content; the LCP element renders eagerly with `priority` (Next.js `<Image priority>`) so it is in the initial paint
 - [ ] **`use()` for promise unwrapping (React 19)**: deeper components consume promises via `use(promise)` instead of waterfalling `await` calls; fall back to `<Suspense>` boundaries
 - [ ] **No client-side fetch when server fetch would do**: a Client Component `useEffect(() => { fetch(...) }, [])` is a request waterfall (server renders, client hydrates, then client requests) - move the fetch to the parent Server Component and pass data down
 
@@ -228,7 +232,12 @@ Anything beyond presence/absence (sample rates, attribution, route segmentation)
 - [ ] `"use client"` boundary placement audited (Next.js); leaf-level placement preferred
 - [ ] Bundle deltas assessed for any new `dependencies` entry; tree-shake-friendly imports verified
 - [ ] `react-data-fetching` consulted for cache options, query keys, mutation invalidation
+- [ ] N+1 fan-out (`Promise.all(items.map(...))`) flagged when present; batched-query alternative recommended
+- [ ] Inline anonymous components in render bodies flagged as identity-instability hazards
+- [ ] Tree-shake hostile imports (`import * as X from 'recharts' / 'date-fns' / 'lodash'`) flagged
+- [ ] Heavy chart / editor / map libraries gated by `next/dynamic` or `React.lazy`; eager imports flagged
 - [ ] Core Web Vitals (LCP image / fonts / CLS reservations / INP `useTransition`) checked when route or asset code changed
+- [ ] LCP element verified not deferred behind `<Suspense fallback>`
 - [ ] Hydration / streaming checks applied for Next.js; Vite section skipped on Vite-only projects
 - [ ] ISR / SSG / SSR / Edge runtime decisions reviewed for changed routes (Next.js)
 - [ ] Every finding states impact - measured (`LCP: 2.8s -> 1.4s`) when RUM data exists, estimated otherwise (`+45KB gzip on every cold visit to /dashboard`) - never just "this is slow"
