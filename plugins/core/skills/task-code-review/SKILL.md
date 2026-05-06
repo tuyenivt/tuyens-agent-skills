@@ -92,7 +92,16 @@ The slash command accepts an optional argument identifying the diff to review:
 | `/task-code-review <branch>` | Review `<branch>` vs its base (3-dot diff) - cross-review a teammate's branch checked out locally, or self-review a named branch from any session                                     |
 | `/task-code-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` - run `git fetch origin pull/<N>/head:pr-<N>` first (user runs it; see `review-precondition-check` for GitLab/Bitbucket variants) |
 
-Scope and depth flags (`+perf`, `+security`, `+observability`, `full`, `quick`, `deep`) compose with any of the above. Example: `/task-code-review pr-50273 +security deep`.
+**No checkout required.** You do not need to switch to the head branch before invoking. Stay on your current branch; the workflow reads git history via ref-qualified diffs and never modifies your working tree.
+
+**Explicit base override.** When the PR was opened against a non-trunk base branch (e.g., a stacked PR off `phase-01` rather than `main`), pass `--base <branch>` so the diff is computed against the true base. Without it, base detection walks `origin/HEAD` → `main` → `master` → `develop` and the diff will include commits from the true base, drowning the actual PR changes.
+
+Examples:
+
+- `/task-code-review pr-123 --base phase-01` - PR opened against feature branch `phase-01`
+- `/task-code-review feature/x --base develop` - branch off `develop` rather than `main`
+
+Scope and depth flags (`+perf`, `+security`, `+observability`, `full`, `quick`, `deep`) compose with any of the above. Example: `/task-code-review pr-50273 --base phase-01 +security deep`.
 
 ## Workflow
 
@@ -102,7 +111,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 ### Step 2 - Resolve the Diff Under Review
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). It returns a minimal handle with `base_ref`, `head_ref`, `current_branch`, and `head_matches_current` once all preconditions pass.
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it, so the precondition check uses the explicit base override instead of trunk auto-detection. It returns a minimal handle with `base_ref`, `base_source`, `head_ref`, `current_branch`, and `head_matches_current` once all preconditions pass.
 
 If the precondition check stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim to the user and stop. Do not run any state-changing git command from this workflow.
 
@@ -357,7 +366,7 @@ _Omit this section if there are no actionable findings._
 ## Self-Check
 
 - [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
-- [ ] `review-precondition-check` ran at Step 2; preconditions passed (clean tree, non-trunk head, head ref exists locally) and `base_ref` / `head_ref` / `current_branch` / `head_matches_current` were captured
+- [ ] `review-precondition-check` ran at Step 2; preconditions passed (clean tree, non-trunk head, head ref exists locally) and `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` were captured. If user passed `--base`, it was forwarded and `base_source: explicit-override` is recorded
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>`, then reused by all later phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran

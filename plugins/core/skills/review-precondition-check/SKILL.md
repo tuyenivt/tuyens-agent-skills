@@ -36,6 +36,16 @@ Trunk branch list (defaults): `main`, `master`, `develop`, `trunk`. If the resol
 
 When an argument is ambiguous (e.g., a name that is both a branch and a tag), prefer branch resolution and note the ambiguity in the output.
 
+### Explicit base override
+
+Local git cannot know the true target branch of a PR opened against a non-trunk base (e.g., `pr-123` opened against `phase-01` rather than `main`). When the consuming workflow forwards an explicit base (typically via `--base <branch>`), use it directly and skip trunk-branch auto-detection in Step 5.
+
+The base override:
+
+- May be a local branch (`refs/heads/<arg>`) or a remote-tracking ref (`refs/remotes/<arg>`); resolve in that order.
+- Is **not** subject to the trunk-branch fail-fast in Step 3 (that rule applies to the head, not the base).
+- If it does not resolve, stop and ask the user to push or fetch the base branch first - do not silently fall back to a trunk.
+
 ## Pattern
 
 ### Step 1 - Working tree must be clean
@@ -94,20 +104,30 @@ Local ref `pr-50273` not found. To fetch the PR head from origin, run one of:
     # Bitbucket
     git fetch origin pull-requests/50273/from:pr-50273
 
-This adds a local ref only - your working tree is untouched. Re-run the review once the ref exists.
+This adds a local ref only - no checkout is performed and your current branch is untouched. You do **not** need to switch to `pr-50273` before re-running the review; stay on whatever branch you are on now.
+
+After the fetch, verify the ref was created:
+
+    git rev-parse --verify refs/heads/pr-50273
+
+If that prints a SHA, re-run the review. If it errors, the fetch did not create the local branch (check the fetch output - the `:pr-50273` suffix is what creates it).
 ```
 
 For `<branch>` arguments, verify with `git rev-parse --verify`. If neither `refs/heads/<arg>` nor `refs/remotes/<arg>` resolves, stop and ask the user to push or fetch the branch first.
 
 ### Step 5 - Detect the base branch
 
-Resolve the base in this order:
+If the consuming workflow forwarded an explicit base override (see "Explicit base override" above), resolve it via `git rev-parse --verify refs/heads/<arg>` then `refs/remotes/<arg>`. If it resolves, use it as `base_ref` and skip the auto-detect fallback. If it does not resolve, stop and ask the user to push or fetch the base branch first - do not silently fall back to a trunk.
+
+Otherwise, auto-detect in this order:
 
 1. `git symbolic-ref refs/remotes/origin/HEAD` (typically points to `refs/remotes/origin/main`).
 2. If unset, check `main`, then `master`, then `develop` via `git rev-parse --verify`.
 3. If none resolve, ask the user which branch is the base.
 
 Record the result as `base_ref` (a name, not a SHA - the consuming workflow uses the name directly in `git diff <base>...<head>`).
+
+When auto-detect was used (no explicit override) and the head is a `pr-<N>` ref, add a note to the output reminding the user that PRs opened against a non-trunk base must pass `--base <branch>` to the consuming workflow - otherwise the diff will include unrelated commits from the true base branch.
 
 ### Step 6 - Confirm head vs current branch (approval gate)
 
@@ -142,12 +162,13 @@ When all preconditions pass, emit this exact handle and nothing more. The consum
 review-target:
   mode: branch-vs-base | pr-ref
   argument: <verbatim user argument or "(none)">
-  base_ref: <e.g., origin/main>
+  base_ref: <e.g., origin/main, phase-01>
+  base_source: explicit-override | origin-head | trunk-fallback | user-prompted
   head_ref: <e.g., pr-50273, feature/x, or HEAD>
   current_branch: <e.g., feature-A>
   head_matches_current: true | false
   notes:
-    - <ambiguities, fallbacks used, approval-gate outcome>
+    - <ambiguities, fallbacks used, approval-gate outcome, non-trunk-base reminder for pr-ref>
 ```
 
 When a precondition fails, emit only the stop message described in the relevant step. Do not emit a partial handle.
