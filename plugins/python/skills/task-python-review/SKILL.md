@@ -135,6 +135,12 @@ Surface the decision in the Summary's `Scope:` field. If escalated, append `auto
 
 **Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and produce a streamlined output with Phase B findings only.
 
+### Step 3.5 - Re-evaluate Depth After Phase A
+
+If `Blast Radius` (from Phase A) is `Wide` or `Critical` and the user did not explicitly pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in the Summary. Do this **before** launching Phases B-E so deep-only behaviors (historical pattern matching, cross-PR context, anemic-domain assessment) are in scope for the rest of the review.
+
+This step is the inflection point where the workflow chooses how far Phases B-E reach. Keeping it as an explicit numbered step (rather than burying it in Depth Levels prose) prevents the depth promotion from getting lost between Phase A's output and Phase B's checklists.
+
 ### Phase B - Python Correctness and Safety
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, transaction boundary correctness - through a Python lens.
@@ -149,6 +155,10 @@ Logical correctness, error handling completeness, edge cases affecting state int
 - [ ] **Pydantic v2 (FastAPI)**: input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints (rejects unknown fields rather than silently dropping); `Field(...)` constraints on every user-supplied field; `from_attributes=True` on response models built from ORM rows
 - [ ] **DRF serializer (Django)**: `fields` declared explicitly (never `"__all__"` for user-facing serializers); `read_only_fields` include server-controlled fields; `write_only_fields` for sensitive inputs; nested serializers handle null cases
 - [ ] **Authorization on every endpoint**: every router method has explicit security dependency (FastAPI: `Depends(get_current_user)` or stronger) OR every ViewSet has `permission_classes` (Django); empty / missing is a finding regardless of "I forgot in the prototype"
+- [ ] **Authentication vs authorization** are distinct checks. `Depends(get_current_user)` proves the caller is authenticated - it does not prove the caller may act on a specific object. For endpoints touching per-owner / per-tenant data (e.g., `GET /orders/{order_id}`), confirm the repository / queryset filters by `user.id` / `tenant_id`, or that the service raises 404 when the principal does not own the resource. A `Depends(get_current_user)` with no object-level scoping is an IDOR finding.
+- [ ] **SSRF / outbound URL safety**: any user-controlled value embedded into an outbound URL or hostname (`requests.get(f"...{user_input}...")`, `httpx.AsyncClient.get(url=...)`) goes through an allowlist of scheme + host + port. Flag this even when the surrounding sync/async issue is the headline. Depth (cloud-metadata blocks, DNS rebinding) is owned by `task-python-review-security`; this checklist owns presence/absence.
+- [ ] **Edge middleware presence (FastAPI)**: when the diff modifies app construction or adds new public-facing endpoints, confirm `CORSMiddleware`, `TrustedHostMiddleware`, and HTTPS redirect (where applicable) are configured. Absence on a public-facing service is a finding; depth (allowlist correctness) belongs to `task-python-review-security`.
+- [ ] **New ORM column with predicate use**: any new `Mapped[...]` column or Django model field that the diff also references in `.where(...)` / `.filter(...)` / `.order_by(...)` should have an index migration in the same PR, or an explicit "indexed later" decision noted. A bare `db_index=True` / `Meta.indexes = [...]` change in the same diff counts; absent index plus predicate usage is a finding.
 - [ ] **No ORM entities returned from endpoints**: FastAPI endpoints return Pydantic models, not SQLAlchemy `Mapped[...]` instances; Django views serialize via DRF serializers, not raw `model_to_dict` (avoids unintended field exposure and serialization surprises)
 - [ ] **Transaction boundaries**: writes happen inside an explicit transaction. FastAPI: session per request via `Depends(get_db)` with commit on success / rollback on exception. Django: `@transaction.atomic()` decorator or context manager for multi-write operations; `select_for_update` only inside transactions
 - [ ] **Celery dispatch AFTER commit**: `task.delay(...)` invoked after `session.commit()` (FastAPI) or via `transaction.on_commit(lambda: task.delay(...))` (Django); dispatching inside the transaction is a smell - the worker may pick up before the row is visible
@@ -189,7 +199,7 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 - [ ] **Layering (FastAPI)**: router → service → repository → model. No business logic in routers; no `httpx` calls in repositories; no Pydantic schema construction in repositories. Repositories return ORM rows or DTOs; mapping to response schemas happens at the service or router boundary, not in the repository
 - [ ] **Layering (Django)**: view / ViewSet → service → manager / queryset → model. No business logic in views beyond orchestration; no direct ORM in templates; service layer for cross-model orchestration
 - [ ] **Service-layer discipline**: any router / view method with > 10 lines of orchestration is extracted to a service module; services expose intention-revealing names (`fulfill_order(order_id)` not `process_order_step_2`); cross-aggregate orchestration lives in a service, not in Django signals or SQLAlchemy event listeners
-- [ ] **Anemic domain antipattern**: when business rules accumulate in services and models are pure data containers (Django) or `Mapped[...]` schemas (SQLAlchemy), flag for refactor (see `task-python-refactor`); push behavior into models / domain objects where it belongs to the aggregate's invariants
+- [ ] **Anemic domain antipattern (deep depth only)**: when reviewing in `deep` mode and historical pattern matching shows business rules accumulating in services while ORM models stay as pure `Mapped[...]` data containers (SQLAlchemy) or pure data containers (Django), flag for refactor via `task-python-refactor`. Do **not** raise on a single PR's evidence alone - one PR adding a service method is not "anemic accumulation."
 - [ ] **Dependency injection style (FastAPI)**: `Depends` used consistently; constructor injection for services where possible; no module-level singletons created on import that hold mutable state
 - [ ] **Settings discipline**: typed settings via `pydantic-settings` `BaseSettings` (FastAPI) or `django-environ` (Django); profile-separated config (`Settings(env_file=...)`); no hardcoded values that should be env vars
 - [ ] **Module / package boundaries**: feature-package layout (`app/orders/{router,service,repository,schema}.py`) preferred over layer-package layout (`app/routers/`, `app/services/`, `app/repositories/`); cross-feature imports go through public service interfaces, not direct repository imports
@@ -230,7 +240,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 - [ ] **Hardcoded URLs / credentials**: in env vars, Vault, or settings - never inline in code
 - [ ] **Function length**: functions > 30 lines reviewed for extraction; functions > 60 lines flagged unless they are a clearly orchestrating service function calling intention-revealing private helpers
 - [ ] **Duplicated query logic**: same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager method or repository method
-- [ ] **Logging hygiene**: structured logger (`structlog`, stdlib `logging` with formatter) over `print`; parameterized logging (`logger.info("processing order=%s", order_id)`) not f-strings (`logger.info(f"processing order={order_id}")`) - the difference matters when the log format changes; log levels used correctly (`error` for actionable failures, `warning` for recoverable anomalies, `info` for state transitions, `debug` for verbose); structured fields when configured (delegate to `task-python-review-observability` for depth)
+- [ ] **Logging hygiene**: surface obvious offenders as Core findings at `[Suggestion]` - `print(...)` in production code path, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong log levels. The observability subagent owns depth (sampling, structured-field schemas, OTel correlation IDs, multi-process Prometheus); do not duplicate that audit here. If observability is not in scope this run, still surface the obvious offenders so they are not lost.
 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-python-review-observability` subagent owns the depth review).
@@ -311,13 +321,24 @@ No `[Nitpick]` or `[Praise]` labels.
 
 - Improvement:
 
+### [Question] file:line
+
+- Question: [what is ambiguous in the change]
+- Why it matters: [what the right next step depends on - author intent, business rule, deployment topology, etc.]
+
+_Use [Question] when the change is genuinely ambiguous and the right action depends on author intent. Do NOT use it as a softer Blocker._
+
 ## Architecture Notes
+
+_Summary commentary on systemic patterns. **Do not restate individual findings here.** If a pattern is severe enough to be a finding, keep it in Findings and reference it by file:line from these notes. Use this section for cross-cutting observations the per-file findings cannot carry on their own._
 
 - Boundary impact:
 - Coupling change:
 - Drift detected:
 
 ## Maintainability Notes
+
+_Same rule as Architecture Notes - summary commentary, not duplicated findings._
 
 - Over-engineering detected:
 - Simplification opportunities:
@@ -359,7 +380,14 @@ _Omit this section if there are no actionable findings._
 - [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
 - [ ] Risk level and blast radius stated before any line-level findings
-- [ ] Phase B Python correctness checks applied: `async def` discipline, await everywhere, Pydantic v2 / DRF serializer rules, authorization on every endpoint, ORM-in-API leakage, transaction boundaries, post-commit Celery dispatch
+- [ ] Phase B - `async def` discipline + `await` everywhere checked
+- [ ] Phase B - Pydantic v2 input/output rules (`extra="forbid"`, `response_model`) / DRF serializer rules (`fields` explicit, `read_only_fields`) checked
+- [ ] Phase B - authentication AND authorization both checked (object-level scoping, not just `Depends(get_current_user)`)
+- [ ] Phase B - SSRF / outbound URL safety + edge middleware presence checked
+- [ ] Phase B - ORM-in-API leakage (no `Mapped[...]` returned, no `model_to_dict` to client) checked
+- [ ] Phase B - transaction boundaries + post-commit Celery dispatch checked
+- [ ] Phase B - new ORM column with predicate use checked for index migration
+- [ ] Phase B - migration safety (concurrent index, lock_timeout, expand-contract, keyset backfill) checked when migrations changed
 - [ ] Phase C Python architecture checks applied: layering, anemic domain, settings discipline, signal / event listener discipline, package boundaries, multi-tenant
 - [ ] Phase D AI-quality checks applied: pattern inflation, single-impl ABCs, over-abstraction, speculative configurability, async misapplication
 - [ ] Phase E Python maintainability checks applied: naming, magic numbers, function length, parameterized structured logging

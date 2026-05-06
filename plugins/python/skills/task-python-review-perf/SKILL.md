@@ -103,6 +103,8 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - ORM Hotspots (FastAPI / SQLAlchemy or Django ORM)
 
+> If `Framework: FastAPI` was recorded in Step 1, **skip the Django subsection entirely** below; do not scan it for non-applicable bullets. Likewise skip the FastAPI subsection on Django-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
+
 **If FastAPI / SQLAlchemy** - use skill: `python-sqlalchemy-patterns`:
 
 Inspect every changed model, repository, service, and router for:
@@ -148,6 +150,10 @@ Use skill: `python-migration-safety` for safe-migration checks on any change in 
 - [ ] **Backfill via keyset pagination** (`WHERE id > :last_id ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N` (re-scans the same rows on every iteration)
 - [ ] Data migrations isolated from DDL migrations - separate Alembic revision or Django `RunPython` migration
 
+**Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot in `WHERE` / `ORDER BY` / `GROUP BY` even if no query in the diff currently references it - someone is adding the index for a reason, and the migration is the load-bearing artifact. Validate the index is actually needed (column shape, expected selectivity), then assess migration safety. Conversely, when the diff _adds a column_ the application also queries on, flag the missing index proactively rather than waiting for a separate migration PR.
+
+**Migration impact template.** Before approving any migration step on a hot table, state the impact: _"DDL on a 50M-row table without `CONCURRENTLY` blocks all writes for the duration of the index build (typically 5-30 min on Postgres at this scale). Acquires `ACCESS EXCLUSIVE`; every other transaction queues."_ If the row count is unknown, ask, or note "row count not in diff - confirm before deploy."
+
 ### Step 6 - Async Correctness and Event Loop (FastAPI)
 
 _Skip if Django sync app. Skipped at `quick` depth otherwise - see Depth Levels above._
@@ -157,6 +163,11 @@ Use skill: `python-async-patterns` for asyncio patterns.
 Inspect changes touching `async def`, `await`, `asyncio.gather`, `TaskGroup`:
 
 - [ ] **No blocking I/O in `async def`**: `time.sleep` → `asyncio.sleep`; `requests.get` → `httpx.AsyncClient.get`; sync DB drivers (`psycopg2`) → async driver (`asyncpg` / `psycopg[binary,pool]` async). Sync file I/O on small files is acceptable; large files use `aiofiles`.
+
+> **Impact heuristic - blast radius of an event-loop block.** A blocking call inside `async def` does not just slow the calling request - it stalls _every other request currently in flight on this uvicorn worker_. With `--workers 4` and a 50ms `time.sleep`, a single endpoint can drag tail latency across all four endpoints sharing that worker until it returns. Phrase the impact as "tail-latency contagion across all endpoints on this worker," not "this request is slow."
+
+> **Synchronous external dependency on the request path.** Even when the call uses `httpx.AsyncClient` correctly, an HTTP call to a critical-path service (fraud, auth, pricing) inherits the upstream's tail latency: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget) when the call is non-blocking-business; recommend strict timeouts (`asyncio.timeout(0.5)`) plus fallback values when blocking-business.
+
 - [ ] **No CPU-heavy work in the event loop**: hashing, image processing, parsing large payloads must go to `loop.run_in_executor(None, fn)` or a Celery task; otherwise tail-latency for all in-flight requests degrades.
 - [ ] **`asyncio.gather` for fan-out**: independent I/O calls run concurrently, not sequentially in a loop. Use `asyncio.gather(*coros)` or `TaskGroup` (Python 3.11+) for structured concurrency.
 - [ ] **`TaskGroup` for new code**: prefer `async with asyncio.TaskGroup() as tg:` over `gather` when one failure should cancel siblings.
@@ -207,14 +218,16 @@ Use skill: `python-celery-patterns` for canonical task patterns.
 - [ ] **Result backend usage**: only when result is consumed - storing results "just in case" wastes Redis / DB
 - [ ] **`time_limit` and `soft_time_limit`** set on tasks that can hang on external I/O
 
-### Step 10 - Observability for Perf
+### Step 10 - Observability for Perf (delegation hand-off)
 
 _Skipped at `quick` depth._
 
-- [ ] Slow paths instrumented with OpenTelemetry / `prometheus_client` histograms; metric names under a consistent namespace
-- [ ] SQLAlchemy `echo=False` in prod (logs every query); `echo=True` only for local debug
-- [ ] Django `django-debug-toolbar` not enabled in prod; query-count assertions in tests via `CaptureQueriesContext`
-- [ ] APM (Datadog / Sentry / Honeycomb) span attribution by request - confirm trace context propagates through `httpx.AsyncClient`, Celery, and `loop.run_in_executor` boundaries
+This step is intentionally narrow - depth on observability belongs to `task-python-review-observability`. From a perf perspective, confirm only:
+
+- [ ] Slow paths reachable from this PR have **some** instrumentation (OTel span or `prometheus_client` histogram); if not, raise as a Low/Recommendation finding and delegate to `task-python-review-observability` for a proper instrumentation pass rather than dictating the design here.
+- [ ] SQLAlchemy `echo=False` in prod and `django-debug-toolbar` disabled in prod - if visible in the diff. If neither is in the diff, skip.
+
+Anything beyond presence/absence (sampling rates, span attributes, correlation IDs, multi-process Prometheus) → `task-python-review-observability` owns it. Note the gap, do not duplicate the audit here.
 
 ## Self-Check
 
@@ -229,7 +242,7 @@ _Skipped at `quick` depth._
 - [ ] `python-migration-safety` consulted for any migration change; `lock_timeout`, concurrent index, keyset-pagination backfill, expand-contract verified
 - [ ] `python-async-patterns` consulted for any `async def` / event-loop change; blocking-call audit, `gather` / `TaskGroup` / `Semaphore` use, `asyncio.timeout` wrapping
 - [ ] `python-celery-patterns` consulted for any Celery change; idempotency, `acks_late`, retry policy, post-commit dispatch verified
-- [ ] Connection pool sizing validated against worker / framework concurrency model
+- [ ] Connection pool sizing validated against worker / framework concurrency model **if pool config is in the diff**; otherwise note as Low / Recommendation and skip rather than fail the check
 - [ ] Caching strategy assessed (in-process vs Redis, single-flight, invalidation explicit)
 - [ ] Pydantic v2 / DRF serializer cost assessed when applicable
 - [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never just "this is slow"

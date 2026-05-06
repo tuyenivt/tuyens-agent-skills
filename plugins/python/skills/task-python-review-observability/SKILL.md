@@ -72,7 +72,11 @@ If `review-precondition-check` stops with a fail-fast message, surface the messa
 
 ### Step 3 - Read the Instrumentation Surface
 
-Before applying the checklists below, open the files that actually configure observability so findings cite real lines, not assumptions:
+**The most important output of this step is a one-line answer per surface (logging / OTel / Prometheus / Celery / error tracker) of the form `wired | partial | absent`.** A missing wire is itself the finding, not a precondition for review. If the surface is `absent`, Steps 4-9 shift mode from "audit existing wiring" to "scaffold from zero at the changed call sites" - and findings consolidate one-per-surface (see grouping rule below) rather than one-per-bullet.
+
+**Grouping rule.** When a whole surface is `absent` (no `prometheus-client`, no OTel SDK init, no error-tracker SDK), produce a **single High-Impact finding for that surface** listing all the missing pieces grouped by the file/symbol they should land in - not one finding per sub-bullet. Per-callsite findings only apply when the surface exists and a specific callsite misuses it. This prevents 50-item dumps on greenfield reviews.
+
+Then open the files that actually configure observability so findings cite real lines, not assumptions:
 
 **FastAPI:**
 
@@ -101,6 +105,7 @@ Inspect logging config and any `logger.*` callsite in the diff:
 - [ ] **OpenTelemetry log correlation**: `LoggingInstrumentor().instrument(set_logging_format=True)` injects `trace_id` / `span_id` into every log record automatically when OTel is active; flag if absent
 - [ ] **Sensitive-field masking**: structlog processor or stdlib filter strips `password`, `token`, `authorization`, `credit_card`, `ssn`, `api_key`. Pydantic `Field(..., repr=False)` and DRF `write_only_fields` reinforce so `logger.info("payload=%s", obj)` cannot leak via `__repr__`
 - [ ] **No `logger.info(user)` / `logger.info(model_instance)`** that serializes an ORM model (triggers lazy loads, may log PII / hashed passwords). Always log specific fields by ID
+- [ ] **User-identity fields emitted as structured key-values, not in the message string**: `user_id`, `owner_id`, `tenant_id`, `email` go in via `logger.info("event", user_id=...)` or `bind_contextvars(user_id=...)`, never in `f"user={user_id}"`. A single redaction processor can scrub structured fields; it cannot reliably scrub them out of a free-text message
 - [ ] **Log levels used correctly**: `error` for actionable failures, `warning` for recoverable anomalies, `info` for state transitions, `debug` for verbose diagnostics. Default root level `INFO` in prod; `DEBUG`/`TRACE` reserved for targeted modules
 - [ ] **Parameterized stdlib logging** (`logger.info("processing order=%s", order_id)`) - not f-strings (`logger.info(f"processing order={order_id}")`); structlog binds keyword args directly so this is automatic
 - [ ] **No log spam in hot loops** - iterating large querysets, scheduled jobs running every second, Celery tasks at high TPS must not log per-iteration; sample or use `debug` level
@@ -147,6 +152,7 @@ Inspect Celery instrumentation and task observability:
 - [ ] **Per-task metrics**: latency histogram, retry counter, failure counter, queue-depth gauge (via Celery `inspect` or broker introspection)
 - [ ] **Trace context propagation across the request → Celery boundary**: when `task.delay(...)` is dispatched inside an HTTP request, the worker span links back to the request span (CeleryInstrumentor handles this automatically; flag manual wiring that breaks it)
 - [ ] **structlog context binding inside the task**: `task_id`, `args` (sanitized) bound at `task_prerun`; cleared at `task_postrun`
+- [ ] **Outbound HTTP from tasks instrumented**: `requests.post(...)` / `httpx.AsyncClient.post(...)` calls inside a task body are covered by `RequestsInstrumentor` / `HTTPXClientInstrumentor` so the worker span chains to the downstream service span; flag tasks that make uninstrumented outbound calls because the downstream timing / errors stay invisible to traces
 - [ ] **Beat / scheduled task instrumentation**: each beat-scheduled task emits a span; missed-execution alerting via metric
 
 ### Step 8 - Async / Lifespan Observability (FastAPI)
@@ -210,11 +216,26 @@ When invoked at `deep`, evaluate:
 
 **Stack Detected:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
-**Logging:** structlog (JSON) | stdlib logging + python-json-logger | stdlib logging (text) | other
-**Metrics:** Prometheus (prometheus-client) | OTel metrics (Prometheus exporter) | StatsD | none
-**Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | none
-**Error Tracker:** Sentry | Honeybadger | Rollbar | none
-**Overall:** Adequate | Gaps Found - [count by impact: High/Medium/Low]
+**Logging:** structlog (JSON) | stdlib logging + python-json-logger | stdlib logging (text) | absent
+**Metrics:** Prometheus (prometheus-client) | OTel metrics (Prometheus exporter) | StatsD | absent
+**Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | absent
+**Celery instrumentation:** CeleryInstrumentor | partial | absent | n/a (no Celery)
+**Error Tracker:** Sentry | Honeybadger | Rollbar | absent
+**Overall:** Adequate | Gaps Found - [count by impact: High/Medium/Low] | Greenfield - no observability surface wired (count by impact: ...)
+
+## Surface Map
+
+_The 5-row verdict from Step 3, repeated here as the top-line read for the reviewer. Each row is `wired | partial | absent` plus a one-line citation._
+
+| Surface                | Verdict                        | Evidence                                   |
+| ---------------------- | ------------------------------ | ------------------------------------------ |
+| Logging                | wired / partial / absent       | [file:line or "no logging config in repo"] |
+| OpenTelemetry SDK      | wired / partial / absent       | [...]                                      |
+| Prometheus / metrics   | wired / partial / absent       | [...]                                      |
+| Celery instrumentation | wired / partial / absent / n/a | [...]                                      |
+| Error tracker          | wired / partial / absent       | [...]                                      |
+
+> Use **Greenfield** as the `Overall:` headline when 3+ of the rows above are `absent` - it tells the reader the review is scaffolding, not auditing, and changes how they prioritize. Use the same `absent` vocabulary throughout (do not mix `none` / `missing` / `not wired`).
 
 ## Findings
 
@@ -233,7 +254,7 @@ When invoked at `deep`, evaluate:
 
 [Same structure]
 
-_Omit sections with no findings._
+_Omit sections with no findings. Within each impact bucket, group findings by surface (Logging / Tracing / Metrics / Celery / Error Tracker / Async-Lifespan) when more than 2 findings share a surface; otherwise list flat. Greenfield reviews collapse a whole surface into one finding per the Step 3 grouping rule._
 
 ## Recommendations
 
@@ -262,3 +283,6 @@ _Omit this section if there are no actionable findings._
 - Approving `Counter(...)` registration inside a request handler - causes duplicate-registration crashes after the first request
 - Approving `OTEL_TRACES_SAMPLER=always_on` in prod for high-traffic services - cost and storage compound
 - Treating `print(...)` as logging - flag for replacement
+- Prescribing the OTLP endpoint URL or the Sentry DSN value - say "sourced from env / Vault" and stop; concrete URLs are infra config, not source-code review
+- Producing one finding per missing checkbox when an entire surface is absent - collapse into one High finding per surface per Step 3's grouping rule
+- Producing only structlog recommendations when the team is on stdlib `logging` - `python-json-logger` + `LoggingInstrumentor` is an acceptable target if the team is not ready to adopt structlog

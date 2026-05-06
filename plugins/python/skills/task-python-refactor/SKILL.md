@@ -60,15 +60,21 @@ Read the actual file(s) named in the Inputs table before classifying smells. A r
 
 If the user named only the goal without a target file / module, ask for the target before proceeding. Do not guess.
 
+**Sibling-smell disposition.** Real targets live inside fat modules. If the file containing the target also contains other smells (e.g., the user names `create_order` but the same router file has IDOR in `get_order` and a pickle deserialization in `bulk_import`), do **not** action them in this plan and do **not** ignore them silently. List them under a `Sibling Smells (Out of Scope)` heading in the output, briefly state why each is deferred (separate target, separate severity, separate skill - e.g., security findings belong in `task-python-review-security`), and recommend follow-up invocations. This disambiguates "while we're here cleanup" (forbidden) from "name the deferred work for hand-off" (required).
+
 ### Step 3 - Coverage Gate (mandatory)
 
-Refactoring without test coverage is a rewrite with extra steps. Before proposing any refactor:
+Refactoring without test coverage is a rewrite with extra steps. Identify the tests covering the target (`test_<target>.py`, `test_<target>_api.py`, integration tests against Testcontainers, Celery task tests), then assign one of three statuses with sharp boundaries:
 
-1. Identify the tests covering the target (`test_<target>.py`, `test_<target>_api.py`, integration tests against Testcontainers, Celery task tests)
-2. Run coverage assessment - if coverage is missing or thin, **stop and require coverage first** before proposing refactor steps. Recommend `task-python-test` to fill gaps
-3. If coverage exists but is happy-path-only, flag the boundary-test gap as a prerequisite step in the plan (refactor must not silently change validation / 401 / 403 / not-found behavior)
+| Status       | Definition                                                                                                                                   | What the workflow does                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Adequate`   | Happy path **plus** at least 2 boundary outcomes per public entry point (e.g., validation failure, auth denial, external failure, not-found) | Proceed to Step 4 normally                                                                                                                    |
+| `Thin`       | Happy path **plus** exactly 1 boundary outcome                                                                                               | Proceed, but the plan **must** include a non-optional `Step 0 - Coverage prerequisite` adding the missing boundaries before any refactor step |
+| `Inadequate` | No tests, or **happy-path-only** (success case alone)                                                                                        | **Refuse to produce Steps 1+.** The only output is the Coverage Gate verdict and a recommendation to run `task-python-test` first             |
 
-**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 4 if coverage is inadequate.
+**Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves validation, authorization, or error behavior - you would be flying blind.
+
+**Output of this step:** explicit coverage status using one of the three labels above. Do not proceed past Step 4 if status is `Inadequate`.
 
 ### Step 4 - Identify Python Smells
 
@@ -76,14 +82,15 @@ Inspect the target for these Python-specific smells. Use judgment - these are si
 
 **Router / View smells (FastAPI / Django):**
 
-| Smell                                  | Signal                                                                                                                                                                   | Risk   |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| Fat Router / View                      | Endpoint > 15 lines of orchestration (multiple service calls, conditional dispatch, response shaping)                                                                    | High   |
-| Logic in Router / View                 | Business rules, validation beyond Pydantic / DRF, calculation, or domain decisions inside the handler                                                                    | High   |
-| Direct Repository / ORM in Router      | Routers / views call `session.execute(...)` / `Order.objects.filter(...)` directly, bypassing the service layer                                                          | Medium |
-| ORM Model Returned from Endpoint       | FastAPI endpoint returns a SQLAlchemy `Mapped[...]` instance; Django view returns `JsonResponse(model_to_dict(obj))` (mass-assignment + lazy-load risk on serialization) | High   |
-| Manual Validation Duplicating Pydantic | Router body re-checks `Field(min_length=...)` constraints already on the schema                                                                                          | Low    |
-| `extra="allow"` on Input Schema        | Pydantic input schema defaults to `extra="allow"` (or no `extra=` config) - silently accepts unknown fields including privilege-bearing ones                             | High   |
+| Smell                                   | Signal                                                                                                                                                                                            | Risk   |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Fat Router / View                       | Endpoint > 15 lines of orchestration (multiple service calls, conditional dispatch, response shaping)                                                                                             | High   |
+| Logic in Router / View                  | Business rules, validation beyond Pydantic / DRF, calculation, or domain decisions inside the handler                                                                                             | High   |
+| Direct Repository / ORM in Router       | Routers / views call `session.execute(...)` / `Order.objects.filter(...)` directly, bypassing the service layer                                                                                   | Medium |
+| ORM Model Returned from Endpoint        | FastAPI endpoint returns a SQLAlchemy `Mapped[...]` instance; Django view returns `JsonResponse(model_to_dict(obj))` (mass-assignment + lazy-load risk on serialization)                          | High   |
+| Manual Validation Duplicating Pydantic  | Router body re-checks `Field(min_length=...)` constraints already on the schema                                                                                                                   | Low    |
+| `extra="allow"` on Input Schema         | Pydantic input schema defaults to `extra="allow"` (or no `extra=` config) - silently accepts unknown fields including privilege-bearing ones                                                      | High   |
+| Response Schema Exposes Internal Fields | Pydantic `*Response` / DRF serializer declares server-internal fields (`internal_audit_log`, `is_test`, `internal_notes`) - leaks via `response_model` even when the ORM is not returned directly | High   |
 
 **Service smells:**
 
@@ -98,16 +105,17 @@ Inspect the target for these Python-specific smells. Use judgment - these are si
 
 **Persistence / ORM smells:**
 
-| Smell                                          | Signal                                                                                                     | Risk   |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------ |
-| Fat Model                                      | Django / SQLAlchemy model > 300 lines; mixes mapping, computed properties, business operations, validation | High   |
-| Django `pre_save` / `post_save` Signal Abuse   | Signal dispatching emails, publishing events, calling external services - races commit and silently breaks | High   |
-| SQLAlchemy `event.listen` Abuse                | `before_insert` / `after_update` listener doing cross-aggregate writes - hidden control flow               | High   |
-| `relationship(lazy="select")` Default          | Default lazy traversal in `async_session` raises `MissingGreenlet`; in sync code, it triggers N+1          | High   |
-| `FetchType.EAGER` equivalent (`lazy="joined"`) | Eager load on collections - cartesian explosion + locks lazy semantics elsewhere                           | High   |
-| Repository Returning Unbounded `all()`         | `session.scalars(select(X)).all()` / `Model.objects.all()` without pagination                              | Medium |
-| Django `default` Manager Side Effects          | Custom default Manager that filters out soft-deleted rows globally - surprises every query                 | High   |
-| `text()` String Concatenation                  | Dynamic JPQL / SQL built via string concat instead of parameterized `text(":param")`                       | High   |
+| Smell                                          | Signal                                                                                                                                                                                                                 | Risk   |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Fat Model                                      | Django / SQLAlchemy model > 300 lines; mixes mapping, computed properties, business operations, validation                                                                                                             | High   |
+| Django `pre_save` / `post_save` Signal Abuse   | Signal dispatching emails, publishing events, calling external services - races commit and silently breaks                                                                                                             | High   |
+| SQLAlchemy `event.listen` Abuse                | `before_insert` / `after_update` listener doing cross-aggregate writes - hidden control flow                                                                                                                           | High   |
+| `relationship(lazy="select")` Default          | Default lazy traversal in `async_session` raises `MissingGreenlet`; in sync code, it triggers N+1                                                                                                                      | High   |
+| `FetchType.EAGER` equivalent (`lazy="joined"`) | Eager load on collections - cartesian explosion + locks lazy semantics elsewhere                                                                                                                                       | High   |
+| Repository Returning Unbounded `all()`         | `session.scalars(select(X)).all()` / `Model.objects.all()` without pagination                                                                                                                                          | Medium |
+| Django `default` Manager Side Effects          | Custom default Manager that filters out soft-deleted rows globally - surprises every query                                                                                                                             | High   |
+| `text()` String Concatenation                  | Dynamic JPQL / SQL built via string concat instead of parameterized `text(":param")`                                                                                                                                   | High   |
+| ORM Instance Stored Outside Session Scope      | ORM model assigned to a module-level cache, sent to a queue, or serialized via `model.__dict__` after session close - lazy attributes, detached-instance traps, identity-map confusion. Cache IDs and re-fetch instead | High   |
 
 **Configuration / DI smells:**
 
@@ -165,9 +173,13 @@ State the blast radius before proposing steps: **Narrow** (single file, single c
 Each refactoring step must be:
 
 1. **Independently committable** - the codebase imports cleanly and the test suite passes after each step
-2. **Behaviorally invariant** - no behavior change unless explicitly noted as a separate step
+2. **Behaviorally invariant** - no behavior change unless explicitly noted as a separate step (or labeled `coupled-fix`, see below)
 3. **Reversible** - rollback is one revert away
 4. **Tested** - the existing pytest suite continues to pass; new tests added when extracting new units
+
+**Recipe interleaving.** When more than one Common Recipe applies to a single target (e.g., a fat router that also has `extra="allow"`, blocks the event loop, and stashes ORM instances in a module cache), do **not** concatenate the recipes - that produces a 25-step plan mixing concerns. Identify the **primary** refactor (usually the one named in the user's goal), use that recipe as the spine, and fold supporting recipes in as additive sub-steps where dependencies require it. State the primary recipe explicitly in the output via the `Primary recipe:` field. If the spine grows past ~8 steps, split into two plans / two PRs rather than one mega-plan.
+
+**Coupled-fix language.** Sometimes a refactor genuinely depends on a behavior change (e.g., extracting a service that derives `owner_id` from the authenticated principal _requires_ the principal to be available, so adding `Depends(get_current_user)` is a structural prerequisite, not "while-we're-here cleanup"). When this happens, label the step `coupled-fix` in the Output Format with its own test gate and rationale. This is **not** a bundling violation - it is an explicit prerequisite. Do not silently fold it into an extraction step.
 
 **Transaction-boundary watch.** When extracting orchestration that runs inside `@transaction.atomic()` or `async with session.begin()`, the extracted unit inherits the transaction context if called from the original entry point. If the extracted code makes HTTP calls, publishes to Celery, or writes files, they now happen mid-transaction (a regression). State the transaction stance per step: "callee runs inside caller's transaction" or "callee uses `transaction.on_commit` / async post-commit hook to defer side effects." Never silently move I/O across a transaction boundary.
 
@@ -276,14 +288,19 @@ Before finalizing the plan, check:
 
 **Target:** [file:line or path]
 **Goal:** [what this refactor achieves]
+**Primary recipe:** [name from "Common Python refactor recipes" - this is the spine]
 **Stack:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
 
 ## Coverage Gate
 
-**Status:** Adequate | Thin (boundary tests missing) | Inadequate (cannot proceed)
+**Status:** Adequate | Thin | Inadequate
 
-[If Inadequate: state what coverage must exist before refactor begins, and recommend running `task-python-test` first.]
+[If Adequate: one sentence on the boundary cases that exist.]
+[If Thin: list the missing boundary tests; Step 0 below covers them.]
+[If Inadequate: state what coverage must exist before refactor begins, and recommend running `task-python-test` first. **Stop the workflow here** - omit Blast Radius, Step Sequence, and Verification. You may still produce the **Smells Identified** and **Sibling Smells (Out of Scope)** sections as a *preview* so the implementer has a target list when filling the coverage gap; mark them clearly as preview-only.]
+
+**Coverage prerequisite list shape (when status is `Thin` or `Inadequate`).** List required tests as one row per public entry point with this shape: `entry-point | outcome | recommended layer`. Outcomes cover at minimum: validation failure (4xx), authorization denial (401/403), not-found / IDOR, external-collaborator failure. Layer options: endpoint test (httpx ASGITransport / DRF APIClient), service unit test, repository integration test (Testcontainers), Celery task test. Example: `POST /orders/ | unknown-field rejected (extra="forbid") | endpoint test`. This makes the prerequisite directly actionable rather than a vague "add boundary tests."
 
 ## Smells Identified
 
@@ -291,16 +308,34 @@ Before finalizing the plan, check:
 | ------------ | --------- | ---- | -------------------------------------- |
 | [Smell name] | file:line | High | [Why this is the smell - one sentence] |
 
+## Sibling Smells (Out of Scope)
+
+_Other smells in the same file/module that this plan does NOT address. Listed for hand-off, not action._
+
+| Smell   | Location  | Why deferred                                                                                | Recommended follow-up                                                                 |
+| ------- | --------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [Smell] | file:line | [separate target / separate severity / belongs to security review / belongs to perf review] | [`task-python-review-security` / `task-python-refactor` on a different target / etc.] |
+
+_Omit this section if the target file has no other smells._
+
 ## Blast Radius
 
 [Narrow | Moderate | Wide | Critical] - [one-paragraph rationale citing callers, tests, public surface]
 
 ## Step Sequence
 
+### Step 0 - Coverage prerequisite _(skip if Coverage Gate is Adequate)_
+
+- **Change:** add the missing boundary tests identified in the Coverage Gate
+- **Risk:** Low (tests-only change)
+- **Test gate:** new tests pass; existing suite still green
+- **Rollback:** revert added test files
+
 ### Step 1 - [Action verb + noun]
 
 - **Change:** [what is added / extracted / moved]
 - **Risk:** [Low | Medium | High]
+- **Step kind:** [refactor | coupled-fix]
 - **Test gate:** [which tests must pass after this step - unit / endpoint / Testcontainers integration / Celery]
 - **Transaction stance:** [callee runs inside caller's transaction | callee uses `transaction.on_commit` / async post-commit | not transactional]
 - **Async stance:** [sync | async | unchanged]
@@ -308,7 +343,7 @@ Before finalizing the plan, check:
 
 ### Step 2 - [Action verb + noun]
 
-[Same structure]
+[Same structure. Use `Step kind: coupled-fix` for any step that intentionally changes behavior because the refactor depends on it (e.g., adding a security dependency that lets the extracted service derive `owner_id` from the principal). Always state why the coupling is structural, not cosmetic.]
 
 [... continue numbering ...]
 
@@ -329,18 +364,29 @@ Before finalizing the plan, check:
 
 ## Self-Check
 
+**Plan-time checks (verifiable now from the plan itself):**
+
 - [ ] Stack confirmed as Python (or accepted from parent dispatcher); framework recorded (Step 1)
 - [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
-- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate (Step 3)
+- [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
+- [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin` (Step 3)
 - [ ] Python-specific smells identified using Step 4 catalog (router/view, service, persistence, configuration/DI, async/Celery) (Step 4)
 - [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
-- [ ] Each step independently committable; test gate stated per step (Step 6)
+- [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 6)
+- [ ] Step 0 included if Coverage Gate is `Thin`; omitted if `Adequate` (Output Format)
 - [ ] Transaction stance stated per step (no I/O silently moved across transaction boundary) (Step 6)
 - [ ] Async stance stated per step (no silent sync ↔ async signature changes) (Step 6)
+- [ ] `Step kind:` set to `coupled-fix` for any step that intentionally changes behavior because the refactor depends on it; rationale stated; otherwise `refactor` (Step 6)
 - [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, signal removals, signature changes) (Step 6)
+- [ ] Plan length ≤ ~8 steps, or split into multiple PRs explicitly (Step 6)
 - [ ] No step bundles unrelated cleanup (Step 6)
 - [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
-- [ ] Rollback path is one revert per step (Step 7)
+
+**Execution-time gates (commitments the plan makes for the implementer):**
+
+- [ ] Test suite passes between every step
+- [ ] Each step independently committable
+- [ ] Rollback path is one revert per step
 
 ## Avoid
 

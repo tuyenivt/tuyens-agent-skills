@@ -238,7 +238,8 @@ Quick-reference checklist for reviewing existing Python tests:
 
 - User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
 - User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
-- User asks "test strategy", "test plan", or coverage is below 50% -> Strategy Doc (optionally include Coverage Assessment)
+- User asks "test strategy", "test plan", or coverage is below 50% with no scaffolds requested -> Strategy Doc (optionally include Coverage Assessment)
+- User asks for **two or more deliverables in the same invocation** ("review coverage AND scaffold tests", "what's missing and write the tests") -> produce them in this order, separated by a horizontal rule (`---`): Coverage Assessment, then Strategy Doc (if requested), then Test Scaffolds. Do not silently drop one.
 - If unclear, produce Strategy Doc as the default.
 
 **Coverage Assessment:**
@@ -263,6 +264,16 @@ Quick-reference checklist for reviewing existing Python tests:
 - Unit (services, validators, helpers): [count target]
 - Endpoint + integration (ASGI / APIClient + Testcontainers): [count target]
 - E2E (full stack with broker / Redis): [count target - keep small]
+
+**Prioritization** _(include when current coverage is below ~50% or the assessment surfaces > 5 gaps)_
+
+Apply the Step 7 risk bands. Order follow-up work as:
+
+1. **P1 - Authorization & authentication:** [list specific endpoints / flows missing 401/403/ownership tests]
+2. **P2 - Data integrity:** [repositories with non-trivial queries / write paths without rollback tests / Celery tasks with unguarded side effects]
+3. **P3 - Business-critical flows:** [revenue, state machines, scheduled jobs touching billing or notifications]
+4. **P4 - High-churn code:** [files with frequent recent commits or bug-fix history]
+5. **P5 - Plumbing:** [pass-through endpoints / simple CRUD - lowest risk]
 ```
 
 **Test Scaffolds** (when generating boilerplate):
@@ -278,6 +289,79 @@ Produce ready-to-run pytest test files using project conventions. Each scaffold 
 - Inline comments explaining non-obvious setup (e.g., why `app.dependency_overrides` is required)
 
 **Scaffold templates** (adapt to project conventions - module names, factory names, fixture names):
+
+_FastAPI conftest with dependency overrides_ (`tests/conftest.py`) - the most-copied file in any FastAPI test suite, scaffold this first if it does not exist:
+
+```python
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.main import app
+from app.db import get_db
+from app.core.security import get_current_user
+
+
+@pytest.fixture
+async def client(db_session: AsyncSession):
+    # Override get_db so the request handler sees the same session as the test
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def authed_client(client, current_user):
+    # Override get_current_user; the endpoint sees `current_user` without a real JWT
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    yield client
+    app.dependency_overrides.pop(get_current_user, None)
+```
+
+_Testcontainers PostgreSQL session fixture with per-test SAVEPOINT rollback_ (`tests/integration/conftest.py`):
+
+```python
+import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from testcontainers.postgres import PostgresContainer
+from app.db import Base
+
+
+@pytest.fixture(scope="session")
+def pg_container():
+    # Reuse with `testcontainers.reuse=True` in ~/.testcontainers.properties for fast cycles
+    with PostgresContainer("postgres:15") as pg:
+        yield pg
+
+
+@pytest_asyncio.fixture(scope="session")
+async def engine(pg_container):
+    url = pg_container.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
+    eng = create_async_engine(url, echo=False)
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield eng
+    await eng.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(engine) -> AsyncSession:
+    # SAVEPOINT-per-test rollback: every test sees a clean DB without re-creating tables
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        Session = async_sessionmaker(bind=conn, expire_on_commit=False)
+        async with Session() as session:
+            await session.begin_nested()
+            try:
+                yield session
+            finally:
+                await trans.rollback()
+```
 
 _FastAPI endpoint test_ (`tests/integration/test_orders_api.py`):
 
@@ -400,17 +484,57 @@ from app.repositories.order import OrderRepository
 from tests.factories import OrderFactory, CustomerFactory
 
 
+@pytest.fixture(autouse=True)
+def _bind_factories(db_session):
+    # factory_boy SQLAlchemyModelFactory persists via class-level _meta.sqlalchemy_session.
+    # Bind the test session so OrderFactory.create() actually inserts rows.
+    OrderFactory._meta.sqlalchemy_session = db_session
+    CustomerFactory._meta.sqlalchemy_session = db_session
+
+
 @pytest.mark.asyncio
 async def test_find_open_orders_returns_only_open_statuses(db_session):
-    customer = await CustomerFactory.create(session=db_session)
-    await OrderFactory.create(session=db_session, customer=customer, status="open")
-    await OrderFactory.create(session=db_session, customer=customer, status="closed")
+    customer = CustomerFactory.create()
+    OrderFactory.create(customer=customer, status="open")
+    OrderFactory.create(customer=customer, status="closed")
+    await db_session.flush()
 
     repo = OrderRepository(db_session)
     orders = await repo.find_open_orders(customer.id)
 
     assert len(orders) == 1
     assert orders[0].status == "open"
+```
+
+> Async note: `factory_boy.alchemy.SQLAlchemyModelFactory` is sync. For an async-first
+> project either (a) use the sync factory plus an explicit `await db_session.flush()`
+> as above, (b) use `polyfactory` which has first-class async support, or (c) write a
+> thin async helper. Pick one convention per project; do not mix.
+
+_Pydantic schema unit test_ (`tests/unit/test_schemas_order.py`) - validators run on every request, so test them in isolation rather than only through endpoint tests:
+
+```python
+import pytest
+from pydantic import ValidationError
+from app.schemas.order import OrderCreate
+
+
+def test_order_create_rejects_unknown_fields():
+    with pytest.raises(ValidationError) as exc:
+        OrderCreate.model_validate({
+            "customer_id": 1,
+            "items": [{"sku": "A", "quantity": 1, "unit_price": "10.00"}],
+            "owner_id": 999,  # privileged field; rejected by extra="forbid"
+        })
+    assert "owner_id" in str(exc.value)
+
+
+def test_order_create_rejects_non_positive_quantity():
+    with pytest.raises(ValidationError):
+        OrderCreate.model_validate({
+            "customer_id": 1,
+            "items": [{"sku": "A", "quantity": 0, "unit_price": "10.00"}],
+        })
 ```
 
 _Celery task test_ (`tests/test_order_tasks.py`):
@@ -444,6 +568,55 @@ def test_process_order_retries_on_transient_failure(mocker, celery_app):
     assert result.state == "SUCCESS"
 ```
 
+_Real-broker Celery test_ (`tests/integration/test_order_tasks_broker.py`) - eager mode skips the broker and masks `acks_late` / at-least-once semantics; for tasks declared `acks_late=True`, exercise the real broker:
+
+```python
+import pytest
+from app.tasks.order import process_order
+
+
+@pytest.fixture(scope="session")
+def celery_config():
+    # pytest-celery: use the in-memory broker for tests, but keep eager OFF
+    return {"broker_url": "memory://", "result_backend": "cache+memory://"}
+
+
+def test_process_order_retries_via_broker_when_worker_dies(celery_session_worker, mocker):
+    # When acks_late=True + task_reject_on_worker_lost=True, a killed worker
+    # returns the message to the queue. This test asserts the message is
+    # redelivered rather than lost.
+    mocker.patch(
+        "app.tasks.order.notify_customer",
+        side_effect=[ConnectionError, None],  # transient then success
+    )
+    async_result = process_order.delay(order_id=1)
+    async_result.get(timeout=5)
+    assert async_result.successful()
+```
+
+_`transaction.on_commit` / post-commit dispatch test_ (`tests/integration/test_orders_post_commit.py`) - tasks dispatched mid-transaction can fire before the row is visible; assert dispatch fires post-commit, not before:
+
+```python
+import pytest
+from unittest.mock import patch
+from app.services.place_order import place_order
+
+
+@pytest.mark.asyncio
+async def test_send_email_dispatched_after_commit(db_session, mocker):
+    # Capture .delay() calls. The contract: zero calls until the session
+    # commits; exactly one call after commit.
+    delay = mocker.patch("app.tasks.order.send_confirmation_email.delay")
+
+    async with db_session.begin():
+        order = await place_order(db_session, customer_id=1, items=[...])
+        # Inside the transaction: dispatch must NOT have happened yet
+        assert delay.call_count == 0
+
+    # After commit (context-manager exit): dispatch fires exactly once
+    delay.assert_called_once_with(order.id)
+```
+
 **Strategy Doc** (when designing a test strategy):
 
 ```markdown
@@ -462,18 +635,33 @@ def test_process_order_retries_on_transient_failure(mocker, celery_app):
 
 ## Self-Check
 
+**Always (any deliverable):**
+
 - [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests + `conftest.py` files read directly so scaffolds match project conventions (Step 2)
+- [ ] Code under test and a representative sample of existing tests + `conftest.py` files read directly so output matches project conventions (Step 2)
 - [ ] `python-testing-patterns` consulted for canonical Python test patterns
+- [ ] Auth testing approach explicit (FastAPI: dependency override or token fixture; Django: `force_authenticate` / `client.login`)
+- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
+
+**Strategy Doc / Coverage Assessment only:**
+
 - [ ] Test pyramid mapped to Python idioms (unit -> pytest + mock; endpoint -> ASGI / APIClient; integration -> Testcontainers; Celery -> task_always_eager / pytest-celery)
 - [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers
-- [ ] Prioritization by risk applied when coverage is low - authorization and repository correctness first, plumbing last
-- [ ] Test data guidance includes factories over raw dict literals; immutable Pydantic models preferred for FastAPI
+- [ ] Prioritization by risk applied when coverage is low - P1 authorization, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing
 - [ ] Testcontainers used for repository and full-context tests; SQLite flagged as a smell for production-Postgres apps
-- [ ] Auth testing approach explicit (FastAPI: dependency override or token fixture; Django: `force_authenticate` / `client.login`)
-- [ ] Test scaffolds (if generated) include happy path + 401 + 403 + validation-error; idempotency / retry for Celery; per-role tests for permission classes
-- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
-- [ ] Review checklist items addressed when reviewing existing tests
+
+**Test Scaffolds only:**
+
+- [ ] Test data created via factories, not raw dict literals; factory_boy session binding shown explicitly when applicable
+- [ ] Endpoint scaffolds include happy path + 401 + 403 + validation-error; IDOR test for any per-owner / per-tenant resource
+- [ ] Repository scaffolds run against Testcontainers PostgreSQL with per-test SAVEPOINT rollback - never SQLite for Postgres apps
+- [ ] Celery scaffolds include idempotency + retry; real-broker (`pytest-celery`) variant present for tasks declared `acks_late=True`
+- [ ] `app.dependency_overrides` for `get_db` / `get_current_user` shown in conftest, not invented per-test
+- [ ] Pydantic schema unit tests scaffolded for any non-trivial validator or `model_config = ConfigDict(extra="forbid")` contract
+
+**Review-existing-tests mode only:**
+
+- [ ] Review checklist items addressed for every test file in scope
 
 ## Avoid
 

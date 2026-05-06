@@ -32,6 +32,19 @@ This workflow is the stack-specific delegate of `task-code-review-security` for 
 - General code review (use `task-code-review` or `task-python-review`)
 - Production incident triage (use `/task-oncall-start`)
 
+**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+
+## Severity Rubric
+
+Use these definitions to keep severity consistent across runs - do not invent your own scale.
+
+| Severity     | Definition                                                                                                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path, secrets / signing keys exposed in source. Must fix before deploy; blocks merge.                                                                   |
+| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata or internal services, mass assignment of privilege-bearing fields, missing authorization on user-data endpoints. Must fix before merge.                                     |
+| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS when a reverse proxy enforces origin), missing field-level constraints, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile. Should fix this PR or the next one. |
+| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                       |
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -81,9 +94,11 @@ Before applying the OWASP and authn/authz checklists, open the files that actual
 
 When the diff removes a permission class or relaxes `permission_classes`, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
 
-### Step 4 - OWASP Quick Check (Python Lens)
+### Step 4 - OWASP Triage (Python Lens)
 
-Apply the OWASP Top 10 with Python-specific framing.
+This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff (e.g., `Broken Access Control: yes`, `Injection: yes`, `SSRF: yes`, `Insecure Design: no`). Steps 5-9 then produce the actual findings; do **not** repeat them here.
+
+The triage output funnels which downstream steps must run carefully versus which can be fast-passed. If a category shows no signal, explicitly state `No signal in diff` for that category in the Summary.
 
 | Risk                          | Python-specific check                                                                                                                                                                                      |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -178,11 +193,14 @@ Apply the OWASP Top 10 with Python-specific framing.
 - [ ] **`requests.get(verify=False)`** / `httpx.AsyncClient(verify=False)` flagged unless behind a documented test fixture
 - [ ] **Open redirect**: `RedirectResponse(url=user_input)` / `HttpResponseRedirect(user_input)` validated against an allowlist or relative-path check
 - [ ] **SQL injection via dynamic ORDER BY**: `select(...).order_by(text(user_field))` - validate `user_field` against an allowlist; for Django, `Order.objects.order_by(user_input)` similarly
-- [ ] **Mass assignment via `request.data`** in DRF or `**dict(request.json())` in FastAPI flagged (see Step 7)
 - [ ] **Server-side template injection**: Jinja2 `Template(user_input).render(...)` is a critical RCE vector; templates must come from disk, not request bodies
 - [ ] **`SECRET_KEY` / JWT signing key** sourced from env / Vault, never committed; rotated when leaked
 - [ ] **Debug toolbar / Django debug**: `DEBUG=True` flagged in any non-dev settings file; debug toolbar dependency flagged in `requirements.txt` for prod builds
 - [ ] **Swagger UI / `/docs`**: gated behind auth in prod, or disabled (`docs_url=None` for FastAPI; DRF `SchemaView` permission)
+- [ ] **SSRF depth**: when a user-controlled value flows into an outbound URL or hostname, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). `urllib.parse` quirks: backslash, unicode normalization, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks.
+- [ ] **Celery serializer**: `task_serializer` / `accept_content` set to `["json"]` only - never `pickle`. A worker accepting `pickle` from any source that can publish to the broker is a remote code execution by design.
+- [ ] **ReDoS via user-supplied regex**: `Field(pattern=...)` / DRF `RegexValidator(...)` constructed from user input or config-driven patterns can hang the event loop on adversarial inputs. Compile patterns once at startup; never accept patterns from request bodies; bound matches with `re.match` plus a length cap, not unbounded `re.search`.
+- [ ] **HTTP request smuggling / desync** (`gunicorn -k uvicorn` behind nginx / ALB): confirm reverse proxy and worker agree on `Transfer-Encoding` / `Content-Length` handling; flag when a new ingress path or middleware changes header forwarding without a corresponding proxy-side update.
 
 ### Step 9 - Data Protection
 
@@ -203,22 +221,29 @@ Apply the OWASP Top 10 with Python-specific framing.
 
 ## Self-Check
 
+**Verifiable from the diff (must check):**
+
 - [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific check applied
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
 - [ ] Security surface (auth dependencies / settings, changed routers / views, schemas / serializers, middleware, dependencies) read directly before applying checklists; prior revision consulted when permission classes or security dependencies were removed
-- [ ] OWASP Top 10 reviewed with Python framing (Step 4) - every category checked, none silently skipped
-- [ ] Authentication step run for the auth mechanism in use (FastAPI OAuth2 / JWT or Django session / DRF JWT)
+- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
 - [ ] **Authorization drift sweep**: every new endpoint in the diff has a matching security dependency or `permission_classes`
-- [ ] Pydantic v2 / DRF serializer validation reviewed; mass-assignment fields and `extra="forbid"` / `read_only_fields` confirmed
-- [ ] File upload, path traversal, and process-execution checks run if applicable
-- [ ] CSRF, CORS, rate limiting, open redirect, debug-toolbar / `/docs` exposure verified
-- [ ] `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL, SSL-verify-False, dynamic ORDER BY checked
-- [ ] Every finding includes an attack scenario - not just "input not validated"
-- [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
+- [ ] Pydantic v2 / DRF serializer validation reviewed; mass-assignment fields and `extra="forbid"` / `read_only_fields` confirmed for changed schemas
+- [ ] File upload, path traversal, and process-execution checks run if the diff touches uploads / file paths / `subprocess`
+- [ ] `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL via `text(...)` / `cursor.execute`, SSL-verify-False, dynamic ORDER BY checked when the diff touches them
+- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
+- [ ] Every finding includes an attack scenario, "regression risk" rationale (for test-coverage gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
+
+**Requires repo / infra access (check if visible, otherwise note as "could not verify from diff alone - flag for separate audit"):**
+
+- [ ] Authentication step run for the auth mechanism in use (FastAPI OAuth2 / JWT or Django session / DRF JWT) - applies when the auth module is in scope
+- [ ] CSRF, CORS, rate limiting, debug-toolbar / `/docs` exposure verified - applies when middleware / settings are in scope
+- [ ] Password hashing config reviewed (bcrypt rounds ≥ 12, Argon2 preferred) - skip if `CryptContext` config not in diff
+- [ ] Sentry `before_send` strips PII - skip if Sentry init module not in diff
+- [ ] `pip-audit` / `safety check` clean - run separately; this workflow does not execute tools
 
 ## Output Format
 
@@ -233,13 +258,31 @@ Apply the OWASP Top 10 with Python-specific framing.
 
 [2-3 sentence assessment of the overall security posture, calling out any Python-specific risks like missing `permission_classes`, `extra="forbid"` absent on input schemas, `pickle.loads` on untrusted input, or exposed `/docs` in prod.]
 
+## OWASP Triage
+
+_The Step 4 verdicts. One row per category, `yes` (signal present, see Findings) or `no signal in diff`._
+
+| Category                  | Verdict                 |
+| ------------------------- | ----------------------- |
+| Broken Access Control     | yes / no signal in diff |
+| Injection                 | yes / no signal in diff |
+| Cryptographic Failures    | ...                     |
+| Security Misconfiguration | ...                     |
+| SSRF                      | ...                     |
+| XSS                       | ...                     |
+| Insecure Design           | ...                     |
+| Vulnerable Components     | ...                     |
+| Data Integrity Failures   | ...                     |
+| Logging & Monitoring      | ...                     |
+
 ## Findings
 
 ### Critical
 
-- **Location:** [file:line]
+- **Location:** [file:line, or comma-separated list for multi-site findings: `schemas/order.py:12-19, routers/orders.py:54`]
 - **Issue:** [vulnerability described in Python terms - e.g., "OrderCreate schema lacks `extra='forbid'`; client can submit `{\"owner_id\": 999}` and override the server-assigned owner via mass assignment"]
-- **Attack scenario:** [how an attacker exploits this - e.g., "Attacker POSTs `{\"items\": [...], \"owner_id\": 1}` and reassigns the order to user 1"]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough — e.g., "Attacker POSTs `{\"items\": [...], \"owner_id\": 1}` and reassigns the order to user 1"; (b) "Regression risk: the next refactor silently removes one of these protections" — for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" — for infra-flavored findings like missing CORS / TrustedHost. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies, e.g., "High - authenticated privilege escalation"]
 - **Fix:** [specific Python remediation with code example - `model_config = ConfigDict(extra='forbid')`, `read_only_fields`, `Depends(require_role)`, etc.]
 
 ### High
