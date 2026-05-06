@@ -28,7 +28,7 @@ This skill produces a single Markdown document. It does not push tags, edit `CHA
 - Preparing a deploy announcement for an internal channel
 - Producing release notes for an external customer-facing changelog
 
-Not for incident postmortems (use `task-postmortem`) or for planning what to build next (use `task-scope-breakdown`). When the release contains many unrelated high-risk changes, prefer running this workflow per logical batch rather than producing one giant note.
+Not for incident postmortems (use `task-postmortem`) or for planning what to build next (use `task-breakdown-story`). When the release contains many unrelated high-risk changes, prefer running this workflow per logical batch rather than producing one giant note.
 
 ## Inputs
 

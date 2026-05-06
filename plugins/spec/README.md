@@ -83,7 +83,7 @@ When a spec-aware workflow finds a proposed change that conflicts with an NFR or
 `spec` deliberately depends only on `core`, so installing this plugin never forces `architecture` or `delivery` to come along. When a user does have those plugins installed, spec workflows offer soft suggestions rather than hard dependencies:
 
 - `task-spec-plan` may suggest invoking `task-adr-create` (in `architecture`) for high-impact decisions captured during planning, but never calls it directly.
-- `task-spec-tasks` performs its own task breakdown using core atomics (`review-change-risk`, `review-blast-radius`, `dependency-impact-analysis`, `ops-backward-compatibility`, `backend-db-migration`, `ops-feature-flags`); it does not call `task-scope-breakdown` (in `delivery`). The user may run `task-scope-breakdown` separately for sprint-level planning.
+- `task-spec-tasks` performs its own task breakdown using core atomics (`review-change-risk`, `review-blast-radius`, `dependency-impact-analysis`, `ops-backward-compatibility`, `backend-db-migration`, `ops-feature-flags`); it does not call `task-breakdown-story` (in `delivery`). The user may run `task-breakdown-story` separately for sprint-level planning.
 
 The pattern: detect whether the other workflow is available, suggest it, let the user opt in.
 

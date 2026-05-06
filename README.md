@@ -155,9 +155,8 @@ I want to...
   review code (PR / AI-gen)         -> /task-code-review
   implement a feature               -> /task-implement (dispatches to stack-specific)
   fix a bug or crash                -> /task-code-debug (dispatches to stack-specific)
-  plan and break down work          -> /task-scope-breakdown [delivery]
-  fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode) [delivery]
-  slice an epic into user stories   -> /task-story-slice [delivery]
+  break an epic into user stories   -> /task-breakdown-epic [delivery]
+  break a story into dev tasks      -> /task-breakdown-story [delivery]
   design a system or architecture   -> /task-design-architecture [architecture]
   design an API contract            -> /task-design-api [architecture]
   write tests                       -> /task-code-test

@@ -1,5 +1,5 @@
 ---
-name: task-story-slice
+name: task-breakdown-epic
 description: Break a feature or epic into vertically-sliced user stories, each with explicit acceptance criteria, demoable user-visible value, and a single primary user. Optimized for sprint planning where stories must be small, independent, and shippable on their own. Use when populating a sprint backlog, refining an epic before commitment, or splitting a story that is too big to fit in a sprint.
 metadata:
   category: planning
@@ -21,7 +21,7 @@ Produce a list of vertically-sliced user stories ready for sprint commitment:
 - **Independent and shippable** -- stories can be delivered, demoed, and merged without waiting on a sibling
 - **Small** -- target half a sprint or less; flag anything bigger as needing further slicing
 
-This skill complements `task-scope-breakdown`. Use this when the audience is the sprint board (PM, QA, devs committing) and the artifact is stories. Use `task-scope-breakdown` when the audience is engineering planning and the artifact is a phased task graph with hidden-complexity surfacing.
+This skill complements `task-breakdown-story`. Use this when the audience is the sprint board (PM, QA, devs committing) and the artifact is stories. Use `task-breakdown-story` when the audience is engineering planning and the artifact is a phased task graph with hidden-complexity surfacing.
 
 ## When to Use
 
@@ -30,7 +30,7 @@ This skill complements `task-scope-breakdown`. Use this when the audience is the
 - Building a sprint backlog from a feature spec
 - Splitting work between two devs who need independent stories
 
-Not for system design (use `task-design-architecture`), not for engineering task decomposition with phases and dependencies (use `task-scope-breakdown`), not for triaging existing debt (use `task-debt-prioritize`).
+Not for system design (use `task-design-architecture`), not for engineering task decomposition with phases and dependencies (use `task-breakdown-story`), not for triaging existing debt (use `task-debt-prioritize`).
 
 ## Inputs
 
@@ -205,5 +205,5 @@ Walk the Self-Check list before returning the slice plan.
 - Acceptance criteria written as implementation hints ("Use a Redis cache") instead of observable behavior
 - Stories sized L or XL - if you cannot get to M or smaller, the slicing pattern is wrong
 - Inventing a primary user when the input did not supply one
-- Repeating `task-scope-breakdown`'s phased output - this skill produces stories, not engineering tasks
+- Repeating `task-breakdown-story`'s phased output - this skill produces stories, not engineering tasks
 - Treating ACs as test cases - ACs are agreement of done, tests verify them

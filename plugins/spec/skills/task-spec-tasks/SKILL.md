@@ -20,7 +20,7 @@ Decomposes a feature plan into an ordered task list that `task-spec-implement` (
 - When re-tasking a feature whose plan has materially changed
 - Before invoking `task-spec-implement` (the implement workflow consumes `tasks.md` directly)
 
-**Not for:** Sprint-level scope breakdown across multiple features (use `task-scope-breakdown` from the `delivery` plugin if installed), feature requirement capture (use `task-spec-specify`), architecture or API design (use `task-spec-plan`), code generation (use `task-spec-implement`).
+**Not for:** Sprint-level scope breakdown across multiple features (use `task-breakdown-story` from the `delivery` plugin if installed), feature requirement capture (use `task-spec-specify`), architecture or API design (use `task-spec-plan`), code generation (use `task-spec-implement`).
 
 ## Inputs
 
@@ -77,7 +77,7 @@ Continue to STEP 7.
 
 ### STEP 7 - Complexity Signal Scan
 
-Before generating any task, scan for hidden complexity that inflates effort or introduces risk. Reuse the same atomics that `task-scope-breakdown` (delivery plugin) reuses, so output quality is consistent regardless of which workflow the user invokes:
+Before generating any task, scan for hidden complexity that inflates effort or introduces risk. Reuse the same atomics that `task-breakdown-story` (delivery plugin) reuses, so output quality is consistent regardless of which workflow the user invokes:
 
 Use skill: review-change-risk
 Use skill: review-blast-radius
@@ -143,7 +143,7 @@ Rules:
 - XL tasks must be flagged with a recommendation to break down further.
 - Tests are **tasks**, not an afterthought. Every api/service task should have a paired validation task in the same story phase.
 - Mark `[P]` only when the task is truly safe to parallelize: different files AND no `Depends on` ahead of it in the queue.
-- If `delivery` plugin is installed and the breakdown spans multiple sprints, soft-suggest invoking `task-scope-breakdown` for cross-feature sequencing - do not run it automatically.
+- If `delivery` plugin is installed and the breakdown spans multiple sprints, soft-suggest invoking `task-breakdown-story` for cross-feature sequencing - do not run it automatically.
 
 ### STEP 9 - Traceability Check
 
@@ -293,11 +293,11 @@ Print a short summary:
 - Calendar-time estimates ("3 hours") instead of relative sizes (S/M/L/XL) unless explicitly requested
 - Treating tests as a single trailing task - validation work belongs alongside the code it covers
 - Editing `plan.md` from this workflow - amendments are proposals, not changes
-- Auto-running `task-scope-breakdown` from delivery plugin - soft-suggest only
+- Auto-running `task-breakdown-story` from delivery plugin - soft-suggest only
 - Overwriting an existing `tasks.md` without offering replace/amend/abort, especially when tasks have non-`[ ]` Status markers (in-progress implementation work)
 
 ## Notes
 
 - `tasks.md` is the unit of progress in `task-spec-implement`. Keep task IDs stable across revisions; renaming an ID breaks the implement workflow's resume semantics.
 - For fullstack features, interleave backend and frontend tasks by dependency, not by stack. The user can still filter by `Type` if they want a single-stack pass.
-- If the user has the `delivery` plugin installed and is sprint-planning across multiple specs, point them at `task-scope-breakdown` for the cross-feature view - this workflow is per-feature.
+- If the user has the `delivery` plugin installed and is sprint-planning across multiple specs, point them at `task-breakdown-story` for the cross-feature view - this workflow is per-feature.
