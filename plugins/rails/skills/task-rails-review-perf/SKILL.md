@@ -73,8 +73,9 @@ Use skill: `rails-activerecord-patterns` for the canonical patterns referenced b
 
 Inspect every changed `app/models/`, `app/controllers/`, `app/services/`, and `app/views/` file for:
 
-- [ ] **N+1 in controllers/serializers**: every association rendered in a list view is preloaded with `includes`, `preload`, or `eager_load` - choose the right one (single query with JOIN vs. separate IN-list)
-- [ ] **Multi-level N+1**: nested `each` over associations of associations (e.g., `orders.each { |o| o.line_items.each { |li| li.product.name } }`) - preload the full graph
+- [ ] **N+1 in controller actions**: every association touched in a `each` (or in the response shape) is preloaded with `includes` (auto-pick), `preload` (separate IN-list query), or `eager_load` (single LEFT OUTER JOIN). Pick `eager_load` only when the join column appears in `where`/`order`; otherwise `preload` keeps the queries faster and simpler.
+- [ ] **N+1 in serializers**: serializers (`ActiveModel::Serializer`, `Blueprinter`, `JSONAPI::Serializer`, `Jbuilder`) silently trigger N+1 when they reference an association the controller did not preload. The fix is on the _controller_ (add to `includes`), not in the serializer; alternatively, attach the preload contract to the serializer (e.g., `Blueprinter` `view` + a query object) so the controller cannot forget.
+- [ ] **Multi-level N+1**: nested `each` over associations of associations (e.g., `orders.each { |o| o.line_items.each { |li| li.product.name } }`) - preload the full graph: `Order.includes(line_items: :product)`
 - [ ] **Missing scopes for filter/sort columns**: any `.where`, `.order`, or `.group` on a column without a backing index
 - [ ] **`pluck` vs `select`**: when only one or two columns are needed, prefer `pluck`/`pick` to avoid hydrating models
 - [ ] **`exists?` vs `present?`/`any?`**: existence checks must use `exists?` to issue a `LIMIT 1` query
@@ -111,8 +112,9 @@ Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.
 
 ### Step 6 - Caching and Rendering
 
-- [ ] Russian-doll caching (`cache @collection`, `cache item`) used in views that render large collections, with cache keys including `updated_at` and association timestamps
+- [ ] Russian-doll caching (`cache @collection`, `cache item`) used in views that render large collections, with cache keys including `updated_at` and association timestamps (`belongs_to :parent, touch: true`)
 - [ ] Low-level caching (`Rails.cache.fetch`) used for expensive derived data, with explicit TTL and an invalidation strategy (touch parent on child write, or write-through on update)
+- [ ] **Cache-stampede protection**: hot keys with expensive regeneration use `Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds)` so concurrent expiries do not pile up against the source of truth
 - [ ] Fragment caches keyed on the right scope (per-user vs. global) - no leakage of authorized data across users
 - [ ] HTTP caching (`fresh_when`, `stale?`) on read-heavy GET endpoints
 - [ ] No serializer (ActiveModel::Serializer, JSONAPI, Blueprinter, Jbuilder) loading associations not declared in `includes`
@@ -120,7 +122,7 @@ Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.
 
 ### Step 7 - Concurrency and External I/O
 
-- [ ] Connection pool sized for `DB_POOL >= RAILS_MAX_THREADS + Sidekiq concurrency`
+- [ ] Connection pool sized correctly per process: web `DB_POOL >= RAILS_MAX_THREADS` (Puma threads per worker); Sidekiq runs as its own process so set its `DB_POOL >= sidekiq.concurrency` independently. The total connections at the database must accommodate `(puma_workers x RAILS_MAX_THREADS) + (sidekiq_processes x sidekiq.concurrency)` plus headroom for rails console / rake tasks
 - [ ] HTTP clients (Faraday, HTTParty, Net::HTTP) reused, not instantiated per request
 - [ ] Timeouts set on every external call (`open_timeout`, `read_timeout`)
 - [ ] Circuit breaker (Stoplight, Semian) on flaky external dependencies

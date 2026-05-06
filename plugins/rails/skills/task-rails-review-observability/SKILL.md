@@ -108,7 +108,7 @@ Inspect tracing initialization (`config/initializers/opentelemetry.rb`, `config/
 - [ ] **Trace context propagation** via W3C `traceparent` header on outbound HTTP (Faraday middleware, `Net::HTTP` instrumentation)
 - [ ] **Sidekiq job tracing**: trace context extracted from job payload on `perform`; new spans linked to the parent request span - not orphaned with a fresh trace ID
 - [ ] **ActiveJob tracing** if `Sidekiq` is fronted by `ActiveJob`: instrumentation gem covers both layers
-- [ ] **Custom spans for service objects**: long-running orchestrations (`OrderFulfillment.call`) wrap their `.call` in `OpenTelemetry::Instrumentation::Internal::Tracer.in_span('order.fulfill') { ... }` so APM traces reflect the business step, not just SQL
+- [ ] **Custom spans for service objects**: long-running orchestrations (`OrderFulfillment.call`) wrap their `.call` in a tracer span so APM traces reflect the business step, not just SQL. Canonical OpenTelemetry-Ruby shape: `OpenTelemetry.tracer_provider.tracer('app').in_span('order.fulfill', attributes: { 'order.id' => order.id }) { ... }`. For Datadog APM: `Datadog::Tracing.trace('order.fulfill') { |span| span.set_tag('order.id', order.id) }`. Cache the tracer at class load (`TRACER = OpenTelemetry.tracer_provider.tracer('app')`) rather than re-resolving per call.
 - [ ] **Sampling**: head-based 10-20% for high-traffic apps; always-sample on errors and slow requests
 
 ### Step 7 - Sidekiq Observability
@@ -124,7 +124,7 @@ Sidekiq has its own middleware chain - request-scoped context does not flow into
 ### Step 8 - Correlation ID and Request Context
 
 - [ ] **Rack middleware** (`ActionDispatch::RequestId` is built-in, but check that load-balancer-injected `X-Request-ID` is honored when present)
-- [ ] **`Current.attributes`** (or `RequestStore`, `CurrentAttributes`) carries `user_id`, `tenant_id`, `request_id` for the duration of the request - reset between requests automatically by `ActiveSupport::CurrentAttributes`
+- [ ] **Request-scoped context** carried via `ActiveSupport::CurrentAttributes` (Rails 5.2+) for `user_id`, `tenant_id`, `request_id` - reset between requests automatically. Prefer this over the `RequestStore` gem, which is now legacy; flag new code that adds `RequestStore` instead of extending an existing `Current` class.
 - [ ] **Outbound HTTP propagates `X-Request-ID`** so downstream services can correlate (Faraday middleware, `Net::HTTP` patch, or APM auto-instrumentation)
 - [ ] **`ActiveSupport::Notifications` subscribers** read `Current.user_id` etc. so emitted events carry tenant / user without each emit-site re-fetching it
 

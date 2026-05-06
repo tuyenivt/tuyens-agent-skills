@@ -124,7 +124,7 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, transaction boundary correctness - through a Rails lens.
 
-**Test coverage finding:** If the PR adds or modifies logic without corresponding RSpec coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] if the change is in a critical path (Devise/JWT auth, Pundit policies, payment, data integrity, Sidekiq jobs that mutate data). Do not bury this in Key Takeaways.
+**Test coverage finding:** If the PR adds or modifies logic without corresponding RSpec coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication (Devise/JWT/custom), authorization (Pundit/CanCanCan policies, `current_user.<association>` ownership scoping), money or billing flows, data-integrity writes (multi-record transactions, state machines), Sidekiq jobs that mutate data, or migrations that change column semantics. Do not bury this finding in Key Takeaways - a separate, named entry in Findings.
 
 **Rails-specific correctness checks:**
 

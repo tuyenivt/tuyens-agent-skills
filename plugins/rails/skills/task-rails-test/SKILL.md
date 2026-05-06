@@ -137,6 +137,8 @@ Use skill: `rails-testing-patterns` for the canonical patterns referenced below.
 
 ### Step 6 - Prioritization (when coverage is low)
 
+If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ specs to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go unspec'd while plumbing controllers get full coverage.
+
 When starting from low test coverage, prioritize by Rails-specific risk:
 
 **Priority 1 - Authorization and authentication:**
@@ -231,6 +233,126 @@ Produce ready-to-run RSpec spec files using project conventions. Each scaffold m
 - For policy specs: every `(role, action)` pair
 - For job specs: idempotency + retry-behavior examples
 - Inline comments explaining non-obvious setup (e.g., why `Sidekiq::Testing.inline!` is needed for a particular request spec)
+
+**Scaffold templates** (adapt to project conventions - file paths, factory names, Result type):
+
+_Service spec_ (`spec/services/<service>_spec.rb`):
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe ChargeCard, type: :service do
+  let(:order) { create(:order, total_cents: 5_000) }
+  let(:token) { 'tok_visa' }
+
+  describe '.call' do
+    context 'when the gateway succeeds' do
+      before { stub_request(:post, %r{api.stripe.com}).to_return(status: 200, body: '{"id":"ch_1"}') }
+
+      it 'returns success and records the charge' do
+        result = described_class.call(order: order, token: token)
+        expect(result).to be_success
+        expect(order.reload.charges.count).to eq(1)
+      end
+    end
+
+    context 'when the gateway returns a card error' do
+      before { stub_request(:post, %r{api.stripe.com}).to_return(status: 402, body: '{"error":"card_declined"}') }
+
+      it 'returns a failure result and does not create a charge' do
+        result = described_class.call(order: order, token: token)
+        expect(result).to be_failure
+        expect(result.error).to eq(:card_declined)
+        expect(order.reload.charges).to be_empty
+      end
+    end
+
+    context 'when the gateway times out' do
+      before { stub_request(:post, %r{api.stripe.com}).to_timeout }
+      it 'returns a transient failure suitable for retry' do
+        result = described_class.call(order: order, token: token)
+        expect(result).to be_failure
+        expect(result.error).to eq(:gateway_timeout)
+      end
+    end
+  end
+end
+```
+
+_Request spec_ (`spec/requests/<resource>_spec.rb`):
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe 'Orders', type: :request do
+  let(:user)  { create(:user) }
+  let(:other) { create(:user) }
+  let(:order) { create(:order, user: user) }
+
+  describe 'GET /orders/:id' do
+    it 'returns 200 and the order payload for the owner' do
+      sign_in user
+      get order_path(order)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('id' => order.id)
+    end
+
+    it 'returns 404 for another user (no enumeration)' do
+      sign_in other
+      get order_path(order)
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'returns 401 when not signed in' do
+      get order_path(order)
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+end
+```
+
+_Sidekiq job spec_ (`spec/jobs/<job>_spec.rb`):
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe ChargeOrderJob, type: :job do
+  let(:order) { create(:order, :pending_charge) }
+
+  describe '#perform' do
+    it 'charges the order exactly once when called twice with the same id (idempotent)' do
+      expect(ChargeCard).to receive(:call).once.and_call_original
+      2.times { described_class.new.perform(order.id) }
+      expect(order.reload.status).to eq('charged')
+    end
+
+    it 'is bounded by sidekiq retry option' do
+      expect(described_class.sidekiq_options_hash['retry']).to be <= 5
+    end
+  end
+end
+```
+
+_Pundit policy spec_ (`spec/policies/<model>_policy_spec.rb`):
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe OrderPolicy, type: :policy do
+  subject { described_class }
+
+  let(:owner)  { create(:user) }
+  let(:other)  { create(:user) }
+  let(:admin)  { create(:user, :admin) }
+  let(:order)  { create(:order, user: owner) }
+
+  permissions :show?, :update?, :destroy? do
+    it { is_expected.to permit(owner, order) }
+    it { is_expected.not_to permit(other, order) }
+    it { is_expected.to permit(admin, order) }
+  end
+end
+```
 
 **Strategy Doc** (when designing a test strategy):
 

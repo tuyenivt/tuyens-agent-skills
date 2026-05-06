@@ -90,13 +90,15 @@ Apply the OWASP Top 10 with Rails-specific framing. Use skill: `rails-security-p
 - [ ] **Pundit**: `ApplicationPolicy` defaults to `false` for all actions; subclasses opt in explicitly
 - [ ] **CanCanCan**: `Ability` class is comprehensive; `load_and_authorize_resource` on every RESTful controller; no orphan actions
 - [ ] **Authorization drift sweep**: every new controller action added in the diff has a corresponding policy method (or explicit skip with rationale)
+- [ ] **IDOR (Insecure Direct Object Reference)**: lookups in user-facing controllers scope through the user's association rather than `Model.find(params[:id])` followed by `authorize`. Prefer `current_user.orders.find(params[:id])` (404 on miss = no enumeration) over `Order.find(params[:id])` then `authorize @order` (which gives 403 on someone else's record - leaking that the ID exists). For Pundit users, combine `policy_scope(Order).find(params[:id])` with `authorize` for the same effect.
 - [ ] **Tenant isolation**: multi-tenant apps scope queries by `current_tenant` at the model layer (`default_scope`, query objects, or `acts_as_tenant`) - never rely on controller-level filtering alone
 
 ### Step 6 - Input Validation and Mass Assignment
 
 - [ ] **Strong params**: every `create`/`update` action uses `params.require(:model).permit(...)` with an explicit allowlist
 - [ ] **No `params.permit!` or `params.to_unsafe_h`** in production code paths
-- [ ] **Nested attributes** (`accepts_nested_attributes_for`) limited to expected child models; nested permit lists explicit
+- [ ] **No privilege-bearing fields in user-facing permit lists**: `:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status` (when status is a state-machine controlled by server logic) - these flip authorization or ownership and must be set by the server, not the client. If they appear in a `permit(...)` call, require either an admin-only controller path with a separate Pundit policy, or removal from the permit list.
+- [ ] **Nested attributes** (`accepts_nested_attributes_for`) limited to expected child models; nested permit lists explicit; nested `_destroy: true` only when the parent policy authorizes child deletion
 - [ ] **File uploads** (Active Storage, CarrierWave, Shrine):
   - File type validated by content (magic bytes), not just extension
   - Per-file size limit enforced; total request body limit at Rack level (`Rack::Attack`)

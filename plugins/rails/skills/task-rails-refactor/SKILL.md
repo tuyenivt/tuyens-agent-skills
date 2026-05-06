@@ -139,6 +139,8 @@ Each refactoring step must be:
 3. **Reversible** - rollback is one revert away
 4. **Tested** - the existing RSpec suite continues to pass; new specs added when extracting new units
 
+**Transaction-boundary watch.** When extracting orchestration that runs inside `ActiveRecord::Base.transaction`, the extracted unit inherits the transaction context. If the extracted code makes HTTP calls or enqueues Sidekiq jobs, they now happen mid-transaction (a regression). State the transaction stance per step: "callee runs inside caller's transaction" or "callee uses `after_commit` to defer side effects." Never silently move I/O across a transaction boundary.
+
 **Common Rails refactor recipes:**
 
 **Recipe: Extract service object from fat controller**
@@ -155,6 +157,19 @@ Each refactoring step must be:
 2. Move the callback from `after_save` to `after_commit` (or `after_commit on: :create`); run specs - confirm pass
 3. If callback is doing cross-aggregate work, extract it into a service object called by the relevant controller; remove the callback
 4. Run the full suite; verify no orphan code paths still rely on the callback
+
+**Recipe: Untangle fat controller + callback orchestration (combined case)**
+
+The most common Rails refactor: a controller action triggers a model write whose `after_save` / `after_create` callbacks fan out (mailers, jobs, audit writes). Removing the callbacks and extracting a service must happen as one logical change, but in safe sub-steps so the suite stays green between commits.
+
+1. **Pin behavior with a request spec** asserting every observable side effect (record created, mailer enqueued, job enqueued, audit row written) - this is the contract the refactor must preserve
+2. **Promote `after_save` to `after_commit`** first if the callbacks enqueue jobs or send mail mid-transaction; specs still pass, but side effects now fire post-commit (closer to the eventual service-object behavior)
+3. **Introduce a service object** (`app/services/<verb>_<noun>.rb`) that performs the write _and_ the side effects in one `.call`; controller calls the service _but the callbacks still run_ - this duplicates side effects intentionally and temporarily
+4. **Make callbacks no-op when called from the service** via a thread-local or explicit flag (`Order.transaction { ... ; order.skip_callbacks_for_service = true }`), or `update_columns` to bypass; verify spec still passes with side effects firing exactly once
+5. **Delete the callbacks entirely**; the service is now the single source of orchestration; remove the bypass flag; spec still green
+6. **Audit other call sites** (`grep` for `Order.create`, `order.save`, console scripts, rake tasks, other controllers) - any caller relying on the old callbacks is now broken and must be updated to call the service or have the side effects re-derived
+
+The intermediate "callbacks no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the callbacks (step 5).
 
 **Recipe: Split fat model into model + service + query object**
 
