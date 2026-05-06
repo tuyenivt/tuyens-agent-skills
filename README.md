@@ -215,6 +215,12 @@ Python / FastAPI / Django (plugin: python)
 Ruby on Rails (plugin: rails)
   scaffold a new Rails feature        -> /task-rails-new
   debug a Rails issue                 -> /task-rails-debug
+  Rails staff-level code review       -> /task-rails-review
+  Rails performance review            -> /task-rails-review-perf
+  Rails security review               -> /task-rails-review-security
+  Rails observability review          -> /task-rails-review-observability
+  Rails test strategy / scaffolds     -> /task-rails-test
+  Rails refactor plan                 -> /task-rails-refactor
 
 Node.js / TypeScript / NestJS (plugin: node)
   scaffold a new Node feature         -> /task-node-new

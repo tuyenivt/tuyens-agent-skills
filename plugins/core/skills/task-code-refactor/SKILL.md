@@ -40,6 +40,16 @@ Produce a safe, step-by-step refactoring plan for a specific code target. Assess
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
+### Step 1.5 - Route to Stack-Specific Workflow (when available)
+
+If a stack-specific refactor workflow exists for the detected stack, delegate to it. The stack workflow names framework-specific smells directly (e.g., Rails: fat controllers, callback abuse, scope sprawl, concern soup, missing service objects) and applies framework-aware refactor recipes.
+
+| Detected stack | Delegate to           |
+| -------------- | --------------------- |
+| Ruby / Rails   | `task-rails-refactor` |
+
+If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+
 ### Step 2 - Identify Smells (All Stacks)
 
 Use judgment - these are signals, not hard rules. A 25-line method with a clear single responsibility is fine; a 10-line method doing three things is not.
@@ -239,6 +249,7 @@ Characterization tests to write before starting:
 ## Self-Check
 
 - [ ] stack-detect invoked before any smell identification or refactoring steps
+- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
 - [ ] Test coverage gate checked before proposing any refactoring steps; if insufficient, Test First plan output instead
 - [ ] Cross-module usage checked; `review-blast-radius` invoked if callers exist outside the target module
 - [ ] `ops-backward-compatibility` invoked if refactoring touches constructors, `__init__`, factory methods, or public function signatures

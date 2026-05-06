@@ -54,6 +54,16 @@ When invoked as a subagent of `task-code-review`, the parent passes the precondi
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
+### Step 1.5 - Route to Stack-Specific Workflow (when available)
+
+If a stack-specific observability review workflow exists for the detected stack, delegate to it. The stack workflow names library-level idioms directly (e.g., Rails: `ActiveSupport::Notifications`, `query_log_tags`, `lograge`, Sidekiq middleware, error-tracker gem wiring) instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
+
+| Detected stack | Delegate to                       |
+| -------------- | --------------------------------- |
+| Ruby / Rails   | `task-rails-review-observability` |
+
+If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+
 ### Step 2 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
@@ -131,6 +141,7 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 ## Self-Check
 
 - [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
+- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued

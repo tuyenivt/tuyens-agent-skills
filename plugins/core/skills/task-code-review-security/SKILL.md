@@ -43,6 +43,16 @@ When invoked as a subagent of `task-code-review`, the parent passes the precondi
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
+### Step 1.5 - Route to Stack-Specific Workflow (when available)
+
+If a stack-specific security review workflow exists for the detected stack, delegate to it. The stack workflow names Devise / JWT / Pundit / Spring Security / FastAPI auth idioms directly instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
+
+| Detected stack | Delegate to                  |
+| -------------- | ---------------------------- |
+| Ruby / Rails   | `task-rails-review-security` |
+
+If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-5 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+
 ### Step 2 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
@@ -124,6 +134,7 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and reco
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
+- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
 - [ ] Every OWASP Top 10 category checked - not just the ones with obvious findings
 - [ ] Auth enforcement verified on every endpoint, not just spot-checked
 - [ ] No secrets, tokens, or credentials found in code or config files

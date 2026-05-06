@@ -34,6 +34,16 @@ Design test strategy, assess coverage gaps, and generate test scaffolds for a mo
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
+### Step 1.5 - Route to Stack-Specific Workflow (when available)
+
+If a stack-specific test workflow exists for the detected stack, delegate to it. The stack workflow names RSpec / JUnit / pytest / Jest idioms directly instead of routing through the generic adapter below. When `--spec` was passed, propagate the spec context to the delegate.
+
+| Detected stack | Delegate to       |
+| -------------- | ----------------- |
+| Ruby / Rails   | `task-rails-test` |
+
+If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-6 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+
 ### Step 2 - Testing Pyramid (All Stacks)
 
 **Unit (many)** → **Integration (some)** → **E2E (few)**. Most tests should be fast unit tests; integration tests cover boundaries; E2E tests cover only critical user flows.
@@ -193,6 +203,7 @@ Quick-reference checklist consolidating the key checks from above:
 ## Output Format
 
 **Which output to produce:**
+
 - User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
 - User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
 - User asks "test strategy", "test plan", or coverage is below 50% -> Strategy Doc (optionally include Coverage Assessment)
@@ -242,6 +253,7 @@ Produce ready-to-run test files using the detected stack's test framework. Inclu
 ## Self-Check
 
 - [ ] Stack detected and framework-specific test patterns applied
+- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
 - [ ] Testing pyramid balance assessed - not just unit tests or just integration tests
 - [ ] Prioritization by risk applied when coverage is low (not chasing a coverage number)
 - [ ] Test boundaries clearly defined - each test layer covers what it does best

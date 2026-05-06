@@ -109,6 +109,21 @@ Scope and depth flags (`+perf`, `+security`, `+observability`, `full`, `quick`, 
 
 Use skill: `stack-detect` to identify language, framework, and tooling.
 
+### Step 1.5 - Route to Stack-Specific Umbrella (when available)
+
+If a stack-specific code review umbrella exists for the detected stack, delegate the entire review to it. The stack umbrella runs Phases A-E with stack-specific correctness, architecture, AI-quality, and maintainability checks (e.g., Rails: Zeitwerk, callback abuse, fat controllers, AR-in-API), and spawns its own stack-specific perf / security / observability subagents in parallel for any extra scope. This is two-layer dispatch.
+
+| Detected stack | Delegate to         |
+| -------------- | ------------------- |
+| Ruby / Rails   | `task-rails-review` |
+
+When delegating, pass:
+
+- The user's full invocation arguments (target ref, `--base`, scope flags, depth flags) so the stack umbrella can resolve the diff itself - the stack umbrella supports standalone PR/branch resolution
+- Or, if this dispatcher already ran `review-precondition-check`, pass the precondition handle plus the read-once diff and commit log so the stack umbrella skips its own Step 2
+
+If no stack-specific umbrella exists, fall through to the generic flow defined in Step 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+
 ### Step 2 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it, so the precondition check uses the explicit base override instead of trunk auto-detection. It returns a minimal handle with `base_ref`, `base_source`, `head_ref`, `current_branch`, and `head_matches_current` once all preconditions pass.
@@ -366,6 +381,7 @@ _Omit this section if there are no actionable findings._
 ## Self-Check
 
 - [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
+- [ ] Stack-specific umbrella delegate invoked when one exists for the detected stack; otherwise generic Phases A-E applied
 - [ ] `review-precondition-check` ran at Step 2; preconditions passed (clean tree, non-trunk head, head ref exists locally) and `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` were captured. If user passed `--base`, it was forwarded and `base_source: explicit-override` is recorded
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>`, then reused by all later phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
