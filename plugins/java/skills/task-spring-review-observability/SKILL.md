@@ -68,7 +68,18 @@ Use skill: `review-precondition-check` with the user's argument (or no argument 
 
 If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
 
-### Step 3 - Structured Logging (Logback + Logstash encoder / SLF4J)
+### Step 3 - Read the Instrumentation Surface
+
+Before applying the checklists below, open the files that actually configure observability so findings cite real lines, not assumptions:
+
+- `src/main/resources/logback-spring.xml` (and `logback-spring-<profile>.xml` if present) - encoder type, MDC patterns, masking
+- `src/main/resources/application.yml` (and per-profile variants) - `management.*`, `logging.*`, `spring.kafka.listener.observation-enabled`, `management.tracing.*`
+- `build.gradle(.kts)` / `pom.xml` - confirm presence of `spring-boot-starter-actuator`, `micrometer-registry-prometheus`, `micrometer-tracing-bridge-otel`, error-tracker starters
+- Every changed file in the diff that registers a `MeterRegistry`, `Counter`, `Timer`, `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`, or modifies `MDC`
+
+For diffs touching only one of these surfaces (a new listener but no `application.yml` change, say), still read the existing config to know whether MDC propagation, observation flags, and starters are wired - a missing wire is the finding.
+
+### Step 4 - Structured Logging (Logback + Logstash encoder / SLF4J)
 
 Inspect `src/main/resources/logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*` callsite in the diff:
 
@@ -82,7 +93,7 @@ Inspect `src/main/resources/logback-spring.xml`, `application.yml` `logging.*` k
 - [ ] **No log spam in hot loops** - `forEach` over large collections, scheduled jobs running every second, Kafka listener at high TPS must not log per-iteration; use `log.atDebug()` or sampled logging
 - [ ] **Async appenders** (`AsyncAppender` or Logstash async TCP) configured for high-volume paths so logging is not on the request critical path; queue-full policy explicit (`neverBlock=true` for non-critical paths)
 
-### Step 4 - Spring Boot Actuator
+### Step 5 - Spring Boot Actuator
 
 Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `HealthIndicator` / `InfoContributor`:
 
@@ -94,7 +105,7 @@ Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `Heal
 - [ ] **`info` endpoint**: build, git, and version info exposed (`management.info.git.enabled`, `management.info.build.enabled`); does not leak environment variables or sensitive config
 - [ ] **`management.server.port`** separated from main server port in prod when network isolation is required (cluster-internal access only)
 
-### Step 5 - Micrometer Metrics
+### Step 6 - Micrometer Metrics
 
 Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 
@@ -106,7 +117,9 @@ Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 - [ ] **`MeterFilter`** trims unused metrics or denies high-cardinality dimensions where applicable
 - [ ] **No metric registration in hot loop**: `meterRegistry.counter(...)` looked up per-request returns the cached counter, but `Counter.builder(...).register(...)` _creates_ on each call. Cache the builder result in a `final` field
 
-### Step 6 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
+### Step 7 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
+
+_Skipped at `quick` depth - see Depth Levels above._
 
 Inspect tracing dependencies and bridge config:
 
@@ -118,7 +131,9 @@ Inspect tracing dependencies and bridge config:
 - [ ] **Database span enrichment**: `p6spy` or `datasource-proxy` attaches SQL to spans in non-prod; `query_log_tags`-equivalent (Hibernate `hibernate.session.events.log` or `StatementInspector`) attaches the originating service/method to slow queries
 - [ ] **Spans not too granular**: do not wrap `getUserById` in an `Observation` if the JDBC span already covers it - over-instrumentation is noise
 
-### Step 7 - Async / Messaging Observability
+### Step 8 - Async / Messaging Observability
+
+_Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@JmsListener` / `@Async` / `@Scheduled`._
 
 Inspect `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`:
 
@@ -129,7 +144,9 @@ Inspect `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Schedul
 - [ ] **`@Async` decoration**: `TaskDecorator` (or `ContextPropagatingTaskDecorator` from Micrometer Context Propagation) preserves MDC, security context, and trace context across the boundary
 - [ ] **`@Scheduled` instrumentation**: each scheduled method emits an `Observation` so trace data exists; per-job duration timer; missed-execution alerting via metric
 
-### Step 8 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
+### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
+
+_Skipped at `quick` depth unless the diff modifies `@RestControllerAdvice`, error-tracker config, or DSN/API-key handling._
 
 Inspect Sentry / Honeybadger / Rollbar dependencies and config:
 
@@ -142,7 +159,7 @@ Inspect Sentry / Honeybadger / Rollbar dependencies and config:
 - [ ] **Ignored exceptions documented**: `sentry.ignored-exceptions-for-type` lists classes that should not page (e.g., `OptimisticLockException` when retry handles it); each ignore has a comment
 - [ ] **`@RestControllerAdvice` maps exceptions to user-facing responses without losing the stack** - error tracker captures the original exception before the advice replaces it with a response DTO
 
-### Step 9 - Health Checks and SLIs (deep depth only)
+### Step 10 - Health Checks and SLIs (deep depth only)
 
 When invoked at `deep`, evaluate:
 
@@ -157,6 +174,7 @@ When invoked at `deep`, evaluate:
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
 - [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review
 - [ ] When `head_matches_current` was false, explicit user approval was obtained (skipped when invoked as a subagent - the parent already gated)
+- [ ] Instrumentation surfaces (logback-spring.xml, application.yml `management.*`, build file dependencies, changed listeners/registrations) read directly before applying checklists
 - [ ] Logback / SLF4J structured logging assessed: JSON encoder, MDC correlation, sensitive-field masking, log level discipline, parameterized logging
 - [ ] Spring Boot Actuator config reviewed: exposure list minimal, sensitive endpoints gated, liveness/readiness probes configured, info / health depth bounded
 - [ ] Micrometer metrics assessed: registry on classpath, auto-instrumentation enabled, tag cardinality bounded, custom metrics named under namespace
@@ -165,6 +183,7 @@ When invoked at `deep`, evaluate:
 - [ ] Error tracker integration assessed: Boot starter wired, DSN externalized, PII scrubbed, MDC forwarded, sample rate explicit
 - [ ] Findings name a Spring / Micrometer / Logback idiom directly - not "add observability"
 - [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, log forwarder config, alert rules) explicitly deferred to ops
+- [ ] Depth honored: `quick` skipped tracing/messaging/error-tracker/SLI steps unless diff signals required them; `deep` ran the SLI step
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
 
 ## Output Format

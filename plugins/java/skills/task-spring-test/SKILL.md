@@ -41,7 +41,18 @@ This workflow is the stack-specific delegate of `task-code-test` for Java / Spri
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-test` instead.
 
-### Step 2 - Spring Test Pyramid
+### Step 2 - Read the Code Under Test and Existing Tests
+
+Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
+
+- For each target named by the user, read the class top-to-bottom: public methods, request/response types, security annotations, transaction boundaries, external collaborators
+- Glob `src/test/java/**/*Test*.java` and read at least: one existing `@WebMvcTest`, one existing `@DataJpaTest`, one existing service unit test - learn the project's package layout, builder/factory names (`OrderTestData.builder()` vs Instancio vs `@RecordBuilder`), assertion library (AssertJ vs Hamcrest), authentication helpers (`@WithMockUser` vs custom `JwtRequestPostProcessor`)
+- Read `application-test.properties` / `application-test.yml` and any `TestContainersConfig` / `IntegrationTestBase` / `AbstractIntegrationTest` base class - reuse the project's container setup rather than scaffolding a new one
+- Read `build.gradle(.kts)` / `pom.xml` test dependencies to confirm Testcontainers, Instancio, AssertJ, Spring Cloud Contract, REST Assured presence
+
+If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
+
+### Step 3 - Spring Test Pyramid
 
 The Spring Boot test pyramid maps to test types and slice annotations:
 
@@ -55,7 +66,7 @@ The Spring Boot test pyramid maps to test types and slice annotations:
 
 **Many** unit tests, **some** slice tests, **few** full-context / E2E tests. `@SpringBootTest` is slow (loads full context) - use sparingly.
 
-### Step 3 - Apply Spring Test Patterns
+### Step 4 - Apply Spring Test Patterns
 
 Use skill: `spring-test-integration` for the canonical patterns referenced below.
 
@@ -105,7 +116,7 @@ Use skill: `spring-test-integration` for the canonical patterns referenced below
 - Spring Cloud Contract: contracts in `src/test/resources/contracts/`; provider verifies via generated tests; consumer pulls stubs via stub runner
 - Pact: pact files committed to a broker; provider verification runs as a separate test class
 
-### Step 4 - Test Boundaries (Spring-Specific)
+### Step 5 - Test Boundaries (Spring-Specific)
 
 **What deserves a unit test:**
 
@@ -133,7 +144,7 @@ Use skill: `spring-test-integration` for the canonical patterns referenced below
 - Generated boilerplate: Lombok-generated getters/setters, MapStruct identity mappings between identical fields
 - Trivial delegation: `service.findById(id) -> repository.findById(id)` with no logic
 
-### Step 5 - Test Data and Fixtures
+### Step 6 - Test Data and Fixtures
 
 - Prefer constructor-based or builder-based data factories (Instancio, Easy Random, or hand-rolled `OrderTestData.builder()`) over JSON fixtures
 - For repository tests with Testcontainers, use `@Sql("/fixtures/orders.sql")` for shared setup; isolate per-test data inside the test
@@ -141,7 +152,7 @@ Use skill: `spring-test-integration` for the canonical patterns referenced below
 - **Avoid `flush + clear` patterns** unless the test is specifically asserting first-level cache behavior
 - Test data must be minimal and focused - 100-row `IntStream.range` setups signal the test belongs at integration / load-test layer
 
-### Step 6 - Prioritization (when coverage is low)
+### Step 7 - Prioritization (when coverage is low)
 
 If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing controllers get full coverage.
 
@@ -174,7 +185,7 @@ When starting from low test coverage, prioritize by Spring-specific risk:
 
 - Pass-through controllers, simple CRUD - lower risk, can wait
 
-### Step 7 - Test Infrastructure Hygiene
+### Step 8 - Test Infrastructure Hygiene
 
 - [ ] Testcontainers reused across tests via `@ServiceConnection` + reusable mode (`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`) for local fast cycles
 - [ ] `@SpringBootTest` count kept low; use `@MockitoBean` / `@MockBean` sparingly (each unique mock set forces a new context cache entry)
@@ -396,7 +407,8 @@ void adminEndpointReturns200ForAdmin() throws Exception {
 
 ## Self-Check
 
-- [ ] Stack confirmed as Java / Spring Boot before any Spring-specific guidance applied
+- [ ] Stack confirmed as Java / Spring Boot before any Spring-specific guidance applied (Step 1)
+- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 2)
 - [ ] `spring-test-integration` consulted for canonical Spring test patterns
 - [ ] Test pyramid mapped to Spring slice annotations (unit -> plain JUnit + Mockito; slice -> `@WebMvcTest` / `@DataJpaTest` / `@JsonTest`; full-context -> `@SpringBootTest` + Testcontainers)
 - [ ] Boundaries clearly defined: each spec layer covers what it does best; no duplicated assertions across layers
@@ -410,6 +422,7 @@ void adminEndpointReturns200ForAdmin() throws Exception {
 
 ## Avoid
 
+- Scaffolding tests without first reading existing tests in the project - the result imports the wrong builder, uses the wrong assertion library, or duplicates the integration-test base class
 - Chasing a coverage number instead of prioritizing by risk - 100% line coverage with no security tests misses the bigger threat
 - `@SpringBootTest` for tests that could run as `@WebMvcTest` or plain unit - context-load cost compounds across the suite
 - H2 in `@DataJpaTest` for apps that use PostgreSQL features (JSONB, partial indexes, `ON CONFLICT`, window functions) - tests pass, prod fails

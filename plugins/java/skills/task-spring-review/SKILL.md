@@ -112,6 +112,19 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
 
+### Step 3 - Evaluate Scope Auto-Escalation
+
+Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
+
+For each signal that fires, log a one-liner: `signal: <category> -> <file:line>`. Then decide:
+
+- Zero signals or user passed `core-only` -> stay on Core
+- One signal category -> add the matching extra scope
+- Two or more signal categories -> promote to Full
+- User passed an explicit scope -> respect it (do not downgrade), but still record signals so the Summary documents why the chosen scope was correct
+
+Surface the decision in the Summary's `Scope:` field. If escalated, append `auto-escalated from Core; signals: <list>`. If the user passed a scope and signals contradicted it, surface a one-line note (`Scope user-pinned to Core; +Security signals present: <list>`) so reviewers see what was deliberately deferred.
+
 ### Phase A - PR Risk Snapshot (run first)
 
 - Use skill: `review-pr-risk` to evaluate cross-cutting risk signals
@@ -139,7 +152,7 @@ Logical correctness, error handling completeness, edge cases affecting state int
 - [ ] **JPA entities exposed in API**: controllers do not return `@Entity` types directly; responses go through DTO / record / projection - entities do not leak `created_at` audit fields, password hashes, or lazy collections that trigger `LazyInitializationException` mid-serialization
 - [ ] **Authorization on every endpoint**: every controller method has explicit `SecurityFilterChain` matcher coverage OR `@PreAuthorize` (defense in depth at service layer); `permitAll` documented (delegate to `task-spring-review-security` for depth)
 - [ ] **Error handling**: `@RestControllerAdvice` / `@ControllerAdvice` handles common exceptions (`MethodArgumentNotValidException`, `EntityNotFoundException`, `AccessDeniedException`) with consistent error response shape; no blanket `catch (Exception e)` swallowing root causes; no `printStackTrace()` / `e.printStackTrace()` in production code paths
-- [ ] **Migration PRs (any change in `db/migration/` or `db/changelog/`)**: see Phase C migration checks
+- [ ] **Migration PRs (any change in `db/migration/` or `db/changelog/`)**: see the Migration PRs subsection below
 - [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; `JdbcTemplate.batchUpdate` or JPA batch (`spring.jpa.properties.hibernate.jdbc.batch_size`) sized appropriately
 
 **Migration PRs (any change in `src/main/resources/db/migration/` or `db/changelog/`):**
@@ -218,7 +231,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-spring-review-observability` subagent owns the depth review).
 
-### Step 3 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -240,7 +253,7 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 4 - Synthesize (only if Step 3 ran)
+### Step 5 - Synthesize (only if Step 4 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -338,7 +351,7 @@ _Omit this section if there are no actionable findings._
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated after Step 2; promotion (or `core-only` suppression) recorded in Summary
+- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B Spring correctness checks applied: `@Transactional` boundaries, propagation, self-invocation, Bean Validation, JPA-in-API, `@PreAuthorize` coverage, exception advice, Virtual Thread pinning

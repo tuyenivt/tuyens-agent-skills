@@ -48,7 +48,17 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Java/Sp
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-refactor` instead.
 
-### Step 2 - Coverage Gate (mandatory)
+### Step 2 - Read the Target
+
+Read the actual file(s) named in the Inputs table before classifying smells. A refactor plan grounded in the user's prose summary instead of the source will hallucinate smells that aren't there and miss ones that are. Specifically:
+
+1. Read the target class top-to-bottom; note method count, longest method, field injection vs constructor injection, `@Transactional` placement, every external collaborator (`RestClient`, `KafkaTemplate`, `JmsTemplate`, mailers).
+2. Read the matching test file (e.g., `OrderServiceTest.java`, `@WebMvcTest(OrderController.class)`); count cases by outcome (happy path, validation failure, external failure, security denial).
+3. If callers are obvious (controller calling the service, scheduled job calling the service), read the immediate caller too - removing or reshaping a public method without seeing call sites is how silent breakage happens.
+
+If the user named only the goal without a target file, ask for the target before proceeding. Do not guess.
+
+### Step 3 - Coverage Gate (mandatory)
 
 Refactoring without test coverage is a rewrite with extra steps. Before proposing any refactor:
 
@@ -56,9 +66,9 @@ Refactoring without test coverage is a rewrite with extra steps. Before proposin
 2. Run coverage assessment - if coverage is missing or thin, **stop and require coverage first** before proposing refactor steps. Recommend `task-spring-test` to fill gaps
 3. If coverage exists but is happy-path-only, flag the boundary-test gap as a prerequisite step in the plan (refactor must not silently change validation / 401 / 403 / not-found behavior)
 
-**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 3 if coverage is inadequate.
+**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 4 if coverage is inadequate.
 
-### Step 3 - Identify Spring Smells
+### Step 4 - Identify Spring Smells
 
 Inspect the target for these Spring-specific smells. Use judgment - these are signals, not hard rules.
 
@@ -131,9 +141,12 @@ Inspect the target for these Spring-specific smells. Use judgment - these are si
 
 **General OO smells (apply with Spring judgment):**
 
-Use skill: `backend-coding-standards` for the cross-language smell catalog. Apply Spring judgment - a 25-line `@Service` method orchestrating clearly named private steps is fine; a 10-line method doing three unrelated things is not.
+Use skill: `backend-coding-standards` for the cross-language smell catalog.
+Use skill: `complexity-review` when the target shows over-engineering signals (single-impl interfaces, base classes for two children, premature `Strategy`/`Factory`, redundant mapping layers) - those are simplification opportunities, not refactor steps to extract more abstractions.
 
-### Step 4 - Cross-Module Risk Assessment
+Apply Spring judgment - a 25-line `@Service` method orchestrating clearly named private steps is fine; a 10-line method doing three unrelated things is not.
+
+### Step 5 - Cross-Module Risk Assessment
 
 Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected by the refactor.
 
@@ -148,7 +161,7 @@ Spring-specific blast-radius signals:
 
 State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single module, multiple callers) / **Wide** (cross-module, public API, broad aspect) / **Critical** (`@AutoConfiguration` published, entity used by 5+ services).
 
-### Step 5 - Propose the Step Sequence
+### Step 6 - Propose the Step Sequence
 
 Each refactoring step must be:
 
@@ -227,7 +240,7 @@ The intermediate "callbacks no-op when called from service" step is the safety n
 3. Verify behavior with a concurrency test (multiple Virtual Threads racing the critical section)
 4. Audit other `synchronized` blocks in the same module - they pin too
 
-### Step 6 - Validate Plan Against Goal
+### Step 7 - Validate Plan Against Goal
 
 Before finalizing the plan, check:
 
@@ -295,16 +308,17 @@ Before finalizing the plan, check:
 
 ## Self-Check
 
-- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher)
-- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate
-- [ ] Spring-specific smells identified using Step 3 catalog (controller, service, persistence, configuration/DI, aspect, async/messaging)
-- [ ] Cross-module risk (blast radius) stated before proposing steps
-- [ ] Each step independently committable; test gate stated per step
-- [ ] Transaction stance stated per step (no I/O silently moved across `@Transactional` boundary)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, aspect rewrites, signature changes)
-- [ ] No step bundles unrelated cleanup
-- [ ] Goal explicitly mapped to the end state of the sequence
-- [ ] Rollback path is one revert per step
+- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher) (Step 1)
+- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
+- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate (Step 3)
+- [ ] Spring-specific smells identified using Step 4 catalog (controller, service, persistence, configuration/DI, aspect, async/messaging) (Step 4)
+- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
+- [ ] Each step independently committable; test gate stated per step (Step 6)
+- [ ] Transaction stance stated per step (no I/O silently moved across `@Transactional` boundary) (Step 6)
+- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, aspect rewrites, signature changes) (Step 6)
+- [ ] No step bundles unrelated cleanup (Step 6)
+- [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
+- [ ] Rollback path is one revert per step (Step 7)
 
 ## Avoid
 
