@@ -203,6 +203,12 @@ I want to...
 Java / Spring Boot (plugin: java)
   scaffold a new Spring Boot feature  -> /task-spring-new
   debug a Spring Boot issue           -> /task-spring-debug
+  Spring staff-level code review      -> /task-spring-review
+  Spring performance review           -> /task-spring-review-perf
+  Spring security review              -> /task-spring-review-security
+  Spring observability review         -> /task-spring-review-observability
+  Spring test strategy / scaffolds    -> /task-spring-test
+  Spring refactor plan                -> /task-spring-refactor
 
 Kotlin / Spring Boot (plugin: kotlin, requires java)
   scaffold a new Kotlin feature       -> /task-kotlin-new
