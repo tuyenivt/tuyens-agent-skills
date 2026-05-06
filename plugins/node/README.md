@@ -32,12 +32,16 @@ ORM selection can be overridden by declaring it in your project's repo context f
 
 ## Workflow Skills
 
-Workflow skills orchestrate multi-step tasks using the `node-architect` agent.
-
-| Skill             | Description                                                                     |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `task-node-new`   | End-to-end feature implementation across all layers with comprehensive tests    |
-| `task-node-debug` | Debug errors from stack traces, test failures, build errors, and runtime issues |
+| Skill                            | Agent                     | Description                                                                                                                         |
+| -------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `task-node-new`                  | node-architect            | End-to-end feature implementation across all layers with comprehensive tests                                                        |
+| `task-node-debug`                | node-architect            | Debug errors from stack traces, test failures, build errors, and runtime issues                                                     |
+| `task-node-review`               | node-tech-lead            | Node staff-level code review umbrella - Phases A-E with NestJS / Express idioms; spawns parallel scope subagents                    |
+| `task-node-review-perf`          | node-performance-engineer | Prisma / TypeORM N+1, event-loop blocking, BullMQ throughput, NestJS request-scoped misuse, migration safety                        |
+| `task-node-review-security`      | node-security-engineer    | NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input, prototype pollution, OWASP Top 10              |
+| `task-node-review-observability` | node-tech-lead            | pino / winston, OpenTelemetry Node SDK + auto-instrumentation, prom-client, BullMQ queue events (library-level focus)               |
+| `task-node-test`                 | node-test-engineer        | Jest / Supertest strategy / scaffolding (NestJS TestingModule, Testcontainers, MSW, BullMQ in-memory + real-broker)                 |
+| `task-node-refactor`             | node-tech-lead            | Refactor plan: fat controllers, anemic services, sync-in-async, listener abuse, BullMQ idempotency, prototype pollution, with gates |
 
 ### Usage Examples
 

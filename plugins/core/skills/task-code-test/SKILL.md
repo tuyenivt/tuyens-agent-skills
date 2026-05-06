@@ -38,11 +38,12 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 If a stack-specific test workflow exists for the detected stack, delegate to it. The stack workflow names RSpec / JUnit / pytest / Jest idioms directly instead of routing through the generic adapter below. When `--spec` was passed, propagate the spec context to the delegate.
 
-| Detected stack     | Delegate to         |
-| ------------------ | ------------------- |
-| Ruby / Rails       | `task-rails-test`   |
-| Java / Spring Boot | `task-spring-test`  |
-| Python             | `task-python-test`  |
+| Detected stack       | Delegate to        |
+| -------------------- | ------------------ |
+| Ruby / Rails         | `task-rails-test`  |
+| Java / Spring Boot   | `task-spring-test` |
+| Python               | `task-python-test` |
+| Node.js / TypeScript | `task-node-test`   |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-6 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

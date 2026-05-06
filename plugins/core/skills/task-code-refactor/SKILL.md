@@ -44,11 +44,12 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 If a stack-specific refactor workflow exists for the detected stack, delegate to it. The stack workflow names framework-specific smells directly (e.g., Rails: fat controllers, callback abuse, scope sprawl, concern soup, missing service objects) and applies framework-aware refactor recipes.
 
-| Detected stack     | Delegate to             |
-| ------------------ | ----------------------- |
-| Ruby / Rails       | `task-rails-refactor`   |
-| Java / Spring Boot | `task-spring-refactor`  |
-| Python             | `task-python-refactor`  |
+| Detected stack       | Delegate to            |
+| -------------------- | ---------------------- |
+| Ruby / Rails         | `task-rails-refactor`  |
+| Java / Spring Boot   | `task-spring-refactor` |
+| Python               | `task-python-refactor` |
+| Node.js / TypeScript | `task-node-refactor`   |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

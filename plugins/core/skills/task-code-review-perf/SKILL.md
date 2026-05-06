@@ -58,11 +58,12 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 If a stack-specific performance review workflow exists for the detected stack, delegate to it. The stack workflow names Rails / Spring / FastAPI / NestJS idioms directly instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
 
-| Detected stack     | Delegate to                |
-| ------------------ | -------------------------- |
-| Ruby / Rails       | `task-rails-review-perf`   |
-| Java / Spring Boot | `task-spring-review-perf`  |
-| Python             | `task-python-review-perf`  |
+| Detected stack       | Delegate to               |
+| -------------------- | ------------------------- |
+| Ruby / Rails         | `task-rails-review-perf`  |
+| Java / Spring Boot   | `task-spring-review-perf` |
+| Python               | `task-python-review-perf` |
+| Node.js / TypeScript | `task-node-review-perf`   |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-8 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

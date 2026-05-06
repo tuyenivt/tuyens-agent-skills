@@ -113,11 +113,12 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 
 If a stack-specific code review umbrella exists for the detected stack, delegate the entire review to it. The stack umbrella runs Phases A-E with stack-specific correctness, architecture, AI-quality, and maintainability checks (e.g., Rails: Zeitwerk, callback abuse, fat controllers, AR-in-API), and spawns its own stack-specific perf / security / observability subagents in parallel for any extra scope. This is two-layer dispatch.
 
-| Detected stack     | Delegate to           |
-| ------------------ | --------------------- |
-| Ruby / Rails       | `task-rails-review`   |
-| Java / Spring Boot | `task-spring-review`  |
-| Python             | `task-python-review`  |
+| Detected stack       | Delegate to          |
+| -------------------- | -------------------- |
+| Ruby / Rails         | `task-rails-review`  |
+| Java / Spring Boot   | `task-spring-review` |
+| Python               | `task-python-review` |
+| Node.js / TypeScript | `task-node-review`   |
 
 When delegating, pass:
 

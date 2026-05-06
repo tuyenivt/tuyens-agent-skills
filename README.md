@@ -237,6 +237,12 @@ Ruby on Rails (plugin: rails)
 Node.js / TypeScript / NestJS (plugin: node)
   scaffold a new Node feature         -> /task-node-new
   debug a Node issue                  -> /task-node-debug
+  Node staff-level code review        -> /task-node-review
+  Node performance review             -> /task-node-review-perf
+  Node security review                -> /task-node-review-security
+  Node observability review           -> /task-node-review-observability
+  Node test strategy / scaffolds      -> /task-node-test
+  Node refactor plan                  -> /task-node-refactor
 
 Go / Gin (plugin: go)
   scaffold a new Go feature           -> /task-go-new
