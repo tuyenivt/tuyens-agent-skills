@@ -256,6 +256,26 @@ Categories:
 - Coding standards updates (patterns to require or prohibit)
 - AI-generated code constraints (complexity limits, mandatory simplification review)
 
+### 9. Persist the Lesson (Feedback Loop)
+
+The highest-leverage section is worthless if the guardrails live only inside this postmortem document. Each adopted guardrail must land in a durable, automatically-loaded surface so the same class of bug is harder to repeat.
+
+For every row in the "New Guardrails to Adopt" table, pick exactly one persistence target and propose the concrete patch:
+
+| Target                                                                           | Use when                                                                                                             | Patch shape                                                                                                                 |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Stack-specific skill** (e.g., `rails-*`, `node-*`)                             | Rule encodes a framework-specific pattern (e.g., Sidekiq idempotency, ActiveRecord lock_timeout, FastAPI dep limits) | New bullet under `## Rules` or `## Patterns` in the matching atomic skill, with bad/good code pair                          |
+| **Stack-agnostic core skill** (e.g., `ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks (timeout policy, bulkhead, blast-radius constraint)                                       | New bullet in the relevant `core` atomic skill                                                                              |
+| **Project `CLAUDE.md`**                                                          | Rule is project-specific policy (deploy windows, on-call escalation, business invariants) that does not generalize   | New entry under a `## Lessons from Incidents` section (create the section if absent), one line: rule + linked incident date |
+| **Review checklist / CI gate**                                                   | Rule is enforceable mechanically (lint, schema check, required label)                                                | Concrete file + check name + failure message; do not ship as prose                                                          |
+| **Runbook**                                                                      | Rule is recovery procedure, not prevention                                                                           | New runbook entry or step; out of scope for skill/`CLAUDE.md` updates                                                       |
+
+For each guardrail, produce a one-row patch plan: **target file** + **insertion point** + **exact text to add**. Do not hand-wave with "update Rails skills". Name the skill. Quote the bullet.
+
+If a guardrail does not fit any persistence target, that is a signal the rule is too vague - tighten it until it does, or drop it.
+
+**MTTR accounting.** For the executive readout, restate: detection gap (first symptom → first alert), containment lag (first alert → blast radius stopped), and resolution lag (containment → full recovery). For each persisted guardrail, state which of those three numbers it would have reduced and by roughly how much. This is what makes the lesson defensible to leadership ("guardrail X would have cut detection gap from 14m to <2m") rather than a wishlist.
+
 ## Output
 
 ```markdown
@@ -267,7 +287,12 @@ User Impact:
 Duration:
 Triggering Change: {deploy, config change, batch job, traffic pattern - with timestamp}
 Timeline: {triggering change → first symptom → detection → containment → resolution, with timestamps}
-Detection Gap: {time between first symptom and first alert}
+MTTR Breakdown:
+
+- Detection gap: {first symptom → first alert}
+- Containment lag: {first alert → blast radius stopped}
+- Resolution lag: {containment → full recovery}
+
 Containment Actions:
 
 ## Failure Pattern Classification
@@ -319,6 +344,14 @@ Contributing Factors:
 | ------------- | ----- | ----------- | ----------------------- |
 | Specific rule | Where | How checked | What it prevents        |
 
+## Persistence Plan (Feedback Loop)
+
+One row per guardrail above. Every row must name a real file or check.
+
+| Guardrail | Target (skill / CLAUDE.md / CI gate / runbook)                 | Insertion Point  | Exact Patch             | MTTR Number Reduced                                            |
+| --------- | -------------------------------------------------------------- | ---------------- | ----------------------- | -------------------------------------------------------------- |
+| {rule}    | {e.g., `plugins/rails/skills/rails-sidekiq-patterns/SKILL.md`} | {section / line} | {bullet or code to add} | {detection gap / containment lag / resolution lag, est. delta} |
+
 ## Staff-Level Takeaways
 
 - 3-5 systemic insights. Each must name a failure class and state the structural principle that prevents it.
@@ -368,6 +401,9 @@ If this failure class recurs, what architectural change eliminates it permanentl
 - [ ] Every recommendation addresses a failure class, not just this specific incident
 - [ ] Architecture reinforcement includes resource isolation if shared resources were involved
 - [ ] New guardrails table has at least one item implementable in the next sprint
+- [ ] Every guardrail has a Persistence Plan row naming a concrete file (skill, `CLAUDE.md`, CI gate, or runbook) and an exact patch - no "update the Rails skills" hand-waving
+- [ ] MTTR breakdown reports detection gap, containment lag, and resolution lag separately
+- [ ] Each persisted guardrail names which MTTR number it would have reduced and by roughly how much
 - [ ] No blame or individual attribution in any section
 
 ## Avoid
@@ -383,3 +419,5 @@ If this failure class recurs, what architectural change eliminates it permanentl
 - Classifying only the immediate failure without tracing the compound chain
 - Omitting the triggering change when deployment or config change evidence exists
 - Recommending resource pool changes without specifying concrete sizing or timeout values
+- Producing guardrails that live only inside the postmortem document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson will not survive the next quarter
+- Reporting a single "duration" number instead of breaking MTTR into detection gap, containment lag, and resolution lag - the breakdown is what makes guardrails defensible to leadership
