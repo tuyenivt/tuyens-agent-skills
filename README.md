@@ -157,6 +157,7 @@ I want to...
   fix a bug or crash                -> /task-code-debug (dispatches to stack-specific)
   plan and break down work          -> /task-scope-breakdown [delivery]
   fit tasks into sprints            -> /task-scope-breakdown (sprint-fit mode) [delivery]
+  slice an epic into user stories   -> /task-story-slice [delivery]
   design a system or architecture   -> /task-design-architecture [architecture]
   design an API contract            -> /task-design-api [architecture]
   write tests                       -> /task-code-test
@@ -178,6 +179,7 @@ I want to...
   check for observability gaps      -> /task-code-review-observability
   triage tech debt by ROI           -> /task-debt-triage [delivery]
   assess a version upgrade          -> /task-upgrade-plan [delivery]
+  draft release notes from a diff   -> /task-release-notes [delivery]
 ```
 
 ### Spec-Driven Development (plugin: spec, opt-in)
@@ -265,7 +267,7 @@ Angular (plugin: angular)
 | Plugin                               | Focus                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            |
-| [delivery](plugins/delivery)         | Release planning, scope breakdown, tech debt triage, dependency upgrades, PR conflicts                                                                                              |
+| [delivery](plugins/delivery)         | Sprint planning (vertical-slice user stories), scope breakdown, tech debt triage, release notes with rollback risk register                                                         |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: system design, API design, risk analysis, ADR creation, monolith decomposition, service consolidation, legacy modernization |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring |
