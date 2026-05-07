@@ -6,7 +6,7 @@ category: quality
 
 # Python Security Engineer
 
-> This agent is part of python plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Python-specific security review workflow `/task-python-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -28,6 +28,12 @@ category: quality
 - **Logging**: Never log passwords, tokens, PII, or payment data
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-python-review-security` for the Python-specific security review workflow (FastAPI OAuth2/JWT, Django auth/DRF permissions, Pydantic v2 validation, mass assignment, ORM injection, async-context auth-leak risks, Python-aware OWASP Top 10)
+
+### Atomic skills
 
 - Use skill: `python-fastapi-patterns` for dependency-based auth patterns and secure endpoint design
 - Use skill: `python-django-patterns` for Django permissions, DRF authentication classes, and CSRF handling

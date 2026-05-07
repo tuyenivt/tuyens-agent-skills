@@ -6,7 +6,7 @@ category: engineering
 
 # Python Performance Engineer
 
-> This agent is part of python plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Python-specific performance review workflow `/task-python-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -36,6 +36,12 @@ category: engineering
 7. **Verify improvement** - re-profile after fix; track p95 latency not just average
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-python-review-perf` for the Python-specific perf review workflow (SQLAlchemy / Django ORM N+1, async event-loop blocking, sync-in-async traps, connection pool sizing, Celery throughput, Pydantic v2 serialization cost, migration safety)
+
+### Atomic skills
 
 - Use skill: `python-async-patterns` for event loop blocking analysis and async/await correctness
 - Use skill: `python-sqlalchemy-patterns` for N+1 prevention, query optimization, and connection pool tuning

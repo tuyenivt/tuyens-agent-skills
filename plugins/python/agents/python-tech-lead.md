@@ -8,7 +8,7 @@ category: quality
 
 # Python Tech Lead
 
-> This agent is part of the python plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the python plugin. Drives the Python-specific review and refactor workflows: `/task-python-review` (umbrella with perf/security/observability subagents), `/task-python-review-observability`, and `/task-python-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Role
 
@@ -125,6 +125,14 @@ Flag as review findings when:
 - Complex business logic lacks explanatory comments
 
 ## Key Skills
+
+### Workflows this agent drives
+
+- Use skill: `task-python-review` for the Python-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
+- Use skill: `task-python-refactor` for Python-specific refactor planning (fat routers/views, anemic services, sync-in-async, blocking I/O, signal abuse, lazy-load traps) with a pytest coverage gate
+- Use skill: `task-python-review-observability` for the Python observability depth review (structlog, OpenTelemetry, Prometheus, error trackers)
+
+### Atomic skills
 
 - Use skill: `python-fastapi-patterns` for FastAPI endpoint, dependency, and lifecycle review
 - Use skill: `python-async-patterns` for async correctness and event loop safety

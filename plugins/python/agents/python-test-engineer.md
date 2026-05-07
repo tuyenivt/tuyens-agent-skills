@@ -6,7 +6,7 @@ category: quality
 
 # Python Test Engineer
 
-> This agent is part of the python plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Python-specific test workflow `/task-python-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -30,6 +30,12 @@ category: quality
 - **Coverage**: business logic, error paths, edge cases, async cancellation, Celery retry paths
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-python-test` for the Python-specific test strategy and scaffolding workflow (pytest, pytest-asyncio, factory_boy/model_bakery, httpx ASGITransport (FastAPI) or DRF APIClient (Django), Testcontainers PostgreSQL, Celery testing)
+
+### Atomic skills
 
 - Use skill: `python-testing-patterns` for pytest fixture design, factory_boy, async testing, and Testcontainers patterns
 
