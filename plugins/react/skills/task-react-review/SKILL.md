@@ -324,7 +324,7 @@ _Summary commentary on systemic patterns. **Do not restate individual findings h
 - Boundary impact:
 - Coupling change:
 - Drift detected:
-- Server / Client data flow: _(Next.js)_ when 3+ findings cluster around ORM rows being passed across the Server → Client boundary, name the systemic pattern here ("Server Components consistently pass full ORM rows across the Client boundary; introduce a DTO layer at app/lib/dto/\*\*.ts") rather than producing N near-identical findings
+- Server / Client data flow: _(Next.js)_ when 3+ findings cluster around ORM rows being passed across the Server → Client boundary, name the systemic pattern here ("Server Components consistently pass full ORM rows across the Client boundary; introduce a DTO layer at app/lib/dto/**.ts") rather than producing N near-identical findings
 
 ## Maintainability Notes
 

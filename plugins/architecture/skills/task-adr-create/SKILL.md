@@ -54,7 +54,7 @@ This skill produces a ready-to-commit `.md` file. It does not implement the deci
 | Decision description        | Yes      | What was decided or is being considered                          |
 | Context / problem statement | Yes      | Why a decision was needed - the forcing function                 |
 | Alternatives considered     | Yes      | At least one alternative; ideally two or three                   |
-| Status                      | No       | Proposed (default) \| Accepted \| Deprecated \| Superseded       |
+| Status                      | No       | Proposed (default) | Accepted | Deprecated | Superseded          |
 | Supersedes ADR              | No       | ADR number/title if this replaces a previous decision            |
 | Related tickets / PRs       | No       | Links to implementation context                                  |
 | Target ADR directory        | No       | Default: `docs/adr/` - override if the project uses another path |

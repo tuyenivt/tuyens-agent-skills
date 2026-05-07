@@ -105,7 +105,7 @@ Inspect logging config and any `logger.*` callsite in the diff:
 - [ ] **OpenTelemetry log correlation**: `@opentelemetry/instrumentation-pino` / `@opentelemetry/instrumentation-winston` injects `trace_id` / `span_id` into every log record automatically when OTel is active; flag if absent
 - [ ] **Sensitive-field redaction**: `pino` `redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token', '*.creditCard']` config; `winston` custom format strips them. NestJS `class-transformer` `@Exclude()` and Zod schema design reinforce so `logger.log({ user })` cannot leak via property access
 - [ ] **No `logger.log(user)` / `logger.log(entity)`** that serializes an ORM entity (lazy-loaded relations may trigger queries; PII may leak). Always log specific fields by ID
-- [ ] **User-identity fields emitted as structured key-values, not in the message string**: `userId`, `ownerId`, `tenantId`, `email` go in via `logger.info({ userId }, 'event')` (pino) or `logger.info('event', { userId })` (winston), never in `\`user=${userId}\``. A single redaction config can scrub structured fields; it cannot reliably scrub them out of a free-text message
+- [ ] **User-identity fields emitted as structured key-values, not in the message string**: `userId`, `ownerId`, `tenantId`, `email` go in via `logger.info({ userId }, 'event')` (pino) or `logger.info('event', { userId })` (winston), never in ``user=${userId}``. A single redaction config can scrub structured fields; it cannot reliably scrub them out of a free-text message
 - [ ] **Log levels used correctly**: `error` for actionable failures, `warn` for recoverable anomalies, `info` for state transitions, `debug` for verbose diagnostics. Default level `info` in prod; `debug` / `trace` reserved for targeted modules
 - [ ] **No `console.log`** in production code paths - flag for replacement with the structured logger; `console.log` skips redaction, structured fields, and correlation
 - [ ] **No log spam in hot loops** - iterating large arrays, scheduled jobs running every second, BullMQ workers at high TPS must not log per-iteration; sample or use `debug` level
@@ -284,7 +284,7 @@ _Omit this section if there are no actionable findings._
 - Recommending generic observability advice when a Node SDK or auto-instrumentation exists (say "enable `@opentelemetry/instrumentation-nestjs-core`", not "add HTTP request tracing")
 - Reviewing infra-level concerns (Datadog SaaS settings, Grafana alert rules, log forwarder config, on-call rotation) - those are not in source code and belong to ops review
 - Treating high label cardinality (`userId`, `orderId`) as acceptable - metric series cost compounds; require enum / category labels
-- Approving template-string logging (`logger.info(\`processing order=${orderId}\`)`) over structured form (`logger.info({ orderId }, 'processing')`) - the rendered string locks the formatter and prevents log-aggregation tools from parsing fields
+- Approving template-string logging (`logger.info(`processing order=${orderId}`)`) over structured form (`logger.info({ orderId }, 'processing')`) - the rendered string locks the formatter and prevents log-aggregation tools from parsing fields
 - Suggesting `console.log` / `console.error` as logging - flag for replacement with the structured logger
 - Approving `new Counter(...)` registration inside a request handler - causes duplicate-registration crashes after the first request
 - Approving `OTEL_TRACES_SAMPLER=always_on` in prod for high-traffic services - cost and storage compound

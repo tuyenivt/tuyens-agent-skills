@@ -201,7 +201,7 @@ For each endpoint, verify:
 
 | Method | Path                | Description   | Auth  | Request           | Response              | Status   |
 | ------ | ------------------- | ------------- | ----- | ----------------- | --------------------- | -------- |
-| GET    | /api/v1/orders      | List orders   | USER  | Pageable params   | Page\<OrderResponse\> | 200      |
+| GET    | /api/v1/orders      | List orders   | USER  | Pageable params   | Page<OrderResponse>   | 200      |
 | POST   | /api/v1/orders      | Create order  | USER  | OrderRequest      | OrderResponse         | 201      |
 | GET    | /api/v1/orders/{id} | Get order     | USER  | --                | OrderResponse         | 200, 404 |
 | PUT    | /api/v1/orders/{id} | Replace order | ADMIN | OrderRequest      | OrderResponse         | 200, 404 |

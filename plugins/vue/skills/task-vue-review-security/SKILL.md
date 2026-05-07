@@ -153,7 +153,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 ### Step 7 - Input Validation and Nitro Endpoints
 
-**Nuxt 3 Nitro endpoints (`server/api/**/\*.ts`):\*\*
+**Nuxt 3 Nitro endpoints (`server/api/**/*.ts`):**
 
 - [ ] **Every endpoint validates input**: `defineEventHandler(async (event) => { const body = await readValidatedBody(event, Schema.parse) })` - throws on invalid. Or use `safeParse` and `createError` for typed error response. Never trust the shape of `await readBody(event)` directly
 - [ ] **`readValidatedBody` / `getValidatedQuery` / `getValidatedRouterParams`**: h3 helpers that combine read + Zod validation in one call. Flag raw `readBody(event)` followed by ad-hoc field access

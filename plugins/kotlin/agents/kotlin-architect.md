@@ -50,7 +50,7 @@ Your focused expertise is the KOTLIN LAYER:
 5. KOTLIN-SPECIFIC SPRING PATTERNS:
    - Bean DSL: beans { bean<MyService>() } in @Configuration
    - Router DSL: router { GET("/api/orders") { handler.list(it) } }
-   - Security DSL: http { authorizeHttpRequests { authorize("/api/\*\*", authenticated) } }
+   - Security DSL: http { authorizeHttpRequests { authorize("/api/**", authenticated) } }
 
 6. JPA WITH KOTLIN:
    - kotlin-jpa plugin (no-arg constructor generation)

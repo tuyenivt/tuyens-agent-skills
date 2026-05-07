@@ -326,7 +326,7 @@ _Summary commentary on systemic patterns. **Do not restate individual findings h
 - Boundary impact:
 - Coupling change:
 - Drift detected:
-- SSR / hydration data flow: _(Nuxt)_ when 3+ findings cluster around ORM rows being passed across SSR into client payload, name the systemic pattern here ("Nuxt pages consistently place full ORM rows in Pinia stores; introduce a DTO layer at server/api/\_dto.ts") rather than producing N near-identical findings
+- SSR / hydration data flow: _(Nuxt)_ when 3+ findings cluster around ORM rows being passed across SSR into client payload, name the systemic pattern here ("Nuxt pages consistently place full ORM rows in Pinia stores; introduce a DTO layer at server/api/_dto.ts") rather than producing N near-identical findings
 
 ## Maintainability Notes
 

@@ -104,7 +104,7 @@ The triage output funnels which downstream steps must run carefully versus which
 | Risk                          | Node-specific check                                                                                                                                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Broken Access Control         | Every endpoint declares authorization explicitly. NestJS: `@UseGuards(AuthGuard('jwt'), RolesGuard)` + `@Roles(...)`. Express: route-level `requireAuth` + `requireRole(...)` middleware. Empty / missing is a finding.                                      |
-| Injection                     | Prisma uses parameterized queries by default; raw via `prisma.$queryRaw\`...${val}...\`` is parameterized, but `prisma.$queryRawUnsafe(string)`is not. TypeORM`repository.query(sql, params)`parameterized;`createQueryBuilder`parameters via`:name`.        |
+| Injection                     | Prisma uses parameterized queries by default; raw via `prisma.$queryRaw`...${val}...`` is parameterized, but `prisma.$queryRawUnsafe(string)`is not. TypeORM`repository.query(sql, params)`parameterized;`createQueryBuilder`parameters via`:name`.          |
 | Cryptographic Failures        | `bcrypt` (cost ≥ 10) or `argon2` for passwords. Never `crypto.createHash('md5')` / `'sha1'` for auth. JWT signing key from env, not hardcoded.                                                                                                               |
 | Security Misconfiguration     | `helmet()` middleware applied; CORS origin allowlist (not `*` for credentialed); `NODE_ENV=production` in prod; debug routes / Swagger gated or disabled in prod.                                                                                            |
 | SSRF                          | `fetch` / `axios.get` / `node-fetch` with user-controlled URL validates hostname against allowlist; rejects RFC1918, link-local, cloud metadata before request.                                                                                              |
@@ -181,7 +181,7 @@ The triage output funnels which downstream steps must run carefully versus which
   - Filename sanitized via `path.resolve(base, name).startsWith(base)` check before write; reject directory traversal
   - Virus scan pipeline or accepted-risk documented for user uploads
 - [ ] **Path traversal**: `path.resolve(baseDir, userInput)` followed by `startsWith(baseDir)` check; never `path.join(baseDir, userInput)` without normalization
-- [ ] **Process execution**: `child_process.execFile([...args])` with arg array (not `exec(string)` and not `exec(\`... ${userInput} ...\`)`); strict allowlist of allowed binaries; never `shell: true` with user input
+- [ ] **Process execution**: `child_process.execFile([...args])` with arg array (not `exec(string)` and not `exec(`... ${userInput} ...`)`); strict allowlist of allowed binaries; never `shell: true` with user input
 
 ### Step 8 - Common Node.js Vulnerability Patterns
 
@@ -192,7 +192,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **`fs.writeFile(userInput, content)` / `fs.unlink(userInput)`** without path-base check - file system tampering
 - [ ] **HTTP client with `verify: false` / `rejectUnauthorized: false`**: `https.request({ rejectUnauthorized: false })` flagged unless behind a documented test fixture; `axios.create({ httpsAgent: new https.Agent({ rejectUnauthorized: false }) })` similarly
 - [ ] **Open redirect**: `res.redirect(userInput)` validated against an allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`)
-- [ ] **SQL injection via raw query**: `prisma.$queryRawUnsafe(\`SELECT ... ${userInput}\`)` - flagged as critical; `repository.query(\`... ${userInput}\`)` (TypeORM) similarly. Use tagged template (`prisma.$queryRaw\`...${val}...\``) or `:param` placeholders
+- [ ] **SQL injection via raw query**: `prisma.$queryRawUnsafe(`SELECT ... ${userInput}`)` - flagged as critical; `repository.query(`... ${userInput}`)` (TypeORM) similarly. Use tagged template (`prisma.$queryRaw`...${val}...``) or `:param` placeholders
 - [ ] **Server-side template injection**: rendering Handlebars / EJS / Nunjucks with user-controlled template strings is RCE; templates must come from disk
 - [ ] **`JWT_SECRET` / signing key** sourced from env / Vault, never committed; rotated when leaked
 - [ ] **Debug exposure**: NestJS Swagger UI (`SwaggerModule.setup`) gated behind auth in prod, or skipped (`if (process.env.NODE_ENV !== 'production') SwaggerModule.setup(...)`); Express `debug` namespace patterns reviewed

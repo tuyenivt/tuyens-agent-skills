@@ -29,7 +29,7 @@ This skill **gates only** - it does not read the diff, compute SHAs, or pre-pull
 | Argument                                 | Mode             | Trigger                                                                                 | Notes                                                          |
 | ---------------------------------------- | ---------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | _(none)_                                 | `branch-vs-base` | No argument passed; current branch (`HEAD`) is **not** a trunk branch                   | Default. Self-review of the local feature branch.              |
-| `pr-<N>`, `pr/<N>`, `pull-<N>`, `mr-<N>` | `pr-ref`         | Argument matches `^(pr\|pull\|mr)[-/]\d+$`                                              | Local branch must already exist (created by user via fetch).   |
+| `pr-<N>`, `pr/<N>`, `pull-<N>`, `mr-<N>` | `pr-ref`         | Argument matches `^(pr|pull|mr)[-/]\d+$`                                                | Local branch must already exist (created by user via fetch).   |
 | `<branch>`                               | `branch-vs-base` | Argument resolves via `git rev-parse --verify refs/heads/<arg>` or `refs/remotes/<arg>` | Self-review or teammate-branch cross-review with many commits. |
 
 Trunk branch list (defaults): `main`, `master`, `develop`, `trunk`. If the resolved head matches a trunk branch, fail fast - there is nothing scoped to review.

@@ -220,7 +220,7 @@ This is a behavior-aware refactor: moving filter state to the URL means refresh,
 
 1. Define the URL contract: which params, types, defaults (e.g., `status: 'open' | 'closed' | 'all' = 'all'`, `page: number = 1`, `q: string = ''`). Validate via Zod / a small parser; reject malformed values to defaults rather than crashing on bad input
 2. Replace each `useState` filter with a read from search params via `useSearchParams()` (Next.js) / `useSearchParams` from React Router
-3. Replace each `setFilter(...)` call with a `router.push(\`?\${params.toString()}\`)`(Next.js) /`setSearchParams(params)`(React Router); on Next.js, prefer`router.replace` for filters that should not pollute history
+3. Replace each `setFilter(...)` call with a `router.push(`?\${params.toString()}`)`(Next.js) /`setSearchParams(params)`(React Router); on Next.js, prefer`router.replace` for filters that should not pollute history
 4. Update the data fetcher: query keys / Server Component fetches now derive from search params (`['orders', { status, page }]`); the URL is the source of truth
 5. Run tests: deep-linking (`/orders?status=open` renders filtered list immediately), back-button restores prior filter, refresh preserves filter, validation fallback for malformed params
 6. (Coupled-fix) Note that this changes back-button behavior - document in PR description; check that no analytics depend on the old in-memory state

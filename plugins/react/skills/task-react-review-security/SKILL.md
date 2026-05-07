@@ -159,7 +159,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Side effects after validation**: validation → authz → DB write → `revalidateTag` / `revalidatePath`. Never the other way around
 - [ ] **Returned data is the authoring surface for the client**: a Server Action returns data that hydrates back into the Client Component - flag any privileged/internal fields included in the return value
 
-**Next.js Route Handlers (`app/**/route.ts`):\*\*
+**Next.js Route Handlers (`app/**/route.ts`):**
 
 - [ ] **Every method validates body / query / params**: `await request.json()` followed immediately by `Schema.parse(body)`. Same auth + validation rules as Server Actions
 - [ ] **`request.json()` body size**: Next.js limits body size by default (1MB on the platform); flag explicit raises without justification
