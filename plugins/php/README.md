@@ -13,10 +13,16 @@ Claude Code plugin for PHP development.
 
 ## Workflow Skills
 
-| Skill              | Agent         | Description                                                   |
-| ------------------ | ------------- | ------------------------------------------------------------- |
-| task-laravel-new   | php-architect | End-to-end feature implementation across all layers           |
-| task-laravel-debug | php-architect | Debug stack traces, query errors, queue failures, test errors |
+| Skill                              | Agent                    | Description                                                                                          |
+| ---------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| task-laravel-new                   | php-architect            | End-to-end feature implementation across all layers                                                  |
+| task-laravel-debug                 | php-architect            | Debug stack traces, query errors, queue failures, test errors                                        |
+| task-laravel-review                | php-tech-lead            | Staff-level code review umbrella with parallel perf / security / observability subagents             |
+| task-laravel-review-perf           | php-performance-engineer | Eloquent N+1, indexes, queue throughput (Horizon), caching, OPcache / Octane readiness               |
+| task-laravel-review-security       | php-security-engineer    | Mass assignment, Sanctum / Passport, Policies, SQL injection, file upload, OWASP for Laravel         |
+| task-laravel-review-observability  | php-tech-lead            | Monolog structured logging, OpenTelemetry PHP, Horizon / Telescope / Pulse, Sentry, lifecycle        |
+| task-laravel-test                  | php-test-engineer        | Pest / PHPUnit pyramid, factories, RefreshDatabase, facade fakes, Sanctum helpers                    |
+| task-laravel-refactor              | php-tech-lead            | Fat controller, mass assignment, Eloquent N+1, queue idempotency, Octane-readiness refactors         |
 
 ## Atomic Skills (internal, not user-invocable)
 

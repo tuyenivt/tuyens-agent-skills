@@ -169,4 +169,4 @@ class Order extends Model
 - Use skill: `laravel-testing-patterns` for Pest test design and factory patterns
 - Use skill: `laravel-security-patterns` for auth, validation, and secrets handling
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.
+> This agent is part of the php plugin. Primary workflow: `/task-laravel-new` (end-to-end Laravel feature implementation). Companion workflows: `/task-laravel-review`, `/task-laravel-refactor`, `/task-laravel-test`, `/task-laravel-debug`. For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

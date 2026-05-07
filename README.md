@@ -277,6 +277,12 @@ Rust / Axum (plugin: rust)
 PHP / Laravel (plugin: php)
   scaffold a new Laravel feature      -> /task-laravel-new
   debug a Laravel issue               -> /task-laravel-debug
+  staff-level code review             -> /task-laravel-review
+  performance review                  -> /task-laravel-review-perf
+  security review                     -> /task-laravel-review-security
+  observability review                -> /task-laravel-review-observability
+  test strategy and scaffolding       -> /task-laravel-test
+  Laravel refactor plan               -> /task-laravel-refactor
 
 React / Next.js (plugin: react)
   scaffold a new React feature        -> /task-react-new

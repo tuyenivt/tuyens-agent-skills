@@ -6,7 +6,7 @@ category: engineering
 
 # PHP Performance Engineer
 
-> This agent is part of the php plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent is part of the php plugin. Primary workflow: `/task-laravel-review-perf` (Laravel-aware perf review covering Eloquent N+1 in Blade / Resources / loops, multi-relation eager-load explosion, missing indexes, MySQL slow-query patterns - LIKE leading wildcard, OFFSET pagination, FULLTEXT - `DB::transaction` lock discipline, queue throughput / Horizon supervisor sizing / `$tries`-`$backoff`-`$timeout` discipline, `Cache::remember` strategy, `Http::pool` / Guzzle reuse, OPcache + JIT + Octane / FrankenPHP / RoadRunner readiness). For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

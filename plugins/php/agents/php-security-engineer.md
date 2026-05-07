@@ -6,7 +6,7 @@ category: quality
 
 # PHP Security Engineer
 
-> This agent is part of the php plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent is part of the php plugin. Primary workflow: `/task-laravel-review-security` (Laravel-aware security review covering mass assignment via `$guarded = []` / `Model::create($request->all())`, Sanctum / Passport auth, Gates / Policies / IDOR via `Order::find($id)` without ownership scoping, Form Request `authorize()` defaults, SQL injection via `whereRaw` / `DB::raw` / `orderByRaw($request->input)`, file upload safety, webhook signature verification with `hash_equals`, `env()` outside config, `unserialize` / `eval` / `shell_exec` injection, OWASP in a Laravel lens). For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 

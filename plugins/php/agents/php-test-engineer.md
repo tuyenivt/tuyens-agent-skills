@@ -6,7 +6,7 @@ category: quality
 
 # PHP Test Engineer
 
-> This agent is part of the php plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent is part of the php plugin. Primary workflow: `/task-laravel-test` (Laravel-aware test strategy and scaffolding using Pest / PHPUnit + factories + `RefreshDatabase` against real MySQL/PostgreSQL via `phpunit.xml` env override - NEVER SQLite for prod-MySQL apps, full feature tests via `$this->getJson` / `postJson` / `actingAs($user)` / `Sanctum::actingAs($user, ['ability'])`, facade fakes (`Queue::fake` / `Event::fake` / `Notification::fake` / `Mail::fake` / `Bus::fake` / `Storage::fake`) for dispatch testing, `Http::fake` for HTTP stubs, `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` discipline). For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
