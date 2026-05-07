@@ -54,7 +54,21 @@ Before producing assessment, scaffolds, or strategy, open both the production co
 - Read `tests/common/mod.rs` (or equivalent) for shared fixtures (testcontainers init, fake JWT generator, factory utilities)
 - Read `src/main.rs` (or `src/app.rs`) for middleware order that handler tests must replicate (auth, trace layer, error handler)
 
-If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
+If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently. Greenfield convention list (state your choice for each, with a one-line rationale):
+
+| Decision           | Default to propose                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Test layout        | Integration / handler tests under `tests/`; unit tests colocated via `#[cfg(test)] mod tests`       |
+| Async runtime      | `#[tokio::test]`; `flavor = "multi_thread"` only when handlers spawn or workers run cross-thread    |
+| Handler harness    | `axum-test::TestServer` (ergonomic) over `tower::ServiceExt::oneshot` (lower-level) for greenfield  |
+| DB strategy        | `testcontainers` + `testcontainers-modules` PostgreSQL via `OnceCell` shared container; per-test transactional rollback |
+| Mock crate         | `mockall` `#[automock]` on trait boundaries                                                         |
+| Property crate     | `proptest` for pure invariants                                                                       |
+| Runner             | `cargo nextest run` for parallelism; fall back to `cargo test` if not adopted                       |
+| Lint               | `cargo clippy --all-targets -- -D warnings` mandatory in CI                                          |
+| Coverage           | `cargo llvm-cov` (preferred) or `cargo tarpaulin`                                                   |
+| Shared fixtures    | `tests/common/mod.rs` for testcontainer init, JWT issuer, factory functions, `app_with_state(pool)` |
+| `[dev-dependencies]` | Bootstrap block: `tokio` (with test-util), `axum-test`, `testcontainers`, `testcontainers-modules`, `mockall`, `proptest`, `rstest`, `pretty_assertions`, `serde_json`, `once_cell` |
 
 ### Step 3 - Rust Test Pyramid
 
@@ -224,9 +238,24 @@ For both:
 **What deserves a handler test:**
 
 - Every endpoint: happy path + 401 + 403 + 4xx validation
+- **IDOR / per-owner / per-tenant resources**: anonymous → 401, other-user → 403/404, owner → 200. Any handler that takes an id path parameter and returns or mutates user-owned data needs this triple
 - Pagination contract (`limit` / `offset` / cursor)
 - Filtering / sorting / search query params
 - Custom error middleware mapping `AppError` → HTTP status
+
+**Web hazard tests (when handler shape signals the risk):**
+
+| Hazard                | When the handler shape signals it                                                       | Test to add                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| IDOR                  | Path `:id` -> user-owned resource lookup or mutation                                    | Owner / other-user / anonymous trio per endpoint                                                  |
+| Open redirect         | `Redirect::to(&user_input)` or any handler returning a 30x to a request-derived URL    | Allowlist enforcement: relative-only / domain-allowlist; reject `//evil.com`, schemes, encoded forms |
+| File upload           | `axum::extract::Multipart` or any path joining `user_filename`                          | Path traversal (`../../etc/...`), MIME sniff vs `Content-Type` header lie, size cap, atomic write |
+| Bulk export           | Endpoint returning `fetch_all` of an entity table; `/admin/export` shape                 | Authz + row-cap + tenant scoping ("export only my tenant's rows, max N rows")                     |
+| SSRF                  | `reqwest::get(user_url)` / outbound HTTP with request-derived host                      | Allowlist rejects metadata IP, loopback, RFC1918, link-local; DNS rebinding test                  |
+| Privilege escalation  | `update_user` / `update_role` / any handler that touches role / permission fields       | Non-admin cannot self-promote; admin can; role change requires explicit admin guard               |
+| Command/shell injection | `Command::new("sh").arg("-c")` or any `format!`-built shell string, even outside upload  | Reject metacharacters in user input; assert arg-list invocation (`Command::new("convert").arg(path)`) is used so shell metacharacters cannot reach a shell |
+
+These belong in handler tests, not buried in service unit tests - the security guard is at the handler boundary, so the test must exercise it through the same boundary. **Web hazards from this table default to Step 7 priority band P1** (security guard is the test's purpose), even when the underlying flow looks like P3 revenue or P2 data integrity - the secondary band still applies via the Multi-band rule.
 
 **What deserves an integration / testcontainers test:**
 
@@ -348,6 +377,7 @@ Quick-reference checklist for reviewing existing Rust tests:
 - **Handler tests:** [endpoints without tests; endpoints missing 401/403/validation paths]
 - **Integration tests:** [repositories with non-trivial queries without tests; tests running on SQLite for a Postgres app]
 - **Auth tests:** [endpoints without authorization tests; missing JWT middleware tests]
+- **Web hazard tests:** [IDOR / per-owner triples missing; open redirect without allowlist tests; file upload without path-traversal / MIME / size tests; bulk export without scoping / row-cap tests; SSRF without allowlist tests; privilege-escalation guards untested]
 - **Job tests:** [background-task handlers without tests; tasks without idempotency / retry tests]
 - **Concurrency gaps:** [async functions tested only with `#[tokio::test]` single-thread when they spawn cross-thread work]
 - **Contract tests:** [OpenAPI / Pact contracts without verification]

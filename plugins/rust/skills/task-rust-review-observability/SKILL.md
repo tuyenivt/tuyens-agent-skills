@@ -83,6 +83,7 @@ Then open the files that actually configure observability so findings cite real 
 - `src/main.rs` / config struct - `OTEL_EXPORTER_OTLP_*`, `OTEL_SERVICE_NAME`, `RUST_LOG`, Sentry DSN, Prometheus scrape port
 - `Cargo.toml` - confirm `tracing`, `tracing-subscriber`, `tracing-opentelemetry`, `opentelemetry`, `opentelemetry-otlp`, `metrics`, `metrics-exporter-prometheus`, `sentry`, `console-subscriber` presence and versions
 - Every changed file in the diff that calls `tracing::*`, registers `metrics::counter!` / `histogram!` / `gauge!`, defines a tower middleware, instruments with OTel, or modifies span context
+- Every changed file under `migrations/` - new business columns (status, audit, ownership, lifecycle state) imply business events that should drive a counter / span attribute / log field. A schema change with no corresponding observability change is itself a gap; flag it as a Medium finding (`Schema change without instrumentation`) so the implementer wires a metric or span attribute alongside the column
 
 For diffs touching only one of these surfaces (a new endpoint but no logging change, say), still read the existing config to know whether request-id / trace correlation, instrumentation, and SDKs are wired - a missing wire is the finding.
 
@@ -135,6 +136,8 @@ Inspect `metrics` macros and exporter setup:
 - [ ] **Histogram buckets** chosen for the SLO: default buckets are seconds-scale; for sub-100ms paths add finer buckets via `PrometheusBuilder::set_buckets_for_metric(...)` or per-histogram configuration. Without explicit buckets, default exponential buckets often miss the relevant percentiles
 - [ ] **Multi-instance aggregation**: when running multiple replicas, Prometheus scrapes each replica; ensure no per-replica metric is mistakenly aggregated as a sum (use `rate()` + `sum by(...)` discipline at query time, not in the SDK)
 
+> **Greenfield exception (applies to Steps 7, 8, and 9).** When 3+ rows in the Step 3 Surface Map are `absent`, run Steps 7-9 at every depth regardless of the per-step diff-touch gate. On a greenfield service the *absence* of the surface is itself the finding the gate would otherwise hide - if the diff doesn't touch `console_subscriber` because `console_subscriber` doesn't exist yet, the default skip would silently let the gap go unflagged exactly when it most matters.
+
 ### Step 7 - tokio-console / Runtime Introspection
 
 _Skipped at `quick` depth unless the diff touches `console_subscriber` registration or task instrumentation._
@@ -160,7 +163,7 @@ _Skipped at `quick` depth unless the diff touches background tasks or message br
 
 ### Step 9 - Lifecycle / Graceful Shutdown Observability
 
-_Skipped at `quick` depth unless the diff touches lifecycle (graceful shutdown, signal handling) or `main.rs`._
+_Skipped at `quick` depth unless the diff touches lifecycle (graceful shutdown, signal handling) or `main.rs`. The Greenfield exception above also applies to this step._
 
 - [ ] **Graceful shutdown via `tokio::signal`**: `tokio::signal::ctrl_c().await?` for SIGINT, `tokio::signal::unix::signal(SignalKind::terminate())` for SIGTERM. Combine via `tokio::select!` so either signal triggers shutdown
 - [ ] **`axum::serve(...).with_graceful_shutdown(...)`**: pass an async closure that resolves on the shutdown signal so in-flight requests drain

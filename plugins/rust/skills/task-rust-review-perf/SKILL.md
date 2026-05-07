@@ -33,6 +33,18 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Rust
 - Production incident response (use `/task-oncall-start`)
 - Pre-implementation feature design (use `task-rust-new`)
 
+## Severity Rubric
+
+Use these definitions to keep `High` / `Medium` / `Low` Impact labels consistent across runs. Severity is about steady-state production impact and recovery effort, not how scary the code looks.
+
+| Severity     | Definition                                                                                                                                                                                                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **High**     | Production outage shape under steady load: unbounded memory growth (leaked tasks, unbounded `Vec` reads, unbounded channels), pool starvation under traffic, executor stalls (sync I/O / `bcrypt` on the runtime), N+1 multiplying baseline RPS by O(N), `std::sync::Mutex` across `.await` deadlock surface. Or deploy-time outage on hot tables (NOT NULL ADD with non-constant default on a 10M+-row table, non-`CONCURRENTLY` index on hot table).                                                          |
+| **Medium**   | Degraded p95 / p99 latency, wasted bandwidth, missing pool sizing on a net-new service, `SELECT *` over wide rows, missing pagination on endpoints that *can* grow but currently don't, channel-buffer sizes without justification, single-flight cache stampede paths. Recoverable with a follow-up PR; not paging on-call. |
+| **Low**      | CPU / allocation churn (`.clone()` overuse, `format!` in hot paths, missing `Vec::with_capacity`), missing `CompressionLayer`, missing `tracing::instrument` for perf observability. Defense in depth and quick wins.                                                                |
+
+When uncertain between tiers, ask "would this page on-call within 24 hours of a 2x traffic increase?" - yes ⇒ High; "would this drag the next quarter's perf budget?" - yes ⇒ Medium.
+
 ## Depth Levels
 
 | Depth      | When to Use                                                  | What Runs                                          |
@@ -176,6 +188,10 @@ Inspect changes touching `tokio::spawn`, `JoinSet`, `select!`, channels, `Arc` +
 
 > **Synchronous external dependency on the request path.** Even when the call uses `reqwest::Client` correctly, a request to a critical-path service (fraud, auth, pricing) inherits the upstream's tail latency: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget via background queue) when the call is non-blocking-business; recommend strict `tokio::time::timeout` plus fallback values when blocking-business.
 
+> **Stating impact when load shape isn't in the diff.** Impact estimates need a concrete "at this RPS / at this row count" frame, but PRs rarely ship that data. When RPS, expected page size, or row count aren't in the diff or `CLAUDE.md`, **state the assumption alongside the impact** - e.g., "Assuming 100 RPS and a 5M-row `orders` table: the missing index forces a sequential scan of ~5M rows per request, p95 likely ~2s on warm cache." Failing to anchor the number leaves the finding as "this is slow" prose, which the Self-Check explicitly bans. If the assumption is load-bearing for severity (e.g., the High-tier "10M+-row" rule), say so and recommend confirming row count pre-merge.
+
+> **Hot loop / hot path defined.** Several checklist items below gate on "hot loop" / "hot path" - by which this workflow means: (a) any code path executed once per HTTP request on the request future, (b) any code path executed once per row in a `fetch_all` / iterator result, (c) any code path inside a worker / consumer loop processing events. Setup code, one-shot startup work, and CLI tools fall outside this definition. The allocation / CPU checks in Step 7 only fire when the code is on a hot path so understood.
+
 ### Step 7 - Allocation Hotspots and CPU Cost
 
 _Skipped at `quick` depth unless the diff touches hot loops or large allocations._
@@ -318,7 +334,9 @@ _Omit this section if there are no actionable findings._
 - Suggesting caching without an invalidation strategy
 - Conflating performance review with general code review or security review - delegate those to their workflows
 - Treating background-task retries as a substitute for idempotency - retries with non-idempotent tasks cause double-charging / double-emailing
-- Recommending `db.execute_unchecked` / raw `format!`-built SQL for "dynamic" queries - parameterize via `$1`, use `query!` for static SQL, or a query builder for genuinely dynamic SQL
+- Recommending `db.execute_unchecked` / raw `format!`-built SQL for "dynamic" queries - parameterize via `$1`, use `query!` for static SQL, or a query builder for genuinely dynamic SQL. When `format!`-built SQL is found, the perf concern (defeats prepared-statement cache, unbounded statement plan growth) is the smaller half - the SQL injection surface is the bigger half. Add a `[Delegate] -> task-rust-review-security` entry to Next Steps so the security half doesn't get silently absorbed into a perf finding
+
+> **Cross-workflow finding ownership.** When a finding is dual perf+security (the `format!`-built SQL above, `Command::new("sh")` shell-out, deserialization-of-untrusted-input), the perf review reports it once with a `[Delegate] -> task-rust-review-security` entry in Next Steps and stops there - it does **not** enumerate every parallel security concern in the file (auth bypass, IDOR, mass assignment, open redirect, JWT misvalidation). Those are the security delegate's territory. The perf review's job is to surface the perf half cleanly and hand off; trying to be exhaustive on the security half drowns the perf signal and produces two parallel security audits.
 - Reporting "missing index" without confirming the column actually appears in a `WHERE` / `ORDER BY` / `GROUP BY` in the diff
 - Approving `bcrypt::hash` / `argon2::hash` on the request future without `spawn_blocking` - blocks the executor for 100ms+ per call
 - Approving `reqwest::Client::new()` per request - rebuild defeats connection pooling

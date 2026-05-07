@@ -53,6 +53,8 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 
 The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
 
+**Same-handler co-location.** Combining findings requires confirming both land on the *same code path* (same handler function, or same router group with shared middleware). When the diff doesn't make co-location obvious - e.g., the IDOR is in `get_order` but the `FromRow` leak appears on a different handler in the same module - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same handler; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -90,6 +92,7 @@ Before applying the OWASP and authn/authz checklists, open the files that actual
 - Every changed handler - look for auth middleware applied at sub-router level (`Router::new().route(...).route_layer(middleware::from_fn(auth))`), ownership checks in handler/service body, request DTO type, `validator` derives
 - Every changed DTO with `#[derive(Validate)]` and `#[validate(...)]` field annotations
 - Every changed query for parameterization (`sqlx::query!("... WHERE id = $1", id)` parameterized; `sqlx::query(&format!("..."))` is not)
+- Every changed file under `migrations/` for schema-level security: new tables / columns holding PII or auth state (sensitive-column inventory drift), missing `NOT NULL` on identity / tenant columns, missing FK constraints on tenant scoping columns, `GRANT` / `REVOKE` statements widening role privileges, audit-column additions that imply new sensitive fields the response DTO may now leak. Migration content is part of the security surface, not just schema-evolution
 - Config struct for `JWT_SECRET`, allowed origins, env var loading
 - `Cargo.toml` / `Cargo.lock` for dependency versions; recent CVE-affected crates
 - `.env.example` for documented env vars (without real values)
@@ -143,6 +146,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **`#[validate(...)]` field tags on every DTO field**: `#[validate(length(min = 1, max = 255))]`, `#[validate(email)]`, `#[validate(range(min = 1))]` via the `validator` crate. Missing tags means anything-goes input
 - [ ] **No `Json<Value>` / `Json<HashMap<String, Value>>` body**: extract a typed struct - never read fields by string key from a `serde_json::Value`
 - [ ] **No privilege-bearing fields in user-facing input DTOs**: `role`, `is_admin`, `owner_id`, `user_id`, `tenant_id`, `is_active`, `verified` - server-set only. If present in `CreateOrderRequest`, reject and require an admin-only path with a separate DTO
+- [ ] **No identity / cache-key fields in user-facing input DTOs**: `id`, `created_at`, `updated_at`, and any field used as a key in an in-process cache (`HashMap<id, T>`, `moka::Cache<id, T>`) - if the client controls the id and the server also caches by id, the client can write arbitrary entries into the cache and read other users' data on the next lookup. This is the cache-poisoning shape; treat it as a mass-assignment finding even when the field looks innocuous
 - [ ] **No `serde_json::from_value::<User>(req.body)` / `serde_json::from_slice::<User>(body)` directly into a domain model**: this is mass-assignment. Define a request DTO, validate it, then map to the domain model with explicit field assignment
 - [ ] **Response DTOs (not row structs) returned from handlers**: `OrderResponse::from(order)` maps explicitly, dropping internal fields (`password_hash`, `internal_audit_log`, `is_test`)
 - [ ] **`Path((id,)): Path<(Uuid,)>` for path params**: validates and converts in one call; raw `Path<String>` returns a string with no validation
