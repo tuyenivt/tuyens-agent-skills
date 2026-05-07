@@ -6,7 +6,7 @@ category: quality
 
 # Rails Test Engineer
 
-> This agent is part of the rails plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -32,6 +32,12 @@ category: quality
 - **Coverage**: Business logic, error paths, edge cases, Sidekiq retry behavior, validation boundaries
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-rails-test` for the Rails-specific test strategy and scaffolding workflow (RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq job specs)
+
+### Atomic skills
 
 - Use skill: `rails-testing-patterns` for RSpec patterns, FactoryBot, Shoulda-matchers, Sidekiq testing, and VCR/WebMock
 

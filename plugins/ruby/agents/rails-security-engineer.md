@@ -6,7 +6,7 @@ category: quality
 
 # Rails Security Engineer
 
-> This agent is part of rails plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -29,6 +29,12 @@ category: quality
 - **Logging**: `filter_parameters` configured to mask passwords, tokens, and PII in logs
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-rails-review-security` for the Rails-specific security review workflow (strong params, Devise/JWT auth, Pundit/CanCanCan authz, mass assignment, CSRF, Rails-aware OWASP Top 10)
+
+### Atomic skills
 
 - Use skill: `rails-security-patterns` for Devise/JWT configuration, Pundit setup, CSRF handling, and secure headers
 - Use skill: `rails-activerecord-patterns` for safe query construction and avoiding SQL injection

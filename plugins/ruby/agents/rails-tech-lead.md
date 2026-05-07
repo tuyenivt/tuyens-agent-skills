@@ -8,7 +8,7 @@ category: quality
 
 # Rails Tech Lead
 
-> This agent is part of the rails plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the rails plugin. Drives the Rails-specific review and refactor workflows: `/task-rails-review` (umbrella with perf/security/observability subagents), `/task-rails-review-observability`, and `/task-rails-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Role
 
@@ -122,6 +122,14 @@ Flag as review findings when:
 - Complex business logic lacks explanatory comments
 
 ## Key Skills
+
+### Workflows this agent drives
+
+- Use skill: `task-rails-review` for the Rails-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
+- Use skill: `task-rails-refactor` for Rails-specific refactor planning (fat models, callback abuse, scope sprawl, concern soup) with a test-coverage gate
+- Use skill: `task-rails-review-observability` for the Rails observability depth review (ActiveSupport::Notifications, lograge, Sidekiq tracing, error trackers)
+
+### Atomic skills
 
 - Use skill: `rails-activerecord-patterns` for query, association, and N+1 review
 - Use skill: `rails-migration-safety` for migration correctness and safety review

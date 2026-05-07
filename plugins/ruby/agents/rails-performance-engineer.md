@@ -6,7 +6,7 @@ category: engineering
 
 # Rails Performance Engineer
 
-> This agent is part of rails plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Rails-specific performance review workflow `/task-rails-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -38,8 +38,15 @@ category: engineering
 
 ## Key Skills
 
+### Workflow this agent drives
+
+- Use skill: `task-rails-review-perf` for the Rails-specific perf review workflow (ActiveRecord N+1, query plans, Sidekiq throughput, caching, rendering hotspots)
+
+### Atomic skills
+
 - Use skill: `rails-activerecord-patterns` for N+1 prevention, eager loading strategy, and batch processing
 - Use skill: `rails-sidekiq-patterns` for job queue design, throughput tuning, and retry strategy
+- Use skill: `rails-migration-safety` for safe-migration checks when perf fixes touch `db/migrate/`
 
 ## Principle
 
