@@ -8,6 +8,8 @@ category: quality
 
 # Vue Tech Lead
 
+> This agent is part of the vue plugin. Drives the Vue-specific review and refactor workflows: `/task-vue-review` (umbrella with perf/security/observability subagents), `/task-vue-review-observability`, and `/task-vue-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+>
 > This agent builds context over a session and across related PRs. For a single one-off review, use `/task-code-review` or the `vue-architect` agent.
 
 ## Role
@@ -74,6 +76,9 @@ When reviewing across a session or series of PRs, accumulate:
 
 ## Key Skills
 
+- Use skill: `task-vue-review` for the Vue-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents, Composition API discipline, watcher hygiene, reactivity correctness, `v-html` audit, Pinia state categorization, Nitro endpoint validation, SSR hydration leak, accessibility regressions)
+- Use skill: `task-vue-refactor` for Vue-specific refactor planning (god components, prop drilling, watcher overuse for derived state / events, fat composables, deep `reactive` over large datasets, scattered state, missing Zod on Nitro endpoints, untyped props, accessibility gaps, inline business logic in templates) with a Vitest coverage gate
+- Use skill: `task-vue-review-observability` for the Vue observability depth review (`web-vitals`, Sentry Vue SDK + Vue error boundaries, OpenTelemetry browser instrumentation, Nuxt Nitro plugins / `instrumentation`, structured client logging, RUM correlation)
 - Use skill: `vue-component-patterns` for component design review
 - Use skill: `vue-composables-patterns` for composable correctness review
 - Use skill: `vue-data-fetching` for data fetching pattern review

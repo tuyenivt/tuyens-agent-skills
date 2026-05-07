@@ -6,7 +6,7 @@ category: quality
 
 # Vue Test Engineer
 
-> This agent is part of vue plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Vue-specific test workflow `/task-vue-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -29,6 +29,7 @@ category: quality
 
 ## Key Skills
 
+- Use skill: `task-vue-test` for the Vue-specific test strategy and scaffolding workflow (Vitest, Vue Test Utils, @nuxt/test-utils, MSW for HTTP stubs, Playwright for E2E, Nuxt server route testing, composable testing, `<script setup>` mounting, TypeScript strict-mode test typing)
 - Use skill: `vue-testing-patterns` for Vue-specific testing patterns, composable testing, Nuxt test utils
 - Use skill: `frontend-testing-patterns` for testing pyramid, snapshot discipline, e2e strategy
 

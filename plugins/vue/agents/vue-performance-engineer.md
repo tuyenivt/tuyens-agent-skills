@@ -6,7 +6,7 @@ category: engineering
 
 # Vue Performance Engineer
 
-> This agent is part of vue plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Vue-specific performance review workflow `/task-vue-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -44,6 +44,7 @@ category: engineering
 
 ## Key Skills
 
+- Use skill: `task-vue-review-perf` for the Vue-specific perf review workflow (Core Web Vitals (LCP, INP, CLS), bundle size, hydration cost, reactivity hotspots (over-deep `reactive`, watcher cascades, ref unwrap cost), Pinia store re-render storms, Nuxt useFetch/useAsyncData cache misuse, lazy components / async chunks, ISR / `routeRules` / `nitro.prerender`, image / font optimization)
 - Use skill: `frontend-performance` for Core Web Vitals patterns, bundle analysis, image optimization
 - Use skill: `vue-component-patterns` for component-level optimization patterns
 - Use skill: `vue-data-fetching` for caching strategy and lazy fetching

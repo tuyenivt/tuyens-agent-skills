@@ -6,7 +6,7 @@ category: quality
 
 # Vue Security Engineer
 
-> This agent is part of vue plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Vue-specific security review workflow `/task-vue-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -43,6 +43,7 @@ category: quality
 
 ## Key Skills
 
+- Use skill: `task-vue-review-security` for the Vue-specific security review workflow (XSS via `v-html`, CSP and `nonce`, Nitro server endpoint validation, server-side data exposure (Pinia hydration), env-var leakage (`NUXT_PUBLIC_` / `VITE_`), open redirect, auth on Nuxt server routes / middleware, CSRF on cookie-session apps, Vue-aware OWASP)
 - Use skill: `vue-component-patterns` for secure component patterns
 - Use skill: `vue-nuxt-patterns` for server route validation, runtime config, middleware
 - Use skill: `vue-routing-patterns` for route protection and middleware auth patterns
