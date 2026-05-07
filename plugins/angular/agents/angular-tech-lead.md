@@ -8,7 +8,7 @@ category: quality
 
 # Angular Tech Lead
 
-> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-code-review` or the `angular-architect` agent.
+> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-angular-review`, `/task-angular-review-observability`, `/task-angular-refactor`, or `/task-angular-debug`.
 
 ## Role
 

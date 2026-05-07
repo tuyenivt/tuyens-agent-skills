@@ -24,10 +24,16 @@ Claude Code plugin for Angular 21+ / TypeScript / Angular CLI development.
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill                | Purpose                                                                       |
-| -------------------- | ----------------------------------------------------------------------------- |
-| `task-angular-new`   | End-to-end Angular feature implementation (components + state + data + tests) |
-| `task-angular-debug` | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)    |
+| Skill                                | Purpose                                                                                                          |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `task-angular-new`                   | End-to-end Angular feature implementation (components + state + data + tests)                                    |
+| `task-angular-debug`                 | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
+| `task-angular-review`                | Angular staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents)           |
+| `task-angular-review-perf`           | Angular performance review (CWV, bundle, change detection, signals, `@defer`, SSR + HTTP transfer cache)         |
+| `task-angular-review-security`       | Angular security review (`[innerHTML]`, `bypassSecurityTrust*`, CSP, functional guards/interceptors, OWASP)      |
+| `task-angular-review-observability`  | Angular observability review (web-vitals, Sentry + ErrorHandler, OTel, RUM, structured logging)                  |
+| `task-angular-test`                  | Angular test strategy and scaffolding (TestBed, ATL, `HttpTestingController`, CDK harnesses, Playwright)         |
+| `task-angular-refactor`              | Angular refactor planning (god component, BehaviorSubject→signals, OnPush migration, NgModule→standalone, etc.)  |
 
 ## Atomic Skills (Reusable Patterns)
 
@@ -77,10 +83,11 @@ Steps: Added ProductService but forgot to add providedIn: 'root'
 
 ## Core Plugin Skills
 
-The following workflows are provided by `core` (install separately):
+The following workflows are provided by `core` (install separately) and dispatch to the Angular workflows above when stack-detect resolves to Angular:
 
-- `/task-code-review` - Staff-level code review with risk assessment, framework-aware
-- `/task-code-review-security` - Security review
-- `/task-code-test` - Test strategy
-- `/task-code-refactor` - Refactoring plan
-- `/task-code-review-perf` - Performance review
+- `/task-code-review` - dispatches to `task-angular-review`
+- `/task-code-review-security` - dispatches to `task-angular-review-security`
+- `/task-code-review-perf` - dispatches to `task-angular-review-perf`
+- `/task-code-review-observability` - dispatches to `task-angular-review-observability`
+- `/task-code-test` - dispatches to `task-angular-test`
+- `/task-code-refactor` - dispatches to `task-angular-refactor`

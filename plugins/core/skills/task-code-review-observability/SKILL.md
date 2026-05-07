@@ -71,6 +71,7 @@ If a stack-specific observability review workflow exists for the detected stack,
 | .NET / ASP.NET Core  | `task-dotnet-review-observability` |
 | PHP / Laravel        | `task-laravel-review-observability` |
 | Kotlin / Spring Boot | `task-kotlin-review-observability` |
+| Angular              | `task-angular-review-observability` |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

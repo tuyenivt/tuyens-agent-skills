@@ -312,6 +312,12 @@ Vue / Nuxt (plugin: vue)
 Angular (plugin: angular)
   scaffold a new Angular feature      -> /task-angular-new
   debug an Angular issue              -> /task-angular-debug
+  PR review (umbrella)                -> /task-angular-review
+  performance review (CWV/bundle/CD)  -> /task-angular-review-perf
+  security review (XSS/CSP/guards)    -> /task-angular-review-security
+  observability review (web-vitals)   -> /task-angular-review-observability
+  test strategy / coverage / scaffolds-> /task-angular-test
+  refactoring plan                    -> /task-angular-refactor
 ```
 
 **Common decision points:**

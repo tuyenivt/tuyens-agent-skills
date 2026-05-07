@@ -51,6 +51,7 @@ If a stack-specific test workflow exists for the detected stack, delegate to it.
 | .NET / ASP.NET Core  | `task-dotnet-test` |
 | PHP / Laravel        | `task-laravel-test` |
 | Kotlin / Spring Boot | `task-kotlin-test` |
+| Angular              | `task-angular-test` |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-6 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

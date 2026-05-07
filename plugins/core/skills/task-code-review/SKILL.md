@@ -126,6 +126,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | .NET / ASP.NET Core  | `task-dotnet-review` |
 | PHP / Laravel        | `task-laravel-review` |
 | Kotlin / Spring Boot | `task-kotlin-review` |
+| Angular              | `task-angular-review` |
 
 When delegating, pass:
 

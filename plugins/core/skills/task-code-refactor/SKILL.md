@@ -57,6 +57,7 @@ If a stack-specific refactor workflow exists for the detected stack, delegate to
 | .NET / ASP.NET Core  | `task-dotnet-refactor` |
 | PHP / Laravel        | `task-laravel-refactor` |
 | Kotlin / Spring Boot | `task-kotlin-refactor` |
+| Angular              | `task-angular-refactor` |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

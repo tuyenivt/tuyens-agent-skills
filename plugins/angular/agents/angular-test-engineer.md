@@ -6,7 +6,7 @@ category: quality
 
 # Angular Test Engineer
 
-> This agent is part of angular plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent is part of angular plugin. Invoke via `/task-angular-test` for end-to-end Angular test strategy and scaffolding. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 

@@ -71,6 +71,7 @@ If a stack-specific performance review workflow exists for the detected stack, d
 | .NET / ASP.NET Core  | `task-dotnet-review-perf` |
 | PHP / Laravel        | `task-laravel-review-perf` |
 | Kotlin / Spring Boot | `task-kotlin-review-perf` |
+| Angular              | `task-angular-review-perf` |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-8 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

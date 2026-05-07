@@ -6,7 +6,7 @@ category: engineering
 
 # Angular Performance Engineer
 
-> This agent is part of angular plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent is part of angular plugin. Invoke via `/task-angular-review-perf` for Angular-aware Core Web Vitals + bundle + change-detection review. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

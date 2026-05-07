@@ -6,7 +6,7 @@ category: quality
 
 # Angular Security Engineer
 
-> This agent is part of angular plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent is part of angular plugin. Invoke via `/task-angular-review-security` for Angular-aware OWASP review. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
