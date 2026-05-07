@@ -6,7 +6,7 @@ category: quality
 
 # Java Test Engineer
 
-> This agent is part of java plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Spring-specific test workflow `/task-spring-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -31,6 +31,12 @@ category: quality
 - **Coverage**: Business logic, error paths, edge cases, transaction boundaries
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-spring-test` for the Spring-specific test strategy and scaffolding workflow (JUnit 5, Spring test slices `@WebMvcTest` / `@DataJpaTest`, Testcontainers, Mockito, Spring Security Test)
+
+### Atomic skills
 
 - Use skill: `spring-test-integration` for Spring Boot test slices, Testcontainers patterns, and integration test fixtures
 

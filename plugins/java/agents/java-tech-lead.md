@@ -8,7 +8,7 @@ category: quality
 
 # Java Tech Lead
 
-> This agent is part of java plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the java plugin. Drives the Spring-specific review and refactor workflows: `/task-spring-review` (umbrella with perf/security/observability subagents), `/task-spring-review-observability`, and `/task-spring-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Role
 
@@ -88,6 +88,14 @@ Flag as review findings when:
 - Complex business logic lacks explanatory comments
 
 ## Key Skills
+
+### Workflows this agent drives
+
+- Use skill: `task-spring-review` for the Spring-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
+- Use skill: `task-spring-refactor` for Spring-specific refactor planning (fat controllers, anemic domain, `@Transactional` misuse, field injection, single-impl interface bloat) with a JUnit/Spring slice test-coverage gate
+- Use skill: `task-spring-review-observability` for the Spring observability depth review (Micrometer, Actuator, structured logging, MDC, OpenTelemetry, listener instrumentation, error trackers)
+
+### Atomic skills
 
 - Use skill: `spring-jpa-performance` for JPA query and entity review (N+1 checks, fetch strategies)
 - Use skill: `spring-exception-handling` for error handling patterns

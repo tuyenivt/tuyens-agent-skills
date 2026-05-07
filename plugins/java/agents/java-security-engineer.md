@@ -6,7 +6,7 @@ category: quality
 
 # Java Security Engineer
 
-> This agent is part of java plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Spring-specific security review workflow `/task-spring-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -27,7 +27,11 @@ category: quality
 
 ## Key Skills
 
-**Security Patterns:**
+### Workflow this agent drives
+
+- Use skill: `task-spring-review-security` for the Spring-specific security review workflow (Spring Security 6.x SecurityFilterChain, OAuth2/JWT, method security, validation, CSRF, Java-aware OWASP Top 10)
+
+### Atomic skills
 
 - Use skill: `spring-security-patterns` for Spring Security 6.x configuration, OAuth2, method security, and CORS/CSRF
 - Use skill: `spring-exception-handling` for secure error responses (no stack traces, no internal details)

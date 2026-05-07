@@ -6,7 +6,7 @@ category: engineering
 
 # Java Performance Engineer
 
-> This agent is part of java plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Spring-specific performance review workflow `/task-spring-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -42,13 +42,15 @@ category: engineering
 
 ## Key Skills
 
-**JVM & Concurrency:**
+### Workflow this agent drives
 
-- Use skill: `spring-async-processing` for non-blocking I/O and async patterns
+- Use skill: `task-spring-review-perf` for the Spring-specific perf review workflow (JPA/Hibernate N+1, fetch strategies, query plans, Virtual Thread compatibility, connection pool sizing, async/messaging throughput, caching)
 
-**Data Access:**
+### Atomic skills
 
 - Use skill: `spring-jpa-performance` for N+1 prevention, fetch strategies, and query optimization
+- Use skill: `spring-async-processing` for non-blocking I/O, `@Async`, and Virtual Thread patterns
+- Use skill: `spring-messaging-patterns` for Kafka / RabbitMQ / `ApplicationEvent` throughput tuning
 - Use skill: `spring-db-migration-safety` for migration performance impact (table locks, index creation)
 
 ## Principle
