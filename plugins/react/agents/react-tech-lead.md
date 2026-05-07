@@ -8,7 +8,7 @@ category: quality
 
 # React Tech Lead
 
-> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-code-review` or the `react-architect` agent.
+> This agent is part of the react plugin. Drives the React-specific review and refactor workflows: `/task-react-review` (umbrella with perf/security/observability subagents), `/task-react-review-observability`, and `/task-react-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Role
 
@@ -73,6 +73,14 @@ When reviewing across a session or series of PRs, accumulate:
 - Focus management for modals and dynamic content
 
 ## Key Skills
+
+### Workflows this agent drives
+
+- Use skill: `task-react-review` for the React-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents, RSC vs Client Component boundary, hooks rules, `useEffect` discipline, state categorization, Server Action validation, `dangerouslySetInnerHTML` audit, accessibility regressions)
+- Use skill: `task-react-refactor` for React-specific refactor planning (god components, prop drilling, `useEffect` for derived state, `"use client"` at root of layouts, missing Server Component conversion, scattered state, missing Zod on Server Actions, untyped props) with a Vitest coverage gate
+- Use skill: `task-react-review-observability` for the React observability depth review (`web-vitals`, Sentry browser SDK + React error boundaries, OpenTelemetry web SDK, Next.js `instrumentation.ts`, structured client logging, RUM correlation)
+
+### Atomic skills
 
 - Use skill: `react-component-patterns` for component design review
 - Use skill: `react-hooks-patterns` for hook correctness review

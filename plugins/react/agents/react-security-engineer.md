@@ -6,7 +6,7 @@ category: quality
 
 # React Security Engineer
 
-> This agent is part of react plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the React-specific security review workflow `/task-react-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -40,6 +40,12 @@ category: quality
 8. Run `npm audit` for dependency vulnerabilities
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-react-review-security` for the React-specific security review workflow (XSS via `dangerouslySetInnerHTML`, CSP and `nonce`, Server Action input validation with Zod, Server Component data exposure, `NEXT_PUBLIC_` env-var leakage, open redirect, auth on Server Components / Route Handlers / middleware, CSRF on cookie-session apps, React-aware OWASP)
+
+### Atomic skills
 
 - Use skill: `react-nextjs-patterns` for Server Action validation, `server-only` imports, middleware
 - Use skill: `react-routing-patterns` for route protection and middleware auth patterns

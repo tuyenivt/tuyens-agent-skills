@@ -6,7 +6,7 @@ category: engineering
 
 # React Performance Engineer
 
-> This agent is part of react plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the React-specific performance review workflow `/task-react-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -42,6 +42,12 @@ category: engineering
 - [ ] Suspense boundaries around async Server Components
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-react-review-perf` for the React-specific perf review workflow (Core Web Vitals (LCP, INP, CLS), bundle splitting via `next/dynamic` / `React.lazy`, RSC vs Client Component boundaries, RSC streaming via Suspense, TanStack Query cache keys / `staleTime` / `gcTime`, `useMemo` / `useCallback` discipline, hydration cost, `next/image` and `next/font`, ISR / `cache` / `revalidate` correctness)
+
+### Atomic skills
 
 - Use skill: `frontend-performance` for Core Web Vitals patterns, bundle analysis, image optimization
 - Use skill: `react-component-patterns` for Server/Client Component boundary optimization

@@ -6,7 +6,7 @@ category: quality
 
 # React Test Engineer
 
-> This agent is part of react plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the React-specific test workflow `/task-react-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -28,6 +28,12 @@ category: quality
 - **Server Component Testing**: Testing async components, Server Actions, ISR behavior
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-react-test` for the React-specific test strategy and scaffolding workflow (Vitest, React Testing Library with user-centric queries, `@testing-library/user-event`, MSW for HTTP stubs, Playwright for E2E, Server Component testing limitations, Server Action testing, accessibility-as-tests, TypeScript strict-mode test typing)
+
+### Atomic skills
 
 - Use skill: `react-testing-patterns` for React-specific testing patterns, MSW setup, hook testing
 - Use skill: `frontend-testing-patterns` for testing pyramid, snapshot discipline, e2e strategy
