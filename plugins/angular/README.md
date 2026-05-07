@@ -24,16 +24,16 @@ Claude Code plugin for Angular 21+ / TypeScript / Angular CLI development.
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill                                | Purpose                                                                                                          |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `task-angular-new`                   | End-to-end Angular feature implementation (components + state + data + tests)                                    |
-| `task-angular-debug`                 | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
-| `task-angular-review`                | Angular staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents)           |
-| `task-angular-review-perf`           | Angular performance review (CWV, bundle, change detection, signals, `@defer`, SSR + HTTP transfer cache)         |
-| `task-angular-review-security`       | Angular security review (`[innerHTML]`, `bypassSecurityTrust*`, CSP, functional guards/interceptors, OWASP)      |
-| `task-angular-review-observability`  | Angular observability review (web-vitals, Sentry + ErrorHandler, OTel, RUM, structured logging)                  |
-| `task-angular-test`                  | Angular test strategy and scaffolding (TestBed, ATL, `HttpTestingController`, CDK harnesses, Playwright)         |
-| `task-angular-refactor`              | Angular refactor planning (god component, BehaviorSubject→signals, OnPush migration, NgModule→standalone, etc.)  |
+| Skill                                | Agent                          | Purpose                                                                                                          |
+| ------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `task-angular-new`                   | `angular-architect`            | End-to-end Angular feature implementation (components + state + data + tests)                                    |
+| `task-angular-debug`                 | `angular-tech-lead`            | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
+| `task-angular-review`                | `angular-tech-lead`            | Angular staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents)           |
+| `task-angular-review-perf`           | `angular-performance-engineer` | Angular performance review (CWV, bundle, change detection, signals, `@defer`, SSR + HTTP transfer cache)         |
+| `task-angular-review-security`       | `angular-security-engineer`    | Angular security review (`[innerHTML]`, `bypassSecurityTrust*`, CSP, functional guards/interceptors, OWASP)      |
+| `task-angular-review-observability`  | `angular-tech-lead`            | Angular observability review (web-vitals, Sentry + ErrorHandler, OTel, RUM, structured logging)                  |
+| `task-angular-test`                  | `angular-test-engineer`        | Angular test strategy and scaffolding (TestBed, ATL, `HttpTestingController`, CDK harnesses, Playwright)         |
+| `task-angular-refactor`              | `angular-tech-lead`            | Angular refactor planning (god component, BehaviorSubject→signals, OnPush migration, NgModule→standalone, etc.)  |
 
 ## Atomic Skills (Reusable Patterns)
 
