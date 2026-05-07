@@ -257,6 +257,12 @@ Go / Gin (plugin: go)
 .NET / ASP.NET Core (plugin: dotnet)
   scaffold a new .NET feature         -> /task-dotnet-new
   debug a .NET issue                  -> /task-dotnet-debug
+  staff-level code review             -> /task-dotnet-review
+  performance review                  -> /task-dotnet-review-perf
+  security review                     -> /task-dotnet-review-security
+  observability review                -> /task-dotnet-review-observability
+  test strategy and scaffolding       -> /task-dotnet-test
+  .NET refactor plan                  -> /task-dotnet-refactor
 
 Rust / Axum (plugin: rust)
   scaffold a new Rust feature         -> /task-rust-new

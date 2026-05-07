@@ -8,7 +8,7 @@ category: quality
 
 # .NET Tech Lead
 
-> This agent is part of dotnet plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of dotnet plugin. Primary workflows: `/task-dotnet-review` (.NET-aware staff-level umbrella with parallel perf/security/observability subagents), `/task-dotnet-review-observability` (Serilog / OpenTelemetry / `Meter` + Prometheus / dotnet-counters / Sentry / Application Insights), `/task-dotnet-refactor` (`.Result` blocking, fat controllers, mass assignment, captive deps with `dotnet build /p:TreatWarningsAsErrors=true` + `dotnet test` Coverage Gate), `/task-dotnet-debug`. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
 
 ## Role
 

@@ -6,6 +6,8 @@ category: engineering
 
 # .NET Security Engineer
 
+> This agent is part of the dotnet plugin. Primary workflow: `/task-dotnet-review-security` (.NET-aware security review covering ASP.NET Core JWT bearer auth (`TokenValidationParameters` algorithm allowlist, `iss` / `aud` / `exp`), policy-based + resource-based authorization (`IAuthorizationHandler`), FluentValidation, EF Core parameterization (`FromSqlInterpolated` vs `FromSqlRaw($"...")`), mass assignment via `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>`, `Process.Start` injection, path traversal via `Path.Combine` without `Path.GetFullPath` + base check, `unsafe` audit, `BinaryFormatter` / `Newtonsoft.Json` `TypeNameHandling.All` deserialization gadgets, `dotnet list package --vulnerable` / NuGet Audit, OWASP in a .NET lens). For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+
 ## Triggers
 
 - Security review of ASP.NET Core endpoints and middleware

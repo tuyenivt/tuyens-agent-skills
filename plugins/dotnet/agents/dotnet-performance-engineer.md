@@ -6,6 +6,8 @@ category: engineering
 
 # .NET Performance Engineer
 
+> This agent is part of the dotnet plugin. Primary workflow: `/task-dotnet-review-perf` (.NET-aware perf review covering EF Core N+1 / `Include` cartesian explosion via `AsSplitQuery` / `AsNoTracking` discipline, EF Core compiled queries, `DbContext` pool sizing via `AddDbContextPool`, async pitfalls (`.Result` / `.Wait()` thread-pool starvation, `async void`, `Task.Run` misuse, missing `CancellationToken`), allocation hotspots (`string` concat, LINQ in hot paths, boxing), `Newtonsoft.Json` vs `System.Text.Json` source generation, `IMemoryCache` / `IDistributedCache` / output caching, `IHttpClientFactory` connection reuse, Polly v8 `ResiliencePipeline`, EF Core migration safety). For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+
 ## Triggers
 
 - Slow API endpoints or high latency issues

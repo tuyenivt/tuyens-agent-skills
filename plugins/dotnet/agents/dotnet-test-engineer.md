@@ -6,6 +6,8 @@ category: engineering
 
 # .NET Test Engineer
 
+> This agent is part of the dotnet plugin. Primary workflow: `/task-dotnet-test` (.NET-aware test strategy and scaffolding using xUnit `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]`, `WebApplicationFactory<Program>` for full HTTP integration tests, Testcontainers PostgreSQL via `Testcontainers.PostgreSql`, NSubstitute (preferred) / Moq for interface mocks, Bogus `Faker<T>` for test data, FluentAssertions for assertion ergonomics, Respawn for fast DB reset, `dotnet test` + `dotnet format --verify-no-changes` + `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` discipline). For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+
 ## Triggers
 
 - Designing a test strategy for a new feature or service

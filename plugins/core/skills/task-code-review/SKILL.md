@@ -123,6 +123,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | Vue                  | `task-vue-review`    |
 | Go / Gin             | `task-go-review`     |
 | Rust / Axum          | `task-rust-review`   |
+| .NET / ASP.NET Core  | `task-dotnet-review` |
 
 When delegating, pass:
 
