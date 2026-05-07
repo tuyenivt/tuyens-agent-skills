@@ -76,6 +76,8 @@ Refactoring without test coverage is a rewrite with extra steps. Identify the te
 
 **Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves error handling, empty states, or accessibility - you would be flying blind.
 
+**Internal-coupled tests count negatively.** Inspect each test's assertions for `wrapper.vm.<internal>`, render-count spies, or ref-name reads that the planned refactor will rename or remove (e.g., a test asserts on `filteredCount` and Step 6 deletes that ref). When this is true, the test will fail on the refactor for an **implementation reason** rather than catch a **behavior regression** - the inverse of what the gate is for. Surface this in the Coverage Gate as `internal-coupled: <test:line> asserts <ref-name> which Step <N> will remove` and require the test to be rewritten as DOM/event assertions in `Step 0 - Coverage prerequisite` before the renaming/extraction step runs. This rule applies even when overall coverage is `Adequate` - one tightly-coupled test against a soon-to-be-deleted internal still blocks the affected step.
+
 **Output of this step:** explicit coverage status using one of the three labels. Do not proceed past Step 4 if status is `Inadequate`.
 
 **Preview rules when Inadequate.** Step 4's smell catalog still runs to populate the Smells Identified and Sibling Smells (Out of Scope) preview - that is what the catalog is for. The refusal is on producing Steps 1+, not on diagnostic output. The preview helps the author scope the follow-up `task-vue-test` invocation.
@@ -400,6 +402,7 @@ _Omit this section if the target file has no other smells._
 - [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
 - [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
 - [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin` (Step 3)
+- [ ] Internal-coupled tests audited: each test's assertions checked against the refs/internals the refactor will remove or rename; matches surfaced as `internal-coupled` and pinned to a `Step 0` rewrite (Step 3)
 - [ ] When refusal triggered (Inadequate), Step 4 catalog still ran to produce the Smells preview; not skipped (Step 3)
 - [ ] Bug-fix smuggled into a refactor request was surfaced and split into a separate PR or labeled `coupled-fix` - never silently folded (Step 3)
 - [ ] Vue-specific smells identified using Step 4 catalog (component, composable, data fetching, state, Nitro endpoint, accessibility, test) (Step 4)

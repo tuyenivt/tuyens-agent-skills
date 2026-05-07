@@ -153,6 +153,7 @@ _Skipped at `quick` depth unless the diff touches OTel config or Nitro plugins._
 _Skipped at `quick` depth unless the diff modifies logging utilities or routes containing `console.*` calls._
 
 - [ ] **No `console.log` / `console.error` in production paths**: replaced with a structured logger that posts to RUM / Sentry (`Sentry.captureMessage` for warnings, `Sentry.captureException` for errors). `console.log` skips error-tracker integration, sample rates, and PII redaction
+- [ ] **`console.*` payloads are amplified by Sentry Replay / breadcrumbs**: Sentry's default `consoleIntegration` captures every `console.*` call as a breadcrumb, and Replay records console output as part of the session. A single `console.log(JSON.stringify(largeObject))` therefore (a) ships the payload to every Sentry event's breadcrumb trail and (b) lands in every recorded Replay session. Cross-reference any `console.*` finding here with the Replay sample rate and `sendDefaultPii` setting from Step 5 - high replay sampling + `sendDefaultPii: true` + console-of-PII compounds into a Critical-class privacy finding even when each piece looks Medium in isolation. Note the compound in the finding rather than producing three loosely-related findings
 - [ ] **Log levels respected**: `console.error` only for actual errors caught by error boundaries; navigation / interaction events go to RUM events, not the console
 - [ ] **Sensitive-field hygiene**: log payloads do not include `password`, `token`, `authorization`, `Authorization`, `Cookie`, raw API responses with PII; `Sentry.beforeBreadcrumb` strips known sensitive keys
 - [ ] **No log spam in `<script setup>` body**: a `console.log(props)` inside `<script setup>` fires on every component setup (cheap-but-noisy in dev, real cost in prod via RUM); flag for removal
@@ -202,6 +203,7 @@ When invoked at `deep`, evaluate:
 - [ ] Sentry Replay vs. CSP `nonce` conflict checked when both surfaces appear in the diff
 - [ ] `Sentry.captureMessage` / `captureException` `extra` / `setContext` payloads checked for PII (project user objects to `{ id }` before passing)
 - [ ] Structured client logging assessed: no `console.log` in prod paths, sensitive-field redaction, RUM events for business-critical actions
+- [ ] When both `console.*` of a non-trivial payload AND high Replay sampling / `sendDefaultPii: true` appear in the same diff, they are surfaced as one compound finding (with cross-reference) rather than three disconnected ones
 - [ ] User identity / session correlation assessed: `Sentry.setUser` / tags / context for tenant / role / flag, no PII in high-cardinality tags
 - [ ] RUM integration assessed when a RUM SDK is in use: SPA navigation tracked, custom events for journeys, privacy / DNT respected
 - [ ] Findings name a Vue / web-vitals / Sentry / OTel idiom directly - not "add observability"

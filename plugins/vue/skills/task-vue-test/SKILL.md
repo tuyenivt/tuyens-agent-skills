@@ -421,6 +421,20 @@ When starting from low test coverage, prioritize by Vue-specific risk:
 
 - Pure presentation, simple wrappers, plain styled components - lowest risk
 
+### Step 7.5 - Test Infrastructure Prerequisites
+
+Before scaffolding or recommending tests, audit whether the harness needed to _run_ them exists. A prioritized test list against an empty `vitest.config.ts` is a paper plan - the first contributor will get stuck on setup, not test logic. Read the project for these markers and surface every missing piece as a prerequisite that must land **alongside** P1 work, not after it:
+
+- [ ] `vitest.config.{ts,js,mjs}` present with the right `environment` for components (`jsdom` / `happy-dom` / `nuxt`), path aliases matching `tsconfig.json`, and a `setupFiles` entry
+- [ ] `test/setup.ts` (or `vitest.setup.ts`) wires MSW (`setupServer`, `server.listen({ onUnhandledRequest: 'error' })`, `server.resetHandlers()` in `afterEach`, `server.close()` in `afterAll`); `@testing-library/jest-dom` matchers registered when Testing Library Vue is the helper
+- [ ] `test/render.ts` (or equivalent) shared `renderWithProviders` helper - else every component test re-derives the provider chain (Pinia + router + theme + auth) and they drift
+- [ ] `test/factories/<entity>.ts` for the project's main domain types - shared factories prevent raw object literals from spreading
+- [ ] `playwright.config.{ts,js}` present when E2E is in scope (otherwise note "E2E not yet wired" and require the config as a prerequisite to any P1 E2E item)
+- [ ] Dev dependencies present for the chosen tooling: `msw`, `vitest-axe` (for a11y assertions), `@testing-library/jest-dom` or `@vue/test-utils` matchers, `@nuxt/test-utils` (Nuxt only). Missing deps are prerequisites, not test gaps
+- [ ] CI is configured to run Vitest + Playwright (when E2E is in scope) and the coverage tool is wired (`v8` / `istanbul` via Vitest)
+
+When any of these are missing, render them as a separate **Test infrastructure prerequisites** subsection of the Coverage Assessment (template below) and label them "must land alongside P1." Do not bury them in Step 8's hygiene checks - those are for ongoing maintenance, not first-test prerequisites.
+
 ### Step 8 - Test Infrastructure Hygiene
 
 - [ ] Vitest `environment: 'jsdom'` (or `'happy-dom'` - faster) for components / composables; `'node'` for pure-utility tests; mixed via `// @vitest-environment node` directive when needed
@@ -501,6 +515,13 @@ Apply the Step 7 risk bands. Order follow-up work as:
 3. **P3 - Empty / error / loading states:** [list views without these branches tested]
 4. **P4 - High-churn:** [files with frequent recent commits or bug-fix history]
 5. **P5 - Plumbing:** [pure presentation / wrappers - lowest risk]
+
+**Test infrastructure prerequisites** _(include when any Step 7.5 item is missing - these must land alongside P1 because no test can be authored without them)_
+
+- [missing item 1, e.g., "no `vitest.config.ts` - components cannot mount under `environment: 'nuxt'`"]
+- [missing item 2, e.g., "MSW not installed - `$fetch` calls in tests will hit the network or no-op"]
+- [missing item 3, e.g., "no `test/render.ts` helper - every component test will re-derive the provider chain"]
+- [...]
 ```
 
 **Test Scaffolds** (when generating boilerplate):
@@ -549,6 +570,7 @@ Produce ready-to-run Vitest test files using project conventions. Each scaffold 
 - [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers
 - [ ] Prioritization by risk applied when coverage is low - P1 auth/money/Nitro, P2 forms, P3 empty/error states, P4 high-churn, P5 plumbing
 - [ ] Accessibility testing presence assessed (`vitest-axe` per route-level test)
+- [ ] Test infrastructure prerequisites audited (Step 7.5): missing `vitest.config.ts` / `test/setup.ts` MSW wiring / `renderWithProviders` helper / factories / `playwright.config.ts` / dev deps surfaced as "must land alongside P1," not buried in Step 8 hygiene
 
 **Test Scaffolds only:**
 
