@@ -358,6 +358,8 @@ Before finalizing the plan, check:
 
 ## Smells Identified
 
+_Only list smells this plan actually addresses. Smells in the same file that the plan does **not** address belong under `Sibling Smells (Out of Scope)` (or are omitted if unrelated). A 12-row Smells table on a single-recipe plan is a bundling smell - re-scope or split the plan._
+
 | Smell        | Location  | Risk | Notes                                  |
 | ------------ | --------- | ---- | -------------------------------------- |
 | [Smell name] | file:line | High | [Why this is the smell - one sentence] |

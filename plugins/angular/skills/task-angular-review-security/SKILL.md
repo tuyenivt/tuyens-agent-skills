@@ -157,7 +157,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **`eval` / `new Function(string)` in client**: any occurrence is a critical finding; obfuscation libraries / template engines that use `new Function` flagged
 - [ ] **Prototype pollution via spread**: `Object.assign(target, JSON.parse(userInput))`, `{...defaults, ...userJson}` on data the client received - flag when input source is user-controlled
 - [ ] **`window.addEventListener('message')` validates origin**: missing origin check is universal XSS via parent / iframe
-- [ ] **Third-party scripts**: every dynamically-loaded script (`document.createElement('script')`) justified; SRI (`integrity` attribute) for any non-first-party script; analytics / chat widgets reviewed for what data they exfiltrate
+- [ ] **Third-party scripts**: every dynamically-loaded script (`document.createElement('script')`) justified; SRI (`integrity` attribute) required for any non-first-party script regardless of how it loads - statically declared in `index.html` (`<script src="https://cdn.example.com/widget.js">`) or dynamically injected at runtime; analytics / chat widgets reviewed for what data they exfiltrate
 - [ ] **iframe sandbox**: any `<iframe>` rendering external content includes `sandbox="allow-scripts allow-same-origin..."` with the minimum allowlist; flag `<iframe [src]>` without `sandbox`
 - [ ] **iframe `[src]` from user input**: `<iframe [src]="query.embed">` is a phishing / clickjacking surface even with `sandbox`. Validate against an allowlist of expected hosts
 - [ ] **`window.opener` leak**: external `<a [href] target="_blank">` includes `rel="noopener noreferrer"`; internal `[routerLink]` is fine

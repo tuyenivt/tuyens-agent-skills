@@ -362,6 +362,41 @@ _Omit this section if there are no actionable findings._
 
 **Omit empty sections.** If there are no Blockers, do not include a Blocker heading.
 
+### Streamlined output (low-risk short-circuit only)
+
+When Phase A short-circuits (Risk Level: Low + Blast Radius: Narrow + no architecture-relevant files), produce the *streamlined* shape below instead of the full template above. Drop Architecture Notes, Maintainability Notes, and any Phase C/D-only sections - they were not run.
+
+```markdown
+## Summary
+
+**Assessment:** Approve | Discuss
+**Risk Level:** Low
+**Blast Radius:** Narrow
+**Stack Detected:** Angular <version> / TypeScript <version>
+**Change detection:** zone.js | zoneless
+**SSR:** enabled | disabled
+**Scope:** Core (low-risk short-circuit; Phases C-D skipped)
+**Depth:** quick | standard
+
+## Findings
+
+### [High] file:line _(if any)_
+
+- Issue:
+- Impact:
+- Fix:
+
+### [Suggestion] file:line _(if any)_
+
+- Improvement:
+
+_Omit if no findings._
+
+## Key Takeaways
+
+- 1-2 bullets max - this is a low-risk PR.
+```
+
 ## Rules
 
 - Review the whole change as a system impact, not file-by-file in isolation
@@ -409,7 +444,7 @@ _Omit this section if there are no actionable findings._
 - Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reviewing without reading the full diff and commit log first
 - Applying generic frontend conventions when an Angular idiom exists (say "extract to a service", not "extract to a helper module"; say "use `takeUntilDestroyed`", not "manage subscriptions")
-- Nitpicking style where no project standard exists; no `[Nitpick]` or `[Praise]` labels
+- Nitpicking style where no project standard exists
 - Providing vague feedback without a concrete Angular fix ("this could be better")
 - Blocking on personal preference rather than correctness, risk, or maintainability
 - Running perf / security / observability sub-workflows when user passed `core-only`
