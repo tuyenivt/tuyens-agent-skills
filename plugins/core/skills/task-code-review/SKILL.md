@@ -125,6 +125,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | Rust / Axum          | `task-rust-review`   |
 | .NET / ASP.NET Core  | `task-dotnet-review` |
 | PHP / Laravel        | `task-laravel-review` |
+| Kotlin / Spring Boot | `task-kotlin-review` |
 
 When delegating, pass:
 

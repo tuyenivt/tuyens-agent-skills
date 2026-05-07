@@ -22,7 +22,7 @@ user-invocable: true
 - Adding a new domain aggregate with REST API, persistence, coroutines, and test coverage
 - Any daily coding task that requires coordinated generation of multiple Spring Boot layers in Kotlin
 
-Not for single-file changes (edit directly), isolated bug fixes (use `task-kotlin-debug`), or Java-only features (use `task-spring-new`).
+Not for single-file changes (edit directly) or isolated bug fixes (use `task-kotlin-debug`).
 
 ## Edge Cases
 
@@ -83,7 +83,7 @@ Only generate code after user approves design.
 
 Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID, `kotlin-jpa`/`kotlin-spring` plugin check).
 
-Use skill: `spring-db-migration-safety` for zero-downtime migration safety.
+Use skill: `kotlin-spring-db-migration-safety` for zero-downtime migration safety.
 
 Generate:
 
@@ -96,7 +96,7 @@ Entity changes must always include a migration.
 
 ### STEP 4 - REPOSITORY
 
-Use skill: `spring-jpa-performance` for query patterns.
+Use skill: `kotlin-spring-jpa-performance` for query patterns.
 
 Generate Spring Data repository and custom queries as needed:
 
@@ -108,7 +108,7 @@ Generate Spring Data repository and custom queries as needed:
 
 Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation.
 
-Use skill: `spring-transaction` for transaction patterns.
+Use skill: `kotlin-spring-transaction` for transaction patterns.
 
 Generate service with business rules and mapping:
 
@@ -138,7 +138,7 @@ Rules:
 
 ### STEP 7 - ERROR HANDLING + SECURITY CHECK
 
-Use skill: `spring-exception-handling` for error mapping patterns.
+Use skill: `kotlin-spring-exception-handling` for error mapping patterns.
 
 - Apply consistent error mapping (use existing `@ControllerAdvice` or create if absent)
 - Map domain exceptions to HTTP status codes:

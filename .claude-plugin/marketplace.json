@@ -117,7 +117,7 @@
     {
       "name": "kotlin",
       "source": "./plugins/kotlin",
-      "description": "Skills and agents for Kotlin 2.0+ / Spring Boot 3.5+ development. Requires java plugin.",
+      "description": "Skills and agents for Kotlin 2.0+ / Spring Boot 3.5+ development.",
       "version": "1.87.0",
       "author": {
         "name": "Tuyen",

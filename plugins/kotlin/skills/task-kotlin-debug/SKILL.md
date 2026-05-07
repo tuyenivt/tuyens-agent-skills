@@ -130,7 +130,7 @@ class JacksonConfig {
 
 #### Java/Spring Errors
 
-For standard Java/Spring errors (`DataIntegrityViolationException`, `HttpMessageNotReadableException`, `MethodArgumentNotValidException`, etc.) - same classification as Java plugin's `task-spring-debug`. Check the Java-layer cause first, then look for Kotlin-specific factors (null safety, final classes, coroutines).
+For standard Spring errors (`DataIntegrityViolationException`, `HttpMessageNotReadableException`, `MethodArgumentNotValidException`, etc.), classify by the Spring root cause first, then look for Kotlin-specific factors (null safety, final classes, coroutines, missing `kotlin-spring`/`kotlin-jpa` plugins).
 
 ### STEP 3 - LOCATE
 

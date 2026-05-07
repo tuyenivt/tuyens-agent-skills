@@ -1,66 +1,53 @@
 # Tuyen's Agent Skills - Kotlin
 
-This is a **COMPANION** to the Java plugin (`java@tuyens-agent-skills`), not a replacement.
-It adds Kotlin-specific idioms and syntax awareness as a thin layer on top of the shared
-Spring Boot ecosystem provided by the Java plugin.
+A Claude Code plugin for Kotlin + Spring Boot.
 
 ## Stack
 
 - Kotlin 2.0+
 - Spring Boot 3.5+
 - Kotlin coroutines (alongside Virtual Threads)
-- MockK / kotest for testing
-- Kotlin DSL for Gradle and Spring Security
-
-## What this plugin adds vs what comes from the Java plugin
-
-| From Java plugin          | From Kotlin plugin                         |
-| ------------------------- | ------------------------------------------ |
-| JPA/Hibernate patterns    | Kotlin JPA entity idioms (no-arg, allopen) |
-| Spring Security 6.x       | Kotlin DSL security config                 |
-| Gradle build optimization | Kotlin Gradle DSL specifics                |
-| Testcontainers patterns   | MockK + kotest integration                 |
-| Virtual Threads           | Coroutines + Virtual Thread interop        |
-| Java records for DTOs     | Kotlin data classes for DTOs               |
-| Transaction management    | Coroutine-aware @Transactional             |
-| Flyway migration safety   | (same - delegates to Java plugin)          |
+- MockK / springmockk / Kotest / Turbine for testing
+- Kotlin DSL for Gradle, Spring Security, and Spring Bean / Router configuration
+- `kotlin("plugin.jpa")` + `kotlin("plugin.spring")` Gradle plugins
 
 ## Plugin contents
 
-### Agents (7)
+### Agents (5)
 
-| Agent                         | Description                                                                                                                                              |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kotlin-architect`            | Kotlin + Spring Boot architect. Extends the Java `spring-architect` with Kotlin idioms. Delegates core Spring decisions to Java plugin.                  |
-| `kotlin-tech-lead`            | Code review, refactoring guidance, and doc standards extending `java-tech-lead` with Kotlin idiom enforcement (null safety, coroutines, data class JPA). |
-| `kotlin-test-engineer`        | JUnit 5 + MockK + kotest, Testcontainers, Spring test slices with Kotlin DSL.                                                                            |
-| `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM.                                                                                               |
-| `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, GC tuning.                                                                                    |
+| Agent                         | Description                                                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kotlin-architect`            | Kotlin + Spring Boot architect. Designs services with data classes, coroutines, null safety, sealed-class result hierarchies, Kotlin DSL configuration, and Kotlin JPA conventions. |
+| `kotlin-tech-lead`            | Code review, refactoring guidance, observability review, and doc standards with Kotlin idiom enforcement (null safety, coroutines, data class JPA, parameterized SLF4J).            |
+| `kotlin-test-engineer`        | JUnit 5 / Kotest + MockK + springmockk + Testcontainers + runTest + Turbine, Spring test slices with Kotlin DSL.                                                                     |
+| `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM, coroutine SecurityContext propagation.                                                                                    |
+| `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, dispatcher selection vs Virtual Threads, GC tuning.                                                                       |
 
-### Atomic skills (3)
+### Atomic skills (11)
 
-| Skill                      | Description                                                                                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kotlin-idioms`            | Data classes, null safety, extension functions, scope functions, sealed classes, inline value classes, JPA plugin config, @ConfigurationProperties, Kotlin-Java interop   |
-| `kotlin-coroutines-spring` | Suspend functions in services, Flow streaming, coroutine-aware transactions, Virtual Thread interop, structured concurrency, CoroutineScope beans, retry/timeout patterns |
-| `kotlin-testing-patterns`  | MockK mocking (coEvery/coVerify), kotest matchers, @MockkBean, Testcontainers integration, test fixture factories, coroutine testing with runTest/Turbine                 |
+| Skill                              | Description                                                                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kotlin-idioms`                    | Data classes, null safety, extension functions, scope functions, sealed classes, inline value classes, JPA plugin config, `@ConfigurationProperties`, Kotlin-Java interop              |
+| `kotlin-coroutines-spring`         | Suspend functions in services, Flow streaming, coroutine-aware transactions, Virtual Thread interop, structured concurrency, CoroutineScope beans, retry/timeout                       |
+| `kotlin-testing-patterns`          | MockK mocking (coEvery/coVerify), Kotest matchers, `@MockkBean`, Testcontainers, factory-function fixtures, coroutine testing with runTest/Turbine                                     |
+| `kotlin-spring-jpa-performance`    | JPA/Hibernate N+1 prevention with fetch joins / `@EntityGraph`, batch fetching, projection queries, second-level cache, Kotlin entity caveat (regular class over data class)           |
+| `kotlin-spring-transaction`        | `@Transactional` scope, propagation, self-invocation proxy bypass, checked-exception rollback, timeout, `@Transactional` on `suspend` functions and the `withContext` caveat            |
+| `kotlin-spring-exception-handling` | `@RestControllerAdvice` + `ProblemDetail` (RFC 9457), sealed-class domain error hierarchies, `DataIntegrityViolationException` handling, external API error wrapping                  |
+| `kotlin-spring-security-patterns`  | Spring Security 6.x Kotlin DSL `SecurityFilterChain`, OAuth2/JWT resource server, method security, CORS / CSRF, security headers, coroutine SecurityContext propagation                |
+| `kotlin-spring-db-migration-safety` | Flyway / Liquibase zero-downtime migration patterns, expand-then-contract, non-blocking index creation, Testcontainers migration validation in Kotlin                                 |
+| `kotlin-spring-test-integration`   | Spring test slice strategy (`@DataJpaTest`, `@WebMvcTest`, `@SpringBootTest`), Testcontainers via `@ServiceConnection`, `@MockkBean`, Awaitility, runTest patterns                     |
+| `kotlin-spring-async-processing`   | `@Async`, `ApplicationEvent`, `@TransactionalEventListener`, `@Scheduled` patterns with Virtual Thread / coroutine interop, executor configuration, `@Async` vs coroutines decision    |
+| `kotlin-gradle-build-optimization` | Gradle Kotlin DSL, version catalog, build cache, configuration cache, parallel execution, kotlin-jpa / kotlin-spring / kotlin-allopen plugins, springmockk + mockito-core exclusion    |
 
-### Workflow skills (2)
+### Workflow skills (8)
 
-| Skill               | Description                                                                                                                                              | Delegates to Java plugin                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `task-kotlin-new`   | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with edge cases | `spring-db-migration-safety` for Flyway, test slices from Java plugin |
-| `task-kotlin-debug` | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables              | `task-spring-debug` for Java/Spring errors                            |
-
-
-## Dependency relationship
-
-```
-core   (base patterns, git, code quality)
-  └── java     (Spring Boot, JPA, Security, Gradle, testing infra)
-        └── kotlin  (Kotlin idioms, coroutines, MockK/kotest)
-```
-
-The Kotlin plugin **never duplicates** Java plugin content. It references Java plugin skills
-by name (e.g., `jpa-performance`, `transaction`, `backend-db-migration`, `task-spring-debug`) and
-adds only the Kotlin-specific layer on top.
+| Skill                              | Agent                          | Description                                                                                                                                                                                |
+| ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task-kotlin-new`                  | `kotlin-architect`             | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with Kotlin idioms throughout                    |
+| `task-kotlin-debug`                | `kotlin-architect`             | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables                                                |
+| `task-kotlin-review`               | `kotlin-tech-lead`             | Kotlin/Spring Boot staff-level code review umbrella (Phases A-E + scope auto-escalation). Spawns Kotlin perf / security / observability subagents in parallel                              |
+| `task-kotlin-review-perf`          | `kotlin-performance-engineer`  | Kotlin/Spring Boot perf review for JPA N+1, fetch strategies, coroutine dispatcher / Virtual Thread interop, HikariCP sizing, Flow backpressure, caching                                   |
+| `task-kotlin-review-security`      | `kotlin-security-engineer`     | Kotlin/Spring Boot security review for Spring Security 6.x Kotlin DSL, OAuth2/JWT, method security, mass assignment via data class DTOs, coroutine SecurityContext propagation, OWASP    |
+| `task-kotlin-review-observability` | `kotlin-tech-lead`             | Kotlin/Spring Boot observability review for Micrometer, Actuator, structured logging, MDC + coroutine context correlation, OTel tracing, async/messaging instrumentation, error tracker   |
+| `task-kotlin-test`                 | `kotlin-test-engineer`         | Kotlin/Spring Boot test strategy and scaffolding using JUnit 5 / Kotest, MockK + springmockk, Spring test slices, Testcontainers, runTest, Turbine, Spring Security Test                  |
+| `task-kotlin-refactor`             | `kotlin-tech-lead`             | Kotlin/Spring Boot refactor planning for fat controllers, anemic domain, `!!` abuse, GlobalScope leakage, blocking-in-suspend, lateinit overuse, data class JPA, missing kotlin plugins   |

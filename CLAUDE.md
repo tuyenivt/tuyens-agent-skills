@@ -17,7 +17,7 @@ plugins/
   spec/          # Spec-Driven Development (any stack, opt-in)
   java/          # Java 21+ / Spring Boot 3.5+
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
-  kotlin/        # Thin companion to java plugin (requires core + java)
+  kotlin/        # Kotlin 2.0+ / Spring Boot 3.5+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
@@ -59,8 +59,7 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 ## Plugin Dependencies
 
 - `core` is required by all other plugins
-- `kotlin` additionally requires `java`
-- `spec` requires only `core`; per-stack agents are supplied by whichever stack plugins are installed (e.g., `java`, `python`, `react`)
+- `spec` requires only `core`; per-stack agents are supplied by whichever stack plugins are installed (e.g., `java`, `kotlin`, `python`, `react`)
 
 ## Skill Placement: When a Skill Belongs in `core`
 

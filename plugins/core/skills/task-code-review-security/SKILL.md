@@ -59,6 +59,7 @@ If a stack-specific security review workflow exists for the detected stack, dele
 | Rust / Axum          | `task-rust-review-security`   |
 | .NET / ASP.NET Core  | `task-dotnet-review-security` |
 | PHP / Laravel        | `task-laravel-review-security` |
+| Kotlin / Spring Boot | `task-kotlin-review-security` |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-5 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

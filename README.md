@@ -31,7 +31,6 @@ claude plugin install java@tuyens-agent-skills --scope project
 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install java@tuyens-agent-skills --scope project
 claude plugin install kotlin@tuyens-agent-skills --scope project
 ```
 
@@ -210,9 +209,15 @@ Java / Spring Boot (plugin: java)
   Spring test strategy / scaffolds    -> /task-spring-test
   Spring refactor plan                -> /task-spring-refactor
 
-Kotlin / Spring Boot (plugin: kotlin, requires java)
+Kotlin / Spring Boot (plugin: kotlin)
   scaffold a new Kotlin feature       -> /task-kotlin-new
   debug a Kotlin issue                -> /task-kotlin-debug
+  Kotlin code review                  -> /task-kotlin-review
+  Kotlin perf review                  -> /task-kotlin-review-perf
+  Kotlin security review              -> /task-kotlin-review-security
+  Kotlin observability review         -> /task-kotlin-review-observability
+  Kotlin test strategy / scaffolds    -> /task-kotlin-test
+  Kotlin refactor plan                -> /task-kotlin-refactor
 
 Python / FastAPI / Django (plugin: python)
   scaffold a new Python feature       -> /task-python-new
@@ -331,7 +336,7 @@ Angular (plugin: angular)
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
-| [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects (requires `java`)                                                                                                                   |
+| [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
@@ -346,7 +351,6 @@ Angular (plugin: angular)
 ## Notes
 
 - `core` is required by all other plugins.
-- `kotlin` additionally requires `java` (thin companion plugin).
 - Each plugin folder has its own README with stack-specific usage and examples.
 
 ## Optional: Claude Code Settings Template
