@@ -25,7 +25,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                             | Purpose                                                                                                                                   | Agent                        |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `task-react-new`                  | End-to-end React feature implementation (components + state + data + tests)                                                               | `react-architect`            |
+| `task-react-implement`            | End-to-end React feature implementation (components + state + data + tests)                                                               | `react-architect`            |
 | `task-react-debug`                | Debug React errors (hydration, hooks, render loops, Server Components, build)                                                             | `react-tech-lead`            |
 | `task-react-review`               | Staff-level umbrella review with Phases A-E; spawns parallel perf / security / observability subagents                                    | `react-tech-lead`            |
 | `task-react-review-perf`          | Core Web Vitals (LCP / INP / CLS), bundle, hydration, RSC vs Client boundary, TanStack Query cache, ISR / `revalidate`                    | `react-performance-engineer` |
@@ -64,7 +64,7 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 **Implement a full feature (components + state + data + tests):**
 
 ```
-/task-react-new
+/task-react-implement
 Feature: Product catalog with filtering and search
 Components: ProductList, ProductCard, FilterSidebar, SearchBar
 Data: GET /api/products with category, search, pagination

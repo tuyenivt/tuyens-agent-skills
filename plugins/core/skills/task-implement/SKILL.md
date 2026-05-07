@@ -42,23 +42,23 @@ Based on the detected stack, invoke the appropriate workflow:
 
 | Detected Stack              | Delegate to        |
 | --------------------------- | ------------------ |
-| Java / Spring Boot          | `task-spring-new`  |
-| Kotlin / Spring Boot        | `task-kotlin-new`  |
-| .NET / ASP.NET Core         | `task-dotnet-new`  |
-| Python / FastAPI or Django  | `task-python-new`  |
-| Ruby / Rails                | `task-rails-new`   |
-| Node.js / NestJS or Express | `task-node-new`    |
-| Go / Gin                    | `task-go-new`      |
-| Rust / Axum                 | `task-rust-new`    |
-| PHP / Laravel               | `task-laravel-new` |
+| Java / Spring Boot          | `task-spring-implement`  |
+| Kotlin / Spring Boot        | `task-kotlin-implement`  |
+| .NET / ASP.NET Core         | `task-dotnet-implement`  |
+| Python / FastAPI or Django  | `task-python-implement`  |
+| Ruby / Rails                | `task-rails-implement`   |
+| Node.js / NestJS or Express | `task-node-implement`    |
+| Go / Gin                    | `task-go-implement`      |
+| Rust / Axum                 | `task-rust-implement`    |
+| PHP / Laravel               | `task-laravel-implement` |
 
 **Frontend stacks:**
 
 | Detected Stack         | Delegate to        |
 | ---------------------- | ------------------ |
-| React / Next.js / Vite | `task-react-new`   |
-| Vue / Nuxt / Vite      | `task-vue-new`     |
-| Angular                | `task-angular-new` |
+| React / Next.js / Vite | `task-react-implement`   |
+| Vue / Nuxt / Vite      | `task-vue-implement`     |
+| Angular                | `task-angular-implement` |
 
 **Fullstack projects:** If `Stack Type: fullstack` is detected, determine which side the feature belongs to based on user input. If the feature spans both (e.g., "add a new page with API endpoint"), delegate to the backend workflow for the API layer and the frontend workflow for the UI layer. If unclear, ask the user which side to focus on.
 

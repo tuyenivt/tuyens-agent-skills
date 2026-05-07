@@ -23,7 +23,7 @@ user-invocable: true
 Not for:
 
 - Production incident analysis or runbook execution (use `/task-oncall-start`)
-- Feature implementation (use `task-rails-new`)
+- Feature implementation (use `task-rails-implement`)
 - Performance optimization without an error
 
 ## Rules

@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Kotlin / 
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-kotlin-new`)
+- Pre-implementation feature design (use `task-kotlin-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-kotlin-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

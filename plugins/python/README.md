@@ -15,7 +15,7 @@ Claude Code plugin for Python development.
 
 | Skill                             | Agent                       | Description                                                                                                          |
 | --------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| task-python-new                   | python-architect            | End-to-end feature implementation across all layers                                                                  |
+| task-python-implement             | python-architect            | End-to-end feature implementation across all layers                                                                  |
 | task-python-debug                 | python-architect            | Debug tracebacks, logs, Celery errors, and test failures                                                             |
 | task-python-review                | python-tech-lead            | Python staff-level code review umbrella - Phases A-E with FastAPI/Django idioms; spawns parallel scope subagents     |
 | task-python-review-perf           | python-performance-engineer | SQLAlchemy / Django ORM N+1, async event-loop blocking, Celery throughput, migration safety                          |

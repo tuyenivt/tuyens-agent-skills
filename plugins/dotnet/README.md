@@ -27,7 +27,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                              | Agent                          | Purpose                                                                                    |
 | ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `task-dotnet-new`                  | `dotnet-architect`             | End-to-end ASP.NET Core feature implementation (entity + migration + API + tests)          |
+| `task-dotnet-implement`            | `dotnet-architect`             | End-to-end ASP.NET Core feature implementation (entity + migration + API + tests)          |
 | `task-dotnet-debug`                | `dotnet-tech-lead`             | Developer debugging workflow (paste stack trace or describe unexpected behaviour, get fix) |
 | `task-dotnet-review`               | `dotnet-tech-lead`             | .NET-aware staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents) |
 | `task-dotnet-review-perf`          | `dotnet-performance-engineer`  | Performance review: EF Core N+1, async pitfalls, allocation hotspots, caching, pool sizing |
@@ -67,7 +67,7 @@ Atomic skills provide focused, reusable .NET patterns. These are hidden from the
 **Implement full feature (entity + migration + API + tests):**
 
 ```
-/task-dotnet-new
+/task-dotnet-implement
 Feature: Order with payment tracking
 Namespace: YourApp.Orders
 Operations: CRUD, approve, cancel

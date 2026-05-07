@@ -1,6 +1,6 @@
 ---
-name: task-rails-new
-description: Scaffold a multi-layer Rails feature end-to-end - migrations, models, services, controllers, serializers, Sidekiq jobs, and RSpec tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rails-debug).
+name: task-rails-implement
+description: Implement a multi-layer Rails feature end-to-end - migrations, models, services, controllers, serializers, Sidekiq jobs, and RSpec tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rails-debug).
 agent: rails-architect
 metadata:
   category: backend

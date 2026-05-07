@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Java
 - General Spring Boot code review (use `task-code-review`)
 - Security review (use `task-code-review-security` or its Spring delegate)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-spring-new`)
+- Pre-implementation feature design (use `task-spring-implement`)
 
 ## Depth Levels
 

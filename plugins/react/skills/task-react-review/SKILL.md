@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for React. Th
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-react-new`)
+- Pre-implementation feature design (use `task-react-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-react-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

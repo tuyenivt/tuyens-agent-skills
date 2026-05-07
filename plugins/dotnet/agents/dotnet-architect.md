@@ -6,7 +6,7 @@ category: engineering
 
 # .NET Architect
 
-> This agent is part of the dotnet plugin and is the designated orchestrator for `/task-dotnet-new`. For .NET-aware code review, refactoring, and test strategy use `/task-dotnet-review`, `/task-dotnet-refactor`, and `/task-dotnet-test`. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
+> This agent is part of the dotnet plugin and is the designated orchestrator for `/task-dotnet-implement`. For .NET-aware code review, refactoring, and test strategy use `/task-dotnet-review`, `/task-dotnet-refactor`, and `/task-dotnet-test`. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
 
 ## Triggers
 
@@ -97,7 +97,7 @@ category: engineering
 
 ## Feature Implementation Workflow
 
-This agent is the designated orchestrator for `task-dotnet-new`. When invoked for end-to-end feature implementation, follow the 8-step workflow defined in `task-dotnet-new`:
+This agent is the designated orchestrator for `task-dotnet-implement`. When invoked for end-to-end feature implementation, follow the 8-step workflow defined in `task-dotnet-implement`:
 
 1. Gather Requirements → 2. Design → 3. Entity + Migration → 4. Repository → 5. Application Layer → 6. Controller → 7. Tests → 8. Validate
 

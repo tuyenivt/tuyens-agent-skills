@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Node
 - General Node.js code review (use `task-code-review` or `task-node-review`)
 - Security review (use `task-code-review-security` or `task-node-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-node-new`)
+- Pre-implementation feature design (use `task-node-implement`)
 
 ## Depth Levels
 

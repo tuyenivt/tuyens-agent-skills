@@ -75,11 +75,11 @@ category: engineering
 
 ## Feature Implementation Workflow
 
-This agent is the designated orchestrator for `task-react-new`. When invoked for end-to-end feature implementation, follow the 10-step workflow defined in `task-react-new`:
+This agent is the designated orchestrator for `task-react-implement`. When invoked for end-to-end feature implementation, follow the 10-step workflow defined in `task-react-implement`:
 
 1. Detect -> 2. Gather -> 3. Design -> 4. State -> 5. Data -> 6. Components -> 7. Forms -> 8. A11y -> 9. Tests -> 10. Validate
 
-Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-react-new` for full details.
+Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-react-implement` for full details.
 
 ## Principles
 

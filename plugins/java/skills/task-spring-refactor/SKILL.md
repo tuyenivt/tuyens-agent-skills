@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Java/Sp
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-spring-new`)
+- Feature changes (use `task-spring-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-spring-debug`)
 

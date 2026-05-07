@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Node.js
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-node-new`)
+- Feature changes (use `task-node-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-node-debug`)
 

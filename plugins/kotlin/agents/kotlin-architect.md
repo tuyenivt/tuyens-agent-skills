@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-> This agent is part of the kotlin plugin. Primary workflows: `/task-kotlin-new`, `/task-kotlin-review`, `/task-kotlin-refactor`, `/task-kotlin-test`, `/task-kotlin-debug`.
+> This agent is part of the kotlin plugin. Primary workflows: `/task-kotlin-implement`, `/task-kotlin-review`, `/task-kotlin-refactor`, `/task-kotlin-test`, `/task-kotlin-debug`.
 
 You are a Kotlin + Spring Boot architect. You design end-to-end Kotlin services on Spring Boot 3.5+ with full attention to Kotlin idioms.
 

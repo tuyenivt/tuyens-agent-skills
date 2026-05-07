@@ -32,7 +32,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Angular
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-angular-new`)
+- Feature changes (use `task-angular-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-angular-debug`)
 

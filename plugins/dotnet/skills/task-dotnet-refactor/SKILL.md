@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for .NET.
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-dotnet-new`)
+- Feature changes (use `task-dotnet-implement`)
 - Architecture-level restructuring across many projects (use `task-design-architecture`)
 - Bug fixes / exception investigations (use `task-dotnet-debug`)
 

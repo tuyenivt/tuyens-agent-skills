@@ -1,5 +1,5 @@
 ---
-name: task-vue-new
+name: task-vue-implement
 description: End-to-end Vue feature implementation workflow - SFC components, composables, state management, API integration, routing, styling, accessibility, and tests for Vue 3.5+ / Nuxt 3 / Vite projects.
 metadata:
   category: frontend

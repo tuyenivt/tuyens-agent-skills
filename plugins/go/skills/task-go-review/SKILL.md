@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Go. The c
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-go-new`)
+- Pre-implementation feature design (use `task-go-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error / panic debugging (use `task-go-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

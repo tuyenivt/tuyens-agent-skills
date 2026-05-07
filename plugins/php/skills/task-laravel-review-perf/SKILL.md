@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for PHP 
 - General Laravel code review (use `task-code-review` or `task-laravel-review`)
 - Security review (use `task-code-review-security` or `task-laravel-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-laravel-new`)
+- Pre-implementation feature design (use `task-laravel-implement`)
 
 ## Severity Rubric
 

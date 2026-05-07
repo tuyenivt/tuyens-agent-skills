@@ -1,6 +1,6 @@
 ---
 name: task-spec-implement
-description: Execution phase of Spec-Driven Development. Reads `tasks.md` and implements tasks one at a time, delegating each to the appropriate stack workflow (`task-spring-new`, `task-react-new`, ...) in spec-aware mode. Updates task `Status:` markers as work progresses. Resumes from the first `[ ]` task on re-invocation. Speckit-aware - delegates to `/speckit.implement` when Spec Kit is installed.
+description: Execution phase of Spec-Driven Development. Reads `tasks.md` and implements tasks one at a time, delegating each to the appropriate stack workflow (`task-spring-implement`, `task-react-implement`, ...) in spec-aware mode. Updates task `Status:` markers as work progresses. Resumes from the first `[ ]` task on re-invocation. Speckit-aware - delegates to `/speckit.implement` when Spec Kit is installed.
 metadata:
   category: spec
   tags: [spec, sdd, implement, execution, orchestration]
@@ -87,8 +87,8 @@ Map the task's `Type` and the detected stack to a stack workflow:
 
 | Task Type                  | Stack -> Workflow                                                                                                                                                                                                                           |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `data` / `service` / `api` | Java -> `task-spring-new`; Kotlin -> `task-kotlin-new`; .NET -> `task-dotnet-new`; Python -> `task-python-new`; Rails -> `task-rails-new`; Node -> `task-node-new`; Go -> `task-go-new`; Rust -> `task-rust-new`; PHP -> `task-laravel-new` |
-| `frontend`                 | React -> `task-react-new`; Vue -> `task-vue-new`; Angular -> `task-angular-new`                                                                                                                                                             |
+| `data` / `service` / `api` | Java -> `task-spring-implement`; Kotlin -> `task-kotlin-implement`; .NET -> `task-dotnet-implement`; Python -> `task-python-implement`; Rails -> `task-rails-implement`; Node -> `task-node-implement`; Go -> `task-go-implement`; Rust -> `task-rust-implement`; PHP -> `task-laravel-implement` |
+| `frontend`                 | React -> `task-react-implement`; Vue -> `task-vue-implement`; Angular -> `task-angular-implement`                                                                                                                                                             |
 | `validation`               | Same stack workflow as the task it validates (each `task-*-new` covers tests for its stack). For pure cross-cutting test work, soft-suggest `task-code-test` if it has gained spec-aware mode.                                              |
 | `ops`                      | No single stack workflow. Run inline using core atomics (`ops-observability`, `ops-feature-flags`, `ops-release-safety`) and the relevant per-stack `<stack>-*` atomics. Do not invent a missing workflow.                                  |
 | Unknown stack              | Fall back to `task-implement` (which itself delegates or runs the universal fallback).                                                                                                                                                      |

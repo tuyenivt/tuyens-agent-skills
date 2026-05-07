@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Kotl
 - General Kotlin/Spring Boot code review (use `task-kotlin-review`)
 - Security review (use `task-kotlin-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-kotlin-new`)
+- Pre-implementation feature design (use `task-kotlin-implement`)
 
 ## Depth Levels
 

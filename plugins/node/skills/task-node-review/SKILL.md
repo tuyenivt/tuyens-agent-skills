@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Node.js. 
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-node-new`)
+- Pre-implementation feature design (use `task-node-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-node-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

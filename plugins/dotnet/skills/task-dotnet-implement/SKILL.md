@@ -1,6 +1,6 @@
 ---
-name: task-dotnet-new
-description: End-to-end ASP.NET Core feature implementation workflow that generates entity, repository, service, controller, DTO records, EF Core migration, FluentValidation validators, and tests across all layers. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
+name: task-dotnet-implement
+description: End-to-end ASP.NET Core feature implementation workflow that generates entity, repository, service, controller, DTO records, EF Core migration, FluentValidation validators, and tests across all layers. Not for single-file changes or isolated bug fixes (use task-dotnet-debug for errors).
 metadata:
   category: backend
   tags: [dotnet, aspnet-core, feature, implementation, workflow, ef-core, rest-api, testing, clean-architecture]

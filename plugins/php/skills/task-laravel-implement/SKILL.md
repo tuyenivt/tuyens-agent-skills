@@ -1,5 +1,5 @@
 ---
-name: task-laravel-new
+name: task-laravel-implement
 description: End-to-end Laravel feature implementation workflow. Generates all coordinated layers from migration through Pest tests for new features requiring multiple Laravel components.
 agent: php-architect
 metadata:

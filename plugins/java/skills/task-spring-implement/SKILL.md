@@ -1,6 +1,6 @@
 ---
-name: task-spring-new
-description: End-to-end Spring Boot feature implementation workflow that generates entity, repository, service, controller, DTO records, Flyway migration, and tests across all layers. Not for single-file changes, isolated bug fixes, or simple scaffolding tasks.
+name: task-spring-implement
+description: End-to-end Spring Boot feature implementation workflow that generates entity, repository, service, controller, DTO records, Flyway migration, and tests across all layers. Not for single-file changes or isolated bug fixes (use task-spring-debug for errors).
 metadata:
   category: backend
   tags: [spring-boot, java, feature, implementation, workflow, jpa, rest-api, testing]

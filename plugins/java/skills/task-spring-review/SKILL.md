@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Java / Sp
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-spring-new`)
+- Pre-implementation feature design (use `task-spring-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-spring-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

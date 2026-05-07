@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Angu
 - General Angular code review (use `task-code-review` or `task-angular-review`)
 - Security review (use `task-code-review-security` or `task-angular-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-angular-new`)
+- Pre-implementation feature design (use `task-angular-implement`)
 
 ## Depth Levels
 

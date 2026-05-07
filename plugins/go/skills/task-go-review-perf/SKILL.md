@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Go. 
 - General Go code review (use `task-code-review` or `task-go-review`)
 - Security review (use `task-code-review-security` or `task-go-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-go-new`)
+- Pre-implementation feature design (use `task-go-implement`)
 
 ## Depth Levels
 

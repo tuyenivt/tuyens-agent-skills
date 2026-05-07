@@ -24,7 +24,7 @@ Claude Code plugin for Go/Gin development.
 
 | Skill                            | Agent                     | Description                                                                                                                                                          |
 | -------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-go-new`                    | `go-architect`            | End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests.                       |
+| `task-go-implement`              | `go-architect`            | End-to-end Go/Gin feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests.                       |
 | `task-go-debug`                  | `go-tech-lead`            | Debug Go errors. Paste a panic stack trace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.                       |
 | `task-go-review`                 | `go-tech-lead`            | Staff-level code review umbrella - Phases A-E with Gin / GORM / sqlx idioms; spawns perf / security / observability subagents in parallel for extra scopes.          |
 | `task-go-review-perf`            | `go-performance-engineer` | Performance review for GORM / sqlx N+1, goroutine leaks, missing context, mutex contention, allocation hotspots, connection pool, Asynq throughput, migration safety.|
@@ -50,7 +50,7 @@ Claude Code plugin for Go/Gin development.
 ### Implement a feature end-to-end
 
 ```
-> task-go-new
+> task-go-implement
 
 Feature: Add payment processing with webhook endpoint
 - Creates migration for payments table

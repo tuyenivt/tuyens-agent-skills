@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Vue.
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-vue-new`)
+- Feature changes (use `task-vue-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-vue-debug`)
 

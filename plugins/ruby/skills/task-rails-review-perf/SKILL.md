@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Ruby
 - General Rails code review (use `task-code-review`)
 - Security review (use `task-code-review-security` or its Rails delegate)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-rails-new`)
+- Pre-implementation feature design (use `task-rails-implement`)
 
 ## Depth Levels
 

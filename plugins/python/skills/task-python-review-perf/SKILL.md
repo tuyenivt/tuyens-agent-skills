@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Pyth
 - General Python code review (use `task-code-review` or `task-python-review`)
 - Security review (use `task-code-review-security` or `task-python-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-python-new`)
+- Pre-implementation feature design (use `task-python-implement`)
 
 ## Depth Levels
 

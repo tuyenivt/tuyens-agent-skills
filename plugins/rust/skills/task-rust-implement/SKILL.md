@@ -1,6 +1,6 @@
 ---
-name: task-rust-new
-description: Scaffold a multi-layer Rust/Axum feature end-to-end - migrations, models, repositories, services, handlers, DTOs, and tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rust-debug).
+name: task-rust-implement
+description: Implement a multi-layer Rust/Axum feature end-to-end - migrations, models, repositories, services, handlers, DTOs, and tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rust-debug).
 agent: rust-architect
 metadata:
   category: backend

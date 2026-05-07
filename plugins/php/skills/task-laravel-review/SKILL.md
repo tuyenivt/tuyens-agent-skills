@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for PHP / Lar
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-laravel-new`)
+- Pre-implementation feature design (use `task-laravel-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error / exception debugging (use `task-laravel-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

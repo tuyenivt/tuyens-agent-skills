@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Vue.
 - General Vue code review (use `task-code-review` or `task-vue-review`)
 - Security review (use `task-code-review-security` or `task-vue-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-vue-new`)
+- Pre-implementation feature design (use `task-vue-implement`)
 
 ## Depth Levels
 

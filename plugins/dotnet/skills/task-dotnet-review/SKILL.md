@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for .NET. The
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-dotnet-new`)
+- Pre-implementation feature design (use `task-dotnet-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error / exception debugging (use `task-dotnet-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

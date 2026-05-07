@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Rust
 - General Rust code review (use `task-code-review` or `task-rust-review`)
 - Security review (use `task-code-review-security` or `task-rust-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-rust-new`)
+- Pre-implementation feature design (use `task-rust-implement`)
 
 ## Severity Rubric
 

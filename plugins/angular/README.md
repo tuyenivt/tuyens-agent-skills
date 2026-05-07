@@ -26,7 +26,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                                | Agent                          | Purpose                                                                                                          |
 | ------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `task-angular-new`                   | `angular-architect`            | End-to-end Angular feature implementation (components + state + data + tests)                                    |
+| `task-angular-implement`             | `angular-architect`            | End-to-end Angular feature implementation (components + state + data + tests)                                    |
 | `task-angular-debug`                 | `angular-tech-lead`            | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
 | `task-angular-review`                | `angular-tech-lead`            | Angular staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents)           |
 | `task-angular-review-perf`           | `angular-performance-engineer` | Angular performance review (CWV, bundle, change detection, signals, `@defer`, SSR + HTTP transfer cache)         |
@@ -65,7 +65,7 @@ Atomic skills provide focused, reusable Angular patterns. These are hidden from 
 **Implement a full feature (components + state + data + tests):**
 
 ```
-/task-angular-new
+/task-angular-implement
 Feature: Product catalog with filtering and search
 Components: ProductListComponent, ProductCardComponent, FilterSidebarComponent, SearchBarComponent
 Data: GET /api/products with category, search, pagination

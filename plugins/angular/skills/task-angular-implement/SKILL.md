@@ -1,5 +1,5 @@
 ---
-name: task-angular-new
+name: task-angular-implement
 description: End-to-end Angular feature implementation workflow - standalone components, signals, services, routing, RxJS, styling, accessibility, and tests for Angular 21+ projects.
 metadata:
   category: frontend

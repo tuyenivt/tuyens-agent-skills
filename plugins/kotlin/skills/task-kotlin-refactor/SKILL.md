@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Kotlin/
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-kotlin-new`)
+- Feature changes (use `task-kotlin-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-kotlin-debug`)
 

@@ -52,7 +52,7 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 ## Skill Naming Conventions
 
-- Workflow skills are always prefixed `task-` (e.g., `task-spring-new`, `task-code-review`)
+- Workflow skills are always prefixed `task-` (e.g., `task-spring-implement`, `task-code-review`)
 - Atomic skills use `<framework>-<concern>` format (e.g., `spring-jpa-performance`, `go-error-handling`)
 - Agent files are plain Markdown in `plugins/<stack>/agents/`
 
@@ -101,7 +101,7 @@ Append-only files preserve iteration history; comparing runs is part of the work
 
 **Dual-mode (speckit / standalone).** `speckit-detect` decides whether the consuming project already has Spec Kit installed. When Spec Kit is present, SDD workflows defer to its templates and slash commands; otherwise they run standalone using the artifact layout above. Both modes produce the same `.specs/<slug>/` shape.
 
-**Spec-aware workflow contract.** Existing stack workflows (e.g., `task-spring-new`, `task-react-new`) accept a `--spec <slug>` flag. When set, they load `Use skill: spec-aware-preamble` to ingest the spec artifacts and skip their own GATHER/DESIGN steps - the spec is the source of truth. When unset, workflows run their normal interactive flow.
+**Spec-aware workflow contract.** Existing stack workflows (e.g., `task-spring-implement`, `task-react-implement`) accept a `--spec <slug>` flag. When set, they load `Use skill: spec-aware-preamble` to ingest the spec artifacts and skip their own GATHER/DESIGN steps - the spec is the source of truth. When unset, workflows run their normal interactive flow.
 
 **Orchestration model.** `task-spec-orchestrate` sequences architect → dev → test → review using per-stack agents. Agents communicate by appending YAML envelopes to `handoffs/` (filesystem-as-bus, no central state machine; see `agent-handoff-contract`). After each step `fix-loop-controller` reads the directory and decides `proceed` / `loop` / `pause-for-amendment` / `escalate`. Default fix-loop budget is 3 iterations; hard cap 5.
 
@@ -146,7 +146,7 @@ These principles govern how Claude should reason and act when working in this re
 
 ### Workflow Skill Contract Convention
 
-**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-new`), stack-agnostic workflows (e.g., `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
+**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-implement`), stack-agnostic workflows (e.g., `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
 
 Workflow skills that also adapt output to the project tech stack should load `Use skill: stack-detect` as Step 2 (immediately after behavioral-principles). Workflows that do not depend on the stack (e.g., delivery, release, database-migration-plan workflows) should skip stack-detect entirely.
 

@@ -15,7 +15,7 @@ Claude Code plugin for PHP development.
 
 | Skill                              | Agent                    | Description                                                                                          |
 | ---------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| task-laravel-new                   | php-architect            | End-to-end feature implementation across all layers                                                  |
+| task-laravel-implement             | php-architect            | End-to-end feature implementation across all layers                                                  |
 | task-laravel-debug                 | php-architect            | Debug stack traces, query errors, queue failures, test errors                                        |
 | task-laravel-review                | php-tech-lead            | Staff-level code review umbrella with parallel perf / security / observability subagents             |
 | task-laravel-review-perf           | php-performance-engineer | Eloquent N+1, indexes, queue throughput (Horizon), caching, OPcache / Octane readiness               |

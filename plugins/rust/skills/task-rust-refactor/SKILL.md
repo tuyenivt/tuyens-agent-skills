@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Rust.
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-rust-new`)
+- Feature changes (use `task-rust-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes / panic investigations (use `task-rust-debug`)
 

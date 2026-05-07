@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for .NET
 - General .NET code review (use `task-code-review` or `task-dotnet-review`)
 - Security review (use `task-code-review-security` or `task-dotnet-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-dotnet-new`)
+- Pre-implementation feature design (use `task-dotnet-implement`)
 
 ## Severity Rubric
 

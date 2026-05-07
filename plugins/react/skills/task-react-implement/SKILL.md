@@ -1,5 +1,5 @@
 ---
-name: task-react-new
+name: task-react-implement
 description: End-to-end React feature implementation workflow - component tree, state management, API integration, routing, styling, accessibility, and tests for React 19+ / Next.js / Vite projects.
 metadata:
   category: frontend

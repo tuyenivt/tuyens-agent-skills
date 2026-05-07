@@ -21,7 +21,7 @@ user-invocable: true
 - Tracking down intermittent errors (missing GORM Preload, race conditions, pool exhaustion)
 - Analyzing background job failures (Asynq retry loops, Kafka consumer lag)
 
-Not for adding new features (use `task-go-new`) or general code review.
+Not for adding new features (use `task-go-implement`) or general code review.
 
 ## Edge Cases
 

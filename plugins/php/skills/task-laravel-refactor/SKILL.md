@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for PHP / L
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-laravel-new`)
+- Feature changes (use `task-laravel-implement`)
 - Architecture-level restructuring across many packages (use `task-design-architecture`)
 - Bug fixes / exception investigations (use `task-laravel-debug`)
 

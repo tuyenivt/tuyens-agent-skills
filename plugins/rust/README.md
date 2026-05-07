@@ -25,7 +25,7 @@ Claude Code plugin for Rust development.
 
 | Skill                              | Agent                       | Description                                                                                                                                       |
 | ---------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-rust-new`                    | `rust-architect`            | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
+| `task-rust-implement`              | `rust-architect`            | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
 | `task-rust-debug`                  | `rust-tech-lead`            | Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.    |
 | `task-rust-review`                 | `rust-tech-lead`            | Rust staff-level code review umbrella - Phases A-E with Axum/sqlx/Tokio idioms. Spawns parallel perf/security/observability subagents.            |
 | `task-rust-review-perf`            | `rust-performance-engineer` | sqlx N+1, Tokio task leaks, std::sync::Mutex across .await, blocking I/O on the runtime, allocation hotspots, pool sizing.                        |
@@ -53,7 +53,7 @@ Claude Code plugin for Rust development.
 ### Implement a feature end-to-end
 
 ```
-> task-rust-new
+> task-rust-implement
 
 Feature: Add payment processing with webhook endpoint
 - Creates migration for payments table

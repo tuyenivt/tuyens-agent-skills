@@ -26,7 +26,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                           | Purpose                                                                                                                                 | Agent                      |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `task-vue-new`                  | End-to-end Vue feature implementation (components + state + data + tests)                                                               | `vue-architect`            |
+| `task-vue-implement`            | End-to-end Vue feature implementation (components + state + data + tests)                                                               | `vue-architect`            |
 | `task-vue-debug`                | Debug Vue errors (reactivity, hydration, template compilation, Nuxt, build)                                                             | `vue-tech-lead`            |
 | `task-vue-review`               | Staff-level umbrella review with Phases A-E; spawns parallel perf / security / observability subagents                                  | `vue-tech-lead`            |
 | `task-vue-review-perf`          | Core Web Vitals (LCP / INP / CLS), bundle, hydration, reactivity hotspots, `useFetch` cache, `routeRules` (`prerender` / `swr` / `isr`) | `vue-performance-engineer` |
@@ -66,7 +66,7 @@ Atomic skills provide focused, reusable Vue patterns. These are hidden from the 
 **Implement a full feature (components + state + data + tests):**
 
 ```
-/task-vue-new
+/task-vue-implement
 Feature: Product catalog with filtering and search
 Components: ProductList, ProductCard, FilterSidebar, SearchBar
 Data: GET /api/products with category, search, pagination

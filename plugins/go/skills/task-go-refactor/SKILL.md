@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Go.
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-go-new`)
+- Feature changes (use `task-go-implement`)
 - Architecture-level restructuring across many packages (use `task-design-architecture`)
 - Bug fixes / panic investigations (use `task-go-debug`)
 

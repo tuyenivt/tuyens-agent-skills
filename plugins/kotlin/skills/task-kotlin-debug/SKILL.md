@@ -23,7 +23,7 @@ user-invocable: true
 - Resolving Jackson serialization errors with Kotlin data classes or inline value classes
 - Fixing Spring Boot startup failures caused by final Kotlin classes
 
-Not for production incident analysis with blast radius assessment (use `/task-oncall-start`). Not for implementing new features (use `task-kotlin-new`).
+Not for production incident analysis with blast radius assessment (use `/task-oncall-start`). Not for implementing new features (use `task-kotlin-implement`).
 
 ## Edge Cases
 

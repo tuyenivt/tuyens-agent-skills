@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Ruby/Rail
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-rails-new`)
+- Pre-implementation feature design (use `task-rails-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-rails-debug`)
 - Architecture/design review of a new Rails system (use `task-design-architecture`)

@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Python. T
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-python-new`)
+- Pre-implementation feature design (use `task-python-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-python-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

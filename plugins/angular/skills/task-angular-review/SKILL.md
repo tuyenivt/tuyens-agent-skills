@@ -30,7 +30,7 @@ This workflow is the stack-specific delegate of `task-code-review` for Angular. 
 
 **Not for:**
 
-- Pre-implementation feature design (use `task-angular-new`)
+- Pre-implementation feature design (use `task-angular-implement`)
 - Active production incident triage (use `/task-oncall-start`)
 - Single-error debugging (use `task-angular-debug`)
 - Architecture/design review of a new system (use `task-design-architecture`)

@@ -31,7 +31,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Reac
 - General React code review (use `task-code-review` or `task-react-review`)
 - Security review (use `task-code-review-security` or `task-react-review-security`)
 - Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-react-new`)
+- Pre-implementation feature design (use `task-react-implement`)
 
 ## Depth Levels
 

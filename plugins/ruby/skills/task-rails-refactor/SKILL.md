@@ -29,7 +29,7 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Ruby/Ra
 **Not for:**
 
 - Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-rails-new`)
+- Feature changes (use `task-rails-implement`)
 - Architecture-level restructuring across many files (use `task-design-architecture`)
 - Bug fixes (use `task-rails-debug`)
 

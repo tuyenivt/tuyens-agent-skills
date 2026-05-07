@@ -200,7 +200,7 @@ I want to...
 
 ```
 Java / Spring Boot (plugin: java)
-  scaffold a new Spring Boot feature  -> /task-spring-new
+  implement a new Spring Boot feature  -> /task-spring-implement
   debug a Spring Boot issue           -> /task-spring-debug
   Spring staff-level code review      -> /task-spring-review
   Spring performance review           -> /task-spring-review-perf
@@ -210,7 +210,7 @@ Java / Spring Boot (plugin: java)
   Spring refactor plan                -> /task-spring-refactor
 
 Kotlin / Spring Boot (plugin: kotlin)
-  scaffold a new Kotlin feature       -> /task-kotlin-new
+  implement a new Kotlin feature       -> /task-kotlin-implement
   debug a Kotlin issue                -> /task-kotlin-debug
   Kotlin code review                  -> /task-kotlin-review
   Kotlin perf review                  -> /task-kotlin-review-perf
@@ -220,7 +220,7 @@ Kotlin / Spring Boot (plugin: kotlin)
   Kotlin refactor plan                -> /task-kotlin-refactor
 
 Python / FastAPI / Django (plugin: python)
-  scaffold a new Python feature       -> /task-python-new
+  implement a new Python feature       -> /task-python-implement
   debug a Python issue                -> /task-python-debug
   Python staff-level code review      -> /task-python-review
   Python performance review           -> /task-python-review-perf
@@ -230,7 +230,7 @@ Python / FastAPI / Django (plugin: python)
   Python refactor plan                -> /task-python-refactor
 
 Ruby on Rails (plugin: ruby)
-  scaffold a new Rails feature        -> /task-rails-new
+  implement a new Rails feature        -> /task-rails-implement
   debug a Rails issue                 -> /task-rails-debug
   Rails staff-level code review       -> /task-rails-review
   Rails performance review            -> /task-rails-review-perf
@@ -240,7 +240,7 @@ Ruby on Rails (plugin: ruby)
   Rails refactor plan                 -> /task-rails-refactor
 
 Node.js / TypeScript / NestJS (plugin: node)
-  scaffold a new Node feature         -> /task-node-new
+  implement a new Node feature         -> /task-node-implement
   debug a Node issue                  -> /task-node-debug
   Node staff-level code review        -> /task-node-review
   Node performance review             -> /task-node-review-perf
@@ -250,7 +250,7 @@ Node.js / TypeScript / NestJS (plugin: node)
   Node refactor plan                  -> /task-node-refactor
 
 Go / Gin (plugin: go)
-  scaffold a new Go feature           -> /task-go-new
+  implement a new Go feature           -> /task-go-implement
   debug a Go issue                    -> /task-go-debug
   staff-level code review             -> /task-go-review
   performance review                  -> /task-go-review-perf
@@ -260,7 +260,7 @@ Go / Gin (plugin: go)
   Go refactor plan                    -> /task-go-refactor
 
 .NET / ASP.NET Core (plugin: dotnet)
-  scaffold a new .NET feature         -> /task-dotnet-new
+  implement a new .NET feature         -> /task-dotnet-implement
   debug a .NET issue                  -> /task-dotnet-debug
   staff-level code review             -> /task-dotnet-review
   performance review                  -> /task-dotnet-review-perf
@@ -270,7 +270,7 @@ Go / Gin (plugin: go)
   .NET refactor plan                  -> /task-dotnet-refactor
 
 Rust / Axum (plugin: rust)
-  scaffold a new Rust feature         -> /task-rust-new
+  implement a new Rust feature         -> /task-rust-implement
   debug a Rust issue                  -> /task-rust-debug
   staff-level code review             -> /task-rust-review
   performance review                  -> /task-rust-review-perf
@@ -280,7 +280,7 @@ Rust / Axum (plugin: rust)
   Rust refactor plan                  -> /task-rust-refactor
 
 PHP / Laravel (plugin: php)
-  scaffold a new Laravel feature      -> /task-laravel-new
+  implement a new Laravel feature      -> /task-laravel-implement
   debug a Laravel issue               -> /task-laravel-debug
   staff-level code review             -> /task-laravel-review
   performance review                  -> /task-laravel-review-perf
@@ -290,7 +290,7 @@ PHP / Laravel (plugin: php)
   Laravel refactor plan               -> /task-laravel-refactor
 
 React / Next.js (plugin: react)
-  scaffold a new React feature        -> /task-react-new
+  implement a new React feature        -> /task-react-implement
   debug a React issue                 -> /task-react-debug
   staff-level code review             -> /task-react-review
   performance review                  -> /task-react-review-perf
@@ -300,7 +300,7 @@ React / Next.js (plugin: react)
   refactoring plan                    -> /task-react-refactor
 
 Vue / Nuxt (plugin: vue)
-  scaffold a new Vue feature          -> /task-vue-new
+  implement a new Vue feature          -> /task-vue-implement
   debug a Vue issue                   -> /task-vue-debug
   staff-level code review             -> /task-vue-review
   performance review                  -> /task-vue-review-perf
@@ -310,7 +310,7 @@ Vue / Nuxt (plugin: vue)
   refactoring plan                    -> /task-vue-refactor
 
 Angular (plugin: angular)
-  scaffold a new Angular feature      -> /task-angular-new
+  implement a new Angular feature      -> /task-angular-implement
   debug an Angular issue              -> /task-angular-debug
   PR review (umbrella)                -> /task-angular-review
   performance review (CWV/bundle/CD)  -> /task-angular-review-perf
@@ -322,7 +322,7 @@ Angular (plugin: angular)
 
 **Common decision points:**
 
-- "Implement" vs "scaffold" - `/task-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill. Use them if unsure; use the stack-specific skill directly for faster dispatch.
+- "Implement" entry point - `/task-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill (`/task-<stack>-implement`, `/task-<stack>-debug`). Use them if unsure; use the stack-specific skill directly for faster dispatch.
 - "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
