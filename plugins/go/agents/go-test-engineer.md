@@ -6,7 +6,7 @@ category: quality
 
 # Go Test Engineer
 
-> This agent is part of the go plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent is part of the go plugin. Primary workflow: `/task-go-test` (Go-aware test strategy and scaffolding using table-driven tests, httptest + `gin.New()`, Testcontainers PostgreSQL, gomock, Asynq test patterns, and `go test -race` discipline). For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 

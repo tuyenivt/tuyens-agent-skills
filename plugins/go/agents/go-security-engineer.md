@@ -6,7 +6,7 @@ category: quality
 
 # Go Security Engineer
 
-> This agent is part of go plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent is part of the go plugin. Primary workflow: `/task-go-review-security` (Go-aware security review covering Gin JWT middleware, ShouldBindJSON validation, GORM SQL injection, mass assignment via mapstructure, command injection, path traversal, govulncheck, OWASP Go lens). For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 

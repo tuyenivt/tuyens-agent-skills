@@ -247,6 +247,12 @@ Node.js / TypeScript / NestJS (plugin: node)
 Go / Gin (plugin: go)
   scaffold a new Go feature           -> /task-go-new
   debug a Go issue                    -> /task-go-debug
+  staff-level code review             -> /task-go-review
+  performance review                  -> /task-go-review-perf
+  security review                     -> /task-go-review-security
+  observability review                -> /task-go-review-observability
+  test strategy and scaffolding       -> /task-go-test
+  Go refactor plan                    -> /task-go-refactor
 
 .NET / ASP.NET Core (plugin: dotnet)
   scaffold a new .NET feature         -> /task-dotnet-new

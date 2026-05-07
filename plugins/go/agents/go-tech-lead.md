@@ -8,7 +8,7 @@ category: quality
 
 # Go Tech Lead
 
-> This agent is part of the go plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the go plugin. Primary workflows: `/task-go-review` (staff-level code review umbrella), `/task-go-review-observability` (slog / OTel / Prometheus / pprof / Sentry), `/task-go-refactor` (smell catalog + Coverage Gate + recipes), `/task-go-debug` (panic / error triage). For framework-agnostic code review, use the core plugin's `/task-code-review`.
 
 ## Role
 

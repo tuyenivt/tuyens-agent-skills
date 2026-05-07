@@ -121,6 +121,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | Node.js / TypeScript | `task-node-review`   |
 | React                | `task-react-review`  |
 | Vue                  | `task-vue-review`    |
+| Go / Gin             | `task-go-review`     |
 
 When delegating, pass:
 

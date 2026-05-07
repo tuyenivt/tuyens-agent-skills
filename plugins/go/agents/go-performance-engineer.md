@@ -6,7 +6,7 @@ category: engineering
 
 # Go Performance Engineer
 
-> This agent is part of go plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent is part of the go plugin. Primary workflow: `/task-go-review-perf` (Go-aware perf review covering GORM/sqlx N+1, goroutine leaks, mutex contention, allocation hotspots, connection pool, Asynq throughput, migration safety). For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
