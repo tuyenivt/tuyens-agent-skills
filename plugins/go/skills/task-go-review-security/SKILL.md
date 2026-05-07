@@ -45,6 +45,14 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 | **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS allowlist when a reverse proxy enforces origin), missing field-level validator tags, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile (`pprof` exposed). Should fix this PR or the next one.  |
 | **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold (`govulncheck` info-level), hardening recommendations without a concrete current attack scenario.                                                                            |
 
+**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+
+- Missing JWT middleware on a user-data endpoint (High, alone) + mass assignment via `mapstructure.Decode(req.Body, &user)` (High, alone) on the *same handler* = **Critical** unauthenticated admin override (anyone on the internet can `POST /admin/users/:id` with `{"role": "admin"}`).
+- Missing ownership check (High, alone) + ORM model returned from `c.JSON` exposing `PasswordHash` (medium, alone) on the *same handler* = **Critical** account takeover (any authenticated user reads any other user's password hash).
+- SSRF (High, alone) + reachable from an unauthenticated endpoint (High, alone) = **Critical** unauth SSRF.
+
+The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -171,6 +179,7 @@ The triage output funnels which downstream steps must run carefully versus which
 ### Step 9 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest (`crypto/aes` + GCM, AWS KMS / GCP KMS for key management, or DB-native column encryption)
+- [ ] **No ORM model returned from handler responses**: `c.JSON(200, user)` where `user` is `*model.User` leaks every column the GORM struct defines - `PasswordHash`, `RecoveryToken`, `MFASecret`, soft-delete columns, internal audit fields, and any sensitive column added later. Handlers map to a response DTO (`ToUserResponse(u)`) that names exactly the public fields. This is both a Step 7 concern (mass-assignment shape on the way in) and a Step 9 concern (data leak on the way out) - check both directions
 - [ ] **`slog` redaction**: structured logger never logs `password`, `token`, `credit_card`, `ssn`, `api_key`. `slog.Handler` wrapper that drops sensitive keys, OR explicit `LogValuer` on types that hold secrets to override marshalling
 - [ ] **No sensitive data in URLs** (use POST body, headers, or signed tokens) - URLs hit logs, browser history, referer headers
 - [ ] **TLS enforcement**: HTTPS-only at LB; HSTS via `gin-contrib/secure`

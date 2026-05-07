@@ -226,6 +226,8 @@ When starting from low test coverage, prioritize by Go-specific risk:
 
 - Pass-through handlers, simple CRUD - lower risk, can wait
 
+**Multi-band rule.** Some targets fall into more than one band - a refund Asynq processor is both P2 (data-integrity, side-effect idempotency) and P3 (revenue path); a payment-history endpoint is both P1 (authorization on per-owner data) and P3 (revenue). When a target qualifies for multiple bands, file it under the **highest** band (lowest number) and note the secondary band so the test plan covers both axes (e.g., a refund test must assert idempotency *and* the refund-amount invariants, not just one). Do not split the same target across two bands - that hides one of the risks.
+
 ### Step 8 - Test Infrastructure Hygiene
 
 - [ ] Testcontainers reused across tests via `TestMain` and `testcontainers.Reuse` (set via `~/.testcontainers.properties` `testcontainers.reuse.enable=true` for local fast cycles)

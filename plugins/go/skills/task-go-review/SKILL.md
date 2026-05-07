@@ -176,7 +176,7 @@ Logical correctness, error handling completeness, edge cases affecting state int
 **Migration PRs (any change under `migrations/`):**
 
 - [ ] Two-phase deploys for column rename / drop (add new → backfill → cut over → remove old)
-- [ ] `NOT NULL` on existing columns added via two-step (add nullable → backfill → set NOT NULL via separate migration)
+- [ ] `NOT NULL` on existing columns: PostgreSQL 11+ avoids a full table rewrite when `ADD COLUMN ... NOT NULL DEFAULT <constant>` is added (the default is stored in pg_attribute, not back-filled). For older Postgres versions, for non-constant defaults (`now()`, function calls), or for adding `NOT NULL` to an *existing* nullable column on a hot table, require the two-step (add nullable → backfill → set NOT NULL via separate migration). Do not flag `ADD COLUMN ... NOT NULL DEFAULT 'literal'` on PG11+ as unsafe by default - it is safe; the row count and PG version determine the verdict
 - [ ] Indexes on large tables use `CREATE INDEX CONCURRENTLY` (PostgreSQL); `golang-migrate` files contain the raw SQL so this is explicit
 - [ ] **`SET lock_timeout`** before DDL on large tables to fail fast
 - [ ] Foreign keys added with validation deferred (or as a separate validate step)
