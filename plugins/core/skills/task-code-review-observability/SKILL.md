@@ -67,6 +67,7 @@ If a stack-specific observability review workflow exists for the detected stack,
 | React                | `task-react-review-observability`  |
 | Vue                  | `task-vue-review-observability`    |
 | Go / Gin             | `task-go-review-observability`     |
+| Rust / Axum          | `task-rust-review-observability`   |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

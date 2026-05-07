@@ -6,7 +6,7 @@ category: engineering
 
 # Rust Performance Engineer
 
-> This agent is part of the rust plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent is part of the rust plugin. Primary workflow: `/task-rust-review-perf` (Rust-aware perf review covering sqlx N+1 / `query!` discipline / `PgPoolOptions` sizing, Tokio task leaks, `std::sync::Mutex` across `.await`, blocking on the runtime, `Arc<Mutex>` contention, allocation hotspots, sqlx-cli migration safety). For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

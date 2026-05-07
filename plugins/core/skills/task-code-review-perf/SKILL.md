@@ -67,6 +67,7 @@ If a stack-specific performance review workflow exists for the detected stack, d
 | React                | `task-react-review-perf`  |
 | Vue                  | `task-vue-review-perf`    |
 | Go / Gin             | `task-go-review-perf`     |
+| Rust / Axum          | `task-rust-review-perf`   |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-8 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

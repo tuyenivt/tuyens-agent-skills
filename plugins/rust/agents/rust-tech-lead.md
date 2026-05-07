@@ -8,7 +8,7 @@ category: quality
 
 # Rust Tech Lead
 
-> This agent is part of the rust plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the rust plugin. Primary workflows: `/task-rust-review` (Rust-aware staff review umbrella), `/task-rust-review-observability` (tracing / OTel / Prometheus / tokio-console / sentry-rust review), `/task-rust-refactor` (Rust-aware refactor planning), `/task-rust-debug` (Rust panic / error triage). For stack-agnostic code review, use the core plugin's `/task-code-review`.
 
 ## Role
 

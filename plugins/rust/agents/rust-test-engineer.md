@@ -6,7 +6,7 @@ category: quality
 
 # Rust Test Engineer
 
-> This agent is part of the rust plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent is part of the rust plugin. Primary workflow: `/task-rust-test` (Rust-aware test strategy and scaffolding using `#[tokio::test]`, `axum-test` / `tower::ServiceExt::oneshot` for handlers, testcontainers PostgreSQL via `testcontainers-rs`, `mockall` for trait mocks, `proptest` for property-based tests, `cargo nextest` + `cargo clippy --all-targets -- -D warnings` discipline). For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 

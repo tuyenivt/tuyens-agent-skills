@@ -6,7 +6,7 @@ category: quality
 
 # Rust Security Engineer
 
-> This agent is part of the rust plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent is part of the rust plugin. Primary workflow: `/task-rust-review-security` (Rust-aware security review covering Axum auth middleware, `jsonwebtoken` JWT validation, `validator`-crate input, sqlx parameterization, mass assignment via `serde_json::from_value`, `Command` injection, path traversal, `unsafe` audit, `cargo audit` / `cargo deny`, OWASP Rust lens). For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 

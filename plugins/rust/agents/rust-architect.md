@@ -149,4 +149,4 @@ impl OrderRepository for PgOrderRepository {
 - Use skill: `rust-messaging-patterns` for Kafka consumer, AMQP, and worker pool design
 - Use skill: `rust-security-patterns` for JWT auth, input validation, and cargo-audit
 
-For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.
+For Rust-aware code review, use `/task-rust-review` (umbrella with parallel perf / security / observability subagents). For Rust-aware refactoring, use `/task-rust-refactor`. For Rust-aware test strategy, use `/task-rust-test`. For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

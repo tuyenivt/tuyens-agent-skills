@@ -23,10 +23,16 @@ Claude Code plugin for Rust development.
 
 ## Workflow Skills
 
-| Skill             | Description                                                                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-rust-new`   | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
-| `task-rust-debug` | Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.    |
+| Skill                              | Agent                       | Description                                                                                                                                       |
+| ---------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task-rust-new`                    | `rust-architect`            | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
+| `task-rust-debug`                  | `rust-tech-lead`            | Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.    |
+| `task-rust-review`                 | `rust-tech-lead`            | Rust staff-level code review umbrella - Phases A-E with Axum/sqlx/Tokio idioms. Spawns parallel perf/security/observability subagents.            |
+| `task-rust-review-perf`            | `rust-performance-engineer` | sqlx N+1, Tokio task leaks, std::sync::Mutex across .await, blocking I/O on the runtime, allocation hotspots, pool sizing.                        |
+| `task-rust-review-security`        | `rust-security-engineer`    | Axum auth, jsonwebtoken, validator-crate input, sqlx parameterization, mass assignment via serde_json::from_value, unsafe audit, cargo-audit.     |
+| `task-rust-review-observability`   | `rust-tech-lead`            | tracing crate + tracing-opentelemetry, OTel SDK, metrics-exporter-prometheus, tokio-console, graceful shutdown, sentry-rust.                      |
+| `task-rust-test`                   | `rust-test-engineer`        | Test strategy: #[tokio::test], axum-test / tower::oneshot, testcontainers PostgreSQL, mockall, proptest, cargo nextest discipline.                |
+| `task-rust-refactor`               | `rust-tech-lead`            | Rust refactor planning: fat handlers, leaked Tokio tasks, std Mutex across await, single-impl traits, Box<dyn> defaults, mass assignment.         |
 
 ## Atomic Skills
 

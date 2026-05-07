@@ -261,6 +261,12 @@ Go / Gin (plugin: go)
 Rust / Axum (plugin: rust)
   scaffold a new Rust feature         -> /task-rust-new
   debug a Rust issue                  -> /task-rust-debug
+  staff-level code review             -> /task-rust-review
+  performance review                  -> /task-rust-review-perf
+  security review                     -> /task-rust-review-security
+  observability review                -> /task-rust-review-observability
+  test strategy and scaffolding       -> /task-rust-test
+  Rust refactor plan                  -> /task-rust-refactor
 
 PHP / Laravel (plugin: php)
   scaffold a new Laravel feature      -> /task-laravel-new
