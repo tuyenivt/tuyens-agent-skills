@@ -5,7 +5,7 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 ## Stack
 
 - Rails 7.2+
-- Ruby 3.2+
+- Ruby 3.4+
 - RSpec
 - Sidekiq
 - PostgreSQL

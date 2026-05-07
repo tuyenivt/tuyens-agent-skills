@@ -93,6 +93,18 @@ class PlaceOrderService
 end
 ```
 
+## Ruby 3.4+ Idioms
+
+Use modern Ruby features where they sharpen intent. Do not retrofit working code without a reason.
+
+- **`it` block parameter** for single-arg blocks where naming adds no clarity: `users.map { it.email }`. Prefer over `_1` (numbered params) in new code; keep an explicit name when the variable is referenced more than once or when the type is non-obvious.
+- **`Data.define`** for immutable value objects (Result, DTO, event payload). Already shown above. Do not use it for domain entities that need behavior - use POROs or models for those.
+- **Pattern matching** (`case ... in`) for parsing structured payloads (webhooks, JSON APIs, service results) - cleaner than nested `dig` + conditionals.
+- **Frozen string literals** are the planned default in Ruby 3.4+. Do not rely on string mutation; use `String.new` or `+""` when a mutable buffer is genuinely needed.
+- **YJIT** is production-ready and on by default in many setups - enable it explicitly (`RUBY_YJIT_ENABLE=1` or `--yjit`) for measurable throughput gains on Rails workloads. Validate with benchmarks before/after; do not assume gains.
+- **Modular GC / `GC.compact`** - leave defaults alone unless profiling identifies fragmentation as a real cost.
+- **Keyword arguments + `**` forwarding** are fully separated from positional args - design service interfaces with named kwargs by default for readability and safety.
+
 ## API Versioning Strategy
 
 - Version via URL path: `/api/v1/orders`
