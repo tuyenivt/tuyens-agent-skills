@@ -120,6 +120,7 @@ If a stack-specific code review umbrella exists for the detected stack, delegate
 | Python               | `task-python-review` |
 | Node.js / TypeScript | `task-node-review`   |
 | React                | `task-react-review`  |
+| Vue                  | `task-vue-review`    |
 
 When delegating, pass:
 

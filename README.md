@@ -273,6 +273,12 @@ React / Next.js (plugin: react)
 Vue / Nuxt (plugin: vue)
   scaffold a new Vue feature          -> /task-vue-new
   debug a Vue issue                   -> /task-vue-debug
+  staff-level code review             -> /task-vue-review
+  performance review                  -> /task-vue-review-perf
+  security review                     -> /task-vue-review-security
+  observability review                -> /task-vue-review-observability
+  test strategy / coverage / scaffolds-> /task-vue-test
+  refactoring plan                    -> /task-vue-refactor
 
 Angular (plugin: angular)
   scaffold a new Angular feature      -> /task-angular-new

@@ -54,6 +54,7 @@ If a stack-specific security review workflow exists for the detected stack, dele
 | Python               | `task-python-review-security` |
 | Node.js / TypeScript | `task-node-review-security`   |
 | React                | `task-react-review-security`  |
+| Vue                  | `task-vue-review-security`    |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-5 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 

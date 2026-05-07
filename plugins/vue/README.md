@@ -24,10 +24,16 @@ Claude Code plugin for Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary
 
 Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented workflows. They are invoked as slash commands.
 
-| Skill            | Purpose                                                                     |
-| ---------------- | --------------------------------------------------------------------------- |
-| `task-vue-new`   | End-to-end Vue feature implementation (components + state + data + tests)   |
-| `task-vue-debug` | Debug Vue errors (reactivity, hydration, template compilation, Nuxt, build) |
+| Skill                           | Purpose                                                                                                                                 | Agent                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `task-vue-new`                  | End-to-end Vue feature implementation (components + state + data + tests)                                                               | `vue-architect`            |
+| `task-vue-debug`                | Debug Vue errors (reactivity, hydration, template compilation, Nuxt, build)                                                             | `vue-tech-lead`            |
+| `task-vue-review`               | Staff-level umbrella review with Phases A-E; spawns parallel perf / security / observability subagents                                  | `vue-tech-lead`            |
+| `task-vue-review-perf`          | Core Web Vitals (LCP / INP / CLS), bundle, hydration, reactivity hotspots, `useFetch` cache, `routeRules` (`prerender` / `swr` / `isr`) | `vue-performance-engineer` |
+| `task-vue-review-security`      | XSS via `v-html`, CSP / nonce, Nitro endpoint validation, `NUXT_PUBLIC_` / `VITE_` leakage, open redirect, OWASP (Vue lens)             | `vue-security-engineer`    |
+| `task-vue-review-observability` | `web-vitals`, Sentry Vue SDK + error boundaries, OTel browser, Nitro server-side OTel, RUM, structured client logging                   | `vue-tech-lead`            |
+| `task-vue-test`                 | Test strategy / coverage assessment / scaffolds with Vitest + VTU/TLV + MSW + Playwright + `@nuxt/test-utils`; composable testing       | `vue-test-engineer`        |
+| `task-vue-refactor`             | Step-by-step refactor plan for god components, prop drilling, watcher overuse, deep `reactive`, etc.; Vitest coverage gate              | `vue-tech-lead`            |
 
 ## Atomic Skills (Reusable Patterns)
 

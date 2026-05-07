@@ -51,6 +51,7 @@ If a stack-specific refactor workflow exists for the detected stack, delegate to
 | Python               | `task-python-refactor` |
 | Node.js / TypeScript | `task-node-refactor`   |
 | React                | `task-react-refactor`  |
+| Vue                  | `task-vue-refactor`    |
 
 If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
 
