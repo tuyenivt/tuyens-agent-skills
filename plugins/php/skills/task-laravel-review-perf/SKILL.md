@@ -49,7 +49,7 @@ When uncertain between tiers, ask "would this page on-call within 24 hours of a 
 
 | Depth      | When to Use                                                  | What Runs                                          |
 | ---------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `quick`    | Single endpoint or Eloquent model ("is this query ok?")      | Steps 4 + 5 only; Eloquent hotspots + migrations   |
+| `quick`    | Single endpoint or Eloquent model ("is this query ok?")      | Steps 5 + 6 only; Eloquent hotspots + migrations   |
 | `standard` | Default - full Laravel perf review                           | All steps                                          |
 | `deep`     | Profiling-driven review with Telescope / Clockwork / APM data | All steps + capacity guidance and load plan       |
 
@@ -65,11 +65,15 @@ Mirrors `task-code-review-perf`:
 | `/task-laravel-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                             |
 | `/task-laravel-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                        |
 
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 3 below is skipped and this workflow reuses the parent's read-once artifacts.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect ORM / Queue / Runtime Surface
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step. When invoked as a subagent of `task-code-review-perf` or `task-laravel-review`, accept the parent's confirmation and skip re-loading.
+
+### Step 2 - Confirm Stack and Detect ORM / Queue / Runtime Surface
 
 Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-perf` instead.
 
@@ -77,13 +81,13 @@ Detect ORM use: Eloquent (typical) or query builder (`DB::table(...)`). Detect q
 
 Record `Database: MySQL <version> | PostgreSQL <version> | MariaDB <version>`, `Queue: redis (Horizon) | database | sync`, `Cache: redis | memcached | database | file`, `Runtime: PHP-FPM | Octane (Swoole) | Octane (RoadRunner) | FrankenPHP` for the Summary block. Each Step 4-9 checklist branches on this signal where the idiom differs.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
 
 If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
 
-### Step 3 - Read the Performance Surface
+### Step 4 - Read the Performance Surface
 
 Before applying the checklists, open the files that govern query and concurrency behavior so impact estimates ground in real code:
 
@@ -123,7 +127,7 @@ Before applying the checklists, open the files that govern query and concurrency
 
 For each finding produced later, cite a real `file:line`. If the diff is small but ripples through code that is not in the diff (a new endpoint calling an existing service whose query does an N+1), read the unchanged file too - the regression lives there even though the line count attributes it to the new caller.
 
-### Step 4 - Eloquent / Database Hotspots
+### Step 5 - Eloquent / Database Hotspots
 
 Use skill: `laravel-eloquent-patterns` for canonical Eloquent perf patterns.
 
@@ -149,8 +153,10 @@ Inspect every changed query, model, controller, service, job, Blade view, and AP
 - [ ] **Connection pool sizing**: `php-fpm pm.max_children` × number of replicas must be ≤ MySQL `max_connections` minus headroom for ops / replication. Octane workers count differently - one persistent worker per slot. Flag new replicas / supervisors without checking the pool budget
 - [ ] **Read replica usage**: read-heavy endpoints can route to a read replica via `config/database.php` `read` array. Sticky-after-write protects read-your-own-write flows; flag new high-read endpoints on the writer
 - [ ] **Bulk update via `Eloquent::query()->update(...)` skips events**: `Order::where('status', 'pending')->update(['status' => 'processing'])` does not fire `updating` / `updated` events, does not write `updated_at` unless explicitly included. Intentional in many cases, but flag if the codebase relies on observers for audit logging
+- [ ] **Collection-then-paginate**: `Order::all()->filter(fn ($o) => ...)->paginate(25)` materializes every row into PHP, applies the filter in PHP, then slices. This is full-table memory use to return one page. Push the filter into SQL via `where(...)` / scopes, then `paginate` / `cursorPaginate` on the query builder - the filter runs in MySQL with whatever index applies, and only the requested page hydrates models
+- [ ] **`Cache::remember(...)` callbacks materialize collections - apply Eloquent rules inside the callback**: `Cache::remember('top_users', 3600, fn () => User::all()->sortByDesc('orders_count'))` caches the result, but the `User::all()` inside the callback still loads every row on every cache miss (warmup, eviction, restart). Treat callbacks as hot paths: replace `Model::all()` with paginated / chunked / bounded queries; replace collection sorts with SQL `ORDER BY`; replace collection aggregates with SQL aggregates. The cache amortizes only when the callback's worst case is bounded
 
-### Step 5 - Indexes and Migrations
+### Step 6 - Indexes and Migrations
 
 Use skill: `laravel-migration-safety` for safe-migration checks on any change in `database/migrations/`.
 
@@ -170,7 +176,7 @@ Use skill: `laravel-migration-safety` for safe-migration checks on any change in
 
 **Migration impact template.** Before approving any migration step on a hot table, state the impact: _"DDL on a 50M-row InnoDB table without `pt-online-schema-change` blocks all writes for the duration of the index build (typically 10-30 min on hot disks); during the rebuild, replica lag spikes and connections queue. Recommend running via `pt-osc` with `--max-lag=5s --critical-load Threads_running=80` and a maintenance window."_ If the row count is unknown, ask, or note "row count not in diff - confirm before deploy."
 
-### Step 6 - Queue Throughput, Jobs, and Scheduling
+### Step 7 - Queue Throughput, Jobs, and Scheduling
 
 Use skill: `laravel-queue-patterns` for canonical queue patterns.
 
@@ -185,6 +191,7 @@ Inspect every changed job, listener, dispatch site, scheduled command, and `conf
 - [ ] **`RateLimited` middleware on third-party-API jobs**: jobs calling external APIs respect the API's rate limit via `Job::middleware()` returning `[new RateLimited('stripe-api')]` (rate limiter defined in `RouteServiceProvider`). Without it, a backlog of jobs hammers the third party and burns retry budget on 429s
 - [ ] **`WithoutOverlapping` middleware for resource-bound jobs**: jobs that mutate a single aggregate (a specific order, a specific user) use `[new WithoutOverlapping($this->orderId)]` to serialize per-key, preventing concurrent updates
 - [ ] **`Bus::batch(...)` for fan-out**: when 1000 jobs need to run as a unit (with progress, all-or-nothing failure), use `Bus::batch([...])->then(...)->catch(...)->dispatch()`. Bare `foreach { dispatch(new Job(...)) }` over a 10k-item list works but loses batch semantics
+- [ ] **`foreach`-dispatch over large lists** without `Bus::batch` AND without `chunkById`: dispatching 50k+ jobs in a single request thread blocks the request on Redis push throughput, balloons memory if the source is `Model::all()`, and gives ops zero progress visibility. Two fixes compose: (a) read the source via `chunkById(1000, fn ($rows) => ...)` so the dispatcher itself doesn't materialize all rows, (b) wrap dispatches in `Bus::batch([...])` so failures track per-batch, not per-orphan-job
 - [ ] **`Bus::chain(...)` for ordered pipelines**: when job B depends on job A's success, chain instead of dispatching B from A's `handle()` (chain handles failures cleanly)
 - [ ] **Horizon supervisor sizing** (Redis queues): `config/horizon.php` `supervisor-1.processes` matches the workload. Auto-scaling balance strategy (`balance => 'auto'`) with `minProcesses` / `maxProcesses` is canonical for variable load. Flag `simple` balance on multi-queue environments (long jobs starve short jobs)
 - [ ] **Per-queue priority**: Horizon's `queue` array order is priority order; high-priority work (`emails`, `notifications`) goes first. Flag everything dumped on `default` when priority matters
@@ -194,7 +201,7 @@ Inspect every changed job, listener, dispatch site, scheduled command, and `conf
 - [ ] **Job memory leaks via collection passing**: passing `Collection` of Eloquent models in job constructors balloons payload size and serializes deeply-loaded relations. Pass IDs or scalar arrays; re-fetch in `handle()`
 - [ ] **`dispatch(...)` from web tier to a queue with high backlog**: dispatching to a depth-saturated queue blocks the request on `Redis::push` if Redis is also saturated. Monitor queue depth; alert thresholds defined
 
-### Step 7 - HTTP Client / External Calls
+### Step 8 - HTTP Client / External Calls
 
 Inspect every changed `Http::*` and Guzzle usage:
 
@@ -205,7 +212,7 @@ Inspect every changed `Http::*` and Guzzle usage:
 - [ ] **Circuit breaker for fragile upstream**: when an upstream fails for minutes, retry storm makes it worse. Use `tk707/laravel-circuit-breaker` (or similar) on third-party APIs with known instability
 - [ ] **Mock external HTTP in tests** via `Http::fake([...])` - never hit real network in CI
 
-### Step 8 - Caching and Response Performance
+### Step 9 - Caching and Response Performance
 
 _Skipped at `quick` depth unless the diff touches caching primitives._
 
@@ -218,7 +225,7 @@ _Skipped at `quick` depth unless the diff touches caching primitives._
 - [ ] **Per-request memoization**: store on the container or a request-scoped service for values used by multiple consumers in the same request (config, current tenant, current user permissions)
 - [ ] **`Cache::flush()` flagged**: flushes the entire driver in some configs (e.g., `redis` flushes all DBs on the connection). Use `Cache::tags(...)->flush()` or `Cache::forget($key)` for targeted invalidation
 
-### Step 9 - Runtime, OPcache, Octane Readiness
+### Step 10 - Runtime, OPcache, Octane Readiness
 
 _Skipped at `quick` depth unless the diff touches runtime config (`composer.json`, `php.ini` references, `bootstrap/app.php`, Octane config, Dockerfile)._
 
@@ -232,7 +239,7 @@ _Skipped at `quick` depth unless the diff touches runtime config (`composer.json
 - [ ] **Response compression**: nginx / Octane response compression (gzip / brotli); large JSON responses benefit
 - [ ] **Telescope disabled in production** (or strictly gated): Telescope adds significant overhead per request - never enable in prod traffic. `Telescope::filter(...)` for sampling if essential
 
-### Step 10 - Observability for Perf (delegation hand-off)
+### Step 11 - Observability for Perf (delegation hand-off)
 
 _Skipped at `quick` depth._
 
@@ -246,21 +253,24 @@ Anything beyond presence/absence (sampling rates, span attributes, correlation I
 
 ## Self-Check
 
-- [ ] Stack confirmed as PHP / Laravel; database engine, queue connection, cache driver, runtime recorded before any specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent)
-- [ ] Performance surface read directly (models, controllers, Blade views, API Resources, jobs, dispatch sites, migrations, cache sites, HTTP sites)
-- [ ] `laravel-eloquent-patterns` consulted; N+1 (controllers + Blade + Resources), `$with` over-fetch, `Model::all()` on growable, paginate-vs-cursor, aggregates checked
-- [ ] `laravel-migration-safety` consulted for any migration change; reversible, two-phase rename/drop, online DDL, FK constraint, chunked backfill, deploy-ordering verified
-- [ ] `laravel-queue-patterns` consulted; sync-in-prod, `$tries`/`$backoff`/`$timeout`/`failed()` discipline, scalar IDs, `afterCommit`, `RateLimited` / `WithoutOverlapping` middleware, Horizon supervisor sizing audited
-- [ ] HTTP client / external calls reviewed (`Http::timeout` / `retry` / `pool`, persistent client, fakes in tests)
-- [ ] Caching strategy assessed (`Cache::remember` TTL, tags driver gate, single-flight via `Cache::lock`, invalidation explicit)
-- [ ] Runtime / OPcache / Octane readiness assessed; static state and request-leaking singletons flagged regardless of current runtime
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
+- [ ] Stack confirmed as PHP / Laravel; database engine, queue connection, cache driver, runtime recorded before any specific check applied (Step 2)
+- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured (Step 3)
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review (Step 3)
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued (Step 3)
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent) (Step 3)
+- [ ] Performance surface read directly (models, controllers, Blade views, API Resources, jobs, dispatch sites, migrations, cache sites, HTTP sites) (Step 4)
+- [ ] `laravel-eloquent-patterns` consulted; N+1 (controllers + Blade + Resources), `$with` over-fetch, `Model::all()` on growable, paginate-vs-cursor, aggregates, collection-then-paginate, `Cache::remember` callback contents checked (Step 5)
+- [ ] `laravel-migration-safety` consulted for any migration change; reversible, two-phase rename/drop, online DDL, FK constraint, chunked backfill, deploy-ordering verified (Step 6)
+- [ ] `laravel-queue-patterns` consulted; sync-in-prod, `$tries`/`$backoff`/`$timeout`/`failed()` discipline, scalar IDs, `afterCommit`, `RateLimited` / `WithoutOverlapping` middleware, `Bus::batch` for fan-out, Horizon supervisor sizing audited (Step 7)
+- [ ] HTTP client / external calls reviewed (`Http::timeout` / `retry` / `pool`, persistent client, fakes in tests) (Step 8)
+- [ ] Caching strategy assessed (`Cache::remember` TTL, tags driver gate, single-flight via `Cache::lock`, invalidation explicit) (Step 9)
+- [ ] Runtime / OPcache / Octane readiness assessed; static state and request-leaking singletons flagged regardless of current runtime (Step 10)
+- [ ] Observability hand-off captured for any slow path lacking instrumentation; deferred to `task-laravel-review-observability` rather than dictated here (Step 11)
+- [ ] Severity rubric applied consistently (High / Medium / Low matches the rubric, not invented)
 - [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when profiler / APM data exists, estimated otherwise (`adds ~N queries per request at K rows` or `each unbounded retry compounds queue depth`) - never just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and load-test plan
+- [ ] Depth honored: `quick` ran only Steps 5 + 6; `standard` ran 5-11; `deep` adds capacity guidance and load-test plan
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
 
 ## Output Format

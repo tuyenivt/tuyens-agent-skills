@@ -44,13 +44,19 @@ This workflow is the stack-specific delegate of `task-code-refactor` for PHP / L
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect ORM / Queue / Auth Surface
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every step that follows (think before acting, simplicity first, surgical changes, surface confusion, push back when the user is likely wrong). Do not skip - downstream steps assume these constraints are in scope.
+
+### Step 2 - Confirm Stack and Detect ORM / Queue / Auth Surface
 
 Use skill: `stack-detect` to confirm PHP / Laravel. If invoked as a subagent of a Laravel-aware parent, accept the pre-confirmed stack. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-refactor` instead.
 
 Detect ORM (Eloquent / query builder), queue (Redis with Horizon / database / sync), auth (Sanctum / Passport / session), test framework (Pest / PHPUnit). Record `ORM`, `Queue`, `Auth`, `Tests Framework` for the output.
 
-### Step 2 - Read the Target
+**Input completeness check.** Before proceeding, confirm the user named both a **target scope** (file or class) AND a **goal**. If only a goal is given (e.g., "extract the fat controller logic" without naming the controller), ask for the target. Do not guess from recent git history or the largest controller in the project - the user knows which one they meant; you do not.
+
+### Step 3 - Read the Target
 
 Read the actual file(s) named in the Inputs table before classifying smells. A refactor plan grounded in the user's prose summary instead of the source will hallucinate smells that aren't there and miss ones that are. Specifically:
 
@@ -66,7 +72,7 @@ If the user named only the goal without a target file / class, ask for the targe
 
 **Severity-inversion banner.** When the inversion rule fires, **also render a one-paragraph banner at the top of the Coverage Gate section** (above the status verdict) so the inversion is impossible to skim past. Suggested form: `> **Severity inversion detected.** This file contains <N> sibling smells of higher severity than the named target (<list>). Recommended next action: pause this refactor; route through task-laravel-review-security first; branch the eventual refactor PR off the security fix.`
 
-### Step 3 - Coverage Gate (mandatory)
+### Step 4 - Coverage Gate (mandatory)
 
 Refactoring without test coverage is a rewrite with extra steps. Identify the tests covering the target (Pest / PHPUnit feature tests, unit tests, job tests, Policy tests), then assign one of three statuses with sharp boundaries:
 
@@ -84,9 +90,9 @@ Refactoring without test coverage is a rewrite with extra steps. Identify the te
 
 **Octane / shared-state check.** If the target class holds mutable state via `static` properties, registers as a singleton via `app()->singleton(...)` capturing request data, or stores per-request context in a non-scoped binding, also confirm that tests cover the cross-request leakage scenario. If absent and the project uses (or plans to use) Octane / FrankenPHP / RoadRunner, treat coverage status as one tier worse (Adequate → Thin, Thin → Inadequate) - refactoring stateful code under long-running workers without explicit isolation tests is unsafe.
 
-**Output of this step:** explicit coverage status using one of the three labels above. Do not proceed past Step 4 if status is `Inadequate`.
+**Output of this step:** explicit coverage status using one of the three labels above. Do not proceed past Step 5 (smell identification preview) if status is `Inadequate`.
 
-### Step 4 - Identify Laravel Smells
+### Step 5 - Identify Laravel Smells
 
 Inspect the target for these Laravel-specific smells. Use judgment - these are signals, not hard rules.
 
@@ -180,9 +186,20 @@ Inspect the target for these Laravel-specific smells. Use judgment - these are s
 Use skill: `backend-coding-standards` for the cross-language smell catalog.
 Use skill: `complexity-review` when the target shows over-engineering signals (single-impl interfaces, abstract base classes for two consumers, premature factory / strategy, redundant mapping layers, repository-for-trivial-reads, AutoMapper-style mappers when API Resources do the job) - those are simplification opportunities, not refactor steps to extract more abstractions.
 
+**Atomic skill composition.** Consult these atomic skills when the corresponding signal is present in the target, then cite the recommendation in the relevant step. Do not paste their content verbatim - reference them by name so the implementer can re-derive the canonical guidance.
+
+| Signal in target                                                                                                          | Atomic skill                  |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Eloquent N+1, `Model::all()` on growable, `paginate()` on huge tables, `$with` over-fetch                                | `laravel-eloquent-patterns`   |
+| Fat controller, anemic service, missing API Resource, missing Form Request, response-shape leak                           | `laravel-api-patterns`        |
+| Job constructor takes Eloquent, missing `afterCommit`, missing tries/backoff/timeout, idempotency gaps, `WithoutOverlapping` | `laravel-queue-patterns`      |
+| God service, missing action / service layer extraction, event-driven side effects, listener-vs-direct-call decisions      | `laravel-service-patterns`    |
+| `$guarded = []`, `Model::create($request->all())`, `whereRaw($input)`, IDOR, missing `$this->authorize`                  | `laravel-security-patterns`   |
+| Migration touched by recipe (rename / drop / NOT NULL on hot table)                                                       | `laravel-migration-safety`    |
+
 Apply Laravel judgment - a 25-line controller orchestrating clearly named private methods is fine; a 10-line method doing three unrelated things is not.
 
-### Step 5 - Cross-Module Risk Assessment
+### Step 6 - Cross-Module Risk Assessment
 
 Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected by the refactor.
 
@@ -198,7 +215,7 @@ Laravel-specific blast-radius signals:
 
 State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single namespace, multiple callers) / **Wide** (cross-namespace, public action API, broad interface) / **Critical** (Composer-published package, model used by 5+ consumers).
 
-### Step 6 - Propose the Step Sequence
+### Step 7 - Propose the Step Sequence
 
 Each refactoring step must be:
 
@@ -356,7 +373,7 @@ Laravel's queue model is at-least-once with explicit retry budget; "cancellation
 3. Verify retries on transient failures still complete the work
 4. Configure `$tries`, `$backoff`, and `failed()` so poison messages do not loop forever; for time-bounded jobs add `retryUntil()`
 
-### Step 7 - Validate Plan Against Goal
+### Step 8 - Validate Plan Against Goal
 
 Before finalizing the plan, check:
 
@@ -469,23 +486,25 @@ _Omit this section if the target file has no other smells._
 
 **Plan-time checks (verifiable now from the plan itself):**
 
-- [ ] Stack confirmed as PHP / Laravel (or accepted from parent dispatcher); ORM / queue / auth / test framework recorded (Step 1)
-- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
-- [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
-- [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin`; SQLite-for-MySQL-app treated as `Inadequate`; Octane-shared-state check applied; pint / PHPStan state recorded (Step 3)
-- [ ] Laravel-specific smells identified using Step 4 catalog (controller, Form Request, service / action, persistence / Eloquent, configuration / DI, queue / job) (Step 4)
-- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
-- [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 6)
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (Step 1)
+- [ ] Stack confirmed as PHP / Laravel (or accepted from parent dispatcher); ORM / queue / auth / test framework recorded; input completeness check ran (target + goal both supplied) (Step 2)
+- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 3)
+- [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 3)
+- [ ] Severity-inversion banner rendered above Coverage Gate when sibling smells are higher severity than the named target (Step 3)
+- [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin`; SQLite-for-MySQL-app treated as `Inadequate`; Octane-shared-state check applied; pint / PHPStan state recorded (Step 4)
+- [ ] Laravel-specific smells identified using Step 5 catalog (controller, Form Request, service / action, persistence / Eloquent, configuration / DI, queue / job); relevant atomic skills (`laravel-eloquent-patterns`, `laravel-api-patterns`, `laravel-queue-patterns`, `laravel-service-patterns`, `laravel-security-patterns`, `laravel-migration-safety`) consulted per the composition table (Step 5)
+- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 6)
+- [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 7)
 - [ ] Step 0 included if Coverage Gate is `Thin`; omitted if `Adequate`. Step 0a included if pint / PHPStan state is not clean (Output Format)
-- [ ] Transaction stance stated per step (no I/O silently moved across transaction boundary) (Step 6)
-- [ ] Mass-assignment stance stated per step (no partial `$request->all()` → `$request->validated()` conversion) (Step 6)
-- [ ] Container stance stated per step (no silent singleton capturing request state; `scoped` used where required under Octane) (Step 6)
-- [ ] Queue stance stated per step (`->afterCommit()`, scalar ID, `$tries`/`$backoff`/`$timeout`/`failed()`, idempotency guard required when adding dispatch) (Step 6)
-- [ ] `Step kind:` set to `coupled-fix` for any step that intentionally changes behavior because the refactor depends on it; rationale stated; otherwise `refactor` (Step 6)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, interface removals, signature changes) (Step 6)
-- [ ] Plan length ≤ ~8 steps, or split into multiple PRs explicitly (Step 6)
-- [ ] No step bundles unrelated cleanup (Step 6)
-- [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
+- [ ] Transaction stance stated per step (no I/O silently moved across transaction boundary) (Step 7)
+- [ ] Mass-assignment stance stated per step (no partial `$request->all()` → `$request->validated()` conversion) (Step 7)
+- [ ] Container stance stated per step (no silent singleton capturing request state; `scoped` used where required under Octane) (Step 7)
+- [ ] Queue stance stated per step (`->afterCommit()`, scalar ID, `$tries`/`$backoff`/`$timeout`/`failed()`, idempotency guard required when adding dispatch) (Step 7)
+- [ ] `Step kind:` set to `coupled-fix` for any step that intentionally changes behavior because the refactor depends on it; rationale stated; otherwise `refactor` (Step 7)
+- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, interface removals, signature changes) (Step 7)
+- [ ] Plan length ≤ ~8 steps, or split into multiple PRs explicitly (Step 7)
+- [ ] No step bundles unrelated cleanup (Step 7)
+- [ ] Goal explicitly mapped to the end state of the sequence (Step 8)
 
 **Execution-time gates (commitments the plan makes for the implementer):**
 

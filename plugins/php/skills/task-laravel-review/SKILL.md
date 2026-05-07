@@ -67,6 +67,7 @@ Default: **Core with auto-escalation** (same signal rules as `task-code-review`)
 - File uploads (`$request->file(...)`, `Storage::put`), Sanctum / Passport / `auth:` middleware changes, Gate / Policy edits, `Model::create($request->all())` / `update($request->all())` patterns, `DB::raw($input)` / `whereRaw("... $input")`, secrets read via `env()` in business code, queue jobs accepting webhook payloads, signed URLs / `URL::signedRoute`, `Crypt::encrypt`, deserialization of untrusted input → auto-add **+Security**
 - New Eloquent query (`Model::where(...)`), new `with()` / eager-load chain, new Blade view iterating a relationship, new `paginate()` / `simplePaginate()` / `cursorPaginate()`, new endpoint with payload, loops calling DB or HTTP, new `Cache::remember` read paths, new `Http::pool` fan-out, new dispatched job → auto-add **+Perf**
 - New service / package, new external client (`Http::withToken`, AWS SDK, Stripe SDK, etc.), new Job / Listener / `Schedule::*`, change to `bootstrap/app.php` / `config/logging.php` / `config/queue.php`, new `Log::*` channel / `Telescope` / `Horizon` config, lifecycle changes (queue worker shutdown, scheduler) → auto-add **+Observability**
+- Migration touching hot table (`alter`/`drop column`/`change()`/index add on a table referenced by 5+ files in the diff or named in the PR title), addition of NOT NULL on existing column without nullable→backfill→set-NOT-NULL pattern, single-migration column rename or drop → auto-add **+Perf** (so the migration-safety review is folded into the perf subagent rather than carried inline)
 - Two or more signal categories present → promote to **Full**
 
 ## Invocation
@@ -92,13 +93,17 @@ Scope and depth flags compose: `/task-laravel-review pr-50273 --base release/202
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Eloquent / Queue / Auth Surface
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step (think before acting, surgical changes, surface confusion, push back when the user is likely wrong). When invoked as a subagent of `task-code-review`, accept the parent's confirmation that this skill is already loaded; do not re-load.
+
+### Step 2 - Confirm Stack and Detect Eloquent / Queue / Auth Surface
 
 Use skill: `stack-detect` to confirm PHP / Laravel. If invoked as a delegate of `task-code-review` (parent already detected Laravel), accept the pre-detected stack and skip re-detection. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review` instead.
 
 Detect ORM use: Eloquent (typical), DB query builder (`DB::table(...)`), or raw SQL via `DB::statement`. Detect auth: Sanctum (token / SPA), Passport (OAuth), or session-only. Detect queue driver from `config/queue.php` and `.env` (`QUEUE_CONNECTION`): Redis (typical with Horizon), database, or sync (a `[Blocker]` in production). Detect testing framework: Pest (primary) or PHPUnit. Record `PHP: <version>`, `Laravel: <version>`, `Auth: Sanctum (token) | Sanctum (SPA) | Passport | session`, `Queue: redis (Horizon) | database | sync`, `Tests: Pest | PHPUnit`. Each Phase B / C / D / E checklist below branches on this signal where the idiom differs.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it.
 
@@ -114,7 +119,7 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
 Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
 
@@ -135,7 +140,7 @@ Surface the decision in the Summary's `Scope:` field. If escalated, append `auto
 
 **Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth middleware, Sanctum / Passport config, `bootstrap/app.php`, `config/auth.php`, `config/queue.php`, `config/database.php`, Eloquent model `$fillable` / `$casts`, Policies, `database/migrations/`), skip Phases C-D and produce a streamlined output with Phase B findings only.
 
-### Step 3.5 - Re-evaluate Depth After Phase A
+### Step 4.5 - Re-evaluate Depth After Phase A
 
 If `Blast Radius` (from Phase A) is `Wide` or `Critical` and the user did not explicitly pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in the Summary. Do this **before** launching Phases B-E so deep-only behaviors (historical pattern matching, cross-PR context, anemic-domain assessment) are in scope for the rest of the review.
 
@@ -270,7 +275,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-laravel-review-observability` subagent owns the depth review).
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -285,14 +290,15 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Subagent prompt contract.** Each subagent prompt must include:
 
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
+- The resolved review target from Step 3 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
 - The depth level (`quick` | `standard` | `deep`)
 - The pre-confirmed stack (PHP / Laravel) and detected ORM / auth / queue signal so the subagent skips its own `stack-detect`
+- The spec slug if `--spec <slug>` was passed to the parent (so subagents trace findings to the same spec); pass nothing if no spec is active
 - Instruction to return findings using its own skill's Output Format
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -399,13 +405,14 @@ _Omit this section if there are no actionable findings._
 
 ## Self-Check
 
-- [ ] Stack confirmed as PHP / Laravel (or accepted from parent dispatcher); auth strategy, queue driver, and test framework detected and recorded
-- [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
+- [ ] Stack confirmed as PHP / Laravel (or accepted from parent dispatcher); auth strategy, queue driver, and test framework detected and recorded (Step 2)
+- [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded (Step 3)
+- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review (Step 3)
+- [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued (Step 3)
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (Step 3)
+- [ ] Scope auto-escalation evaluated in Step 4; promotion (or `core-only` suppression) recorded in Summary along with the firing signals; migration-on-hot-table signal triggered +Perf when applicable (Step 4)
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary (Step 4.5)
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B - mass assignment (`$guarded = []`, `Model::create($request->all())`), Form Request usage, Form Request `authorize()` checked
 - [ ] Phase B - `$this->authorize` / Policy on every protected action; ownership scoping (not just `auth:` middleware) checked
@@ -422,9 +429,9 @@ _Omit this section if there are no actionable findings._
 - [ ] Every Blocker states a system risk, not just a code observation
 - [ ] Every finding has a label, location (file:line), and actionable Laravel fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] For non-Core scopes, Laravel-specific subagents (`task-laravel-review-perf`, `-security`, `-observability`) ran in parallel and received the pre-resolved diff/log handle plus stack detection
-- [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended
-- [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>`
+- [ ] For non-Core scopes, Laravel-specific subagents (`task-laravel-review-perf`, `-security`, `-observability`) ran in parallel and received the pre-resolved diff/log handle plus stack detection (and `--spec` slug if active) (Step 5)
+- [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended (Step 6)
+- [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>` (Step 6)
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
 
 ## Avoid

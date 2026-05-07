@@ -48,9 +48,11 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 **Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
 
 - Missing `$this->authorize` on a user-data endpoint (High, alone) + mass assignment via `Model::create($request->all())` with `$guarded = []` (High, alone) on the *same action* = **Critical** unauthenticated admin override (anyone authenticated can `POST /users/{id}` with `{"role": "admin"}`).
+- Missing `auth:` middleware on a route group (High, alone) + admin-scope action like `User::find($id)->update($r->all())` (High, alone) + missing Form Request / Policy (High, alone) on the *same route* = **Critical** unauthenticated admin takeover (anyone on the internet can promote any user to admin).
 - Missing ownership check (High, alone) + Eloquent model returned via `return $user;` exposing `password` hash + `remember_token` (Medium, alone) on the *same action* = **Critical** account takeover.
 - Missing `auth:` middleware on `GET /orders/{id}` (High, alone) + `return $order;` returning the Eloquent entity directly (High, alone) on the *same action* = **Critical** unauthenticated entity exposure.
 - SSRF via `Http::get($userUrl)` (High, alone) + reachable from an unauthenticated endpoint (High, alone) = **Critical** unauth SSRF.
+- `unserialize($webhookBody)` (Critical, alone) + signature verification via `==` instead of `hash_equals` (High, alone) on a webhook endpoint = **Critical** RCE-via-forged-signature (the `==` is timing-attackable, but with `unserialize` the success path itself is the gadget chain trigger - severity stays Critical, but cite both).
 
 The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
 
@@ -66,23 +68,27 @@ Mirrors `task-code-review-security`:
 | `/task-laravel-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                             |
 | `/task-laravel-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                        |
 
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 3 below is skipped and this workflow reuses the parent's read-once artifacts.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step (think before acting, surgical changes, surface confusion, push back when the user is likely wrong). When invoked as a subagent of `task-code-review-security` or `task-laravel-review`, accept the parent's confirmation and skip re-loading.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect auth strategy: Sanctum (token API), Sanctum (SPA, cookie + CSRF), Passport (OAuth2 server), session-only. Detect ORM: Eloquent (typical) or query builder. Record `Auth`, `ORM`, `Tests Framework` for the Summary block.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
 
 If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
 
-### Step 3 - Read the Security Surface
+### Step 4 - Read the Security Surface
 
 Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
 
@@ -104,9 +110,9 @@ Before applying the OWASP and authn/authz checklists, open the files that actual
 
 When the diff removes a middleware or relaxes auth, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
 
-### Step 4 - OWASP Triage (Laravel Lens)
+### Step 5 - OWASP Triage (Laravel Lens)
 
-This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff. Steps 5-9 then produce the actual findings; do **not** repeat them here.
+This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff. Steps 6-10 then produce the actual findings; do **not** repeat them here.
 
 | Risk                          | Laravel-specific check                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -121,7 +127,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 | Data Integrity Failures (A08) | `unserialize($userInput)` is RCE-via-gadget-chain; flagged regardless of context. `serialize` of model output round-tripped through queue is fine (Laravel's `SerializesModels` trait handles it). File uploads bounded by `MAX_FILE_SIZE` and validated MIME (`mimes:` rule + magic-byte check via `League\MimeTypeDetection` if true content-type matters). Mass assignment via `$guarded = []` or `Model::create($request->all())` - both flagged.                                                                                                                  |
 | Logging & Monitoring (A09)    | `Log::*` and `Monolog` channels do not log `password`, `token`, `Authorization` header, `Cookie` header, full request body. Auth events logged. Sentry / Bugsnag `beforeSend` strips PII (when wired).                                                                                                                                                                    |
 
-### Step 5 - Authentication
+### Step 6 - Authentication
 
 - [ ] **Sanctum config**: `config/sanctum.php` `stateful` domains list matches actual SPA origins; not `*`. `expiration` set to a finite window for token APIs (default `null` = forever - flag for token-API projects). `EnsureFrontendRequestsAreStateful` middleware on the SPA route group only (not on token-API routes - causes confusion)
 - [ ] **`APP_KEY` from env, never committed**: `.env.example` carries `APP_KEY=` (empty); committed `APP_KEY=base64:realvalue` is `Critical` per rubric clause "secrets / Sanctum / Passport / `APP_KEY` committed in source". `php artisan key:generate` per environment
@@ -136,7 +142,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Session cookies** (when used): `config/session.php` `secure=true` (prod), `http_only=true`, `same_site='lax'`; signed via `APP_KEY`
 - [ ] **`auth:` middleware before authorization checks**: middleware order matters - auth must run first so `$request->user()` is populated by the time policies run
 
-### Step 6 - Authorization
+### Step 7 - Authorization
 
 - [ ] **Authorization drift sweep**: every new controller action added in the diff has a Policy check (`$this->authorize('action', $model)`), Gate check (`Gate::authorize(...)`), middleware (`->middleware('can:action,modelBinding')`), OR Form Request `authorize()` override returning a real check. Bare `Order::find($id)->update(...)` without one of those is an IDOR finding
 - [ ] **Policies for owned resources**: every Eloquent model with per-owner data has a Policy; controllers call `$this->authorize('view', $order)` / `'update'` / `'delete'`; Policies check `$user->id === $order->user_id` (or richer rules for shared resources)
@@ -146,7 +152,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **CORS**: `config/cors.php` `allowed_origins` is an explicit list, not `['*']`. `supports_credentials => true` requires explicit origin list (Laravel rejects `*` + credentials at runtime). Methods and headers minimal
 - [ ] **CSRF / antiforgery**: not required for stateless Sanctum-token APIs (`Authorization: Bearer ...`); required for cookie-session / Sanctum-SPA web routes - Laravel's `VerifyCsrfToken` middleware is on by default. Custom `validateCsrfTokens(except: [...])` exclusions limited to webhook endpoints with their own signature verification
 
-### Step 7 - Input Validation and Mass Assignment
+### Step 8 - Input Validation and Mass Assignment
 
 - [ ] **Form Request used for every input-accepting action**: `public function store(StoreOrderRequest $request)` not inline `$request->validate(...)`. Form Requests centralize validation + authorization
 - [ ] **`rules()` covers every field**: missing rules means anything-goes input. Specific rules: `'email' => ['required', 'email:rfc,dns', 'max:255']` (the `dns` flag enforces deliverable domains), `'url' => ['nullable', 'url:http,https']` (only http/https), `'amount' => ['required', 'numeric', 'min:0.01', 'max:99999.99']`, `'role' => ['required', Rule::in(['user', 'manager'])]` (allowlist for role values)
@@ -169,7 +175,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Process execution**: `exec($cmd)`, `shell_exec($cmd)`, `passthru($cmd)`, `system($cmd)`, `pcntl_exec`, `popen`, `proc_open` with any user input is RCE - even `exec('convert ' . escapeshellarg($input))` is risky if the binary itself accepts shell-meta in flags. Strict allowlist of binaries, prefer SDK / library calls (e.g., Intervention Image instead of `exec('convert')`)
 - [ ] **`prepareForValidation` strip / canonicalize** for inputs that need cleanup: `protected function prepareForValidation(): void { $this->merge(['notes' => strip_tags($this->notes ?? '')]); }` for HTML-tag stripping (also prevents XSS at storage boundary)
 
-### Step 8 - Common Laravel Vulnerability Patterns
+### Step 9 - Common Laravel Vulnerability Patterns
 
 - [ ] **SQL injection via raw query**: `DB::select("SELECT * FROM orders WHERE status = '$status'")` is critical. Use bindings (`DB::select('SELECT * FROM orders WHERE status = ?', [$status])`) or, better, the Eloquent query builder. `whereRaw("status = '$status'")` is the same surface; use `whereRaw('status = ?', [$status])` or `where('status', $status)`
 - [ ] **`orderByRaw($request->input('sort'))` SQL injection**: user-supplied `sort` parameter must validate against an allowlist of column names (`Rule::in(['id', 'created_at', 'total'])`). Otherwise `?sort=1)+UNION+SELECT...` is injection
@@ -196,7 +202,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Webhook idempotency**: same event delivered multiple times; dedup via stored event ID + DB unique constraint or `Cache::add($eventId, true, $ttl)` (atomic add returns false if key exists)
 - [ ] **`composer audit`** (Composer 2.4+) clean for affected; `composer outdated` reviewed; `roave/security-advisories` in `composer.json` `require-dev` blocks vulnerable packages at install time. Flag unaddressed High/Critical advisories. Dependabot / Renovate active
 
-### Step 9 - Data Protection
+### Step 10 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest via Laravel's `'encrypted'` cast (`'ssn' => 'encrypted'` in `casts()`) - uses `APP_KEY` AES-256-CBC by default; or DB-native column encryption (MySQL `AES_ENCRYPT` is **not** sufficient - it's not authenticated; prefer Laravel's cast or `Crypt::encryptString`)
 - [ ] **No raw Eloquent model returned from controller**: covered in Step 7 from the mass-assignment angle; here from the data-leak angle. Returning `User` serializes every column not in `$hidden`. Use `UserResource::make($user)` with explicit `toArray()` listing only public fields
@@ -219,20 +225,19 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 **Verifiable from the diff (must check):**
 
-- [ ] Stack confirmed as PHP / Laravel; auth strategy, ORM, test framework recorded before any specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent)
-- [ ] Security surface (`bootstrap/app.php` / `Kernel.php`, auth config, Sanctum / Passport config, CORS, session, Policies, changed controllers / actions, Form Requests, models, migrations, routes, .env.example) read directly before applying checklists; prior revision consulted when middleware was removed
-- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] **Authorization drift sweep**: every new action / Form Request in the diff has `$this->authorize` / Gate / `can:` middleware / Policy enforcement OR explicit Form Request `authorize()` override
-- [ ] Mass assignment reviewed: `$guarded = []`, `$fillable` whitelist, no `Model::create($request->all())`, server-set fields assigned explicitly
-- [ ] File upload, path traversal, and `exec`/`shell_exec` checks run if the diff touches uploads / file paths / process execution
-- [ ] SQL injection (`whereRaw`, `DB::raw`, `orderByRaw`, `DB::select`), command injection, Blade SSTI, `unserialize`, `extract`, dynamic `include` checked when the diff touches them
-- [ ] Webhook signature verification reviewed when webhooks present; `hash_equals` not `==`
-- [ ] `env()` calls outside `config/*.php` flagged
-- [ ] `.env.example` real-secret regression check (run `git log -p .env.example` mentally - any new line that looks like a real secret is `[Critical]` requiring rotation)
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
+- [ ] Stack confirmed as PHP / Laravel; auth strategy, ORM, test framework recorded before any specific check applied (Step 2)
+- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured (Step 3)
+- [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review (Step 3)
+- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent) (Step 3)
+- [ ] Security surface (`bootstrap/app.php` / `Kernel.php`, auth config, Sanctum / Passport config, CORS, session, Policies, changed controllers / actions, Form Requests, models, migrations, routes, .env.example) read directly before applying checklists; prior revision consulted when middleware was removed (Step 4)
+- [ ] OWASP triage (Step 5) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings (Step 5)
+- [ ] Authentication checks applied (Sanctum / Passport / session config, `Hash::make`/`Hash::check`, brute-force throttling, email verification, session cookie flags, middleware order) (Step 6)
+- [ ] **Authorization drift sweep**: every new action / Form Request in the diff has `$this->authorize` / Gate / `can:` middleware / Policy enforcement OR explicit Form Request `authorize()` override; tenant isolation and CORS reviewed (Step 7)
+- [ ] Mass assignment reviewed: `$guarded = []`, `$fillable` whitelist, no `Model::create($request->all())` / `Model::find($id)->update($request->all())`, server-set fields assigned explicitly; file upload checks run if uploads in diff (Step 8)
+- [ ] SQL injection (`whereRaw`, `DB::raw`, `orderByRaw`, `DB::select`), command injection, Blade SSTI, `unserialize`, `extract`, dynamic `include`, open redirect, CSRNG, `hash_equals`, debug exposure, `env()` outside config, `.env.example` regression check, SSRF allowlist depth, webhook idempotency reviewed when the diff touches them (Step 9)
+- [ ] Data protection assessed: PII encrypted at rest, raw model not returned, `$hidden` populated, log redaction, TLS enforcement, secrets management (Step 10)
+- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented); Combined-finding rule applied where two findings compose on the same action
 - [ ] Every finding includes an attack scenario, "regression risk" rationale, or "topology-dependent" framing - not just "input not validated"
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
 

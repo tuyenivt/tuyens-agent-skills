@@ -37,13 +37,17 @@ This workflow is the stack-specific delegate of `task-code-test` for PHP / Larav
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Test Framework
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step (think before acting, surgical changes, no speculative additions, surface confusion). When invoked as a subagent of a parent workflow, accept the parent's confirmation and skip re-loading.
+
+### Step 2 - Confirm Stack and Detect Test Framework
 
 Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect test framework: Pest (`tests/Pest.php` exists, `pestphp/pest` in `composer.json`) or PHPUnit (no Pest, just `phpunit.xml` + class-based tests). Detect ORM (Eloquent / query builder), auth (Sanctum / Passport / session), queue (Redis / database / sync), and database engine (MySQL / PostgreSQL / MariaDB) for test-environment guidance. Record `Tests Framework`, `Database`, `Auth`, `Queue` for the output.
 
-### Step 2 - Read the Code Under Test and Existing Tests
+### Step 3 - Read the Code Under Test and Existing Tests
 
 Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
 
@@ -71,7 +75,7 @@ If the project has no existing tests, say so and propose conventions explicitly 
 | Coverage           | `--coverage` flag with PCOV (faster than Xdebug); reporting via `--coverage-html` or via Coverage CI tool |
 | CI                 | `php artisan test --parallel --coverage --min=80` for parallel runs with coverage threshold        |
 
-### Step 3 - Laravel Test Pyramid
+### Step 4 - Laravel Test Pyramid
 
 The Laravel test pyramid maps to test types:
 
@@ -87,7 +91,7 @@ The Laravel test pyramid maps to test types:
 
 Note that "feature test" in Laravel terminology covers what other ecosystems call "integration test" or "API test" - it boots the full app, exercises the HTTP pipeline, and asserts both response shape and DB state. Prefer feature tests over unit tests for any code that involves the framework (controllers, Form Requests, Policies, Eloquent models).
 
-### Step 4 - Apply Laravel Test Patterns
+### Step 5 - Apply Laravel Test Patterns
 
 **Pest syntax (the canonical form for new Laravel projects):**
 
@@ -260,9 +264,9 @@ Use fakes ONLY for dispatch-side testing. For handler-side testing, run the real
 
 **HTTP stubs:**
 
-- `Http::fake([...])` for outbound HTTP calls returning canned responses
-- Mock external SDKs (Stripe, AWS) via Mockery in unit tests; or via `Http::fake` if the SDK uses Laravel's HTTP client under the hood
-- `Http::preventStrayRequests()` in `Tests\TestCase::setUp` so any unfaked outbound request fails the test - prevents accidental real network calls
+- `Http::fake([...])` for outbound HTTP calls returning canned responses - works for any code using Laravel's `Http::*` facade
+- **SDKs that ship their own HTTP client (Stripe SDK, AWS SDK, Twilio SDK, etc.) bypass `Http::fake`** - they construct their own Guzzle client and `Http::fake` only intercepts the facade's pending request. Mock the SDK class directly via Mockery (`$stripe = Mockery::mock(\Stripe\StripeClient::class)`), or wrap the SDK in a thin service class you can mock. Verify the SDK's HTTP-mock hook (Stripe's official PHP SDK supports a `setHttpClient` method for testing); when no hook exists, mocking the wrapper is the only safe path. Treat any "the SDK calls real Stripe in CI" as a test-design bug
+- `Http::preventStrayRequests()` in `Tests\TestCase::setUp` so any unfaked outbound request fails the test - prevents accidental real network calls. Note: this catches `Http::*` facade calls only; SDK direct calls still escape unless wrapped (see above)
 
 **Console command tests:**
 
@@ -276,7 +280,7 @@ Use fakes ONLY for dispatch-side testing. For handler-side testing, run the real
 - `composer audit` for dependency vulnerability scanning
 - All three on every CI run alongside `php artisan test`
 
-### Step 5 - Test Boundaries (Laravel-Specific)
+### Step 6 - Test Boundaries (Laravel-Specific)
 
 **What deserves a unit test:**
 
@@ -308,7 +312,7 @@ Use fakes ONLY for dispatch-side testing. For handler-side testing, run the real
 | Webhook signature     | POST endpoint accepting third-party webhook (Stripe, GitHub, etc.)                    | Reject payload with wrong / missing signature; reject replayed events (idempotency by event ID)  |
 | Composite (export + path + process) | One action that combines bulk export + user-controlled filename + `exec` on the result | Single test asserting all three guards co-occur on this action: (a) path-traversal payload rejected (`../../etc/passwd`), (b) tenant scoping enforced (only my tenant's rows in output), (c) shell metacharacters in filename cannot reach the spawned process |
 
-These belong in feature tests, not buried in service unit tests - the security guard is at the action / middleware boundary, so the test must exercise it through the same boundary. **Web hazards from this table default to Step 7 priority band P1** (security guard is the test's purpose), even when the underlying flow looks like P3 revenue or P2 data integrity.
+These belong in feature tests, not buried in service unit tests - the security guard is at the action / middleware boundary, so the test must exercise it through the same boundary. **Web hazards from this table default to Step 8 priority band P1** (security guard is the test's purpose), even when the underlying flow looks like P3 revenue or P2 data integrity.
 
 **What deserves a Policy test:**
 
@@ -327,7 +331,7 @@ These belong in feature tests, not buried in service unit tests - the security g
 - Generated boilerplate: API Resources with no logic beyond field mapping, accessor returning a single field, validation rule chains that just compose built-in rules
 - Trivial delegation: `service->getById($id) -> repository->find($id)` with no logic
 
-### Step 6 - Test Data and Fixtures
+### Step 7 - Test Data and Fixtures
 
 - Prefer Eloquent factories: `User::factory()->admin()->withOrders(3)->create()` over hand-rolled `User::create([...])`. Define states for variants
 - Factory states for variants: `User::factory()->admin()`, `Order::factory()->placed()`, `Order::factory()->cancelled()`. Defined as methods on the Factory class
@@ -336,9 +340,11 @@ These belong in feature tests, not buried in service unit tests - the security g
 - Test data must be minimal and focused - 100-row factory loops signal the test belongs at integration / load-test layer
 - Use `Faker` (`fake()->name()`, `fake()->email()`, `fake()->numberBetween(1, 100)`) inside factories for realistic data; not hardcoded magic values
 
-### Step 7 - Prioritization (when coverage is low)
+### Step 8 - Prioritization (when coverage is low)
 
 If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing endpoints get full coverage.
+
+**Multi-deliverable invocations.** When the user asks for both Coverage Assessment and Test Scaffolds in one go (a common case on under-covered modules), run prioritization here, then have the Test Scaffolds section in the output target the top band first. Do not silently pick the file the user named if a higher-priority gap exists in the same module - surface the priority order, then scaffold in priority order. The user can override.
 
 When starting from low test coverage, prioritize by Laravel-specific risk:
 
@@ -373,7 +379,7 @@ When starting from low test coverage, prioritize by Laravel-specific risk:
 
 **Multi-band rule.** Some targets fall into more than one band - a refund job is both P2 (data-integrity, side-effect idempotency) and P3 (revenue path); a payment-history endpoint is both P1 (authorization on per-owner data) and P3 (revenue). When a target qualifies for multiple bands, file it under the **highest** band (lowest number) and note the secondary band so the test plan covers both axes.
 
-### Step 8 - Test Infrastructure Hygiene
+### Step 9 - Test Infrastructure Hygiene
 
 - [ ] `phpunit.xml` `<env DB_CONNECTION>` matches production engine (MySQL / PostgreSQL) - never SQLite for prod-MySQL apps
 - [ ] `RefreshDatabase` trait used (or `DatabaseMigrations` for slower-but-stricter); per-test reset is required for isolation
@@ -446,7 +452,7 @@ Quick-reference checklist for reviewing existing Laravel tests:
 
 **Prioritization** _(include when current coverage is below ~50% or the assessment surfaces > 5 gaps)_
 
-Apply the Step 7 risk bands. Order follow-up work as:
+Apply the Step 8 risk bands. Order follow-up work as:
 
 1. **P1 - Authorization & authentication:** [list specific endpoints / Policies missing 401/403/ownership tests]
 2. **P2 - Data integrity:** [non-trivial queries / write paths / job idempotency without tests]
@@ -466,7 +472,7 @@ Produce ready-to-run PHP test files using project conventions. Each scaffold mus
 - For DB-touching tests: `RefreshDatabase` trait + real MySQL/PostgreSQL semantics (not SQLite)
 - For auth tests: anonymous + wrong-user + correct-user cases via `actingAs($user)` / `Sanctum::actingAs(...)`
 - For job tests: real `handle()` execution + idempotency + retry + `failed()` cases when applicable
-- Pest `it(...)` syntax (or PHPUnit class-based for legacy projects per Step 1 detection)
+- Pest `it(...)` syntax (or PHPUnit class-based for legacy projects per Step 2 detection)
 - `assertJsonValidationErrors`, `assertJsonPath`, `assertDatabaseHas` for response/state shape
 
 **Strategy Doc** (when designing a test strategy):
@@ -489,19 +495,23 @@ Produce ready-to-run PHP test files using project conventions. Each scaffold mus
 
 **Always (any deliverable):**
 
-- [ ] Stack confirmed as PHP / Laravel; database, auth, queue, test framework recorded before any framework-specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests + setup files read directly so output matches project conventions (Step 2)
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (Step 1)
+- [ ] Stack confirmed as PHP / Laravel; database, auth, queue, test framework recorded before any framework-specific guidance applied (Step 2)
+- [ ] Code under test and a representative sample of existing tests + setup files read directly so output matches project conventions (Step 3)
 - [ ] `laravel-testing-patterns` consulted for canonical Laravel test patterns
 - [ ] Auth testing approach explicit (`actingAs($user)` for session, `Sanctum::actingAs($user, [scopes])` for token)
 - [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
+- [ ] SDK-bypass note applied when external SDKs (Stripe / AWS / Twilio) are in scope - tests mock the SDK class, not just `Http::fake`
 
 **Strategy Doc / Coverage Assessment only:**
 
-- [ ] Test pyramid mapped to Laravel idioms (unit -> Pest + Mockery; feature -> Pest + RefreshDatabase + real DB; job -> Pest + real `handle()`; Dusk only for browser-dependent flows)
-- [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers
-- [ ] Prioritization by risk applied when coverage is low - P1 authorization, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing
-- [ ] Real MySQL/PostgreSQL recommended for repository / feature tests; SQLite flagged as a smell for production-MySQL/PostgreSQL apps
-- [ ] `composer phpstan` / `vendor/bin/pint --test` / `composer audit` CI presence flagged when packages with concurrent code lack lint coverage
+- [ ] Test pyramid mapped to Laravel idioms (unit -> Pest + Mockery; feature -> Pest + RefreshDatabase + real DB; job -> Pest + real `handle()`; Dusk only for browser-dependent flows) (Step 4)
+- [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers (Step 6)
+- [ ] Prioritization by risk applied when coverage is low - P1 authorization, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing (Step 8)
+- [ ] Multi-band rule applied when a target qualifies for multiple priority bands; filed at the highest band, secondary band noted (Step 8)
+- [ ] Multi-deliverable invocations produce sections in order Coverage Assessment → Strategy Doc → Test Scaffolds, separated by `---`, with scaffolds targeting the top priority band first (Step 8 / Output Format)
+- [ ] Real MySQL/PostgreSQL recommended for repository / feature tests; SQLite flagged as a smell for production-MySQL/PostgreSQL apps (Step 9)
+- [ ] `composer phpstan` / `vendor/bin/pint --test` / `composer audit` CI presence flagged when packages with concurrent code lack lint coverage (Step 9)
 
 **Test Scaffolds only:**
 
@@ -511,7 +521,7 @@ Produce ready-to-run PHP test files using project conventions. Each scaffold mus
 - [ ] Feature scaffolds extend `Tests\TestCase` so the same middleware stack as `bootstrap/app.php` runs (missing middleware in tests masks authorization bugs)
 - [ ] DB-touching scaffolds use `RefreshDatabase` against real MySQL/PostgreSQL - never SQLite for prod-MySQL apps
 - [ ] Job scaffolds include idempotency + retry + `failed()`; real `handle()` execution for non-trivial jobs
-- [ ] Pest scaffolds use `it(...)` syntax; PHPUnit scaffolds use class-based `test_*` methods (per project convention from Step 1)
+- [ ] Pest scaffolds use `it(...)` syntax; PHPUnit scaffolds use class-based `test_*` methods (per project convention from Step 2)
 
 **Review-existing-tests mode only:**
 
