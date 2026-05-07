@@ -191,6 +191,8 @@ public class OrdersControllerTests : IClassFixture<WebApplicationFactory<Program
 }
 ```
 
+**Anti-pattern: controller-direct-call.** A test that does `var controller = new OrdersController(ctx, ...); var result = await controller.Create(req);` bypasses the entire ASP.NET Core pipeline - no model binding, no `[ApiController]` automatic validation, no `FluentValidation` filter, no `[Authorize]` attribute, no `IExceptionHandler`, no middleware, no `[FromBody]` parameter binding semantics. Such a test asserts only the action method body, not the endpoint behavior. The bug it is most likely to miss is the bug a real client would hit. For controller-shape tests use `WebApplicationFactory<Program>` and `_client.PostAsync(url, content)` so the test looks like an HTTP request, not a method call. Treat any new controller-direct-call test in a diff as a `[High]` test-design finding.
+
 For full pipeline tests:
 
 - Build the `WebApplicationFactory` with the **same global middleware** as `Program.cs` (exception handler, auth, telemetry, problem details) - missing auth middleware in tests masks authorization bugs
@@ -203,7 +205,7 @@ For full pipeline tests:
 
 **Repository / EF Core integration tests (Testcontainers):**
 
-- Testcontainers PostgreSQL via `Testcontainers.PostgreSql` - **not SQLite, not in-memory `UseInMemoryDatabase()`** - the in-memory provider does not enforce relational constraints (FK violations succeed silently), does not support raw SQL, and diverges from PostgreSQL/SQL Server on JSON, transactions, and concurrent updates
+- Testcontainers PostgreSQL via `Testcontainers.PostgreSql` - **not SQLite, not in-memory `UseInMemoryDatabase()`** - the in-memory provider does not enforce relational constraints (FK violations succeed silently), does not support raw SQL, and diverges from PostgreSQL/SQL Server on JSON, transactions, and concurrent updates. **Detection rule:** if any test calls `optionsBuilder.UseInMemoryDatabase("...")` and the project's production `.csproj` references `Npgsql.EntityFrameworkCore.PostgreSQL` or `Microsoft.EntityFrameworkCore.SqlServer`, raise `[High]` regardless of whether the test passes - the test is exercising a different store than prod, so green tests provide false confidence rather than coverage
 - Shared container per test class via `IClassFixture<PostgresFixture>` (or per assembly via `ICollectionFixture<>` for slower-but-isolated cross-class state) - per-test container creation (~3-5s startup) dominates suite runtime if duplicated
 - Per-test isolation: either (a) `await using var tx = await _db.Database.BeginTransactionAsync(); ...` at test start without `CommitAsync` (EF Core auto-rolls back on dispose); or (b) `Respawn` to truncate / reset between tests - `_respawner = await Respawner.CreateAsync(connection, new RespawnerOptions { DbAdapter = DbAdapter.Postgres });` then `await _respawner.ResetAsync(connection)` per test
 - Run EF Core migrations against the testcontainer in fixture init (`await db.Database.MigrateAsync()`)
@@ -218,6 +220,7 @@ For full pipeline tests:
 **Background-worker / MassTransit / Hangfire tests:**
 
 - **In-process for fast tests**: invoke the handler / consumer method directly with a constructed payload; no broker. Best for handler logic
+- **`BackgroundService` cancellation test**: the worker is a singleton with an `ExecuteAsync(CancellationToken stoppingToken)` loop. Test (a) the loop exits within `HostOptions.ShutdownTimeout` when the host's cancellation source fires, and (b) at least one full iteration completes before cancellation. Pattern: `using var cts = new CancellationTokenSource(); var task = sut.StartAsync(cts.Token); await Task.Delay(...); cts.Cancel(); await sut.StopAsync(CancellationToken.None);` then assert the side effect happened once and the task completes within the timeout. This catches `while (true) { ... Thread.Sleep(N); }` loops that ignore `stoppingToken` - they hang the shutdown
 - **MassTransit `InMemoryTestHarness`** for consumer wiring tests without a real broker: `var harness = new InMemoryTestHarness(); var consumerHarness = harness.Consumer<MyConsumer>(); await harness.Start(); ...`
 - **Testcontainers RabbitMQ / Kafka + real consumer** for tests that need actual broker behavior (retry, ack, redelivery)
 - Idempotency test: invoke the handler twice with the same payload; assert side effect happens once
@@ -265,6 +268,7 @@ For full pipeline tests:
 | SSRF                  | `HttpClient.GetAsync(userUrl)` / outbound HTTP with request-derived host               | Allowlist rejects metadata IP, loopback, RFC1918, link-local; DNS rebinding test                  |
 | Privilege escalation  | `UpdateUser` / `UpdateRole` / any action that touches role / permission fields        | Non-admin cannot self-promote; admin can; role change requires explicit admin policy guard        |
 | Command/shell injection | `Process.Start("cmd.exe", $"/c ...")` or any string-interpolated process invocation | Reject metacharacters in user input; assert arg-list invocation (`ProcessStartInfo.ArgumentList.Add(...)`) is used so shell metacharacters cannot reach a shell |
+| Composite (export + path + process) | One action that combines bulk export + user-controlled filename + Process.Start on the result (e.g., `Export(string format, string filename)` writing to `Path.Combine(baseDir, filename)` then spawning a converter) | Single test asserting all three guards co-occur on this action: (a) path-traversal payload rejected (`../../etc/passwd`), (b) tenant scoping enforced (only my tenant's rows in output), (c) shell metacharacters in `format` / `filename` cannot reach the spawned process. Three isolated unit tests miss the composition - the exploit chain is the test target |
 
 These belong in API tests, not buried in service unit tests - the security guard is at the action / middleware boundary, so the test must exercise it through the same boundary. **Web hazards from this table default to Step 7 priority band P1** (security guard is the test's purpose), even when the underlying flow looks like P3 revenue or P2 data integrity - the secondary band still applies via the Multi-band rule.
 

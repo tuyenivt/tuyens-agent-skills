@@ -78,6 +78,8 @@ Refactoring without test coverage is a rewrite with extra steps. Identify the te
 
 **Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves validation, authorization, or error behavior - you would be flying blind.
 
+**Wrong-store disqualifier.** When the test project uses `UseInMemoryDatabase("...")` (or SQLite) but the production project's `.csproj` references `Npgsql.EntityFrameworkCore.PostgreSQL` / `Microsoft.EntityFrameworkCore.SqlServer`, treat coverage as `Inadequate` regardless of case count. The provider mismatch means the cases test a different store than prod (in-memory skips FK enforcement, raw SQL, JSON / array operations, concurrent updates) - adding more boundary cases on top of the wrong store does not unlock the refactor. The Step 0 prerequisite must include migrating the affected tests to Testcontainers before refactor begins.
+
 **Lint-gate check.** `dotnet format --verify-no-changes` must be clean for the target project, AND `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` should be on, OR the refactor plan must include cleaning warnings as Step 0a. Refactoring on top of unaddressed warnings risks masking new warnings behind existing ones. Lint state values: `clean` (no warnings, format clean), `warnings present` (Step 0a covers them), or `not run (no baseline)` (greenfield / net-new project where format/analyzer enforcement hasn't been wired into CI yet - the plan's first step folds it into the coverage prerequisite work).
 
 **Concurrency-gate check.** If the target class spawns `Task.Run` / `Parallel.ForEachAsync` / `BackgroundService`, holds shared state via `ConcurrentDictionary` / `SemaphoreSlim`, or uses channels, also confirm tests exercise the concurrent paths (xUnit's per-collection parallelism settings, real concurrent execution in tests, not single-threaded happy paths). If absent, treat coverage status as one tier worse (Adequate → Thin, Thin → Inadequate) - refactoring concurrent code without concurrent test coverage is unsafe.
@@ -158,6 +160,7 @@ Inspect the target for these .NET-specific smells. Use judgment - these are sign
 | `Channel.CreateUnbounded<T>()` Default     | Memory leak under producer-faster-than-consumer; use `Channel.CreateBounded<T>(N)` with explicit `FullMode`                                              | High   |
 | `Channel<T>` Reader Without Cancellation   | `await foreach (var item in reader.ReadAllAsync())` without forwarding `stoppingToken` - cannot drain on shutdown                                       | High   |
 | `BackgroundService.ExecuteAsync` Without `stoppingToken` Honored | `while (true)` loop ignoring `stoppingToken.IsCancellationRequested` - cannot drain on shutdown                                       | High   |
+| `Thread.Sleep` in `BackgroundService.ExecuteAsync` | `Thread.Sleep(N)` instead of `await Task.Delay(N, stoppingToken)` - blocks the worker thread (one less from the pool); does not cooperate with cancellation; prolongs shutdown to the full sleep interval | High |
 | Background-Worker Dispatch Inside Transaction | MassTransit publish or Hangfire enqueue inside `tx.CommitAsync` - worker may pick up the message before commit                                       | High   |
 | Background-Worker Without Idempotency      | Job that re-runs side effects when delivered twice (no dedup, no upsert, no state check)                                                                | High   |
 | `Monitor.Enter` / `lock` Across `await`    | Compile error for `lock`, but `Monitor.Enter` / `SemaphoreSlim.Wait()` + `await` recreates the pattern - blocks the thread, deadlock risk               | High   |
@@ -168,7 +171,6 @@ Inspect the target for these .NET-specific smells. Use judgment - these are sign
 | --------------------------- | --------------------------------------------------------------------------------------------------- | ------ |
 | `unsafe` Without SAFETY     | `unsafe { ... }` block with no `// SAFETY:` comment naming what the caller must uphold              | High   |
 | `unsafe` for Speed Without Bench | `unsafe` used because "it's faster" without a BenchmarkDotNet result proving the win           | Medium |
-| `static` Mutable Field      | Module-level mutable state via `static List<T> _things` with no synchronization                     | High   |
 
 **Test smells (when refactoring brings tests into scope):**
 
@@ -339,6 +341,15 @@ Each refactoring step must be:
 3. Replace static reads/writes with method calls on the injected instance
 4. Update callers to receive the new dependency explicitly via constructor injection, typically wired in `Program.cs`
 5. Run `dotnet build /p:TreatWarningsAsErrors=true` and `dotnet test`; confirm pass; assert cross-test isolation (no leaking state between tests when running with xUnit's parallel test execution)
+
+**Recipe: Convert sync polling worker to cancellation-aware async loop**
+
+1. Identify the worker shape: `BackgroundService.ExecuteAsync(CancellationToken stoppingToken)` containing `while (true)` with `Thread.Sleep(N)` and no `stoppingToken` propagation
+2. Replace the loop predicate: `while (!stoppingToken.IsCancellationRequested)`. The `BackgroundService` host signals cancellation by triggering this token on `IHostApplicationLifetime.ApplicationStopping`
+3. Replace `Thread.Sleep(N)` with `await Task.Delay(TimeSpan.FromMilliseconds(N), stoppingToken)`. `Task.Delay` cooperates with cancellation (throws `OperationCanceledException` on shutdown so the loop exits cleanly); `Thread.Sleep` blocks the thread for the full interval and ignores the token
+4. Wrap each iteration body in `try { ... } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; } catch (Exception ex) { _logger.LogError(ex, "..."); }` so a transient failure logs and continues, but cancellation exits the loop
+5. Forward `stoppingToken` to every awaited call inside the loop body (`db.SaveChangesAsync(stoppingToken)`, `httpClient.PostAsync(url, content, stoppingToken)`)
+6. Run `dotnet build /p:TreatWarningsAsErrors=true` and `dotnet test`; add a worker test starting the service then cancelling its host to assert the loop exits within the configured `HostOptions.ShutdownTimeout`
 
 **Recipe: Make background-worker idempotent**
 

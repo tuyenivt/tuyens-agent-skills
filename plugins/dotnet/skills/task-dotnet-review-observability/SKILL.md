@@ -76,6 +76,12 @@ If `review-precondition-check` stops with a fail-fast message, surface the messa
 
 **Grouping rule.** When a whole surface is `absent` (no Prometheus exporter, no OTel SDK init, no error-tracker SDK), produce a **single High-Impact finding for that surface** listing all the missing pieces grouped by the file/class they should land in - not one finding per sub-bullet. Per-callsite findings only apply when the surface exists and a specific callsite misuses it. This prevents 50-item dumps on greenfield reviews.
 
+**Verdict rubric.** Use these definitions consistently across the Surface Map and findings:
+
+- `wired` = the SDK / formatter / exporter is registered AND the supporting wiring is present (correlation enrichers for logging, auto-instrumentations for OTel, `Description`/`Unit` on `Meter` instruments, redaction policies for sensitive fields)
+- `partial` = the SDK / formatter / exporter is registered BUT something material is missing or misused (Serilog wired but a `_logger.LogInformation($"...")` string-interpolation pattern shows up; OTel SDK registered but `AddHttpClientInstrumentation()` missing; `Meter` registered but instruments lack `Description` / `Unit`). Per-callsite findings apply
+- `absent` = no registration anywhere in `Program.cs` / `appsettings.json` / `.csproj` for the surface. Whole-surface grouping rule applies
+
 Then open the files that actually configure observability so findings cite real lines, not assumptions:
 
 - `Program.cs` / `appsettings.json` - OpenTelemetry SDK wiring (`services.AddOpenTelemetry().WithTracing(...).WithMetrics(...)`), Serilog setup (`Host.UseSerilog((ctx, lc) => lc.ReadFrom.Configuration(ctx.Configuration).Enrich.FromLogContext().WriteTo.Console(formatter: new CompactJsonFormatter()))`), instrumentation registration (`AddAspNetCoreInstrumentation()`, `AddEntityFrameworkCoreInstrumentation()`, `AddHttpClientInstrumentation()`)
@@ -95,6 +101,7 @@ Inspect logging config and any `_logger.Log*` callsite in the diff:
   - ASP.NET Core auto-includes `TraceId` / `SpanId` / `RequestId` when OpenTelemetry is registered; Serilog `Enrich.FromLogContext()` and `using (LogContext.PushProperty("OrderId", id)) { ... }` for business IDs
   - `_logger.BeginScope(new Dictionary<string, object> { ["OrderId"] = id })` (built-in `ILogger`) for scoped properties carrying through nested calls
 - [ ] **OpenTelemetry log correlation**: with the OpenTelemetry .NET SDK active, ASP.NET Core's request-scoped logging automatically attaches the active `Activity.Current.TraceId` / `SpanId` to every log entry. Serilog enrichers (`Enrich.WithSpan()` from `Serilog.Enrichers.Span` or built-in trace context) ensure `TraceId` lands in the log JSON
+- [ ] **Greenfield correlation (when OTel SDK is `absent`)**: do not recommend OTel-derived `TraceId` correlation as the fix when OTel itself isn't wired - that's a separate work item. The minimum correlation story without OTel is Serilog `Enrich.FromLogContext()` registered at host setup plus `using (LogContext.PushProperty("OrderId", id)) { ... }` (or `_logger.BeginScope(...)`) in handlers. Recommend wiring OTel as a follow-up rather than blocking on it - the in-process correlation gap is fixable today
 - [ ] **Sensitive-field redaction**: a custom `ILogEventEnricher` (Serilog) or `IDestructuringPolicy` that drops `password`, `token`, `Authorization`, `Cookie`, `credit_card`, `ssn`, `api_key` keys; OR types implement custom serialization to override `ToString()` and return a redacted form. `Destructure.ByTransforming<User>(u => new { u.Id, u.TenantId })` for entity types to control logged fields
 - [ ] **No `_logger.LogInformation("user: {@User}", user)` that destructures a domain entity**: the `@` destructuring operator includes every property; entity destructuring leaks sensitive columns. Always log specific fields: `_logger.LogInformation("Processing order {OrderId} for user {UserId}", id, userId)` with positional placeholders
 - [ ] **User-identity fields emitted as named placeholders, not in the message string**: `_logger.LogInformation("Processing user {UserId}", userId)`, never `_logger.LogInformation($"Processing user {userId}")` (string interpolation breaks structured logging - the message template is gone, replaced by a rendered string the aggregator cannot field-extract). Roslyn analyzer `Microsoft.CodeAnalysis.NetAnalyzers` rule CA2254 catches this
@@ -157,6 +164,7 @@ _Skipped at `quick` depth unless the diff touches background workers or message 
 - [ ] **Scheduled / recurring job instrumentation**: each Hangfire recurring job emits an activity; missed-execution alerting via stalled-job metric or queue-health endpoint
 - [ ] **MassTransit consumer instrumentation**: built-in via `AddSource("MassTransit")` in `WithTracing(...)` - confirm registration; consumer spans carry the `messaging.*` semantic conventions
 - [ ] **Hangfire dashboard metrics**: `app.UseHangfireDashboard("/hangfire", new DashboardOptions { Authorization = new[] { ... } })` - enabled in non-prod by default; flag if exposed without auth in prod (this is also a security finding)
+- [ ] **Bare-loop workers have minimum signal**: a worker with zero logging, zero `Counter<long>`, and no try/catch around the iteration body produces no signal when it silently fails. On greenfield workers (no instrumentation present), require at minimum: one structured log line per iteration start (with the business key being processed), a `Counter<long>` for processed/failed outcomes registered on a module `Meter`, and an outer `try/catch (Exception ex) { _logger.LogError(ex, "..."); _failedCounter.Add(1, ...); }` so the worker remains observable even when not yet OTel-instrumented
 
 ### Step 9 - Lifecycle / Graceful Shutdown Observability
 
@@ -169,6 +177,7 @@ _Skipped at `quick` depth unless the diff touches lifecycle (`IHostApplicationLi
 - [ ] **`Channel<T>` writer completed on shutdown**: producers call `channel.Writer.Complete()` so `await foreach (var item in reader.ReadAllAsync(token))` exits cleanly
 - [ ] **EF Core `DbContext` pool drained on shutdown**: handled by the DI container disposing scoped services; explicit `await dbContext.DisposeAsync()` not needed unless using a manually managed `DbContext` factory
 - [ ] **MassTransit / Hangfire bus stopped**: MassTransit's hosted service stops on app shutdown; Hangfire's `BackgroundJobServer` likewise. Confirm not bypassing the hosted-service registration
+- [ ] **Health check endpoints exposed**: `services.AddHealthChecks().AddDbContextCheck<AppDbContext>()...` registered AND `app.MapHealthChecks("/health", ...)` (liveness) + `app.MapHealthChecks("/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") })` (readiness) mapped. Multi-replica deployments without health endpoints cannot do safe rolling restarts - load balancers cannot tell DB-down from worker-stuck from process-alive. This is a deploy-time hazard, not a "deep" optional - flag at any depth on multi-replica services
 
 ### Step 10 - Error Tracking (Sentry / Application Insights)
 
@@ -191,8 +200,7 @@ Inspect SDK config:
 When invoked at `deep`, evaluate:
 
 - [ ] Critical user journeys have at least one Prometheus / OTel SLI (HTTP request rate filtered to the journey URI, success rate, p95 latency)
-- [ ] DB / cache / message broker / external API health checked via dedicated `/health` (liveness) and `/ready` (readiness) endpoints - readiness reflects "ready to serve" (DB up, caches warmed); liveness reflects "process alive". `services.AddHealthChecks().AddDbContextCheck<AppDbContext>().AddRedis(...).AddRabbitMQ(...)` and `app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false })` (liveness, no checks) + `app.MapHealthChecks("/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") })` (readiness)
-- [ ] Health endpoints return JSON with per-dependency status, not just `200 OK` - so probes can distinguish DB-down from worker-stuck. Use `UIResponseWriter.WriteHealthCheckUIResponse` for structured output
+- [ ] Health endpoint **presence** is checked in Step 9 (it is a deploy-time hazard, not depth-gated). At `deep`, additionally verify: per-dependency depth (DB / cache / broker / external API each has a registered check), and that endpoints return JSON with per-dependency status (`UIResponseWriter.WriteHealthCheckUIResponse` for structured output) so probes can distinguish DB-down from worker-stuck
 - [ ] SLO targets documented in code (`src/Slos/*.cs` or module README) - not a free-floating Confluence page
 
 ## Self-Check
