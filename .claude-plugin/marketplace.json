@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, java, kotlin, python, rails, node, go, dotnet, rust, php, react, vue, and angular.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -144,9 +144,9 @@
       "tags": ["python", "fastapi", "django", "sqlalchemy", "alembic", "celery"]
     },
     {
-      "name": "rails",
-      "source": "./plugins/rails",
-      "description": "Skills and agents for Ruby on Rails 7.2+ development.",
+      "name": "ruby",
+      "source": "./plugins/ruby",
+      "description": "Skills and agents for Ruby 3.2+ / Ruby on Rails 7.2+ development.",
       "version": "1.87.0",
       "author": {
         "name": "Tuyen",

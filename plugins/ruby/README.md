@@ -1,6 +1,6 @@
-# Tuyen's Agent Skills - Ruby on Rails
+# Tuyen's Agent Skills - Ruby / Ruby on Rails
 
-Claude Code plugin for Ruby on Rails projects.
+Claude Code plugin for Ruby / Ruby on Rails projects.
 
 ## Stack
 

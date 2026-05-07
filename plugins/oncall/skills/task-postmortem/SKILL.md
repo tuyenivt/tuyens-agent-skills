@@ -348,9 +348,9 @@ Contributing Factors:
 
 One row per guardrail above. Every row must name a real file or check.
 
-| Guardrail | Target (skill / CLAUDE.md / CI gate / runbook)                 | Insertion Point  | Exact Patch             | MTTR Number Reduced                                            |
-| --------- | -------------------------------------------------------------- | ---------------- | ----------------------- | -------------------------------------------------------------- |
-| {rule}    | {e.g., `plugins/rails/skills/rails-sidekiq-patterns/SKILL.md`} | {section / line} | {bullet or code to add} | {detection gap / containment lag / resolution lag, est. delta} |
+| Guardrail | Target (skill / CLAUDE.md / CI gate / runbook)                | Insertion Point  | Exact Patch             | MTTR Number Reduced                                            |
+| --------- | ------------------------------------------------------------- | ---------------- | ----------------------- | -------------------------------------------------------------- |
+| {rule}    | {e.g., `plugins/ruby/skills/rails-sidekiq-patterns/SKILL.md`} | {section / line} | {bullet or code to add} | {detection gap / containment lag / resolution lag, est. delta} |
 
 ## Staff-Level Takeaways
 

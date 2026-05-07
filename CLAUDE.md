@@ -19,7 +19,7 @@ plugins/
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
   kotlin/        # Thin companion to java plugin (requires core + java)
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
-  rails/         # Ruby on Rails 7.2+
+  ruby/          # Ruby 3.2+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
   rust/          # Rust 1.94+ / Axum / sqlx

@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `java`, `kotlin`, `python`, `rails`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -46,7 +46,7 @@ claude plugin install python@tuyens-agent-skills --scope project
 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install rails@tuyens-agent-skills --scope project
+claude plugin install ruby@tuyens-agent-skills --scope project
 ```
 
 **Node.js / TypeScript project:**
@@ -224,7 +224,7 @@ Python / FastAPI / Django (plugin: python)
   Python test strategy / scaffolds    -> /task-python-test
   Python refactor plan                -> /task-python-refactor
 
-Ruby on Rails (plugin: rails)
+Ruby on Rails (plugin: ruby)
   scaffold a new Rails feature        -> /task-rails-new
   debug a Rails issue                 -> /task-rails-debug
   Rails staff-level code review       -> /task-rails-review
@@ -309,7 +309,7 @@ Angular (plugin: angular)
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [kotlin](plugins/kotlin)             | Kotlin companion layer for Spring Boot projects (requires `java`)                                                                                                                   |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
-| [rails](plugins/rails)               | Ruby on Rails 7.2+                                                                                                                                                                  |
+| [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
 | [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                                                                                               |
