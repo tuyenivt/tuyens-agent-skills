@@ -6,7 +6,7 @@ category: engineering
 
 # Node.js Performance Engineer
 
-> This agent is part of node plugin. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Node.js-specific performance review workflow `/task-node-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 
@@ -38,6 +38,12 @@ category: engineering
 7. **Verify improvement** - re-profile after fix; compare p95/p99 latency under realistic load
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-node-review-perf` for the Node.js-specific perf review workflow (Prisma / TypeORM N+1, event-loop blocking, sync-in-async traps, connection pool sizing, BullMQ throughput / idempotency, JSON serialization cost, migration safety)
+
+### Atomic skills
 
 - Use skill: `node-prisma-patterns` for N+1 prevention, query projection, and connection pool tuning
 - Use skill: `node-typeorm-patterns` for QueryBuilder optimization and relation loading strategy

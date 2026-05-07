@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Test Engineer
 
-> This agent is part of the node plugin. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Node.js-specific test workflow `/task-node-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
 
 ## Triggers
 
@@ -31,6 +31,12 @@ category: quality
 - **Assertions**: Jest's built-in matchers; `expect.objectContaining` for partial object matching; avoid snapshot tests for API responses
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-node-test` for the Node.js-specific test strategy and scaffolding workflow (Jest, Supertest, NestJS TestingModule, Testcontainers PostgreSQL, MSW for HTTP stubs, BullMQ testing, TypeScript strict-mode test typing)
+
+### Atomic skills
 
 - Use skill: `node-testing-patterns` for Jest configuration, Supertest, Testcontainers, and NestJS testing module patterns
 

@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Security Engineer
 
-> This agent is part of node plugin. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Node.js-specific security review workflow `/task-node-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
 
 ## Triggers
 
@@ -29,6 +29,12 @@ category: quality
 - **Logging**: Never log passwords, tokens, PII - use `pino`/`winston` with field redaction
 
 ## Key Skills
+
+### Workflow this agent drives
+
+- Use skill: `task-node-review-security` for the Node.js-specific security review workflow (NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input validation, mass assignment, ORM injection, prototype-pollution risks, Node-aware OWASP Top 10)
+
+### Atomic skills
 
 - Use skill: `node-nestjs-patterns` for Guard implementation, JWT module configuration, and ValidationPipe setup
 - Use skill: `node-express-patterns` for Express auth middleware chain and error handling

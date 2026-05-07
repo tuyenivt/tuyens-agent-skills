@@ -8,7 +8,7 @@ category: quality
 
 # Node.js Tech Lead
 
-> This agent is part of the node plugin. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the node plugin. Drives the Node.js-specific review and refactor workflows: `/task-node-review` (umbrella with perf/security/observability subagents), `/task-node-review-observability`, and `/task-node-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Role
 
@@ -115,6 +115,14 @@ Flag as review findings when:
 - Complex business logic lacks explanatory comments
 
 ## Key Skills
+
+### Workflows this agent drives
+
+- Use skill: `task-node-review` for the Node.js-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
+- Use skill: `task-node-refactor` for Node.js-specific refactor planning (fat controllers/route handlers, anemic services, sync-in-async, blocking I/O on the event loop, NestJS request-scoped provider misuse, BullMQ idempotency, Prisma/TypeORM relation traps) with a Jest coverage gate
+- Use skill: `task-node-review-observability` for the Node.js observability depth review (pino/winston, OpenTelemetry Node SDK, prom-client, BullMQ queue events, error trackers)
+
+### Atomic skills
 
 - Use skill: `node-typescript-patterns` for type safety and strict mode review
 - Use skill: `node-nestjs-patterns` for NestJS module, DI, and guard review
