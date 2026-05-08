@@ -192,6 +192,12 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `std::env::var("JWT_SECRET")` accessed via typed config struct loaded once at startup so missing-at-startup fails fast (`figment` / `config` / `envy`)
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (Axum extractors `Json` / `Query` / `Path` / `Form`, background-task payloads, Kafka message values, external API responses, webhook payloads)
@@ -225,6 +231,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] Password hashing config reviewed (argon2 preferred, bcrypt cost ≥ 10) - skip if hashing config not in diff
 - [ ] Sentry `before_send` strips PII - skip if Sentry init not in diff
 - [ ] `cargo audit` / `cargo deny check advisories` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

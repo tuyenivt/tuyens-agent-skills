@@ -229,6 +229,12 @@ This step is intentionally narrow - depth on observability belongs to `task-pyth
 
 Anything beyond presence/absence (sampling rates, span attributes, correlation IDs, multi-process Prometheus) → `task-python-review-observability` owns it. Note the gap, do not duplicate the audit here.
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-perf`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific check applied
@@ -249,6 +255,7 @@ Anything beyond presence/absence (sampling rates, span attributes, correlation I
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and load-test plan
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

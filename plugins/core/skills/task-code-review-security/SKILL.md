@@ -132,6 +132,12 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and reco
 - Secrets in secret manager (not env vars or code)
 - No sensitive data in client-side state or URLs
 
+
+### Step 6 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (user input, external APIs)
@@ -154,6 +160,7 @@ If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and reco
 - [ ] Every finding states an attack scenario, not just a code observation
 - [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

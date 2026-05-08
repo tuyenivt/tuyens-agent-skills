@@ -211,6 +211,12 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `process.env.JWT_SECRET` accessed via typed config service (`@nestjs/config` `ConfigService`) so missing-at-startup fails fast
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (NestJS body / query / params, Express body, BullMQ job payloads, external API responses, webhook payloads)
@@ -244,6 +250,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] Password hashing config reviewed (bcrypt cost ≥ 10, argon2 preferred) - skip if hashing config not in diff
 - [ ] Sentry `beforeSend` strips PII - skip if Sentry init module not in diff
 - [ ] `bun audit` / `npm audit` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

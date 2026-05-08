@@ -389,6 +389,12 @@ _Omit this section if there are no actionable findings._
 - Default to Core scope
 - Do not apply conventions from one stack to another
 
+
+### Step 5 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
@@ -414,6 +420,7 @@ _Omit this section if there are no actionable findings._
 - [ ] Subagent findings are merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports are not appended
 - [ ] Any failed/missing subagent scope is noted under Summary as `Scope incomplete: <scope>`
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Avoid
 

@@ -202,6 +202,12 @@ Inspect SDK config:
 - [ ] **Queue worker exception capture**: queue jobs route exceptions through Laravel's exception handler, which Sentry hooks; confirm not bypassing
 - [ ] **No SDK in `require-dev`**: the SDK must be in `require` so it loads in production. Bugsnag / Sentry / Flare in `require-dev` is a common deploy bug; flag
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
@@ -221,6 +227,7 @@ Inspect SDK config:
 - [ ] Depth honored: `quick` skipped tracing/queue/lifecycle/error-tracker steps unless diff signals required them; `deep` ran the SLI step
 - [ ] Greenfield grouping rule applied: when a whole surface is `absent`, findings collapsed into one High finding per surface (not one per missing checkbox)
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

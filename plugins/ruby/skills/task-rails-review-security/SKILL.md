@@ -157,6 +157,12 @@ Every hit is a candidate XSS - verify the source is trusted (i18n string, `link_
 - [ ] **No sensitive data in URLs** (use POST body or signed tokens, not query strings)
 - [ ] **Rails credentials** used for all third-party API keys; environment-specific credential files for prod/staging
 
+
+### Step 9 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (controller params, external API responses)
@@ -183,6 +189,7 @@ Every hit is a candidate XSS - verify the source is trusted (i18n string, `link_
 - [ ] Every finding includes an attack scenario - not just "input not validated"
 - [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

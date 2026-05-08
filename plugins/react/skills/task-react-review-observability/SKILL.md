@@ -195,6 +195,12 @@ When invoked at `deep`, evaluate:
 - [ ] Synthetic checks (Datadog Synthetics, Checkly) for critical journeys; these complement RUM but do not replace it
 - [ ] Build-size budgets per route enforced in CI (`@next/bundle-analyzer` thresholds, `bundlesize`); LCP regressions correlate with bundle growth
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as React (or accepted from parent dispatcher); framework recorded
@@ -214,6 +220,7 @@ When invoked at `deep`, evaluate:
 - [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, Sentry org settings, log forwarder config, alert rules) explicitly deferred to ops
 - [ ] Depth honored: `quick` skipped tracing/logging-detail/identity/RUM/SLI steps unless diff signals required them; `deep` ran the SLI step
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

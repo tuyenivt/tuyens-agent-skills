@@ -168,6 +168,12 @@ When invoked at `deep`, evaluate:
 - [ ] SLO targets documented in code (`@SLO`-style annotations or service README) - not a free-floating Confluence page
 - [ ] Synthetic probes (k6 / Gatling) call `/actuator/health/readiness` not just `/actuator/health` - readiness reflects ability to serve
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher)
@@ -185,6 +191,7 @@ When invoked at `deep`, evaluate:
 - [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, log forwarder config, alert rules) explicitly deferred to ops
 - [ ] Depth honored: `quick` skipped tracing/messaging/error-tracker/SLI steps unless diff signals required them; `deep` ran the SLI step
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

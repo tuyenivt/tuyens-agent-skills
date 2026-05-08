@@ -398,6 +398,12 @@ _Omit this section if there are no actionable findings._
 - Default to Core scope; auto-escalate on signals; honor `core-only` flag
 - Delegate perf / security / observability depth to the appropriate Rust subagent rather than duplicating the check here
 
+
+### Step 6 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Rust / Axum (or accepted from parent dispatcher); runtime, data-access, and messaging detected and recorded
@@ -427,6 +433,7 @@ _Omit this section if there are no actionable findings._
 - [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended
 - [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>`
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Avoid
 

@@ -213,6 +213,12 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: env vars loaded from a secret store (Vault / AWS Secrets Manager / Azure Key Vault) into the runtime env; `.env` in CI / prod sourced from secret store at deploy time, never committed; `php artisan env:encrypt` (Laravel 9+) for committed encrypted env files when secrets must travel with the code
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (Form Requests, queue job payloads, external API responses, webhook payloads)
@@ -248,6 +254,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] Password hashing config reviewed (`Hash::make` driver, bcrypt cost / Argon2 params) - skip if hashing config not in diff
 - [ ] Sentry / Bugsnag `beforeSend` strips PII - skip if telemetry init not in diff
 - [ ] `composer audit` / `roave/security-advisories` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

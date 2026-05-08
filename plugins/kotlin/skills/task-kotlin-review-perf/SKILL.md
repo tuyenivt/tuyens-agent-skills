@@ -171,6 +171,12 @@ _Skipped at `quick` depth._
 - [ ] APM span attribution by request - confirm `traceparent` propagation through `@Async`, `CoroutineScope.launch`, and `WebClient` calls
 - [ ] **MDC propagation across coroutines**: `MDCContext` from `kotlinx-coroutines-slf4j` (or equivalent) used so trace IDs survive dispatcher switches
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-perf`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Kotlin / Spring Boot before any specific check applied
@@ -189,6 +195,7 @@ _Skipped at `quick` depth._
 - [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
 - [ ] Depth honored: `quick` ran only Steps 5 + 6; `standard` ran 5-10; `deep` adds capacity guidance
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

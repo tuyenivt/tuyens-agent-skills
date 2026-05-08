@@ -186,6 +186,12 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `os.Getenv("JWT_SECRET")` accessed via typed config struct loaded once at startup so missing-at-startup fails fast
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (Gin body / query / params / URI, Asynq task payloads, Kafka message values, external API responses, webhook payloads)
@@ -219,6 +225,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] Password hashing config reviewed (bcrypt cost ≥ 10, argon2 preferred) - skip if hashing config not in diff
 - [ ] Sentry `BeforeSend` strips PII - skip if Sentry init not in diff
 - [ ] `govulncheck ./...` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

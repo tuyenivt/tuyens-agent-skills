@@ -201,6 +201,12 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Secrets management**: server `runtimeConfig` values come from a secret store (Vault / AWS Secrets Manager / Doppler / hosting platform secrets); flag any literal API key in `.env` checked into git; `.env` gitignored
 - [ ] **Source maps in production**: hosting publishes source maps to Sentry but does not serve them publicly (`sourcemap.client: false` in `nuxt.config.ts` for non-Sentry builds; for Sentry, the plugin uploads then deletes)
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries: Nitro endpoint body / query / params, `URLSearchParams`, `postMessage`, external API responses
@@ -238,6 +244,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] CSP / HSTS / security headers verified - applies when `nuxt.config.ts` `routeRules.headers` or middleware in scope
 - [ ] Sentry Vue SDK `beforeSend` strips PII - skip if Sentry init module not in diff
 - [ ] `pnpm audit` / `npm audit` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

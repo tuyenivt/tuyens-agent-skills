@@ -146,6 +146,12 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: Spring Cloud Config + Vault, AWS Secrets Manager, or env-var injection from a secret store - never `application-prod.yml` committed
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (controller `@RequestBody`, external API responses, message payloads)
@@ -172,6 +178,7 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] Every finding includes an attack scenario - not just "input not validated"
 - [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

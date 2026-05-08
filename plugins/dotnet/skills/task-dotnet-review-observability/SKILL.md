@@ -203,6 +203,12 @@ When invoked at `deep`, evaluate:
 - [ ] Health endpoint **presence** is checked in Step 9 (it is a deploy-time hazard, not depth-gated). At `deep`, additionally verify: per-dependency depth (DB / cache / broker / external API each has a registered check), and that endpoints return JSON with per-dependency status (`UIResponseWriter.WriteHealthCheckUIResponse` for structured output) so probes can distinguish DB-down from worker-stuck
 - [ ] SLO targets documented in code (`src/Slos/*.cs` or module README) - not a free-floating Confluence page
 
+
+### Step 12 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as .NET / ASP.NET Core (or accepted from parent dispatcher); data-access mix and messaging recorded
@@ -221,6 +227,7 @@ When invoked at `deep`, evaluate:
 - [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, log forwarder config, alert rules) explicitly deferred to ops
 - [ ] Depth honored: `quick` skipped tracing/messaging/lifecycle/error-tracker/SLI steps unless diff signals required them; `deep` ran the SLI step
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

@@ -167,6 +167,12 @@ Broken cache key (silent staleness):
 - [ ] N+1 detection enabled in non-prod (Bullet gem) - flag any change that disables it
 - [ ] Query log tags (`config.active_record.query_log_tags_enabled = true`) on so APM can attribute queries to controllers/jobs
 
+
+### Step 9 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-perf`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Rails before any Rails-specific check applied
@@ -182,6 +188,7 @@ Broken cache key (silent staleness):
 - [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

@@ -251,6 +251,12 @@ This step is intentionally narrow - depth on observability belongs to `task-lara
 
 Anything beyond presence/absence (sampling rates, span attributes, correlation IDs, multi-process metric aggregation, log channel design) → `task-laravel-review-observability` owns it. Note the gap, do not duplicate the audit here.
 
+
+### Step 12 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-perf`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
@@ -272,6 +278,7 @@ Anything beyond presence/absence (sampling rates, span attributes, correlation I
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Depth honored: `quick` ran only Steps 5 + 6; `standard` ran 5-11; `deep` adds capacity guidance and load-test plan
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

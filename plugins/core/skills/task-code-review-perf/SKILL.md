@@ -200,6 +200,12 @@ Verify:
 - [ ] Metrics instrumented for custom operations
 - [ ] Health indicators exist for critical dependencies
 
+
+### Step 9 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-perf`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
@@ -217,6 +223,7 @@ Verify:
 - [ ] Every finding states estimated impact (latency/throughput/memory/CWV) not just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

@@ -145,6 +145,12 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: Spring Cloud Config + Vault, AWS Secrets Manager, or env-var injection - never `application-prod.yml` committed
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (controller `@RequestBody`, external API responses, message payloads)
@@ -173,6 +179,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] Every finding includes an attack scenario - not just "input not validated"
 - [ ] If no findings: explicitly state "No issues found" per category
 - [ ] Next Steps section produced ordered Critical > High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

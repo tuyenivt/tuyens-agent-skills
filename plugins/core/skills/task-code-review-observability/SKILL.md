@@ -149,6 +149,12 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 - [ ] Background jobs and queue consumers extract trace context from the message envelope - not generate a new trace
 - [ ] Async operations (goroutines, threads, promises) carry context forward; no orphaned spans
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
@@ -166,6 +172,7 @@ Flag services with no defined SLO as a **High** observability gap - without an S
 - [ ] Every finding states the missing signal AND what becomes invisible without it - not just "add a log here"
 - [ ] Findings ordered by severity; quick wins separated from structural changes
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no observability gaps exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

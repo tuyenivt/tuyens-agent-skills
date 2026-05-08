@@ -197,6 +197,12 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] **Database backups** encrypted; access controlled
 - [ ] **Secrets management**: env vars from a secret store (Azure Key Vault / AWS Secrets Manager / HashiCorp Vault / `dotnet user-secrets` for dev), never `appsettings.json` / `appsettings.Production.json` committed with real secrets; `IOptions<JwtOptions>` typed config struct loaded once at startup so missing-at-startup fails fast
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries (`[FromBody]` / `[FromQuery]` / `[FromRoute]` / `[FromForm]` extractors, MassTransit / Hangfire job payloads, external API responses, webhook payloads)
@@ -230,6 +236,7 @@ The triage output funnels which downstream steps must run carefully versus which
 - [ ] Password hashing config reviewed (`IPasswordHasher<T>` / BCrypt cost ≥ 11 / Argon2 params) - skip if hashing config not in diff
 - [ ] Sentry / Application Insights `BeforeSend` strips PII - skip if telemetry init not in diff
 - [ ] `dotnet list package --vulnerable` / NuGet Audit clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

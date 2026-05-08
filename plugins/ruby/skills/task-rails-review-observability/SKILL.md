@@ -152,6 +152,12 @@ Run at `deep` depth or when the user explicitly requests SLI/SLO coverage:
 
 Flag a Rails service with no defined SLI/SLO as a **High** observability gap.
 
+
+### Step 11 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Rails (or accepted from parent dispatcher)
@@ -170,6 +176,7 @@ Flag a Rails service with no defined SLI/SLO as a **High** observability gap.
 - [ ] Every finding states the missing signal AND what becomes invisible without it - not just "add a log here"
 - [ ] Findings ordered by severity; quick wins separated from structural changes
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no observability gaps exist)
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

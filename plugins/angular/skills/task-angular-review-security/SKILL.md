@@ -171,6 +171,12 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Secrets management**: build-injected env vars come from a secret store (Vault / AWS Secrets Manager / Doppler / hosting platform secrets); flag any literal API key in `environment.ts` checked into git
 - [ ] **Source maps in production**: `angular.json` `"sourceMap": false` for production (or upload-then-strip via Sentry plugin); public source maps leak source-code structure
 
+
+### Step 10 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-security`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries: route params, `URLSearchParams`, `postMessage`, file inputs, external API responses
@@ -205,6 +211,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] CSP / HSTS / security headers verified - applies when SSR server / hosting platform headers in scope
 - [ ] Sentry Angular SDK `beforeSend` strips PII - skip if Sentry init module not in diff
 - [ ] `npm audit` / `pnpm audit` clean - run separately; this workflow does not execute tools
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 

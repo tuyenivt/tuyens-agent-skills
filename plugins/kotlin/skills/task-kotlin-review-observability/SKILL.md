@@ -170,6 +170,12 @@ When invoked at `deep`:
 - [ ] SLO targets documented in code or service README
 - [ ] Synthetic probes call `/actuator/health/readiness` not just `/actuator/health`
 
+
+### Step 12 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review-observability`.
+
+Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
@@ -189,6 +195,7 @@ When invoked at `deep`:
 - [ ] Library-level scope respected; infra-level concerns explicitly deferred to ops
 - [ ] Depth honored: `quick` skipped tracing/messaging/error-tracker/SLI; `deep` ran the SLI step
 - [ ] Next Steps section produced ordered High > Medium > Low
+- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
 
 ## Output Format
 
