@@ -200,124 +200,124 @@ I want to...
 
 ```
 Java / Spring Boot (plugin: java)
-  implement a new Spring Boot feature  -> /task-spring-implement
-  debug a Spring Boot issue           -> /task-spring-debug
-  Spring staff-level code review      -> /task-spring-review
-  Spring performance review           -> /task-spring-review-perf
-  Spring security review              -> /task-spring-review-security
-  Spring observability review         -> /task-spring-review-observability
-  Spring test strategy / scaffolds    -> /task-spring-test
-  Spring refactor plan                -> /task-spring-refactor
+  implement a new feature              -> /task-spring-implement
+  debug an issue                       -> /task-spring-debug
+  staff-level code review              -> /task-spring-review
+  performance review                   -> /task-spring-review-perf
+  security review                      -> /task-spring-review-security
+  observability review                 -> /task-spring-review-observability
+  test strategy / scaffolds            -> /task-spring-test
+  refactor plan                        -> /task-spring-refactor
 
 Kotlin / Spring Boot (plugin: kotlin)
-  implement a new Kotlin feature       -> /task-kotlin-implement
-  debug a Kotlin issue                -> /task-kotlin-debug
-  Kotlin code review                  -> /task-kotlin-review
-  Kotlin perf review                  -> /task-kotlin-review-perf
-  Kotlin security review              -> /task-kotlin-review-security
-  Kotlin observability review         -> /task-kotlin-review-observability
-  Kotlin test strategy / scaffolds    -> /task-kotlin-test
-  Kotlin refactor plan                -> /task-kotlin-refactor
+  implement a new feature              -> /task-kotlin-implement
+  debug an issue                       -> /task-kotlin-debug
+  staff-level code review              -> /task-kotlin-review
+  performance review                   -> /task-kotlin-review-perf
+  security review                      -> /task-kotlin-review-security
+  observability review                 -> /task-kotlin-review-observability
+  test strategy / scaffolds            -> /task-kotlin-test
+  refactor plan                        -> /task-kotlin-refactor
 
 Python / FastAPI / Django (plugin: python)
-  implement a new Python feature       -> /task-python-implement
-  debug a Python issue                -> /task-python-debug
-  Python staff-level code review      -> /task-python-review
-  Python performance review           -> /task-python-review-perf
-  Python security review              -> /task-python-review-security
-  Python observability review         -> /task-python-review-observability
-  Python test strategy / scaffolds    -> /task-python-test
-  Python refactor plan                -> /task-python-refactor
+  implement a new feature              -> /task-python-implement
+  debug an issue                       -> /task-python-debug
+  staff-level code review              -> /task-python-review
+  performance review                   -> /task-python-review-perf
+  security review                      -> /task-python-review-security
+  observability review                 -> /task-python-review-observability
+  test strategy / scaffolds            -> /task-python-test
+  refactor plan                        -> /task-python-refactor
 
 Ruby on Rails (plugin: ruby)
-  implement a new Rails feature        -> /task-rails-implement
-  debug a Rails issue                 -> /task-rails-debug
-  Rails staff-level code review       -> /task-rails-review
-  Rails performance review            -> /task-rails-review-perf
-  Rails security review               -> /task-rails-review-security
-  Rails observability review          -> /task-rails-review-observability
-  Rails test strategy / scaffolds     -> /task-rails-test
-  Rails refactor plan                 -> /task-rails-refactor
+  implement a new feature              -> /task-rails-implement
+  debug an issue                       -> /task-rails-debug
+  staff-level code review              -> /task-rails-review
+  performance review                   -> /task-rails-review-perf
+  security review                      -> /task-rails-review-security
+  observability review                 -> /task-rails-review-observability
+  test strategy / scaffolds            -> /task-rails-test
+  refactor plan                        -> /task-rails-refactor
 
 Node.js / TypeScript / NestJS (plugin: node)
-  implement a new Node feature         -> /task-node-implement
-  debug a Node issue                  -> /task-node-debug
-  Node staff-level code review        -> /task-node-review
-  Node performance review             -> /task-node-review-perf
-  Node security review                -> /task-node-review-security
-  Node observability review           -> /task-node-review-observability
-  Node test strategy / scaffolds      -> /task-node-test
-  Node refactor plan                  -> /task-node-refactor
+  implement a new feature              -> /task-node-implement
+  debug an issue                       -> /task-node-debug
+  staff-level code review              -> /task-node-review
+  performance review                   -> /task-node-review-perf
+  security review                      -> /task-node-review-security
+  observability review                 -> /task-node-review-observability
+  test strategy / scaffolds            -> /task-node-test
+  refactor plan                        -> /task-node-refactor
 
 Go / Gin (plugin: go)
-  implement a new Go feature           -> /task-go-implement
-  debug a Go issue                    -> /task-go-debug
-  staff-level code review             -> /task-go-review
-  performance review                  -> /task-go-review-perf
-  security review                     -> /task-go-review-security
-  observability review                -> /task-go-review-observability
-  test strategy and scaffolding       -> /task-go-test
-  Go refactor plan                    -> /task-go-refactor
+  implement a new feature              -> /task-go-implement
+  debug an issue                       -> /task-go-debug
+  staff-level code review              -> /task-go-review
+  performance review                   -> /task-go-review-perf
+  security review                      -> /task-go-review-security
+  observability review                 -> /task-go-review-observability
+  test strategy / scaffolds            -> /task-go-test
+  refactor plan                        -> /task-go-refactor
 
 .NET / ASP.NET Core (plugin: dotnet)
-  implement a new .NET feature         -> /task-dotnet-implement
-  debug a .NET issue                  -> /task-dotnet-debug
-  staff-level code review             -> /task-dotnet-review
-  performance review                  -> /task-dotnet-review-perf
-  security review                     -> /task-dotnet-review-security
-  observability review                -> /task-dotnet-review-observability
-  test strategy and scaffolding       -> /task-dotnet-test
-  .NET refactor plan                  -> /task-dotnet-refactor
+  implement a new feature              -> /task-dotnet-implement
+  debug an issue                       -> /task-dotnet-debug
+  staff-level code review              -> /task-dotnet-review
+  performance review                   -> /task-dotnet-review-perf
+  security review                      -> /task-dotnet-review-security
+  observability review                 -> /task-dotnet-review-observability
+  test strategy / scaffolds            -> /task-dotnet-test
+  refactor plan                        -> /task-dotnet-refactor
 
 Rust / Axum (plugin: rust)
-  implement a new Rust feature         -> /task-rust-implement
-  debug a Rust issue                  -> /task-rust-debug
-  staff-level code review             -> /task-rust-review
-  performance review                  -> /task-rust-review-perf
-  security review                     -> /task-rust-review-security
-  observability review                -> /task-rust-review-observability
-  test strategy and scaffolding       -> /task-rust-test
-  Rust refactor plan                  -> /task-rust-refactor
+  implement a new feature              -> /task-rust-implement
+  debug an issue                       -> /task-rust-debug
+  staff-level code review              -> /task-rust-review
+  performance review                   -> /task-rust-review-perf
+  security review                      -> /task-rust-review-security
+  observability review                 -> /task-rust-review-observability
+  test strategy / scaffolds            -> /task-rust-test
+  refactor plan                        -> /task-rust-refactor
 
 PHP / Laravel (plugin: php)
-  implement a new Laravel feature      -> /task-laravel-implement
-  debug a Laravel issue               -> /task-laravel-debug
-  staff-level code review             -> /task-laravel-review
-  performance review                  -> /task-laravel-review-perf
-  security review                     -> /task-laravel-review-security
-  observability review                -> /task-laravel-review-observability
-  test strategy and scaffolding       -> /task-laravel-test
-  Laravel refactor plan               -> /task-laravel-refactor
+  implement a new feature              -> /task-laravel-implement
+  debug an issue                       -> /task-laravel-debug
+  staff-level code review              -> /task-laravel-review
+  performance review                   -> /task-laravel-review-perf
+  security review                      -> /task-laravel-review-security
+  observability review                 -> /task-laravel-review-observability
+  test strategy / scaffolds            -> /task-laravel-test
+  refactor plan                        -> /task-laravel-refactor
 
 React / Next.js (plugin: react)
-  implement a new React feature        -> /task-react-implement
-  debug a React issue                 -> /task-react-debug
-  staff-level code review             -> /task-react-review
-  performance review                  -> /task-react-review-perf
-  security review                     -> /task-react-review-security
-  observability review                -> /task-react-review-observability
-  test strategy / coverage / scaffolds-> /task-react-test
-  refactoring plan                    -> /task-react-refactor
+  implement a new feature              -> /task-react-implement
+  debug an issue                       -> /task-react-debug
+  staff-level code review              -> /task-react-review
+  performance review                   -> /task-react-review-perf
+  security review                      -> /task-react-review-security
+  observability review                 -> /task-react-review-observability
+  test strategy / coverage / scaffolds -> /task-react-test
+  refactor plan                        -> /task-react-refactor
 
 Vue / Nuxt (plugin: vue)
-  implement a new Vue feature          -> /task-vue-implement
-  debug a Vue issue                   -> /task-vue-debug
-  staff-level code review             -> /task-vue-review
-  performance review                  -> /task-vue-review-perf
-  security review                     -> /task-vue-review-security
-  observability review                -> /task-vue-review-observability
-  test strategy / coverage / scaffolds-> /task-vue-test
-  refactoring plan                    -> /task-vue-refactor
+  implement a new feature              -> /task-vue-implement
+  debug an issue                       -> /task-vue-debug
+  staff-level code review              -> /task-vue-review
+  performance review                   -> /task-vue-review-perf
+  security review                      -> /task-vue-review-security
+  observability review                 -> /task-vue-review-observability
+  test strategy / coverage / scaffolds -> /task-vue-test
+  refactor plan                        -> /task-vue-refactor
 
 Angular (plugin: angular)
-  implement a new Angular feature      -> /task-angular-implement
-  debug an Angular issue              -> /task-angular-debug
-  PR review (umbrella)                -> /task-angular-review
-  performance review (CWV/bundle/CD)  -> /task-angular-review-perf
-  security review (XSS/CSP/guards)    -> /task-angular-review-security
-  observability review (web-vitals)   -> /task-angular-review-observability
-  test strategy / coverage / scaffolds-> /task-angular-test
-  refactoring plan                    -> /task-angular-refactor
+  implement a new feature              -> /task-angular-implement
+  debug an issue                       -> /task-angular-debug
+  staff-level code review              -> /task-angular-review
+  performance review                   -> /task-angular-review-perf
+  security review                      -> /task-angular-review-security
+  observability review                 -> /task-angular-review-observability
+  test strategy / coverage / scaffolds -> /task-angular-test
+  refactor plan                        -> /task-angular-refactor
 ```
 
 **Common decision points:**
