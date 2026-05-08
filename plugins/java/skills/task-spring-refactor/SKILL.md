@@ -197,11 +197,11 @@ The most common Spring Boot refactor: a controller endpoint triggers an entity w
 1. **Pin behavior with a `@SpringBootTest` (or `@WebMvcTest` + service test)** asserting every observable side effect (record updated, mailer queued, event published, audit row written) - this is the contract the refactor must preserve
 2. **Promote JPA callback to `@TransactionalEventListener(AFTER_COMMIT)`** first if callbacks publish events / send mail mid-transaction; tests still pass, but side effects now fire post-commit
 3. **Introduce a service** (`<Verb><Noun>Service`) that performs the write _and_ the side effects in one method; controller calls the service _but the JPA callbacks still run_ - this duplicates side effects intentionally and temporarily
-4. **Make callbacks no-op when called from the service** via a `ThreadLocal` flag set by the service or a domain-event-vs-callback dedup key (`if (event.source() == ServiceContext.SERVICE) return;`); verify tests still pass with side effects firing exactly once
-5. **Delete the JPA callbacks entirely**; the service is now the single source of orchestration; remove the bypass flag; tests still green
+4. **Make callbacks no-op when called from the service** via a `ThreadLocal` flag set by the service or a domain-event-vs-callback dedup key (`if (event.source() == ServiceContext.SERVICE) return;`); verify tests still pass with side effects firing exactly once. **This flag is a scaffold, not a feature.** Add a `// TODO: DELETE WITH CALLBACKS IN STEP 5` comment at the call site.
+5. **Delete the JPA callbacks entirely**; the service is now the single source of orchestration; remove the bypass flag and the `ThreadLocal` plumbing; tests still green
 6. **Audit other call sites** (`@Repository.save` / `entityManager.merge` / scheduled jobs / migrations) - any caller relying on the old callbacks is now broken and must be updated to call the service or have the side effects re-derived
 
-The intermediate "callbacks no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the callbacks (step 5).
+The intermediate "callbacks no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the callbacks (step 5). If step 5 is skipped, the `ThreadLocal` becomes a permanent fixture and the codebase ends up worse than it started; landing steps 3-5 in separate PRs is acceptable only if step 5 has a tracked owner and deadline.
 
 **Recipe: Split god service into focused services**
 
@@ -232,6 +232,44 @@ The intermediate "callbacks no-op when called from service" step is the safety n
 2. Add an idempotency guard: dedup table keyed by message UUID, business-key upsert (`ON CONFLICT DO NOTHING`), or version check
 3. Verify retries on transient failures still complete the work
 4. Configure DLT (`spring.kafka.listener.ack-mode: manual_immediate` + retry / DLT topic) so poison messages do not loop forever
+
+**Recipe: Move external I/O out of `@Transactional`**
+
+The most damaging Spring smell: a `@Service` method does DB write -> HTTP call -> DB write all inside one `@Transactional`. Under load the HTTP call holds a HikariCP connection for its full duration, exhausting the pool.
+
+1. Add an integration test asserting current observable behavior end-to-end (DB row state, side effect fired)
+2. Decide the new ordering. Two viable shapes:
+   - **Outbox pattern:** within the transaction, write the side effect intent to an `outbox` table; a separate scheduled poller (or `@TransactionalEventListener(AFTER_COMMIT)`) reads the outbox and performs the I/O. Strongest delivery guarantee.
+   - **Defer side effect to `@TransactionalEventListener(AFTER_COMMIT)`:** publish a domain event from the service; a listener performs the HTTP call after commit. Simpler, but at-most-once - if the listener fails, the side effect is lost.
+3. Implement the chosen shape. The transactional method now contains only DB work; the I/O moves to the listener / poller
+4. Run the integration test - failure semantics changed (the side effect now fires after commit, not before; if the I/O fails, the DB write still stands). Confirm this is acceptable for the use case
+5. Audit retry/idempotency: if the side effect can be retried, the listener / poller must be idempotent against the receiver
+
+**State the failure-mode change explicitly in the step.** The old code rolled back the DB on a failed HTTP call; the new code does not. If callers relied on that coupling, this is a behavioral change, not a pure refactor.
+
+**Recipe: Replace JPA `@Entity` in API with record-DTO**
+
+`@RestController` accepting or returning `@Entity` types causes mass-assignment, lazy-load failures, and accidentally exposes internal columns.
+
+1. Define a request record (e.g., `record CreateOrderRequest(@NotBlank String customerEmail, @Positive int quantity) {}`) with Bean Validation annotations
+2. Define a response record (e.g., `record OrderResponse(UUID id, String status, BigDecimal total) {}`)
+3. Add explicit mapping from entity to response record in the service or a dedicated mapper - inside the `@Transactional` boundary so lazy associations resolve
+4. Update controller signature: `@RequestBody @Valid CreateOrderRequest`, return `OrderResponse`
+5. Update `@WebMvcTest` to assert the new shape (no entity fields leaking)
+6. Verify no other callers were depending on the entity shape over the wire (API consumers must be coordinated separately if so)
+
+**Recipe: Fix `@Transactional` self-invocation**
+
+`methodA()` calls `this.methodB()`; `methodB` is `@Transactional`. The proxy is bypassed; no transaction starts.
+
+1. Identify the call site. Confirm the inner method is intended to run in its own transaction (otherwise just inline)
+2. Pick one fix:
+   - **Extract `methodB` to a different bean** (preferred) - inject the new bean, call it through that reference. Forces a clearer responsibility split.
+   - **Self-injection** - inject `Self self;` (the bean's own proxy) and call `self.methodB()`. Works but signals the design needs splitting; treat as a temporary fix.
+   - **`TransactionTemplate`** - drop `@Transactional` on `methodB`, wrap the body in `transactionTemplate.execute(...)`. Verbose; useful when propagation needs differ per call site.
+3. Verify with a test that asserts the transaction *actually starts* (e.g., assert a row written in `methodB` is rolled back when an exception is thrown after the call returns)
+
+Adding `@Transactional` to `methodB` without restructuring the call does **not** fix the bug - the proxy is still bypassed. Reject that as a fix.
 
 **Recipe: Replace `synchronized` on Virtual Thread paths**
 

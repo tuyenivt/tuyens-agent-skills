@@ -92,6 +92,9 @@ Inspect every changed `@Entity`, `@Repository`, `@Service`, and `@RestController
 - [ ] **`LazyInitializationException` risk**: any access to a lazy association outside the original `@Transactional` scope (e.g., in a controller after the service returns the entity). Fix: load via fetch join, switch to a DTO projection, or extend the transaction with `OpenEntityManagerInViewInterceptor` disabled (the default in Boot 3+ - keep it that way).
 - [ ] **Missing indexes for filter/sort columns**: any field used in `@Query` `where` / `order by` / `group by` clauses without a backing index in the Flyway/Liquibase migration.
 - [ ] **`findAll()` without pagination**: any read of an unbounded collection - require `Pageable` for any list endpoint that can grow.
+- [ ] **`Page<T>` vs `Slice<T>` vs `List<T>`**: `Page<T>` issues a second `count(*)` query to populate `totalElements` - on big tables with non-trivial filters this query can dominate the request. If the UI shows only "next/prev" (not "page X of Y"), return `Slice<T>` and skip the count. For infinite-scroll, return `List<T>` with a cursor. Choose deliberately, not by default.
+- [ ] **Long-running reads have explicit `@Transactional(timeout = N)`**: a query without a timeout holds a connection until DB-side `wait_timeout` (often 8 hours on MySQL, no default on PostgreSQL). Read paths that may scan large tables should set a 5-30 second timeout.
+- [ ] **Streaming for large result sets**: batch jobs / exports / report queries reading > 10k rows use `Stream<T>` repository return + `@Transactional(readOnly=true)` + explicit `try-with-resources`, *not* `findAll()` materializing everything in memory.
 - [ ] **`existsBy*` vs `findBy*().isPresent()`**: existence checks must use derived `existsBy*` (compiles to `select 1 ... limit 1`).
 - [ ] **Batch operations**: `saveAll`, `deleteAllInBatch` over loops; `spring.jpa.properties.hibernate.jdbc.batch_size` set (typically 25-50); `order_inserts` / `order_updates` enabled when batching across entity types.
 - [ ] **`@Transactional(readOnly = true)`** on read paths - lets Hibernate skip dirty-checking and write-locks; required for read replicas.
@@ -138,6 +141,8 @@ _Skipped at `quick` depth unless the diff touches `@Cacheable` / `@CacheEvict` /
 - [ ] HTTP caching (`ResponseEntity` with `Cache-Control`, `ETag`, `Last-Modified`) on read-heavy GET endpoints
 - [ ] No DTO mapper iterating lazy associations not declared in the entity graph
 - [ ] Response compression enabled (`server.compression.enabled=true`) for JSON responses > 2KB
+- [ ] **Response payload right-sized**: list endpoints that return the full entity (50 fields) when the caller renders 5 fields waste serialization CPU and network bandwidth. Use a projection DTO that selects only what the caller needs - especially when a page returns 50+ rows.
+- [ ] **Negative caching is invalidated on writes**: if `@Cacheable` returns `Optional.empty()` and that empty is cached, a subsequent insert of the missing row leaves callers with the stale empty for the TTL. Either set `unless = "#result == null || #result.isEmpty()"` to skip caching empties, or add `@CacheEvict` on the relevant insert path.
 
 ### Step 8 - Messaging and Background Work
 

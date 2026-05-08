@@ -22,7 +22,7 @@ user-invocable: false
 - Locate the `@SpringBootApplication` main class first; the package containing it is the component scan root and defines what gets auto-wired.
 - Treat `application.yml` (and its profile variants) as the single source of truth for runtime configuration - never describe behavior without mapping which property drives it.
 - Identify the persistence stack (JPA/Hibernate, JDBC, MyBatis, R2DBC, none) before discussing data flow - it changes everything downstream.
-- Identify the security configuration class (extends `WebSecurityConfigurerAdapter` or declares `SecurityFilterChain` bean) - if it is missing, security is the autoconfigured default.
+- Identify the security configuration class - on Spring Boot 3+ this is a `@Configuration` declaring one or more `SecurityFilterChain` beans (the legacy `WebSecurityConfigurerAdapter` was removed in Spring Security 6 / Spring Boot 3, so any code still extending it is on an unsupported version and the migration is itself an onboarding signal). If no security configuration class exists, the project is on the autoconfigured default - state which one (`spring-boot-starter-security` present means HTTP basic + a generated password printed to logs; absent means no auth at all).
 
 ## Patterns
 
@@ -45,7 +45,7 @@ Standard sequence to surface to the new engineer:
 3. Config: identify which profile is the default (`spring.profiles.active` in `application.yml`, or `SPRING_PROFILES_ACTIVE` env). Local dev typically uses `local` or `dev`.
 4. DB migration: detect Flyway (`src/main/resources/db/migration/`) or Liquibase (`src/main/resources/db/changelog/`). Run via `./mvnw spring-boot:run` or `./gradlew bootRun` - migrations execute at startup.
 5. Run: `./mvnw spring-boot:run` (Maven) or `./gradlew bootRun` (Gradle). Surface the default port (8080 unless `server.port` overrides).
-6. Verify: identify the actuator base path (default `/actuator`) and at minimum check `/actuator/health`.
+6. Verify: identify the actuator base path (default `/actuator`) and at minimum check `/actuator/health`. If `springdoc-openapi` is on the classpath, the OpenAPI document is at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` - surface these as the API exploration entry point.
 
 ### Key File Inventory
 
@@ -66,6 +66,7 @@ Standard sequence to surface to the new engineer:
 
 ### Conventions to Extract by Reading the Code
 
+- **Package layout:** two common shapes - **feature-package** (`com.acme.order.{controller,service,repository}`, `com.acme.payment.{controller,service,repository}`) or **layer-package** (`com.acme.controller.*`, `com.acme.service.*`, `com.acme.repository.*`). Modern Boot 3+ projects increasingly favor feature-package because cross-feature imports become visible (a `payment` package importing from `order` signals coupling). Identify which shape applies before describing where files live.
 - **Layering:** controller -> service -> repository is the default. Detect deviations: business logic in controllers, repository access from controllers, services calling other controllers.
 - **DTO vs entity at API boundary:** check whether `@RestController` returns JPA entities directly or maps to records/DTOs. Direct entity exposure is a red flag.
 - **Exception handling:** look for `@RestControllerAdvice` / `@ControllerAdvice` - this defines the team's error contract. If absent, errors leak Spring defaults.
@@ -78,7 +79,7 @@ Standard sequence to surface to the new engineer:
 
 - **Self-invocation of `@Transactional` / `@Async` / `@Cacheable` / `@PreAuthorize`:** scan for `this.method(...)` calls inside annotated services - these silently bypass advice.
 - **`@Transactional(readOnly = false)` on heavy queries:** disables Hibernate read-only optimizations.
-- **Open-in-view (OSIV):** Spring Boot enables `spring.jpa.open-in-view=true` by default. Lazy loading works in controllers but hides N+1 queries; check this property.
+- **Open-in-view (OSIV):** Spring Boot enables `spring.jpa.open-in-view=true` by default. Lazy loading works through the controller layer but silently hides N+1 queries and `LazyInitializationException` until the property is flipped. Flag this as a hotspot whenever `application.yml` either sets it to `true` or omits the key (the default applies); the recommended posture in modern Spring projects is `spring.jpa.open-in-view=false` with explicit fetch joins / entity graphs / projection DTOs.
 - **`@PostConstruct` doing heavy work:** delays startup; runs before health checks come up.
 - **`@SpringBootApplication` with non-default `scanBasePackages`:** any class outside the listed packages is invisible to component scan.
 - **Multiple `DataSource` or `PlatformTransactionManager` beans without `@Primary`:** ambiguous wiring, runtime startup failure.

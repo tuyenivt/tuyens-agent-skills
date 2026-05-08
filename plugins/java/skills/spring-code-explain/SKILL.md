@@ -54,21 +54,30 @@ Annotations that depend on the Spring proxy: `@Transactional`, `@Async`, `@Cache
 - **Rollback rules:** rolls back on `RuntimeException` and `Error` only by default. Checked exceptions do **not** roll back unless `rollbackFor = CheckedException.class` is set.
 - **Timeout:** measured in seconds; counts wall-clock time including waiting on locks.
 - **Isolation:** `Isolation.DEFAULT` uses the database default - usually `READ_COMMITTED` on PostgreSQL/MySQL, not `REPEATABLE_READ`.
+- **External IO inside `@Transactional`:** HTTP calls, message broker publishes, or other slow IO inside a `@Transactional` method hold the DB connection for the full duration. A 3-second payment gateway call holds a connection for 3 seconds; under load this exhausts the HikariCP pool. Flag this whenever an outbound client (`RestClient`, `WebClient`, `KafkaTemplate`, `RabbitTemplate`) is invoked inside a transaction.
 
 ### JPA / Hibernate Persistence Context
 
 - **Dirty checking:** entities loaded inside a transaction are tracked; field mutations are flushed at transaction commit without an explicit `save()` call. Mutating an entity outside a transaction has no DB effect.
-- **Lazy loading:** `@OneToMany`, `@ManyToOne(fetch = LAZY)`, and Hibernate proxies throw `LazyInitializationException` when accessed after the persistence context is closed (e.g., in the controller layer when `@Transactional` ended in the service).
+- **Lazy loading:** `@OneToMany`, `@ManyToOne(fetch = LAZY)`, and Hibernate proxies throw `LazyInitializationException` when accessed after the persistence context is closed (e.g., in the controller layer when `@Transactional` ended in the service, or in a mapper that runs after the service returns).
 - **N+1 queries:** loops over a collection of entities accessing a lazy association issue one query per entity. Detect: collection access in a loop + a `@OneToMany` or `@ManyToOne(LAZY)` field.
 - **Flush timing:** writes are buffered and flushed at commit, before query execution within the same transaction, or on explicit `flush()`. A `findById` after a `save` in the same transaction may return the cached entity, not a fresh DB row.
 - **Detached entities:** entities passed across transaction boundaries are detached; `merge()` reattaches but returns a new managed instance - the original reference is still detached.
+- **Optimistic locking (`@Version`):** entities with a `@Version` column throw `OptimisticLockException` (often surfacing as `ObjectOptimisticLockingFailureException`) when two transactions write to the same row. The losing writer must retry or escalate; this is an invariant the caller depends on whenever the entity has a version field.
+- **Returning managed entities to callers:** a `@Transactional` method that returns an `Entity` exposes a now-detached object to the caller. Mutations on it after the method returns do not persist, and lazy associations may fail. Returning a DTO/projection avoids this entirely.
 
 ### Async, Scheduled, and Events
 
-- `@Async`: returns immediately; method runs on a `TaskExecutor` thread. Return type must be `void`, `Future<T>`, or `CompletableFuture<T>`. Exceptions on `void` returns are swallowed unless an `AsyncUncaughtExceptionHandler` is configured.
+- `@Async`: returns immediately; method runs on a `TaskExecutor` thread. Return type must be `void`, `Future<T>`, or `CompletableFuture<T>`. Exceptions on `void` returns are swallowed unless an `AsyncUncaughtExceptionHandler` is configured. Exceptions on `CompletableFuture<T>` returns surface only when the caller awaits via `.get()` / `.join()` - if the caller never awaits, the failure is silent.
 - `@Scheduled`: runs on the scheduling thread pool (default size 1); a long-running scheduled task blocks all others. Use `@EnableAsync` + `@Async` on the scheduled method to detach.
-- `@EventListener`: synchronous by default - fires on the publisher's thread inside the publisher's transaction. `@TransactionalEventListener` defers until commit. Add `@Async` for true async.
-- `ApplicationEventPublisher.publishEvent`: synchronous unless the listener is `@Async`. Publisher exceptions roll back the publisher's transaction.
+- `@EventListener`: synchronous by default - fires on the publisher's thread inside the publisher's transaction. A throwing listener rolls back the publisher's transaction.
+- `@TransactionalEventListener`: defers listener execution until a transaction phase. Phases:
+  - `BEFORE_COMMIT` (default): runs after the publisher returns but before commit; can still abort the TX.
+  - `AFTER_COMMIT`: runs only if the TX committed; the entity is now persisted but the TX is closed (lazy access fails).
+  - `AFTER_ROLLBACK`: runs only if the TX rolled back.
+  - `AFTER_COMPLETION`: runs in either case.
+  Choosing the wrong phase changes behavior dramatically (e.g., publishing to Kafka in `BEFORE_COMMIT` can publish events for a transaction that then rolls back).
+- `ApplicationEventPublisher.publishEvent`: synchronous unless the listener is `@Async`. Listener exceptions roll back the publisher's transaction (unless the listener is `@Async` or `@TransactionalEventListener(AFTER_COMMIT)`).
 
 ### Spring Security Signals
 
@@ -76,6 +85,14 @@ Annotations that depend on the Spring proxy: `@Transactional`, `@Async`, `@Cache
 - **Method security:** `@PreAuthorize`, `@PostAuthorize`, `@Secured` are AOP-proxied - same self-invocation gotcha as `@Transactional`.
 - **`SecurityContextHolder`:** holds auth in a `ThreadLocal` by default. `@Async` methods do not inherit the security context unless `DelegatingSecurityContextExecutor` or `SecurityContextHolder.MODE_INHERITABLETHREADLOCAL` is configured.
 - **CSRF and session:** stateless REST APIs typically disable CSRF and use `STATELESS` session creation policy. Check `SecurityFilterChain` config to confirm.
+
+### Spring Boot 3.x / Java 21+ Baseline Signals
+
+- **`jakarta.*` packages** (not `javax.*`): Spring Boot 3 moved to Jakarta EE 9+. Code still importing `javax.persistence` / `javax.servlet` is pre-3.0 and almost certainly mismatched against the current dependency set.
+- **Virtual threads:** when `spring.threads.virtual.enabled=true`, Tomcat request threads and `@Async` executors run on Loom virtual threads. `synchronized` blocks pin the carrier thread - flag any `synchronized` in request-path code as a perf risk in this mode.
+- **Observation API (Micrometer Tracing):** Spring 6 replaced Sleuth. `@Observed` and the `ObservationRegistry` produce both metrics and traces from one instrumentation point. If the code uses the legacy Sleuth `Tracer` directly, it is on an older Spring version.
+- **`RestClient` / `HttpExchange`:** the modern synchronous HTTP client is `RestClient` (Spring 6.1+), and declarative clients use `@HttpExchange`. `RestTemplate` is in maintenance mode; flag new code that introduces it.
+- **Records as DTOs:** Java 17+ record types are idiomatic for request/response DTOs. They are immutable, no setters; serialization-library quirks (Jackson constructor binding, `@JsonCreator`) can surprise callers who treat them like POJOs.
 
 ### Configuration and Profiles
 
@@ -112,12 +129,18 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 - Bean is singleton: instance fields shared across all callers and threads
 - Transaction must be active for entity mutation to persist
 - Caller must invoke through bean reference for proxy-backed annotations to fire
+- A synchronous `@EventListener` must not throw, or the publisher's transaction rolls back - flag this when the publisher persists state before publishing
+- Entities returned from a `@Transactional` method become detached at the boundary; callers cannot rely on lazy associations or dirty checking
+- If `@Version` is on the entity, concurrent writers will trigger optimistic-lock failures - the calling flow must either retry or escalate
 
 **Into "Change Impact Preview":**
 
 - Adding `@Transactional` to a method already called via `this.X()` will not take effect - flag the call sites
 - Removing `readOnly=true` may double DB load on queries
 - Changing return type away from `CompletableFuture` breaks `@Async` semantics
+- Switching `@EventListener` from sync to `@Async` or `@TransactionalEventListener(AFTER_COMMIT)` changes failure semantics: the publisher TX will commit even if the listener fails. Identify listeners and confirm they tolerate at-most-once execution.
+- Moving an external IO call (HTTP, broker publish) out of a `@Transactional` block changes ordering: the DB write may commit before the side effect fires. If the side effect was load-bearing, the new order needs an outbox pattern.
+- Returning a record/DTO instead of an entity removes detachment risk but requires every caller using lazy fields to receive the data they need on the projection
 
 ## Avoid
 

@@ -75,8 +75,22 @@ Use skill: `spring-test-integration` for the canonical patterns referenced below
 - JUnit 5 (`@Test`, `@Nested`, `@DisplayName`); AssertJ for fluent assertions; Mockito for collaborator stubs (`@Mock`, `@InjectMocks`, `@ExtendWith(MockitoExtension.class)`)
 - Test the public method - one test per outcome (success, validation failure, external failure, edge case)
 - **No Spring context** - if you find yourself adding `@SpringBootTest` for a unit test, the test is misclassified or the class has too many collaborators
-- Stub external HTTP via Mockito on the client interface; do not stub repositories with full SQL behavior - use a slice test or Testcontainers for that
-- Verify post-conditions (records persisted, events published) via `verify(...)` on the relevant collaborator mock
+- Stub external HTTP via Mockito on the client interface (`@HttpExchange`-declared interface or a hand-rolled `PaymentGatewayClient` interface); do not stub repositories with full SQL behavior - use a slice test or Testcontainers for that
+- Verify post-conditions (records persisted, events published) via `verify(...)` on the relevant collaborator mock. For `ApplicationEventPublisher`, captured arguments via `ArgumentCaptor<DomainEvent>` give finer assertions than `verify(...)` alone
+
+**HTTP stubbing - choose by test type, not by habit:**
+
+| Test type             | Stub HTTP via                                                       |
+| --------------------- | ------------------------------------------------------------------- |
+| Plain unit test       | Mockito on the client interface - fastest, no network              |
+| `@SpringBootTest`     | WireMock (`@WireMockTest` in spring-boot-test 3.2+, or `WireMockExtension`) - exercises real `RestClient` / `WebClient` config including timeouts, retries, deserialization, error handling |
+| `@WebMvcTest`         | The downstream client is mocked (`@MockitoBean`) - this slice does not exercise outbound calls |
+
+Mocking `RestClient` itself in an integration test bypasses the very wiring the integration test exists to verify. Use WireMock so the request actually leaves the bean.
+
+**Idempotency tests for replay-safe operations:**
+
+When the code under test accepts an idempotency key (payment charge, webhook delivery, message handler), include a test that invokes the operation twice with the same key and asserts the second call short-circuits without producing a duplicate side effect (no second DB write, no second outbound HTTP call). A unit test with `verify(gateway, times(1))` plus a `@DataJpaTest` or `@SpringBootTest` asserting row count is the typical pair.
 
 **Controller slice tests (`@WebMvcTest`):**
 
@@ -110,6 +124,8 @@ Use skill: `spring-test-integration` for the canonical patterns referenced below
 - Use `@Testcontainers` + `@Container static PostgreSQLContainer<?> pg = ...` with `@DynamicPropertySource` to wire datasource properties
 - Use `@Sql` for fixture data; reset state between tests via `@Transactional` rollback or explicit cleanup
 - Avoid `@DirtiesContext` - it flushes the cached context, multiplying test time
+- **`@Transactional` on the test class auto-rolls back, but spawned threads do not see uncommitted test data.** A test that triggers `@Async`, `@Scheduled`, `TaskExecutor.submit`, or any code expecting the row to be visible from another thread will fail inside the async thread (often silently). For tests exercising async paths, drop `@Transactional` from the test and clean up via `@Sql(executionPhase = AFTER_TEST_METHOD)` or explicit teardown.
+- **Asserting transactional event listener phases**: use `@RecordApplicationEvents` (Boot 3+) with `ApplicationEvents` injection to assert *what* was published *and when* (correlate with transaction commit). Mocking `ApplicationEventPublisher` in unit tests verifies the event was published but cannot distinguish `BEFORE_COMMIT` from `AFTER_COMMIT` semantics - use a full-context test if the phase matters.
 
 **Contract tests:**
 

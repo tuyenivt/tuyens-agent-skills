@@ -68,13 +68,13 @@ If the input is ambiguous, ask one clarifying question before proceeding.
 
 ### Step 2 - Classify the Error
 
-Identify the error category to guide investigation:
+Identify the error category to guide investigation. Spring wraps exceptions heavily (`InvalidDataAccessApiUsageException` wraps `LazyInitializationException`; `TransactionSystemException` wraps `ConstraintViolationException`; `NestedServletException` wraps controller errors). **Always walk the `Caused by:` chain to the deepest non-framework cause and match the table against that** - matching the outer wrapper leads to the wrong fix.
 
 **Compilation error** → syntax or type issue, check imports and type signatures
 
-**Runtime exception** → identify exception type and likely cause:
+**Runtime exception** → identify the deepest cause and look it up:
 
-| Exception                                 | Likely Cause                             | Load Skill                              |
+| Exception (deepest cause)                 | Likely Cause                             | Load Skill                              |
 | ----------------------------------------- | ---------------------------------------- | --------------------------------------- |
 | `NullPointerException`                    | Null reference in call chain             | -                                       |
 | `LazyInitializationException`             | JPA session/transaction scope issue      | Use skill: `spring-jpa-performance`     |
@@ -83,9 +83,16 @@ Identify the error category to guide investigation:
 | `HttpMediaTypeNotSupportedException`      | Wrong Content-Type header                | -                                       |
 | `MethodArgumentTypeMismatchException`     | Path/query param type conversion failure | -                                       |
 | `MissingServletRequestParameterException` | Required query param absent              | -                                       |
+| `MethodArgumentNotValidException`         | `@Valid` body validation failed          | -                                       |
 | `TransactionSystemException`              | Nested exception in `@Transactional`     | Use skill: `spring-transaction`         |
+| `UnexpectedRollbackException`             | Inner TX marked rollback-only            | Use skill: `spring-transaction`         |
 | `NoSuchBeanDefinitionException`           | Spring context wiring issue              | -                                       |
 | `BeanCurrentlyInCreationException`        | Circular dependency                      | -                                       |
+| `DataAccessResourceFailureException`      | DB connection pool / network failure     | -                                       |
+| `QueryTimeoutException`                   | Statement exceeded `javax.persistence.query.timeout` | -                                       |
+| `JpaSystemException` / `MappingException` | Entity mapping or dialect mismatch       | -                                       |
+| `ConverterNotFoundException`              | Missing custom `Converter` registration  | -                                       |
+| `AsyncRequestNotUsableException`          | Response committed/aborted on async path | -                                       |
 | Virtual Thread pinning                    | `synchronized` block in VT context       | -                                       |
 | Kafka consumer lag / DLT messages         | Consumer error, redelivery loop          | Use skill: `spring-messaging-patterns`  |
 | RabbitMQ DLQ / unacked messages           | Consumer throwing, no DLQ config         | Use skill: `spring-messaging-patterns`  |
@@ -95,17 +102,26 @@ Identify the error category to guide investigation:
 | `PaymentDeclinedException` (domain)       | External payment gateway declined charge | Use skill: `spring-exception-handling`  |
 | `WebSocketHandshakeException`             | WS auth or CORS failure                  | Use skill: `spring-websocket`           |
 
+If a skill is loaded above, its patterns drive Step 5's fix construction - do not re-derive a fix from first principles.
+
 **Test failure** → analyze assertion mismatch, check test setup and mocks
 
-**Build failure** → Gradle configuration or dependency issue → Use skill: `java-gradle-build-optimization`
+**Build failure** → Gradle configuration, dependency resolution, or version conflict. Diagnose first (read the failing task output, check `gradle dependencies` for conflicts). Only load `java-gradle-build-optimization` if the failure is itself a build-config or dependency-management problem; that skill is about build *health*, not arbitrary build errors.
 
 ### Step 3 - Locate in Codebase
 
-1. Read the stack trace to identify the **source file and line number**
-2. Open the file and surrounding context (~50 lines above and below)
-3. Trace the call chain from entry point: **controller → service → repository**
-4. Check **configuration files** (`application.yml`, `application.properties`, security config, async config) when the error could be config-related (e.g., `LazyInitializationException` often caused by `spring.jpa.open-in-view=false` without proper fetch strategy, `NoSuchBeanDefinitionException` from missing component scan)
-5. Identify which layer the bug is in (Controller | Service | Repository | Configuration | Build)
+1. Read the stack trace to identify the **source file and line number**. The first frame in **application code** (not Spring/Hibernate/Tomcat internals) is the starting point.
+2. Open the file and surrounding context (~50 lines above and below).
+3. Trace the call chain from entry point through every Spring layer the request actually traverses:
+   - **Filter / Interceptor / `OncePerRequestFilter`** - auth, request scoping, MDC setup
+   - **`@ControllerAdvice` / `HandlerExceptionResolver`** - error mapping (often hides the real exception)
+   - **Controller** (`@RestController`, `@Controller`)
+   - **Service** (`@Service`, `@Transactional` boundary)
+   - **Mapper / DTO assembler** (MapStruct, manual mapper) - common site for `LazyInitializationException`
+   - **Repository** (`JpaRepository`, custom `@Query`, `EntityManager`)
+   - **Async / scheduled / messaging boundary** (`@Async`, `@Scheduled`, `@KafkaListener`, `@RabbitListener`)
+4. Check **configuration files** (`application.yml`, `application.properties`, security config, async config, datasource config) when the error could be config-related (e.g., `LazyInitializationException` with `spring.jpa.open-in-view=false` requires explicit fetch strategy, `NoSuchBeanDefinitionException` from missing component scan, `DataAccessResourceFailureException` from HikariCP pool sizing).
+5. Identify which layer the bug is in (Filter | ControllerAdvice | Controller | Service | Mapper | Repository | Configuration | Async/Messaging | Build).
 
 ### Step 4 - Root Cause Analysis
 
@@ -119,18 +135,27 @@ Identify the error category to guide investigation:
 
 ### Step 5 - Propose Fix
 
-- Show the **exact code change** needed (before → after)
+- If Step 2 loaded an atomic skill (e.g., `spring-jpa-performance`, `spring-transaction`, `spring-messaging-patterns`), draw the candidate fixes from that skill's Patterns section. Do not re-derive a fix from first principles when a vetted recipe exists.
+- Show the **exact code change** needed (before → after).
 - If multiple fixes are possible, rank by:
   1. Correctness - does it actually fix the bug?
   2. Minimal change surface - smallest diff that's correct
   3. Alignment with project patterns - follows existing conventions
-- Explain any trade-offs between alternatives
+- Explain any trade-offs between alternatives. For known multi-fix bugs, name them explicitly:
+  - `LazyInitializationException` → `JOIN FETCH` query, `@EntityGraph`, projection DTO at the query level, or a dedicated read-only `@Transactional` service method. Prefer the projection when the caller only needs a flat shape.
+  - `OptimisticLockException` → retry on `@Version` conflict, narrow the transaction, or move to pessimistic lock for true contention.
+  - `TransactionSystemException` (validation) → move `@Valid` to controller boundary so violations surface as 400 instead of being wrapped at commit time.
 
 ### Step 6 - Prevent Recurrence
 
-- Suggest a **test that would have caught this bug**
-- If it's a pattern violation, reference the relevant atomic skill
-- If the same bug could exist elsewhere, identify other occurrences (grep for similar patterns)
+- Suggest a **test that would have caught this bug**, calibrated to the error class:
+  - `LazyInitializationException` → `@SpringBootTest` (or `@DataJpaTest`) integration test that invokes the controller/mapper *outside* the original `@Transactional` boundary so lazy access actually fails. Unit tests with mocked repositories will not catch this.
+  - `DataIntegrityViolationException` → `@DataJpaTest` exercising the constraint with a real schema (Testcontainers Postgres), not H2.
+  - `TransactionSystemException` (validation) → controller-layer test (`@WebMvcTest` + `MockMvc`) asserting 400 with field errors.
+  - `OptimisticLockException` → concurrent test using two threads / two `EntityManager`s on the same entity.
+  - Concurrency / VT pinning → JFR or `-Djdk.tracePinnedThreads=short` assertion in a load test, not a unit test.
+- If it's a pattern violation, reference the relevant atomic skill.
+- If the same bug could exist elsewhere, identify other occurrences (grep for similar patterns - e.g., other mappers accessing the same lazy association).
 
 ## Edge Cases
 
@@ -162,11 +187,14 @@ Present the analysis in this structure:
 
 ## Self-Check
 
-- [ ] Error classified before any code is read or fix proposed
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] Error classified by walking the `Caused by:` chain to the deepest non-framework cause, before any code is read or fix proposed
+- [ ] If the table loaded an atomic skill, Step 5's fix was drawn from that skill's Patterns - not re-derived
 - [ ] Root cause references the specific source file and line; confidence level stated
 - [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
-- [ ] Fix does not violate Spring Boot constraints (no `synchronized`, no `@Autowired`, no `@MockBean`)
-- [ ] Test suggested that would catch this bug; other occurrences identified if pattern is widespread
+- [ ] Fix does not introduce constructs that violate project conventions (no `synchronized` blocks on Virtual Threads, no field `@Autowired`)
+- [ ] Suggested prevention test would actually have caught this bug class (e.g., LIE → integration test outside original TX, not a unit test with mocks)
+- [ ] If the bug pattern can recur, other occurrences grep'd and listed
 
 ## Avoid
 
