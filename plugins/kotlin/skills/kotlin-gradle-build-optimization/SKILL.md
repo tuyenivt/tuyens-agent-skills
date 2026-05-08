@@ -125,6 +125,17 @@ dependencies {
 }
 ```
 
+### Diagnosing a Slow Build
+
+Don't guess - measure. Two commands answer almost every "why is the build slow?" question:
+
+```bash
+./gradlew build --scan                  # publishes a build scan with task durations, cache hits/misses, dependency timings
+./gradlew build --profile               # local HTML report at build/reports/profile/
+```
+
+Read the build scan's "Performance" tab first. Common findings: low cache hit rate (no remote cache), `compileKotlin` dominating because incremental compilation is off, or a test task fork-starting per class. Each maps to a specific knob in this skill.
+
 ### Build Performance
 
 Configure `gradle.properties`:
@@ -291,6 +302,24 @@ Pipeline stage separation:
 ./gradlew check --parallel --build-cache --no-daemon       # compile + unit + detekt
 ./gradlew integrationTest --parallel --build-cache --no-daemon
 ```
+
+**Remote build cache** is what makes a 12-module monorepo feel fast across machines and CI. Wire one up in `settings.gradle.kts` so every developer and every CI runner shares the same task outputs:
+
+```kotlin
+buildCache {
+    local { isEnabled = true }
+    remote<HttpBuildCache> {
+        url = uri("https://gradle-cache.example.com/cache/")
+        isPush = System.getenv("CI") == "true"   // CI populates the cache; devs only read
+        credentials {
+            username = providers.gradleProperty("buildCacheUser").orNull
+            password = providers.gradleProperty("buildCachePass").orNull
+        }
+    }
+}
+```
+
+A cold local build that fetches from a populated remote cache is typically 5-10x faster than running every task. If the build scan shows cache misses on tasks that should be deterministic, look for non-relocatable inputs (absolute paths, timestamps, environment-dependent flags).
 
 CI cache directories:
 

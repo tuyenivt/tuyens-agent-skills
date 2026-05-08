@@ -151,7 +151,7 @@ class OrderServiceSpec : FunSpec({
 
 ### Singleton Container Pattern (Kotlin)
 
-For shared containers across multiple test classes:
+For shared containers across multiple test classes. Use `withReuse(true)` plus `~/.testcontainers.properties` (`testcontainers.reuse.enable=true`) for fast local re-runs; CI typically leaves reuse off so each pipeline starts clean.
 
 ```kotlin
 @Testcontainers
@@ -160,12 +160,13 @@ abstract class AbstractIntegrationTest {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:16-alpine")
+        val postgres = PostgreSQLContainer("postgres:16-alpine").withReuse(true)
 
         @Container
         @ServiceConnection
         @JvmStatic
         val kafka = KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
+            .withReuse(true)
     }
 }
 ```
@@ -240,6 +241,48 @@ class PaymentIntegrationTest : AbstractIntegrationTest() {
     }
 }
 ```
+
+### Kafka with Testcontainers
+
+For tests that exercise a Kafka producer or `@KafkaListener` consumer, prefer Testcontainers `KafkaContainer` over `@EmbeddedKafka` - it matches the broker version you run in production and avoids JVM-classpath surprises. Verify produced messages with a test consumer; verify consumed messages with Awaitility waiting for downstream state.
+
+```kotlin
+@SpringBootTest
+@ActiveProfiles("test")
+class OrderEventIntegrationTest : AbstractIntegrationTest() {
+
+    @Autowired lateinit var orderService: OrderService
+    @Autowired lateinit var orderRepo: OrderRepository
+
+    @Test
+    fun `placing an order publishes OrderPlaced and updates status async`() {
+        val orderId = orderService.placeOrder(createOrderRequest()).id
+
+        // Verify the @KafkaListener-driven status update lands in the DB
+        await().atMost(5.seconds.toJavaDuration()).untilAsserted {
+            orderRepo.findById(orderId).get().status shouldBe OrderStatus.ENRICHED
+        }
+    }
+
+    @Test
+    fun `produces OrderPlaced event to the right topic`() {
+        val consumer = newTestConsumer(kafka.bootstrapServers, topics = listOf("order.events"))
+
+        orderService.placeOrder(createOrderRequest(idempotencyKey = "evt-1"))
+
+        val record = KafkaTestUtils.getSingleRecord(consumer, "order.events", 5.seconds.toJavaDuration())
+        record.value() shouldContain "\"idempotencyKey\":\"evt-1\""
+    }
+}
+```
+
+`KafkaTestUtils.getSingleRecord` (from `spring-kafka-test`) and the Awaitility loop together cover the two directions: outbound production and inbound consumption with side effects.
+
+### Transactional Rollback in Tests (Slice Differences)
+
+`@DataJpaTest` wraps each test method in a transaction that rolls back at the end - tests don't pollute each other. `@SpringBootTest` does **not**: persistence side-effects survive between tests unless you explicitly add `@Transactional` to the class or method, or clean state in `@AfterEach`. This trips up everyone porting a `@DataJpaTest` to `@SpringBootTest`.
+
+Adding `@Transactional` to a `@SpringBootTest` is also a trap when the code under test relies on commit (e.g. `@TransactionalEventListener(AFTER_COMMIT)`, async listeners): the rollback hides the post-commit side effects from the test. In that case, prefer explicit cleanup or use `@Sql(scripts = "/cleanup.sql", executionPhase = AFTER_TEST_METHOD)` instead.
 
 ### Coroutine Tests with runTest
 

@@ -9,9 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after Step 1 (behavioral-principles) and Step 2 (stack-detect). When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
 
 # Kotlin / Spring Boot Code Review
 
@@ -88,11 +86,15 @@ Scope and depth flags compose: `/task-kotlin-review pr-50273 --base release/2026
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. These rules govern every step that follows - load them first so they apply to stack detection, diff resolution, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If invoked as a delegate of `task-code-review` (parent already detected Kotlin/Spring), accept the pre-detected stack. If the detected stack is not Kotlin/Spring Boot, stop and tell the user to invoke `/task-code-review` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument. Forward `--base <branch>` if passed.
 
@@ -108,7 +110,7 @@ All subsequent phases operate on this read-once diff and log.
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
 Scan the file list and diff content for the auto-escalation signals listed under **Scope**. For each signal that fires, log a one-liner: `signal: <category> -> <file:line>`. Then decide:
 
@@ -237,7 +239,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-kotlin-review-observability` subagent owns the depth review).
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -259,7 +261,7 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Failure isolation.** If a subagent fails, continue with remaining results. Note the missing scope.
 
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below.
 
@@ -352,12 +354,13 @@ _Omit this section if there are no actionable findings._
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
 - [ ] Stack confirmed as Kotlin / Spring Boot (or accepted from parent dispatcher)
 - [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher)
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary
+- [ ] Scope auto-escalation evaluated in Step 4; promotion (or `core-only` suppression) recorded in Summary
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B Kotlin correctness checks applied: null-safety, `!!` discipline, `data class` JPA, kotlin-jpa/spring plugins, `@Transactional` boundaries / self-invocation / suspend, `GlobalScope`, `runBlocking`, Dispatchers vs VTs, `Flow` exception transparency, Bean Validation, JPA-in-API, `@PreAuthorize` coverage, exception advice, Virtual Thread pinning

@@ -104,6 +104,23 @@ class OrderServiceTest {
             service.findOrder(999L)
         }
     }
+
+    @Test
+    fun `places order in correct sequence`() = runTest {
+        coEvery { userRepo.findById(42L) } returns User(id = 42L)
+        coEvery { inventoryRepo.reserve(any()) } returns Reservation("r1")
+        coEvery { orderRepo.save(any()) } answers { firstArg() }
+
+        service.placeOrder(PlaceOrderRequest(userId = 42L, items = listOf(item)))
+
+        // coVerifyOrder asserts the calls happened in this exact order.
+        // Use coVerifySequence for a stricter check that nothing else was called.
+        coVerifyOrder {
+            userRepo.findById(42L)
+            inventoryRepo.reserve(any())
+            orderRepo.save(any())
+        }
+    }
 }
 
 // Bad: every silently fails for suspend functions
@@ -112,6 +129,8 @@ every { repo.findById(1L) } returns order  // stub is ignored -> "no answer foun
 // Good: coEvery for suspend functions
 coEvery { repo.findById(1L) } returns order
 ```
+
+**`Flow`-returning functions are usually NOT `suspend`** (e.g. `fun findAllByUserId(id: Long): Flow<Order>` on `CoroutineCrudRepository`). For those, use plain `every` + `returns flow`. Only use `coEvery` when the function signature is `suspend fun ... : Flow<T>`. When in doubt, look for the `suspend` modifier on the declaration.
 
 ### Flow Testing with Turbine
 
@@ -373,16 +392,34 @@ fun `timeout is enforced`() = runTest {
 
 ## Edge Cases
 
-**Mocking extension functions**: MockK can mock extension functions, but only with `mockkStatic`:
+**Mocking extension functions**: MockK can mock extension functions, but only with `mockkStatic`. Pair every `mockkStatic` with an `unmockkStatic` in `@AfterEach` (or a `try/finally`) - extension mocks are JVM-wide and leak across tests in the same module:
 
 ```kotlin
 // Extension function under test
 fun Order.isExpired(): Boolean = this.createdAt.isBefore(Instant.now().minus(Duration.ofDays(30)))
 
-// Test
-mockkStatic(Order::isExpired) // required for extension functions
-every { any<Order>().isExpired() } returns true
-// Don't forget: unmockkStatic(Order::isExpired) in cleanup
+class OrderExpiryTest {
+    @BeforeEach fun setup() { mockkStatic(Order::isExpired) }
+    @AfterEach  fun cleanup() { unmockkStatic(Order::isExpired) }
+
+    @Test fun `treats every order as expired`() {
+        every { any<Order>().isExpired() } returns true
+        ...
+    }
+}
+```
+
+For top-level extension functions, mock the file class instead: `mockkStatic("com.example.OrdersKt")` (file `Orders.kt` → class `OrdersKt`).
+
+**`@MockkBean` does not reset between tests.** Spring caches the test context, so `@MockkBean`-injected mocks carry stub state from one test to the next. This is the most common cause of `@WebMvcTest` flakiness. Add `clearAllMocks()` (or `clearMocks(orderService)`) in `@BeforeEach`:
+
+```kotlin
+@WebMvcTest(OrderController::class)
+class OrderControllerTest {
+    @MockkBean lateinit var orderService: OrderService
+
+    @BeforeEach fun resetMocks() = clearAllMocks()  // wipe stubs from previous test
+}
 ```
 
 **lateinit in tests**: When using `@MockkBean` with `lateinit var`, ensure the test context is properly initialized. If you see `UninitializedPropertyAccessException`, verify `@ExtendWith(MockKExtension::class)` or `@SpringBootTest` is present on the test class.

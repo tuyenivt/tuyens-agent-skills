@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Kotlin / Spring Boot Refactor
 
 ## Purpose
@@ -45,11 +43,15 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Kotlin/
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. Load these rules first - they govern smell classification, blast-radius assessment, and step proposals.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack. If not Kotlin/Spring Boot, stop and tell the user to invoke `/task-code-refactor` instead.
 
-### Step 2 - Read the Target
+### Step 3 - Read the Target
 
 Read the actual file(s) named in the Inputs table before classifying smells:
 
@@ -60,7 +62,7 @@ Read the actual file(s) named in the Inputs table before classifying smells:
 
 If the user named only the goal without a target file, ask for the target before proceeding.
 
-### Step 3 - Coverage Gate (mandatory)
+### Step 4 - Coverage Gate (mandatory)
 
 Refactoring without test coverage is a rewrite with extra steps. Before proposing any refactor:
 
@@ -68,7 +70,7 @@ Refactoring without test coverage is a rewrite with extra steps. Before proposin
 2. Run coverage assessment - if coverage is missing or thin, **stop and require coverage first**. Recommend `task-kotlin-test` to fill gaps
 3. If coverage exists but is happy-path-only, flag the boundary-test gap as a prerequisite step (refactor must not silently change validation / 401 / 403 / not-found / coroutine-cancellation behavior)
 
-**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 4 if coverage is inadequate.
+**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 5 if coverage is inadequate.
 
 **Sharp boundaries (Kotlin-specific):**
 
@@ -76,11 +78,11 @@ Refactoring without test coverage is a rewrite with extra steps. Before proposin
 - **Thin**: happy path only; no security tests; no coroutine cancellation tests when `suspend` is in use
 - **Inadequate**: < 50% line coverage on target, or no tests at all
 
-**Lint state check:** run (or have the user run) `./gradlew detekt ktlintCheck` to confirm baseline. If new violations would land in the refactor, surface them in Step 0a as preparatory cleanup.
+**Lint state check:** run (or have the user run) `./gradlew detekt ktlintCheck` to confirm baseline. If new violations would land in the refactor, surface them as a Step 0 preparatory cleanup item in the output.
 
-### Step 4 - Identify Kotlin/Spring Smells
+### Step 5 - Identify Kotlin/Spring Smells
 
-Inspect the target for these Kotlin- and Spring-specific smells. Use judgment - these are signals, not hard rules.
+Inspect the target for these Kotlin- and Spring-specific smells. Use judgment - these are signals, not hard rules. Skip this step entirely if the coverage gate in Step 4 returned `Inadequate`.
 
 **Controller smells:**
 
@@ -177,7 +179,7 @@ Use skill: `complexity-review` when the target shows over-engineering signals (s
 Use skill: `kotlin-idioms` for Java-in-Kotlin pattern detection.
 Use skill: `kotlin-coroutines-spring` for coroutine pattern review.
 
-### Step 5 - Cross-Module Risk Assessment
+### Step 6 - Cross-Module Risk Assessment
 
 Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected.
 
@@ -193,7 +195,7 @@ Kotlin/Spring-specific blast-radius signals:
 
 State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single module, multiple callers) / **Wide** (cross-module, public API, broad aspect) / **Critical** (`@AutoConfiguration` published, entity used by 5+ services).
 
-### Step 6 - Propose the Step Sequence
+### Step 7 - Propose the Step Sequence
 
 Each refactoring step must be:
 
@@ -291,7 +293,7 @@ Each refactoring step must be:
 3. Run tests
 4. Repeat per repository method
 
-### Step 7 - Validate Plan Against Goal
+### Step 8 - Validate Plan Against Goal
 
 Before finalizing the plan, check:
 
@@ -370,6 +372,7 @@ Before finalizing the plan, check:
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
 - [ ] Stack confirmed as Kotlin / Spring Boot (or accepted from parent dispatcher)
 - [ ] Target file(s) and matching tests read directly before smell classification
 - [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate

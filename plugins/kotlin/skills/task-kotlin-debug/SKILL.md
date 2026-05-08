@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Debug Kotlin + Spring Boot Error
 
 ## When to Use
@@ -35,7 +33,11 @@ Not for production incident analysis with blast radius assessment (use `/task-on
 
 ## Implementation
 
-### STEP 1 - INTAKE
+### STEP 1 - LOAD BEHAVIORAL PRINCIPLES (MANDATORY, FIRST)
+
+Use skill: `behavioral-principles`. Load these rules first so they govern classification, root-cause framing, and the fix.
+
+### STEP 2 - INTAKE
 
 Use skill: `stack-detect` to confirm the project stack and identify relevant Kotlin/Spring versions.
 
@@ -48,7 +50,7 @@ Ask for:
 
 If a stack trace is provided, identify the first application-code frame (skip library frames) and read that file.
 
-### STEP 2 - CLASSIFY
+### STEP 3 - CLASSIFY
 
 Match the error to one of these categories, then load the relevant atomic skill:
 
@@ -108,6 +110,8 @@ coEvery { repo.findById(1L) } returns order
 | `InvalidDefinitionException: Cannot construct instance of` | Missing `jackson-module-kotlin` or no-arg constructor for deserialization | Add `com.fasterxml.jackson.module:jackson-module-kotlin` dependency and register `KotlinModule`        |
 | `MismatchedInputException` on data class                   | Null value for non-null Kotlin property                                   | Make the property nullable (`T?`) with a default, or add `@JsonProperty(required = true)`              |
 | `InvalidDefinitionException` on inline value class         | Jackson doesn't know how to unwrap inline class                           | Add `@JsonCreator` or configure Jackson with `KotlinModule { enable(KotlinFeature.SingletonSupport) }` |
+| `MissingKotlinParameterException` (older `MismatchedInputException`) | Required non-null Kotlin property got null in JSON               | Make the property nullable with a default, or fix the JSON; do not weaken to `T?` if business logic requires non-null |
+| Bean Validation / `@JsonProperty` annotations silently ignored on a `data class` | Annotation lacks a use-site target so Kotlin put it on the constructor parameter, not the field/getter | Add `@field:NotBlank` (or `@get:JsonProperty`); see `kotlin-idioms` use-site targets section |
 
 ```kotlin
 // Ensure jackson-module-kotlin is configured
@@ -132,14 +136,14 @@ class JacksonConfig {
 
 For standard Spring errors (`DataIntegrityViolationException`, `HttpMessageNotReadableException`, `MethodArgumentNotValidException`, etc.), classify by the Spring root cause first, then look for Kotlin-specific factors (null safety, final classes, coroutines, missing `kotlin-spring`/`kotlin-jpa` plugins).
 
-### STEP 3 - LOCATE
+### STEP 4 - LOCATE
 
 1. Read the stack trace top-to-bottom; find the first application-code frame (not library code)
 2. Open that source file and read the failing function
 3. Trace the data path: where does the problematic value originate? Follow it upstream through constructor injection, scope functions, or coroutine chains
 4. For coroutine errors: check the full coroutine stack trace (look for "caused by" frames after the initial `invokeSuspend` frame)
 
-### STEP 4 - ROOT CAUSE
+### STEP 5 - ROOT CAUSE
 
 Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
 
@@ -150,11 +154,11 @@ a suspend function. MockK requires `coEvery` for suspend functions - regular
 `every` silently ignores the stub and MockK reports "no answer found."
 ```
 
-### STEP 5 - FIX
+### STEP 6 - FIX
 
 Provide before/after code. Fix must be minimal and address root cause, not symptoms. Use skill: `kotlin-idioms` to ensure fixes follow Kotlin conventions.
 
-### STEP 6 - PREVENTION
+### STEP 7 - PREVENTION
 
 Add a guard so this class of error cannot recur:
 

@@ -32,6 +32,23 @@ user-invocable: false
 
 ## Patterns
 
+### 0. Always Set a Lock Timeout Before DDL
+
+A blocked DDL statement does not just wait - it queues *behind* every existing lock holder *and in front of* every new query for the same table, causing rapid pile-up. Set short `lock_timeout` and `statement_timeout` before each migration so a stuck statement fails fast and the rest of the system stays healthy.
+
+```sql
+-- Postgres
+SET lock_timeout = '3s';
+SET statement_timeout = '30s';
+ALTER TABLE orders ADD COLUMN status VARCHAR(50);
+
+-- MySQL
+SET SESSION lock_wait_timeout = 3;
+ALTER TABLE orders ADD COLUMN status VARCHAR(50);
+```
+
+Apply this at the top of every migration that touches a large table. A failed migration is recoverable; a 30-minute production lock pile-up usually is not.
+
 ### 1. Zero-Downtime DDL Rules
 
 Bad - adds NOT NULL column in one step, locks table on large datasets:
@@ -48,14 +65,30 @@ Good - three-migration sequence:
 -- V20250213_1000__add_status_nullable_to_orders.sql
 ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 
--- Migration 2 (next release): backfill existing rows
+-- Migration 2 (next release): backfill existing rows IN BATCHES
 -- V20250214_1000__backfill_status_on_orders.sql
-UPDATE orders SET status = 'PENDING' WHERE status IS NULL;
+-- A single UPDATE on a 50M-row table holds locks for minutes and bloats WAL/replication lag.
+-- Run as a repeated, key-paged UPDATE driven from the application or a one-off job, not from the migration.
+-- If you must do it in SQL, use a procedural batch loop:
+DO $$
+DECLARE
+    rows_affected INT;
+BEGIN
+    LOOP
+        UPDATE orders SET status = 'PENDING'
+            WHERE id IN (SELECT id FROM orders WHERE status IS NULL LIMIT 5000 FOR UPDATE SKIP LOCKED);
+        GET DIAGNOSTICS rows_affected = ROW_COUNT;
+        EXIT WHEN rows_affected = 0;
+        COMMIT;          -- requires DO block in a procedure on Postgres; otherwise drive from app code
+    END LOOP;
+END $$;
 
 -- Migration 3 (release after backfill): enforce constraint
 -- V20250215_1000__constrain_status_on_orders.sql
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
+
+**Note on Postgres 11+ ADD COLUMN with default:** On Postgres 11 or later, `ALTER TABLE t ADD COLUMN c TYPE NOT NULL DEFAULT 'x'` is a fast metadata-only change for non-volatile defaults - it does *not* rewrite the table. So on modern Postgres a one-step `ADD COLUMN ... NOT NULL DEFAULT ...` is acceptable for static defaults. MySQL still rewrites the table; the three-migration dance is required there. Always use the multi-step pattern when the default is a function call (e.g. `now()`, `gen_random_uuid()`) - those are volatile and trigger a rewrite even on Postgres.
 
 Bad - direct column rename locks table and breaks running app code:
 
@@ -136,7 +169,10 @@ spring:
     baseline-version: 0
     validate-on-migrate: true
     out-of-order: false
+    clean-disabled: true     # CRITICAL for any non-local environment - flyway.clean() drops every object
 ```
+
+**`flyway.repair()` after a failed migration:** when a migration crashes mid-statement, Flyway's `flyway_schema_history` table marks it as failed. Subsequent boots refuse to run. Inspect the partial state, finish or roll back the DDL manually, then run `flyway.repair()` (programmatically or via the Flyway CLI) to clear the failed entry. Never just delete the row.
 
 Multi-module layout:
 

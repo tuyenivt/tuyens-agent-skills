@@ -33,6 +33,38 @@ user-invocable: false
 
 ## Patterns
 
+### Keep External I/O Out of Transactions
+
+A transactional method holds a database connection (and often row locks) for its entire duration. If the method calls an external HTTP API, message broker, or any slow I/O *inside* the transaction, the connection is held for that round-trip - leading to connection pool exhaustion, lock contention, and retry storms that produce duplicate side effects (e.g. double charges if the HTTP client retries on timeout while the transaction is still open).
+
+```kotlin
+// Bad: external HTTP call inside the transaction. Connection held for the network round-trip.
+// On timeout-then-retry the gateway can charge twice while we're still committing the first attempt.
+@Transactional
+fun placeOrder(req: OrderRequest): Order {
+    val order = orderRepo.save(Order.from(req))
+    paymentGateway.charge(order)              // external call - DO NOT do this inside @Transactional
+    order.status = PaymentStatus.PAID
+    return orderRepo.save(order)
+}
+
+// Good: split the work so the external call happens outside the DB transaction.
+// The transactional methods are short and only touch the database.
+fun placeOrder(req: OrderRequest): Order {
+    val order = createPending(req)            // tx 1: persist PENDING
+    val receipt = paymentGateway.charge(order) // no transaction - long-running, can timeout/retry safely
+    return markPaid(order.id, receipt)        // tx 2: persist PAID with receipt
+}
+
+@Transactional
+internal fun createPending(req: OrderRequest): Order = orderRepo.save(Order.from(req))
+
+@Transactional
+internal fun markPaid(orderId: Long, receipt: Receipt): Order { ... }
+```
+
+Pair this split with idempotency (next pattern) and `@TransactionalEventListener(phase = AFTER_COMMIT)` (see `kotlin-spring-async-processing`) when the side effect must fire only after commit.
+
 ### Transaction Scope
 
 Bad - Transactions in controller, nested:
@@ -61,6 +93,18 @@ class OrderService(private val orderRepository: OrderRepository) {
     }
 }
 ```
+
+### `@Transactional` Visibility Requirements
+
+Spring's CGLIB proxy can only intercept method calls it can override. That excludes:
+
+- `private` and `protected` functions
+- `final` functions and classes (use `kotlin("plugin.spring")` to mark `@Service`/`@Component`/`@Transactional` classes open automatically)
+- Top-level functions (no class to proxy)
+
+Kotlin's `internal` modifier compiles to `public` on the JVM, so it works with `@Transactional` - but be aware it's still callable from any module. Keep transactional methods `public` (or `internal`) and on a Spring-managed bean.
+
+If `@Transactional` "doesn't seem to do anything", check visibility first, then check for self-invocation (next).
 
 ### Self-Invocation Proxy Bypass
 
@@ -144,22 +188,23 @@ class OrderQueryService(private val orderRepo: OrderRepository) {
 
 ### Idempotent Write with Optimistic Locking
 
-For operations that must be idempotent (e.g., payment processing), combine find-or-create with `@Version` to prevent double-processing:
+For operations that must be idempotent (e.g., payment processing), combine find-or-create with `@Version` to prevent double-processing. Note the structure: the external `paymentGateway.charge(...)` call is deliberately *outside* any `@Transactional` boundary - the DB writes are split into two short transactions around it.
 
 ```kotlin
-@Transactional
 fun processPayment(req: PaymentRequest): PaymentResponse {
-    // Idempotency check - return existing if already processed
-    paymentRepository.findByIdempotencyKey(req.idempotencyKey)?.let {
-        return PaymentResponse.from(it)
-    }
-
-    var payment = Payment.from(req)
-    payment = paymentRepository.save(payment)
-    paymentGateway.charge(payment) // external call AFTER save
-    payment.status = PaymentStatus.COMPLETED
-    return PaymentResponse.from(paymentRepository.save(payment))
+    val pending = reservePending(req) ?: return PaymentResponse.from(loadByKey(req.idempotencyKey))
+    val receipt = paymentGateway.charge(pending)        // external call OUTSIDE any transaction
+    return PaymentResponse.from(markCompleted(pending.id, receipt))
 }
+
+@Transactional
+internal fun reservePending(req: PaymentRequest): Payment? {
+    paymentRepository.findByIdempotencyKey(req.idempotencyKey)?.let { return null }  // already exists
+    return paymentRepository.save(Payment.from(req).copy(status = PaymentStatus.PENDING))
+}
+
+@Transactional
+internal fun markCompleted(id: Long, receipt: Receipt): Payment { ... }
 ```
 
 If two concurrent requests arrive with the same idempotency key, the unique constraint on `idempotency_key` prevents double-insert. Catch `DataIntegrityViolationException` and re-fetch:
@@ -226,9 +271,11 @@ Reason: {why this configuration was chosen}
 ## Avoid
 
 - `@Transactional` on controllers or repositories
+- External I/O (HTTP calls, message sends, file uploads) inside `@Transactional` - extract them out and use `@TransactionalEventListener(AFTER_COMMIT)` for post-commit side effects
 - Long-running transactions (hold locks, exhaust connection pool)
 - Mixing read and write operations without `readOnly`
 - Calling `@Transactional` methods within the same class (self-invocation - proxy bypass)
+- `@Transactional` on `private` or `protected` functions (proxy can't intercept)
 - Relying on default rollback behavior when calling Java code that throws checked exceptions
 - Omitting timeout on batch-processing or external-call transactions
 - `withContext(Dispatchers.IO)` switches inside a `@Transactional suspend` body - can detach from the transaction

@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Kotlin / Spring Boot Security Review
 
 ## Purpose
@@ -40,19 +38,23 @@ This workflow is the stack-specific delegate of `task-code-review-security` for 
 | `/task-kotlin-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                          |
 | `/task-kotlin-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>`                 |
 
-When invoked as a subagent of `task-code-review-security`, Step 2 is skipped.
+When invoked as a subagent of `task-code-review-security`, Step 3 (diff resolution) is skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every subsequent step.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If not, stop and tell the user to invoke `/task-code-review-security` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check`. On approval, read diff and commit log once. Skip if invoked as subagent and parent passed the handle.
 
-### Step 3 - Read the Security Surface
+### Step 4 - Read the Security Surface
 
 Open files that actually wire security:
 
@@ -64,7 +66,7 @@ Open files that actually wire security:
 
 When the diff removes a security annotation or relaxes a matcher, also `git log -p` the prior revision.
 
-### Step 4 - OWASP Quick Check (Kotlin/Spring Lens)
+### Step 5 - OWASP Quick Check (Kotlin/Spring Lens)
 
 Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-security-patterns` for canonical patterns.
 
@@ -81,7 +83,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 | Data Integrity Failures       | No `ObjectInputStream.readObject` on untrusted input; Jackson typed-deserialization disabled (`enableDefaultTyping` off); SnakeYAML uses `SafeConstructor`.                                              |
 | Logging & Monitoring          | Logback pattern excludes sensitive fields; `@JsonIgnore` on PII / secret fields in DTOs; no `log.info("user={}", user)` that serializes the entity. Security events (login fail, AccessDenied) logged. |
 
-### Step 5 - Authentication (Spring Security 6.x / OAuth2 / JWT)
+### Step 6 - Authentication (Spring Security 6.x / OAuth2 / JWT)
 
 - [ ] **`SecurityFilterChain`** is explicit and version-current; `WebSecurityConfigurerAdapter` does not exist (removed in 6.x)
 - [ ] **OAuth2 Resource Server**: `oauth2ResourceServer { jwt { } }` configured with explicit `JwtDecoder`; signature algorithm pinned; `JwtAuthenticationConverter` maps claims to authorities consistently
@@ -95,7 +97,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **Actuator endpoints** restricted: `management.endpoints.web.exposure.include` minimal in prod; remaining endpoints behind `ROLE_ACTUATOR`
 - [ ] **Kotlin string-template SpEL escaping**: `@PreAuthorize("hasRole('ADMIN')")` uses literal SpEL; `@Value("\${prop}")` escapes the `$` to avoid Kotlin string-template collision
 
-### Step 6 - Authorization (Method Security / `@PreAuthorize` / Custom)
+### Step 7 - Authorization (Method Security / `@PreAuthorize` / Custom)
 
 - [ ] **`@EnableMethodSecurity`** active; `@PreAuthorize` on every service method that touches user-owned resources (defense in depth alongside controller-level matchers)
 - [ ] **Authorization drift sweep**: every new controller endpoint added in the diff has a corresponding `SecurityFilterChain` matcher OR a `@PreAuthorize` (or explicit `permitAll` with rationale)
@@ -105,7 +107,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **CSRF**: enabled by default for stateful sessions; explicitly disabled (`csrf { disable() }`) only for stateless JWT APIs with documented rationale
 - [ ] **CORS**: `CorsConfigurationSource` bean with explicit allowed origins (not `"*"` for credentialed requests)
 
-### Step 7 - Input Validation and Mass Assignment
+### Step 8 - Input Validation and Mass Assignment
 
 - [ ] **Bean Validation (`jakarta.validation`)** on every `@RequestBody` `data class`: `@field:NotNull`, `@field:Size`, `@field:Email`, `@field:Pattern` etc. (Kotlin annotation site target `@field:` is required for Bean Validation to reach the property's backing field); `@Valid` on the controller parameter
 - [ ] **Constructor / `data class` DTOs** for input - immutable, no `var` properties; avoids the "mass assignment" class of bugs because Jackson uses the constructor
@@ -119,7 +121,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **Path traversal**: `Path.resolve(userInput).normalize().startsWith(baseDir)` check on any user-controlled file operation
 - [ ] **Process execution**: no `Runtime.exec`, `ProcessBuilder` with interpolated user input - use API alternatives or strict allowlist + tokenized arguments
 
-### Step 8 - Common Kotlin/Spring Boot Vulnerability Patterns
+### Step 9 - Common Kotlin/Spring Boot Vulnerability Patterns
 
 - [ ] **CSRF token** on state-changing form requests; for SPAs, `CookieCsrfTokenRepository.withHttpOnlyFalse()` so JS can read the token
 - [ ] **CORS**: explicit origins (no `"*"` for credentialed endpoints)
@@ -134,7 +136,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **H2 console** disabled in non-dev profiles
 - [ ] **Coroutine SecurityContext**: `SecurityContextHolder.getContext()` does not propagate across `suspend` dispatcher switches - use `ReactiveSecurityContextHolder.getContext().awaitFirstOrNull()` or pass principal as a method parameter; flag any `suspend` service relying on `SecurityContextHolder`
 
-### Step 9 - Data Protection
+### Step 10 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest (Jasypt, Spring Vault, or DB-native column encryption)
 - [ ] **Logback / Logstash encoder masking** for sensitive keys (`password`, `token`, `creditCard`, `ssn`, `apiKey`); `@JsonIgnore` on the same DTO fields
@@ -153,6 +155,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
 - [ ] Stack confirmed as Kotlin / Spring Boot
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
 - [ ] Diff and commit log were read once and reused

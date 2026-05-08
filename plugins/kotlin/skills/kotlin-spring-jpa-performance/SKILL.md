@@ -36,6 +36,24 @@ user-invocable: false
 
 ### N+1 Detection and Fix
 
+To diagnose N+1, turn on Hibernate query counting in test or staging:
+
+```yaml
+spring:
+  jpa:
+    show-sql: true                                  # logs every emitted SQL statement
+    properties:
+      hibernate:
+        generate_statistics: true                   # logs query count per session
+        format_sql: true
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE              # parameter values
+```
+
+Look for "X queries" growing linearly with your result set size - that is N+1.
+
 Bad - Causes N+1 queries:
 
 ```kotlin
@@ -64,6 +82,17 @@ interface UserRepository : JpaRepository<User, Long> {
 ```
 
 Use fetch joins for custom JPQL queries; use `@EntityGraph` on derived query methods. Do not combine both - they conflict.
+
+Fetch joins / `@EntityGraph` work for both `@ManyToOne` and `@OneToMany` (and `@OneToOne`). For `@ManyToOne` (e.g. `order.user.name` triggering one query per order), the same fix applies: `LEFT JOIN FETCH o.user` or `@EntityGraph(attributePaths = ["user"])`.
+
+**Critical: do not combine collection fetch join with `Pageable`.** `LEFT JOIN FETCH u.orders` plus a `Pageable` triggers Hibernate's `HHH90003004` ("firstResult/maxResults specified with collection fetch; applying in memory") - Hibernate fetches the *entire* result set and paginates in application memory. This silently turns a paged endpoint into a full-table scan that holds all rows in heap. The same trap applies to `@EntityGraph` over a `Pageable` derived query when the graph includes a collection.
+
+Workarounds (pick one):
+- Two-query pattern: page the IDs first, then fetch the full graph using `WHERE id IN (:ids)` with the fetch join
+- Use `@BatchSize` instead of fetch join for the collection
+- Page only on the parent root and lazy-load the collection per row (acceptable when the page is small and Virtual Threads / batch fetch keep DB round-trips bounded)
+
+**`MultipleBagFetchException`:** Two `LEFT JOIN FETCH` clauses on different `List<...>` collections in the same query throw `cannot simultaneously fetch multiple bags`. Either change one of the collections to `Set<...>`, or fetch only one collection per query and rely on `@BatchSize` for the rest.
 
 ### Batch Fetching
 

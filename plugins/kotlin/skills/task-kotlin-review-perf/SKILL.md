@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Kotlin / Spring Boot Performance Review
 
 ## Purpose
@@ -37,7 +35,7 @@ This workflow is the stack-specific delegate of `task-code-review-perf` for Kotl
 
 | Depth      | When to Use                                                         | What Runs                                          |
 | ---------- | ------------------------------------------------------------------- | -------------------------------------------------- |
-| `quick`    | Single endpoint or repository                                       | Steps 4 + 5 only; JPA hotspots + indexes/migration |
+| `quick`    | Single endpoint or repository                                       | Steps 5 + 6 only; JPA hotspots + indexes/migration |
 | `standard` | Default - full Kotlin/Spring perf review                            | All steps                                          |
 | `deep`     | Profiling-driven review with JFR / async-profiler / Micrometer data | All steps + capacity guidance and load-test plan   |
 
@@ -55,15 +53,19 @@ When invoked as a subagent of `task-code-review-perf`, Step 2 is skipped and par
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If not, stop and tell the user to invoke `/task-code-review-perf` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check`. On approval, read diff and commit log once and reuse for all steps. Skip if invoked as a subagent and parent passed the handle.
 
-### Step 3 - Read the Performance Surface
+### Step 4 - Read the Performance Surface
 
 Before applying checklists, open the files that govern query and concurrency behavior:
 
@@ -76,7 +78,7 @@ Before applying checklists, open the files that govern query and concurrency beh
 
 For each finding, cite a real `file:line`. If the diff is small but the regression lives in unchanged code (a new caller exposing an existing N+1), read the unchanged file too.
 
-### Step 4 - JPA / Hibernate Hotspots
+### Step 5 - JPA / Hibernate Hotspots
 
 Use skill: `kotlin-spring-jpa-performance` for canonical patterns.
 
@@ -88,6 +90,7 @@ Inspect every changed `@Entity`, `@Repository`, `@Service`, and `@RestController
 - [ ] **`LazyInitializationException` risk**: any access to a lazy association outside the original `@Transactional` scope (in a controller after the service returns the entity, or inside a Jackson serializer). Fix: fetch join, projection DTO, keep `OpenEntityManagerInViewInterceptor` disabled (the default in Boot 3+)
 - [ ] **Missing indexes for filter/sort columns**: any field used in `@Query` `where` / `order by` / `group by` clauses without a backing index in the migration
 - [ ] **`findAll()` without pagination**: any read of an unbounded collection - require `Pageable`
+- [ ] **Collection fetch join with `Pageable`**: a JPQL query with `LEFT JOIN FETCH e.collection` *and* a `Pageable` parameter triggers Hibernate's `HHH90003004` warning and paginates the entire collection in application memory. Same trap with `@EntityGraph(attributePaths = ["collection"])` over a `Pageable` derived query. Fix: page the parent IDs first then re-query with `WHERE id IN (:ids)` + fetch join, or replace fetch join with `@BatchSize`
 - [ ] **`existsBy*` vs `findBy*().isPresent()` / `findBy*() != null`**: existence checks must use derived `existsBy*` (compiles to `select 1 ... limit 1`)
 - [ ] **Batch operations**: `saveAll`, `deleteAllInBatch` over loops; `spring.jpa.properties.hibernate.jdbc.batch_size` set (typically 25-50); `order_inserts` / `order_updates` enabled when batching
 - [ ] **`@Transactional(readOnly = true)`** on read paths
@@ -95,7 +98,7 @@ Inspect every changed `@Entity`, `@Repository`, `@Service`, and `@RestController
 - [ ] **Transactions scoped tightly**: no HTTP calls, message publishes, or external I/O inside `@Transactional` blocks (use `@TransactionalEventListener(phase = AFTER_COMMIT)` or outbox)
 - [ ] **`data class` for JPA entities**: this corrupts identity semantics under Hibernate proxies, surfacing as duplicated queries during `equals` / `hashCode` calls in collections - flag as both correctness and performance
 
-### Step 5 - Indexes and Migrations
+### Step 6 - Indexes and Migrations
 
 Use skill: `kotlin-spring-db-migration-safety` for safe-migration checks on any change in `db/migration/` or `db/changelog/`.
 
@@ -107,7 +110,7 @@ Use skill: `kotlin-spring-db-migration-safety` for safe-migration checks on any 
 - [ ] Partial indexes used for boolean/enum filters that select small subsets
 - [ ] No DDL on hot tables in a single migration (expand-then-contract)
 
-### Step 6 - Coroutines, Virtual Threads, and Async
+### Step 7 - Coroutines, Virtual Threads, and Async
 
 _Skipped at `quick` depth._
 
@@ -130,7 +133,7 @@ Inspect changes touching `@Async`, `TaskExecutor`, `CoroutineScope`, `suspend`, 
 - [ ] **No blocking calls inside reactive (`Mono`/`Flux`) chains** - use `publishOn(Schedulers.boundedElastic())` if blocking is unavoidable
 - [ ] **Inline functions for hot higher-order paths**: `inline` on hot lambdas to eliminate function-object allocation; `inline value class` (`@JvmInline value class`) for primitive wrappers in hot paths
 
-### Step 7 - Caching and Response Performance
+### Step 8 - Caching and Response Performance
 
 _Skipped at `quick` depth unless the diff touches `@Cacheable` / cache config._
 
@@ -143,7 +146,7 @@ _Skipped at `quick` depth unless the diff touches `@Cacheable` / cache config._
 - [ ] No DTO mapper iterating lazy associations not declared in the entity graph
 - [ ] Response compression enabled (`server.compression.enabled=true`) for JSON responses > 2KB
 
-### Step 8 - Messaging and Background Work
+### Step 9 - Messaging and Background Work
 
 _Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@Scheduled` / outbox patterns._
 
@@ -158,7 +161,7 @@ Inspect changes under listener / event packages:
 - [ ] Long-running consumers split (single message handle should target sub-30-second median latency)
 - [ ] **Coroutine-based listeners**: `suspend` `@KafkaListener` methods (Kotlin coroutines + Spring Kafka) are supported but require explicit testing for backpressure and ack timing
 
-### Step 9 - Observability for Perf
+### Step 10 - Observability for Perf
 
 _Skipped at `quick` depth._
 
@@ -183,7 +186,8 @@ _Skipped at `quick` depth._
 - [ ] Caching strategy assessed (`@Cacheable`, Caffeine vs Redis); `@Cacheable` on `suspend` flagged
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise
 - [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-9; `deep` adds capacity guidance
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
+- [ ] Depth honored: `quick` ran only Steps 5 + 6; `standard` ran 5-10; `deep` adds capacity guidance
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
 
 ## Output Format

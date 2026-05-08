@@ -86,6 +86,21 @@ fun streamOrders(@RequestParam userId: Long): Flow<OrderSummary> =
     service.streamUserOrders(userId)
 ```
 
+**`flowOn` for blocking sources, not `withContext` inside a collector.** When a Flow's *upstream* does blocking work (legacy JDBC, slow file I/O, no Virtual Threads), shift just the upstream with `flowOn`. The downstream operators and the terminal collector stay on the caller's context.
+
+```kotlin
+// Good: flowOn shifts only the producer + operators above it
+fun loadAuditEvents(): Flow<AuditEvent> = flow {
+    legacyJdbcAuditDao.streamAll().forEach { emit(it.toEvent()) }   // blocking source
+}.flowOn(Dispatchers.IO)                                            // confines blocking to IO
+
+// Bad: withContext inside collect doesn't change where emit() ran;
+// the producer still blocks the caller's thread.
+flow.collect { withContext(Dispatchers.IO) { ... } }
+```
+
+When Virtual Threads are active, `flowOn(Dispatchers.IO)` is usually unnecessary - the producer thread is already a VT and can block safely.
+
 ### Coroutine-Aware Transactions
 
 `@Transactional` works with `suspend` functions in Spring Boot 3.5+:
@@ -108,6 +123,19 @@ class OrderService(
     }
 }
 ```
+
+**Caveat: do not switch dispatchers inside a `@Transactional suspend fun`.** The transaction is bound to the coroutine context that entered the method. A `withContext(Dispatchers.IO) { ... }` inside the body runs the inner block on a different thread that has no transaction attached - writes inside escape the transaction silently and `@Transactional` rollback won't apply to them. Keep the transactional method on its inherited dispatcher; if a sub-step truly needs CPU offload, do it before/after the transactional call, not inside it. See `kotlin-spring-transaction` for the full rule.
+
+### `launch` vs `async` (Quick Primer)
+
+If you're coming from `CompletableFuture` or `Future`:
+
+| Builder  | Returns         | Use For                                                       |
+| -------- | --------------- | ------------------------------------------------------------- |
+| `launch` | `Job`           | Fire-and-forget work where you don't need a return value      |
+| `async`  | `Deferred<T>`   | Concurrent work where you need the result via `.await()`      |
+
+Both are launched inside a `CoroutineScope` (e.g. `coroutineScope { }` or an injected scope bean). They start immediately by default; pass `start = CoroutineStart.LAZY` to defer. `await()` and `join()` suspend until completion and rethrow any exception from the child.
 
 ### coroutineScope vs supervisorScope
 
@@ -196,6 +224,10 @@ suspend fun fetchProductWithTimeout(id: String): Product =
     }
 
 // Retry with exponential backoff
+//
+// CRITICAL: rethrow CancellationException before catching Exception. Otherwise the
+// retry swallows structured-concurrency cancellation (parent cancelled, scope timeout,
+// HTTP client disconnect) and silently retries something the caller already gave up on.
 suspend fun <T> retryWithBackoff(
     maxRetries: Int = 3,
     initialDelay: Long = 100,
@@ -206,6 +238,8 @@ suspend fun <T> retryWithBackoff(
     repeat(maxRetries - 1) {
         try {
             return block()
+        } catch (e: CancellationException) {
+            throw e                                  // never retry on cancellation
         } catch (e: Exception) {
             delay(currentDelay)
             currentDelay = (currentDelay * 2).coerceAtMost(maxDelay)
@@ -354,9 +388,11 @@ suspend fun processOrder(id: Long) {
 ## Avoid
 
 - `GlobalScope` - always use `coroutineScope { }` or a managed scope bean
-- `runBlocking` in request handlers or service beans
+- `runBlocking` in request handlers, services, or any Spring bean (legitimate uses: `main()` of a CLI, glue at the boundary of a non-suspend framework hook, and tests - though tests should prefer `runTest`)
+- Catching `Exception` (or worse, `Throwable`) without rethrowing `CancellationException` first - this breaks structured concurrency cancellation
+- Switching dispatchers (`withContext`) inside a `@Transactional suspend fun` - writes on the new dispatcher escape the transaction
 - Blocking calls inside coroutines without `withContext(Dispatchers.IO)` (when not using Virtual Threads)
 - `Dispatchers.IO` when Virtual Threads are active (Spring Boot 3.2+)
+- `withContext(Dispatchers.IO)` inside a Flow `collect` to fix a blocking producer - use `flowOn` upstream instead
 - Mixing `suspend` and blocking calls in the same service class without explicit dispatcher management
 - Forgetting `withContext(NonCancellable)` for suspend cleanup in `finally` blocks
-- Forgetting to use `coEvery` / `coVerify` in MockK for `suspend` function mocks

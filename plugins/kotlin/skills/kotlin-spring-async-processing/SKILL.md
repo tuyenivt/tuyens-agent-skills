@@ -169,6 +169,19 @@ class OrderCreatedListener(private val notificationService: NotificationService)
 
 Default phase is `AFTER_COMMIT`. Use `AFTER_ROLLBACK` for compensating actions.
 
+**Two silent-failure traps with `@TransactionalEventListener`:**
+
+1. *No active transaction at publish time means the listener does not fire at all.* If `events.publishEvent(...)` is called from a non-transactional method (or `@Transactional` was bypassed by self-invocation, missing `kotlin-spring` plugin, or `private`/`protected` visibility), the listener is silently skipped. Either ensure publication happens inside an active transaction, or set `fallbackExecution = true` so the listener also runs without one:
+
+   ```kotlin
+   @TransactionalEventListener(phase = AFTER_COMMIT, fallbackExecution = true)
+   fun onOrderCreated(event: OrderCreatedEvent) { ... }
+   ```
+
+2. *Listener exceptions cannot roll back the original transaction.* By the time the `AFTER_COMMIT` listener runs, the transaction has already committed. An exception in the listener (or in the `@Async` handler it dispatches to) just propagates to the executor's exception handler and is gone. Treat post-commit work as needing its own retry/DLQ/outbox - not as part of the original unit. For at-least-once delivery in the face of listener crashes or process restarts, persist an outbox row inside the transaction and have a separate worker drain it.
+
+**Async + TransactionalEventListener fires fast.** The listener itself runs synchronously right after commit, but its body just submits the work to the `@Async` executor and returns. So combining `@TransactionalEventListener(AFTER_COMMIT) + @Async` does not delay the controller response - the response returns as soon as the transaction commits and the submission to the executor returns.
+
 ### Async Outside Transaction
 
 Bad - Blocking task within transaction:
@@ -181,7 +194,7 @@ fun processOrder(order: Order) {
 }
 ```
 
-Good - Async execution outside transaction via event:
+Good - Async execution outside transaction via event. The notification only runs after commit, on the async executor, so it does not block the response and does not run if the transaction rolls back:
 
 ```kotlin
 @Service
@@ -192,7 +205,16 @@ class OrderService(
     @Transactional
     fun processOrder(order: Order) {
         val saved = orderRepository.save(order)
-        events.publishEvent(OrderCreatedEvent(saved.id))
+        events.publishEvent(OrderCreatedEvent(saved.id))   // queued; fires after commit
+    }
+}
+
+@Component
+class OrderNotificationListener(private val notifier: NotificationService) {
+    @TransactionalEventListener(phase = AFTER_COMMIT)
+    @Async("asyncTaskExecutor")
+    fun onOrderCreated(event: OrderCreatedEvent) {
+        notifier.notify(event.orderId)                     // async + post-commit
     }
 }
 ```

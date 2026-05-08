@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Kotlin / Spring Boot Observability Review
 
 ## Purpose
@@ -52,19 +50,23 @@ Default: `standard`.
 | `/task-kotlin-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                          |
 | `/task-kotlin-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>`                 |
 
-When invoked as a subagent, Step 2 is skipped.
+When invoked as a subagent, Step 3 (diff resolution) is skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every subsequent step.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. Accept pre-confirmed stack from parent.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check`. On approval, read diff and commit log once. Skip if invoked as subagent and parent passed the handle.
 
-### Step 3 - Read the Instrumentation Surface
+### Step 4 - Read the Instrumentation Surface
 
 Open files that actually configure observability:
 
@@ -75,7 +77,7 @@ Open files that actually configure observability:
 
 For diffs touching only one of these surfaces (a new listener but no `application.yml` change), still read the existing config to know whether MDC propagation, observation flags, and starters are wired.
 
-### Step 4 - Structured Logging (Logback + Logstash encoder / SLF4J)
+### Step 5 - Structured Logging (Logback + Logstash encoder / SLF4J)
 
 Inspect `logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*` callsite:
 
@@ -90,7 +92,7 @@ Inspect `logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*
 - [ ] **Async appenders** (`AsyncAppender` or Logstash async TCP) configured for high-volume paths
 - [ ] **No `println` / `System.out.println` / `dump()`** in production code - flag and replace with SLF4J logger
 
-### Step 5 - Spring Boot Actuator
+### Step 6 - Spring Boot Actuator
 
 Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `HealthIndicator` / `InfoContributor`:
 
@@ -102,7 +104,7 @@ Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `Heal
 - [ ] **`info` endpoint**: build, git, version info exposed; does not leak environment variables
 - [ ] **`management.server.port`** separated from main server port in prod when network isolation is required
 
-### Step 6 - Micrometer Metrics
+### Step 7 - Micrometer Metrics
 
 Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 
@@ -114,7 +116,7 @@ Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 - [ ] **`MeterFilter`** trims unused metrics or denies high-cardinality dimensions
 - [ ] **No metric registration in hot loop**: cache `Counter.builder(...).register(...)` results in a `companion object val` or constructor-initialized field
 
-### Step 7 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
+### Step 8 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
 
 _Skipped at `quick` depth._
 
@@ -129,7 +131,7 @@ Inspect tracing dependencies and bridge config:
 - [ ] **Database span enrichment**: `p6spy` or `datasource-proxy` attaches SQL to spans in non-prod
 - [ ] **Spans not too granular**: do not wrap `getUserById` in an `Observation` if the JDBC span already covers it
 
-### Step 8 - Async / Messaging Observability
+### Step 9 - Async / Messaging Observability
 
 _Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@JmsListener` / `@Async` / `@Scheduled` / `CoroutineScope.launch`._
 
@@ -144,7 +146,7 @@ Inspect listeners, scheduled jobs, and coroutine launches:
 - [ ] **`@Scheduled` instrumentation**: each scheduled method emits an `Observation` so trace data exists; per-job duration timer; missed-execution alerting via metric
 - [ ] **`CoroutineScope.launch` instrumentation**: scope built with `MDCContext` and `CoroutineExceptionHandler` that logs uncaught exceptions; fire-and-forget without observability is a [High] finding
 
-### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
+### Step 10 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
 
 _Skipped at `quick` depth unless the diff modifies `@RestControllerAdvice`, error-tracker config, or DSN/API-key handling._
 
@@ -159,7 +161,7 @@ Inspect Sentry / Honeybadger / Rollbar dependencies:
 - [ ] **Ignored exceptions documented**: each ignore has a comment explaining why
 - [ ] **`@RestControllerAdvice` maps exceptions to user-facing responses without losing the stack** - error tracker captures the original exception before the advice replaces it
 
-### Step 10 - Health Checks and SLIs (deep depth only)
+### Step 11 - Health Checks and SLIs (deep depth only)
 
 When invoked at `deep`:
 
@@ -170,6 +172,7 @@ When invoked at `deep`:
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
 - [ ] Stack confirmed as Kotlin / Spring Boot (or accepted from parent dispatcher)
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
 - [ ] Diff and commit log were read once and reused

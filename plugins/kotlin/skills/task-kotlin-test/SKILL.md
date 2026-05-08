@@ -9,9 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after Step 1 (behavioral-principles) and Step 2 (stack-detect). When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
 
 # Kotlin / Spring Boot Test
 
@@ -37,11 +35,15 @@ This workflow is the stack-specific delegate of `task-code-test` for Kotlin / Sp
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles (mandatory, first)
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If not, stop and tell the user to invoke `/task-code-test` instead.
 
-### Step 2 - Read the Code Under Test and Existing Tests
+### Step 3 - Read the Code Under Test and Existing Tests
 
 Before producing assessment, scaffolds, or strategy, open both the production code and a representative sample of existing tests:
 
@@ -52,7 +54,7 @@ Before producing assessment, scaffolds, or strategy, open both the production co
 
 If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
 
-### Step 3 - Kotlin/Spring Test Pyramid
+### Step 4 - Kotlin/Spring Test Pyramid
 
 | Layer               | Spring annotation / type                                                            | What belongs here                                                                           |
 | ------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -64,7 +66,7 @@ If the project has no existing tests, say so and propose conventions explicitly 
 
 **Many** unit tests, **some** slice tests, **few** full-context / E2E tests.
 
-### Step 4 - Apply Kotlin Test Patterns
+### Step 5 - Apply Kotlin Test Patterns
 
 Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers patterns. Use skill: `kotlin-testing-patterns` for MockK, kotest, runTest, Turbine.
 
@@ -126,7 +128,7 @@ Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers pa
 - Spring Cloud Contract: contracts in `src/test/resources/contracts/`; provider verifies via generated tests; consumer pulls stubs via stub runner
 - Pact: pact files committed to a broker; provider verification runs as a separate test class
 
-### Step 5 - Test Boundaries (Kotlin-Specific)
+### Step 6 - Test Boundaries (Kotlin-Specific)
 
 **What deserves a unit test:**
 
@@ -154,7 +156,7 @@ Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers pa
 - Generated boilerplate: `data class` `toString` / `equals`, MapStruct identity mappings, kotlin-jpa-generated no-arg constructors
 - Trivial delegation: `service.findById(id) -> repository.findById(id)` with no logic
 
-### Step 6 - Test Data and Fixtures
+### Step 7 - Test Data and Fixtures
 
 - Prefer factory functions with named parameters and defaults over builders (Kotlin natural):
 
@@ -172,9 +174,9 @@ Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers pa
 - **Avoid `flush + clear` patterns** unless specifically asserting first-level cache behavior
 - Test data must be minimal and focused
 
-### Step 7 - Prioritization (when coverage is low)
+### Step 8 - Prioritization (when coverage is low)
 
-If line coverage is below ~50%, **run this step before scaffolding**.
+If line coverage is below ~50%, **run this step before scaffolding** (i.e., before producing Step 5 patterns).
 
 When starting from low test coverage, prioritize by Kotlin/Spring-specific risk:
 
@@ -207,7 +209,7 @@ When starting from low test coverage, prioritize by Kotlin/Spring-specific risk:
 
 - Pass-through controllers, simple CRUD - lower risk, can wait
 
-### Step 8 - Test Infrastructure Hygiene
+### Step 9 - Test Infrastructure Hygiene
 
 - [ ] Testcontainers reused across tests via `@ServiceConnection` + reusable mode (`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`) for local fast cycles
 - [ ] `@SpringBootTest` count kept low; use `@MockkBean` sparingly (each unique mock set forces a new context cache entry)
@@ -299,8 +301,9 @@ Produce ready-to-run Kotlin test files using project conventions. Each scaffold 
 
 ## Self-Check
 
-- [ ] Stack confirmed as Kotlin / Spring Boot before any specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 2)
+- [ ] `behavioral-principles` loaded as Step 1 before stack detection or any other delegation
+- [ ] Stack confirmed as Kotlin / Spring Boot before any specific guidance applied (Step 2)
+- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 3)
 - [ ] `kotlin-spring-test-integration` and `kotlin-testing-patterns` consulted for canonical patterns
 - [ ] Test pyramid mapped to Kotlin/Spring slice annotations (unit -> plain JUnit / Kotest + MockK; slice -> `@WebMvcTest` / `@DataJpaTest` / `@JsonTest`; full-context -> `@SpringBootTest` + Testcontainers)
 - [ ] Boundaries clearly defined: each spec layer covers what it does best; no duplicated assertions across layers

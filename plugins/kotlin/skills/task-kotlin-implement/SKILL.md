@@ -9,9 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after STEP 1 (behavioral-principles) and STEP 2 (stack-detect). The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
 
 # Implement Kotlin Feature
 
@@ -34,6 +32,7 @@ Not for single-file changes (edit directly) or isolated bug fixes (use `task-kot
 - **Bulk operations**: User needs batch create/update/delete. Use `@Transactional` with `saveAll()`, add a dedicated bulk endpoint (POST/PUT to collection URI), and validate collection size limits
 - **Coroutine vs blocking**: Not all endpoints need `suspend`. If the service layer is entirely blocking (JPA/JDBC), use regular functions. Add `suspend` only when the service path genuinely uses coroutines (parallel calls, Flow, R2DBC)
 - **Kotlin enum serialization**: When using Kotlin enums in API requests/responses, ensure Jackson serializes by name (default) or configure `@JsonValue` for custom serialization
+- **Soft-delete**: Replace physical deletes with a `deletedAt: Instant?` column and Hibernate's `@SQLDelete` + `@SQLRestriction` (Hibernate 6) to filter soft-deleted rows from default queries. Add an explicit "include deleted" repository method for admin paths. Update the migration with the new nullable column and a partial index `WHERE deleted_at IS NULL` on lookup columns. The DELETE endpoint then issues an UPDATE rather than a DELETE
 
 ## Rules
 
@@ -50,7 +49,11 @@ Not for single-file changes (edit directly) or isolated bug fixes (use `task-kot
 
 ## Implementation
 
-### STEP 1 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
+### STEP 1 - LOAD BEHAVIORAL PRINCIPLES (MANDATORY, FIRST)
+
+Use skill: `behavioral-principles`. These rules govern every step that follows - load them first so they are in effect for stack detection, requirements gathering, design, code generation, and validation.
+
+### STEP 2 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
 
 Use skill: `stack-detect` to confirm the project is Kotlin + Spring Boot and identify framework versions, database, and build tool.
 
@@ -66,7 +69,7 @@ Collect and confirm:
 
 Do not continue until requirements are complete. If the user provides incomplete input, ask targeted clarifying questions.
 
-### STEP 2 - DESIGN (MANDATORY APPROVAL GATE)
+### STEP 3 - DESIGN (MANDATORY APPROVAL GATE)
 
 Propose and wait for approval:
 
@@ -79,7 +82,7 @@ Propose and wait for approval:
 
 Only generate code after user approves design.
 
-### STEP 3 - ENTITY + MIGRATION
+### STEP 4 - ENTITY + MIGRATION
 
 Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID, `kotlin-jpa`/`kotlin-spring` plugin check).
 
@@ -94,7 +97,7 @@ Generate:
 
 Entity changes must always include a migration.
 
-### STEP 4 - REPOSITORY
+### STEP 5 - REPOSITORY
 
 Use skill: `kotlin-spring-jpa-performance` for query patterns.
 
@@ -104,7 +107,7 @@ Generate Spring Data repository and custom queries as needed:
 - JPQL `@Query` before native SQL; `Specification` for dynamic filters
 - Add `Pageable` methods when listing/filtering is required
 
-### STEP 5 - SERVICE
+### STEP 6 - SERVICE
 
 Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation.
 
@@ -119,7 +122,7 @@ Generate service with business rules and mapping:
 - Business exceptions from common base
 - `suspend` only when service path is coroutine-based (parallel calls, Flow, R2DBC)
 
-### STEP 6 - CONTROLLER + DTO
+### STEP 7 - CONTROLLER + DTO
 
 Use skill: `backend-api-guidelines` for REST conventions.
 
@@ -136,7 +139,7 @@ Rules:
 - Never return entities directly
 - Use Kotlin named parameters in DTO constructors for clarity
 
-### STEP 7 - ERROR HANDLING + SECURITY CHECK
+### STEP 8 - ERROR HANDLING + SECURITY CHECK
 
 Use skill: `kotlin-spring-exception-handling` for error mapping patterns.
 
@@ -153,7 +156,7 @@ Use skill: `kotlin-spring-exception-handling` for error mapping patterns.
 
 - Confirm endpoint auth requirements are explicit before finalizing
 
-### STEP 8 - TESTS
+### STEP 9 - TESTS
 
 Use skill: `kotlin-testing-patterns` for MockK, kotest, Testcontainers, and coroutine test patterns.
 
@@ -165,7 +168,7 @@ Generate all three layers:
 
 Cover: happy path, not-found, validation errors, error responses, and edge cases from domain logic.
 
-### STEP 9 - VALIDATE
+### STEP 10 - VALIDATE
 
 Run the appropriate build command:
 
@@ -178,7 +181,7 @@ Verify:
 - No compilation warnings about unsafe casts or unchecked operations
 - No detekt or ktlint violations (if configured)
 
-### STEP 10 - OUTPUT SUMMARY
+### STEP 11 - OUTPUT SUMMARY
 
 Present the output format below.
 
@@ -218,6 +221,7 @@ Present the output format below.
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as STEP 1 before stack detection or any other delegation
 - [ ] Stack detected and requirements gathered; design approved before any code generated
 - [ ] All layers generated: entity, Flyway migration, repository, service, controller, DTOs, tests
 - [ ] `kotlin-jpa` and `kotlin-spring` Gradle plugins verified; Kotlin class (not data class) for JPA entities

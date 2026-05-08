@@ -107,7 +107,9 @@ class UserController(private val userService: UserService) {
 }
 ```
 
-Good - Centralized exception handling with RFC 9457 ProblemDetail:
+Good - Centralized exception handling with RFC 9457 ProblemDetail.
+
+**Handler precedence:** Spring picks the most specific `@ExceptionHandler` - the one whose declared type is closest to the thrown exception in the type hierarchy. So `handleNotFound(NotFoundException)` wins over `handleDomainException(DomainException)` for a `NotFoundException`, and the catch-all `handleUnexpected(Exception)` only runs when nothing more specific matched. Keep the handlers ordered from most-specific to most-general for readability; the runtime ignores declaration order.
 
 ```kotlin
 @RestControllerAdvice
@@ -160,6 +162,40 @@ class GlobalExceptionHandler {
             setProperty("traceId", MDC.get("traceId"))
         }
     }
+
+    // Optimistic lock conflict: 409 with retry hint
+    // Both Spring's OptimisticLockingFailureException and JPA's ObjectOptimisticLockingFailureException land here.
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleOptimisticLock(ex: OptimisticLockingFailureException): ProblemDetail {
+        log.warn("Optimistic lock conflict: {}", ex.message)
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The resource was modified concurrently. Reload and retry.").apply {
+            title = "Concurrent Modification"
+            setProperty("traceId", MDC.get("traceId"))
+            setProperty("retryable", true)
+        }
+    }
+
+    // Malformed JSON / type mismatch on @RequestBody: 400, not 500
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadable(ex: HttpMessageNotReadableException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request body is missing or malformed").apply {
+            title = "Bad Request"
+            setProperty("traceId", MDC.get("traceId"))
+        }
+
+    // Path / query parameter bean validation (Spring 6 / Boot 3) - separate from @RequestBody validation above
+    @ExceptionHandler(HandlerMethodValidationException::class)
+    fun handleParamValidation(ex: HandlerMethodValidationException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request parameters").apply {
+            title = "Validation Failed"
+            setProperty("traceId", MDC.get("traceId"))
+            setProperty(
+                "paramErrors",
+                ex.allValidationResults.flatMap { r ->
+                    r.resolvableErrors.map { e -> r.methodParameter.parameterName to (e.defaultMessage ?: "invalid") }
+                }.toMap(),
+            )
+        }
 
     // System exception: 500, log with stack trace
     @ExceptionHandler(Exception::class)

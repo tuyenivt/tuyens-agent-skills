@@ -32,6 +32,58 @@ Not for coroutine patterns (see `kotlin-coroutines-spring`) or test patterns (se
 
 ## Patterns
 
+### End-to-End: Java Spring Service → Idiomatic Kotlin
+
+This pulls together the most common conversions. Use it as a reference shape when porting a Java service.
+
+```java
+// Java (before)
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    private final OrderRepository orderRepo;
+
+    public Optional<OrderResponse> findOrder(Long id) {
+        Order o = orderRepo.findById(id).orElse(null);
+        if (o == null) return Optional.empty();
+        return Optional.of(new OrderResponse(o.getId(), o.getStatus(), o.getTotal()));
+    }
+
+    public OrderResponse create(CreateOrderRequest req) {
+        if (req.getItems() == null || req.getItems().isEmpty()) {
+            throw new IllegalArgumentException("items required");
+        }
+        Order saved = orderRepo.save(toEntity(req));
+        return toResponse(saved);
+    }
+
+    private Order toEntity(CreateOrderRequest req) { ... }
+    private OrderResponse toResponse(Order o) { ... }
+}
+```
+
+```kotlin
+// Kotlin (after)
+@Service
+class OrderService(
+    private val orderRepo: OrderRepository,   // constructor injection via primary constructor; no @RequiredArgsConstructor
+) {
+    fun findOrder(id: Long): OrderResponse? =      // T? not Optional<T>
+        orderRepo.findByIdOrNull(id)?.toResponse()  // Spring Data Kotlin extension; ?. chains the null path
+
+    fun create(req: CreateOrderRequest): OrderResponse {
+        require(req.items.isNotEmpty()) { "items required" }   // require() over manual throw
+        return orderRepo.save(req.toEntity()).toResponse()     // extension functions, no helper class
+    }
+}
+
+// Extension functions live alongside the service or in a Mappers.kt file
+private fun CreateOrderRequest.toEntity() = Order(userId = userId, status = OrderStatus.PENDING)
+private fun Order.toResponse() = OrderResponse(id, status, total)
+```
+
+What changed: `Optional<T>` → `T?`, `findById().orElse(null)` → `findByIdOrNull(...)`, manual null/throw → `require`, mapper helper methods → extension functions, `@RequiredArgsConstructor` → primary constructor with `val` params. Each substitution is detailed in the sections below.
+
 ### Gradle Plugin Configuration (Required for JPA)
 
 Kotlin classes are `final` by default and have no no-arg constructors. JPA and Spring require both. These plugins fix it at compile time:
@@ -140,6 +192,57 @@ val config = System.getenv("DATABASE_URL")
     ?: error("DATABASE_URL must be set") // prefer error() over !!
 ```
 
+### Preconditions: require / check / error
+
+Replace Java `if (x == null) throw new IllegalArgumentException(...)` boilerplate with stdlib precondition functions. They convey intent and produce smart-cast non-null types after the check.
+
+```kotlin
+fun createOrder(req: CreateOrderRequest, userId: Long?): Order {
+    require(req.items.isNotEmpty()) { "Order must have at least one item" }   // IllegalArgumentException
+    require(req.items.size <= 50)   { "Too many items: ${req.items.size}" }
+    val uid = checkNotNull(userId)  { "userId must be set on this code path" } // IllegalStateException; uid is Long
+    check(req.total > BigDecimal.ZERO) { "Total must be positive" }            // IllegalStateException for invariants
+    ...
+}
+```
+
+- `require` - argument validation (caller's fault) → `IllegalArgumentException`
+- `check` / `checkNotNull` - internal invariants (our fault) → `IllegalStateException`
+- `error(msg)` - unreachable / unrecoverable state → `IllegalStateException`
+
+Use lazy message lambdas (`{ "..." }`) so string interpolation only runs on failure.
+
+### Named Arguments (Replace Builders)
+
+Kotlin's named + default arguments replace Lombok `@Builder` and Java telescoping constructors. No builder class needed.
+
+```kotlin
+// Good: named args at call site - readable, refactor-safe, no builder boilerplate
+val req = CreateOrderRequest(
+    userId = currentUser.id,
+    items = listOf(item),
+    shippingAddress = "123 Main St",
+    couponCode = null,
+    expressShipping = true,
+)
+
+// Constructor with defaults supports partial specification at call site
+data class PageRequest(
+    val page: Int = 0,
+    val size: Int = 20,
+    val sort: String = "createdAt,desc",
+)
+val firstPage = PageRequest()                 // all defaults
+val small = PageRequest(size = 5)             // override one
+val sorted = PageRequest(sort = "id,asc")     // skip middle args by name
+
+// Bad: Java-style builder ported to Kotlin - unnecessary in Kotlin
+CreateOrderRequest.builder()
+    .userId(currentUser.id)
+    .items(listOf(item))
+    .build()
+```
+
 ### Scope Functions
 
 | Function | Receiver | Return        | Use For                               |
@@ -172,6 +275,11 @@ val isValid = order.run {
 val order = repo.save(newOrder)
     .also { log.info("Order created: id={}", it.id) }
     .also { eventPublisher.publish(OrderCreatedEvent(it.id)) }
+
+// with - multiple operations on the same object, returns the lambda result
+val summary = with(order) {
+    "Order #$id by user $userId for $total"
+}
 ```
 
 ### Sealed Classes for Error Hierarchies
@@ -247,6 +355,58 @@ class OrderUtils {
     }
 }
 ```
+
+### `companion object` and `object` (Replace Java `static` and Singletons)
+
+Kotlin has no `static` keyword. Java `static` members go in a `companion object`; Java singletons (private constructor + `INSTANCE`) become a top-level `object`.
+
+```kotlin
+// Java static -> Kotlin companion object
+class Order(val id: Long, val total: BigDecimal) {
+    companion object {
+        const val MAX_ITEMS = 50                      // compile-time constant (like Java public static final)
+        fun empty(userId: Long) = Order(id = 0, ...)  // factory function - call as Order.empty(uid)
+    }
+}
+
+// Java singleton -> Kotlin object
+object OrderIdGenerator {
+    private val seq = AtomicLong()
+    fun next(): Long = seq.incrementAndGet()
+}
+// Call as OrderIdGenerator.next() - no .INSTANCE, no getInstance()
+```
+
+Use `const val` for compile-time constants; use plain `val` inside `companion object` for anything computed.
+
+### Use-Site Annotation Targets (`@field:`, `@get:`, `@param:`)
+
+Kotlin properties expand to a backing field, getter, setter, and constructor parameter. Annotations like `@NotBlank`, `@Column`, `@JsonProperty` may need an explicit target so they land on the right element. Without a target Kotlin picks a default that often isn't what frameworks expect.
+
+```kotlin
+data class CreateUserRequest(
+    @field:NotBlank                          // target the backing field for Bean Validation
+    @field:Size(min = 3, max = 50)
+    val username: String,
+
+    @field:Email
+    val email: String,
+
+    @get:JsonProperty("created_at")          // target the getter for Jackson
+    val createdAt: Instant,
+)
+
+@Entity
+class User(
+    @Id @GeneratedValue
+    val id: Long = 0,
+
+    @Column(name = "user_name", nullable = false, length = 50)  // JPA annotations on val parameter target the field by default
+    val username: String,
+)
+```
+
+Common targets: `@field:` (backing field), `@get:` / `@set:` (accessors), `@param:` (constructor param), `@property:` (the property itself). When validation or JSON annotations seem to be ignored at runtime, the missing use-site target is almost always why.
 
 ### Kotlin-Java Interop Annotations
 
@@ -333,8 +493,12 @@ val name: String? = javaService.getName() // safe - forces null handling
 | @Data DTO | data class | {list} |
 | @Data Entity | class + equals/hashCode | {list} |
 | Java streams | Kotlin stdlib | {list} |
-| Lombok builder | apply / named params | {list} |
+| Lombok builder | named arguments + defaults | {list} |
 | Utility class | Extension functions | {list} |
+| static field/method | companion object / const val | {list} |
+| Singleton | object | {list} |
+| if/throw guard | require / check / checkNotNull | {list} |
+| Bean Validation on entity | @field: targets on val params | {list} |
 
 ### Null Safety
 - Platform types (T!) treated as nullable at call sites: {yes | no}
@@ -353,5 +517,8 @@ val name: String? = javaService.getName() // safe - forces null handling
 - Java-style getters/setters - use Kotlin properties
 - Nested scope functions beyond 2 levels deep - extract to named functions instead
 - Manual `open` on JPA entities or Spring beans - use `kotlin-spring` and `kotlin-jpa` plugins
-- Utility classes with static methods - use extension functions
+- Utility classes with static methods - use extension functions; for static-like state use `companion object` or `object`
+- Lombok `@Builder` ports - use named arguments and default parameter values
+- Manual `if (x == null) throw ...` - use `require` / `check` / `checkNotNull`
 - `@Value` for complex configuration - use `@ConfigurationProperties` data classes
+- Bean Validation / Jackson annotations without a use-site target on `data class` properties when the framework appears to ignore them - add `@field:` or `@get:`

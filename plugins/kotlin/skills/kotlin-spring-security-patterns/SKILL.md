@@ -251,6 +251,49 @@ fun webhookSecurityFilterChain(http: HttpSecurity): SecurityFilterChain = http {
 
 Signature validation happens in the webhook service (HMAC comparison via `MessageDigest.isEqual` for timing-safety).
 
+### `@AuthenticationPrincipal` in Controllers
+
+Inject the JWT principal directly into a controller method instead of reaching into `SecurityContextHolder`:
+
+```kotlin
+@RestController
+class OrderController(private val service: OrderService) {
+
+    @GetMapping("/orders")
+    suspend fun list(@AuthenticationPrincipal jwt: Jwt): List<OrderResponse> =
+        service.listForUser(userId = jwt.subject).map { it.toResponse() }
+
+    // For custom user details, type-narrow the principal
+    @GetMapping("/me")
+    fun me(@AuthenticationPrincipal user: AppUserDetails): UserResponse = user.toResponse()
+}
+```
+
+This is the cleanest option for `suspend` controllers because it sidesteps the ThreadLocal-vs-coroutine-context question entirely - the principal is passed as a method argument and stays valid across dispatcher switches.
+
+### Custom Authorization with `AuthorizationManager`
+
+Spring Security 6 replaces the deprecated `AccessDecisionManager` with `AuthorizationManager<RequestAuthorizationContext>`. Use it inside the DSL when an authorization rule needs more context than `hasRole` / `hasAuthority` can express:
+
+```kotlin
+@Bean
+fun ownsTenantManager(): AuthorizationManager<RequestAuthorizationContext> =
+    AuthorizationManager { authentication, ctx ->
+        val tenantId = ctx.request.getHeader("X-Tenant-Id")
+        val authority = "TENANT_$tenantId"
+        AuthorizationDecision(authentication.get().authorities.any { it.authority == authority })
+    }
+
+http {
+    authorizeHttpRequests {
+        authorize("/api/tenants/**", access(ownsTenantManager()))    // composes with the DSL
+        authorize(anyRequest, authenticated)
+    }
+}
+```
+
+Use `@PreAuthorize` for method-level checks and `AuthorizationManager` for filter-chain-level rules that depend on the request.
+
 ### Coroutine Security Context
 
 `SecurityContextHolder` uses ThreadLocal and does not propagate across `suspend` boundaries. For coroutine-based services, use the reactive holder or pass the principal explicitly:
