@@ -23,7 +23,7 @@ user-invocable: true
 Not for:
 
 - Single-file bug fixes or debugging (use `task-rails-debug`)
-- Pure frontend changes or view-only work
+- Pure view-only changes with no model/controller/service work (edit views directly; consult `rails-view-templates` for engine-specific patterns)
 - Database-only migrations without application code
 
 ## Edge Cases
@@ -32,7 +32,8 @@ Not for:
 - **No background jobs**: If the feature does not require async processing, skip Sidekiq job generation. Do not generate empty job files.
 - **Existing models**: If the user references a model that already exists, read the existing model and extend it rather than creating a new one. Skip migration if no schema change is needed.
 - **Referenced model doesn't exist**: If the feature has a relationship to a model not yet in the codebase (e.g., `belongs_to :product`), ask the user whether to generate the referenced model or assume it already exists.
-- **API-only app**: If the project inherits from `ActionController::API`, skip CSRF configuration and session-based auth patterns.
+- **API-only app**: If the project inherits from `ActionController::API`, skip CSRF configuration, session-based auth patterns, and the views step.
+- **Server-rendered app**: If the project has views beyond mailers (e.g., `app/views/<resources>/`) and inherits from `ActionController::Base`, generate views in the project's existing template engine (ERB / HAML / Slim - detect from Gemfile and existing `.slim`/`.haml`/`.erb` files). Use skill: `rails-view-templates` for engine-specific escaping, partials, fragment caching, and Turbo/Stimulus wiring. Match the existing engine - never introduce a new one as a side effect.
 - **State machine transitions**: Feature has explicit status transitions (e.g., pending -> confirmed -> shipped). Generate transition validation in the service layer and enum with explicit integer mapping.
 - **Inventory/counter operations**: Feature decrements or increments a counter on another model. Wrap in a transaction with the status change; dispatch jobs after commit.
 - **Backfill or maintenance task**: Feature requires populating a new column on existing rows, or a recurring maintenance/report job. Use skill: `rails-rake-task-patterns` to generate a thin rake task that delegates to a service, with dry-run and production confirmation guards.
@@ -83,8 +84,12 @@ Present a file tree showing what will be generated:
 app/
   models/order.rb                          # ActiveRecord model
   services/fulfill_order.rb                # Service object
-  controllers/api/v1/orders_controller.rb  # API controller
-  serializers/order_serializer.rb          # Response serializer
+  controllers/api/v1/orders_controller.rb  # API controller (or controllers/orders_controller.rb for server-rendered)
+  serializers/order_serializer.rb          # Response serializer (API only)
+  views/orders/index.html.{slim,haml,erb}  # Server-rendered only - matches project engine
+  views/orders/show.html.{slim,haml,erb}   #   "
+  views/orders/_form.html.{slim,haml,erb}  #   "
+  components/order_card_component.rb       # ViewComponent (server-rendered, when reused)
   policies/order_policy.rb                 # Pundit policy
   jobs/shipment_notification_job.rb        # Sidekiq job (if needed)
 spec/
@@ -92,6 +97,7 @@ spec/
   services/fulfill_order_spec.rb
   policies/order_policy_spec.rb
   requests/api/v1/orders_spec.rb
+  components/order_card_component_spec.rb  # ViewComponent spec (server-rendered)
   jobs/shipment_notification_job_spec.rb
   factories/orders.rb
 db/migrate/xxx_create_orders.rb
@@ -174,9 +180,9 @@ end
 
 The header is required by Stripe-style integrations and is what makes "POST is not idempotent" survivable in practice.
 
-### STEP 7 - SERIALIZERS
+### STEP 7 - SERIALIZERS (API endpoints)
 
-Response shaping for all API responses. Separate serializers per resource. Never return raw ActiveRecord objects from endpoints.
+Skip this step if the feature has no JSON endpoints. Otherwise: response shaping for all API responses. Separate serializers per resource. Never return raw ActiveRecord objects from endpoints.
 
 Detect the project's serializer library before generating files. In order of preference for new Rails 7.2+ projects:
 
@@ -184,6 +190,40 @@ Detect the project's serializer library before generating files. In order of pre
 2. **No existing serializer** - default to `alba` (fast, JSON:API-optional, actively maintained). Add `gem "alba"` and generate `app/serializers/<resource>_serializer.rb` extending `Alba::Resource`.
 
 Never return `render json: @order` directly - always pipe through the chosen serializer so response shape is explicit and stable.
+
+### STEP 7.5 - VIEWS (server-rendered features)
+
+Skip this step if the feature is API-only (controllers inherit from `ActionController::API`, or no view files beyond mailers exist).
+
+Use skill: `rails-view-templates`. Detect the project's template engine from the Gemfile (`slim-rails`, `haml-rails`, or none for ERB) and existing `app/views/**/*.{slim,haml,erb}` files. **Match the existing engine** - never convert engines as a side effect of feature work.
+
+Generate:
+
+- `index`, `show`, `new`, `edit` views in the detected engine (skip whichever the feature does not need)
+- `_form.html.<ext>` shared form partial used by `new` and `edit`
+- `_<resource>.html.<ext>` collection-item partial when index renders a list
+- ViewComponents in `app/components/` for non-trivial reusable UI (status badges, action menus) - prefer ViewComponent over a helper for any logic touching three or more attributes
+- Turbo Frame wrapping with `dom_id(record)` for any list-item view that should support per-row updates without full reload
+- Stimulus controllers for any client-side interactivity (do not use inline `<script>` tags)
+- Fragment caching with Russian-doll keys (`cache record do ... end`) when the partial is rendered in a collection of more than ~20 items, paired with `belongs_to :parent, touch: true` on child models so cache invalidates on writes
+
+Layout slots: when the feature needs page-specific JS, sidebar content, or a custom page title, use `content_for :slot_name do ... end` in the view and `= yield :slot_name` in `app/views/layouts/application.html.<ext>`. Do not add inline `<script>` tags or hand-roll layout overrides.
+
+Escaping checklist - verify before generating:
+
+- Default escaped output (`=` in ERB/Slim, `=` in HAML) for every interpolated user-controlled value
+- No `.html_safe` on user input anywhere - use `sanitize` with an explicit allowlist if HTML rendering is required
+- In Slim specifically: no `==` (unescape) on user data; quote string-literal attribute values to prevent attribute-side Ruby evaluation
+
+**Intentional HTML rendering** (markdown bodies, rich-text comments, admin-curated copy): the field *is* HTML and must render as markup, not text. Escaped output (`=`) would show the raw tags. Use `sanitize` with an explicit tag/attribute allowlist - never `.html_safe` or `==`/`!=`/`raw`:
+
+```slim
+/ comment.body is user-submitted HTML (markdown rendered server-side or rich-text editor output)
+.comment-body
+  = sanitize comment.body, tags: %w[p br strong em a ul ol li blockquote code], attributes: %w[href]
+```
+
+For markdown pipelines (`Commonmarker`, `Redcarpet`, `Kramdown`), pass the rendered HTML through `sanitize` even when the renderer claims to be safe-mode - renderer config drifts and a single `raw_html: true` option re-opens XSS. The allowlist is the trust boundary, not the renderer.
 
 ### STEP 8 - SECURITY
 
@@ -202,6 +242,7 @@ Use skill: `rails-testing-patterns`. Generate:
 - Service specs (Result object success/failure, side effects, error cases)
 - Policy specs (role-based access per action with `permit_action`)
 - Request specs (happy path + error cases for each status code + authorization)
+- ViewComponent specs (server-rendered features) - `render_inline` per state variant; assert rendered markup and that user-supplied strings are escaped
 - Factory with traits for each status/state variation
 - Sidekiq job specs with idempotency guard assertions (if applicable)
 
@@ -243,7 +284,8 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix any failures before prese
 ## Self-Check
 
 - [ ] Requirements gathered and design approved before code generation
-- [ ] All layers generated: migration, model, service object, controller, serializer, Pundit policy, tests
+- [ ] All layers generated: migration, model, service object, controller, serializer (API) or views (server-rendered), Pundit policy, tests
+- [ ] For server-rendered features: views generated in the project's existing engine (Slim / HAML / ERB - never converted); user-data interpolation uses escaped output; no `.html_safe` on user input; Turbo Frame ids use `dom_id(record)`; intentional-HTML fields (markdown, rich-text) render via `sanitize` with an explicit tag/attribute allowlist; ViewComponent specs cover each state variant
 - [ ] Strong params in controller; business logic in service objects; serializers for all API responses
 - [ ] Enum fields use explicit integer mapping; `dependent:` set on all associations
 - [ ] Sidekiq jobs dispatched after DB transaction commit, not inside it

@@ -67,7 +67,7 @@ Apply the OWASP Top 10 with Rails-specific framing. Use skill: `rails-security-p
 | Cryptographic Failures        | `Rails.application.credentials` for secrets; `attr_encrypted` / Active Record encryption (Rails 7+) for sensitive columns.                 |
 | Security Misconfiguration     | `config.force_ssl = true` in production; `secure_headers` gem or `default_protect_from_forgery true`; CSP set.                             |
 | SSRF                          | No `Net::HTTP.get(URI(user_input))` without an allowlist. Validate hostnames before request.                                               |
-| XSS                           | No `.html_safe`, `raw`, or `<%== %>` on user input. ERB auto-escapes - do not bypass.                                                      |
+| XSS                           | No `.html_safe`, `raw`, or unescape operators on user input. ERB (`<%==`), HAML (`!=`), Slim (`==`) all auto-escape by default - do not bypass. See Step 6.5 for engine-specific checks. |
 | Insecure Design (A04)         | Pundit policy exists for every model exposed via API; default-deny in `ApplicationPolicy`.                                                 |
 | Vulnerable Components (A06)   | `bundle audit` clean; no Gemfile.lock entries with known CVEs; `bin/importmap audit` for JS deps.                                          |
 | Data Integrity Failures (A08) | No `Marshal.load` on user input; no `YAML.load` (use `YAML.safe_load`); cookie store keys rotated on compromise.                           |
@@ -107,6 +107,35 @@ Apply the OWASP Top 10 with Rails-specific framing. Use skill: `rails-security-p
   - Virus scan pipeline or accepted-risk documented for user uploads
 - [ ] **Path traversal**: any `File.read` / `send_file` with user-controlled paths uses `File.expand_path` and verifies the result is within an allowed base directory
 - [ ] **Shell calls**: no `system(...)`, `` `...` ``, or `Open3` with interpolated user input - use API alternatives
+
+### Step 6.5 - View-Layer Escaping (server-rendered apps only)
+
+Skip if the app is API-only (no `app/views/` beyond mailers). Otherwise use skill: `rails-view-templates` for engine-specific escape rules and run these checks against every changed `.erb` / `.haml` / `.slim` file.
+
+**Per-engine grep recipe** for the unescape surface - run before the per-bullet review:
+
+```bash
+git diff <base>...<head> -- '*.erb'  | grep -E '<%==|<%= *raw |\.html_safe'
+git diff <base>...<head> -- '*.haml' | grep -E '!= |\.html_safe'
+git diff <base>...<head> -- '*.slim' | grep -E ' == |^== |\.html_safe| raw '
+```
+
+Every hit is a candidate XSS - verify the source is trusted (i18n string, `link_to`/`form_with`/`tag` helper output, server-controlled markup) or flag it.
+
+- [ ] **Engine identified** from Gemfile (`slim-rails`, `haml-rails`, neither = ERB) and matched to the changed files; apply each engine's rules only to its own files (Slim's `==` rule does not apply to `.erb`; ERB's `<%==` does not apply to `.slim`). When the diff mixes engines, run the checks twice with the right ruleset for each set of files
+- [ ] **No `.html_safe` on user input** anywhere in views, helpers, or models with stringly-typed attributes feeding views; if HTML rendering is required, `sanitize` with an explicit tag/attribute allowlist is used instead
+- [ ] **No `raw` / `html_safe` / unescape operators on user-controlled values** - per engine:
+  - ERB: `<%== user_value %>`, `<%= raw user_value %>`, `<%= user_value.html_safe %>` are all XSS
+  - HAML: `!= user_value` (the `!=` unescape operator) is XSS on user input
+  - Slim: `== user_value` is XSS on user input. Slim's trap: `==` looks like Ruby equality but is the unescape operator. Grep `\b== ` in `.slim` files and verify each instance renders trusted content (i18n strings, helpers like `link_to`/`form_with` that return `html_safe` markup)
+- [ ] **Slim attribute-value Ruby evaluation**: bare attribute values (`div class=user_input`) execute Ruby. Quoted forms (`div class="user_input"`) are literal. Verify class/style/id attributes containing user data are quoted, or that the method returning the value cannot be controlled by user input
+- [ ] **`sanitize` allowlist is restrictive**: no blanket `sanitize(html)` without a tags/attributes allowlist - the default config permits enough to be exploitable
+- [ ] **No string interpolation building HTML**: `"<a href='#{url}'>".html_safe` is XSS; use `link_to` / `tag.a` / `content_tag` which escape attributes correctly
+- [ ] **Turbo Stream and frame content** rendered via the same partials as initial render - so escape rules cannot diverge between paths; `turbo_stream.append("id", html: user_input)` is XSS, use `partial:` form
+- [ ] **Turbo Streams subscription authorization**: `turbo_stream_from "scope_#{record.id}"` opens a WebSocket subscription. The stream channel must verify the current user can see `record` (in the channel's `subscribed` callback or via signed stream names with `Turbo::StreamsChannel.signed_stream_name`). An unauthorized subscription is an IDOR over WebSocket - the user receives every broadcast for any id they can guess
+- [ ] **Stimulus `data-action` values** are JS event names, not Ruby - verify no user-controlled values flow into them
+- [ ] **`content_tag` / `tag` helpers used** when building HTML from user data, never string concatenation with `.html_safe`
+- [ ] **Markdown / server-rendered HTML pipelines** (`Commonmarker`, `Redcarpet`, `Kramdown`, rich-text editors): the rendered HTML is run through `sanitize` with an explicit allowlist before reaching the view, even when the renderer is configured "safe". Renderer config drifts (`raw_html: true`, `safe_links_only: false`) and the allowlist is the trust boundary, not the renderer. `== article.body_html` or `<%== article.body_html %>` without an explicit sanitize step upstream is XSS
 
 ### Step 7 - Common Rails Vulnerability Patterns
 
@@ -148,6 +177,7 @@ Apply the OWASP Top 10 with Rails-specific framing. Use skill: `rails-security-p
 - [ ] Authentication step run for the auth mechanism in use (Devise / JWT / custom)
 - [ ] **Authorization drift sweep**: every new controller action in the diff has a matching Pundit/CanCanCan policy method
 - [ ] Strong params reviewed on every `create`/`update`; no `permit!` or `to_unsafe_h`
+- [ ] **View-layer escaping audit** (Step 6.5) run against every changed `.erb` / `.haml` / `.slim` file - skipped only when the app is API-only; engine-specific unescape operators (`<%==`, `!=`, `==`) verified against trust boundaries; `rails-view-templates` consulted for engine rules
 - [ ] File upload, path traversal, and shell-call checks run if applicable
 - [ ] CSRF, CORS, Rack::Attack, open redirect, and admin-endpoint gating verified
 - [ ] Every finding includes an attack scenario - not just "input not validated"

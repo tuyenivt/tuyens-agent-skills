@@ -113,13 +113,45 @@ Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.
 
 ### Step 6 - Caching and Rendering
 
+For server-rendered apps (views beyond mailers), use skill: `rails-view-templates` for engine-specific rendering patterns and apply these checks to changed `.erb` / `.haml` / `.slim` files in addition to the cache checks below.
+
+**View-only diffs**: when the diff touches only view files, the queries that fan out from the view live in the controller that feeds it - re-apply the relevant Step 3 checks (`includes`/`preload`, `counter_cache`, multi-level N+1) against that controller before concluding. View-side perf bugs almost never have view-side fixes.
+
+View-side N+1 patterns to flag (the fix is upstream):
+
+```slim
+- @orders.each do |order|
+  span = order.customer.name      / N+1 unless controller does .includes(:customer)
+  span = order.line_items.count   / N COUNT queries; use counter_cache or pre-aggregate
+  - order.shipments.each do |s|   / multi-level N+1; controller needs .includes(:shipments)
+    span = s.tracking_number
+```
+
+Broken cache key (silent staleness):
+
+```slim
+/ Wrong - the id never changes, so the cache never invalidates after writes
+- cache order.id do
+  = render order
+
+/ Right - cache_key_with_version includes updated_at; touch parents on child writes
+- cache order do
+  = render order
+```
+
 - [ ] Russian-doll caching (`cache @collection`, `cache item`) used in views that render large collections, with cache keys including `updated_at` and association timestamps (`belongs_to :parent, touch: true`)
+- [ ] **Fragment cache keys include `updated_at`**: `cache item` (uses `cache_key_with_version`) is correct; `cache item.id` is broken - never invalidates
 - [ ] Low-level caching (`Rails.cache.fetch`) used for expensive derived data, with explicit TTL and an invalidation strategy (touch parent on child write, or write-through on update)
 - [ ] **Cache-stampede protection**: hot keys with expensive regeneration use `Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds)` so concurrent expiries do not pile up against the source of truth
 - [ ] Fragment caches keyed on the right scope (per-user vs. global) - no leakage of authorized data across users
 - [ ] HTTP caching (`fresh_when`, `stale?`) on read-heavy GET endpoints
 - [ ] No serializer (ActiveModel::Serializer, JSONAPI, Blueprinter, Jbuilder) loading associations not declared in `includes`
-- [ ] No view partial rendering an association inside a `each` without preload
+- [ ] **No view partial rendering an association inside an `each` without preload** - applies to all engines: `<% @orders.each do |o| %><%= o.customer.name %>` in ERB, `- @orders.each do |o|` + `= o.customer.name` in Slim/HAML. Fix on the controller side with `includes(:customer)`
+- [ ] **Collection rendering with cache**: `render partial: 'order', collection: @orders, cached: true` is faster than per-item `cache` blocks for large lists (multi-key fetch in one Redis round-trip); flag missing `cached: true` on hot list pages
+- [ ] **`render @orders` collection form**: each item must use the partial named for its class; verify the partial uses preloaded associations
+- [ ] **Helper hot paths**: helpers called in tight `each` loops that issue queries (`current_user.can?(item)`, `item.shippable?` if it triggers SQL) - move to a presenter that takes a preloaded relation, or memoize per-request
+- [ ] **ViewComponent over heavy helpers**: components compile templates once and are faster than `render partial:` for repeated UI; flag partials rendered > 50 times per request as candidates for ViewComponent migration
+- [ ] **Turbo Stream broadcasts** during a loop (`broadcast_append_to` per item in a controller `each`) cause one WebSocket message per item - batch via `broadcast_replace_to` of a container or move to a single after-commit broadcast
 
 ### Step 7 - Concurrency and External I/O
 
@@ -146,6 +178,7 @@ Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.
 - [ ] `rails-migration-safety` consulted for any `db/migrate/` change; concurrent index and composite-index leftmost-prefix verified
 - [ ] `rails-sidekiq-patterns` consulted for any job change; post-commit dispatch and idempotency guard verified
 - [ ] Caching strategy assessed (Russian-doll, low-level, HTTP); invalidation explicit
+- [ ] For server-rendered apps: `rails-view-templates` consulted; partial-render N+1, fragment cache key correctness, collection `cached: true`, helper hot paths, and Turbo Stream broadcast batching all checked against changed view files
 - [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never just "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
