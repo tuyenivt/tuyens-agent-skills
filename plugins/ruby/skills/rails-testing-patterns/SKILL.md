@@ -473,6 +473,85 @@ Notes:
 - `task.reenable` only re-enables that single task. If a task has chained `invoke` calls, reenable each one.
 - A failing rake task raises - `expect { ... }.to raise_error` is the right matcher. `abort` raises `SystemExit`, not `RuntimeError`.
 
+### Test Helpers - `auth_headers` and `json_response`
+
+Request specs above reference `auth_headers(user)` and `json_response`. Define these once in `spec/support/request_helpers.rb` so every request spec uses the same setup:
+
+```ruby
+# spec/support/request_helpers.rb
+module RequestHelpers
+  def auth_headers(user)
+    token = Warden::JWTAuth::UserEncoder.new.call(user, :user, nil).first
+    { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
+  end
+
+  def json_response
+    JSON.parse(response.body)
+  end
+end
+
+RSpec.configure do |config|
+  config.include RequestHelpers, type: :request
+end
+```
+
+Adapt `auth_headers` to the project's auth strategy (Devise session, JWT, API key in header). The point is one helper, one canonical shape.
+
+### Time Helpers
+
+Use Rails' built-in time helpers (no `timecop` gem needed). They auto-reset after each example when `ActiveSupport::Testing::TimeHelpers` is included:
+
+```ruby
+# spec/rails_helper.rb
+RSpec.configure do |config|
+  config.include ActiveSupport::Testing::TimeHelpers
+end
+
+# Usage
+it "expires after 7 days" do
+  token = create(:reset_token)
+  travel 8.days
+  expect(token).to be_expired
+end
+
+it "stamps fulfilled_at" do
+  freeze_time do
+    described_class.call(order)
+    expect(order.reload.fulfilled_at).to eq(Time.current)
+  end
+end
+```
+
+`travel`, `travel_to`, `travel_back`, and `freeze_time` cover all common time-test cases. Avoid `Time.now = ...` style stubs - they leak between examples.
+
+### N+1 Assertions in Specs
+
+Catch N+1 regressions at test time, not in production logs. Two approaches:
+
+```ruby
+# Bullet (raises in dev/test on detected N+1)
+# spec/rails_helper.rb
+config.before(:each) do
+  Bullet.enable = true
+  Bullet.raise = true
+  Bullet.start_request
+end
+config.after(:each) { Bullet.end_request }
+
+# Assert exact query count for a hot endpoint
+require "active_record/query_recorder"
+
+it "loads index in 2 queries regardless of order count" do
+  create_list(:order, 10, :with_order_items, user: user)
+  queries = ActiveRecord::QueryRecorder.new do
+    get "/api/v1/orders", headers: auth_headers(user)
+  end
+  expect(queries.count).to be <= 4 # one per: count, orders, items, products
+end
+```
+
+Pin the query count; raising it requires an explicit decision in code review.
+
 ### VCR / WebMock
 
 ```ruby

@@ -284,6 +284,59 @@ class ValidateOrdersUserFk < ActiveRecord::Migration[7.2]
 end
 ```
 
+### Lock Timeouts and Statement Timeouts
+
+A migration that waits behind a long-running query can pile up blocked sessions and effectively take the table down. Set `lock_timeout` so the migration fails fast instead of holding back every other writer:
+
+```ruby
+class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
+  disable_ddl_transaction!
+
+  def change
+    execute "SET lock_timeout = '5s'"
+    add_index :orders, :status, algorithm: :concurrently
+  end
+end
+```
+
+If the lock cannot be acquired in 5 seconds, the migration aborts cleanly. Re-run during a quieter window. `strong_migrations` enforces this in CI when `StrongMigrations.lock_timeout` is configured globally - prefer the global config over per-migration `execute`.
+
+For long-running data backfills, also set `statement_timeout` per-batch - a single runaway query on a large table shouldn't block deploys:
+
+```ruby
+Order.in_batches(of: 10_000) do |batch|
+  ActiveRecord::Base.connection.execute("SET LOCAL statement_timeout = '30s'")
+  batch.update_all(processed: true)
+end
+```
+
+### `change_column_default`
+
+Changing a default on a large table is fast in PostgreSQL 11+ - the default is stored in metadata, no table rewrite. But in earlier versions or when using `change_column` (which combines type+default+null), it rewrites every row. Use the targeted helper:
+
+```ruby
+# Safe on PG 11+: metadata-only change
+change_column_default :orders, :status, from: nil, to: "pending"
+
+# Avoid: change_column rewrites the table even if you only meant to change the default
+```
+
+### Advisory Locks for Backfills
+
+When a backfill might be triggered twice (deploy retry, two ops engineers), guard the body with a PostgreSQL advisory lock so only one runs at a time. The second invocation exits cleanly instead of double-writing:
+
+```ruby
+def up
+  lock_id = "backfill_order_amount".hash
+  ActiveRecord::Base.connection.execute("SELECT pg_advisory_lock(#{lock_id})")
+  begin
+    Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
+  ensure
+    ActiveRecord::Base.connection.execute("SELECT pg_advisory_unlock(#{lock_id})")
+  end
+end
+```
+
 ### Rollback Safety
 
 Every migration must be reversible. Test with `rails db:rollback` in CI:

@@ -158,6 +158,22 @@ Strong params, pagination on list endpoints, delegate all business logic to serv
 | Unauthorized         | 401         |
 | Forbidden            | 403         |
 
+**API versioning.** New API endpoints go under a versioned namespace (`/api/v1/...` or via `Accept: application/vnd.app.v1+json` header). For an existing app, follow the project's established convention rather than introducing a new one. When the feature is the first API endpoint, default to URL-based versioning (`namespace :api do; namespace :v1 do; ...`) - it's the most discoverable and tooling-friendly choice.
+
+**Idempotency keys for write endpoints.** For non-GET endpoints whose effect must not duplicate on client retry (payments, orders, refunds, "create" actions where the client retries on network blip), accept an `Idempotency-Key` header and short-circuit on replay. See `rails-service-objects` for the service-side pattern; the controller forwards the header:
+
+```ruby
+def create
+  result = ChargeCustomer.new(
+    order: order,
+    idempotency_key: request.headers["Idempotency-Key"]
+  ).call
+  # ...
+end
+```
+
+The header is required by Stripe-style integrations and is what makes "POST is not idempotent" survivable in practice.
+
 ### STEP 7 - SERIALIZERS
 
 Response shaping for all API responses. Separate serializers per resource. Never return raw ActiveRecord objects from endpoints.

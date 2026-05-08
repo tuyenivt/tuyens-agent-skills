@@ -280,6 +280,44 @@ task backfill_user_segments: :environment do
 end
 ```
 
+### Signal Handling and Concurrent Invocation Guard
+
+Long backfills get killed mid-run - by Kubernetes when the pod is rescheduled, by an ops engineer typing Ctrl-C, by systemd on host reboot. Trap signals so the in-flight batch finishes cleanly and the cursor advances. Without this, the next run repeats the killed batch (wasted work) or skips it (lost work, depending on idempotency).
+
+```ruby
+namespace :reports do
+  task :rebuild => :environment do
+    interrupted = false
+    Signal.trap("INT")  { interrupted = true }
+    Signal.trap("TERM") { interrupted = true }
+
+    Order.in_batches(of: 1_000) do |batch|
+      RebuildReportRows.call(orders: batch)
+      Rails.cache.write("reports:rebuild:cursor", batch.last.id)
+      if interrupted
+        Rails.logger.warn(task: "reports:rebuild", status: "interrupted", cursor: batch.last.id)
+        break
+      end
+    end
+  end
+end
+```
+
+Use a PostgreSQL advisory lock to prevent two cron triggers (or a manual run during cron) from racing on the same dataset:
+
+```ruby
+task backfill: :environment do
+  ActiveRecord::Base.connection.execute("SELECT pg_advisory_lock(#{"backfill".hash})")
+  begin
+    BackfillService.call
+  ensure
+    ActiveRecord::Base.connection.execute("SELECT pg_advisory_unlock(#{"backfill".hash})")
+  end
+end
+```
+
+The second invocation blocks until the first releases - or use `pg_try_advisory_lock` and `abort` immediately if the lock is held, depending on the desired behavior.
+
 ### Composition With Other Tasks
 
 Use `Rake::Task#invoke` for one-time chaining; use `enhance` to add steps to an existing task. Avoid `prerequisites` for slow tasks that you do not always want to run.

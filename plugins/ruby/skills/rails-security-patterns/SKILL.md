@@ -61,6 +61,50 @@ For arrays of scalars and arrays of nested attributes, use the explicit array sy
 params.require(:order).permit(:total, tag_ids: [], items: [[:product_id, :quantity]])
 ```
 
+### `params.expect` (Rails 8 / 7.2 backport)
+
+Rails 8 introduces `params.expect` as a stricter replacement for `params.require(...).permit(...)`. It raises `ActionController::ParameterMissing` on type mismatches (e.g., the client sends `order=foo` instead of `order={...}`) and resists hash-confusion attacks where a string is sent where an object is expected:
+
+```ruby
+# Before
+params.require(:order).permit(:total, :status, items: [[:product_id, :quantity]])
+
+# After (Rails 8+, available via gem on 7.2)
+params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
+```
+
+Prefer `expect` on new code; it returns 400 instead of letting a malformed nested array sneak through as `nil`.
+
+### IDOR via Nested Params
+
+Bad - permitting an FK that the user can spoof:
+
+```ruby
+def order_params
+  params.require(:order).permit(:total, :status, :user_id) # user can claim any user_id
+end
+
+def create
+  order = Order.new(order_params)
+  order.save!
+end
+```
+
+Good - never trust client-supplied ownership FKs; assign from session:
+
+```ruby
+def order_params
+  params.require(:order).permit(:total, :status) # no :user_id
+end
+
+def create
+  order = current_user.orders.new(order_params) # ownership enforced server-side
+  order.save!
+end
+```
+
+The same applies to `:account_id`, `:tenant_id`, `:organization_id` - any column that decides who owns the record. If the client must reference one (e.g., a `:product_id` they're buying), validate it against `policy_scope` before saving.
+
 ### Authentication - Built-in `authenticate_by`
 
 For projects that don't need Devise's full feature set, Rails 7.2+ ships timing-safe authentication via `authenticate_by`. It compares the password digest in constant time, defeating user-enumeration timing attacks that naive `find_by(email: ...)` then `authenticate(password)` exposes:
@@ -263,6 +307,84 @@ Rack::Attack.blocklist("block bad IPs") do |req|
 end
 ```
 
+### Open Redirect Prevention
+
+Bad - user-supplied redirect target (phishing vector):
+
+```ruby
+redirect_to params[:return_to] # attacker sends ?return_to=https://evil.com
+```
+
+Good - validate against an allowlist or use `redirect_to ... allow_other_host: false` (default since Rails 7):
+
+```ruby
+# Rails 7+ default rejects cross-host redirects
+redirect_to params[:return_to] # raises ActionController::Redirecting::UnsafeRedirectError on external host
+
+# Explicit allowlist
+ALLOWED_RETURN_PATHS = %w[/dashboard /orders /profile].freeze
+
+def safe_return_to
+  ALLOWED_RETURN_PATHS.include?(params[:return_to]) ? params[:return_to] : "/"
+end
+```
+
+### File Upload Validation
+
+Bad - accept any uploaded file as-is:
+
+```ruby
+@user.avatar.attach(params[:avatar])
+```
+
+Good - validate content type, size, and (where relevant) reprocess to strip metadata:
+
+```ruby
+class User < ApplicationRecord
+  has_one_attached :avatar do |attachable|
+    attachable.variant :thumb, resize_to_limit: [200, 200]
+  end
+
+  validate :acceptable_avatar
+
+  private
+
+  def acceptable_avatar
+    return unless avatar.attached?
+    errors.add(:avatar, "must be under 5MB") if avatar.blob.byte_size > 5.megabytes
+    acceptable = %w[image/jpeg image/png image/webp]
+    errors.add(:avatar, "must be JPEG, PNG, or WebP") unless acceptable.include?(avatar.blob.content_type)
+  end
+end
+```
+
+Never trust the client-reported `content_type` for security decisions on executable formats - `Marcel::MimeType.for(io)` re-detects from magic bytes. Keep uploaded user content on a separate domain or path served with `Content-Disposition: attachment` to defeat reflected-file-download attacks.
+
+### Host Authorization
+
+```ruby
+# config/environments/production.rb
+config.hosts << "app.example.com"
+config.hosts << /.*\.example\.com/
+
+# Blocks Host header injection attacks - requests with mismatched Host get 403
+```
+
+### Cookies - Signed and Encrypted
+
+```ruby
+# Signed: tamper-evident but readable - use for non-sensitive identifiers
+cookies.signed[:cart_id] = cart.id
+
+# Encrypted: tamper-evident AND opaque - use for any sensitive data
+cookies.encrypted[:user_preferences] = { theme: "dark" }
+
+# Permanent variants for long-lived cookies
+cookies.permanent.encrypted[:remember_token] = token
+```
+
+Never use `cookies[:foo]=` for security-sensitive values - clients can read and modify them freely.
+
 ### Rails Credentials
 
 ```ruby
@@ -298,3 +420,7 @@ Risk Mitigated: {mass assignment | unauthorized access | injection | brute force
 - `html_safe` or `raw` on user-provided content - XSS vulnerability
 - Pundit policies that only check `user.admin?` without owner access - overly restrictive for resource owners
 - Missing `rescue_from Pundit::NotAuthorizedError` - leaks stack traces to clients
+- Permitting ownership FKs (`:user_id`, `:account_id`) in strong params - lets clients reassign records
+- Unvalidated `redirect_to params[...]` - open redirect / phishing vector
+- Trusting client-reported `content_type` on uploads - re-detect from magic bytes for executable formats
+- Storing tokens/secrets in unsigned `cookies[...]` - use `cookies.encrypted` or `cookies.signed`

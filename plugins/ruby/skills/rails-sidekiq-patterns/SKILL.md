@@ -270,6 +270,68 @@ User.active.in_batches(of: 100) do |batch|
 end
 ```
 
+### Argument Size and Payload Discipline
+
+Sidekiq stores every job's arguments in Redis as JSON. A 10KB payload x 100K queued jobs = 1GB of Redis - the kind of incident that wakes the on-call. Keep job arguments small:
+
+- **Pass IDs, fetch in `perform`**. Don't pass the order hash; pass the order ID.
+- **For lists, pass ID arrays, not record arrays**. `BulkEmailJob.perform_async(user_ids)` not the user objects.
+- **For genuinely large inputs** (a 5MB CSV, a multi-thousand-row report), stage the data: write to S3 / a `JobInput` table, pass the storage key.
+
+Rough budget: a single job's argument payload should be under 1KB. Sidekiq Pro's `client_middleware` can enforce this in CI; failing that, log argument byte size in development to catch drift early.
+
+### Uniqueness with `sidekiq-unique-jobs`
+
+`sidekiq-unique-jobs` (community gem) prevents duplicate enqueues - useful when an event handler may fire several times for the same record (webhook retries, after_commit callbacks on bulk updates):
+
+```ruby
+class SyncCustomerJob
+  include Sidekiq::Job
+  sidekiq_options lock: :until_executed,        # one job per (class, args) until perform completes
+                  on_conflict: :log,            # other strategies: :reject, :replace
+                  lock_args_method: ->(args) { [args[0]] } # uniqueness based on customer_id only
+end
+```
+
+`:until_executed` deduplicates from enqueue through completion; `:until_and_while_executing` also blocks new enqueues during processing. Choose the lock window deliberately - too tight allows duplicates, too loose blocks legitimate re-runs.
+
+For ad-hoc dedup without the gem, use a `Redis::SETNX` fence inside `perform`:
+
+```ruby
+def perform(customer_id)
+  fence = "sync_customer:#{customer_id}"
+  return unless Redis.current.set(fence, "1", nx: true, ex: 60)
+  # ... real work ...
+ensure
+  Redis.current.del(fence)
+end
+```
+
+### Graceful Shutdown
+
+Sidekiq sends jobs `SIGTERM` on deploy; the process has a configurable timeout (default 25s) to finish in-flight work before `SIGKILL`. Long jobs can be interrupted mid-write. Defenses:
+
+- **Keep `perform` short** - if the work takes >5 minutes, break into smaller jobs.
+- **Make every checkpoint a transaction** - on interrupt, the row reflects either pre- or post-state, never half.
+- **Watch for `Sidekiq::Shutdown`** in long inner loops to exit cleanly:
+
+```ruby
+def perform(batch_id)
+  Batch.find(batch_id).items.find_each do |item|
+    raise Sidekiq::Shutdown if interrupted?
+    process(item)
+  end
+end
+
+private
+
+def interrupted?
+  Sidekiq::ProcessSet.new.find { |p| p["identity"] == Sidekiq.identity }&.fetch("quiet") == "true"
+end
+```
+
+A re-enqueue on shutdown is fine because the job is idempotent (which it must be).
+
 ### Deploy-Time Job Versioning
 
 Jobs enqueued before a deploy may run with new code. Version arguments to handle this:

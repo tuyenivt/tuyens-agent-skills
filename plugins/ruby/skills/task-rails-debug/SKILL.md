@@ -30,6 +30,7 @@ Not for:
 
 - Always classify the error before proposing a fix - understand the category first
 - Always state root cause confidence level (HIGH/MEDIUM/LOW)
+- Try to reproduce locally (failing spec or rails console snippet) before proposing the fix - a fix that can't be reproduced is a guess
 - Fix must be minimal and address root cause, not symptoms
 - Never bypass strong params, Pundit policies, or Zeitwerk to "fix" an error
 - Never rescue exceptions globally - handle specific error types
@@ -86,12 +87,40 @@ Run `bin/rails zeitwerk:check` to verify. Prevention: add `Rails.application.eag
 | --------------------------------------------- | ------------------------------------------------------------- |
 | `NoMethodError: undefined method 'X' for nil` | Missing association, failed `find_by`, uninitialized variable |
 
+**Concurrency / Resource Errors:**
+
+| Error                                       | Likely Cause                                                                          | Skill                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
+| `Rack::Timeout::RequestTimeoutException`    | Slow query, external API hang, or N+1 - request exceeded the Rack::Timeout window     | `rails-activerecord-patterns` |
+| `ActiveRecord::Deadlocked`                  | Two transactions taking row locks in opposite order; reorder writes or add row-locks  | `rails-activerecord-patterns` |
+| `ActiveRecord::ConnectionTimeoutError`      | Pool exhausted - too many concurrent threads vs `pool` size, or leaked connections    | `rails-activerecord-patterns` |
+| `ActiveRecord::StaleObjectError`            | Optimistic lock conflict - someone else updated the row first; retry with fresh state | `rails-activerecord-patterns` |
+| `PG::ConnectionBad` / `PG::UnableToSend`    | Database restart, network blip, or pool corruption after a fork                       | -                             |
+
+**Auth / CSRF / Format Errors:**
+
+| Error                                            | Likely Cause                                                                                       | Skill                     |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ActionController::InvalidAuthenticityToken`     | Missing CSRF token on a non-API form, or `protect_from_forgery` mismatched with `with: :null_session` for API | `rails-security-patterns` |
+| `JSON::ParserError`                              | Client sent malformed JSON; should return 400 not 500 - add `rescue_from` in BaseController        | -                         |
+| `ActionDispatch::Http::Parameters::ParseError`   | Same family - malformed request body                                                               | -                         |
+
 ### STEP 3 - LOCATE
 
 1. Read the stack trace top-to-bottom; find the first application-code frame (not gem code)
 2. Open that source file and read the failing method
 3. Trace the data path: where does the problematic value originate? Follow it upstream through controller params, service calls, or ORM queries
 4. For Sidekiq errors: check both the job's `perform` method and the code that enqueues it
+
+### STEP 3.5 - REPRODUCE (when feasible)
+
+A fix you can't reproduce is a guess. Before STEP 4, try to reduce the failure to one of:
+
+- A failing RSpec example (preferred - the prevention step in STEP 6 builds on it)
+- A `rails console` snippet that triggers the error
+- A `curl`/`httpie` request that triggers the error in dev
+
+If reproduction is impossible (race condition, prod-only data shape, third-party outage), state that explicitly, and lower your root-cause confidence accordingly. A non-reproducible "MEDIUM-confidence" diagnosis is more honest than a fabricated "HIGH-confidence" one.
 
 ### STEP 4 - ROOT CAUSE
 
@@ -150,11 +179,13 @@ Add a guard so this class of error cannot recur:
 ## Self-Check
 
 - [ ] Error classified into a specific category before any fix proposed
+- [ ] Reproduction attempted (failing spec, console snippet, or curl); if not feasible, that limitation is stated and confidence lowered accordingly
 - [ ] Root cause references the specific source file and line; confidence level stated
 - [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
 - [ ] Rails conventions preserved - strong params, service objects, Pundit patterns not bypassed
 - [ ] Prevention step included (RSpec test, validation, or linting rule)
 - [ ] For `PG::LockNotAvailable`: `rails-migration-safety` skill referenced; for Sidekiq: idempotency and retry state checked
+- [ ] For `Rack::Timeout` / `ConnectionTimeoutError`: pool / external-call timeout root causes considered, not just retry-the-request
 
 ## Avoid
 

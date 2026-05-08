@@ -167,6 +167,18 @@ When starting from low test coverage, prioritize by Rails-specific risk:
 
 - Pass-through controllers, simple CRUD - lower risk, can wait
 
+### Step 6.5 - API Contract Testing (when the project exposes an API)
+
+For Rails apps with public or partner APIs, plain request specs assert "this endpoint returned 200 with these fields today" - they do not catch silent contract drift (a renamed JSON key, a status changed from 200 to 204, a new required parameter). Two common Rails approaches:
+
+| Tool         | Approach                                                                              | Tradeoff                                                                              |
+| ------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `rswag`      | Specs declare the OpenAPI schema inline; `rake rswag:specs:swaggerize` exports `swagger.yaml` | Generates docs and acts as a contract test in one. Verbose DSL.                       |
+| `committee`  | Specs validate request and response against an existing `swagger.yaml` / OpenAPI file | Source of truth lives in the schema file; specs assert conformance.                   |
+| Hand-rolled  | `expect(json_response).to match_schema(...)` with `json-schema` gem                   | No generator, but explicit. Fine for small APIs.                                      |
+
+Use one - drift catches latent client breakage long before integration partners notice. Skip this step for internal/admin-only Rails apps where the API has one consumer (the same team's frontend) and contract drift is caught by the frontend's own tests.
+
 ### Step 7 - Test Infrastructure Hygiene
 
 - [ ] `database_cleaner-active_record` configured (or `use_transactional_fixtures = true` for unit + request specs)

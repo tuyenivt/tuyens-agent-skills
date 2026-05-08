@@ -226,6 +226,76 @@ production:
 - PgBouncer for multiplexing when pool > 20
 - Monitor with `ActiveRecord::Base.connection_pool.stat`
 
+### Bulk Inserts and Upserts
+
+`create!` in a loop fires one INSERT per row plus all callbacks/validations. For trusted data (imports, denormalization, materialized rollups), `insert_all` and `upsert_all` issue a single multi-row INSERT and skip callbacks/validations - 50-100x faster on hot paths.
+
+Bad - one round-trip per row:
+
+```ruby
+rows.each { |attrs| OrderRollup.create!(attrs) }
+```
+
+Good - one statement, returns inserted ids:
+
+```ruby
+OrderRollup.insert_all(rows, returning: %w[id])
+
+# Upsert by unique key (requires unique index on the conflict column)
+OrderRollup.upsert_all(
+  rows,
+  unique_by: :order_id,
+  update_only: %i[total_cents updated_at]
+)
+```
+
+Caveats: timestamps are not auto-set unless you include them in `rows`; validations and `before_save` callbacks do not run; serialized columns are not coerced. Use deliberately on data you have already validated.
+
+### Optimistic Locking
+
+When two requests can update the same row concurrently (e.g., two admins editing one order), add a `lock_version` integer column. Rails bumps it on every update and raises `ActiveRecord::StaleObjectError` if another writer beat this one - the loser retries with fresh state instead of silently overwriting.
+
+```ruby
+# Migration
+add_column :orders, :lock_version, :integer, null: false, default: 0
+
+# Usage
+order = Order.find(id)
+order.update!(status: :processing) # bumps lock_version
+# Concurrent update on a stale order raises ActiveRecord::StaleObjectError
+```
+
+For pessimistic locking (block other readers/writers until commit), use `with_lock` - issues `SELECT ... FOR UPDATE`:
+
+```ruby
+order.with_lock do
+  order.update!(total: recompute_total)
+end
+```
+
+Pessimistic locking is correct for short critical sections that read-then-write the same row. Optimistic locking is correct when conflicts are rare and you can afford to retry.
+
+### Async Queries with `load_async`
+
+For dashboards and screens that fetch several independent queries, `load_async` runs them on a background thread pool so the request-time wall clock is the slowest query, not the sum:
+
+```ruby
+class DashboardController < ApplicationController
+  def show
+    @recent_orders = Order.recent.limit(10).load_async
+    @top_products  = Product.top_sellers.limit(5).load_async
+    @open_tickets  = Ticket.open.load_async
+    # All three queries run concurrently; ERB awaits each as it's referenced
+  end
+end
+```
+
+Configure the thread pool in `config/application.rb`: `config.active_record.async_query_executor = :global_thread_pool`. Do not use inside a transaction (the async thread cannot see uncommitted state).
+
+### `find_each` and Ordering
+
+`find_each` and `in_batches` ignore any custom `ORDER BY` and force `ORDER BY id ASC` so the cursor advances safely. If your code depends on `order(:created_at)`, batching will silently drop it. Use `in_batches` over a date-keyed scope, or process in chunks via explicit `where("id > ?", cursor)` if order matters.
+
 ### PostgreSQL Features
 
 ```ruby

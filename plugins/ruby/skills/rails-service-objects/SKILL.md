@@ -186,6 +186,60 @@ class ProcessPayment
 end
 ```
 
+### Nested Transactions and `requires_new`
+
+When service A calls service B and both wrap their work in `transaction`, by default Rails treats the inner block as part of the outer transaction - a `raise` inside B that's rescued in A leaves B's writes committed alongside A's (because the rollback is suppressed). This is the most common silent-data-corruption bug in service-heavy codebases.
+
+Two correct patterns:
+
+1. **Outer service owns the transaction**, inner services don't open one - simplest, do this when B is only called from A.
+2. **Inner service uses `requires_new: true`** - opens a savepoint so B can roll back independently of A. Use when B is called from many places, some inside transactions and some not:
+
+```ruby
+class ChargeCustomer
+  def call
+    ActiveRecord::Base.transaction(requires_new: true) do
+      # Savepoint - rolls back even if outer transaction continues
+      @payment = Payment.create!(...)
+      raise ActiveRecord::Rollback if gateway_failed?
+    end
+    Result.success(@payment)
+  end
+end
+```
+
+Sidekiq dispatch inside a nested transaction has the same pitfall - the savepoint commits at the inner block's end but the outer transaction is still open. Use `after_commit_everywhere` (see `rails-sidekiq-patterns`) to defer to the true outer commit.
+
+### Idempotency Keys
+
+For services that mutate state via external APIs (payments, shipping, partner webhooks), an "at-least-once" caller (HTTP retry, Sidekiq retry) can produce duplicate side effects. Accept an idempotency key from the caller and short-circuit on replay:
+
+```ruby
+class ChargeCustomer
+  def initialize(order:, idempotency_key:)
+    @order = order
+    @idempotency_key = idempotency_key
+  end
+
+  def call
+    existing = Payment.find_by(idempotency_key: @idempotency_key)
+    return Result.success(existing) if existing # replay - return prior result
+
+    payment = Payment.create!(
+      order: @order,
+      idempotency_key: @idempotency_key, # unique index on this column
+      amount: @order.total
+    )
+    gateway.charge!(payment, idempotency_key: @idempotency_key) # forward to provider
+    Result.success(payment)
+  rescue ActiveRecord::RecordNotUnique
+    Result.success(Payment.find_by!(idempotency_key: @idempotency_key)) # race winner
+  end
+end
+```
+
+The unique index turns a concurrent double-call into a `RecordNotUnique` we recover from cleanly. Forward the same key to the gateway so downstream is also idempotent.
+
 ### Composition (Orchestrator Services)
 
 When a workflow composes multiple services, use early return on failure to short-circuit:
