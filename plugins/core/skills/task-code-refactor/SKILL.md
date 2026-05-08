@@ -1,206 +1,90 @@
 ---
 name: task-code-refactor
-description: Safe refactoring plan for a specific target - file, class, module, or function. Identifies code smells, assesses cross-module risk, requires a test coverage gate, and produces a step-by-step sequence of independently committable changes.
+description: Safe refactoring entry point. Detects the project stack and dispatches to the matching stack-specific refactor workflow. For unknown stacks, runs a minimal generic protocol with smell identification, test-coverage gate, and step-by-step plan.
 metadata:
   category: review
-  tags: [refactoring, code-quality, technical-debt, multi-stack]
+  tags: [refactoring, code-quality, technical-debt, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
-# Code Refactor
+# Code Refactor (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-refactor`, `task-rails-refactor`, `task-react-refactor`). The stack workflow names framework-specific smells directly (Rails: fat controllers, callback abuse; Spring: business logic in controller; React: prop drilling, effect spaghetti) and applies framework-aware refactor recipes.
 
-Produce a safe, step-by-step refactoring plan for a specific code target. Assesses code smells, cross-module risk, and test coverage before proposing any changes. Each refactoring step is independently committable with tests between steps.
+For unknown stacks, this skill falls back to a minimal generic refactoring protocol.
 
 ## When to Use
 
 - Code smell identification and resolution
-- Technical debt reduction
-- Safe refactoring planning
-- Code quality improvement
+- Technical debt reduction targeting a specific file, class, module, or function
+- Safe refactoring planning with a test gate
 
-**Not for:** Deciding which debt to tackle first (use `task-debt-prioritize`), feature changes (use `task-implement`), architecture-level restructuring (use `task-design-architecture`).
+**Not for:** Deciding which debt to tackle first (use `task-debt-prioritize`), feature changes (use `task-implement` family), architecture-level restructuring (use the architecture plugin).
 
 ## Inputs
 
-| Input                 | Required    | Description                                                                                               |
-| --------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
-| Target scope          | Yes         | File, class, module, or path to refactor                                                                  |
-| Goal                  | Yes         | What the refactoring should achieve (e.g., reduce complexity, extract service layer, improve testability) |
-| Test coverage status  | Recommended | Whether tests exist and pass for the target area                                                          |
-| Shared/public surface | Recommended | Whether the target is used across module or team boundaries                                               |
+| Input                 | Required    | Description                                                              |
+| --------------------- | ----------- | ------------------------------------------------------------------------ |
+| Target scope          | Yes         | File, class, module, or path to refactor                                 |
+| Goal                  | Yes         | What the refactoring should achieve                                      |
+| Test coverage status  | Recommended | Whether tests exist and pass for the target area                         |
+| Shared/public surface | Recommended | Whether the target is used across module or team boundaries              |
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect`.
 
-### Step 1.5 - Route to Stack-Specific Workflow (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific refactor workflow exists for the detected stack, delegate to it. The stack workflow names framework-specific smells directly (e.g., Rails: fat controllers, callback abuse, scope sprawl, concern soup, missing service objects) and applies framework-aware refactor recipes.
-
-| Detected stack       | Delegate to            |
-| -------------------- | ---------------------- |
-| Ruby / Rails         | `task-rails-refactor`  |
-| Java / Spring Boot   | `task-spring-refactor` |
-| Python               | `task-python-refactor` |
-| Node.js / TypeScript | `task-node-refactor`   |
-| React                | `task-react-refactor`  |
-| Vue                  | `task-vue-refactor`    |
-| Go / Gin             | `task-go-refactor`     |
-| Rust / Axum          | `task-rust-refactor`   |
-| .NET / ASP.NET Core  | `task-dotnet-refactor` |
+| Detected stack       | Delegate to             |
+| -------------------- | ----------------------- |
+| Java / Spring Boot   | `task-spring-refactor`  |
+| Kotlin / Spring Boot | `task-kotlin-refactor`  |
+| Python               | `task-python-refactor`  |
+| Ruby / Rails         | `task-rails-refactor`   |
+| Node.js / TypeScript | `task-node-refactor`    |
+| Go / Gin             | `task-go-refactor`      |
+| Rust / Axum          | `task-rust-refactor`    |
+| .NET / ASP.NET Core  | `task-dotnet-refactor`  |
 | PHP / Laravel        | `task-laravel-refactor` |
-| Kotlin / Spring Boot | `task-kotlin-refactor` |
+| React                | `task-react-refactor`   |
+| Vue                  | `task-vue-refactor`     |
 | Angular              | `task-angular-refactor` |
 
-If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+If matched, delegate and stop. Do not run Step 3.
 
-### Step 2 - Identify Smells (All Stacks)
+### Step 3 - Generic Fallback (unknown stack only)
 
-Use judgment - these are signals, not hard rules. A 25-line method with a clear single responsibility is fine; a 10-line method doing three things is not.
+**Identify smells** (these are signals, not hard rules; judgment over checklist):
 
 | Smell               | Signal                                                      | Risk   |
 | ------------------- | ----------------------------------------------------------- | ------ |
 | Long Method         | Difficult to name, test, or understand in one reading       | Medium |
-| Large Class         | Multiple responsibilities, hard to mock in tests            | High   |
-| Duplicate Code      | Same logic copy-pasted; diverges silently under change      | Medium |
+| Large Class         | Multiple responsibilities; hard to mock                     | High   |
+| Duplicate Code      | Same logic copy-pasted; diverges silently                   | Medium |
 | Feature Envy        | Method more interested in another class's data than its own | Low    |
-| Long Parameter List | >3-4 params; callers must look up meaning of each           | Low    |
+| Long Parameter List | >3-4 params; callers must look up meaning                   | Low    |
 | Divergent Change    | One class changed for many unrelated reasons                | High   |
 | Shotgun Surgery     | One change requires many small edits across classes         | High   |
 
-### Step 3 - Framework-Specific Smells
+**Cross-module assessment** before proposing any step:
 
-After loading stack-detect, identify smells based on the detected `Stack Type`.
+- Is the target used outside its module? Treat signature/behavior changes as breaking; check callers explicitly.
+- Is it part of a public API or published contract? Use skill: `ops-backward-compatibility`.
+- Does any step touch a constructor, factory, or function signature? Always invoke `ops-backward-compatibility`. Add a deprecation alias before renaming public symbols.
+- Use skill: `review-blast-radius` to estimate the scope of affected callers/tests/deployments.
 
-#### Backend Smells (when Stack Type is `backend` or `fullstack`)
+**Test coverage gate:**
 
-Use skill: `backend-coding-standards` to enforce naming, structure, and anti-pattern rules for the detected stack.
-Use skill: `architecture-concurrency` if concurrency patterns are present in the target scope.
+- If tests exist and pass: proceed to the refactoring sequence.
+- If tests are absent or insufficient: do **not** propose refactoring steps. Output a "Test First" plan instead - characterization tests that pin current behavior, prioritized by risk. Only after those tests pass, return to plan refactor steps.
 
-**Controller/Handler Bloat:**
-
-- Presentation layer contains business logic that should be in a service layer
-- Input validation done manually instead of using the framework's validation mechanism
-
-**Data Layer Leaks:**
-
-- ORM entities exposed directly in API responses instead of using DTOs/serializers/response structs
-- Query logic scattered across layers instead of being encapsulated in repositories
-
-**Dependency Anti-Patterns:**
-
-- Using deprecated dependency injection patterns when the framework provides better alternatives
-- Tight coupling to concrete implementations instead of abstractions
-
-**Concurrency Anti-Patterns:**
-
-- Using deprecated or unsafe concurrency primitives for the detected runtime
-- Incorrect pool sizing for the runtime's threading model
-
-**Test Anti-Patterns:**
-
-- Using deprecated test utilities or annotations
-- Missing test isolation (shared state between tests)
-
-#### Frontend Smells (when Stack Type is `frontend` or `fullstack`)
-
-Use skill: `frontend-state-management` to verify state patterns are appropriate.
-
-| Smell                 | Signal                                                                                        | Risk   |
-| --------------------- | --------------------------------------------------------------------------------------------- | ------ |
-| Component Bloat       | Component > 200 lines or handles > 3 responsibilities (layout + fetch + logic)                | High   |
-| Prop Drilling         | Props passed through 3+ intermediate components that don't use them                           | Medium |
-| State Leak            | Global state (store/context) used for concerns local to one component                         | Medium |
-| Effect Spaghetti      | Multiple effects with overlapping dependencies, unclear execution order                       | High   |
-| Render-Logic Coupling | Business logic (validation, transformation, decisions) mixed into render/template             | Medium |
-| Event Handler Bloat   | Inline handlers > 3 lines; complex logic in onClick/onChange/onSubmit                         | Low    |
-| Zombie Subscriptions  | Subscriptions, timers, or listeners not cleaned up on unmount                                 | High   |
-| Style Sprawl          | Inconsistent styling approach across components (mix of inline, CSS modules, utility classes) | Low    |
-
-**Component Architecture Anti-Patterns:**
-
-- Smart/dumb component boundary violated - UI components fetching data or managing global state
-- Feature components reaching across feature boundaries for shared state
-- Circular component dependencies (A imports B, B imports A)
-
-**Test Anti-Patterns:**
-
-- Testing implementation details instead of user-visible behavior
-- Snapshot tests used as primary assertion strategy
-- Missing test coverage for loading, error, and empty states
-
-If the detected stack is unfamiliar, apply the universal smells from Step 2.
-
-### Step 4 - Cross-Module and Shared-Code Assessment
-
-Before proposing any refactoring step, assess boundary impact:
-
-**Is the target used across module boundaries?**
-
-- If yes, treat any signature or behavior change as a breaking change requiring coordination
-- Check for callers outside the current package/module/namespace
-- Flag shared utilities, base classes, or interfaces - changes cascade silently
-
-**Is the target part of a public API or published contract?**
-
-- HTTP endpoints, SDK methods, events, and database schemas are public contracts
-- Refactoring these requires backward-compatibility analysis - use skill: `ops-backward-compatibility`
-
-**Does the refactoring change a constructor, `__init__`, factory method, or function signature?**
-
-- Any parameter addition, removal, or reorder is a breaking change for callers outside the module
-- Always invoke skill: `ops-backward-compatibility` before finalizing refactoring steps that touch signatures
-- Propose a deprecation alias or keyword-only parameters to soften the break where the language permits
-
-**What is the blast radius?**
-
-- Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected
-- A refactoring touching shared infrastructure (logging, auth, caching) has higher blast radius than a leaf class
-
-**Rules for cross-module refactoring:**
-
-- Propose an interface/facade before removing or renaming shared code
-- Never rename public symbols without a deprecation alias step first
-- Add tests at the boundary before moving code across module lines
-
-### Step 5 - Test Coverage Gate
-
-Before proposing any refactoring sequence, assess test coverage on the target:
-
-**If tests exist and pass:**
-
-- Proceed to Step 6. The tests are the safety net.
-
-**If tests are absent or insufficient:**
-
-- Do not propose refactoring steps yet. Refactoring without tests is high-risk - a passing CI after the change proves nothing.
-- Instead, output a "Test First" plan:
-  - Identify the minimum test surface needed to safely refactor (the key behaviors to pin)
-  - Write characterization tests that capture current behavior without asserting correctness
-  - Only after those tests pass, proceed with the refactoring plan
-- State this clearly: "Target has insufficient test coverage. Recommend writing characterization tests first before refactoring."
-
-Use the prioritization framework from `task-code-test` Step 5 to order characterization tests by risk. If the target is structurally untestable (dependencies cannot be mocked or isolated), the Test First plan must include a minimal "testability refactoring" step (e.g., extract interface for external clients) before the characterization tests.
-
-### Step 6 - Safe Refactoring Steps
-
-1. Ensure tests exist and pass (see Step 5)
-2. Commit current state
-3. Apply ONE refactoring
-4. Run tests
-5. Commit
-6. Repeat
-
-### Step 7 - Common Refactorings
-
-**Backend refactorings:**
+**Common refactorings:**
 
 | Smell            | Refactoring            | Cross-Module Risk         |
 | ---------------- | ---------------------- | ------------------------- |
@@ -211,23 +95,18 @@ Use the prioritization framework from `task-code-test` Step 5 to order character
 | Divergent Change | Split into two classes | High (public boundary)    |
 | Shotgun Surgery  | Inline and consolidate | High (many callers)       |
 
-**Frontend refactorings:**
-
-| Smell                 | Refactoring                                           | Cross-Module Risk          |
-| --------------------- | ----------------------------------------------------- | -------------------------- |
-| Component Bloat       | Extract child components with clear props interface   | Low (local scope)          |
-| Prop Drilling         | Introduce context/store or composition pattern        | Medium (changes consumers) |
-| State Leak            | Internalize state to owning component                 | Low (reduces coupling)     |
-| Effect Spaghetti      | Extract to custom hook/composable with single purpose | Low (private scope)        |
-| Render-Logic Coupling | Extract logic to hook/composable/utility              | Low (private scope)        |
-| Zombie Subscriptions  | Add cleanup functions to effects/onUnmounted          | Low (bug fix)              |
+**Safe step protocol:** ensure tests pass -> commit -> apply ONE refactoring -> run tests -> commit -> repeat. Each step must be independently committable.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Refactoring Plan: [Target Name]
 
-**Stack:** [language / framework]
+**Stack:** unknown (generic fallback applied)
 **Goal:** [what the refactoring achieves]
 **Test coverage status:** [sufficient / insufficient - if insufficient, see Test First plan below]
 **Blast radius:** [Low / Medium / High] - [number of callers / affected modules]
@@ -251,26 +130,25 @@ Each step is independently committable. Run tests after each.
 
 ## Test First Plan (if coverage insufficient)
 
-Characterization tests to write before starting:
-
 1. [Test: what behavior to pin, suggested test name]
 2. ...
 ```
 
 ## Self-Check
 
-- [ ] stack-detect invoked before any smell identification or refactoring steps
-- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
-- [ ] Test coverage gate checked before proposing any refactoring steps; if insufficient, Test First plan output instead
-- [ ] Cross-module usage checked; `review-blast-radius` invoked if callers exist outside the target module
-- [ ] `ops-backward-compatibility` invoked if refactoring touches constructors, `__init__`, factory methods, or public function signatures
-- [ ] Every refactoring step is independently committable with a test run between steps
-- [ ] Breaking Change Risk section present; empty only if no public symbols change
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, fallback ran with smell identification, cross-module check, test gate, and committable steps
+- [ ] Test coverage gate enforced - no refactor steps proposed when tests are insufficient
+- [ ] `ops-backward-compatibility` invoked when any step touches public signatures
+- [ ] Each step is independently committable
 
 ## Avoid
 
+- Running both Step 2 dispatch and Step 3 fallback
+- Producing your own plan when a stack workflow was dispatched
 - Proposing refactoring steps before checking test coverage
 - Renaming or removing public symbols without a deprecation alias step
-- Treating constructor/signature changes as low-risk - always check callers first
-- Combining multiple refactorings into one step (masks which change caused a test failure)
-- Generating implementation code for the refactoring - describe what to do, not every line of code
+- Combining multiple refactorings into one step (masks which change broke tests)
+- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists

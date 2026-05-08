@@ -1,259 +1,98 @@
 ---
 name: task-code-test
-description: Test strategy, test scaffolding, and test coverage review. Use when coverage is low and you need a plan, when adding tests to untested code, when scaffolding a new test suite, when reviewing what test types are missing (unit vs integration vs contract), or when designing the testing pyramid for a service.
+description: Test strategy, scaffolding, and coverage review entry point. Detects the project stack and dispatches to the matching stack-specific test workflow. For unknown stacks, runs a minimal generic protocol so any project can use this command.
 metadata:
   category: review
-  tags: [testing, test-strategy, unit-test, integration-test, multi-stack]
+  tags: [testing, test-strategy, unit-test, integration-test, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
 
-# Code Test
+# Code Test (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates the entire workflow to the matching stack-specific skill (e.g., `task-spring-test`, `task-rails-test`, `task-react-test`). The stack workflow names ecosystem idioms (RSpec, JUnit, pytest, Vitest, etc.) and applies framework-aware test patterns directly.
 
-Design test strategy, assess coverage gaps, and generate test scaffolds for a module or service. Prioritizes testing by business risk rather than coverage numbers. Adapts test patterns to the detected stack's ecosystem.
+For unknown or unrecognized stacks, this skill falls back to a minimal generic protocol so any project can still use the command.
 
 ## When to Use
 
-- Test coverage evaluation
-- Testing strategy design
-- Test quality review
-- Test pyramid balance assessment
-- Generating test scaffolds
+- Test coverage evaluation, test strategy design, generating test scaffolds, test pyramid balance review.
+- Use this entry point when you want one command that adapts to the project. If you already know the stack, calling the stack-specific workflow directly (e.g., `/task-spring-test`) skips the routing layer.
 
-**Not for:** General code quality review (use `task-code-review`), performance testing (use `task-code-review-perf`), security testing (use `task-code-review-security`).
+**Not for:** General code quality review (use `task-code-review`), performance review (use `task-code-review-perf`), security review (use `task-code-review-security`).
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 
-### Step 1.5 - Route to Stack-Specific Workflow (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific test workflow exists for the detected stack, delegate to it. The stack workflow names RSpec / JUnit / pytest / Jest idioms directly instead of routing through the generic adapter below. When `--spec` was passed, propagate the spec context to the delegate.
+If the detected stack matches the table below, delegate the full workflow to the named skill, propagate any spec context, and stop. The dispatched workflow owns the output.
 
-| Detected stack       | Delegate to        |
-| -------------------- | ------------------ |
-| Ruby / Rails         | `task-rails-test`  |
-| Java / Spring Boot   | `task-spring-test` |
-| Python               | `task-python-test` |
-| Node.js / TypeScript | `task-node-test`   |
-| React                | `task-react-test`  |
-| Vue                  | `task-vue-test`    |
-| Go / Gin             | `task-go-test`     |
-| Rust / Axum          | `task-rust-test`   |
-| .NET / ASP.NET Core  | `task-dotnet-test` |
+| Detected stack       | Delegate to         |
+| -------------------- | ------------------- |
+| Java / Spring Boot   | `task-spring-test`  |
+| Kotlin / Spring Boot | `task-kotlin-test`  |
+| Python               | `task-python-test`  |
+| Ruby / Rails         | `task-rails-test`   |
+| Node.js / TypeScript | `task-node-test`    |
+| Go / Gin             | `task-go-test`      |
+| Rust / Axum          | `task-rust-test`    |
+| .NET / ASP.NET Core  | `task-dotnet-test`  |
 | PHP / Laravel        | `task-laravel-test` |
-| Kotlin / Spring Boot | `task-kotlin-test` |
+| React                | `task-react-test`   |
+| Vue                  | `task-vue-test`     |
 | Angular              | `task-angular-test` |
 
-If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-6 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+If a match is found, do not run Step 3.
 
-### Step 2 - Testing Pyramid (All Stacks)
+### Step 3 - Generic Fallback (unknown stack only)
 
-**Unit (many)** → **Integration (some)** → **E2E (few)**. Most tests should be fast unit tests; integration tests cover boundaries; E2E tests cover only critical user flows.
+Run only when Step 2 finds no match. This is a minimum-viable test strategy that works for any language.
 
-### Step 3 - Framework-Specific Test Patterns
+**Testing pyramid:** Unit (many) → Integration (some) → E2E (few). Most tests should be fast unit tests; integration tests cover boundaries; E2E covers only critical user flows.
 
-After loading stack-detect, apply test patterns using the idioms of the detected ecosystem and `Stack Type`.
+**Boundary guidance:**
 
-#### Backend Test Patterns (when Stack Type is `backend` or `fullstack`)
+- **Unit:** pure logic, validation rules, branch-heavy domain code, error handling in isolation.
+- **Integration:** database queries against a real schema, HTTP endpoints end-to-end, external service clients (use stubs or contract tests), auth/authorization filters.
+- **E2E:** critical business flows only (checkout, login, data export). Each E2E test is expensive to maintain - keep this layer small.
 
-**Unit Tests:**
+**Prioritization when coverage is low** (do not chase a coverage number):
 
-- Use the ecosystem's standard test framework and assertion library
-- Follow the Arrange-Act-Assert (Given-When-Then) pattern
-- Use the framework's mock/stub mechanism for isolating dependencies
-- Name tests to describe behavior: `should_X_when_Y` or equivalent naming convention
+1. Business-critical paths (revenue, data integrity, auth).
+2. Error-prone areas (recent bug history, complex branching, integration points).
+3. High-change areas (high git churn, shared utilities).
+4. Plumbing and glue code last.
 
-**Integration Tests:**
+**Untestable legacy code:** budget a testability refactor (extract dependencies behind interfaces, isolate I/O from logic) before adding tests. Characterization tests pin current behavior before any refactor.
 
-- Use the framework's standard integration test setup (test server, test client, test database)
-- Apply transaction rollback or database cleanup between tests for isolation
-- Use container-based testing (e.g., Testcontainers or equivalent) for database and service dependencies
-- Test HTTP endpoints through the framework's test client
-
-**Test Data:**
-
-- Use the ecosystem's standard test data mechanism (factories, fixtures, builders, etc.)
-- Prefer factory-based test data over static fixtures for flexibility
-- Keep test data minimal and focused on the scenario being tested
-
-#### Frontend Test Patterns (when Stack Type is `frontend` or `fullstack`)
-
-Use skill: `frontend-testing-patterns` for component testing, MSW mocking, and E2E patterns.
-
-**Component Tests:**
-
-- Test user-visible behavior, not implementation details (query by role/label, not by class/test-id)
-- Cover all render states: loading, error, empty, and populated
-- Test user interactions (click, type, submit) and verify resulting UI changes
-- Use MSW (Mock Service Worker) for API mocking in component tests
-
-**Integration Tests:**
-
-- Test multi-component flows (form submission -> success message, navigation -> page load)
-- Verify data fetching and state management work together correctly
-- Test error boundaries and fallback UI
-
-**E2E Tests:**
-
-- Cover only critical user flows (login, checkout, core CRUD operations)
-- Use the project's E2E framework (Playwright, Cypress, or equivalent)
-- Keep E2E count minimal - these are expensive to maintain
-
-#### Common Patterns (all Stack Types)
-
-**Test Organization:**
-
-- Follow the project's existing test organization conventions
-- Use the ecosystem's standard approach for skipping slow tests (integration, E2E) in fast feedback loops
-
-If the detected stack is unfamiliar, apply the universal testing pyramid and Arrange-Act-Assert pattern.
-
-### Step 4 - Test Boundary Guidance
-
-Before writing or recommending tests, determine what deserves each layer:
-
-**What belongs in unit tests:**
-
-- Pure functions and domain logic with no I/O
-- Validation rules and business rules with many branches
-- Error handling and edge cases in isolation
-- Anything that would be slow or brittle if integration-tested
-
-**What belongs in integration tests:**
-
-- Database queries - verify real SQL executes correctly against a real schema
-- HTTP endpoints - verify routing, serialization, and status codes end to end
-- External service clients - verify request/response mapping (use contract tests or stubs)
-- Authentication and authorization logic - verify the whole filter/middleware chain
-
-**What belongs in E2E tests:**
-
-- Critical business flows (checkout, login, data export) only
-- Flows that span multiple services or UI + API together
-- **Frontend**: critical user journeys that span multiple pages/routes
-- Keep this layer small - each test is expensive to write and maintain
-
-**The "test or not" decision:**
-
-- If it's a framework behavior (e.g., Spring autowiring, Rails routing), don't test it - trust the framework
-- If it's configuration you wrote, test that configuration works
-- If a bug could only be caught at a higher layer, write the test there - not at both layers
-
-### Step 5 - Prioritization (when coverage is low)
-
-When starting from low test coverage, prioritize by risk rather than trying to reach a coverage number:
-
-**Priority 1 - Business-critical paths:**
-
-- Revenue-impacting flows (checkout, billing, payments)
-- Data integrity logic (writes, migrations, state transitions)
-- Authentication and authorization checks
-
-**Priority 2 - Error-prone areas:**
-
-- Code with recent bug history (check git log for fix commits)
-- Complex conditional logic with many branches
-- Integration points with external services
-
-**Priority 3 - High-change areas:**
-
-- Code that changes frequently (high churn in git history)
-- Shared utilities used across many modules
-
-**Priority 4 - Plumbing and glue code:**
-
-- Simple CRUD, pass-through controllers, configuration
-- These are lower risk and can wait
-
-**Testability refactoring:** Untested legacy code often needs structural changes before tests can be added (extracting dependencies behind interfaces, breaking god classes, isolating I/O from logic). Budget time for these refactors - they are part of the testing work, not separate from it.
-
-### Step 6 - Contract Testing (for service-to-service APIs)
-
-When the detected stack involves multiple services or the project exposes/consumes HTTP/messaging APIs:
-
-**Consumer-Driven Contracts:**
-
-- The API consumer defines the contract (what fields and status codes it depends on)
-- The API provider verifies it satisfies all consumer contracts before deploy
-- Use the ecosystem's standard contract testing tool (e.g., Pact, Spring Cloud Contract, msw, nock, WireMock)
-
-**When contract tests are mandatory:**
-
-- Any HTTP API consumed by a team that deploys independently
-- Event/message schemas where producers and consumers deploy separately
-- Any shared client library that other services import
-
-**Minimum contract test coverage:**
-
-- Happy path: expected request shape gets expected response shape
-- Provider error: consumer handles 4xx/5xx gracefully
-- Schema evolution: consumer tolerates new fields (Postel's law)
-
-## Review Checklist
-
-Quick-reference checklist consolidating the key checks from above:
-
-- [ ] Test names describe behavior, not implementation
-- [ ] Arrange-Act-Assert pattern used consistently
-- [ ] Each testable unit has: happy path + error path + edge case
-- [ ] No test interdependencies (tests pass in any order)
-- [ ] Test framework and mocks follow current ecosystem recommendations
-- [ ] Integration tests have proper isolation (transactions, cleanup, containers)
-- [ ] Contract tests exist for independently-deployed service dependencies
-- [ ] Slow tests (integration, E2E) can be skipped in fast feedback loops
+**Contract tests** are mandatory for: HTTP APIs consumed by independently-deployed teams, event/message schemas with separate producer/consumer deploys, shared client libraries imported by other services. Cover happy path, provider error (4xx/5xx handling), and forward-compatible schema evolution.
 
 ## Output Format
 
-**Which output to produce:**
+When dispatched (Step 2 matched): the stack-specific workflow owns the output format. This skill produces no output of its own.
 
-- User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
-- User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
-- User asks "test strategy", "test plan", or coverage is below 50% -> Strategy Doc (optionally include Coverage Assessment)
-- If unclear, produce Strategy Doc as the default.
-
-Produce one or more of the following depending on what was requested:
-
-**Coverage Assessment:**
+When fallback runs (Step 3): produce the section that matches the user's ask:
 
 ```markdown
 ## Test Coverage Assessment
 
-**Stack:** [language / framework]
+**Stack:** unknown (generic fallback applied)
 **Coverage gaps:**
 
 - [Layer / component]: [what is missing and why it matters]
 
-**Recommended testing pyramid:**
-
-- Unit: [what belongs here]
-- Integration: [what belongs here]
-- E2E: [what belongs here, if anything]
-```
-
-**Test Scaffolds** (when generating boilerplate):
-Produce ready-to-run test files using the detected stack's test framework. Include:
-
-- Arrange-Act-Assert structure with descriptive test names
-- At least one happy path, one not-found/empty case, and one validation/error case per unit
-- Inline comments explaining non-obvious setup
-
-**Strategy Doc** (when designing a test strategy):
-
-```markdown
 ## Test Strategy
 
 **Objective:** [what this strategy achieves]
 **Pyramid balance:** Unit {x}% / Integration {y}% / E2E {z}%
-**Tooling:** [test framework, mocking library, container strategy]
 **Contract testing:** [required / not required - rationale]
 **Gaps to close (prioritized):**
 
@@ -261,22 +100,20 @@ Produce ready-to-run test files using the detected stack's test framework. Inclu
 2. ...
 ```
 
+For test scaffolds, produce ready-to-run files using the project's existing test framework if one is detectable; otherwise state the assumed framework explicitly.
+
 ## Self-Check
 
-- [ ] Stack detected and framework-specific test patterns applied
-- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
-- [ ] Testing pyramid balance assessed - not just unit tests or just integration tests
-- [ ] Prioritization by risk applied when coverage is low (not chasing a coverage number)
-- [ ] Test boundaries clearly defined - each test layer covers what it does best
-- [ ] Contract testing assessed for service-to-service APIs
-- [ ] Test scaffolds (if generated) include happy path, error path, and edge case
-- [ ] Review checklist items all addressed
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, Step 3 fallback ran and produced a Strategy Doc / Coverage Assessment / Scaffolds appropriate to the user's ask
+- [ ] Spec context (if any) was propagated to the dispatched workflow
 
 ## Avoid
 
-- Chasing a coverage number instead of prioritizing by risk
-- Testing framework internals (trust the framework, test your configuration)
-- Writing brittle tests that break on implementation changes (test behavior, not implementation)
-- Duplicating assertions across test layers (if an integration test covers it, don't unit test the same thing)
-- Generating tests without understanding what the code does - characterization tests first for unfamiliar code
-- Recommending E2E tests for things that can be caught at the unit or integration level
+- Running both Step 2 dispatch and Step 3 fallback (one or the other, never both)
+- Producing your own findings when a stack workflow was dispatched - that workflow owns the output
+- Falling through to Step 3 when stack-detect returned a known stack but the dispatch table entry feels imperfect; the table is authoritative
+- Treating the fallback as a full equivalent of a stack workflow - it is a temporary bridge for unsupported stacks; the user should install the matching language plugin when one exists

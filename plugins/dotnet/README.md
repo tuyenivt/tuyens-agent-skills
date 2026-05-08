@@ -51,6 +51,8 @@ Atomic skills provide focused, reusable .NET patterns. These are hidden from the
 | `dotnet-security-patterns`   | JWT bearer auth, policy-based authorization, OWASP     |
 | `dotnet-build-optimization`  | NuGet CPM, Directory.Build.props, CI caching           |
 | `dotnet-messaging-patterns`  | MassTransit consumers, outbox pattern, Hangfire jobs   |
+| `dotnet-code-explain`        | DI container scopes, middleware pipeline, async/await with cancellation tokens, EF Core change tracking, Clean Architecture layers - injected into `task-code-explain` |
+| `dotnet-onboard-map`         | Solution layout (Clean Architecture), .csproj target framework, EF Core + migrations, configuration/secrets - injected into `task-onboard` |
 
 ## Agents
 

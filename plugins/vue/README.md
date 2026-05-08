@@ -50,6 +50,8 @@ Atomic skills provide focused, reusable Vue patterns. These are hidden from the 
 | `vue-styling-patterns`     | Scoped styles, CSS v-bind, Tailwind CSS, UnoCSS, Vuetify/PrimeVue                   |
 | `vue-testing-patterns`     | Vitest + Vue Test Utils, composable testing, @nuxt/test-utils, Playwright e2e       |
 | `vue-monolith-integration` | Vue in Rails/Django/Laravel monoliths: Inertia.js, asset pipeline, mount strategies |
+| `vue-code-explain`         | Reactivity (ref/reactive/computed), composition vs options API, watchers, lifecycle, Pinia, Nuxt server/client - injected into `task-code-explain` |
+| `vue-onboard-map`          | Build framework (Nuxt vs Vite SPA), routing, Pinia, data fetching, styling, component library - injected into `task-onboard` |
 
 ## Agents
 

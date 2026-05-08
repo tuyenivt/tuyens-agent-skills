@@ -1,185 +1,127 @@
 ---
 name: task-code-review-observability
-description: Observability review for backend services and frontend applications - structured logging, RED metrics, distributed tracing, correlation ID propagation, SLO definition, alerting coverage, and error tracking instrumentation. Use when an outage was hard to diagnose, before a release of a new service, when adopting OpenTelemetry, or when production behavior is invisible to the team.
+description: Observability review entry point. Detects the project stack and dispatches to the matching stack-specific observability review workflow. For unknown stacks, runs a minimal generic protocol covering structured logging, RED metrics, distributed tracing, and SLOs.
 metadata:
   category: review
-  tags: [observability, logging, metrics, tracing, monitoring, slo, multi-stack]
+  tags: [observability, logging, metrics, tracing, slo, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
-# Observability Review
+# Observability Review (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review-observability`, `task-rails-review-observability`, `task-react-review-observability`). The stack workflow names library-specific idioms directly (Rails: `ActiveSupport::Notifications`, lograge, Sidekiq middleware; Spring: Micrometer, Sleuth/Brave; Node: pino, OpenTelemetry SDK).
 
-Identify and prioritize observability gaps across backend services and frontend applications. Produces findings ordered by severity with concrete instrumentation additions. Focuses on whether production behavior is visible, diagnosable, and alertable - not on application correctness.
+For unknown stacks, this skill falls back to a minimal generic observability review.
 
 ## When to Use
 
 - Pre-release observability check for a new service or major feature
-- Post-incident review when diagnosis was slow or evidence was missing
-- Adopting or migrating to OpenTelemetry / structured logging / SLO-based alerting
+- Post-incident review when diagnosis was slow or evidence missing
+- Adopting / migrating to OpenTelemetry, structured logging, or SLO-based alerting
 - Audit of an existing service whose production behavior is opaque
-- Reviewing instrumentation added by AI-generated code (often missing trace context, logging-only without metrics)
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), performance issues with a known bottleneck (use `task-code-review-perf`), active incident investigation (use oncall plugin's `incident-root-cause`).
-
-## Depth Levels
-
-| Depth      | When to Use                                                | What Runs                                           |
-| ---------- | ---------------------------------------------------------- | --------------------------------------------------- |
-| `quick`    | Single endpoint, handler, or focused change                | Logging + metrics check on the targeted code only   |
-| `standard` | Default - full observability review                        | All steps                                           |
-| `deep`     | Pre-release of a critical service, or post-incident review | All steps + SLO definition + alerting rule coverage |
-
-Default: `standard`. Use `quick` when the user targets a specific file or endpoint.
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), perf with a known bottleneck (use `task-code-review-perf`), active incidents (use oncall plugin's `incident-root-cause`).
 
 ## Invocation
 
-Accepts the same diff-targeting arguments as `task-code-review`:
-
-| Invocation                                 | Meaning                                                                                               |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `/task-code-review-observability`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-code-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-code-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+Accepts the same diff-targeting arguments as `task-code-review`. Depth flags (`quick`, `standard`, `deep`) compose. When invoked as a subagent of `task-code-review`, the parent passes the precondition handle plus the read-once diff/log; this is forwarded to the dispatched stack workflow.
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect`.
 
-### Step 1.5 - Route to Stack-Specific Workflow (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific observability review workflow exists for the detected stack, delegate to it. The stack workflow names library-level idioms directly (e.g., Rails: `ActiveSupport::Notifications`, `query_log_tags`, `lograge`, Sidekiq middleware, error-tracker gem wiring) instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
-
-| Detected stack       | Delegate to                        |
-| -------------------- | ---------------------------------- |
-| Ruby / Rails         | `task-rails-review-observability`  |
-| Java / Spring Boot   | `task-spring-review-observability` |
-| Python               | `task-python-review-observability` |
-| Node.js / TypeScript | `task-node-review-observability`   |
-| React                | `task-react-review-observability`  |
-| Vue                  | `task-vue-review-observability`    |
-| Go / Gin             | `task-go-review-observability`     |
-| Rust / Axum          | `task-rust-review-observability`   |
-| .NET / ASP.NET Core  | `task-dotnet-review-observability` |
+| Detected stack       | Delegate to                         |
+| -------------------- | ----------------------------------- |
+| Java / Spring Boot   | `task-spring-review-observability`  |
+| Kotlin / Spring Boot | `task-kotlin-review-observability`  |
+| Python               | `task-python-review-observability`  |
+| Ruby / Rails         | `task-rails-review-observability`   |
+| Node.js / TypeScript | `task-node-review-observability`    |
+| Go / Gin             | `task-go-review-observability`      |
+| Rust / Axum          | `task-rust-review-observability`    |
+| .NET / ASP.NET Core  | `task-dotnet-review-observability`  |
 | PHP / Laravel        | `task-laravel-review-observability` |
-| Kotlin / Spring Boot | `task-kotlin-review-observability` |
+| React                | `task-react-review-observability`   |
+| Vue                  | `task-vue-review-observability`     |
 | Angular              | `task-angular-review-observability` |
 
-If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+If matched, forward arguments and stop. Do not run Step 3.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Generic Fallback (unknown stack only)
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check` if running standalone. Read diff and commit log once.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+Use skill: `ops-observability` to assess structured logging, RED metrics, distributed tracing, correlation ID propagation, and SLO definition. This is the primary source of findings; the items below complement it.
 
-### Step 3 - Run Observability Atomic
+**Structured logging** (all stacks):
 
-Use skill: `ops-observability` to assess structured logging, RED metrics, distributed tracing, correlation ID propagation, and SLO definition for the detected stack.
+- Logs are structured (JSON or framework structured format) - no concatenated string `printf`/`console.log` on hot paths
+- Mandatory fields present: `level`, `service`, `trace_id`, `span_id`
+- No sensitive data logged (passwords, tokens, full PII, full request bodies on auth endpoints)
+- Log levels used correctly: `error` for actionable failures, `warn` for recoverable anomalies, `info` for state transitions
+- No log spam in hot loops
 
-This is the primary source of findings. The remaining steps complement it with cross-cutting concerns the atomic does not own.
+**Metrics coverage** (Backend / Fullstack):
 
-### Step 4 - Structured Logging Review (All Stacks)
+- RED metrics (Rate, Errors, Duration) on every external API endpoint and inbound interface
+- Custom business metrics for revenue-impacting / SLO-tracked operations
+- Histograms for latency (not gauges or averages); p50/p95/p99 derivable from buckets
+- No high-cardinality labels (user ID, request ID, raw URL with parameters)
+- DB query and external HTTP latency tracked separately from total request duration
 
-Verify the code under review:
+**Distributed tracing** (Backend / Fullstack):
 
-- [ ] Logs are structured (JSON or framework's structured format) - no `printf`/`console.log` of concatenated strings on hot paths
-- [ ] Mandatory fields present: `level`, `service`, `trace_id`, `span_id` (or framework equivalent)
-- [ ] No sensitive data logged: passwords, tokens, full PII, full request bodies on auth endpoints
-- [ ] Log levels used correctly: `error` for actionable failures, `warn` for recoverable anomalies, `info` for state transitions, `debug` for verbose diagnostics
-- [ ] No log spam in hot loops or per-request inner functions
+- Service entry points produce spans (framework middleware enabled)
+- DB queries produce spans with the query template (not parameterized values) as attribute
+- External HTTP calls produce spans with target service name
+- Message publish/consume produces linked spans across async boundaries
+- Trace context propagated via standard headers (W3C `traceparent`, `b3`, `uber-trace-id`); receiving service extracts and creates child spans
+- Sampling: head-based 10-20% for high traffic; always sample errors and slow requests at 100%
 
-### Step 5 - Metrics Coverage (Backend and Fullstack)
+**Frontend observability** (Frontend / Fullstack):
 
-Skip this step if `Stack Type: frontend`.
+- Error tracking installed (Sentry, Rollbar, or equivalent); source maps uploaded for production
+- Unhandled promise rejections and global error handlers wired
+- Core Web Vitals reported (LCP, INP, CLS)
+- User journey / funnel events instrumented for critical flows
+- No PII in analytics or error reports
+- Trace context propagated from frontend to backend via W3C `traceparent` when full-stack tracing exists
 
-- [ ] RED metrics (Rate, Errors, Duration) present on every external API endpoint and inbound interface
-- [ ] Custom business metrics defined for revenue-impacting or SLO-tracked operations (e.g., `orders_completed_total`, `payment_success_rate`)
-- [ ] Histograms used for latency (not gauges or averages); p50/p95/p99 derivable from buckets
-- [ ] Counters used for cumulative totals; gauges only for instantaneous values that go up and down
-- [ ] No high-cardinality labels (user ID, request ID, raw URL with parameters) - these blow up storage and break aggregation
-- [ ] Database query and external HTTP call latency tracked separately from total request duration
+**SLO and alerting** (deep depth, or on request):
 
-### Step 6 - Distributed Tracing (Backend and Fullstack)
+- At least one SLI per critical service with a measurable signal
+- SLO target stated with window (e.g., 99.9% over 30 days)
+- Error budget derived; burn-rate alerting configured
+- Alerts page on **symptoms** (error rate, latency, saturation), not **causes** (CPU, memory)
+- Multi-window burn-rate alerts to reduce false positives
 
-Skip this step if `Stack Type: frontend` and the application has no backend-for-frontend or server-side rendering.
+Flag services with no SLO as a **High** observability gap.
 
-- [ ] Service entry points produce a span automatically (framework middleware enabled)
-- [ ] Database queries produce spans with the query template (not the parameterized values) as an attribute
-- [ ] External HTTP calls produce spans with the target service name attribute
-- [ ] Message publish/consume produces linked spans across the async boundary
-- [ ] Trace context is **propagated** across service boundaries via standard headers (W3C `traceparent`, `b3`, or `uber-trace-id`) - the receiving service must extract and create child spans, not generate a new trace ID
-- [ ] Sampling strategy is appropriate for traffic volume (head-based 10-20% for high traffic; always sample errors and slow requests at 100%)
+**Correlation and context propagation** (all stacks):
 
-### Step 7 - Frontend Observability (Frontend and Fullstack)
+- Request-scoped context propagated through framework mechanism (MDC, `context.Context`, `CurrentAttributes`, `contextvars`, middleware context)
+- Background jobs and queue consumers extract trace context from message envelope
+- Async operations (goroutines, threads, promises) carry context forward; no orphaned spans
 
-Skip this step if `Stack Type: backend`.
-
-- [ ] Error tracking installed (Sentry, Rollbar, or framework equivalent) and source maps uploaded for production builds
-- [ ] Unhandled promise rejections and global error handlers wired to the error tracker
-- [ ] Core Web Vitals reported (LCP, INP, CLS) via the framework's reporting mechanism or `web-vitals` library
-- [ ] User journey / funnel events instrumented for critical flows (signup, checkout, key feature usage)
-- [ ] No PII in analytics events or error reports (sanitize before send)
-- [ ] Trace context propagated from frontend to backend on outbound API calls (W3C `traceparent` header) when distributed tracing spans the full stack
-
-### Step 8 - SLO and Alerting Coverage (All Stacks, Deep Depth)
-
-Run this step at `deep` depth or when the user explicitly requests SLO/alert coverage. At `standard` depth, summarize gaps without exhaustive enumeration.
-
-- [ ] At least one SLI defined per critical service with a measurable signal (e.g., success rate, p99 latency)
-- [ ] SLO target stated with window (e.g., 99.9% over 30 days)
-- [ ] Error budget derived and burn-rate alerting configured
-- [ ] Alerts page on **symptoms** (error rate, latency, saturation), not **causes** (CPU, memory)
-- [ ] Multi-window burn-rate alerts used to reduce false positives on SLO-based alerts
-- [ ] Every metric has at least one corresponding alert rule, or is explicitly documented as informational-only
-
-Flag services with no defined SLO as a **High** observability gap - without an SLO, alerting thresholds are arbitrary.
-
-### Step 9 - Correlation and Context Propagation (All Stacks)
-
-- [ ] Request-scoped context (correlation ID, trace ID, user ID where appropriate) propagated through the framework's mechanism (MDC, `context.Context`, `CurrentAttributes`, `contextvars`, middleware context)
-- [ ] Background jobs and queue consumers extract trace context from the message envelope - not generate a new trace
-- [ ] Async operations (goroutines, threads, promises) carry context forward; no orphaned spans
-
-
-### Step 10 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-observability`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
-- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] **All stacks**: Structured logging assessed: mandatory fields, no sensitive data, correct log levels
-- [ ] **Backend/fullstack**: RED metrics coverage checked; cardinality concerns flagged
-- [ ] **Backend/fullstack**: Distributed tracing reviewed: spans on key operations, context propagation across services, sampling strategy
-- [ ] **Frontend/fullstack**: Error tracking, Core Web Vitals, and user journey instrumentation reviewed
-- [ ] **Deep depth**: SLOs and alerting rules audited; symptom-based alerting verified
-- [ ] **All stacks**: Context propagation across async boundaries and service boundaries verified
-- [ ] Every finding states the missing signal AND what becomes invisible without it - not just "add a log here"
-- [ ] Findings ordered by severity; quick wins separated from structural changes
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no observability gaps exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review-observability`.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Observability Review Summary
 
-**Stack Detected:** [language / framework]
+**Stack Detected:** unknown (generic fallback applied)
 **Scope:** Backend | Frontend | Fullstack
 **Overall:** Adequate | Gaps Found - [count by severity: High/Medium/Low]
 
@@ -188,9 +130,9 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Severity (would prevent detection of a production failure)
 
 - **Location:** [file:line, component, or service boundary]
-- **Missing:** [the absent signal - log field, metric, trace span, alert rule]
+- **Missing:** [absent signal - log field, metric, trace span, alert rule]
 - **Impact:** [what becomes invisible or undetectable]
-- **Fix:** [concrete instrumentation change with library/mechanism for the detected stack]
+- **Fix:** [concrete instrumentation change]
 
 ### Medium Severity (reduces diagnosis speed)
 
@@ -202,31 +144,25 @@ Write the fully assembled review output to the report file before ending the ses
 
 _Omit sections with no findings._
 
-## Recommendations
-
-[Structural improvements not tied to a specific finding - e.g., "Adopt OpenTelemetry for tracing across all services", "Define SLOs for the checkout service", "Replace homegrown correlation ID with W3C traceparent"]
-
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized instrumentation addition - apply directly) or `[Delegate]` (cross-service tracing rollout, SLO definition workshop, or alerting overhaul worth spawning a subagent for). Order: High > Medium > Low Severity.
-
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `trace_id` and `user_id` to structured logger in payment handler"]
-2. **[Delegate]** [High] [scope: cross-service] - [one-line action, e.g., "Wire W3C traceparent propagation across order/payment/notification services - spawn tracing rollout subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
-
-_Omit this section if no observability gaps were found._
-
-## No Gaps Found
-
-[State explicitly if observability is adequate - do not omit this section silently when no findings exist]
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: cross-service] - [one-line action]
 ```
+
+## Self-Check
+
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, fallback covered logging, metrics (backend), tracing (backend), frontend observability (frontend), context propagation, and SLO at deep depth
+- [ ] Every finding states what becomes invisible without the missing signal
+- [ ] Review report written to file via `review-report-writer`
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- Running both Step 2 dispatch and Step 3 fallback
 - Reporting "missing log" findings without stating what becomes invisible
-- Recommending more logging without considering log volume cost and alerting noise
-- Suggesting metrics with high-cardinality labels (request ID, user ID, raw URL) - these break aggregation and cost
-- Treating logging, metrics, and tracing as interchangeable - they answer different questions (what happened / how often / why this specific request)
-- Conflating observability review with general code review or performance review - stay focused on production visibility
-- Recommending observability tooling without addressing alerting - signals nobody acts on are wasted
+- Recommending more logging without considering volume cost and alerting noise
+- Suggesting metrics with high-cardinality labels
+- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists

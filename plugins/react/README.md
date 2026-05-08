@@ -48,6 +48,8 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 | `react-data-fetching`      | TanStack Query, Server Component fetching, cache invalidation, optimistic updates              |
 | `react-styling-patterns`   | Tailwind CSS, CSS Modules, cva + cn, dark mode, design tokens                                  |
 | `react-testing-patterns`   | Vitest + React Testing Library, MSW, hook testing, Playwright e2e                              |
+| `react-code-explain`       | Hooks rules and dependencies, render lifecycle, server vs client components (Next App Router), Suspense, React 19 actions/use() - injected into `task-code-explain` |
+| `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library - injected into `task-onboard` |
 
 ## Agents
 

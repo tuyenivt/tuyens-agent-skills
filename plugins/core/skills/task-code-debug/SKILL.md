@@ -1,184 +1,151 @@
 ---
 name: task-code-debug
-description: Universal debugging workflow for broken or crashing code. Paste a stack trace, exception, error log, test failure, build error, or describe unexpected behavior. Detects your stack and routes to the stack-specific debug workflow.
+description: Universal debugging entry point for broken or crashing code. Detects the project stack and dispatches to the matching stack-specific debug workflow. For unknown stacks, runs a minimal generic CLASSIFY/LOCATE/ROOT-CAUSE/FIX/PREVENT protocol.
 metadata:
   category: code
-  tags: [debug, troubleshooting, root-cause, stack-agnostic]
+  tags: [debug, troubleshooting, root-cause, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, classify the bug as one of: (a) **spec violation** - code disagrees with an acceptance criterion or NFR; fix the code; (b) **spec gap** - the buggy behavior is undefined by the spec; surface as a proposed amendment to `spec.md` rather than guessing intent; (c) **out-of-scope drift** - code path executes behavior the spec excludes; remove or gate the path. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
 
-# Debug
+# Code Debug (Router)
 
-Universal entry point for debugging errors. Detects the project stack and delegates to the matching stack-specific debug workflow. For unknown stacks, runs the systematic protocol below.
+This skill is a thin dispatcher. It detects the project stack and delegates the workflow to the matching stack-specific skill (e.g., `task-spring-debug`, `task-rails-debug`, `task-react-debug`). The stack workflow names ecosystem-specific exception classes, runtime tooling, and gotchas directly.
+
+For unknown stacks, this skill falls back to a minimal generic debug protocol so any project can still use the command.
 
 ## When to Use
 
 - Broken or crashing code with a stack trace, exception, or error log
 - Test failures or build errors
 - Unexpected behavior that used to work correctly
-- Runtime errors with a reproducible (or intermittent) trigger
 
 **Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `/task-oncall-start`), performance analysis without a concrete error (use `task-code-review-perf`).
 
 ## Inputs
 
-Paste any of the following - the more context, the better:
+Paste any of: stack trace, error message, relevant log lines, test failure output, or a description of unexpected behavior with reproduction steps.
 
-- Stack trace or error message
-- Relevant log lines around the error
-- Test failure output
-- Description of unexpected behavior ("it used to work, now X happens")
+If the user provides only a vague description ("it's broken") with no error output, ask for the specific error before proceeding. Do not guess.
 
-**Insufficient input handling:** If the user provides only a vague description (e.g., "it's broken") with no error message, stack trace, or reproduction steps, ask for the specific error output before proceeding. Do not guess at the problem.
-
-## Steps
+## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: stack-detect
+Use skill: `stack-detect`.
 
-### Step 2 - Delegate to Stack Workflow
+### Step 2 - Dispatch to Stack Workflow
 
-**Backend stacks:**
+| Detected stack       | Delegate to          |
+| -------------------- | -------------------- |
+| Java / Spring Boot   | `task-spring-debug`  |
+| Kotlin / Spring Boot | `task-kotlin-debug`  |
+| Python               | `task-python-debug`  |
+| Ruby / Rails         | `task-rails-debug`   |
+| Node.js / TypeScript | `task-node-debug`    |
+| Go / Gin             | `task-go-debug`      |
+| Rust / Axum          | `task-rust-debug`    |
+| .NET / ASP.NET Core  | `task-dotnet-debug`  |
+| PHP / Laravel        | `task-laravel-debug` |
+| React                | `task-react-debug`   |
+| Vue                  | `task-vue-debug`     |
+| Angular              | `task-angular-debug` |
 
-| Detected Stack              | Delegate to          |
-| --------------------------- | -------------------- |
-| Java / Spring Boot          | `task-spring-debug`  |
-| Kotlin / Spring Boot        | `task-kotlin-debug`  |
-| .NET / ASP.NET Core         | `task-dotnet-debug`  |
-| Python / FastAPI or Django  | `task-python-debug`  |
-| Ruby / Rails                | `task-rails-debug`   |
-| Node.js / NestJS or Express | `task-node-debug`    |
-| Go / Gin                    | `task-go-debug`      |
-| Rust / Axum                 | `task-rust-debug`    |
-| PHP / Laravel               | `task-laravel-debug` |
+If matched, delegate, propagate spec context, and stop. Do not run Step 3.
 
-**Frontend stacks:**
+### Step 3 - Generic Fallback (unknown stack only)
 
-| Detected Stack         | Delegate to          |
-| ---------------------- | -------------------- |
-| React / Next.js / Vite | `task-react-debug`   |
-| Vue / Nuxt / Vite      | `task-vue-debug`     |
-| Angular                | `task-angular-debug` |
+Run only when Step 2 finds no match.
 
-If the detected stack does not match any of the above, continue with the systematic protocol below.
-
-### Step 3 - Systematic Protocol (Any Stack)
-
-#### CLASSIFY
-
-Identify the error class before reading any code:
+**CLASSIFY** the error class before reading code:
 
 | Class                  | Signals                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Null/missing value     | NullPointerException, AttributeError NoneType, Cannot read properties of undefined, nil dereference                |
+| Null/missing value     | NullPointerException, AttributeError NoneType, undefined property access, nil dereference                          |
 | Type mismatch          | ClassCastException, TypeError, type assertion failed                                                               |
-| Constraint violation   | UniqueViolation, IntegrityError, foreign key constraint, NOT NULL violation                                        |
+| Constraint violation   | UniqueViolation, IntegrityError, foreign key, NOT NULL                                                             |
 | Connection failure     | Connection refused, timeout, pool exhausted, host unreachable                                                      |
 | Auth / permission      | 401, 403, token expired, permission denied                                                                         |
 | Config / env           | Missing environment variable, file not found, wrong path                                                           |
 | Concurrency            | Data race, deadlock, stale read, lost update                                                                       |
-| Async / event loop     | Unhandled promise rejection, blocking call in async context, event loop blocked                                    |
-| Build / import         | Module not found, circular dependency, missing dependency, compilation error                                       |
+| Async / event loop     | Unhandled promise rejection, blocking call in async context                                                        |
+| Build / import         | Module not found, circular dependency, compilation error                                                           |
 | Logic / regression     | No error thrown but output is wrong; "it worked before"                                                            |
-| Rendering / hydration  | Hydration mismatch, white screen, component not rendering, SSR/CSR content divergence, blank page after navigation |
-| State / reactivity     | Stale state, infinite re-render loop, reactivity lost, computed not updating, state not reflecting in UI           |
-| Bundle / chunk loading | Chunk loading failed, dynamic import error, tree-shaking removed needed code, HMR not applying                     |
+| Rendering / hydration  | Hydration mismatch, white screen, SSR/CSR divergence                                                               |
+| State / reactivity     | Stale state, infinite re-render, reactivity lost                                                                   |
+| Bundle / chunk loading | Chunk loading failed, dynamic import error                                                                         |
 
-State the class and confidence (HIGH / MEDIUM / LOW) before proceeding.
+State the class and confidence (HIGH / MEDIUM / LOW).
 
-**Pattern analysis (for intermittent or non-deterministic errors):**
-If the error does not reproduce on every request, analyze the pattern before reading code:
+For intermittent errors, analyze frequency, timing correlation (peak load, deploys, GC), and hypothesize the operational cause before reading code.
 
-1. Frequency: what percentage of requests fail?
-2. Timing: does it correlate with peak load, time of day, or specific operations?
-3. Correlation: do failures correlate with high connection pool usage, memory pressure, GC pauses, or recent deployments?
-4. State the hypothesized operational cause (connection exhaustion, race condition, cache eviction, timeout) before proceeding to LOCATE. This hypothesis guides where to look in code.
+**LOCATE** the failing line:
 
-#### LOCATE
-
-1. Read the full stack trace top-to-bottom. The **first frame in application code** (not framework internals) is the starting point.
-2. Open that source file. Read the failing function and its callers.
+1. Read the stack trace top-to-bottom. The first frame in **application code** (not framework internals) is the starting point.
+2. Open the source file. Read the failing function and its callers.
 3. Trace the data path: where does the bad value or state originate?
 4. Identify the exact line and variable responsible.
 
-#### ROOT CAUSE
+**ROOT CAUSE** - state **why**, not just what:
 
-State **why** this happened - not just what happened. Examples of root cause depth:
+- Not "the value is null" - "the value is null because the query returns no rows when condition X is true, and the caller assumes a result always exists"
+- Not "connection refused" - "DB_HOST defaults to localhost but the service runs in Docker where the DB is on a different network"
 
-- Not: "the value is null" → Yes: "the value is null because the query returns no rows when X condition is true, and the caller assumes a result always exists"
-- Not: "connection refused" → Yes: "connection refused because the DB_HOST env var defaults to localhost but the service runs in Docker where the DB is on a different network"
+State confidence. If LOW, list what additional information would raise it.
 
-State confidence level. If LOW, list what additional information (logs, config, code) would raise confidence.
+**FIX** - minimal before/after change addressing the root cause. No refactoring. If multiple fixes are possible, recommend one with tradeoffs.
 
-#### FIX
-
-Provide a minimal before/after code change that addresses the root cause.
-
-- Change only what is necessary - no refactoring, no style changes
-- If the fix requires a config or environment change, state it explicitly
-- If multiple fixes are possible, state the tradeoffs and recommend one
-
-#### PREVENT
-
-State one concrete prevention step:
-
-- A test that would have caught this (unit, integration, or property-based)
-- A static analysis rule, linter, or type annotation
-- A guard clause, assertion, or input validation
-- A monitoring/alerting signal (if the root cause is operational)
-- A defensive coding pattern (null check, default value, timeout)
-- A "what changed recently?" checklist item if the cause is a regression
+**PREVENT** - one concrete prevention step: a test that would have caught this, a static analysis rule, a guard clause, or a monitoring signal.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Classification
 
-**Error class:** [class from table above]
+**Error class:** [class from table]
 **Confidence:** HIGH | MEDIUM | LOW
 
 ## Root Cause
 
 **File:** [file:line]
-**Why:** [root cause explanation with full causal chain]
+**Why:** [root cause with full causal chain]
 **Confidence:** HIGH | MEDIUM | LOW
 [If LOW: what additional information would raise confidence]
 
 ## Fix
 
 **Before:**
-[code snippet showing the problematic code]
+[code snippet]
 
 **After:**
 [code snippet showing the minimal fix]
 
-[If config/env change needed, state explicitly]
-[If multiple fixes possible, state tradeoffs and recommend one]
-
 ## Prevention
 
-- [One concrete prevention step with specifics]
+- [One concrete prevention step]
 ```
 
 ## Self-Check
 
-- [ ] Error classified before any code is read or fix proposed
-- [ ] Root cause references the specific file and line; confidence level stated
-- [ ] Concrete before/after fix provided - no vague suggestions
-- [ ] Fix is minimal and addresses root cause, not symptom; idioms preserved
-- [ ] Prevention step included (test, lint rule, or monitoring signal)
-- [ ] The "why" is explained; concurrency/connection/regression specifics addressed where relevant
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, Step 3 fallback produced CLASSIFY/ROOT CAUSE/FIX/PREVENT
+- [ ] Insufficient input was challenged with a request for more detail, not guessed at
 
 ## Avoid
 
+- Running both Step 2 dispatch and Step 3 fallback (one or the other, never both)
+- Producing your own findings when a stack workflow was dispatched
 - Proposing a fix before understanding the root cause
-- Refactoring or cleaning up code alongside the fix - change only what is necessary
-- Guessing at the problem when the user provides insufficient context - ask for more details
-- Treating symptoms instead of root cause (e.g., adding a null check without understanding why the value is null)
-- Providing multiple fix options without a clear recommendation
+- Treating symptoms instead of root cause (adding a null check without explaining why the value is null)
+- Treating the fallback as equivalent to a stack workflow - it is a temporary bridge for unsupported stacks; install the matching language plugin when one exists

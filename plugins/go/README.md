@@ -44,6 +44,8 @@ Claude Code plugin for Go/Gin development.
 | `go-testing-patterns`   | Go testing: table-driven tests, httptest for Gin handlers, testcontainers-go for integration, testify, interface mocking, benchmarks, synctest.    |
 | `go-concurrency`        | Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, `WaitGroup.Go`.             |
 | `go-messaging-patterns` | Background jobs with Asynq, Kafka consumers with franz-go, and in-process worker pools.                                                            |
+| `go-code-explain`       | Goroutines and channels, context.Context propagation, defer ordering, error wrapping, interface satisfaction, GORM/sqlx semantics - injected into `task-code-explain`. |
+| `go-onboard-map`        | Module layout, go.mod, framework (Gin/Echo/Chi/std-lib), build tags, DB layer (GORM/sqlx/pgx), observability stack - injected into `task-onboard`. |
 
 ## Usage Examples
 

@@ -49,6 +49,8 @@ Atomic skills provide focused, reusable Angular patterns. These are hidden from 
 | `angular-state-patterns`     | Signals, NgRx Store, NgRx ComponentStore, service-based state, URL state          |
 | `angular-styling-patterns`   | Tailwind CSS, Angular Material/CDK, PrimeNG, CSS custom properties, theming       |
 | `angular-testing-patterns`   | Angular Testing Library, component harnesses, HttpTestingController, Playwright   |
+| `angular-code-explain`       | Signals and zoneless CD, standalone components, DI hierarchy, RxJS + async pipe, lifecycle, routing - injected into `task-code-explain` |
+| `angular-onboard-map`        | Angular CLI workspace, standalone vs NgModule, Signals vs Zone.js, RxJS, routing, state (NgRx/Signal Store) - injected into `task-onboard` |
 
 ## Agents
 

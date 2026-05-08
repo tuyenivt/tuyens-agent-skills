@@ -50,6 +50,8 @@ Atomic skills provide focused, reusable Java/Spring Boot patterns. These are hid
 | `java-gradle-build-optimization` | Gradle build performance and multi-module setup                         |
 | `spring-websocket`               | Spring WebSocket and STOMP messaging                                    |
 | `spring-messaging-patterns`      | Spring Kafka, RabbitMQ, transactional outbox, Spring Application Events |
+| `spring-code-explain`            | Spring framework-magic and lifecycle signals (AOP, `@Transactional`, JPA, security filter chain) injected into `task-code-explain` |
+| `spring-onboard-map`             | Maven/Gradle layout, `application.yml` profiles, key configuration classes, persistence schema injected into `task-onboard` |
 
 ## Agents
 

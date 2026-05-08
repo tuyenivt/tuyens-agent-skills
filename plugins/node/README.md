@@ -75,6 +75,8 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | `node-typescript-patterns` | TypeScript strict mode: generics, discriminated unions, type guards, branded types, utility types, no `any`                   |
 | `node-migration-safety`    | Safe migrations: Prisma migrate + TypeORM migrations, zero-downtime DDL, enum management, deploy ordering                     |
 | `node-bullmq-patterns`     | BullMQ background jobs: job design, idempotency, retry strategy, queue routing, fan-out, worker lifecycle, testing strategies |
+| `node-code-explain`        | Event loop and async semantics, NestJS DI/module graph, Express middleware, error propagation across async, TS-vs-runtime - injected into `task-code-explain` |
+| `node-onboard-map`         | Package manager (npm/yarn/pnpm/bun), framework (NestJS/Express), TS config, build/run scripts, ORM, ESM/CJS - injected into `task-onboard` |
 
 ## Agents
 

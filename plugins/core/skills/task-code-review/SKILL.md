@@ -1,305 +1,126 @@
 ---
 name: task-code-review
-description: Staff-level code review for PRs - risk-based evaluation, architecture boundary protection, correctness, AI-generated code quality control, and maintainability. Auto-detects project stack and applies framework-specific checks. Use for all PRs, including AI-assisted, large, or cross-service changes.
+description: Staff-level code review entry point. Detects the project stack and dispatches to the matching stack-specific review workflow. For unknown stacks, runs a minimal generic risk/correctness/maintainability protocol.
 metadata:
   category: review
-  tags: [code-review, pull-request, risk-assessment, architecture, ai-quality, quality, multi-stack]
+  tags: [code-review, pull-request, risk-assessment, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**, not suggestions; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
 
-# Code Review
+# Code Review (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review`, `task-rails-review`, `task-react-review`). The stack workflow runs Phases A-E with framework-specific correctness, architecture, AI-quality, and maintainability checks (Rails: Zeitwerk, callback abuse, fat controllers; Spring: layering, transaction placement; React: hooks, context boundaries) and spawns its own perf / security / observability subagents in parallel for any extra scope.
 
-Staff-level code review that prioritizes system risk over style. AI-generated code is now standard, so every review evaluates:
-
-- Risk-based evaluation - assess blast radius and cross-module impact before line-level feedback
-- Architecture boundary protection - detect coupling, layer violations, and structural drift early
-- Correctness and safety - logical correctness, error handling, edge cases, backward compatibility
-- AI-generated code quality control - catch over-abstraction, verbosity inflation, and premature generalization
-- Maintainability - clear naming, focused responsibilities, reviewable chunks
-- High-signal findings only - no nitpicking, no trivial formatting comments
+For unknown stacks, this skill falls back to a minimal generic review protocol.
 
 ## When to Use
 
-- Pull request reviews
+- Pull request reviews and pre-merge risk assessment
 - Code change reviews before merge
 - Post-AI-generation quality gate
-- Architecture drift detection
-- Pre-merge risk assessment
 
-**Not for:** Architecture/design review of new systems (use `task-design-architecture`), security-only audits (use `task-code-review-security`), performance-only review (use `task-code-review-perf`).
-
-## Depth Levels
-
-| Depth      | When to Use                                                               | What Runs                                                    |
-| ---------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `quick`    | "Is this safe to merge?" - fast risk snapshot for time-constrained review | Risk snapshot + top 3 findings only (Phases A and B summary) |
-| `standard` | Default - full staff-level review                                         | Phases A-E                                                   |
-| `deep`     | Architectural PRs, post-incident change review, or Principal sign-off     | Phases A-E + historical pattern matching + cross-PR context  |
-
-**Quick depth produces:**
-
-- Risk level and blast radius (2-3 sentences)
-- Top 3 findings only (Blockers first, then Highs)
-- Approve / Request Changes / Discuss recommendation
-
-**Deep depth adds (on top of standard):**
-
-- Historical pattern matching: does this change repeat a pattern that caused past incidents?
-- Cross-PR context: any known concurrent PRs that interact with this change?
-- Architecture evolution note: does this PR move the architecture in the right or wrong direction over time?
-
-Default: `standard`. Use `quick` when user asks for "quick review", "sanity check", or "is this safe?". Use `deep` when user asks for "full review", "architecture review", or "Principal sign-off".
-
-**Auto-promote to `deep`:** After Phase A computes blast radius, if `Blast Radius` is `Wide` or `Critical` and the user did not explicitly pass `quick`, promote depth from `standard` to `deep` automatically. Surface this in Summary as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`. Pass `quick` explicitly to suppress.
-
-## Scope
-
-| Scope           | What runs                                                                      |
-| --------------- | ------------------------------------------------------------------------------ |
-| Core            | Phases A-E only (risk, correctness, architecture, AI quality, maintainability) |
-| + Perf          | Core + delegate to skill: `task-code-review-perf`                              |
-| + Security      | Core + delegate to skill: `task-code-review-security`                          |
-| + Observability | Core + delegate to skill: `task-code-review-observability`                     |
-| Full            | Core + Performance + Security + Observability                                  |
-
-Default: **Core with auto-escalation** (see below). If invoked with an explicit scope argument (e.g., `/task-code-review +perf`, `full`, or `core-only`), skip auto-escalation and use that scope directly.
-
-Depth and scope are independent. Example: `quick` depth with `+security` scope = risk snapshot + security findings only.
-
-**Scope auto-escalation:** After Step 2 (diff resolution) and before Phase A, scan the file list and diff hunks for the following signals and **automatically promote scope** unless the user passed an explicit scope flag or `core-only`:
-
-- File uploads, auth/authn/authz flows, params/strong params, SQL/raw queries, user input deserialization, secrets/credentials handling, background jobs with user input -> auto-add +Security
-- Bulk operations, new database queries, new indexes/migrations, new endpoints with large payloads, loops over collections that hit I/O -> auto-add +Perf
-- New service, new external dependency, new async/queue boundary, change to logging/metrics/tracing wiring -> auto-add +Observability
-- Two or more signal categories present -> promote to Full
-
-Surface the promotion in Summary as `Scope auto-escalated: Core -> <scope> (signals: <list>)`. Pass `core-only` explicitly to suppress (e.g., `/task-code-review core-only`).
+**Not for:** Architecture/design review of new systems, security-only audits (use `task-code-review-security`), performance-only review (use `task-code-review-perf`), observability-only review (use `task-code-review-observability`).
 
 ## Invocation
 
-The slash command accepts an optional argument identifying the diff to review:
+Accepts the same arguments as the stack-specific review umbrellas:
 
-| Invocation                   | Meaning                                                                                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/task-code-review`          | Review current branch vs its base - fails fast if on a trunk branch (`main`/`master`/`develop`); commit or switch to a feature branch first                                           |
-| `/task-code-review <branch>` | Review `<branch>` vs its base (3-dot diff) - cross-review a teammate's branch checked out locally, or self-review a named branch from any session                                     |
-| `/task-code-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` - run `git fetch origin pull/<N>/head:pr-<N>` first (user runs it; see `review-precondition-check` for GitLab/Bitbucket variants) |
+| Invocation                   | Meaning                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `/task-code-review`          | Review current branch vs its base (fails fast on trunk branches)                              |
+| `/task-code-review <branch>` | Review `<branch>` vs its base (3-dot diff)                                                    |
+| `/task-code-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs `git fetch` first)             |
 
-**No checkout required.** You do not need to switch to the head branch before invoking. Stay on your current branch; the workflow reads git history via ref-qualified diffs and never modifies your working tree.
-
-**Explicit base override.** When the PR was opened against a non-trunk base branch (e.g., a stacked PR off `phase-01` rather than `main`), pass `--base <branch>` so the diff is computed against the true base. Without it, base detection walks `origin/HEAD` → `main` → `master` → `develop` and the diff will include commits from the true base, drowning the actual PR changes.
-
-Examples:
-
-- `/task-code-review pr-123 --base phase-01` - PR opened against feature branch `phase-01`
-- `/task-code-review feature/x --base develop` - branch off `develop` rather than `main`
-
-Scope and depth flags (`+perf`, `+security`, `+observability`, `full`, `quick`, `deep`) compose with any of the above. Example: `/task-code-review pr-50273 --base phase-01 +security deep`.
+Scope flags (`+perf`, `+security`, `+observability`, `full`, `core-only`) and depth flags (`quick`, `standard`, `deep`) and `--base <branch>` compose with any of the above and are forwarded to the dispatched stack workflow.
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect`.
 
-### Step 1.5 - Route to Stack-Specific Umbrella (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific code review umbrella exists for the detected stack, delegate the entire review to it. The stack umbrella runs Phases A-E with stack-specific correctness, architecture, AI-quality, and maintainability checks (e.g., Rails: Zeitwerk, callback abuse, fat controllers, AR-in-API), and spawns its own stack-specific perf / security / observability subagents in parallel for any extra scope. This is two-layer dispatch.
-
-| Detected stack       | Delegate to          |
-| -------------------- | -------------------- |
-| Ruby / Rails         | `task-rails-review`  |
-| Java / Spring Boot   | `task-spring-review` |
-| Python               | `task-python-review` |
-| Node.js / TypeScript | `task-node-review`   |
-| React                | `task-react-review`  |
-| Vue                  | `task-vue-review`    |
-| Go / Gin             | `task-go-review`     |
-| Rust / Axum          | `task-rust-review`   |
-| .NET / ASP.NET Core  | `task-dotnet-review` |
+| Detected stack       | Delegate to           |
+| -------------------- | --------------------- |
+| Java / Spring Boot   | `task-spring-review`  |
+| Kotlin / Spring Boot | `task-kotlin-review`  |
+| Python               | `task-python-review`  |
+| Ruby / Rails         | `task-rails-review`   |
+| Node.js / TypeScript | `task-node-review`    |
+| Go / Gin             | `task-go-review`      |
+| Rust / Axum          | `task-rust-review`    |
+| .NET / ASP.NET Core  | `task-dotnet-review`  |
 | PHP / Laravel        | `task-laravel-review` |
-| Kotlin / Spring Boot | `task-kotlin-review` |
+| React                | `task-react-review`   |
+| Vue                  | `task-vue-review`     |
 | Angular              | `task-angular-review` |
 
-When delegating, pass:
+When delegating, forward the user's full invocation (target ref, `--base`, scope flags, depth flags) and any spec context. The stack umbrella owns precondition checks, diff resolution, and parallel subagent dispatch for non-Core scopes.
 
-- The user's full invocation arguments (target ref, `--base`, scope flags, depth flags) so the stack umbrella can resolve the diff itself - the stack umbrella supports standalone PR/branch resolution
-- Or, if this dispatcher already ran `review-precondition-check`, pass the precondition handle plus the read-once diff and commit log so the stack umbrella skips its own Step 2
+If matched, stop. Do not run Step 3.
 
-If no stack-specific umbrella exists, fall through to the generic flow defined in Step 2 onward. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+### Step 3 - Generic Fallback (unknown stack only)
 
-### Step 2 - Resolve the Diff Under Review
+Run only when Step 2 finds no match. This is a minimum-viable review that works for any language.
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it, so the precondition check uses the explicit base override instead of trunk auto-detection. It returns a minimal handle with `base_ref`, `base_source`, `head_ref`, `current_branch`, and `head_matches_current` once all preconditions pass.
+Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`. If the precondition check stops with a fail-fast message, surface it verbatim and stop.
 
-If the precondition check stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim to the user and stop. Do not run any state-changing git command from this workflow.
+**Phase A - Risk Snapshot (run first):**
 
-Once approved, read the diff and commit log directly using the returned refs:
+- Use skill: `review-pr-risk` for cross-cutting risk signals
+- Use skill: `review-blast-radius` for failure propagation scope
+- State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level findings
 
-- Diff: `git diff <base_ref>...<head_ref>`
-- Files changed: `git diff --name-status <base_ref>...<head_ref>`
-- Commit log: `git log --oneline <base_ref>..<head_ref>` (2-dot - commits unique to the head)
+If Risk Level is Low and Blast Radius is Narrow and the change does not touch architecture-relevant files (auth, middleware, API contracts, shared libraries), produce a streamlined output with Phase B findings only.
 
-Always read the commit log alongside the diff. On branches with many small commits, the log carries author intent (e.g., "wip", "revert X", "actually fix it") that the aggregate diff hides. Cap log output at 50 commits; if more, show the first 25 and last 5 with a `... (N commits omitted) ...` marker. If the diff exceeds ~2000 changed lines, emit the full file list and commit log but only quote diff hunks for files findings cite.
+**Phase B - Correctness and Safety:**
 
-All subsequent phases operate on this read-once diff and log; do not re-derive them.
+- Logical correctness, error handling, edge cases affecting state integrity
+- Backward compatibility (use skill: `ops-backward-compatibility` for migration PRs)
+- Unsafe shared state mutation, transaction boundary correctness
+- **Test coverage finding:** If logic is added/modified without tests, raise as an explicit named finding (at least [Suggestion]; [High] for critical paths)
+- Use skill: `ops-resiliency` for error handling and fault tolerance
+- Use skill: `backend-api-guidelines` if the change touches API contracts
+- Use skill: `architecture-concurrency` if concurrency patterns are present
 
-### Phase A - PR Risk Snapshot (run first)
+**Phase C - Architecture Guardrails:**
 
-- Use skill: `review-pr-risk` to evaluate cross-cutting risk signals
-- Use skill: `review-blast-radius` to assess failure propagation scope
-- Output risk level and blast radius before proceeding to findings
+Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, boundary erosion. For multi-service PRs, check API contract compatibility and deployment ordering.
 
-**Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth, middleware, API contracts, shared libraries, service boundaries), skip Phases C-D and produce a streamlined output with Phase B findings only. This avoids over-reviewing trivial changes with the staff-level process. If any architecture-relevant file is touched, proceed with the full workflow regardless of risk level.
+**Phase D - AI-Generated Code Quality:**
 
-### Phase B - Correctness and Safety
+Use skill: `complexity-review` to detect over-abstraction, premature generalization, redundant mapping layers, speculative configurability.
 
-Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, unsafe shared state mutation, transaction boundary correctness.
+**Phase E - Maintainability:**
 
-**Test coverage finding:** If the PR adds or modifies logic without corresponding tests, raise this as an explicit finding - at minimum a [Suggestion], escalate to [High] if the changed code is in a critical path (auth, payments, data integrity). Do not bury this in Key Takeaways - it must appear as a named finding.
+Naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers. Use skill: `backend-coding-standards` (backend) and `ops-observability` (logging/metrics/tracing coverage).
 
-**Bulk operations (if applicable):**
+**Extra scopes:** if `+perf`, `+security`, `+observability`, or `full` was passed, spawn the corresponding `task-code-review-*` workflow as a subagent with the read-once diff/log and pre-detected stack. Run subagents in parallel; merge findings by severity (highest wins on duplicates), preserve `file:line` citations.
 
-- Partial failure handling defined (skip-and-continue vs. all-or-nothing)
-- Idempotency for retryable bulk operations
-- Transaction boundaries appropriate (not one giant transaction, not one per row)
-- Background processing for operations that exceed request timeout
-
-**Migration PRs (pattern change, not just code change):**
-
-- Use skill: `ops-backward-compatibility` to assess impact on existing clients, active sessions, or in-flight requests
-- Verify rollback path exists and is documented
-
-After loading stack-detect, apply correctness checks based on `Stack Type`. If `Stack Type: fullstack`, apply both backend and frontend checks to the relevant parts of the change.
-
-#### Backend Correctness (when Stack Type is `backend` or `fullstack`)
-
-- Transaction management patterns appropriate to the framework
-- Concurrency safety for the detected runtime's threading model
-- Null/nil/zero-value handling using the language's standard approach
-- Error handling following the ecosystem's conventions
-- **Synchronous external I/O in hot paths**: flag as [High] any synchronous call to cache, database, or external service added in a shared hot path (auth middleware, request filters, interceptors) where the added latency affects every request
-- No N+1 query patterns (loops that trigger per-row queries)
-- Queries are bounded - no unbounded fetches without pagination or limit
-- ORM entities are not exposed in API responses
-
-Use skill: `ops-resiliency` for error handling, retry, and fault tolerance patterns.
-Use skill: `backend-api-guidelines` if the change touches API contracts or HTTP endpoints.
-Use skill: `architecture-concurrency` if concurrency patterns are present in the change.
-
-#### Frontend Correctness (when Stack Type is `frontend` or `fullstack`)
-
-- Rendering correctness: components render the right content for all states (loading, error, empty, populated)
-- State consistency: no stale closures, no state updates on unmounted components, no race conditions between async operations and UI state
-- Memory leaks: event listeners, subscriptions, timers, and observers cleaned up on unmount
-- Side effect isolation: effects/subscriptions have proper dependency arrays and cleanup functions
-- Error boundaries: errors in child components do not crash the entire application
-- Accessibility: interactive elements are keyboard-accessible, ARIA attributes are correct, focus management works
-- Form inputs have associated labels; images have alt text (decorative images use empty alt)
-
-Use skill: `frontend-state-management` to verify state patterns are appropriate.
-Use skill: `frontend-accessibility` for accessibility compliance.
-Use skill: `frontend-api-integration` if the change involves data fetching.
-
-### Phase C - Architecture Guardrails
-
-Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, bypassing abstractions, boundary erosion, architectural drift.
-
-**Multi-service PRs (when change spans 2+ services):**
-
-- Check API contract compatibility between services after the change
-- Verify deployment can be done in any order (or document required order)
-- Check for shared library version alignment
-- Use skill: `ops-backward-compatibility` for any changed inter-service contracts
-
-**Backend:** Apply the layering conventions of the detected framework - presentation → service → data access - using the ecosystem's standard patterns.
-
-**Frontend:** Apply component boundary conventions - page components → feature components → shared UI components. Detect: business logic leaking into components, components reaching across feature boundaries, shared state used for single-feature concerns, tightly coupled component hierarchies that prevent reuse.
-
-### Phase D - AI-Generated Code Quality Control
-
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
-Key signals: over-abstraction, premature generalization, redundant mapping layers, unnecessary boilerplate, pattern inflation, speculative configurability, unused parameters added "for flexibility".
-
-### Phase E - Maintainability and Clarity
-
-Naming that obscures intent, mixed responsibilities, large unreviewable chunks, complex logic without explanation, hardcoded URLs/secrets/credentials/magic numbers that should be config or named constants.
-
-**Backend/fullstack:** Use skill: `backend-coding-standards` for naming, structure, and anti-pattern enforcement.
-**All stacks:** Use skill: `ops-observability` to check logging, metrics, and tracing coverage (backend) or error tracking and analytics instrumentation (frontend).
-
-### Step 3 - Delegate Extra Scopes in Parallel (if scope includes)
-
-If scope is **Core only**, skip this step.
-
-For any selected extra scope, spawn an independent subagent **in parallel** with the main thread (which continues running Phases A-E for Core). Subagents run concurrently with each other and with Core, not sequentially. This keeps wall-clock latency close to the slowest single review rather than the sum of all reviews.
-
-| Scope                | Subagents spawned                                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Core + Perf          | 1 subagent running `task-code-review-perf`                                                                             |
-| Core + Security      | 1 subagent running `task-code-review-security`                                                                         |
-| Core + Observability | 1 subagent running `task-code-review-observability`                                                                    |
-| Full                 | 3 subagents running `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability` in parallel |
-
-**Subagent prompt contract.** Each subagent prompt must include:
-
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
-- The depth level (`quick` | `standard` | `deep`)
-- The pre-detected stack from Step 1 (so the subagent does not re-run `stack-detect`)
-- Instruction to return findings using the standard Output Format from its own skill
-
-**Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
-
-### Step 4 - Synthesize (only if Step 3 ran)
-
-Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
-
-- **Deduplicate cross-cutting findings.** The same issue may surface in multiple scopes (e.g., a synchronous external call in a hot path can be flagged by both Core/Phase B and Perf). Keep one entry, citing all scopes that raised it.
-- **Severity wins.** When the same finding has different labels across scopes, use the highest severity (`Blocker` > `High` > `Suggestion` > `Question`).
-- **Preserve `file:line` citations** from the originating subagent.
-- **Order findings by severity, not by scope.** Do not produce a "Perf section, then Security section" report; produce one merged Findings list.
-- **Note missing scopes.** If any subagent failed, add a single line under Summary: `Scope incomplete: <scope> review did not complete`.
-- **Merge Next Steps.** Combine the parent's Core Next Steps with each subagent's Next Steps into one prioritized list under the parent's `## Next Steps`. Preserve the `[Implement]` / `[Delegate]` tags from the originating skill; deduplicate items that map to the same fix; re-sort by severity across all scopes (Blocker/Critical > High > Medium/Suggestion > Low).
-
-## Framework-Specific Signals
-
-After loading stack-detect, check for framework-specific signals based on the detected ecosystem and `Stack Type`. The atomic skills loaded in Phases B-E handle detailed pattern enforcement. In addition, check these staff-level concerns:
-
-**Backend signals:**
-
-- **Architectural fit**: Does the change follow the framework's recommended layering and DI patterns, or does it introduce a competing pattern?
-- **Concurrency model match**: Are concurrency primitives appropriate for the detected runtime's threading model (e.g., virtual threads vs. thread pools in Java 21+, goroutines vs. OS threads)?
-- **Ecosystem currency**: Does the change use current language features and framework APIs, or does it introduce deprecated patterns that create future migration burden?
-- **ORM entities in API responses**: Are data layer entities exposed directly in API responses instead of using DTOs/serializers?
-
-**Frontend signals:**
-
-- **Component boundary discipline**: Does the change respect component single-responsibility, or does it create god components?
-- **State management escalation**: Does the change introduce global state where local state would suffice, or use prop drilling where context/stores are warranted?
-- **Rendering performance**: Does the change introduce unnecessary re-renders, missing memoization, or heavy computation in render paths?
-- **Ecosystem currency**: Does the change use current framework APIs (e.g., React 19 hooks, Vue 3.5 features, Angular signals), or does it introduce deprecated patterns?
-
-If the detected stack is unfamiliar, apply only the universal review criteria from Phase B and note the limitation.
+**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review`.
 
 ## Feedback Labels
 
-| Label        | Meaning                                     | Required |
-| ------------ | ------------------------------------------- | -------- |
-| [Blocker]    | Must fix before merge - correctness or risk | Yes      |
-| [High]       | Should fix - significant impact or smell    | Strong   |
-| [Suggestion] | Would improve - non-blocking                | No       |
-| [Question]   | Need clarity from author                    | Clarify  |
+| Label        | Meaning                                     |
+| ------------ | ------------------------------------------- |
+| [Blocker]    | Must fix before merge - correctness or risk |
+| [High]       | Should fix - significant impact or smell    |
+| [Suggestion] | Would improve - non-blocking                |
+| [Question]   | Need clarity from author                    |
 
-No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filtered out.
+No `[Nitpick]` or `[Praise]` labels.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Summary
@@ -307,9 +128,9 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
-**Stack Detected:** [language / framework]
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Stack Detected:** unknown (generic fallback applied)
+**Scope:** Core | +Security | +Perf | +Observability | Full
+**Depth:** quick | standard | deep
 
 ## High-Impact Findings
 
@@ -317,14 +138,12 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 
 - Issue: [what is wrong]
 - Impact: [user-visible or operational consequence]
-- System Risk: [why this is a system-level concern, not just a local bug]
+- System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete code change or approach]
 
 ### [High] file:line
 
-- Issue:
-- Impact:
-- Fix:
+[Same structure]
 
 ### [Suggestion] file:line
 
@@ -343,95 +162,35 @@ No `[Nitpick]` or `[Praise]` labels - this is staff-level review; trivia is filt
 
 ## Key Takeaways
 
-- 2-4 concise bullets summarizing systemic impact and what to address before merge.
+- 2-4 concise bullets summarizing systemic impact
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (straightforward fix - apply directly or have Claude apply) or `[Delegate]` (multi-file refactor, cross-service change, or scoped sub-review worth spawning a subagent for). Order: Blockers > High > Suggestions.
+1. **[Implement]** [Blocker] file:line - [one-line action]
+2. **[Delegate]** [High] [scope] - [one-line action]
 
-1. **[Implement]** [Blocker] file:line - [one-line action, e.g., "Move signature verification to first line of handler"]
-2. **[Delegate]** [High] [scope: multi-service] - [one-line action, e.g., "Refactor shared auth middleware across 3 services - spawn subagent for cross-service contract check"]
-3. **[Implement]** [Suggestion] file:line - [one-line action]
-
-_Omit this section if there are no actionable findings._
+_Omit sections with no findings._
 ```
 
-**Example finding (good depth):**
-
-```markdown
-### [Blocker] PaymentWebhookController.java:45
-
-- Issue: Webhook signature verification happens after the request body is parsed and partially processed
-- Impact: An attacker can trigger side effects (order status update) with a forged webhook payload before verification fails
-- System Risk: Auth boundary erosion - any future handler added to this controller inherits the same flaw
-- Fix: Move `verifySignature(request)` to the first line of the handler, before any business logic executes
-```
-
-**Omit empty sections.** If there are no Blockers, do not include a Blocker heading.
-
-## Output Constraints
-
-- Do NOT list trivial formatting issues
-- If risk is low, say so and keep findings minimal
-- Findings ordered by severity: Blocker > High > Suggestion > Question
-- Omit empty sections
-- No purely stylistic findings without a project standard
-- Optimize for token efficiency
-
-## Rules
-
-- Review the whole change as a system impact, not file-by-file in isolation
-- Lead with risk assessment before line-level findings
-- Check for consistency with existing codebase patterns
-- Provide actionable feedback with examples
-- Never comment on trivial formatting or style where no project standard exists
-- Never block on personal preference
-- Default to Core scope
-- Do not apply conventions from one stack to another
-
-
-### Step 5 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] Stack detected and Stack Type determined; appropriate checks applied (backend, frontend, or both)
-- [ ] Stack-specific umbrella delegate invoked when one exists for the detected stack; otherwise generic Phases A-E applied
-- [ ] `review-precondition-check` ran at Step 2; preconditions passed (clean tree, non-trunk head, head ref exists locally) and `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` were captured. If user passed `--base`, it was forwarded and `base_source: explicit-override` is recorded
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>`, then reused by all later phases (and shared with subagents) - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated after Step 2; promotion (or `core-only` suppression) recorded in Summary
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped; user's flags and spec context were forwarded
+- [ ] If no stack matched, Step 3 fallback ran Phases A-E and any requested extra scopes
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Architecture boundary impact assessed even if no violations found (including component boundaries for frontend)
-- [ ] AI-generated code evaluated for over-abstraction and verbosity inflation
-- [ ] Every finding has a label, location (file:line), and actionable fix
+- [ ] Missing tests raised as a named finding
 - [ ] Findings ordered Blocker > High > Suggestion > Question; no purely stylistic findings without a project standard
-- [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
-- [ ] Key Takeaways convey systemic risk; Summary alone is enough for an Approve/Request Changes decision
-- [ ] No framework conventions applied from a different stack than detected
-- [ ] Frontend checks (accessibility, state, components) applied when Stack Type is frontend or fullstack
-- [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] For non-Core scopes, extra scopes ran as parallel subagents (not sequentially) and received the pre-detected stack
-- [ ] Subagent findings are merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports are not appended
-- [ ] Any failed/missing subagent scope is noted under Summary as `Scope incomplete: <scope>`
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] Review report written to file via `review-report-writer`
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- Running both Step 2 dispatch and Step 3 fallback
+- Producing your own findings when a stack workflow was dispatched
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow
 - Reviewing without reading the full diff first
-- Applying conventions from one stack to another (e.g., Java conventions on Go code)
 - Nitpicking style where no project standard exists
-- Providing vague feedback without a concrete fix ("this could be better")
 - Blocking on personal preference rather than correctness, risk, or maintainability
-- Commenting on every file - focus on the most impactful findings
-- Running performance or security sub-workflows when user passed `core-only` (auto-escalation must be suppressed by explicit user flag)
-- Treating auto-escalation signals as advisory recommendations the user must opt into - the default is to promote scope and let the user opt out via `core-only`
-- Running multiple extra scopes sequentially when they could spawn in parallel as independent subagents
-- Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
+- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists

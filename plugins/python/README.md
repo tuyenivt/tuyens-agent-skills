@@ -35,6 +35,8 @@ Claude Code plugin for Python development.
 | python-testing-patterns    | pytest fixtures, parametrize, async testing, factory_boy, TestClient, Celery testing        |
 | python-celery-patterns     | Task design, idempotency, retry strategy, queue routing, chains/groups/chords               |
 | python-async-patterns      | async/await, asyncio.gather, event loop blocking prevention, TaskGroup                      |
+| python-code-explain        | Sync vs async boundaries, GIL, decorator stacking, FastAPI Depends, Django lifecycle, ORM session - injected into `task-code-explain` |
+| python-onboard-map         | Dependency manager (poetry/pip/uv/pdm), framework, virtualenv, settings, ORM + migrations, async runtime - injected into `task-onboard` |
 
 ## Agents
 

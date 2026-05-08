@@ -47,6 +47,8 @@ Claude Code plugin for Rust development.
 | `rust-concurrency`        | Rust concurrency patterns: Arc/Mutex, RwLock, channels, Send+Sync traits, rayon for data parallelism, atomics.                                    |
 | `rust-messaging-patterns` | Background jobs with Tokio task queues, Kafka consumers with rdkafka, AMQP with lapin, and worker pools.                                          |
 | `rust-security-patterns`  | JWT authentication, input validation, SQL injection prevention, secrets management, CORS, cargo-audit.                                            |
+| `rust-code-explain`       | Ownership and borrowing, lifetimes, async runtimes (tokio), trait objects vs generics, error types with `?`, sqlx compile-time queries - injected into `task-code-explain`. |
+| `rust-onboard-map`        | Cargo workspace layout, Cargo.toml features, async runtime, framework (Axum/Actix), DB layer (sqlx/sea-orm/diesel), clippy/rustfmt - injected into `task-onboard`. |
 
 ## Usage Examples
 

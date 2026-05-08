@@ -1,176 +1,125 @@
 ---
 name: task-code-review-security
-description: Security review for a PR, feature, or codebase - OWASP Top 10, injection, broken auth, XSS, CSRF, secrets exposure, and authorization gaps. Use for dedicated security audits, pre-pentest hardening, reviewing auth flows, or assessing input handling and file uploads.
+description: Security review entry point. Detects the project stack and dispatches to the matching stack-specific security review workflow. For unknown stacks, runs a minimal generic OWASP Top 10 protocol.
 metadata:
   category: review
-  tags: [security, owasp, vulnerabilities, auth, multi-stack]
+  tags: [security, owasp, vulnerabilities, auth, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
-# Code Secure Review
+# Security Review (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review-security`, `task-rails-review-security`, `task-react-review-security`). The stack workflow names ecosystem-specific security idioms directly (Rails: Devise / Pundit / strong params; Spring Security: filter chain, method security; FastAPI: dependency-injected auth).
 
-Security-focused review targeting OWASP Top 10 vulnerabilities, authentication/authorization gaps, input validation, data protection, and framework-specific security patterns. Produces findings with attack scenarios and specific remediations.
+For unknown stacks, this skill falls back to a minimal generic OWASP Top 10 review.
 
 ## When to Use
 
-- Security reviews of code changes
-- Pre-deployment security checks
-- Vulnerability assessment
-- Authentication and authorization review
+- Dedicated security audits, pre-pentest hardening
+- Authentication / authorization flow review
+- Input handling, file upload, secrets handling assessment
 
-**Not for:** General PR review (use `task-code-review`), performance issues (use `task-code-review-perf`), observability gaps (use `task-code-review-observability`).
+**Not for:** General code review (use `task-code-review`), performance issues (use `task-code-review-perf`), observability gaps (use `task-code-review-observability`).
 
 ## Invocation
 
-Accepts the same diff-targeting arguments as `task-code-review`:
-
-| Invocation                            | Meaning                                                                                               |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-code-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-code-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-code-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+Accepts the same diff-targeting arguments as `task-code-review`. When invoked as a subagent of `task-code-review`, the parent passes the precondition handle plus the read-once diff/log; this is forwarded to the dispatched stack workflow.
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect`.
 
-### Step 1.5 - Route to Stack-Specific Workflow (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific security review workflow exists for the detected stack, delegate to it. The stack workflow names Devise / JWT / Pundit / Spring Security / FastAPI auth idioms directly instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
-
-| Detected stack       | Delegate to                   |
-| -------------------- | ----------------------------- |
-| Ruby / Rails         | `task-rails-review-security`  |
-| Java / Spring Boot   | `task-spring-review-security` |
-| Python               | `task-python-review-security` |
-| Node.js / TypeScript | `task-node-review-security`   |
-| React                | `task-react-review-security`  |
-| Vue                  | `task-vue-review-security`    |
-| Go / Gin             | `task-go-review-security`     |
-| Rust / Axum          | `task-rust-review-security`   |
-| .NET / ASP.NET Core  | `task-dotnet-review-security` |
+| Detected stack       | Delegate to                    |
+| -------------------- | ------------------------------ |
+| Java / Spring Boot   | `task-spring-review-security`  |
+| Kotlin / Spring Boot | `task-kotlin-review-security`  |
+| Python               | `task-python-review-security`  |
+| Ruby / Rails         | `task-rails-review-security`   |
+| Node.js / TypeScript | `task-node-review-security`    |
+| Go / Gin             | `task-go-review-security`      |
+| Rust / Axum          | `task-rust-review-security`    |
+| .NET / ASP.NET Core  | `task-dotnet-review-security`  |
 | PHP / Laravel        | `task-laravel-review-security` |
-| Kotlin / Spring Boot | `task-kotlin-review-security` |
+| React                | `task-react-review-security`   |
+| Vue                  | `task-vue-review-security`     |
 | Angular              | `task-angular-review-security` |
 
-If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-5 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+If matched, forward arguments and stop. Do not run Step 3.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Generic Fallback (unknown stack only)
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check` if running standalone. Read diff and commit log once.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
-
-### Step 3 - OWASP Quick Check (All Stacks)
+**OWASP Top 10 quick check:**
 
 | Risk                          | Check                                                                                                       |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Broken Access Control         | Auth on all endpoints                                                                                       |
-| Injection                     | Parameterized queries, no string concatenation in SQL                                                       |
-| Cryptographic Failures        | No weak algorithms, proper key management                                                                   |
-| Security Misconfiguration     | Secure headers (CORS, CSP, HSTS)                                                                            |
-| SSRF                          | Validate/allowlist external URLs                                                                            |
-| XSS                           | Output encoding, no raw HTML injection                                                                      |
-| Insecure Design (A04)         | Authorization model defined; no direct object references without access check                               |
-| Vulnerable Components (A06)   | Dependencies checked for known CVEs; no outdated packages with security patches available                   |
-| Data Integrity Failures (A08) | Deserialization inputs validated; CI/CD pipeline integrity                                                  |
-| Logging & Monitoring (A09)    | Security events logged (login failures, access denied, input validation failure); no sensitive data in logs |
+| Broken Access Control         | Auth enforced on all endpoints; no direct object reference without access check                             |
+| Injection                     | Parameterized queries; no SQL string concatenation; no shell-out with user input                            |
+| Cryptographic Failures        | No weak algorithms; proper key management; password hashing via BCrypt/Argon2/scrypt                        |
+| Security Misconfiguration     | Secure headers (CORS, CSP, HSTS); admin/debug endpoints secured or disabled in production                   |
+| SSRF                          | External URLs validated/allowlisted                                                                         |
+| XSS                           | Output encoding; no raw HTML injection                                                                      |
+| Insecure Design               | Authorization model defined; threat model considered                                                        |
+| Vulnerable Components         | Dependencies checked for known CVEs                                                                         |
+| Data Integrity Failures       | Deserialization inputs validated; CI/CD pipeline integrity                                                  |
+| Logging & Monitoring Failures | Security events logged (auth failures, access denied); no sensitive data in logs                            |
 
-### Step 4 - Framework-Specific Security Review
+**Auth and authz:**
 
-After loading stack-detect, apply security checks specific to the detected ecosystem:
-
-**Authentication & Authorization:**
-
-- Verify the framework's auth mechanism is properly configured (security filters, auth middleware, before-action hooks, etc.)
-- Check method/route-level authorization enforcement
-- Verify JWT or session token validation (signature, expiry, audience)
-- Ensure password hashing uses a strong algorithm (BCrypt, Argon2, scrypt)
+- Verify auth mechanism is properly configured (filters, middleware, decorators)
+- Method/route-level authorization enforced, not just spot-checked
+- JWT/session token validation: signature, expiry, audience
 - No credentials in code, config files, or version control
 
-**Input Validation:**
+**Input validation:**
 
-- Verify the framework's standard validation mechanism is applied to all user input
-- No raw SQL concatenation - use parameterized queries or the ORM's query builder
-- Validate and sanitize all user-provided data before use
-- **File path operations**: validate and normalize paths (use `path.resolve()` or equivalent, then check result is within an allowed base directory) - path traversal via `../` sequences in filenames is Critical
-- **File upload handling**: validate file types by magic bytes (not just extension), enforce per-file size limits and total request body size limits in middleware (e.g., multer `fileSize`, Spring `MaxUploadSize`, ASP.NET `RequestSizeLimit`)
-- **Shell/system calls**: never pass user-controlled data to `exec`, `spawn`, or equivalent; prefer API-based alternatives over shelling out
+- All user input validated via the framework's standard mechanism
+- No raw SQL concatenation - parameterized queries or ORM query builders
+- File path operations: validate and normalize paths; check result is within allowed base directory (path traversal via `../` is Critical)
+- File uploads: validate by magic bytes, not just extension; enforce per-file and total request body size limits
+- Shell/system calls: never pass user-controlled data; prefer API alternatives
 
-**Common Vulnerability Patterns:**
+**Common vulnerabilities:**
 
-- CSRF protection is enabled for session-based auth (using the framework's built-in mechanism)
-- CORS is configured restrictively
+- CSRF protection enabled for session-based auth
+- CORS configured restrictively
 - Error responses do not leak stack traces or internal details
-- No command injection via user-controlled input passed to system calls
 - TLS enforced in production
-- Framework-specific admin/debug endpoints are secured or disabled in production
 
-If the detected stack is unfamiliar, apply the OWASP checks from Step 3 and recommend the user consult their framework's security documentation.
+**Cloud storage** (S3, GCS, Azure Blob, equivalent):
 
-**Cloud Storage (when file storage is S3, GCS, Azure Blob, or equivalent):**
+- Bucket access policy is private; no public read unless explicitly required
+- Signed URLs with short expiry (minutes); `Content-Disposition: attachment` on served files
+- Virus/malware scanning pipeline for uploads
 
-- Bucket/container access policy is private; no public read unless explicitly required
-- Signed URLs scoped to specific objects with short expiry (minutes, not hours)
-- Content-Disposition: attachment header set on served files to prevent browser rendering of uploaded HTML/SVG
-- Virus/malware scanning pipeline for uploaded files (or document the accepted risk)
+**Data protection:**
 
-### Step 5 - Data Protection (All Stacks)
-
-- Sensitive data not logged (passwords, tokens, PII)
-- Encryption for sensitive fields at rest
-- Secure headers configured (CORS, CSP, HSTS)
-- Secrets in secret manager (not env vars or code)
+- Sensitive data not logged (passwords, tokens, full PII)
+- Encryption at rest for sensitive fields
+- Secrets in secret manager, not env vars or code
 - No sensitive data in client-side state or URLs
 
-
-### Step 6 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-security`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Rules
-
-- Always validate at system boundaries (user input, external APIs)
-- Never trust client-side data
-- Log security events without sensitive data
-- Follow principle of least privilege
-
-## Self-Check
-
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
-- [ ] Every OWASP Top 10 category checked - not just the ones with obvious findings
-- [ ] Auth enforcement verified on every endpoint, not just spot-checked
-- [ ] No secrets, tokens, or credentials found in code or config files
-- [ ] Data protection checks run: PII logging, encryption at rest, secure headers
-- [ ] Framework-specific checks applied for the detected stack
-- [ ] Every finding states an attack scenario, not just a code observation
-- [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review-security`.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Security Review Summary
 
-**Stack Detected:** [language / framework]
+**Stack Detected:** unknown (generic fallback applied)
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
-
-[2-3 sentence assessment of the overall security posture]
 
 ## Findings
 
@@ -179,14 +128,11 @@ Write the fully assembled review output to the report file before ending the ses
 - **Location:** [file:line]
 - **Issue:** [vulnerability description]
 - **Attack scenario:** [how an attacker exploits this]
-- **Fix:** [specific remediation with code example if applicable]
+- **Fix:** [specific remediation]
 
 ### High
 
-- **Location:** [file:line]
-- **Issue:** [vulnerability description]
-- **Attack scenario:** [how an attacker exploits this]
-- **Fix:** [specific remediation]
+[Same structure]
 
 ### Medium
 
@@ -196,28 +142,29 @@ Write the fully assembled review output to the report file before ending the ses
 
 [Same structure]
 
-_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
-
-## Recommendations
-
-[Prioritized improvements that are not specific findings but would strengthen the overall posture - e.g., "Add rate limiting to all auth endpoints", "Enable HSTS in production config"]
+_Omit severity sections with no findings. If all are omitted, state "No security issues found."_
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
-
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Replace string concatenation with parameterized query in user search"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Audit and upgrade vulnerable transitive deps - spawn dependency-review subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
-
-_Omit this section if no security issues were found._
+1. **[Implement]** [Critical] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
 ```
+
+## Self-Check
+
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, every OWASP Top 10 category checked - not just the ones with obvious findings
+- [ ] Auth enforcement verified on every endpoint, not spot-checked
+- [ ] No secrets, tokens, or credentials found in code or config files
+- [ ] Every finding states an attack scenario, not just a code observation
+- [ ] Review report written to file via `review-report-writer`
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting vulnerabilities without an attack scenario ("input is not validated" vs "attacker can inject SQL via the search parameter")
+- Running both Step 2 dispatch and Step 3 fallback
+- Reporting vulnerabilities without an attack scenario
 - Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
 - Recommending security measures that conflict with the framework's built-in security model
-- Conflating security review with general code quality review - stay focused on vulnerabilities
-- Suggesting overly complex security measures for low-risk surfaces
+- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists

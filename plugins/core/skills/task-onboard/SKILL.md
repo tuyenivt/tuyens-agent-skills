@@ -1,6 +1,6 @@
 ---
 name: task-onboard
-description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack, maps architecture and ecosystem, captures the local bootstrap and contribution workflow, extracts conventions, and surfaces risk hotspots and first-PR safe zones. Use when joining a new project, taking over an unfamiliar codebase, or doing a pre-implementation survey.
+description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack and composes a stack-specific atomic (Spring/Rails/React/etc.) for bootstrap commands, key files, conventions, and risk hotspots. Falls back to a universal map for unknown stacks. Captures architecture, ecosystem, contribution workflow, and first-PR safe zones.
 metadata:
   category: code
   tags: [onboarding, architecture, tech-debt, codebase-analysis, patterns, multi-stack]
@@ -64,7 +64,7 @@ If the user does not state a mode, default to `full` and ask once whether `first
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Detect Stack and Load Stack-Specific Atomic (when available)
 
 Use skill: `stack-detect` to identify:
 
@@ -77,6 +77,25 @@ Use skill: `stack-detect` to identify:
 - Infrastructure-as-code or deployment tooling (if detectable)
 
 Read the repo context file (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` if present), plus `package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs` to fill in gaps.
+
+If the detected stack matches the table below, load the corresponding atomic. The atomic injects stack-specific bootstrap commands, key-file inventory, conventions, and risk hotspots into the universal scaffolding produced by Steps 2-10. If the stack is unknown, skip this load and produce a universal-only report.
+
+| Detected stack       | Load atomic              |
+| -------------------- | ------------------------ |
+| Java / Spring Boot   | `spring-onboard-map`     |
+| Kotlin / Spring Boot | `kotlin-onboard-map`     |
+| Python               | `python-onboard-map`     |
+| Ruby / Rails         | `rails-onboard-map`      |
+| Node.js / TypeScript | `node-onboard-map`       |
+| Go / Gin             | `go-onboard-map`         |
+| Rust / Axum          | `rust-onboard-map`       |
+| .NET / ASP.NET Core  | `dotnet-onboard-map`     |
+| PHP / Laravel        | `laravel-onboard-map`    |
+| React                | `react-onboard-map`      |
+| Vue                  | `vue-onboard-map`        |
+| Angular              | `angular-onboard-map`    |
+
+When an atomic is loaded, its **Stack and Tooling**, **Local Bootstrap**, **Architecture Map**, **Conventions**, **Risk Hotspots**, and **First-PR Safe Zones** signals are merged into the matching sections of the report below. Cite stack-specific findings alongside universal ones - do not produce a separate "stack-specific" section.
 
 Also extract a **one-paragraph system summary** answering: what problem does this system solve, who uses it, and what are its 2-3 main capabilities. Pull from `README.md`, repo context file, top-level package descriptions, or service manifest. If the repo does not state this, mark as `unknown - repo does not declare purpose` rather than inferring from code.
 
@@ -571,6 +590,7 @@ Step-by-step path tying the report's findings together:
 ## Self-Check
 
 - [ ] Focus mode acknowledged (`first-pr`, `architect-survey`, or `full`); section emphasis matches
+- [ ] `stack-detect` ran; stack-specific onboard-map atomic loaded if available; signals merged into Stack, Local Quickstart, Architecture, Patterns, Tech Debt, and First-PR Safe Zones sections
 - [ ] System Summary captured (or marked unknown); cites source
 - [ ] Stack table distinguishes declared (from repo context file) from inferred (from file presence)
 - [ ] Repository structure includes "Where to Look First" and "Safe to Skip Initially"

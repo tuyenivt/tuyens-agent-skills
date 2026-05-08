@@ -38,6 +38,8 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-spring-test-integration`   | Spring test slice strategy (`@DataJpaTest`, `@WebMvcTest`, `@SpringBootTest`), Testcontainers via `@ServiceConnection`, `@MockkBean`, Awaitility, runTest patterns                     |
 | `kotlin-spring-async-processing`   | `@Async`, `ApplicationEvent`, `@TransactionalEventListener`, `@Scheduled` patterns with Virtual Thread / coroutine interop, executor configuration, `@Async` vs coroutines decision    |
 | `kotlin-gradle-build-optimization` | Gradle Kotlin DSL, version catalog, build cache, configuration cache, parallel execution, kotlin-jpa / kotlin-spring / kotlin-allopen plugins, springmockk + mockito-core exclusion    |
+| `kotlin-code-explain`              | Coroutines and structured concurrency, suspend boundaries, null safety, data class equality, sealed hierarchies, AOP-proxy interactions with `final`-by-default - injected into `task-code-explain` |
+| `kotlin-onboard-map`               | Gradle Kotlin DSL layout, `kotlin-spring`/`kotlin-allopen`/`kotlin-jpa` plugin checks, coroutines runtime, application.yml profiles - injected into `task-onboard`                        |
 
 ### Workflow skills (8)
 

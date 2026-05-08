@@ -1,236 +1,117 @@
 ---
 name: task-code-review-perf
-description: Performance review for backend services and frontend applications - N+1 queries, missing indexes, slow endpoints, unnecessary re-renders, bundle size, Core Web Vitals, memory leaks, and concurrency anti-patterns. Use when an endpoint is slow, a page loads slowly, a batch job takes too long, memory grows unbounded, or you want a dedicated perf pass before a release.
+description: Performance review entry point. Detects the project stack and dispatches to the matching stack-specific perf review workflow. For unknown stacks, runs a minimal generic protocol covering DB performance, framework concurrency, caching, and frontend rendering.
 metadata:
   category: review
-  tags: [performance, optimization, profiling, database, multi-stack]
+  tags: [performance, optimization, profiling, database, multi-stack, router]
   type: workflow
 user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
-# Performance Review
+# Performance Review (Router)
 
-## Purpose
+This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review-perf`, `task-rails-review-perf`, `task-react-review-perf`). The stack workflow names framework-specific perf anti-patterns directly (Rails: N+1 with `includes`/`eager_load`; Spring: `@Transactional(readOnly)` and JPA fetch strategies; React: `React.memo`/`useMemo`/list virtualization).
 
-Identify and prioritize performance bottlenecks across backend services, database queries, and frontend rendering. Produces findings ordered by impact with estimated latency/throughput effects and concrete fixes.
+For unknown stacks, this skill falls back to a minimal generic perf review.
 
 ## When to Use
 
-- Performance issue identification
-- Backend optimization (database, caching, concurrency)
-- Frontend optimization (rendering, bundle size, Core Web Vitals)
-- Database query optimization
-- Caching strategy review
+- Performance issue identification (slow endpoint, slow page, batch job too long, memory growth)
+- Pre-release dedicated perf pass
+- Database query, caching, or rendering optimization
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), observability gaps (use `task-code-review-observability`), pre-implementation risk planning (use `task-design-risk-analysis`).
-
-## Depth Levels
-
-| Depth      | When to Use                                             | What Runs                                   |
-| ---------- | ------------------------------------------------------- | ------------------------------------------- |
-| `quick`    | Single endpoint or focused change ("is this query ok?") | DB performance + top findings only          |
-| `standard` | Default - full performance review                       | All steps                                   |
-| `deep`     | Profiling-driven review or known hot path investigation | All steps + capacity and load test guidance |
-
-Default: `standard`. Use `quick` when user targets a specific query or method.
+**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), observability gaps (use `task-code-review-observability`).
 
 ## Invocation
 
-Accepts the same diff-targeting arguments as `task-code-review`:
-
-| Invocation                        | Meaning                                                                                               |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-code-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-code-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-code-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+Accepts the same diff-targeting arguments as `task-code-review`. Depth flags (`quick`, `standard`, `deep`) compose. When invoked as a subagent of `task-code-review`, the parent passes the precondition handle plus the read-once diff/log; this is forwarded to the dispatched stack workflow.
 
 ## Workflow
 
 ### Step 1 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling.
+Use skill: `stack-detect`.
 
-### Step 1.5 - Route to Stack-Specific Workflow (when available)
+### Step 2 - Dispatch to Stack Workflow
 
-If a stack-specific performance review workflow exists for the detected stack, delegate to it. The stack workflow names Rails / Spring / FastAPI / NestJS idioms directly instead of routing through the generic adapter below. Pass the precondition-check handle plus the read-once diff and commit log as the parent so Step 2 of the delegate is skipped.
-
-| Detected stack       | Delegate to               |
-| -------------------- | ------------------------- |
-| Ruby / Rails         | `task-rails-review-perf`  |
-| Java / Spring Boot   | `task-spring-review-perf` |
-| Python               | `task-python-review-perf` |
-| Node.js / TypeScript | `task-node-review-perf`   |
-| React                | `task-react-review-perf`  |
-| Vue                  | `task-vue-review-perf`    |
-| Go / Gin             | `task-go-review-perf`     |
-| Rust / Axum          | `task-rust-review-perf`   |
-| .NET / ASP.NET Core  | `task-dotnet-review-perf` |
+| Detected stack       | Delegate to                |
+| -------------------- | -------------------------- |
+| Java / Spring Boot   | `task-spring-review-perf`  |
+| Kotlin / Spring Boot | `task-kotlin-review-perf`  |
+| Python               | `task-python-review-perf`  |
+| Ruby / Rails         | `task-rails-review-perf`   |
+| Node.js / TypeScript | `task-node-review-perf`    |
+| Go / Gin             | `task-go-review-perf`      |
+| Rust / Axum          | `task-rust-review-perf`    |
+| .NET / ASP.NET Core  | `task-dotnet-review-perf`  |
 | PHP / Laravel        | `task-laravel-review-perf` |
-| Kotlin / Spring Boot | `task-kotlin-review-perf` |
+| React                | `task-react-review-perf`   |
+| Vue                  | `task-vue-review-perf`     |
 | Angular              | `task-angular-review-perf` |
 
-If no stack-specific workflow exists, fall through to the generic flow defined in Steps 2-8 below. The generic flow is a complete fallback - nothing is lost when delegation is unavailable.
+If matched, forward arguments and stop. Do not run Step 3.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Generic Fallback (unknown stack only)
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check` if running standalone (skip if invoked as subagent and parent passed the handle). Read diff and commit log once.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+**Database performance** (Backend / Fullstack):
 
-### Step 3 - Database Performance (Backend and Fullstack)
+- N+1 queries detected; use the ORM's eager-load mechanism to fix
+- Missing indexes on WHERE / ORDER BY columns
+- Over-fetching (select only needed columns); no leading-wildcard LIKE on large tables
+- Pagination present for large datasets; query timeout configured
+- Connection pool sized appropriately
+- Use skill: `backend-db-indexing` for detailed index analysis
 
-Skip this step if `Stack Type: frontend`.
+**Concurrency and threading** (Backend / Fullstack):
 
-- [ ] N+1 queries detected and resolved
-- [ ] Missing indexes on WHERE/ORDER BY columns
-- [ ] Over-fetching (select only needed columns)
-- [ ] No pagination for large datasets
-- [ ] Connection pool sizing appropriate
-- [ ] Query timeout configured
-- [ ] Batch operations for bulk inserts/updates
-- [ ] Full-text search patterns appropriate (no leading-wildcard LIKE on large tables - use full-text index, trigram index, or search engine)
+- Concurrency primitives appropriate for the runtime's threading model
+- No blocking I/O inside cooperative async contexts
+- Thread/worker pool sizing matches recommendations
+- Use skill: `architecture-concurrency`
 
-Use skill: `backend-db-indexing` for detailed index analysis on flagged queries.
+**Caching** (Backend / Fullstack):
 
-### Step 4 - Framework-Specific Backend Review (Backend and Fullstack)
-
-Skip this step if `Stack Type: frontend`.
-
-After loading stack-detect, apply performance checks specific to the detected ecosystem:
-
-**Concurrency and Threading:**
-
-- [ ] Concurrency primitives are appropriate for the runtime's threading model
-- [ ] No blocking operations in lightweight/cooperative concurrency contexts (e.g., sync SQLAlchemy in async Python handlers, blocking I/O in Node.js event loop, sync JDBC in Kotlin coroutines, long-running sync operations in Laravel queue workers)
-- [ ] Thread/worker pool sizing matches the runtime's recommendations
-- [ ] Connection pool sized appropriately for the concurrency model
-
-**Database and ORM:**
-
-- [ ] N+1 queries addressed using the ORM's eager loading mechanism (e.g., `joinedload`/`selectinload` in SQLAlchemy, `includes`/`eager_load` in Rails, `fetch = EAGER` in JPA, `Include()` in EF Core, `with()`/`load()` in Eloquent)
-- [ ] Multi-level N+1 patterns caught (nested loops each issuing queries - 2N+1, 3N+1)
-- [ ] Read-only transactions or query hints used where applicable
-- [ ] The ORM's batch processing API used for large record sets
-
-**Caching:**
-
-- [ ] Cache-aside pattern applied for read-heavy data using the framework's cache abstraction
-- [ ] Cache invalidation strategy defined
-- [ ] TTL configured appropriately
+- Cache-aside applied for read-heavy data via the framework's cache abstraction
+- Invalidation strategy defined; TTL appropriate
+- Cache key design avoids collisions and hot keys
+- Stampede protection considered for high-traffic keys
+- Use skill: `backend-caching`
 
 **Memory and I/O:**
 
-- [ ] Streaming used for large file/payload processing (not loading fully into memory)
-- [ ] Timeouts configured on all external calls
-- [ ] Circuit breakers for external service dependencies
-- [ ] HTTP client instances reused (not created per request)
+- Streaming for large file/payload processing (not buffering in memory)
+- Timeouts on all external calls; circuit breakers for external services
+- HTTP client instances reused, not created per request
 
-**Common Performance Anti-Patterns:**
+**Frontend performance** (Frontend / Fullstack):
 
-- [ ] No hidden expensive queries in framework hooks/callbacks/middleware
-- [ ] Serializers/response shaping not loading unnecessary associations
-- [ ] Background processing used for heavy operations where appropriate
+- Unnecessary re-renders or change-detection cycles
+- Heavy computation in render path (move to memoization or workers)
+- Missing virtualization for long lists (>100 items)
+- Over-fetching, waterfall requests; client-side caching missing
+- Unoptimized images; no lazy loading; no route-level code splitting
+- Use skill: `frontend-performance`
 
-If the detected stack is unfamiliar, apply the database and universal I/O checks and recommend profiling with the ecosystem's standard tools.
+**Stateless design:** no server-side session state; idempotent operations where possible.
 
-### Step 5 - Caching Deep Dive (Backend and Fullstack)
+**Observability:** RED metrics on critical paths; correlation IDs propagated; histograms for latency. Use skill: `ops-observability`.
 
-Skip this step if `Stack Type: frontend`.
-
-Use skill: `backend-caching` for cache strategy patterns (key design, invalidation, local vs distributed).
-Use skill: `architecture-concurrency` to validate thread/worker pool sizing and concurrency primitive choices.
-
-Verify (beyond the basic cache checks in Step 4):
-
-- [ ] Cache key design avoids collisions and hot keys
-- [ ] Local cache vs distributed cache decision made explicitly
-- [ ] Cache stampede protection considered for high-traffic keys
-
-### Step 6 - Frontend Performance (Frontend and Fullstack)
-
-Skip this step if `Stack Type: backend`.
-
-Use skill: `frontend-performance` for Core Web Vitals, bundle analysis, and rendering optimization.
-
-**Rendering (all frontend frameworks):**
-
-- [ ] Unnecessary re-renders or change detection cycles
-- [ ] Heavy computations in render/template path (move to memoization or web workers)
-- [ ] Missing virtualization for long lists (> 100 items)
-
-**Framework-specific rendering checks:**
-
-- **React**: Missing `React.memo`, `useMemo`, `useCallback`; inline objects/functions in JSX causing re-renders; missing Suspense boundaries for code splitting
-- **Vue**: Expensive operations in computed without caching benefit; reactive dependencies triggering unnecessary updates; missing `v-once` or `v-memo` for static content; `v-for` without `key`
-- **Angular**: Components not using `OnPush` change detection; missing `trackBy` on `@for` loops; large eagerly-loaded modules (use `@defer` or lazy routes); excessive Zone.js change detection cycles
-
-**Data Fetching:**
-
-- [ ] Over-fetching (requesting more data than rendered)
-- [ ] No client-side caching (React Query / SWR, Vue Query, Angular HttpClient with cache)
-- [ ] Waterfall requests (parallelize with `Promise.all`, `Suspense`, or framework-specific patterns)
-- [ ] No stale-while-revalidate or prefetching for navigation-critical data
-
-**Assets and Bundle:**
-
-- [ ] Unoptimized images (missing `next/image`, `nuxt-img`, or `NgOptimizedImage`)
-- [ ] No lazy loading for below-the-fold components
-- [ ] Large bundle (check for unintentional full-library imports, missing tree-shaking)
-- [ ] No code splitting at route level
-
-### Step 7 - Stateless Design (All Stacks)
-
-- [ ] No server-side session state (use JWT/tokens)
-- [ ] Externalized session if needed (Redis)
-- [ ] No static mutable state
-- [ ] Idempotent operations where possible
-
-### Step 8 - Observability (All Stacks)
-
-Use skill: `ops-observability` for metrics and monitoring patterns.
-
-Verify:
-
-- [ ] Structured logging in place for affected paths
-- [ ] Correlation ID propagation across service boundaries
-- [ ] Metrics instrumented for custom operations
-- [ ] Health indicators exist for critical dependencies
-
-
-### Step 9 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack Type determined; backend steps skipped for frontend-only, frontend steps skipped for backend-only
-- [ ] Stack-specific delegate invoked when one exists for the detected stack; otherwise generic fallback applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] **Backend/fullstack**: Database performance checked: N+1 queries, missing indexes, pagination, pool sizing
-- [ ] **Backend/fullstack**: Framework-specific concurrency and ORM checks applied for the detected stack
-- [ ] **Backend/fullstack**: Caching strategy assessed: TTL, invalidation, key design
-- [ ] **Frontend/fullstack**: Rendering performance checked with framework-specific patterns (React/Vue/Angular)
-- [ ] **Frontend/fullstack**: Bundle size and code splitting assessed
-- [ ] **Frontend/fullstack**: Data fetching patterns reviewed (caching, waterfalls, over-fetching)
-- [ ] Every finding states estimated impact (latency/throughput/memory/CWV) not just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review-perf`.
 
 ## Output Format
+
+When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+
+When fallback runs (Step 3):
 
 ```markdown
 ## Performance Review Summary
 
-**Stack Detected:** [language / framework]
+**Stack Detected:** unknown (generic fallback applied)
 **Scope:** Backend | Frontend | Fullstack
 **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
@@ -240,7 +121,7 @@ Write the fully assembled review output to the report file before ending the ses
 
 - **Location:** [file:line or component]
 - **Issue:** [what the problem is]
-- **Impact:** [estimated effect - e.g., "N+1 query adds ~200ms per request at 1K rows"]
+- **Impact:** [estimated effect, e.g., "N+1 adds ~200ms per request at 1K rows"]
 - **Fix:** [specific change with code example if applicable]
 
 ### Medium Impact
@@ -253,26 +134,26 @@ Write the fully assembled review output to the report file before ending the ses
 
 _Omit sections with no findings._
 
-## Recommendations
-
-[Structural improvements not tied to a specific finding - e.g., "Add query result caching for the product catalog endpoint", "Enable connection pool monitoring"]
-
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, schema migration, or load-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
-
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `selectinload(User.orders)` to fix N+1 in /users endpoint"]
-2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add composite index on (tenant_id, created_at) - spawn DB migration subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
-
-_Omit this section if there are no actionable findings._
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: schema] - [one-line action]
 ```
+
+## Self-Check
+
+- [ ] `behavioral-principles` loaded before any other step
+- [ ] `stack-detect` ran at Step 1
+- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
+- [ ] If no stack matched, fallback covered DB / concurrency / caching / I/O / frontend (as applicable to Stack Type)
+- [ ] Every finding states estimated impact, not just "this is slow"
+- [ ] Findings ordered by impact; quick wins separated from structural changes
+- [ ] Review report written to file via `review-report-writer`
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting performance issues without estimated impact ("this is slow" vs "adds ~200ms per request")
-- Premature optimization on cold paths - focus on hot paths and measured bottlenecks
-- Recommending caching without addressing invalidation strategy
-- Suggesting async/concurrent solutions without considering the runtime's threading model
-- Conflating performance review with general code review - stay focused on perf
+- Running both Step 2 dispatch and Step 3 fallback
+- Reporting performance issues without estimated impact
+- Premature optimization on cold paths
+- Recommending caching without addressing invalidation
+- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists

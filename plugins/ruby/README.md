@@ -47,6 +47,8 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 | `rails-rake-task-patterns`    | Rake task patterns: thin orchestrators delegating to services, idempotency/resumability, batch processing, dry-run and production confirmation, structured logging, RSpec testing. |
 | `rails-view-templates`        | View-layer patterns for ERB / HAML / Slim: per-engine escaping rules, helper vs presenter vs ViewComponent boundaries, partials and layouts, fragment caching, Turbo Frames/Streams + Stimulus wiring, Slim-specific traps (`==` unescape, attribute Ruby evaluation, indentation scope). |
 | `rails-http-client-patterns`  | External HTTP integration with Faraday + Retriable: client-class wrappers, explicit timeouts, idempotency-aware retries with bounded budgets, domain error taxonomy (transient vs permanent), circuit-breaker posture, and boundary-stubbed tests with WebMock / VCR.                     |
+| `rails-code-explain`          | Request lifecycle (middleware, filters, controllers), AR callbacks/scopes/transactions, ActiveJob, ActionCable, concerns, Zeitwerk autoload - injected into `task-code-explain`. |
+| `rails-onboard-map`           | Gemfile, Rails version, environment configs, AR + migrations, ActiveJob backend, ActionCable wiring, asset pipeline (importmap/jsbundling/Propshaft) - injected into `task-onboard`. |
 
 ## Usage Examples
 

@@ -35,6 +35,8 @@ Claude Code plugin for PHP development.
 | laravel-security-patterns | Mass assignment, SQL injection, Sanctum auth, Gates/Policies, CSRF, rate limiting, secrets      |
 | laravel-queue-patterns    | Jobs, retry strategies, batching, chaining, rate limiting, Redis/database drivers, Horizon      |
 | laravel-testing-patterns  | Pest syntax, model factories, HTTP tests, database assertions, facade mocking, CI coverage      |
+| laravel-code-explain      | Service container, request lifecycle (middleware, form requests, controllers), Eloquent events/scopes, queues, broadcasting - injected into `task-code-explain` |
+| laravel-onboard-map       | composer.json, Laravel version, .env config, Eloquent + migrations, queue backend, frontend stack (Vite/Mix), auth - injected into `task-onboard` |
 
 ## Agents
 

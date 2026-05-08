@@ -322,7 +322,7 @@ Angular (plugin: angular)
 
 **Common decision points:**
 
-- "Implement" entry point - `/task-implement` and `/task-code-debug` are universal entry points that auto-detect your stack and delegate to the stack-specific skill (`/task-<stack>-implement`, `/task-<stack>-debug`). Use them if unsure; use the stack-specific skill directly for faster dispatch.
+- "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
 - "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
