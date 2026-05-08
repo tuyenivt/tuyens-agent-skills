@@ -152,6 +152,16 @@ If Sidekiq needed: Use skill: `rails-sidekiq-patterns`
 
 If a rake task is needed for backfill, recurring maintenance, or ops-triggered work: Use skill: `rails-rake-task-patterns`. Generate the task as a thin shell that delegates to the service.
 
+### STEP 5.5 - EXTERNAL HTTP CLIENTS
+
+Skip this step if the feature does not call external APIs. Otherwise: Use skill: `rails-http-client-patterns`. For each external integration generate a dedicated client class under `app/clients/` with:
+
+- Faraday connection with explicit `open_timeout` / `timeout`, JSON request/response middleware, `:raise_error`, redacted logger
+- Retriable + idempotency-aware retry only on idempotent verbs (or `POST` with an `Idempotency-Key`); cap in-process retries at 2-3 and let Sidekiq handle longer waits
+- Domain error taxonomy (`TransientError` / `PermanentError` / `RateLimitError` / `AuthError` / `NotFoundError` / `ValidationError`) translated from Faraday exceptions and HTTP statuses
+- Services consume the client and rescue **domain** errors (never `Faraday::Error`); transient errors propagate so Sidekiq can retry, permanent errors become `Result.failure`
+- Tests stub at the boundary - WebMock for client unit specs, VCR cassettes for service/request specs that exercise the full integration; VCR config filters tokens and idempotency keys
+
 ### STEP 6 - CONTROLLERS
 
 Strong params, pagination on list endpoints, delegate all business logic to services. Map domain errors to HTTP status codes:
@@ -289,6 +299,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix any failures before prese
 - [ ] Strong params in controller; business logic in service objects; serializers for all API responses
 - [ ] Enum fields use explicit integer mapping; `dependent:` set on all associations
 - [ ] Sidekiq jobs dispatched after DB transaction commit, not inside it
+- [ ] External APIs called through a dedicated client class with explicit timeouts, idempotency-aware retries, a domain error taxonomy, and boundary-stubbed tests (no live HTTP)
 - [ ] Pundit policies with role-based access; `verify_authorized` / `verify_policy_scoped` in controllers
 - [ ] RSpec covers model, service, policy, request, and job specs; factories have traits for each state
 - [ ] `bundle exec rspec` and `bundle exec rubocop` pass
