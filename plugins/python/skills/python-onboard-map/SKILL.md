@@ -48,6 +48,7 @@ user-invocable: false
    - **Django:** `python manage.py runserver`.
    - **Flask:** `flask run`.
 7. Verify: `/docs` (FastAPI), `/admin/` (Django), `/health` for custom health checks.
+8. **Async workers** (if Celery is in scope): `celery -A app.tasks worker -l info` (FastAPI) or `celery -A <project> worker -l info` (Django). Beat / scheduled tasks: `celery -A app.tasks beat -l info`. The web server alone is not the whole runtime - new engineers often see endpoints work but background work silently fail because the worker isn't running locally.
 
 ### Key File Inventory
 
@@ -77,6 +78,12 @@ user-invocable: false
 | `<app>/migrations/`     | Auto-generated migrations                                                |
 | `<app>/admin.py`        | Django admin registration                                                |
 | `requirements/`         | Often split: `base.txt`, `dev.txt`, `prod.txt`                          |
+
+**Package layout convention** - check which the project uses before describing the architecture:
+
+- **Feature-package** (preferred for FastAPI / new code): `app/orders/{router,service,repository,schema}.py` keeps an entire feature in one directory; cross-feature imports go through public service interfaces. Easier to extract a feature later
+- **Layer-package** (older convention, common in tutorial-shaped projects): `app/routers/`, `app/services/`, `app/repositories/`, `app/models/` group by stereotype. Harder to navigate end-to-end flows but matches what newcomers expect from older FastAPI tutorials
+- **Mixed** (frequent in growing codebases): `app/orders/` (feature-package) sits next to a legacy `app/services/order_service.py` (layer-package). When you find both, the project is mid-migration - new code goes in the feature-package side, edits to legacy code stay in place until a planned refactor. Confirm direction with the team before adding files
 
 ### Conventions
 

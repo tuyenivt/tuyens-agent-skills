@@ -64,15 +64,17 @@ Common gotchas:
 - Sub-dependencies are cached per request by default (`use_cache=True`). Pass `use_cache=False` to re-evaluate.
 - Yield dependencies (`yield`-form generators) provide setup + teardown:
   ```python
-  def get_db():
-      db = SessionLocal()
-      try:
-          yield db
-      finally:
-          db.close()
+  async def get_db():
+      async with SessionLocal() as db:
+          try:
+              yield db
+              await db.commit()       # commit on success
+          except Exception:
+              await db.rollback()     # rollback on any unhandled exception
+              raise
   ```
-  Code after `yield` runs after response is sent. Background tasks share the dependency context.
-- `BackgroundTasks` runs **after** the response is sent. Errors in background tasks do not affect the response - log them.
+  Code after `yield` runs after response is sent. The teardown order is **reverse** of resolution - last dependency to enter is first to teardown. This matters when one dependency's teardown reads from another (a metrics dependency reading the DB session has to be resolved _after_ the session and torn down _before_ it).
+- `BackgroundTasks` runs **after** the response is sent. Errors in background tasks do not affect the response - log them. Important: the DB session yielded by `Depends(get_db)` is **already closed** by the time the BackgroundTask runs (yield-style teardown finished when the response was sent), so a BackgroundTask that touches `db` will fail. Pass IDs and open a new session inside the task instead.
 
 ### Django Lifecycle and Signals
 
@@ -88,7 +90,8 @@ Common gotchas:
 - `Session` is a unit-of-work. Objects loaded inside one session become detached after `session.close()`.
 - `DetachedInstanceError` when accessing lazy-loaded relationships after session close - usually a sign the session was scoped wrong.
 - `Session.commit()` flushes pending changes and ends the transaction. Subsequent access to expired objects re-fetches.
-- Async sessions (`AsyncSession`): all DB calls must use `await`; lazy loading is **not supported** on `AsyncSession` - use `selectinload`/`joinedload` eagerly.
+- Async sessions (`AsyncSession`): all DB calls must use `await`; lazy loading is **not supported** on `AsyncSession` - use `selectinload`/`joinedload` eagerly. `async_sessionmaker(expire_on_commit=False)` is the **safe default** - flipping to `True` causes `MissingGreenlet` on attribute access after commit.
+- **Celery dispatch inside an open transaction is a bug.** `await session.flush()` does not make the row visible to other connections; `await session.commit()` does. If the code is `await session.flush(); task.delay(order.id); await session.commit()`, the worker can pick the task up before the commit and see `Order.DoesNotExist`. Dispatch _after_ `await session.commit()`, or use a transactional outbox. (Same fix shape as Django `transaction.on_commit(lambda: task.delay(...))`.)
 
 **Django ORM:**
 
@@ -137,7 +140,8 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 - Async session lazy-load failures
 - N+1 queryset access
 - Pydantic v1 vs v2 differences if version is unclear
-- Background tasks running post-response (errors invisible)
+- Background tasks running post-response (errors invisible; DB session already closed by then)
+- Celery `task.delay()` dispatched before commit → worker reads stale state / `DoesNotExist`
 - Import-time side effects
 
 **Into "Key Invariants":**

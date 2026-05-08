@@ -128,6 +128,39 @@ Use skill: `python-testing-patterns` for the canonical patterns referenced below
 - Retry test: stub the external call to fail twice then succeed; assert task completes; assert `self.request.retries` increments
 - DLT / max-retries test: stub the external call to fail forever; assert task ends in failure state without infinite loop
 
+**Idempotency test pattern (Celery):**
+
+```python
+@pytest.mark.django_db   # or pytest-asyncio + AsyncSession fixture for FastAPI
+def test_process_payment_is_idempotent(payment_factory, mocker):
+    payment = payment_factory(status="pending", amount=Decimal("99.99"))
+    stripe_charge = mocker.patch("app.tasks.payments.stripe_client.charge")
+    stripe_charge.return_value = {"id": "ch_123", "status": "succeeded"}
+
+    # First delivery
+    process_payment.apply(args=[payment.id]).get()
+    # Second delivery (broker re-delivery / retry)
+    process_payment.apply(args=[payment.id]).get()
+
+    payment.refresh_from_db()
+    assert payment.status == "succeeded"
+    assert payment.stripe_charge_id == "ch_123"
+    assert stripe_charge.call_count == 1, "task must dedupe by payment.id - charged twice"
+```
+
+The assertion that matters is **`stripe_charge.call_count == 1`** (or equivalent for the side effect). A test that only asserts final state hides non-idempotent code that happens to converge to the same state when both calls succeed.
+
+**HTTP stub library decision (FastAPI):**
+
+| Test surface                          | Library                | Why                                                          |
+| ------------------------------------- | ---------------------- | ------------------------------------------------------------ |
+| Service unit test calling `httpx`     | `respx`                | Async-native, clean mock-router API, project standard for httpx |
+| Service unit test calling `requests`  | `responses`            | Sync-native; library's mocks are well-known                  |
+| Endpoint test (`ASGITransport`)       | `respx` / `pytest-httpx` | Stubs the outbound HTTP call from the service the endpoint orchestrates |
+| Real-broker / contract test           | WireMock or upstream sandbox | When you need protocol-level fidelity (TLS, redirects, retries) |
+
+Pick one per project and stay consistent - a codebase mixing `respx`, `responses`, and `pytest-httpx` for the same HTTP call surface is a refactor target, not a feature.
+
 **E2E / full-context tests:**
 
 - Reserve for tests that genuinely need the full stack: auth flow end-to-end, transactional commit + Celery dispatch, scheduled-job behavior

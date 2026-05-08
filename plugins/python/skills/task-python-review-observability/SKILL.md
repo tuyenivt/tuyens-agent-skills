@@ -110,6 +110,7 @@ Inspect logging config and any `logger.*` callsite in the diff:
 - [ ] **Parameterized stdlib logging** (`logger.info("processing order=%s", order_id)`) - not f-strings (`logger.info(f"processing order={order_id}")`); structlog binds keyword args directly so this is automatic
 - [ ] **No log spam in hot loops** - iterating large querysets, scheduled jobs running every second, Celery tasks at high TPS must not log per-iteration; sample or use `debug` level
 - [ ] **`exc_info=True`** on `logger.error(...)` calls inside `except` blocks so the traceback is captured; structlog `format_exc_info` processor handles this
+- [ ] **No request / response body logging in production paths**: `logger.info("body=%s", request.body())` / `logger.info("response=%s", response_data)` should not exist on production code paths. Bodies contain PII (emails, names, payment payloads) and inflate log volume by 10-100x. If a single payload trace is genuinely needed for debugging, it goes behind a feature flag, scoped to a request-id allowlist, and at `debug` level - not unconditional `info`. Field-level structured logging (`order_id`, `amount`, `currency`) gives the same diagnostic value without the PII leak
 
 ### Step 5 - OpenTelemetry SDK and Auto-Instrumentation
 
@@ -186,6 +187,7 @@ When invoked at `deep`, evaluate:
 
 - [ ] Critical user journeys have at least one Prometheus / OTel SLI (HTTP request rate filtered to the journey URI, success rate, p95 latency)
 - [ ] DB / cache / message broker / external API health checked via dedicated `/health` or `/readyz` endpoint - readiness reflects "ready to serve" (DB up, caches warmed); liveness reflects "process alive"
+- [ ] **Liveness vs readiness vs dependency-health are three separate concerns** - do not collapse them. _Liveness_ (`/healthz`) returns 200 as long as the process can respond and should never fail because of a downstream blip; _readiness_ (`/readyz`) returns 503 when this pod cannot serve traffic (DB pool exhausted, in-flight migrations, draining for shutdown); _dependency health_ (a separate observability-oriented endpoint, or a metric) reports the up/down status of Stripe / Auth0 / SendGrid for dashboards and runbooks but should **not** drive Kubernetes pod removal - a third-party 30-second outage should not cascade into removing every pod from rotation. When the diff adds a downstream-API ping to `/readyz`, flag it: that turns a transient Stripe blip into a self-inflicted total outage
 - [ ] FastAPI: `@app.get("/healthz")` simple liveness, `@app.get("/readyz")` checks DB / Redis / external dep
 - [ ] Django: `django-health-check` or custom `views.py` health view; Postgres / Redis / Celery / storage backend checks
 - [ ] SLO targets documented in code (decorator / service README) - not a free-floating Confluence page

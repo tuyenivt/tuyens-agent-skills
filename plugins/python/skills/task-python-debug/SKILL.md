@@ -17,6 +17,8 @@ Ask for: full traceback, the source file where the error originates, framework (
 
 **If partial input**: If the user provides only a description without a traceback, search the codebase for the relevant file/function and ask clarifying questions. If only an error message is given (no traceback), check logs and match against the classification table below before asking for more context.
 
+**If "no error, just wrong behavior"** (Celery double-execution, scheduled job not firing, request returns success but DB row missing, request returns 200 but body is wrong shape): there is no traceback to classify. Reframe the question as _which boundary lost the contract_ - dispatcher → broker → worker (Celery), commit → post-commit hook (transaction-scoped side effects), client → server (request schema), serializer → client (response schema). Ask for one diagnostic the user can pull (broker `LRANGE` / RabbitMQ management UI, DB row state, application log around the event timestamp) before guessing.
+
 ## STEP 2 - CLASSIFY
 
 Match the error to one of these categories, then load the relevant atomic skill:
@@ -52,6 +54,8 @@ Match the error to one of these categories, then load the relevant atomic skill:
 - `celery.exceptions.MaxRetriesExceededError` → all retries exhausted, check idempotency and dead letter queue.
 - `kombu.exceptions.OperationalError` → broker connection lost (Redis/RabbitMQ down).
 - Task hangs silently → check `soft_time_limit` / `time_limit` are set.
+- **Task executed twice with the same args, no error, side effect duplicated** (e.g., customer charged twice, email sent twice) → this is **expected delivery behavior** under `acks_late=True`, not an error. Causes: (a) worker crashed / OOM-killed before sending the ack, (b) `visibility_timeout` (Redis broker default 1 hour) elapsed before the task finished and the broker re-delivered, (c) the dispatcher retried `task.delay(...)` because of a transient broker error and produced two messages. **Root fix is idempotency, not "stop the second delivery"** - at-least-once is the contract. Use skill: `python-celery-patterns` (idempotency patterns).
+- **Task dispatched but never executes** → likely dispatched inside a DB transaction that hasn't committed, and the worker picked up the row before it was visible (then the task failed with `DoesNotExist` / not-found and the lookup was logged at `INFO`, not surfaced). Wrap with `transaction.on_commit(lambda: task.delay(...))` (Django) or dispatch after `await session.commit()` (FastAPI / async SQLAlchemy).
 
 ### Import / Environment Errors
 

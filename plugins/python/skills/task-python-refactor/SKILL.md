@@ -224,6 +224,30 @@ The most common Django refactor: a ViewSet `create` triggers a model save whose 
 
 The intermediate "signals no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the signals (step 5).
 
+**Recipe: Move side effects out of an open DB transaction (FastAPI / Django)**
+
+Use this when `task.delay(...)`, mailer sends, webhook calls, or other external side effects are issued _before_ the transaction commits - the worker / recipient may observe state that isn't yet visible to other connections, and an exception after the side effect cannot un-send it.
+
+Pick **one** option per refactor; do not stack them in one step.
+
+**Option A - Post-commit dispatch (FastAPI):**
+
+1. Inside the service function, restructure the order to: write → `await session.commit()` → side effect. The commit is the gate; nothing crosses it that hasn't been confirmed.
+2. If the service is a `Depends(get_db)` consumer that delegates commit to the dependency teardown, **invert the control**: have the service own its own commit (`async with session.begin():`), and dispatch _after_ the `async with` block exits cleanly.
+3. Add a test that asserts side-effect ordering: stub the broker and the DB; cause the commit to fail; assert the side effect was **not** issued.
+
+**Option A - Post-commit dispatch (Django):**
+
+1. Replace `task.delay(payload)` with `transaction.on_commit(lambda: task.delay(payload))`. The hook fires on commit; if the transaction rolls back, the lambda never runs.
+2. Caveat: an exception inside the on_commit lambda is **logged but swallowed** by Django's hook runner - it cannot affect the (already-committed) request. If the side effect must be guaranteed, Option B.
+3. Add a test that asserts the task is _not_ dispatched on rollback (use `transaction.atomic()` block raising an exception).
+
+**Option B - Transactional outbox (both frameworks):**
+
+1. Add an `outbox` table (id, payload, created_at, processed_at). The service writes to the domain table _and_ the outbox in the same transaction; commit is atomic.
+2. A separate worker (Celery beat job, or a dedicated consumer) reads outbox rows, dispatches the side effect, and marks the row processed. This gives you guaranteed delivery and replay-on-failure.
+3. Cost: one extra table, one extra read loop, one more thing to monitor. Use Option A unless a missed side effect is unacceptable (payment confirmation, regulatory event).
+
 **Recipe: Eliminate blocking I/O in async path (FastAPI)**
 
 1. Identify the blocking call (`requests.get`, `time.sleep`, sync DB driver, sync file I/O, CPU-heavy hashing)
