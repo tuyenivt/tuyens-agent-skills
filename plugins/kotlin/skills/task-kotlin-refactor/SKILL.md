@@ -286,6 +286,68 @@ Each refactoring step must be:
 3. Verify with a concurrency test (multiple Virtual Threads racing the critical section)
 4. Audit other `synchronized` blocks in the same module
 
+**Recipe: Move external I/O out of `@Transactional`**
+
+External calls (HTTP, Kafka publish, email, file write) inside an `@Transactional` block hold the DB connection for the round-trip and can leave the system in an inconsistent state if the post-IO commit fails. Two safe options - pick based on whether the original code relied on rollback for the external action.
+
+Option A - No rollback semantics needed (most common; "send email after order is saved"):
+
+1. Extract the external call into a `@TransactionalEventListener(phase = AFTER_COMMIT)` handler, publishing a domain event from the service: `applicationEventPublisher.publishEvent(OrderPlaced(orderId))`
+2. Move the suspend HTTP / blocking I/O out of the `@Transactional` body into the new listener
+3. **Failure mode warning:** if the listener throws, the transaction is already committed - the exception is swallowed/logged by default. State this in the plan and decide whether you need durability (queue, outbox, retry pattern)
+4. Run tests (use `@RecordApplicationEvents` to assert the event was published)
+
+Option B - Rollback semantics required (e.g., "if Stripe charge succeeds but DB save fails, refund"):
+
+1. Replace the in-transaction call with a transactional outbox row: persist an `OutboxEntry(intent, payload)` inside the same transaction
+2. A separate poller / scheduled job reads pending outbox entries and performs the external call with at-least-once semantics + idempotency key
+3. Add a test asserting the outbox is written even if the external call would fail
+4. **Do not** simply move the call to `BEFORE_COMMIT` - it still holds the connection and a listener exception still rolls back the TX, which is rarely the intent
+
+Apply only one option per step; do not mix.
+
+**Recipe: Fix `@Transactional` self-invocation**
+
+`this.transactionalMethod()` from a non-transactional method in the same bean bypasses the Spring proxy. Three options - pick based on cohesion:
+
+Option A - Extract to a separate bean (preferred when the methods belong to different responsibilities):
+
+1. Create a new `@Service` containing the inner transactional method; inject the new service into the original
+2. Replace `this.transactionalMethod()` with `newService.transactionalMethod()`
+3. Run tests; the proxy now applies
+
+Option B - Self-injection (when methods belong to the same responsibility and extraction would be artificial):
+
+1. Add `@Lazy private val self: ThisService` to the constructor (or use `@Resource` field in a `lateinit var`)
+2. Call `self.transactionalMethod()` instead of `this.transactionalMethod()`
+3. **Caveat**: self-injection is a known smell in many style guides; document why it was chosen over extraction
+
+Option C - `TransactionTemplate` (when the inner method is short and used in one place):
+
+1. Inject `TransactionTemplate`; replace `this.transactionalMethod()` with `transactionTemplate.execute { /* body */ }`
+2. Remove `@Transactional` from the inner method (now redundant)
+3. Run tests
+
+**Recipe: Replace `runBlocking` in service code with `suspend` propagation**
+
+`runBlocking` inside `@Service` / `@RestController` methods blocks the dispatcher thread, defeating coroutines and risking deadlock under load.
+
+1. Identify the call chain: which non-suspend caller forces `runBlocking`?
+2. Add `suspend` to the original service method
+3. Walk up the call chain, adding `suspend` to each caller; stop at the controller (Spring 6 supports `suspend` controller methods natively)
+4. If a caller is genuinely blocking (e.g., `@Scheduled`, JPA listener) and cannot be made `suspend`, keep `runBlocking` only at that boundary and add a TODO comment naming the blocker (e.g., `// TODO: @Scheduled does not support suspend; safe here because scheduler thread pool is dedicated`)
+5. Run tests using `runTest` (replace any test-side `runBlocking` with `runTest` to enable virtual time)
+
+**Recipe: Migrate `@MockBean` to `@MockkBean` (Kotlin)**
+
+`@MockBean` uses Mockito; Mockito does not mock final Kotlin classes by default and silently produces non-mock instances when `kotlin-spring` plugin doesn't open the bean. `@MockkBean` (from `com.ninja-squad:springmockk`) handles final classes natively.
+
+1. Add `com.ninja-squad:springmockk:<version>` test dependency in `build.gradle.kts` if not present
+2. For each test class with `@MockBean`, replace with `@MockkBean`; replace `Mockito.given(...).willReturn(...)` / `when_(...).thenReturn(...)` with MockK `every { ... } returns ...` (and `coEvery` for suspend)
+3. Replace `verify(bean).method(...)` with `verify { bean.method(...) }` / `coVerify { bean.suspendMethod(...) }`
+4. Run tests; assertion semantics are equivalent but argument matchers differ (`any()` -> `any()`, `eq(x)` -> `eq(x)`, `argThat { ... }` -> `match { ... }`)
+5. One test class per commit if the suite is slow
+
 **Recipe: Convert `Optional<T>` repository returns to `T?`**
 
 1. Add a thin extension function (`fun <T> Optional<T>.toNullable(): T? = orElse(null)`) at the boundary, OR change Spring Data repository return types to `T?` directly (Spring Data Kotlin extension supports both)

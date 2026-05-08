@@ -156,6 +156,8 @@ Logical correctness, null-safety, coroutine safety, error handling completeness,
 - [ ] **Error handling**: `@RestControllerAdvice` handles common exceptions (`MethodArgumentNotValidException`, `EntityNotFoundException`, `AccessDeniedException`) with consistent `ProblemDetail`; sealed-class result hierarchies converted to exceptions at the controller boundary; no blanket `catch (e: Exception)` swallowing root causes; no `e.printStackTrace()` / `println(e)` in production
 - [ ] **Migration PRs (any change in `db/migration/` or `db/changelog/`)**: see the Migration PRs subsection below
 - [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; JPA batch (`spring.jpa.properties.hibernate.jdbc.batch_size`) sized appropriately
+- [ ] **Idempotency on state-mutating writes**: any new POST/PUT/PATCH endpoint that mutates state checks an `Idempotency-Key` header (or equivalent client-supplied dedup token) and short-circuits replays - charge, payment, account-creation, message-send, ticket-purchase paths must not double-execute on retry. Flag as [Blocker] for money/billing flows, [High] for other state-mutating paths
+- [ ] **Dual-write reliability**: when a single endpoint writes to DB *and* publishes an event / HTTP / message in the same flow, the publish either runs via transactional outbox or `@TransactionalEventListener(phase = AFTER_COMMIT)`. Flag use of `BEFORE_COMMIT` for I/O-side-effects: a listener exception rolls back the originating transaction, which is rarely the intent. `AFTER_COMMIT` listener exceptions are silently swallowed by default - durability requires outbox or explicit retry
 
 **Migration PRs (any change in `src/main/resources/db/migration/` or `db/changelog/`):**
 
@@ -195,7 +197,7 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 - [ ] **Dependency injection style**: constructor injection via primary constructor only - no `@Autowired` field injection; `lateinit` only for test fields and Spring-injected non-constructor cases; no `ApplicationContextAware` for cross-bean lookup
 - [ ] **Configuration discipline**: typed `@ConfigurationProperties` data classes over `@Value("\${...}")` field injection; `application.yml` profiles separated; no hardcoded values that should be config
 - [ ] **Module / package boundaries**: feature-package layout (`com.acme.order.*` contains controller/service/repo for orders) preferred over layer-package layout; cross-feature imports go through public service interfaces
-- [ ] **Multi-tenant isolation**: tenant scoping at the repository / `@Filter` layer, not at the controller layer alone
+- [ ] **Multi-tenant isolation**: tenant scoping at the repository / `@Filter` layer, not at the controller layer alone. Derived-query repositories should bake tenant into the query signature (`findByIdAndTenantId(id, tenantId)`) so a lookup with the wrong tenant cannot return another tenant's row; flag any `findById(id)` followed by an in-controller `if (entity.tenantId != currentTenant)` check - that pattern is racy and easy to miss in new endpoints
 - [ ] **Aspect / interceptor discipline**: AOP aspects used for genuinely cross-cutting concerns - not as a hidden control-flow mechanism that swallows exceptions or rewrites return values
 - [ ] **Single-impl interfaces**: no `OrderService` interface + single `OrderServiceImpl` pair without a test double or AOP requirement (Kotlin doesn't need interface for testability - MockK works on final classes)
 

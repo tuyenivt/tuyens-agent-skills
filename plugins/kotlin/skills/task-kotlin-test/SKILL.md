@@ -91,6 +91,72 @@ Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers pa
 - Response shape: assert key fields, status, headers, and `Content-Type` - not the full body
 - Mock the service layer with `@MockkBean` (springmockk) - **NOT `@MockBean` / `@MockitoBean`** for Kotlin classes
 
+**HTTP stubbing - choose by test type:**
+
+| Test type                                                          | Right tool                                                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Unit test of a service that uses `WebClient` / `RestClient`        | MockK (`mockk<RestClient>()` and stub the call chain via `every { ... } returns ...`); fast and focused |
+| `@WebMvcTest` of a controller whose service depends on an HTTP collaborator | `@MockkBean` the *service*, not the HTTP client; the controller doesn't see the client                  |
+| `@SpringBootTest` covering the real `WebClient`/`RestClient` wiring | WireMock (with `@RegisterExtension` JUnit 5) - asserts retry, timeout, header propagation, error mapping behave correctly against a real HTTP transport |
+
+Do not mix MockK on `WebClient` inside a `@SpringBootTest` - the framework will autowire its own bean and ignore the mock unless you replace it via `@MockkBean`. Do not bring in WireMock for unit tests - you lose the speed advantage and add server lifecycle complexity.
+
+**Idempotency tests:**
+
+State-mutating endpoints with `Idempotency-Key` semantics need a test that issues the *same* key twice and asserts (a) the same response body, (b) the operation ran exactly once (verify a single repository write or external-call invocation):
+
+```kotlin
+@Test
+fun `same idempotency key returns cached result and does not double-execute`() = runTest {
+    val key = "order-001"
+    val req = createOrderRequest()
+
+    val first = mockMvc.post("/api/orders") {
+        header("Idempotency-Key", key); contentType = APPLICATION_JSON; content = json(req)
+    }.andReturn().response.contentAsString
+
+    val second = mockMvc.post("/api/orders") {
+        header("Idempotency-Key", key); contentType = APPLICATION_JSON; content = json(req)
+    }.andReturn().response.contentAsString
+
+    second shouldBe first
+    coVerify(exactly = 1) { paymentClient.charge(any()) }
+}
+```
+
+**`@TransactionalEventListener` phase verification:**
+
+Use `@RecordApplicationEvents` (Boot 3+) plus `ApplicationEvents` to assert the event was published; combine with explicit phase tests. For `AFTER_COMMIT` listeners, the listener must not run when the originating transaction rolls back - test both branches:
+
+```kotlin
+@SpringBootTest
+@RecordApplicationEvents
+class OrderEventTest {
+    @Autowired lateinit var events: ApplicationEvents
+    @MockkBean lateinit var emailSender: EmailSender
+
+    @Test
+    fun `OrderPlaced fires email only after commit`() {
+        orderService.place(req)
+        events.stream(OrderPlacedEvent::class.java).count() shouldBe 1
+        verify(exactly = 1) { emailSender.sendConfirmation(any()) }
+    }
+
+    @Test
+    fun `rolled-back transaction does not fire email`() {
+        shouldThrow<InsufficientStockException> { orderService.place(failingReq) }
+        verify(exactly = 0) { emailSender.sendConfirmation(any()) }
+    }
+}
+```
+
+**Async / coroutine + `@Transactional` rollback trap:**
+
+A test that asserts rollback by checking `repository.findById(id)` may pass even when an `applicationScope.launch { ... }` started inside the transaction wrote to a *different* row in its own (separate) transaction. Two safeguards:
+
+- Assert specifically the rows the system-under-test claims to have rolled back; don't infer rollback from absence of any side effect
+- For background coroutines that should respect the originating transaction (`@Transactional` propagation requirements), use a synchronous test path or block on completion via `Awaitility` before asserting
+
 **Repository slice tests (`@DataJpaTest`):**
 
 - Use Testcontainers PostgreSQL via `@ServiceConnection` (Boot 3.1+) - `@DataJpaTest` defaults to H2, which diverges from PostgreSQL on JSONB, partial indexes, window functions, and `ON CONFLICT`. Pin to the production engine

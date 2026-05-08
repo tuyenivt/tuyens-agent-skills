@@ -61,6 +61,7 @@ Match the error to one of these categories, then load the relevant atomic skill:
 | `KotlinNullPointerException`                  | `!!` used on a null value                              | Replace `!!` with `?.`, `?:`, or `error()`. Use skill: `kotlin-idioms`        |
 | `UninitializedPropertyAccessException`        | `lateinit` property accessed before initialization     | Check DI wiring (constructor injection) and test setup (`@BeforeEach`)        |
 | `IllegalStateException: ... must not be null` | Kotlin non-null parameter received null from Java code | Add `?` to the parameter type or add `@NonNull` annotation at the Java source |
+| `IllegalStateException: Required value was null` | `checkNotNull(x)` / `requireNotNull(x)` / property delegate (`by lazy`, `Delegates.notNull()`) returned null | Trace where the value should have been set; do not "fix" by removing the `checkNotNull` - it is asserting an invariant. If the value is legitimately optional, change the type to `T?` and handle both branches |
 
 #### Kotlin-JPA Plugin Errors
 
@@ -84,8 +85,10 @@ plugins {
 | --------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `Suspension functions can only be called within coroutine body` | Calling `suspend` from non-suspend context | Add `suspend` modifier or use `runBlocking` only at top-level entry points. Use skill: `kotlin-coroutines-spring` |
 | `IllegalStateException: Flow exception transparency`            | Throwing inside `Flow.collect`             | Use `catch` operator before `collect`                                                                             |
-| `JobCancellationException`                                      | Parent scope was cancelled                 | Check scope hierarchy and structured concurrency                                                                  |
+| `JobCancellationException`                                      | Parent scope was cancelled                 | Check scope hierarchy and structured concurrency. Common cause: `GlobalScope.launch` or unstructured `CoroutineScope(...)` in a Spring bean - the parent has no link to the request lifecycle and gets cancelled at shutdown. Use skill: `kotlin-coroutines-spring` |
 | `TimeoutCancellationException` outside `withTimeout`            | Coroutine scope timed out upstream         | Trace the scope chain to find which parent set the timeout                                                        |
+| `LazyInitializationException` from a `suspend` controller / `withContext` block | JPA Session is bound to the request thread; the coroutine resumed on a different dispatcher worker thread, so OSIV cannot reach it | Do not enable OSIV. Fetch the data inside the `@Transactional` boundary (DTO projection or `JOIN FETCH`); never return a managed entity across the suspension. Use skill: `kotlin-spring-jpa-performance` |
+| `IllegalStateException: No transaction is currently active` (R2DBC / coroutine-aware TX) | `@Transactional` was applied to a `suspend` method but the kotlinx-coroutines-reactor bridge is missing, OR a non-suspend bean called the suspend method via `runBlocking` | Add `org.jetbrains.kotlinx:kotlinx-coroutines-reactor`; remove `runBlocking` and propagate `suspend`. Use skill: `kotlin-coroutines-spring` |
 
 #### MockK / Testing Errors
 
@@ -134,7 +137,15 @@ class JacksonConfig {
 
 #### Java/Spring Errors
 
-For standard Spring errors (`DataIntegrityViolationException`, `HttpMessageNotReadableException`, `MethodArgumentNotValidException`, etc.), classify by the Spring root cause first, then look for Kotlin-specific factors (null safety, final classes, coroutines, missing `kotlin-spring`/`kotlin-jpa` plugins).
+For standard Spring errors (`DataIntegrityViolationException`, `HttpMessageNotReadableException`, `MethodArgumentNotValidException`, `LazyInitializationException`, `UnexpectedRollbackException`, etc.), walk the `Caused by:` chain to the deepest root cause first, then look for Kotlin-specific factors:
+
+- **Final-class proxy failures**: `BeanNotOfRequiredTypeException`, `could not initialize proxy` → missing `kotlin("plugin.spring")` (above)
+- **JPA no-arg failures**: `InstantiationException`, `No default constructor` → missing `kotlin("plugin.jpa")` (above)
+- **Null parameter from Java caller**: `IllegalStateException: ... must not be null` → platform-type leak (above)
+- **Coroutine boundary issues**: LIE inside `suspend` controller, `@Transactional` on suspend method without the reactor bridge → see Coroutine Errors above
+- **Self-invocation defeating `@Transactional` / `@Async` / `@Cacheable`**: in Kotlin this most often happens via `companion object` calls or extension-function dispatch. Move the call to a different bean or self-inject. Use skill: `kotlin-spring-transaction`
+
+If the root cause is plain Spring with no Kotlin-specific factor, fall through to the standard Spring exception mapping (use skill: `kotlin-spring-exception-handling` for the response side).
 
 ### STEP 4 - LOCATE
 

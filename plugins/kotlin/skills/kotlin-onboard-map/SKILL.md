@@ -45,7 +45,7 @@ user-invocable: false
 3. Profiles: `application.yml` `spring.profiles.active`, or `SPRING_PROFILES_ACTIVE` env var.
 4. DB migration: Flyway (`src/main/resources/db/migration/`) or Liquibase.
 5. Run: `./gradlew bootRun` (Spring Boot Gradle plugin).
-6. Verify: actuator endpoints (default `/actuator`); test command `./gradlew test`.
+6. Verify: actuator endpoints (default `/actuator`); test command `./gradlew test`. If `springdoc-openapi-starter-webmvc-ui` (or `-webflux-ui`) is on the classpath, `/swagger-ui.html` is the fastest interactive entry point for surveying the API surface.
 
 ### Key File Inventory
 
@@ -60,6 +60,11 @@ user-invocable: false
 | `src/main/kotlin/.../repository/`               | Spring Data interfaces or custom repos                                                    |
 | `src/main/kotlin/.../domain/`                   | Entities, data classes, value objects                                                     |
 | `src/test/kotlin/...`                           | Tests; use kotest or JUnit 5                                                              |
+
+**Package layout convention** - check which the project uses before describing the architecture:
+
+- **Feature-package** (preferred for Boot 3+): `com.acme.order` contains `OrderController`, `OrderService`, `OrderRepository`, `Order` together; cross-feature imports go through public service interfaces. Easier to extract a feature later
+- **Layer-package** (older convention): `com.acme.controller`, `com.acme.service`, `com.acme.repository` group by stereotype. Harder to navigate end-to-end flows but matches what newcomers expect from older Spring tutorials
 
 ### Conventions
 
@@ -80,6 +85,8 @@ user-invocable: false
 - **Mixing blocking and suspend**: blocking I/O in suspend function freezes the dispatcher. `withContext(Dispatchers.IO)` for unavoidable blocking.
 - **`runBlocking` in production code** (not tests/main): blocks a thread, defeats coroutine benefits.
 - **Platform types from Java interop**: `Type!` bypasses null checking - frequent NPE source.
+- **OSIV (Open-Session-In-View)**: Spring Boot defaults `spring.jpa.open-in-view=true` and prints a warning at startup. With OSIV on, controllers can lazy-load associations after the service returns - convenient but causes mid-Jackson `LazyInitializationException`s under load and holds DB connections through the response phase. Confirm whether the project has explicitly disabled it; if not, flag this as a hotspot for the new engineer (don't write code that relies on OSIV - fetch eagerly via `@EntityGraph` or projection DTOs).
+- **Missing `kotlinx-coroutines-reactor` bridge with `@Transactional` on `suspend`**: Spring 6+ requires the reactor bridge to bind transaction context across suspension points. Without it, `@Transactional` on a suspend method silently fails to manage a transaction. Check `build.gradle.kts` for `org.jetbrains.kotlinx:kotlinx-coroutines-reactor` whenever the project mixes coroutines and JPA/JDBC.
 
 ### First-PR Safe Zones
 

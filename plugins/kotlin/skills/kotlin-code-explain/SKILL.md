@@ -49,7 +49,15 @@ Kotlin classes and methods are `final` by default. Spring CGLIB proxies require 
 - With `kotlin-spring` plugin: classes annotated with Spring stereotypes are automatically `open`. Verify the plugin is in `build.gradle.kts` (`plugins { kotlin("plugin.spring") }`).
 - `data class` cannot be opened - cannot be a Spring bean if you need proxying. Use a regular class or `@Service` on a wrapper.
 
-Self-invocation gotcha is the same as Java/Spring - calling `this.method()` bypasses the proxy regardless.
+Self-invocation gotcha is the same as Java/Spring - calling `this.method()` bypasses the proxy regardless. In Kotlin this also surfaces when callers use `companion object` methods or extension-function dispatch.
+
+**`@Transactional` on `suspend` methods**: requires `kotlinx-coroutines-reactor` on the classpath so Spring 6 can bind the transaction context across suspension points. Even when wired correctly, blocking JPA inside a suspend method on `Dispatchers.IO` does not magically become non-blocking - the transaction is held while the coroutine is suspended, so any `withContext` switch must stay inside the same transactional thread or the TX is lost. Prefer non-suspend `@Transactional` services and call them from a `suspend` orchestrator that handles dispatcher switching.
+
+**External I/O inside `@Transactional`**: a suspend HTTP call (`webClient.awaitBody()`, RestClient, etc.) inside an `@Transactional` block holds the database connection for the entire HTTP round-trip. Flag any external I/O between the `@Transactional` boundary and the commit - move it before the boundary, or publish a `@TransactionalEventListener(phase = AFTER_COMMIT)` event.
+
+**`internal` visibility**: Kotlin `internal` members get name-mangled (`foo$module_name`). They still work for Spring constructor injection, but reflection-based wiring (some `@MockkBean` setups, AOP advice that targets specific method names) can fail to match.
+
+**`object` is not a Spring bean**: `object Foo { ... }` is a Kotlin singleton compiled to a static holder. It is *not* registered with Spring's ApplicationContext, so `@Autowired` does not inject it and `@Transactional` / `@Async` annotations on its methods are ignored. Use `@Component class Foo` (or `@Configuration` + `@Bean` factory) when you need DI / proxying.
 
 ### Null Safety and Platform Types
 
@@ -65,6 +73,24 @@ Self-invocation gotcha is the same as Java/Spring - calling `this.method()` bypa
 - Equality is based on **constructor properties only**. Properties declared in the body are ignored by `equals`/`hashCode`.
 - `copy()` returns a new instance with selected properties overridden. Mutating the original after copy does not affect the copy.
 - Used as Set/Map keys: ensure the underlying values are themselves stable (no mutable collections in the constructor).
+
+### Inline Value Classes (`@JvmInline value class`)
+
+- Compiled to the underlying type at the bytecode level (zero-allocation wrapper) - good for type-safe IDs (`UserId(value: Long)`) without runtime overhead.
+- **Equality is identity-of-value, not data-class style** - two `UserId(1L)` instances are equal because they erase to the same `Long`.
+- **Jackson does not unwrap them by default** - deserialization throws `InvalidDefinitionException` unless `KotlinModule` is configured with `KotlinFeature.SingletonSupport`/`KotlinFeature.UseJavaDurationConversion` or a custom `@JsonCreator` is added.
+- **Boxing is forced** when an inline class is used as a generic parameter (`List<UserId>`), as a nullable (`UserId?`), or assigned to `Any` - so the perf advantage disappears at API boundaries.
+- Cannot have init blocks with side effects beyond `require`/`check` - the class has no real instance.
+
+### Spring Async / Transactional Events
+
+- `@TransactionalEventListener` phases dictate when the listener runs relative to the transaction:
+  - `BEFORE_COMMIT` (default): inside the same transaction; listener exception rolls everything back.
+  - `AFTER_COMMIT` (most common): runs only if the transaction committed; if listener throws, the transaction is already committed, the exception is swallowed (logged) by default - use a queue/outbox if you need durability.
+  - `AFTER_ROLLBACK`: compensating actions; runs after rollback.
+  - `AFTER_COMPLETION`: always runs; cannot tell which way it went without inspecting `TransactionPhase`.
+- Listener method must not start a new `@Transactional` without `propagation = REQUIRES_NEW` - the original transaction is already complete in `AFTER_COMMIT`/`AFTER_ROLLBACK` phases.
+- `@Async` listener changes the threading model: the listener runs on the executor pool; SecurityContext / MDC do not propagate without explicit setup.
 
 ### Sealed Hierarchies and Pattern Matching
 
@@ -116,6 +142,11 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 - `Flow` collector context vs upstream context
 - `data class` equality based only on constructor properties
 - `lateinit` and `by lazy` initialization timing
+- `@Transactional` on a `suspend` function (reactor bridge requirement; TX held across suspension)
+- External I/O inside `@Transactional` (DB connection held for the round-trip)
+- `@TransactionalEventListener` phase semantics (especially `AFTER_COMMIT` swallowing listener exceptions)
+- Inline value classes at API boundaries (Jackson unwrap config; forced boxing on generics/nullable)
+- `object` declarations holding logic that needs Spring DI or proxying
 
 **Into "Key Invariants":**
 
@@ -129,6 +160,9 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 - Changing a `data class` constructor breaks `equals`/`hashCode` semantics for any collection using it as key
 - Adding a sealed subclass without updating `when` expressions: compile errors at every expression call site (good); statement call sites silently skip (bad)
 - Removing `suspend` modifier: callers must adapt; cancellation semantics change
+- Moving an external HTTP/messaging call out of an `@Transactional` block: shortens DB connection hold time; if it was relied upon for atomicity, replace with outbox or `AFTER_COMMIT` event
+- Switching a `@TransactionalEventListener` from `BEFORE_COMMIT` to `AFTER_COMMIT`: listener failures no longer roll back the originating transaction (silently swallowed unless explicitly handled)
+- Replacing a `data class` with an `@JvmInline value class`: breaks Jackson deserialization at API boundaries unless `KotlinModule` is configured; equality semantics change subtly (no `componentN()` destructuring)
 
 ## Avoid
 

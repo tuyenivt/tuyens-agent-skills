@@ -91,6 +91,7 @@ Inspect `logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*
 - [ ] **No log spam in hot loops** - `forEach` over large collections, scheduled jobs, Kafka listeners at high TPS must not log per-iteration; use `log.atDebug()` or sampled logging
 - [ ] **Async appenders** (`AsyncAppender` or Logstash async TCP) configured for high-volume paths
 - [ ] **No `println` / `System.out.println` / `dump()`** in production code - flag and replace with SLF4J logger
+- [ ] **No HTTP request/response body logging in production paths**: full body logs (e.g., `log.info("body={}", request)` on `@RequestBody`, or a `CommonsRequestLoggingFilter` with `setIncludePayload(true)` running in prod) leak PII and explode log volume. Body logging is acceptable only behind `debug` + a per-environment flag, and must be guarded with masking. Flag any unconditional body log as [High]
 
 ### Step 6 - Spring Boot Actuator
 
@@ -111,7 +112,12 @@ Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 - [ ] **`micrometer-registry-prometheus`** on the classpath; `/actuator/prometheus` exposed
 - [ ] **Spring auto-instrumentation enabled**: HTTP server timer (`http.server.requests`), JDBC (`hikaricp.*`), JPA (`hibernate.*`), JVM (`jvm.memory.*`, `jvm.gc.*`), Tomcat (`tomcat.*`)
 - [ ] **Custom business metrics** named under a consistent namespace (`acme.orders.placed`); units explicit
-- [ ] **Tag cardinality bounded**: tags do not include unbounded values (`userId`, `orderId`, `requestId`) - causes metric-cardinality blow-up
+- [ ] **Tag cardinality bounded**: tags must not be drawn from any of the following categories - they cause metric-cardinality blow-up and can crash Prometheus / billing-blow-up SaaS backends:
+  - **High-cardinality IDs**: `userId`, `orderId`, `requestId`, `traceId`, session IDs, UUIDs of any kind
+  - **Numeric measurements**: raw amounts, counts, sizes, durations - these are *values*, use them as the metric value or as histogram buckets, never as tag values
+  - **Free-text**: error messages, exception messages (`e.message`), user-supplied strings, URL query strings
+  - Acceptable tag values: bounded enumerations (status codes grouped to families like `2xx`/`4xx`, error class names without messages, region names, tenant tier classifications, feature flags)
+- [ ] **`http.server.requests` URI templating preserved**: the metric must record `/users/{id}` not `/users/123`. This is automatic when the controller uses `@PathVariable`, but is silently broken by custom `HandlerInterceptor` / `WebMvcConfigurer` that overrides `URI` attributes, by `WebFilter`s that rewrite the request, or by `MeterFilter` rules that dimension on raw URI. Verify a request to `/users/123` shows up as `uri="/users/{id}"` in `/actuator/prometheus`
 - [ ] **`@Timed` on hot paths**: service methods on critical user journeys; `histogram = true` only when latency-distribution observability is required
 - [ ] **`MeterFilter`** trims unused metrics or denies high-cardinality dimensions
 - [ ] **No metric registration in hot loop**: cache `Counter.builder(...).register(...)` results in a `companion object val` or constructor-initialized field

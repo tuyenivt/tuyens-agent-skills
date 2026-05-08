@@ -90,6 +90,9 @@ Inspect every changed `@Entity`, `@Repository`, `@Service`, and `@RestController
 - [ ] **`LazyInitializationException` risk**: any access to a lazy association outside the original `@Transactional` scope (in a controller after the service returns the entity, or inside a Jackson serializer). Fix: fetch join, projection DTO, keep `OpenEntityManagerInViewInterceptor` disabled (the default in Boot 3+)
 - [ ] **Missing indexes for filter/sort columns**: any field used in `@Query` `where` / `order by` / `group by` clauses without a backing index in the migration
 - [ ] **`findAll()` without pagination**: any read of an unbounded collection - require `Pageable`
+- [ ] **`Page<T>` vs `Slice<T>` vs `List<T>` cost**: `Page<T>` runs an extra `COUNT(*)` query per call - expensive on large filtered tables. Use `Slice<T>` when the UI only needs "has-more" semantics (no total count); use `List<T>` with explicit `LIMIT` for short lists. Flag any new `Page<T>` method backing an infinite-scroll endpoint
+- [ ] **Streaming for large result sets**: repository methods returning `List<T>` over potentially unbounded queries should return `Stream<T>` (annotated `@QueryHints(@QueryHint(name = HINT_FETCH_SIZE, value = "100"))`) consumed inside a `@Transactional` block, or `Flow<T>` from `CoroutineCrudRepository`. Loading 100k rows into a `List` blows heap and stalls the request thread
+- [ ] **`@Transactional(timeout = N)`** on write-heavy paths and any path that calls long external work: the default is no timeout - a stuck query holds a connection forever. Set explicit timeout (typically 5-30s) on user-facing transactional service methods; flag any new `@Transactional` without a timeout on a path that touches > 1 entity
 - [ ] **Collection fetch join with `Pageable`**: a JPQL query with `LEFT JOIN FETCH e.collection` *and* a `Pageable` parameter triggers Hibernate's `HHH90003004` warning and paginates the entire collection in application memory. Same trap with `@EntityGraph(attributePaths = ["collection"])` over a `Pageable` derived query. Fix: page the parent IDs first then re-query with `WHERE id IN (:ids)` + fetch join, or replace fetch join with `@BatchSize`
 - [ ] **`existsBy*` vs `findBy*().isPresent()` / `findBy*() != null`**: existence checks must use derived `existsBy*` (compiles to `select 1 ... limit 1`)
 - [ ] **Batch operations**: `saveAll`, `deleteAllInBatch` over loops; `spring.jpa.properties.hibernate.jdbc.batch_size` set (typically 25-50); `order_inserts` / `order_updates` enabled when batching
@@ -145,6 +148,8 @@ _Skipped at `quick` depth unless the diff touches `@Cacheable` / cache config._
 - [ ] HTTP caching (`ResponseEntity` with `Cache-Control`, `ETag`) on read-heavy GET endpoints
 - [ ] No DTO mapper iterating lazy associations not declared in the entity graph
 - [ ] Response compression enabled (`server.compression.enabled=true`) for JSON responses > 2KB
+- [ ] **Response payload right-sizing**: response DTOs do not include fields the client does not need; a `data class` with 25 fields where the UI shows 4 wastes both DB read time and network bandwidth - use a JPA projection interface or a slimmer response `data class`
+- [ ] **Negative caching invalidation**: when caching not-found / empty results (`@Cacheable(unless = "#result == null")` is *not* this - it skips caching, the issue is the opposite: `@Cacheable` *with* null caching), any subsequent create of that key must `@CacheEvict` or the cache returns stale "not found". Flag `@Cacheable` paths that cache absence without a paired write-side eviction
 
 ### Step 9 - Messaging and Background Work
 
