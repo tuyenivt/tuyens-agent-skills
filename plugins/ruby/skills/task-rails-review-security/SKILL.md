@@ -32,6 +32,32 @@ This workflow is the stack-specific delegate of `task-code-review-security` for 
 - General code review (use `task-code-review`)
 - Production incident triage (use `/task-oncall-start`)
 
+**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+
+## Severity Rubric
+
+Use these definitions to keep severity consistent across runs - do not invent your own scale.
+
+| Severity     | Definition                                                                                                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path (`Order.where("status = '#{params[:status]}'")`, `find_by_sql("... #{user_input}")`), `system("... #{user_input}")` / `` `... #{user_input}` ``, secrets / `master.key` / `Rails.application.credentials` content / `secret_key_base` committed in source, `Marshal.load` on untrusted input, `YAML.load` (not `YAML.safe_load`) on untrusted input, `ERB.new(user_input).result` on user-controlled template, `<%== user_input %>` (ERB) / `!= user_input` (HAML) / `== user_input` (Slim) on attacker-controlled value reaching a privileged surface, `params.permit!` on a User / Role model where role-elevation field is exposed via `Model.create(params[:user])`. Must fix before deploy; blocks merge. |
+| **High**     | Authenticated privilege escalation, IDOR with sensitive data via `Model.find(params[:id])` without `policy_scope` / association-scoped lookup, SSRF reaching cloud metadata or internal services, mass assignment via `params.permit!` granting role/admin, missing `authorize @resource` / Pundit policy on user-data action, missing `verify_authorized` callback, path traversal via `send_file(params[:path])` without `File.expand_path` + base check, missing CSRF token on cookie-auth POST, webhook signature compared via `==` (timing attack), unauthorized `turbo_stream_from "scope_#{record.id}"` subscription leaking broadcasts, `redirect_to params[:return_to]` without `allow_other_host: false` / allowlist. Must fix before merge. |
+| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS allowlist when reverse proxy enforces origin), missing strong-params allowlist on a non-critical endpoint, weak `Rack::Attack` rate limiting on a non-critical endpoint, debug exposure on a non-prod profile (Sidekiq Web / `letter_opener` reachable), `bundle audit` advisory not yet exploited, missing `config.filter_parameters` entry for a sensitive key. Should fix this PR or the next one. |
+| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold (`bundle audit` info-level), hardening recommendations without a concrete current attack scenario.                                                                          |
+
+**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+
+- Missing `authorize @user` on a user-data action (High, alone) + mass assignment via `User.update(params.permit!)` with privileged fields (`role`, `admin`) reachable (High, alone) on the *same action* = **Critical** unauthenticated admin override (anyone authenticated can `PATCH /users/:id` with `{"role": "admin"}`).
+- Missing `before_action :authenticate_user!` on a controller action (High, alone) + admin-scope action like `User.find(params[:id]).update(params[:user])` (High, alone) + missing Pundit policy (High, alone) on the *same route* = **Critical** unauthenticated admin takeover (anyone on the internet can promote any user to admin).
+- Missing ownership check (High, alone) + AR model returned via `render json: @user` exposing `password_digest` + `remember_token` (Medium, alone) on the *same action* = **Critical** account takeover.
+- Missing `before_action :authenticate_user!` on `GET /orders/:id` (High, alone) + `render json: @order` returning the AR record directly (High, alone) on the *same action* = **Critical** unauthenticated entity exposure.
+- SSRF via `Net::HTTP.get(URI(params[:url]))` (High, alone) + reachable from an unauthenticated action (High, alone) = **Critical** unauth SSRF.
+- `Marshal.load(webhook_body)` (Critical, alone) + signature verification via `==` instead of `ActiveSupport::SecurityUtils.secure_compare` (High, alone) on a webhook endpoint = **Critical** RCE-via-forged-signature (the `==` is timing-attackable, but with `Marshal.load` the success path itself is the gadget chain trigger - severity stays Critical, but cite both).
+
+The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+
+**Same-action co-location.** Combining findings requires confirming both land on the *same code path* (same controller action, or same route group with shared `before_action`). When the diff doesn't make co-location obvious - e.g., the IDOR is in `OrdersController#show` but the AR-leak appears on a different action in the same controller - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same action; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -186,6 +212,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] **View-layer escaping audit** (Step 6.5) run against every changed `.erb` / `.haml` / `.slim` file - skipped only when the app is API-only; engine-specific unescape operators (`<%==`, `!=`, `==`) verified against trust boundaries; `rails-view-templates` consulted for engine rules
 - [ ] File upload, path traversal, and shell-call checks run if applicable
 - [ ] CSRF, CORS, Rack::Attack, open redirect, and admin-endpoint gating verified
+- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented); Combined-finding rule applied where two findings compose on the same action
 - [ ] Every finding includes an attack scenario - not just "input not validated"
 - [ ] If no findings: explicitly state "No issues found" per category - do not omit sections silently
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
