@@ -37,6 +37,8 @@ Ask for: full stack trace or error output, the source file where the error origi
 
 If the user provides only a partial error message or vague description ("it doesn't work"), ask clarifying questions: which command/endpoint was run, what the expected vs actual behavior is, whether the error is reproducible, and how frequently it occurs.
 
+**If "no error, just wrong behavior":** When the user reports "the value I sent in the body is null in the DB" or "the field I added to the request gets ignored" with no exception, reframe as a boundary-loss question: at which layer does the value disappear? Trace the path: `req.body` -> `ValidationPipe({ whitelist: true })` (NestJS silently strips unknown fields when `forbidNonWhitelisted: false`) / Zod `.strict()` vs default-strip behavior -> DTO field declaration (is the field even on the DTO?) -> `class-transformer` `@Transform` / `@Type` mutation -> service whitelist (`prisma.x.create({ data: { onlyTheseFields } })` vs `data: dto`) -> Prisma `@map`/`@@map` column-name mismatch / TypeORM `@Column({ name })` -> DB column. Same shape for BullMQ jobs: dispatch site -> `afterCommit` hook -> Redis serialization (class instances lose methods after JSON round-trip) -> processor `handle()` -> side effect. The bug is almost always at one of these boundaries, not in the controller body. Identify which boundary lost the value before reading any code.
+
 ### STEP 2 - CLASSIFY
 
 Match the error to one of these categories, then load the relevant atomic skill:

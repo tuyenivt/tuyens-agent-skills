@@ -214,6 +214,7 @@ When starting from low test coverage, prioritize by Node-specific risk:
 - [ ] Jest parallelism (`--maxWorkers`) tuned; per-test isolation for stateful tests (Testcontainers integration tests run with `--runInBand` or sharded)
 - [ ] Strict TypeScript in tests: `tsconfig.test.json` extends `tsconfig.json` with `strict: true`; no `as any` shortcuts
 - [ ] HTTP stubs via MSW (`msw/node` `setupServer`); never real network calls; `server.listen({ onUnhandledRequest: 'error' })` to fail loud on missed stubs
+- [ ] **SDK clients that bypass MSW**: the Stripe SDK (`stripe-node`), AWS SDK v3 (`@aws-sdk/client-*`), `@google-cloud/*` clients, and similar use their own HTTP transport (often configurable per-client) that may or may not flow through Node's global `fetch` / `http` module that MSW intercepts. Confirm by running one stubbed test and asserting the MSW handler fires; if it does not, mock the SDK client directly via `jest.mock('@aws-sdk/client-s3')` or pass a stub `httpHandler` / `requestHandler` per the SDK's docs. Silent passthrough is how production credentials leak into test runs
 - [ ] `--detectOpenHandles` reviewed; long-running fixtures flagged
 - [ ] Coverage tool (Istanbul via Jest `--coverage`) wired to CI with per-package thresholds; coverage exclusions documented
 - [ ] Bun-specific: if project uses `bun test`, mirror config in `bunfig.toml`; else stay on Jest. Don't mix runners in one project.

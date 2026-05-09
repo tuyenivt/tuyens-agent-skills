@@ -77,6 +77,14 @@ user-invocable: false
 | `src/middleware/`         | Custom middleware                                                       |
 | `src/services/` or `src/controllers/` | Business logic separation (varies by team)                  |
 
+### Package Layout Convention
+
+Check which the project uses before describing the architecture:
+
+- **Feature-package** (NestJS default via `nest g resource`, common in modern Node projects): `src/orders/{orders.controller.ts, orders.service.ts, orders.module.ts, dto/, entities/}` keeps an entire feature in one directory; cross-feature imports go through the feature's `*.module.ts` exports. Easier to extract a feature later. Matches NestJS CLI defaults
+- **Layer-package** (Express convention, dominant in tutorials and many older codebases): `src/controllers/`, `src/services/`, `src/repositories/`, `src/routes/`, `src/middleware/` group files by stereotype. Every Order-related concern lives in a different directory. Common when starting from `express-generator` or layer-first tutorials
+- **Mixed** (common in growing Express codebases migrating to feature-package, or NestJS codebases with leftover `src/common/` / `src/shared/` utility piles): `src/orders/` (feature-package) sits next to a legacy `src/services/orderService.ts` (layer-package). When you find both, the project is mid-migration - new code goes in the feature-package side, edits to legacy code stay in place until a planned refactor. Confirm direction with the team before adding files; `nest g resource <name>` will default to feature-package locations and may need manual relocation if the team has settled on a custom layout
+
 ### Conventions
 
 - **TypeScript first** in modern Node projects; check `tsconfig.json` for strict mode.

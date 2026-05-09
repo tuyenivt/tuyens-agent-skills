@@ -190,9 +190,11 @@ Inspect SDK config:
 When invoked at `deep`, evaluate:
 
 - [ ] Critical user journeys have at least one Prometheus / OTel SLI (HTTP request rate filtered to the journey URI, success rate, p95 latency)
-- [ ] DB / cache / message broker / external API health checked via dedicated `/health` or `/ready` endpoint - readiness reflects "ready to serve" (DB up, caches warmed); liveness reflects "process alive"
-- [ ] NestJS: `@nestjs/terminus` `HealthModule` with checks for Prisma / TypeORM / Redis / external dep
-- [ ] Express: custom health middleware checking Postgres / Redis / BullMQ queue connectivity
+- [ ] **Liveness `/health` (or `/healthz`)**: returns 200 unconditionally as long as the process is responsive - no DB ping, no Redis ping, no external-API check. The Kubernetes liveness probe restarts the pod on failure; if a flaky DB connection 500s `/health`, every replica gets restarted simultaneously and the outage gets worse
+- [ ] **Readiness `/ready` (or `/readyz`)**: returns 200 only when **this pod** can serve traffic - DB pool initialized, BullMQ worker connected to Redis, in-process caches warmed. Must NOT include third-party API ping - if Stripe is down, every pod fails readiness, the load balancer pulls every replica out of rotation, and you take a self-inflicted outage on a dependency outage
+- [ ] **Dependency-health endpoint** (separate, e.g., `/internal/deps`): the place where Stripe / Twilio / S3 reachability lives - this is an observability signal (alert routing, dashboards), NOT a Kubernetes pod-removal signal. Confirm it is NOT wired into the readiness probe
+- [ ] NestJS: `@nestjs/terminus` `HealthModule` exposes liveness via `HealthCheckService.check([])` (no checks) and readiness via `check([prisma.pingCheck, redis.pingCheck])` (own-pod deps only); third-party API checks live on a separate route, not the readiness route
+- [ ] Express: custom health middleware - `app.get('/health', (req, res) => res.json({ status: 'ok' }))` for liveness; `/ready` checks Postgres pool + Redis + BullMQ queue connectivity; third-party reachability on `/internal/deps`
 - [ ] SLO targets documented in code (decorator / module README) - not a free-floating Confluence page
 - [ ] Synthetic probes (k6 / Artillery) call `/ready` not just `/health` - readiness reflects ability to serve
 

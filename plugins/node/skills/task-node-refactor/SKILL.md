@@ -207,6 +207,30 @@ Each refactoring step must be:
 4. Remove the original logic from the route handler
 5. Add a route-level test asserting service failure surfaces via global error middleware
 
+**Recipe: Move side effects out of an open DB transaction**
+
+The case: a service method runs `prisma.$transaction(async (tx) => { await tx.order.create(...); await queue.add('send-email', { ... }); await axios.post(webhookUrl, ...); })` - the BullMQ enqueue and outbound HTTP call happen mid-transaction. Worker may pick the job up before the row is visible (read replica lag or even the writing connection has not committed yet); the HTTP call holds a pooled DB connection for the upstream's tail latency; if the transaction rolls back, the email is already queued and the webhook already fired.
+
+Pick **one** of these options per refactor; do not stack them.
+
+_Option A: Post-commit dispatch via `afterCommit` / event emitter_
+
+1. Capture the inputs needed for side effects inside the transaction (IDs, scalar values - never the ORM entity instance) into local vars
+2. Move the side-effect calls (`queue.add`, `axios.post`, `mailer.send`) to **after** the `prisma.$transaction(...)` resolves; for TypeORM, use `subscriber.afterCommit` hook or emit via `EventEmitter2` from the calling service after `dataSource.transaction(...)` returns
+3. Add a service-level test asserting: (a) when the transaction commits, side effects fire exactly once; (b) when the transaction rolls back (forced via `tx.$queryRaw` failure or thrown exception), no side effects fire
+4. For NestJS: a typical pattern is `@Transactional` from `typeorm-transactional` which exposes `runOnTransactionCommit(() => ...)` - use it instead of post-`$transaction` plumbing
+5. Caveat: if the process crashes between commit and dispatch, the side effect is **lost**. Acceptable for non-critical paths (audit logs, cache invalidation, fire-and-forget notifications); not acceptable for billing / contract-bound side effects - use Option B instead.
+
+_Option B: Transactional outbox_
+
+1. Add an `outbox_messages` table (Prisma model / TypeORM entity): `id`, `aggregate_type`, `aggregate_id`, `event_type`, `payload Json`, `created_at`, `processed_at` (nullable)
+2. Inside `prisma.$transaction(async (tx) => { ... })`, write the outbox row alongside the business write - same transaction commits both atomically
+3. Add a relay BullMQ job scheduled via `Queue.upsertJobScheduler(...)` or a `setInterval` worker (every 1-5s) that selects unprocessed outbox rows (`WHERE processed_at IS NULL ORDER BY created_at LIMIT N`), dispatches the real side effect (BullMQ enqueue / HTTP call), and marks `processed_at = now()` only after the dispatch succeeds
+4. Use `SELECT ... FOR UPDATE SKIP LOCKED` in the relay so multiple worker replicas do not double-process; or run the relay as a singleton via BullMQ `Worker` with concurrency 1
+5. Side-effect handlers must be idempotent (the relay can re-dispatch on crash); use `outbox.id` as a dedup key on the BullMQ job (`jobId: outboxId`) or as an idempotency key on the HTTP call
+6. Add a test asserting: outbox row exists post-commit; relay picks it up; processed_at set; second relay run does not re-dispatch the same row
+7. This option is heavier but **guarantees at-least-once delivery** even under process crashes - prefer for billing, payments, contractually-required notifications
+
 **Recipe: Convert TypeORM `@AfterInsert` / Prisma middleware side effects to post-commit dispatch**
 
 1. Add a service-level test (or e2e test) reproducing the current observable behavior (record updated, email sent, event published)
