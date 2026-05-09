@@ -180,5 +180,9 @@
   "effortLevel": "medium",
   "promptSuggestionEnabled": false,
   "awaySummaryEnabled": false,
-  "autoUpdatesChannel": "stable"
+  "autoUpdatesChannel": "stable",
+  "theme": "auto",
+  "preferredNotifChannel": "auto",
+  "remoteControlAtStartup": false,
+  "agentPushNotifEnabled": false
 }
