@@ -166,6 +166,9 @@ Every skill must follow these content quality standards. Skills that skip these 
 
 #### Description (frontmatter)
 
+- **Hard cap: 150 characters.** Descriptions are loaded into context on every Claude Code session; long descriptions trigger `/doctor` truncation warnings (default skill-listing budget is ~1% of the context window). Aim for 100-140 chars to leave headroom.
+- **Keyword-dense, not prose.** The skill picker matches on description text - lead with a verb ("Review...", "Plan...", "Detect..."), pack identifying tokens (framework names, key tools, primary problem space), and drop filler.
+- **Drop boilerplate.** Phase enumerations ("Phases A-E (risk, correctness, ...)"), "Spawns X-specific subagents for extra scopes", "Stack-specific override of task-Y", "Library-level focus, not infra", "Use when... Use before..." instructional text, and long parenthetical anti-pattern walls all belong in the body's **When to Use** / **Patterns** sections, not the description.
 - 1-2 sentences focused on what the skill **does** (positive framing)
 - Do not list what the skill is NOT for in the description - move that to "When to Use" in the body
 - Description drives skill selection in the slash menu - make it trigger-accurate
