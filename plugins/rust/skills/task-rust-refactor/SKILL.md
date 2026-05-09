@@ -292,6 +292,62 @@ Each refactoring step must be:
 4. Repeat until god service is empty; delete it. Each extraction commits independently
 5. Verify all tests still pass
 
+**Recipe: Move side effects out of an open DB transaction**
+
+_Pick one of these options per refactor; do not stack them._
+
+**Option A - Post-commit dispatch with captured inputs.** Use when the side effect is a single fire-and-forget message, the application can tolerate at-most-once on crash between commit and dispatch, and the team has not invested in an outbox table.
+
+1. Identify the side effect inside `let mut tx = pool.begin().await?; ...; tx.commit().await?;` (HTTP call, queue publish, mail send, file write)
+2. Capture the inputs needed for the dispatch into local variables before `tx.commit().await?`; do not dispatch yet
+3. Move the dispatch call after `tx.commit().await?` returns `Ok`:
+   ```rust
+   let order_id;
+   let payload_bytes;
+   {
+       let mut tx = pool.begin().await?;
+       sqlx::query!("INSERT INTO orders ...").execute(&mut *tx).await?;
+       order_id = sqlx::query_scalar!("SELECT lastval()").fetch_one(&mut *tx).await?;
+       payload_bytes = serde_json::to_vec(&NotifyPayload { order_id })?;
+       tx.commit().await?;
+   }
+   if let Err(e) = queue_client.enqueue("order.notify", &payload_bytes).await {
+       tracing::error!(order_id, error = %e, "post-commit enqueue failed");
+   }
+   ```
+4. Decide failure policy: log-and-continue (accept at-most-once), or persist a retry record (escalates to Option B)
+5. Add a test for the commit-succeeds / dispatch-fails branch asserting the DB state is consistent and the failure surfaces in logs
+6. State explicitly in the plan: "post-commit dispatch; tolerates at-most-once on crash window between commit and enqueue"
+
+**Option B - Transactional outbox.** Use when at-least-once delivery must be guaranteed across crashes, multiple side effects must be coordinated, or audit/replay matters.
+
+1. Add migration creating `outbox_messages`:
+   ```sql
+   CREATE TABLE outbox_messages (
+       id BIGSERIAL PRIMARY KEY,
+       aggregate_type TEXT NOT NULL,
+       aggregate_id BIGINT NOT NULL,
+       event_type TEXT NOT NULL,
+       payload JSONB NOT NULL,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       processed_at TIMESTAMPTZ
+   );
+   CREATE INDEX outbox_unprocessed ON outbox_messages (id) WHERE processed_at IS NULL;
+   ```
+2. Replace inline dispatch inside the transaction with an `INSERT INTO outbox_messages` using the same `&mut *tx` so commit atomically persists business state and outbox row
+3. Add a relay worker (separate Tokio task / supervisor) that polls unprocessed rows with `SELECT ... FOR UPDATE SKIP LOCKED`:
+   ```rust
+   let rows = sqlx::query_as!(
+       OutboxRow,
+       "SELECT id, event_type, payload FROM outbox_messages \
+        WHERE processed_at IS NULL ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED"
+   ).fetch_all(&mut *tx).await?;
+   ```
+   process each, then `UPDATE outbox_messages SET processed_at = NOW() WHERE id = $1` and `tx.commit().await?`
+4. Make downstream handlers idempotent (dedup keyed on `outbox_messages.id` or business key) - the outbox guarantees at-least-once, not exactly-once
+5. Add a relay-poll test: insert outbox rows, run relay, assert `processed_at` set and downstream handler called exactly N times for N rows
+6. Cap relay backoff and add metrics on outbox lag (`outbox_unprocessed_count`, `outbox_oldest_age_seconds`); set an alert at the SLO
+
 **Recipe: Make background-task idempotent**
 
 1. Add a task test asserting the side effect happens exactly once when the same payload is processed twice (different request IDs, same business key)

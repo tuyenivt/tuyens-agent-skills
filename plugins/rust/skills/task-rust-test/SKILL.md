@@ -326,6 +326,12 @@ When starting from low test coverage, prioritize by Rust-specific risk:
 - [ ] Test profile only overrides what differs from prod - never silently disables auth middleware
 - [ ] Integration tests separated under `tests/` directory (separate test crate, slower but isolated) vs `#[cfg(test)] mod tests` blocks (in-module unit tests)
 - [ ] HTTP stubs via `mockito` or `wiremock` returning canned responses; never real network calls in CI
+- [ ] **SDK / non-default-transport bypass surfaces**: `mockito::Server` / `wiremock::MockServer` only intercept calls that go through them - SDKs and non-`reqwest` clients bypass the mock unless wired correctly. Verify by asserting the stub server received `>= 1` request (`mock.assert_hits(1)` for `mockito`, `mock_server.received_requests().await` for `wiremock`); silent zero-call passes are the failure mode. Specific Rust bypass surfaces:
+  - **`aws-sdk-*` (S3, DynamoDB, SQS, SNS, etc.)**: requires `Endpoint::immutable(stub_url)` or `endpoint_url(stub_url)` on the SDK config; without it the SDK calls real AWS regardless of `HTTP_PROXY` env vars
+  - **Google Cloud SDKs (`google-cloud-storage`, etc.)**: require `STORAGE_EMULATOR_HOST` env var or explicit endpoint override; otherwise hit real GCS even when the test sets up `wiremock`
+  - **gRPC over HTTP/2 (`tonic`)**: HTTP/1.1 stubs (`mockito`/`wiremock` defaults) cannot serve HTTP/2 traffic. Use `tonic::transport::Server` with an in-process `tower::service_fn` mock, or `tonic-test` patterns; gRPC tests need a gRPC stub
+  - **Custom `reqwest::Client::builder()` with explicit `proxy(...)` / custom `tls_connector(...)`**: proxy or TLS overrides bypass standard system-proxy env vars - tests must inject the stub URL via DI instead of relying on `HTTPS_PROXY`
+  - **`hyper::Client` directly** (rather than `reqwest`): bypasses any `reqwest`-targeted middleware / proxies; stub via DI of the URL or use `hyper`-level test patterns
 - [ ] `tokio::test::block_in_place` not used in tests - use `#[tokio::test(flavor = "multi_thread")]` instead
 - [ ] Coverage via `cargo llvm-cov` (or `cargo tarpaulin`) wired to CI with per-package thresholds; coverage exclusions documented
 - [ ] `cargo audit` / `cargo deny check advisories` in CI - new advisories block merge

@@ -76,6 +76,17 @@ user-invocable: false
 | `crates/<name>/Cargo.toml`     | Member crate                                                     |
 | Path deps: `dep = { path = "..." }` | Internal cross-crate deps                                  |
 
+### Module Layout Convention
+
+Check which the project uses before describing the architecture - this drives where new code should land:
+
+- **Layer-module (most common in tutorials and small services)**: `src/handlers/`, `src/services/`, `src/repository/`, `src/models/` grouped by stereotype. An `Order`-related concern is spread across `src/handlers/orders.rs`, `src/services/orders.rs`, `src/repository/orders.rs`. Easy to find by stereotype, hard to find by feature; cross-feature coupling is invisible because everything imports from `services` and `repository`. Default for projects with < ~5 domains
+- **Feature-module (recommended for medium+ services)**: `src/orders/{handler.rs, service.rs, repository.rs, model.rs, mod.rs}`, `src/payments/{...}`, `src/users/{...}`. An entire bounded context lives in one tree; cross-feature imports go through public service interfaces (`orders::Service`), not direct repository imports. Each feature module exposes a small `pub use` surface from `mod.rs`. Common in production codebases at scale
+- **DDD / hexagonal (`src/<domain>/{domain/, application/, adapters/}`)**: domain layer (entities, value objects, repository traits) is pure Rust with no framework imports (no `axum`, no `sqlx`); application layer holds use cases; adapters layer holds Axum handlers + sqlx repositories implementing domain traits. Used by teams enforcing hexagonal architecture. Recognizable by `domain/` submodule with no `axum` / `sqlx` imports. Less common but heavyweight teams favor it
+- **Workspace / multi-binary (`Cargo.toml` `[workspace]` with `crates/api/`, `crates/worker/`, `crates/migrate/` + shared `crates/core/` / `crates/domain/`)**: multiple binaries share library crates. Each binary's `src/main.rs` is a thin wire-up file that depends on shared library crates via `path = "..."`. Common when one repo serves both API and Tokio workers; new business logic lives in shared library crates, not in the binary crate
+
+`src/main.rs` (or `crates/<bin>/src/main.rs`) is always thin (load config, build dependencies via `AppState`, start server). Business logic in a binary crate's `main.rs` is a smell - it's not importable from tests in other crates or from sibling binaries because binary crates are not library crates. Move shared logic into a library crate (workspace) or into `src/lib.rs` (single-crate with `main.rs` + `lib.rs` pattern, where `lib.rs` is reusable from integration tests under `tests/`).
+
 ### Conventions
 
 - **Modules** declared via `mod` keyword; file system mirrors module tree.

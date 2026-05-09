@@ -17,6 +17,19 @@ Ask for: full backtrace or compiler error, the source file where the error origi
 
 If the user provides only a partial error (e.g., just an error message without a backtrace), ask for the full output of `RUST_BACKTRACE=1 cargo run` or `cargo test`. If the user describes unexpected behavior without an error, ask them to add `tracing` or `dbg!()` output to narrow the scope before proceeding.
 
+**If "no error, just wrong behavior" (silent field loss / dropped data):** the bug is almost always a serde/sqlx boundary that compiled cleanly but dropped a field. Trace the data path end-to-end, suspecting these Rust-specific surfaces:
+
+- **`#[serde(rename = "...")]` / `#[serde(rename_all = "camelCase")]` mismatch** between the request struct and the actual JSON payload - missing fields deserialize to `Default::default()` (often `None` or `""`) without error. Reproduce by logging `serde_json::to_string(&req)` immediately after `Json(req): Json<RequestDto>` extraction.
+- **Missing `#[serde(deny_unknown_fields)]`** - extra/typo'd fields in the payload are silently ignored. Add it to the DTO temporarily to surface the mismatch.
+- **`#[serde(default)]` or `Option<T>`** swallowing a missing required field; check whether the validator (`validator` crate `#[validate(...)]`) actually fires on `None`.
+- **DTO -> domain mapping (`From`/`TryFrom`/manual)** that drops a field - particularly when the domain struct adds a field but the `impl From<Dto>` was not updated. Search for `..Default::default()` in mapping code.
+- **sqlx column-name mismatch:** `#[sqlx(rename = "user_tier")]` or `query_as!` macro fails at compile time, but `query_as::<_, T>(...)` (runtime) silently returns the field's default if the SELECT list omits the column. Check the SELECT list against the struct fields.
+- **`#[sqlx(skip)]` or `#[sqlx(default)]`** on a struct field - the column is never read into that field even when present.
+- **Background-job payload boundary:** `serde_json::to_vec(&payload)` at enqueue site -> bytes -> `serde_json::from_slice::<Payload>(&bytes)` in worker. A field renamed on one side but not the other deserializes to default. Same for `bincode`/`rmp_serde` (MessagePack) where field order or version drift silently corrupts.
+- **`#[serde(skip_serializing_if = "Option::is_none")]`** on the producer side combined with a non-`Option` field on the consumer side - the consumer gets `Default::default()` instead of erroring.
+
+Ask the user to add `tracing::debug!(?req, "decoded request")` at the handler entry and `tracing::debug!(?domain, "mapped to domain")` after the DTO mapping; the field that goes missing between those two log lines is the culprit.
+
 ## STEP 2 - CLASSIFY
 
 Match the error to one of these categories, then load the relevant atomic skill:

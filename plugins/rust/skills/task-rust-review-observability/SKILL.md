@@ -194,8 +194,11 @@ Inspect SDK config:
 When invoked at `deep`, evaluate:
 
 - [ ] Critical user journeys have at least one Prometheus / OTel SLI (HTTP request rate filtered to the journey URI, success rate, p95 latency)
-- [ ] DB / cache / message broker / external API health checked via dedicated `/health` (liveness) and `/ready` (readiness) endpoints - readiness reflects "ready to serve" (DB up, caches warmed); liveness reflects "process alive"
-- [ ] Health endpoints return JSON with per-dependency status, not just `200 OK` - so probes can distinguish DB-down from worker-stuck
+- [ ] **Three-way health endpoint split** (when running on Kubernetes / any orchestrator with liveness + readiness probes):
+  - **`/livez` (liveness, kubelet restart gate):** bare `async fn livez() -> StatusCode { StatusCode::OK }` - **no DB, Redis, Kafka, or external API checks**. Liveness only answers "is the process alive enough to respond." Wiring DB checks here causes a transient DB blip to restart-loop the pod, multiplying the outage
+  - **`/readyz` (readiness, load-balancer gate):** own-pod-only checks - sqlx `pool.acquire().await?` (or a quick `SELECT 1`), Redis ping, in-process queue connectivity. **Must NOT include third-party API pings** (Stripe, SendGrid, downstream services). A Stripe blip would otherwise pull every replica out of the LB simultaneously, cascading the upstream outage to your service. Use a circuit breaker (e.g., `failsafe-rs`) on the request path for third-party calls instead
+  - **`/internal/deps` or `/debug/health`:** dashboards / on-call only, NOT wired to any K8s probe. Returns rich JSON per dependency (third-party API status, queue lag, replica info). Verify the diff doesn't accidentally point a `readinessProbe.httpGet.path` at this endpoint
+- [ ] Readiness/liveness endpoints return JSON with per-dependency status, not just `200 OK` - so probes can distinguish DB-down from queue-stuck (within their respective scopes above)
 - [ ] SLO targets documented in code (`src/slo/*.rs` or module README) - not a free-floating Confluence page
 
 
