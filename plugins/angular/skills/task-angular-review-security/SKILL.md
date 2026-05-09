@@ -46,6 +46,20 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 | **Medium**   | Hardening gap with mitigating control (CSP missing nonce but `unsafe-inline` for styles only and no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction. Should fix this PR or the next one.                                                                  |
 | **Low**      | Defense-in-depth nice-to-have, dependency advisory below actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                                                                |
 
+**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+
+- Missing `CanActivateFn` on a privileged route (High, alone) + `[innerHTML]` on user-controlled input from the same component without sanitizer (High, alone) on the *same component / route* = **Critical** unauth XSS reaching every viewer (anyone navigates to the unguarded route, the page renders attacker-controlled HTML, and the payload runs in every visitor's browser).
+- `bypassSecurityTrustHtml(userInput)` (Critical, alone, by rubric) + the binding rendered on a route reachable from unauthenticated users (High, alone) on the *same component* = **Critical** unauth XSS - cite both because the second piece tells the reader the exploit lands without login.
+- Missing functional auth interceptor token-scoping (High, alone) + token stored in `localStorage` (High, alone) on the *same auth flow* = **Critical** token exfiltration via attacker-controlled host (the unscoped interceptor sends `Authorization` to a third-party URL the attacker controls; XSS-readable storage compounds the impact when combined with `[innerHTML]` elsewhere).
+- SSR `TransferState` populated with a full ORM row including `passwordHash` (Critical, alone, by rubric) + the page reachable without auth on the SSR server (High, alone) = **Critical** mass exfiltration via hydration payload (every cold visit returns the row in HTML).
+- Missing `CanMatchFn` on a lazy admin route (High, alone) + `environment.ts` containing the admin API key (Critical, alone, by rubric) on the *same route bundle* = **Critical** the lazy chunk loads to anyone, exposing the admin client ID + key from the bundle even before backend auth fires.
+- Open redirect via `Router.navigateByUrl(query.returnTo)` (High, alone) + the redirect target receiving session cookie due to `SameSite=Lax` (High, alone) on the *same auth callback* = **Critical** session-token theft via attacker-controlled redirect.
+- `[innerHTML]` on user input (High, alone) + a custom sanitizer that returns `bypassSecurityTrustHtml` for "trusted" markdown without verifying the trust boundary (High, alone) on the *same content pipeline* = **Critical** working XSS (the bypass swallows the sanitizer's protection).
+
+The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+
+**Same-handler co-location.** Combining findings requires confirming both land on the *same code path* (same component, same route segment with shared guards / providers, same auth flow). When the diff doesn't make co-location obvious - e.g., the `[innerHTML]` is in `OrderDetailComponent` but the missing auth guard protects a different route segment - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same route / component; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -201,7 +215,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] `[innerHTML]`, `bypassSecurityTrust*`, `[href]` / `[src]` / `[routerLink]` user-controlled, open redirect, `environment.ts` secret leak audited when the diff touches them
 - [ ] CSP / security headers / cookie config reviewed when delivered via SSR server / hosting; CSP delivery channel (header vs `<meta>`), wildcards, sanitizer config audited
 - [ ] SSR `TransferState` / hydration payload reviewed for ORM-row leakage when SSR is enabled
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
+- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented); Combined-finding rule applied where two findings compose on the same component / route segment / auth flow
 - [ ] Every finding includes an attack scenario, "regression risk" rationale (for missing-control gaps), or "topology-dependent" framing (for infra-flavored findings)
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
 
