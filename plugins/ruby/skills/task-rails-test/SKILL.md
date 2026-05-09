@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Ruby/Rails.
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Ruby / Rails. If the detected stack is not Rails, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Ruby / Rails. If invoked as a delegate of `task-code-test` (parent already detected Rails), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rails, stop and tell the user to invoke `/task-code-test` instead.
 
 ### Step 2 - Rails Test Pyramid
 

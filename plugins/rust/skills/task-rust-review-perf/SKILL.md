@@ -71,7 +71,7 @@ When invoked as a subagent of `task-code-review-perf` (the core dispatcher passe
 
 ### Step 1 - Confirm Stack and Detect Async / Data-Access Surface
 
-Use skill: `stack-detect` to confirm Rust / Axum. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Rust 1.94+ on Tokio.
+Use skill: `stack-detect` to confirm Rust / Axum. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-rust-review` (parent already detected Rust), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Rust 1.94+ on Tokio.
 
 Detect data access:
 

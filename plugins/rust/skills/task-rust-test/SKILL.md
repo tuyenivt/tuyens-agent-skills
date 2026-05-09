@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Rust. The c
 
 ### Step 1 - Confirm Stack and Detect Async / Data-Access Surface
 
-Use skill: `stack-detect` to confirm Rust / Axum. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Rust / Axum. If invoked as a delegate of `task-code-test` (parent already detected Rust), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect data access (sqlx / diesel / mixed) and messaging (Tokio queue / AMQP / Kafka / none). Detect mock framework (`mockall`, hand-written trait mocks, `mockito` for HTTP). Record `Data Access`, `Messaging`, `Mock Framework` for the output.
 

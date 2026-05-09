@@ -59,7 +59,7 @@ When invoked as a subagent of `task-code-review-perf` (the core dispatcher passe
 
 ### Step 1 - Confirm Stack and Detect Data-Access Mix
 
-Use skill: `stack-detect` to confirm Go / Gin. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Go 1.25+.
+Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-go-review` (parent already detected Go), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Go 1.25+.
 
 Detect data access:
 

@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Python. The
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If the detected stack is not Python, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-test` (parent already detected Python), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for the output. Each section that follows branches on this signal where the test idiom differs.
 

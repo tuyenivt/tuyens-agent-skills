@@ -76,7 +76,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack and Detect Configuration
 
-Use skill: `stack-detect` to confirm Angular. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Angular. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-angular-review` (parent already detected Angular), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect: Angular major version, SSR enabled (`@angular/ssr` + `provideClientHydration`), auth library (`@auth0/auth0-angular`, `angular-oauth2-oidc`, `keycloak-angular`, `msal-angular`, custom). Record `Angular: <version>`, `SSR: enabled | disabled`, `Auth: ...`. Each step branches on these signals where the idiom differs - SSR introduces server-side data exposure surface; client-only Angular apps rely entirely on a separate backend for auth enforcement.
 

@@ -59,7 +59,7 @@ When invoked as a subagent of `task-code-review-perf` (the core dispatcher passe
 
 ### Step 1 - Confirm Stack and Detect Configuration
 
-Use skill: `stack-detect` to confirm Angular. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Angular 17+ and TypeScript strict mode.
+Use skill: `stack-detect` to confirm Angular. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-angular-review` (parent already detected Angular), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Angular 17+ and TypeScript strict mode.
 
 Detect:
 

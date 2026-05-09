@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Node.js. Th
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. If the detected stack is not Node, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate of `task-code-test` (parent already detected Node), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Node, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` in deps without NestJS). Detect ORM: Prisma vs TypeORM. Record `Framework: NestJS | Express | mixed`, `ORM: Prisma | TypeORM` for the output. Each section that follows branches on this signal where the test idiom differs.
 

@@ -41,7 +41,7 @@ Use skill: `behavioral-principles`. Load these rules first - they govern every s
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If not, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If invoked as a delegate of `task-code-test` (parent already detected Kotlin/Spring), accept the pre-confirmed stack and skip re-detection. If not, stop and tell the user to invoke `/task-code-test` instead.
 
 ### Step 3 - Read the Code Under Test and Existing Tests
 

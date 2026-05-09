@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for .NET. The c
 
 ### Step 1 - Confirm Stack and Detect Async / Data-Access Surface
 
-Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If the detected stack is not .NET, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If invoked as a delegate of `task-code-test` (parent already detected .NET), accept the pre-confirmed stack and skip re-detection. If the detected stack is not .NET, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect data access (EF Core / Dapper / mixed), mediator (MediatR / none), and messaging (MassTransit / Hangfire / Channel / none). Detect mock framework (`NSubstitute`, `Moq`, hand-written), assertion library (`FluentAssertions` / xUnit built-in), test-data library (`Bogus`, `AutoFixture`). Record `Data Access`, `Mediator`, `Messaging`, `Mock Framework`, `Assertion Library` for the output.
 

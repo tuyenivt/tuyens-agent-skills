@@ -75,7 +75,7 @@ Use skill: `behavioral-principles`. These rules govern every subsequent step. Wh
 
 ### Step 2 - Confirm Stack and Detect ORM / Queue / Runtime Surface
 
-Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-perf` instead.
+Use skill: `stack-detect` to confirm PHP / Laravel. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-laravel-review` (parent already detected Laravel), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-perf` instead.
 
 Detect ORM use: Eloquent (typical) or query builder (`DB::table(...)`). Detect queue connection from `config/queue.php` and `.env`: `redis` (typical, with Horizon), `database`, or `sync` (smell in non-local). Detect runtime: standard PHP-FPM (typical), Laravel Octane + Swoole / RoadRunner / FrankenPHP (request-state leakage concerns). Detect cache driver: `redis`, `memcached`, `database`, `file`, `array`. Detect database engine from `config/database.php`: MySQL (typical), PostgreSQL, MariaDB.
 

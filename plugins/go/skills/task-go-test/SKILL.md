@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Go. The cor
 
 ### Step 1 - Confirm Stack and Detect Data-Access Mix
 
-Use skill: `stack-detect` to confirm Go / Gin. If the detected stack is not Go, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-test` (parent already detected Go), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect data access (GORM / sqlx / database/sql / mixed) and messaging (Asynq / Kafka / none). Detect mock framework (`gomock` from `go.uber.org/mock`, hand-written mocks, `mockery`-generated). Record `Data Access`, `Messaging`, `Mock Framework` for the output.
 

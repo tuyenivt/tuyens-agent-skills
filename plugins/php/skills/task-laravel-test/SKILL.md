@@ -43,7 +43,7 @@ Use skill: `behavioral-principles`. These rules govern every subsequent step (th
 
 ### Step 2 - Confirm Stack and Detect Test Framework
 
-Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm PHP / Laravel. If invoked as a delegate of `task-code-test` (parent already detected Laravel), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect test framework: Pest (`tests/Pest.php` exists, `pestphp/pest` in `composer.json`) or PHPUnit (no Pest, just `phpunit.xml` + class-based tests). Detect ORM (Eloquent / query builder), auth (Sanctum / Passport / session), queue (Redis / database / sync), and database engine (MySQL / PostgreSQL / MariaDB) for test-environment guidance. Record `Tests Framework`, `Database`, `Auth`, `Queue` for the output.
 

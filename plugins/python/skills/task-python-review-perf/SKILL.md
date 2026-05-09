@@ -59,7 +59,7 @@ When invoked as a subagent of `task-code-review-perf` (the core dispatcher passe
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If the detected stack is not Python, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Python 3.11+.
+Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-python-review` (parent already detected Python), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Python 3.11+.
 
 Then detect the web framework:
 

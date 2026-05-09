@@ -59,7 +59,7 @@ Use skill: `behavioral-principles`. Load these rules first - they govern every s
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If not, stop and tell the user to invoke `/task-code-review-perf` instead.
+Use skill: `stack-detect` to confirm Kotlin / Spring Boot. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-kotlin-review` (parent already detected Kotlin/Spring), accept the pre-confirmed stack and skip re-detection. If not, stop and tell the user to invoke `/task-code-review-perf` instead.
 
 ### Step 3 - Resolve the Diff Under Review
 

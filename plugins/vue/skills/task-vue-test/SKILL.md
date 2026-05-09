@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Vue. The co
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Vue. If the detected stack is not Vue, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Vue. If invoked as a delegate of `task-code-test` (parent already detected Vue), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Vue, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect framework: Nuxt 3 vs Vite + Vue Router. Detect test runner: Vitest is the standard for both; Jest still appears in older Vue 2 projects (rare on Vue 3). Detect helper library: `@vue/test-utils` (VTU - the official Vue test library) vs `@testing-library/vue` (Testing Library variant - more user-centric query API). Record `Framework: ...`, `Runner: Vitest | Jest`, `Helper: @vue/test-utils | @testing-library/vue`, `Vue: <version>` for the output. Each section that follows branches on this signal where the test idiom differs.
 

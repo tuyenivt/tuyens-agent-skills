@@ -69,7 +69,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Go / Gin. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-go-review` (parent already detected Go), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect data access (GORM / sqlx / database/sql / mixed) and JWT library (`golang-jwt/jwt` v4 vs v5, `gin-jwt`, `lestrrat-go/jwx`) and password hashing (`golang.org/x/crypto/bcrypt` vs `argon2`). Record `Data Access`, `JWT Library`, `Password Hash` for the Summary block.
 

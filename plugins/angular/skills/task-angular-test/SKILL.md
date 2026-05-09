@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Angular. Th
 
 ### Step 1 - Confirm Stack and Detect Configuration
 
-Use skill: `stack-detect` to confirm Angular. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Angular. If invoked as a delegate of `task-code-test` (parent already detected Angular), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Angular, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect: Angular major version (Angular 16+ supports signal testing patterns; Angular 17+ has `@if` / `@for` testable; Angular 18+ has signal-form testing primitives). Detect test runner: Vitest (modern), Jest (`jest-preset-angular`), or Karma + Jasmine (CLI default). Detect helper: `@testing-library/angular` vs raw TestBed + `ComponentFixture`. Detect SSR (affects what surfaces have tests). Record `Runner: Vitest | Jest | Karma`, `Helper: @testing-library/angular | TestBed (ComponentFixture)`, `Angular: <version>`, `SSR: enabled | disabled`. Each section that follows branches on these signals where the test idiom differs.
 

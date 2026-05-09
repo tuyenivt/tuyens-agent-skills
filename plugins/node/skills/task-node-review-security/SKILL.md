@@ -61,7 +61,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. If the detected stack is not Node, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-node-review` (parent already detected Node), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Node, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` in deps without NestJS). Record `Framework: NestJS | Express | mixed` for the Summary block. Each step that follows branches on this signal where the idiom differs.
 

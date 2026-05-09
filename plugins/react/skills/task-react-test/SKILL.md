@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for React. The 
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm React. If the detected stack is not React, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm React. If invoked as a delegate of `task-code-test` (parent already detected React), accept the pre-confirmed stack and skip re-detection. If the detected stack is not React, stop and tell the user to invoke `/task-code-test` instead.
 
 Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Detect test runner: Vitest (preferred for Vite + modern Next.js) vs Jest (still common on older Next.js / CRA). Record `Framework: ...`, `Runner: Vitest | Jest`, `React: <version>` for the output. Each section that follows branches on this signal where the test idiom differs.
 

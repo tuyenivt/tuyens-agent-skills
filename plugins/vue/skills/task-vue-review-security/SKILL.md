@@ -76,7 +76,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Vue. If the detected stack is not Vue, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Vue. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-vue-review` (parent already detected Vue), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Vue, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect framework: Nuxt 3 vs Vite + Vue Router. Record `Framework: ...` for the Summary block. Each step branches on this signal where the idiom differs - Nuxt has Nitro server routes, server middleware, and `defineNuxtRouteMiddleware` as server-side surfaces; Vite is purely client-side and the API lives in a separate backend.
 

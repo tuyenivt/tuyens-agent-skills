@@ -39,7 +39,7 @@ This workflow is the stack-specific delegate of `task-code-test` for Java / Spri
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Java / Spring Boot. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-test` (parent already detected Spring Boot), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-test` instead.
 
 ### Step 2 - Read the Code Under Test and Existing Tests
 

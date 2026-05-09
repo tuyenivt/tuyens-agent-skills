@@ -74,7 +74,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Ruby / Rails. If the detected stack is not Rails, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Ruby / Rails. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-rails-review` (parent already detected Rails), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rails, stop and tell the user to invoke `/task-code-review-security` instead.
 
 ### Step 2 - Resolve the Diff Under Review
 

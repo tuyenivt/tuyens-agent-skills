@@ -72,7 +72,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If the detected stack is not .NET, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-dotnet-review` (parent already detected .NET), accept the pre-confirmed stack and skip re-detection. If the detected stack is not .NET, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect data access (EF Core / Dapper / mixed), JWT library (`Microsoft.AspNetCore.Authentication.JwtBearer` typically), and password hashing (`Microsoft.AspNetCore.Identity.PasswordHasher<T>` PBKDF2, `BCrypt.Net-Next`, `Konscious.Security.Cryptography.Argon2`). Record `Data Access`, `JWT Library`, `Password Hash` for the Summary block.
 

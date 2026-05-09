@@ -59,7 +59,7 @@ When invoked as a subagent of `task-code-review-perf` (the core dispatcher passe
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Java / Spring Boot. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Java 21+ and Spring Boot 3.5+ idioms.
+Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-spring-review` (parent already detected Spring Boot), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Java 21+ and Spring Boot 3.5+ idioms.
 
 ### Step 2 - Resolve the Diff Under Review
 

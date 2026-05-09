@@ -71,7 +71,7 @@ When invoked as a subagent of `task-code-review-security` (the core dispatcher p
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Rust / Axum. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Rust / Axum. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-rust-review` (parent already detected Rust), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect data access (sqlx / diesel / mixed), JWT library (`jsonwebtoken`, `josekit`, `frank_jwt`), and password hashing (`argon2` preferred, `bcrypt` acceptable). Record `Data Access`, `JWT Library`, `Password Hash` for the Summary block.
 

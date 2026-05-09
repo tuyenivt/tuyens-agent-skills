@@ -78,7 +78,7 @@ Use skill: `behavioral-principles`. These rules govern every subsequent step (th
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm PHP / Laravel. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm PHP / Laravel. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-laravel-review` (parent already detected Laravel), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Laravel, stop and tell the user to invoke `/task-code-review-security` instead.
 
 Detect auth strategy: Sanctum (token API), Sanctum (SPA, cookie + CSRF), Passport (OAuth2 server), session-only. Detect ORM: Eloquent (typical) or query builder. Record `Auth`, `ORM`, `Tests Framework` for the Summary block.
 
