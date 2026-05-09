@@ -73,6 +73,14 @@ user-invocable: false
 | `lib/`                            | Custom non-Rails code (autoloaded if added to autoload paths)                              |
 | `test/` or `spec/`                | Minitest or RSpec tests                                                                    |
 
+### Package Layout Convention
+
+Check which the project uses before describing the architecture:
+
+- **Rails default (layer-package)**: the canonical layout - `app/controllers/`, `app/models/`, `app/views/`, `app/services/`, `app/jobs/`, `app/mailers/`, `app/channels/`. Files grouped by stereotype; an `Order`-related concern is spread across `app/controllers/orders_controller.rb`, `app/models/order.rb`, `app/services/order_fulfillment.rb`, `app/jobs/order_notification_job.rb`. Matches Rails generators (`bin/rails g model`, `g controller`, `g job` all drop into stereotype directories). The default for nearly every Rails app
+- **Domain-package (`app/domains/<bounded_context>/` or `app/packs/`)**: feature-package equivalent adopted by larger Rails codebases trying to enforce module boundaries - `app/domains/orders/{controllers/, models/, services/, jobs/}` keeps an entire bounded context in one tree. Often paired with [Packwerk](https://github.com/Shopify/packwerk) for compile-time boundary enforcement (each pack has its own `package.yml` declaring public API and dependencies) or with [Rails Engines](https://guides.rubyonrails.org/engines.html) where each engine is a gem in `engines/<name>/`. Common in Shopify-style large apps; uncommon below ~200 models. New code goes in the domain pack; cross-domain reads go through the pack's public API, not direct AR access
+- **Mixed (mid-migration)**: `app/domains/orders/` (domain-package) sits next to a legacy `app/services/order_processor.rb` (layer-package). When you find both, the project is mid-migration to packwerk / domain packs; new code goes in the domain pack, edits to legacy code stay in place until a planned move. Confirm direction with the team before adding files - generators still default to layer-package locations and the output may need manual relocation. Look for `package.yml` files under `app/domains/*/` to confirm packwerk is in use; absence means the domain split is convention-only and easier to violate accidentally
+
 ### Conventions
 
 - **MVC plus concerns:** controllers/concerns and models/concerns hold mixins.

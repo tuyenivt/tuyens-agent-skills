@@ -183,7 +183,8 @@ Use one - drift catches latent client breakage long before integration partners 
 
 - [ ] `database_cleaner-active_record` configured (or `use_transactional_fixtures = true` for unit + request specs)
 - [ ] `Sidekiq::Testing` configured (default `:fake`; switch to `:inline` per-spec when end-to-end coverage is needed)
-- [ ] WebMock/VCR configured to disable real HTTP in tests
+- [ ] WebMock/VCR configured to disable real HTTP in tests (`WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`)
+- [ ] **Faraday adapter / SDK clients that bypass WebMock**: WebMock intercepts at the `Net::HTTP` layer (and the `http`, `excon`, `patron`, `typhoeus`, `curb` gems via WebMock's adapter shims). A Faraday connection configured with `faraday.adapter :typhoeus` (or `:em_http`, `:patron`) uses that transport directly, and unless WebMock's matching adapter is loaded, real HTTP escapes the test. The `aws-sdk-*` gems use `Net::HTTP` by default (intercepted) but can be configured with custom HTTP handlers; gRPC clients (`grpc` gem) use their own C-extension transport that WebMock cannot see. Confirm by writing one stubbed test and asserting the WebMock stub fired (`expect(stub).to have_been_requested`); if it did not, either install the matching WebMock adapter, switch the Faraday adapter back to `:net_http` in test, or stub the SDK client object directly. Silent passthrough is how production credentials leak into CI
 - [ ] `RSpec.configure { |c| c.example_status_persistence_file_path = ... }` for `--only-failures` workflows
 - [ ] `bin/rspec --order random` enabled - tests pass in any order
 - [ ] CI runs full suite; local dev runs fast unit + request specs by default (use spec tags `slow:`, `system:` to skip)

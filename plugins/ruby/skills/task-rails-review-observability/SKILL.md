@@ -143,8 +143,9 @@ Sidekiq has its own middleware chain - request-scoped context does not flow into
 
 Run at `deep` depth or when the user explicitly requests SLI/SLO coverage:
 
-- [ ] **Liveness endpoint** (`/up` or `/health/live`) - shallow check; returns 200 if the Rails process is responsive
-- [ ] **Readiness endpoint** (`/health/ready`) - deep check; verifies DB connection, Redis connection, Sidekiq queue accessible
+- [ ] **Liveness endpoint** (`/up` or `/health/live`): returns 200 unconditionally as long as the Rails process is responsive. **No DB / Redis / Sidekiq / external checks.** A liveness probe that pings the DB will fail every replica during a routine DB restart and Kubernetes will kill them all simultaneously, taking the app fully down for a survivable blip. Rails 7.1's built-in `/up` (mounted via `Rails::HealthController#show`) is a correct liveness implementation; do not replace it with a deeper check
+- [ ] **Readiness endpoint** (`/health/ready`): verifies *own-pod* dependencies the request path requires - DB connection from this pod's pool, Redis connection from this pod's client, in-process caches warmed. **Must NOT include third-party API ping** (Stripe, Twilio, S3, internal microservice). A readiness probe that depends on a third party makes every replica fail readiness simultaneously when that third party degrades; Kubernetes removes all pods and the local outage becomes a cascading outage of an otherwise-recoverable feature. Third-party degradation should surface via the circuit-breaker / retry / bulkhead path, not by removing pods from the load balancer
+- [ ] **Dependency-health endpoint** (`/internal/deps` or similar): observability signal for ops dashboards and oncall, **not** wired to Kubernetes pod-removal. This is where third-party reachability checks belong - they answer "is the dependency healthy?" without conflating it with "should this pod receive traffic?". Verify the diff does not point a Kubernetes `readinessProbe` at this endpoint
 - [ ] **SLI per critical endpoint**: success rate (non-5xx), p99 latency. Defined as a Prometheus query, Datadog SLO, or in-app metric
 - [ ] **SLO target stated** with window (e.g., 99.9% over 30 days for `POST /orders`)
 - [ ] **Sidekiq SLI**: queue latency p99 < N seconds for time-sensitive queues; dead-job count under threshold

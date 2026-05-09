@@ -151,6 +151,15 @@ Each refactoring step must be:
 4. Remove the original logic from the controller; verify request specs pass unchanged
 5. Add a request-spec example asserting service failure surfaces as expected error response
 
+**Recipe: Move side effects out of an open DB transaction**
+
+When the smell is "Sidekiq enqueue / HTTP call / mailer delivery happens inside `ActiveRecord::Base.transaction` so the worker can race the commit (or the email goes out then the transaction rolls back)," pick **one** of these options per refactor; do not stack them.
+
+- **Option A - Post-commit dispatch.** Move the side effect to `after_commit` on the model, or wrap the dispatch site in `transaction.after_commit { OrderMailer.welcome(order).deliver_later }`. With Sidekiq 7+, `Sidekiq.transactional_push!` (when configured with the `sidekiq-transactional` gem or built-in equivalent) defers `perform_async` until commit. Cheapest option; correct when the side-effect target is one queue/mailer and "fire-once when commit lands" is sufficient. Risk: process crash between commit and `after_commit` callback execution drops the side effect with no retry record.
+- **Option B - Transactional outbox.** Add an `outbox_messages` table (`id`, `aggregate_type`, `aggregate_id`, `event_type`, `payload jsonb`, `created_at`, `processed_at`). Inside the same DB transaction as the business write, `OutboxMessage.create!(...)` records the intent. A relay job (`OutboxRelayJob` running on a schedule via `sidekiq-cron` / `solid_queue` recurring tasks) selects unprocessed rows with `OutboxMessage.where(processed_at: nil).lock("FOR UPDATE SKIP LOCKED").limit(N)`, dispatches the real side effect, then sets `processed_at`. Side-effect handlers must be idempotent (use `outbox_id` as a Sidekiq `unique_for:` key or as the natural dedup key). Use this when at-least-once delivery is required across crashes, or when multiple consumers need the event. Cost: extra table, extra job, extra observability surface.
+
+State which option per refactor step and why. Mixing them (post-commit dispatch + outbox for the same event) is a red flag - one of the two is dead code.
+
 **Recipe: Convert `after_save` callback to `after_commit` (or remove)**
 
 1. Add a request spec / job spec that reproduces the current observable behavior
