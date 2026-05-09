@@ -76,6 +76,19 @@ user-invocable: false
 | `Middleware/`          | Custom middleware                                                     |
 | `Filters/`             | Action/exception filters                                              |
 
+### Module Layout Convention
+
+Check which the project uses before describing the architecture - this drives where new code should land:
+
+- **Clean Architecture (most common in production .NET)**: `src/Domain/`, `src/Application/`, `src/Infrastructure/`, `src/Api/` (or `Web/` / `Presentation/`) as separate projects in the solution. Domain has no project references; Application references Domain only; Infrastructure references Application + Domain (implements interfaces); Api references all. Cross-project boundaries enforced by `.csproj` `<ProjectReference>` graph - the compiler catches a layer violation. New business logic lands in `Application/Features/<Feature>/`; persistence in `Infrastructure/Persistence/Repositories/`; HTTP entry in `Api/Controllers/`. MediatR is typical for the Application layer
+- **Feature folders / vertical slice (modern alternative within a single project)**: `src/Api/Features/Orders/{PlaceOrderHandler.cs, PlaceOrderEndpoint.cs, PlaceOrderRequest.cs, OrderRepository.cs}` - each feature is a folder owning its entire vertical (request DTO + validator + handler + endpoint + repository). No separate Application / Infrastructure projects; layering is by namespace convention, not by project. Recognizable by `Features/` directory and lack of separate Domain / Application / Infrastructure projects. Easier to navigate per-feature; harder to enforce layer rules (no compile-time gate)
+- **Minimal API endpoint groups (`MapGroup`)**: `src/Api/Endpoints/OrdersEndpoints.cs` with `app.MapGroup("/api/v1/orders").MapOrdersEndpoints();` extension method pattern. Often combined with feature folders. Replaces `Controllers/` directory in greenfield .NET 7+ projects. The endpoint extension is the public surface; behind it sits the same handler/service/repository tree as Clean Architecture (or feature-folder Vertical Slice)
+- **Modular monolith / multi-bounded-context**: `src/Modules/Orders/{Orders.Domain, Orders.Application, Orders.Infrastructure, Orders.Api}` - each module is its own Clean Architecture stack inside a top-level `Modules/` folder. Modules communicate via a shared `BuildingBlocks` library or in-process bus (`MediatR.Notifications`). Used by teams scaling toward microservice extraction without paying the deploy cost yet. Recognizable by `src/Modules/<ModuleName>/` directory tree
+- **Worker Service / Background-only**: `src/Worker/` with `Program.cs` calling `Host.CreateDefaultBuilder().ConfigureServices(s => s.AddHostedService<MyWorker>())`. No HTTP surface. New jobs land as `IHostedService` or `BackgroundService` subclasses; shared logic typically in a separate library project
+- **Single-`Program.cs` minimal API (small services / samples)**: everything in `Api/Program.cs` with inline endpoint mappings. Fine for < 5 endpoints or templates; refactor to feature folders or Clean Architecture before it grows
+
+`Program.cs` (or the API project's `Program.cs` in Clean Architecture) is always thin (load config, build DI, register middleware, `app.Run()`). Business logic in `Program.cs` is a smell - it cannot be tested without booting the host. Move to a handler / service / extension method.
+
 ### Conventions
 
 - **Constructor injection** via DI container (built-in `IServiceCollection`); no field/property injection without explicit attribute.

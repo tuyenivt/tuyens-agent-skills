@@ -351,6 +351,48 @@ Each refactoring step must be:
 5. Forward `stoppingToken` to every awaited call inside the loop body (`db.SaveChangesAsync(stoppingToken)`, `httpClient.PostAsync(url, content, stoppingToken)`)
 6. Run `dotnet build /p:TreatWarningsAsErrors=true` and `dotnet test`; add a worker test starting the service then cancelling its host to assert the loop exits within the configured `HostOptions.ShutdownTimeout`
 
+**Recipe: Move side effects out of an open DB transaction**
+
+Use when the diff has `await httpClient.PostAsync(...)`, `await publishEndpoint.Publish(...)`, file writes, or any other I/O inside `await using var tx = await db.Database.BeginTransactionAsync(ct); ... await tx.CommitAsync(ct);`. The transaction holds a `DbContext` connection and locked rows for the duration of the upstream's tail latency; on rollback the side effect already happened. Pick **one** of the two options below per refactor; do not stack them.
+
+**Option A - Post-commit dispatch with captured inputs:**
+
+1. Capture every input the side effect needs into local variables **inside** the transaction (typed records / `Guid` / `byte[]` payload). Do not capture EF Core entities - the entity's tracker is gone after the scope exits
+2. `await tx.CommitAsync(ct);` (or just `await db.SaveChangesAsync(ct)` for implicit transactions)
+3. Dispatch the side effect **after** commit. Wrap in `try { ... } catch (Exception ex) { _logger.LogError(ex, "post-commit dispatch failed for {Key}", key); }` - the DB state is committed; failure to dispatch is recoverable via a relay or operator action, not a rollback
+4. Trade-off: at-most-once on crash between commit and dispatch (the row exists, the message is lost). Acceptable for non-critical notifications; use Option B for exactly-once
+   ```csharp
+   Guid orderId;
+   byte[] payloadBytes;
+   await using (var tx = await db.Database.BeginTransactionAsync(ct))
+   {
+       db.Orders.Add(order);
+       await db.SaveChangesAsync(ct);
+       orderId = order.Id;
+       payloadBytes = JsonSerializer.SerializeToUtf8Bytes(new NotifyPayload(orderId));
+       await tx.CommitAsync(ct);
+   }
+   try
+   {
+       await _publishEndpoint.Publish(new OrderPlaced(orderId, payloadBytes), ct);
+   }
+   catch (Exception ex)
+   {
+       _logger.LogError(ex, "Post-commit publish failed for order {OrderId}", orderId);
+   }
+   ```
+
+**Option B - Transactional outbox (MassTransit `AddEntityFrameworkOutbox<AppDbContext>` or hand-rolled):**
+
+1. Add an `OutboxMessage` entity / table (id BIGINT IDENTITY, aggregate_type, aggregate_id, message_type, payload BLOB / JSONB, created_at, processed_at NULL) with a partial index `WHERE processed_at IS NULL` (Postgres) or filtered index (`WHERE [ProcessedAt] IS NULL`) on SQL Server
+2. Inside the transaction: `INSERT INTO outbox_messages` instead of publishing. Commit
+3. A relay (MassTransit's built-in delivery service via `AddEntityFrameworkOutbox<AppDbContext>` + `AddInMemoryInboxOutbox(...)`, or a hand-rolled `BackgroundService` polling with `SELECT TOP N ... FROM OutboxMessages WITH (UPDLOCK, READPAST)` on SQL Server / `SELECT ... FOR UPDATE SKIP LOCKED` on Postgres) reads unprocessed rows, dispatches, marks processed in a transaction
+4. Downstream consumers must be idempotent (the relay retries on failure - duplicates are guaranteed)
+5. Add metrics: `outbox_unprocessed_count` (gauge), `outbox_oldest_age_seconds` (gauge) - alert when oldest age exceeds budget (relay stuck)
+6. Trade-off: exactly-once dispatch at the cost of one extra table + relay infra. MassTransit ships this; rolling your own is justified only when the broker is not MassTransit
+
+**State the option choice explicitly in the refactor plan** - reviewers should not have to guess which mode applies.
+
 **Recipe: Make background-worker idempotent**
 
 1. Add a worker test asserting the side effect happens exactly once when the same payload is processed twice (different message IDs, same business key)
