@@ -95,6 +95,14 @@ user-invocable: false
 | `resources/js/` + `resources/css/` | Frontend assets                                                                  |
 | `tests/Feature/` + `tests/Unit/` | PHPUnit tests                                                                       |
 
+### Package Layout Convention
+
+Check which the project uses before describing the architecture:
+
+- **Layer-package** (Laravel default, dominant in tutorials and most Laravel codebases): `app/Http/Controllers/`, `app/Http/Requests/`, `app/Services/`, `app/Models/`, `app/Jobs/`, `app/Policies/` group files by stereotype. Every Order-related concern lives in a different directory. Matches `php artisan make:*` defaults
+- **Feature-package / Domain-Driven** (less common in Laravel, more common in larger / DDD-influenced codebases): `app/Domain/Orders/{Controller,Service,Repository,Action,Job}.php` keeps an entire feature in one directory; cross-feature imports go through public service interfaces. Easier to extract a feature later. Often paired with custom `composer.json` PSR-4 autoload entries
+- **Mixed** (common in growing Laravel codebases): `app/Domain/Orders/` (feature-package) sits next to a legacy `app/Services/OrderService.php` (layer-package). When you find both, the project is mid-migration - new code goes in the feature-package side, edits to legacy code stay in place until a planned refactor. Confirm direction with the team before adding files; `php artisan make:*` will default to layer-package locations and need manual relocation
+
 ### Conventions
 
 - **Eloquent over query builder** for most cases; query builder for complex queries.

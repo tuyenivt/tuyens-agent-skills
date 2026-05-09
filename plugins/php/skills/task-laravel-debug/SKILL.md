@@ -45,6 +45,8 @@ STEP 1 - INTAKE: Use skill: `stack-detect` to confirm Laravel. Ask for: full sta
 
 **If partial input**: If the user provides only a description without a stack trace, search the codebase for the relevant file/function and ask clarifying questions. If only an error message is given (no stack trace), check `storage/logs/laravel.log` and match against the classification table below before asking for more context.
 
+**If "no error, just wrong behavior"**: When the user reports "the value is null in the DB but I sent it" or "the email never arrives" with no exception, reframe as a boundary-loss question: at which layer does the value disappear? Trace the path: Form Request `rules()` (was it validated?) → `$request->validated()` vs `$request->all()` → `$fillable` whitelist → model `casts()` / mutators → `prepareForValidation()` → DB column. The bug is almost always at one of these boundaries, not in the controller body. Same shape for queue jobs: dispatch site → `afterCommit()` → broker → `handle()` → side effect. Identify which boundary lost the value before reading any code.
+
 STEP 2 - CLASSIFY:
 
 Match the error to one of these categories, then load the relevant atomic skill:

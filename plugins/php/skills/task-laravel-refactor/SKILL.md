@@ -289,6 +289,24 @@ Each refactoring step must be:
 3. Run `php artisan test`; confirm tests pass; verify in dev mode by enabling `Model::preventLazyLoading()` in `AppServiceProvider::boot` so any remaining lazy loads throw
 4. **Skip if** the relation is conditional and the value is rarely accessed - over-eager-loading is a cost too. Use `whenLoaded` in the API Resource (`'user' => new UserResource($this->whenLoaded('user'))`) and only eager-load on routes that need it
 
+**Recipe: Move side effects out of an open DB transaction**
+
+When a controller / service runs `Http::post(...)`, `Mail::send(...)`, or `dispatch(new SomeJob(...))` inside `DB::transaction(fn () => ...)`, the side effect can fire before the row commits (queue worker faster than commit) or hold the DB connection across an upstream's tail latency. Two options - pick one per refactor; do not stack them.
+
+**Option A: Post-commit dispatch via `->afterCommit()`** (default; use unless guaranteed delivery is required)
+
+1. Move the side effect out of the transaction body; capture inputs, exit transaction, then dispatch
+2. For jobs: `dispatch((new ProcessPayment($order->id))->afterCommit())` - the queue layer holds the dispatch until commit, then releases. Or set `public bool $afterCommit = true;` on the job so `afterCommit` is the default. For `QUEUE_AFTER_COMMIT=true` set globally in `config/queue.php`, `afterCommit` is the default - the recipe is to remove explicit `withoutCommit()` overrides
+3. For raw HTTP / mail: capture the inputs into local variables inside the transaction; after `DB::transaction(...)` returns, run `Http::post(...)` / `Mail::send(...)` outside the transaction. Failure of the side effect no longer rolls back the row - acceptable when the side effect is retryable (job) or the row is the source of truth (mail can be re-triggered from the saved record)
+4. Risk: if the side effect must run before the row is durable (rare), `afterCommit` is wrong - use Option B
+
+**Option B: Transactional outbox** (use when delivery must be guaranteed exactly-once-after-commit, e.g., financial events, audit trail required by compliance)
+
+1. Add an `outbox_messages` table: `id`, `aggregate_type`, `aggregate_id`, `event_type`, `payload (json)`, `created_at`, `processed_at (nullable)`. Migration includes index on `(processed_at, created_at)` for the relay scan
+2. In the same transaction that writes the business row, also `OutboxMessage::create([...])` with the event payload. Both rows commit atomically or both roll back
+3. Add a relay job (scheduled via `Schedule::command('outbox:relay')->everyMinute()->withoutOverlapping()->onOneServer()`) that selects unprocessed rows in chunks, dispatches the real job / HTTP call / mail per row, then marks `processed_at = now()`. Idempotency on the consumer side is still required (outbox guarantees at-least-once)
+4. Trade-off: adds a table, a relay command, and ~minute latency vs. immediate dispatch. Use only when post-commit-dispatch's "fire after commit but no guarantee on relay failure" is unacceptable
+
 **Recipe: Convert job to use scalar IDs and `->afterCommit()`**
 
 1. Identify the offending dispatch and constructor: `dispatch(new ProcessPayment($order))` inside `DB::transaction(fn () => ...)` with `class ProcessPayment { public function __construct(public Order $order) {} }`
