@@ -71,6 +71,17 @@ user-invocable: false
 | `scripts/`              | Bootstrap and tooling scripts                                              |
 | `Dockerfile`            | Multi-stage build                                                          |
 
+### Package Layout Convention
+
+Check which the project uses before describing the architecture - this drives where new code should land:
+
+- **Layer-package (most common in tutorials and small services)**: `internal/handler/`, `internal/service/`, `internal/repository/`, `internal/model/` grouped by stereotype. An `Order`-related concern is spread across `internal/handler/orders.go`, `internal/service/orders.go`, `internal/repository/orders.go`. Easy to find by stereotype, hard to find by feature; cross-feature coupling is invisible because everything imports from `service` and `repository`. Default for projects with < ~5 domains
+- **Feature-package (recommended for medium+ services)**: `internal/orders/{handler.go, service.go, repository.go, model.go}`, `internal/payments/{...}`, `internal/users/{...}`. An entire bounded context lives in one tree; cross-feature imports go through public service interfaces (`orders.Service`), not direct repository imports. Idiomatic Go ("accept interfaces, return structs" plus consumer-defined interfaces). Common in production codebases at scale
+- **DDD / hexagonal (`internal/<domain>/{domain/, application/, adapters/}`)**: domain layer (entities, value objects, repository interfaces) is pure Go with no framework imports; application layer holds use cases; adapters layer holds Gin handlers + GORM/sqlx implementations. Used by teams enforcing hexagonal architecture. Recognizable by `domain/` subpackage with no `gin` / `gorm` imports. Less common but heavyweight teams favor it
+- **Monorepo / multi-binary (`cmd/api/`, `cmd/worker/`, `cmd/migrate/` + shared `internal/`)**: multiple binaries share `internal/` packages. Each `cmd/<bin>/main.go` is a thin wire-up file. Common when one repo serves both API and Asynq workers; new business logic still goes in `internal/<feature>/`, not in `cmd/`
+
+`cmd/<bin>/main.go` is always thin (load config, build dependencies, start server). Business logic in `cmd/` is a smell - it's not importable from tests or other binaries because `main` is special.
+
 ### Conventions
 
 - **`internal/`** for non-exported code; **`pkg/`** for reusable libraries (some teams skip `pkg/` entirely).

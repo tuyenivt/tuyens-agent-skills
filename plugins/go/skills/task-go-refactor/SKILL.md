@@ -210,6 +210,58 @@ Each refactoring step must be:
 4. Remove the original logic from the handler; verify handler tests pass
 5. Add a handler-level test asserting service failure surfaces as the expected error response (likely via `c.Error(err)` + central error middleware)
 
+**Recipe: Move side effects out of an open DB transaction**
+
+Pick **one** of these options per refactor; do not stack them. Option A is simpler and the right default; Option B is justified only when the side effect is genuinely required-once (delivery guarantees, durable retry, cross-region replay) and a process crash between commit and dispatch is unacceptable.
+
+**Option A - Post-commit dispatch (capture inputs in tx, dispatch after `Transaction` returns nil):**
+
+1. Identify the I/O inside `db.Transaction(func(tx *gorm.DB) error {...})` - `client.Enqueue(...)` (Asynq), `producer.Produce(...)` (Kafka), `http.Client.Do(...)`, `mailer.Send(...)`, `cache.Set(...)`. These currently fire mid-transaction; the worker / downstream may observe the row before it's committed (or not at all if the tx rolls back)
+2. Hoist the dispatch out of the closure. Capture only the inputs needed (IDs, payloads) inside the tx; dispatch after the tx returns nil:
+   ```go
+   var orderID int64
+   var payload []byte
+   err := db.Transaction(func(tx *gorm.DB) error {
+       if err := tx.Create(&order).Error; err != nil { return err }
+       orderID = order.ID
+       payload = mustMarshal(NotificationPayload{OrderID: orderID})
+       return nil
+   })
+   if err != nil { return err }
+   // post-commit: row is visible to other connections; safe to dispatch
+   if _, err := asynqClient.Enqueue(asynq.NewTask("order.notify", payload)); err != nil {
+       slog.ErrorContext(ctx, "post-commit enqueue failed", "order_id", orderID, "err", err)
+       // option: write to outbox here (Option B's relay handles retry) or accept best-effort
+   }
+   ```
+3. Document the failure mode: "process crash between commit and `Enqueue` drops the dispatch." If that's unacceptable, switch to Option B
+4. Run `go test ./...`; verify the side effect fires after the tx commits (a test that asserts `mock.AssertCalled(t, "Enqueue", ...)` fires only after `db.Commit()` was reached)
+
+**Option B - Transactional outbox (durable, at-least-once):**
+
+1. Add an `outbox_messages` table inside the same DB: `id BIGSERIAL`, `aggregate_type TEXT`, `aggregate_id BIGINT`, `event_type TEXT`, `payload JSONB`, `created_at TIMESTAMPTZ`, `processed_at TIMESTAMPTZ NULL`, partial index `(processed_at) WHERE processed_at IS NULL`
+2. Inside `db.Transaction(func(tx *gorm.DB) error {...})`, INSERT into `outbox_messages` alongside the business write - both commit atomically; no enqueue inside the tx
+3. Add a relay (separate goroutine / Asynq scheduled task / standalone consumer) that polls / streams unprocessed rows and dispatches the side effect:
+   ```go
+   var msgs []OutboxMessage
+   err := db.WithContext(ctx).
+       Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+       Where("processed_at IS NULL").
+       Order("id").
+       Limit(100).
+       Find(&msgs).Error
+   for _, m := range msgs {
+       if _, err := asynqClient.Enqueue(asynq.NewTask(m.EventType, m.Payload), asynq.TaskID(fmt.Sprintf("outbox-%d", m.ID))); err != nil {
+           continue // leave unprocessed; next poll retries
+       }
+       db.Model(&m).Update("processed_at", time.Now())
+   }
+   ```
+   `FOR UPDATE SKIP LOCKED` lets multiple relay replicas run concurrently without contending on the same rows; Postgres-only (MySQL 8.0+ also supports it; SQLite doesn't)
+4. Side-effect handlers (the Asynq task processors) MUST be idempotent - `asynq.TaskID("outbox-<id>")` provides client-side dedup against retry storms but the handler still needs upserts / state checks because rebalances and retries are at-least-once
+5. Document the relay's lag budget (e.g., "outbox processed within 5s p99") and the monitoring alert (queue depth, oldest unprocessed `created_at`)
+6. Run `go test -race ./...`; assert the outbox row is written in the same tx (rolling back the tx leaves no outbox row); assert the relay is idempotent under double-delivery
+
 **Recipe: Convert GORM `AfterCreate` hook side effects to post-commit dispatch**
 
 1. Add a service-level test (or handler test) reproducing the current observable behavior (record updated, email sent, event published)
