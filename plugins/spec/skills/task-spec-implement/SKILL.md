@@ -1,6 +1,6 @@
 ---
 name: task-spec-implement
-description: Execution phase of Spec-Driven Development. Reads `tasks.md` and implements tasks one at a time, delegating each to the appropriate stack workflow (`task-spring-implement`, `task-react-implement`, ...) in spec-aware mode. Updates task `Status:` markers as work progresses. Resumes from the first `[ ]` task on re-invocation. Speckit-aware - delegates to `/speckit.implement` when Spec Kit is installed.
+description: SDD execution phase - reads tasks.md, delegates each task to stack workflow in spec-aware mode, updates status, resumable. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, implement, execution, orchestration]

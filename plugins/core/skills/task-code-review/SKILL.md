@@ -1,6 +1,6 @@
 ---
 name: task-code-review
-description: Staff-level code review entry point. Detects the project stack and dispatches to the matching stack-specific review workflow. For unknown stacks, runs a minimal generic risk/correctness/maintainability protocol.
+description: Code review entry point: risk, correctness, maintainability. Detects stack and dispatches to stack-specific review workflow.
 metadata:
   category: review
   tags: [code-review, pull-request, risk-assessment, multi-stack, router]

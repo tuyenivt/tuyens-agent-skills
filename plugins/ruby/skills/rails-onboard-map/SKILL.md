@@ -1,6 +1,6 @@
 ---
 name: rails-onboard-map
-description: Ruby on Rails project onboarding signals - Gemfile, bundler, Rails version, environment configs, AR + migrations, ActiveJob backend, ActionCable, and asset pipeline / build tool. Used by task-onboard to map a Rails codebase for a new engineer.
+description: Rails onboarding map: Gemfile, bundler, Rails version, env configs, AR migrations, ActiveJob, ActionCable, asset pipeline.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, rails, ruby, bundler]

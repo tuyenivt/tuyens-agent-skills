@@ -1,6 +1,6 @@
 ---
 name: task-spring-debug
-description: Developer debugging workflow that analyzes a stack trace, error log, or unexpected behavior to identify root cause, propose a minimal fix with code, and suggest a test to prevent recurrence.
+description: "Debug a Spring Boot stack trace, error log, or unexpected behavior: root cause, minimal fix with code, regression test."
 metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]

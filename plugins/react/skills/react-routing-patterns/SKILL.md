@@ -1,6 +1,6 @@
 ---
 name: react-routing-patterns
-description: React routing patterns - React Router (Vite) and Next.js App Router layouts, loading states, error boundaries, parallel routes, intercepting routes, and middleware.
+description: React routing: React Router (Vite), Next.js App Router layouts, loading, error boundaries, parallel and intercepting routes, middleware.
 metadata:
   category: frontend
   tags: [react, routing, nextjs, react-router, layouts, middleware, parallel-routes]

@@ -1,6 +1,6 @@
 ---
 name: task-angular-implement
-description: End-to-end Angular feature implementation workflow - standalone components, signals, services, routing, RxJS, styling, accessibility, and tests for Angular 21+ projects.
+description: End-to-end Angular feature implementation: standalone components, signals, services, routing, RxJS, styling, a11y, tests.
 metadata:
   category: frontend
   tags: [angular, typescript, standalone, signals, rxjs, feature, implementation, workflow, components, testing]

@@ -1,6 +1,6 @@
 ---
 name: dotnet-transaction
-description: Define transactional boundaries with single-SaveChanges semantics, explicit IDbContextTransaction for cross-aggregate writes, Unit of Work abstraction, and retry-safe execution strategies.
+description: "EF Core transactional boundaries: single SaveChanges, IDbContextTransaction for cross-aggregate writes, Unit of Work, retry-safe execution."
 metadata:
   category: backend
   tags: [ef-core, transactions, unit-of-work, consistency]

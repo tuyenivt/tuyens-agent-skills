@@ -1,6 +1,6 @@
 ---
 name: task-go-test
-description: Go test strategy and scaffolding using table-driven tests, httptest for Gin handlers, Testcontainers PostgreSQL, gomock / mockery for interfaces, Asynq test patterns, and `go test -race` discipline. Use when designing a test plan, assessing coverage gaps, or scaffolding handler / service / repository / job tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Go / Gin.
+description: Go / Gin test plan and scaffolding: table-driven tests, httptest, Testcontainers, gomock/mockery, Asynq, `go test -race` discipline.
 agent: go-test-engineer
 metadata:
   category: backend

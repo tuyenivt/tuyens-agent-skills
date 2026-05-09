@@ -1,6 +1,6 @@
 ---
 name: node-nestjs-patterns
-description: NestJS application patterns - module architecture, dependency injection, controllers, guards, interceptors, pipes, exception filters, validation with class-validator, DI scopes, circular dependency resolution, and webhook handling.
+description: NestJS patterns: modules, DI scopes, controllers, guards, interceptors, pipes, exception filters, class-validator, circular deps, webhooks.
 metadata:
   category: backend
   tags: [node, typescript, nestjs, di, validation, patterns]

@@ -1,6 +1,6 @@
 ---
 name: task-react-review-security
-description: React security review for XSS via `dangerouslySetInnerHTML`, CSP and `nonce`, Server Action input validation, Server Component data exposure, env-var leakage (`NEXT_PUBLIC_`), open redirect, auth on Server Components / Route Handlers / middleware, CSRF on cookie-session apps, and React-aware OWASP. Detects Next.js App Router vs Vite + React Router and applies the right idioms. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to React.
+description: React / Next.js security review: XSS, CSP, Server Action validation, RSC data exposure, NEXT_PUBLIC leakage, auth, CSRF, open redirect, OWASP.
 agent: react-security-engineer
 metadata:
   category: frontend

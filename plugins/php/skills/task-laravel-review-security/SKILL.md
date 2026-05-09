@@ -1,6 +1,6 @@
 ---
 name: task-laravel-review-security
-description: Laravel security review for mass assignment (`$guarded = []`, `Model::create($request->all())`), Sanctum / Passport authentication, Gates / Policies authorization (IDOR via `Order::find($id)` without ownership scoping, missing `$this->authorize`), Form Request validation, SQL injection via `whereRaw` / `DB::raw($input)` / `orderByRaw($request->input)`, CSRF / antiforgery, file upload safety (path traversal, MIME spoofing, public storage), webhook signature verification (`hash_equals` not `==`), `env()` outside config, secrets in `.env.example`, `serialize` / `unserialize` deserialization gadgets, `eval` / `exec` / `shell_exec` injection, OWASP Top 10 in a Laravel lens. Stack-specific override of task-code-review-security for PHP / Laravel.
+description: Laravel security review: mass assignment, Sanctum/Passport, Gates/Policies, Form Requests, SQL injection, CSRF, file upload, webhook signatures.
 agent: php-security-engineer
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: node-prisma-patterns
-description: Prisma ORM patterns for NestJS and Express - schema design with enums and relations, N+1 prevention with include/select, interactive transactions, cursor-based pagination, batch operations, connection pooling, upsert for idempotency, and PrismaService as injectable.
+description: Prisma ORM patterns for NestJS / Express: schema relations, N+1 prevention, transactions, cursor pagination, upsert, PrismaService DI.
 metadata:
   category: backend
   tags: [node, typescript, prisma, orm, database, patterns]

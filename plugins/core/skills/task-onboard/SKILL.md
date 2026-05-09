@@ -1,6 +1,6 @@
 ---
 name: task-onboard
-description: Whole-codebase or large subsystem orientation for engineers new to a project. Detects stack and composes a stack-specific atomic (Spring/Rails/React/etc.) for bootstrap commands, key files, conventions, and risk hotspots. Falls back to a universal map for unknown stacks. Captures architecture, ecosystem, contribution workflow, and first-PR safe zones.
+description: Onboard to a codebase: bootstrap commands, key files, architecture, conventions, risk hotspots, contribution workflow, first-PR safe zones.
 metadata:
   category: code
   tags: [onboarding, architecture, tech-debt, codebase-analysis, patterns, multi-stack]

@@ -1,6 +1,6 @@
 ---
 name: angular-testing-patterns
-description: Angular testing patterns - Vitest/Jest + Angular Testing Library, component harnesses, service testing, HttpTestingController, and Playwright e2e for Angular 21+.
+description: Angular testing: Vitest/Jest, Angular Testing Library, component harnesses, service tests, HttpTestingController, Playwright e2e.
 metadata:
   category: frontend
   tags: [angular, testing, vitest, angular-testing-library, component-harness, playwright, httptestingcontroller]

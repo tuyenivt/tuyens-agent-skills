@@ -1,6 +1,6 @@
 ---
 name: react-component-patterns
-description: React component design - composition, compound components, render props, Server Components vs Client Components, error boundaries, and TypeScript patterns for React 19+.
+description: React 19 component design: composition, compound components, render props, RSC vs Client, error boundaries, TypeScript patterns.
 metadata:
   category: frontend
   tags: [react, components, composition, server-components, error-boundaries, typescript]

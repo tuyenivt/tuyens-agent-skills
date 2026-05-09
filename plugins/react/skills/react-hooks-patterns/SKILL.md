@@ -1,6 +1,6 @@
 ---
 name: react-hooks-patterns
-description: React hooks patterns - custom hooks, hook rules, useEffect discipline, cleanup, refs, context usage, and React 19 hooks (use, useOptimistic, useActionState) for React 19+.
+description: React 19 hooks: custom hooks, hook rules, useEffect discipline, cleanup, refs, context, use, useOptimistic, useActionState.
 metadata:
   category: frontend
   tags: [react, hooks, useEffect, custom-hooks, react-19, refs, context]

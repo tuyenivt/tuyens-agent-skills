@@ -1,6 +1,6 @@
 ---
 name: node-onboard-map
-description: Node.js / NestJS / Express project onboarding signals - package manager (npm/yarn/pnpm), framework, TypeScript config, build/run scripts, ORM, and module system (CJS vs ESM). Used by task-onboard to map a Node codebase for a new engineer.
+description: Node.js / NestJS / Express onboarding signals: package manager, framework, tsconfig, build scripts, ORM, CJS vs ESM module system.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, node, nestjs, express, typescript]

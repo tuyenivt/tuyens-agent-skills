@@ -1,6 +1,6 @@
 ---
 name: task-go-review
-description: Go staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Gin / GORM / sqlx idioms (unchecked errors, goroutine leaks, missing context propagation, fat handlers, GORM N+1, raw SQL string concat, missing ShouldBindJSON validators, missing JWT middleware, mutex held across I/O, panic in service code). Spawns Go-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Go. Runs standalone with full PR/branch resolution.
+description: Go / Gin / GORM / sqlx code review: goroutine leaks, context propagation, N+1, auth, validation; spawns perf/security/observability subagents.
 agent: go-tech-lead
 metadata:
   category: backend

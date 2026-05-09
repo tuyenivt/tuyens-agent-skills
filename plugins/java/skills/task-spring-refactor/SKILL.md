@@ -1,6 +1,6 @@
 ---
 name: task-spring-refactor
-description: Spring Boot refactor planning for fat controllers, anemic domain, service god-objects, missing layer boundary, `@Transactional` misuse, callback-via-JPA-listener overuse, single-implementation interface bloat, and `@Autowired` field injection. Produces a step-by-step sequence of independently-committable Spring refactoring steps with a JUnit / Spring slice test coverage gate. Stack-specific override of task-code-refactor for Java/Spring Boot.
+description: "Spring Boot refactor plan: fat controllers, anemic domain, @Transactional misuse, field injection; phased steps with JUnit slice test coverage gate."
 agent: java-tech-lead
 metadata:
   category: backend

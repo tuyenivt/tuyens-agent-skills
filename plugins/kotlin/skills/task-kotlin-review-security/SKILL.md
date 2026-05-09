@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-review-security
-description: Kotlin/Spring Boot security review for Spring Security 6.x Kotlin DSL SecurityFilterChain, OAuth2/JWT, method security, validation on data class DTOs, CSRF, coroutine SecurityContext propagation, and Kotlin-aware OWASP Top 10. Stack-specific override of task-code-review-security for Kotlin/Spring Boot.
+description: Kotlin / Spring Boot security review: Kotlin DSL SecurityFilterChain, OAuth2/JWT, method security, CSRF, coroutine SecurityContext, OWASP Top 10.
 agent: kotlin-security-engineer
 metadata:
   category: backend

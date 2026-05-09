@@ -1,6 +1,6 @@
 ---
 name: python-migration-safety
-description: "Zero-downtime migration patterns for Alembic and Django. Covers lock_timeout, NOT NULL via NOT VALID constraints, concurrent index creation, expand-contract column renames, data migration separation, and multi-release deploy sequencing."
+description: "Zero-downtime DB migrations for Alembic and Django: lock_timeout, NOT VALID constraints, CONCURRENTLY indexes, expand-contract, deploy sequencing."
 metadata:
   category: backend
   tags: [python, alembic, django, migrations, postgresql, zero-downtime]

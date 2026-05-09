@@ -1,6 +1,6 @@
 ---
 name: task-vue-review-perf
-description: Vue performance review for Core Web Vitals (LCP, INP, CLS), bundle size, hydration cost, reactivity hotspots (over-deep `reactive`, watcher cascades, ref unwrap cost), Pinia store re-render storms, Nuxt useFetch/useAsyncData cache misuse, lazy components / async chunks, ISR / `routeRules` / `nitro.prerender`, image / font optimization. Detects Nuxt 3 vs Vite + Vue Router and applies the right idioms. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Vue.
+description: Vue / Nuxt perf review: Core Web Vitals, bundle size, hydration, reactivity hotspots, Pinia, useFetch cache, routeRules, prerender, images.
 agent: vue-performance-engineer
 metadata:
   category: frontend

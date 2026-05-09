@@ -1,6 +1,6 @@
 ---
 name: backend-api-guidelines
-description: REST API design - resource naming, HTTP methods, error handling, pagination. Auto-detects project stack and adapts API patterns to the detected ecosystem.
+description: REST API design: resource naming, HTTP methods, error handling, pagination. Auto-detects stack and adapts patterns.
 metadata:
   category: governance
   tags: [api, rest, http, conventions, multi-stack]

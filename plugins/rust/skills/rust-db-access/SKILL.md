@@ -1,6 +1,6 @@
 ---
 name: rust-db-access
-description: "Rust data access with sqlx: compile-time checked queries, connection pool sizing, transactions, pagination, N+1 prevention, and sqlx vs diesel guidance."
+description: "Rust sqlx data access: compile-time checked queries, pool sizing, transactions, pagination, N+1 prevention, sqlx vs diesel guidance."
 metadata:
   category: backend
   tags: [rust, sqlx, diesel, postgresql, database, connection-pool]

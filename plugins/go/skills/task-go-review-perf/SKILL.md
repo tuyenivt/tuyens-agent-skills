@@ -1,6 +1,6 @@
 ---
 name: task-go-review-perf
-description: Go performance review for GORM / sqlx N+1, goroutine leaks and unbounded fan-out, missing context cancellation, sync.Mutex contention, sync.Pool / allocation hotspots, connection pool sizing, Asynq / Kafka throughput, JSON marshalling cost, and migration safety. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Go / Gin.
+description: Go / Gin performance review: GORM/sqlx N+1, goroutine leaks, context cancellation, mutex contention, sync.Pool, pool sizing, Asynq/Kafka throughput.
 agent: go-performance-engineer
 metadata:
   category: backend

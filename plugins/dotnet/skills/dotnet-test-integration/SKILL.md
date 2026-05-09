@@ -1,6 +1,6 @@
 ---
 name: dotnet-test-integration
-description: Structure integration tests with WebApplicationFactory, Testcontainers for real database testing, Bogus for data generation, and Respawn for state isolation.
+description: "ASP.NET Core integration tests: WebApplicationFactory, Testcontainers for real DB, Bogus data generation, Respawn state isolation."
 metadata:
   category: backend
   tags: [xunit, testcontainers, webapplicationfactory, integration-testing, bogus]

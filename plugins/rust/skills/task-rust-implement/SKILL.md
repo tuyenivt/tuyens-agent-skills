@@ -1,6 +1,6 @@
 ---
 name: task-rust-implement
-description: Implement a multi-layer Rust/Axum feature end-to-end - migrations, models, repositories, services, handlers, DTOs, and tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rust-debug).
+description: Implement multi-layer Rust / Axum feature end-to-end: migrations, models, repositories, services, handlers, DTOs, tests.
 agent: rust-architect
 metadata:
   category: backend

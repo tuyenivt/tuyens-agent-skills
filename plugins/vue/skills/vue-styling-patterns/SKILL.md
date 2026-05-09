@@ -1,6 +1,6 @@
 ---
 name: vue-styling-patterns
-description: Vue styling patterns - scoped styles, CSS v-bind, Tailwind CSS, UnoCSS, Vuetify/PrimeVue component libraries, design tokens, responsive design, and dark mode for Vue 3.5+.
+description: Vue 3.5 styling: scoped styles, CSS v-bind, Tailwind, UnoCSS, Vuetify, PrimeVue, design tokens, responsive, dark mode.
 metadata:
   category: frontend
   tags: [vue, styling, scoped-styles, css-v-bind, tailwind, unocss, vuetify, primevue, dark-mode]

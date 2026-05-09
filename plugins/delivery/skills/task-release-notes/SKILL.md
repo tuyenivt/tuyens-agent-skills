@@ -1,6 +1,6 @@
 ---
 name: task-release-notes
-description: Generate stakeholder-ready release notes from a git commit range or PR list. Categorizes changes (features / fixes / breaking / internal), summarizes user-visible impact, and folds in a per-release rollback and risk section so the same artifact serves both stakeholders and on-call. Use when cutting a release, drafting a changelog, or preparing a deploy announcement.
+description: Generate stakeholder release notes from git commits or PR list: features/fixes/breaking/internal, user impact, rollback and risk section.
 metadata:
   category: planning
   tags: [release, changelog, release-notes, rollout, rollback, communication]

@@ -1,6 +1,6 @@
 ---
 name: task-spec-constitution
-description: Generate or update a project-level `.specs/constitution.md` capturing the durable engineering principles, coding-standards posture, governance rules, and review expectations that every feature in the repo must respect. Synthesizes existing standards skills (`backend-coding-standards`, `ops-engineering-governance`, `frontend-accessibility`, ...) and the repo's `CLAUDE.md` into one portable document. Speckit-aware - delegates to `/speckit.constitution` when Spec Kit is installed.
+description: Generate or update project-level `.specs/constitution.md` with engineering principles, coding standards, governance, review rules. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, constitution, governance, principles]

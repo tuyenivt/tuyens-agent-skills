@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-review-security
-description: .NET security review for ASP.NET Core JWT bearer auth, policy-based authorization, FluentValidation input, EF Core parameterization, mass assignment via `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>`, secrets management (Azure Key Vault / AWS Secrets Manager / `dotnet user-secrets`), `Process.Start` injection, path traversal, `unsafe` audit, `dotnet list package --vulnerable` dependency scanning, and .NET-aware OWASP Top 10. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to .NET / ASP.NET Core.
+description: ".NET / ASP.NET Core security review: JWT auth, FluentValidation, EF Core parameterization, mass assignment, secrets, OWASP Top 10."
 agent: dotnet-security-engineer
 metadata:
   category: backend

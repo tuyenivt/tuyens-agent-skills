@@ -1,6 +1,6 @@
 ---
 name: frontend-state-management
-description: State management patterns for frontend applications - local vs global state, when to lift state, derived state, state normalization. Adapts to detected stack (Redux, Pinia, NgRx, Zustand, Jotai, signals, etc.).
+description: Frontend state management: local vs global, lifting state, derived state, normalization. Adapts to detected stack and store library.
 metadata:
   category: frontend
   tags: [frontend, state, redux, pinia, ngrx, zustand, signals, multi-stack]

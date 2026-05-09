@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-test
-description: .NET test strategy and scaffolding using xUnit `[Fact]` / `[Theory]` for parametrized cases, `WebApplicationFactory<TEntryPoint>` for full HTTP integration tests, Testcontainers PostgreSQL via `Testcontainers.PostgreSql`, NSubstitute (or Moq) for interface mocks, Bogus `Faker<T>` for test data, FluentAssertions for assertion ergonomics, Respawn for DB reset between tests, and `dotnet test` / `dotnet format` / Roslyn analyzer discipline. Use when designing a test plan, assessing coverage gaps, or scaffolding controller / handler / repository / job tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to .NET / ASP.NET Core.
+description: ".NET / ASP.NET Core test plan and scaffolding: xUnit, WebApplicationFactory, Testcontainers, NSubstitute, Bogus, FluentAssertions, Respawn."
 agent: dotnet-test-engineer
 metadata:
   category: backend

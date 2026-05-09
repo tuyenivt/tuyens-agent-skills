@@ -1,6 +1,6 @@
 ---
 name: frontend-form-handling
-description: Frontend form patterns - validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack (React Hook Form, Formik, VeeValidate, Angular Reactive Forms, etc.).
+description: Frontend form patterns: validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack.
 metadata:
   category: frontend
   tags: [frontend, forms, validation, multi-step, submission, dirty-tracking, multi-stack]

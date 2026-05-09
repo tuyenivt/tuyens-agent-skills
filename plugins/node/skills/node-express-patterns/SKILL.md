@@ -1,6 +1,6 @@
 ---
 name: node-express-patterns
-description: Express application patterns with TypeScript - router organization, middleware chain ordering, async error handling, Zod validation, central error middleware, webhook handling, security headers, health endpoints, and graceful shutdown.
+description: Express + TypeScript patterns: router structure, middleware ordering, async error handling, Zod validation, webhooks, graceful shutdown.
 metadata:
   category: backend
   tags: [node, typescript, express, middleware, validation, patterns]

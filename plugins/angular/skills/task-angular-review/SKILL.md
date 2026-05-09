@@ -1,6 +1,6 @@
 ---
 name: task-angular-review
-description: Angular staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Angular idioms (standalone discipline, OnPush mandate, signal correctness, RxJS subscription hygiene, `bypassSecurityTrust*` audit, `[innerHTML]` audit, new control-flow `track`, functional guards/interceptors, SSR `TransferState`, accessibility regressions). Spawns Angular-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Angular. Runs standalone with full PR/branch resolution.
+description: Angular code review: standalone, OnPush, signals, RxJS hygiene, bypassSecurityTrust, control-flow, SSR, a11y; spawns perf/security/obs subagents.
 agent: angular-tech-lead
 metadata:
   category: frontend

@@ -1,6 +1,6 @@
 ---
 name: task-rust-review-security
-description: Rust security review for Axum auth middleware, jsonwebtoken JWT validation, validator-crate input validation, sqlx parameterization, mass assignment via serde_json::from_value, secrets management, Command injection, path traversal, unsafe-block audit, cargo-audit / cargo-deny dependency scanning, and Rust-aware OWASP Top 10. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Rust / Axum.
+description: Rust / Axum security review: JWT auth, validator input, sqlx parameterization, unsafe audit, cargo-audit/cargo-deny, OWASP Top 10.
 agent: rust-security-engineer
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: backend-db-indexing
-description: Database index strategy and query optimization - when to add indexes, composite index column ordering, covering indexes, partial indexes. Called by workflow skills - not for general SQL help.
+description: Database index strategy and query optimization: composite column ordering, covering indexes, partial indexes, when to add indexes.
 metadata:
   category: performance
   tags: [database, indexing, queries, optimization]

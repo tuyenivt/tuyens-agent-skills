@@ -1,6 +1,6 @@
 ---
 name: task-rust-test
-description: Rust test strategy and scaffolding using #[tokio::test] for async, axum-test / tower::ServiceExt::oneshot for handler tests, testcontainers PostgreSQL via testcontainers-rs, mockall for trait mocks, proptest for property-based tests, and cargo nextest / cargo clippy discipline. Use when designing a test plan, assessing coverage gaps, or scaffolding handler / service / repository / job tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Rust / Axum.
+description: Rust / Axum test strategy and scaffolding: tokio::test, axum-test, tower oneshot, testcontainers, mockall, proptest, cargo nextest.
 agent: rust-test-engineer
 metadata:
   category: backend

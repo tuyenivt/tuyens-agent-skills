@@ -1,6 +1,6 @@
 ---
 name: task-laravel-review
-description: Laravel staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with PHP 8.5 / Laravel 12+ / Eloquent idioms (mass assignment via `$guarded = []` or unfiltered `Model::create($request->all())`, N+1 via lazy loading without `with()`, `DB::raw`/`whereRaw` SQL injection, missing `$this->authorize()` / Policy enforcement, jobs dispatched inside transactions without `afterCommit()`, jobs taking Eloquent models in constructors, raw model returned from controller instead of API Resource, `env()` outside config files, fat controllers with business logic). Spawns Laravel-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for PHP / Laravel. Runs standalone with full PR/branch resolution.
+description: Laravel/PHP code review: mass assignment, Eloquent N+1, SQL injection, auth policies, fat controllers; spawns perf/security/observability subagents.
 agent: php-tech-lead
 metadata:
   category: backend

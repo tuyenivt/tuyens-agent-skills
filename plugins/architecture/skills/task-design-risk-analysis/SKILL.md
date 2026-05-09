@@ -1,6 +1,6 @@
 ---
 name: task-design-risk-analysis
-description: Proactive risk assessment for proposed changes before implementation -- classifies risk domains, blast radius, consistency hazards, deployment safety, and observability readiness. Adapts depth from quick sanity check to full cascading failure simulation.
+description: "Pre-implementation risk analysis: blast radius, consistency hazards, deployment safety, observability readiness; adaptive depth."
 metadata:
   category: ops
   tags: [risk-analysis, blast-radius, safety, architecture, deployment, prevention]

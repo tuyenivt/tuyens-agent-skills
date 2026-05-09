@@ -1,6 +1,6 @@
 ---
 name: task-spec-evaluate
-description: Score an SDD feature's implementation against its spec. Runs project tests via `eval-test-runner`, maps acceptance criteria and NFRs to evidence via `eval-spec-coverage`, aggregates with review-agent verdicts via `eval-scorer`, and writes the result to `.specs/<slug>/evaluation.md` (append-only). Opt-in - shells out to run tests; only invoked explicitly or when `task-spec-orchestrate` runs with `--with-evaluation`.
+description: Score SDD implementation vs spec - runs tests, maps AC/NFR to evidence, aggregates review verdicts into pass/needs-fix/fail; writes evaluation.md.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, scoring, test-runner]

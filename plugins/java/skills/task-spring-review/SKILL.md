@@ -1,6 +1,6 @@
 ---
 name: task-spring-review
-description: Spring Boot staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Spring idioms (layer boundaries, fat controllers, JPA leak in API, `@Transactional` misuse, anemic domain, dependency-injection abuse, Virtual Thread pinning). Spawns Spring-specific perf/security/observability subagents for extra scopes. Stack-specific override of task-code-review for Java/Spring Boot. Runs standalone with full PR/branch resolution.
+description: "Spring Boot code review: layer boundaries, fat controllers, JPA leak, @Transactional misuse, anemic domain, Virtual Thread pinning; spawns subagents."
 agent: java-tech-lead
 metadata:
   category: backend

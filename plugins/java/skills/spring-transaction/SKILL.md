@@ -1,6 +1,6 @@
 ---
 name: spring-transaction
-description: Spring @Transactional scope, propagation levels, and common pitfalls covering read-only optimization, self-invocation proxy bypass, checked exception rollback, and transaction timeout.
+description: "Spring @Transactional scope, propagation, pitfalls: read-only optimization, self-invocation proxy bypass, checked exception rollback, timeout."
 metadata:
   category: backend
   tags: [transactions, database, spring, consistency]

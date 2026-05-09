@@ -1,6 +1,6 @@
 ---
 name: rails-code-explain
-description: Ruby on Rails framework signals for code explanation - request lifecycle through middleware and controllers, ActiveRecord callbacks and transactions, ActiveJob workers, Zeitwerk autoloading, ActionCable, and concern composition. Used by task-code-explain to explain Rails code with stack-aware gotchas.
+description: Rails code explanation signals: request lifecycle, AR callbacks/transactions, ActiveJob, Zeitwerk autoloading, ActionCable, concerns.
 metadata:
   category: backend
   tags: [explanation, code-understanding, rails, activerecord, ruby]

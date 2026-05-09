@@ -1,6 +1,6 @@
 ---
 name: task-react-refactor
-description: React refactor planning for god components, prop drilling, `useEffect` overuse for derived state / events, fat hooks, `"use client"` placement at root of layouts, missing Server Component conversion, scattered state, missing Zod on Server Actions, untyped props, accessibility gaps, inline business logic in JSX. Produces a step-by-step sequence of independently-committable refactoring steps with a Vitest coverage gate. Stack-specific override of task-code-refactor for React.
+description: React / Next.js refactor plan: god components, prop drilling, useEffect overuse, "use client" misuse, RSC conversion; phased steps with Vitest gate.
 agent: react-tech-lead
 metadata:
   category: frontend

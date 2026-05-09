@@ -1,6 +1,6 @@
 ---
 name: task-angular-debug
-description: Debug Angular errors - change detection issues, RxJS subscription leaks, DI errors, build failures, zone.js issues, and runtime errors for Angular 21+ projects.
+description: Debug Angular: change detection issues, RxJS subscription leaks, DI errors, build failures, zone.js issues, runtime errors.
 metadata:
   category: frontend
   tags: [angular, debug, change-detection, rxjs, dependency-injection, error, troubleshooting]

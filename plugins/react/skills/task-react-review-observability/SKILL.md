@@ -1,6 +1,6 @@
 ---
 name: task-react-review-observability
-description: React observability review for `web-vitals` reporting (LCP / INP / CLS / TTFB), Sentry browser SDK + React error boundaries, OpenTelemetry browser instrumentation, Next.js `instrumentation.ts` server-side tracing, structured client logging, and RUM correlation. Library-level focus, not infra. Use when reviewing a React PR for observability gaps, before releasing a new app, or after an incident where client-side diagnosis was slow. Stack-specific override of task-code-review-observability for React.
+description: React / Next.js observability review: web-vitals, Sentry, OpenTelemetry browser SDK, instrumentation.ts tracing, structured logs, RUM correlation.
 agent: react-tech-lead
 metadata:
   category: frontend

@@ -1,6 +1,6 @@
 ---
 name: review-report-writer
-description: Writes a completed review report to a Markdown file named after the review type and current branch. Called as the final step of all task-*-review* workflows to persist output for later reference.
+description: Write a completed review report to a Markdown file named by review type and branch. Final step of all task-*-review* workflows.
 metadata:
   category: review
   tags: [review, report, output, file]

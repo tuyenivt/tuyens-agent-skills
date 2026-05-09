@@ -1,6 +1,6 @@
 ---
 name: rails-view-templates
-description: Rails view-layer patterns for ERB, HAML, and Slim templates. Covers escaping rules per engine, helper vs presenter vs ViewComponent boundaries, partials and layouts, fragment caching keys, Turbo Frames/Streams + Stimulus integration, and Slim-specific traps (`==` unescaped output, attribute-value Ruby evaluation).
+description: Rails view patterns for ERB/HAML/Slim: escaping, helper vs presenter vs ViewComponent, partials, fragment caching, Turbo/Stimulus.
 metadata:
   category: backend
   tags: [ruby, rails, views, slim, haml, erb, viewcomponent, turbo, stimulus, xss, patterns]

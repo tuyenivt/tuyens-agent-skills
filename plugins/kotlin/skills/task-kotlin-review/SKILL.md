@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-review
-description: Kotlin/Spring Boot staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Kotlin idioms (null safety, coroutines, data class JPA, !! abuse, GlobalScope, @Transactional self-invocation, Virtual Thread pinning via synchronized) and Spring idioms. Spawns Kotlin-specific perf/security/observability subagents for extra scopes. Stack-specific override of task-code-review for Kotlin/Spring Boot. Runs standalone with full PR/branch resolution.
+description: Kotlin / Spring Boot code review: null safety, coroutines, !! abuse, @Transactional, JPA; spawns perf/security/observability subagents.
 agent: kotlin-tech-lead
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: speckit-detect
-description: Detect whether GitHub Spec Kit is installed in the current project and decide between speckit-aware mode (delegate to `/speckit.*` commands) and standalone mode (drive the SDD pipeline ourselves using the `.specs/<slug>/` artifact convention).
+description: Detect GitHub Spec Kit install and choose speckit-aware mode (delegate to /speckit.*) vs standalone mode (drive SDD via .specs/<slug>/).
 metadata:
   category: spec
   tags: [spec, sdd, speckit, detection, mode-selection]

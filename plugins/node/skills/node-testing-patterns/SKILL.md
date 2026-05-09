@@ -1,6 +1,6 @@
 ---
 name: node-testing-patterns
-description: Jest testing patterns for NestJS and Express - unit tests with mocking, e2e tests with Supertest, NestJS TestingModule, Testcontainers for real PostgreSQL, database testing with transaction rollback, and TypeScript-first test conventions.
+description: Jest testing patterns for NestJS / Express: unit mocks, Supertest e2e, TestingModule, Testcontainers PostgreSQL, transaction rollback.
 metadata:
   category: backend
   tags: [node, typescript, jest, testing, supertest, testcontainers]

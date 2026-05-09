@@ -1,6 +1,6 @@
 ---
 name: task-code-review-observability
-description: Observability review entry point. Detects the project stack and dispatches to the matching stack-specific observability review workflow. For unknown stacks, runs a minimal generic protocol covering structured logging, RED metrics, distributed tracing, and SLOs.
+description: Observability review entry point: structured logging, RED metrics, distributed tracing, SLOs. Detects stack and dispatches workflow.
 metadata:
   category: review
   tags: [observability, logging, metrics, tracing, slo, multi-stack, router]

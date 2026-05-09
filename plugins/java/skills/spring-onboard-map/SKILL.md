@@ -1,6 +1,6 @@
 ---
 name: spring-onboard-map
-description: Spring Boot / Java project onboarding signals - Maven/Gradle layout, application.yml profiles, key configuration classes, persistence schema, security configuration, and starter dependency conventions. Used by task-onboard to map a Spring codebase for a new engineer.
+description: "Spring Boot / Java onboarding signals: Maven/Gradle layout, application.yml profiles, config classes, persistence, security, starters."
 metadata:
   category: backend
   tags: [onboarding, codebase-map, spring, maven, gradle]

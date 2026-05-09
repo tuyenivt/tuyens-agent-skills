@@ -1,6 +1,6 @@
 ---
 name: task-oncall-start
-description: Oncall entry point for both shift starts and incoming alerts. Use when starting your oncall rotation (shift-start mode) or when you have a page, alert, or report and are unsure which workflow to invoke (triage mode). Classifies work type and severity, then routes to the correct skill.
+description: Oncall entry point routing shift-starts and incoming alerts/pages: classifies work type and severity, dispatches to correct workflow.
 metadata:
   category: ops
   tags: [oncall, routing, incident, investigation, handoff, rotation]

@@ -1,6 +1,6 @@
 ---
 name: task-rust-review-perf
-description: Rust performance review for sqlx N+1 / compile-time query usage / pool sizing, Tokio task leaks and unbounded fan-out via JoinSet, std::sync::Mutex held across .await, blocking I/O on the runtime, allocation hotspots (Cow, String vs &str, .clone() churn), Arc<Mutex> contention, and migration safety. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Rust / Axum.
+description: Rust / Axum / sqlx / Tokio perf review: N+1, pool sizing, task leaks, Mutex-across-await, blocking I/O, allocation hotspots, Arc<Mutex> contention.
 agent: rust-performance-engineer
 metadata:
   category: backend

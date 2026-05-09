@@ -1,6 +1,6 @@
 ---
 name: task-python-review-observability
-description: Python observability review for structlog / stdlib logging, OpenTelemetry Python SDK, opentelemetry-instrumentation-* (FastAPI / Django / SQLAlchemy / Celery / requests / httpx), Prometheus client, and error-tracker SDKs (Sentry / Honeybadger / Rollbar). Library-level focus, not infra. Use when reviewing a Python PR for observability gaps, before releasing a new service, or after an incident where Python diagnosis was slow. Stack-specific override of task-code-review-observability for Python.
+description: "Python observability review: structlog, OpenTelemetry, FastAPI/Django/SQLAlchemy/Celery instrumentation, Prometheus, Sentry."
 agent: python-tech-lead
 metadata:
   category: backend

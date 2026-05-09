@@ -1,6 +1,6 @@
 ---
 name: node-bullmq-patterns
-description: BullMQ background job patterns for Node.js/TypeScript - job design, idempotency, retry with exponential backoff, queue routing by priority, worker lifecycle, scheduled jobs, graceful shutdown, and testing strategies.
+description: BullMQ background job patterns: idempotency, exponential backoff retry, priority queues, worker lifecycle, scheduled jobs, graceful shutdown.
 metadata:
   category: backend
   tags: [node, typescript, bullmq, background-jobs, queues, redis, idempotency]

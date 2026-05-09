@@ -1,6 +1,6 @@
 ---
 name: task-spec-tasks
-description: Tasking phase of Spec-Driven Development. Reads `plan.md` and produces `tasks.md` - a dependency-ordered, phase-grouped task list (data -> service -> API -> tests -> ops) consumable by `task-spec-implement`. Reuses core complexity-scan atomics directly. Speckit-aware - delegates to `/speckit.tasks` when Spec Kit is installed.
+description: SDD tasking phase - reads plan.md, produces dependency-ordered, phase-grouped tasks.md (data / service / API / tests / ops). Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, tasks, breakdown, planning]

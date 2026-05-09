@@ -1,6 +1,6 @@
 ---
 name: task-code-review-security
-description: Security review entry point. Detects the project stack and dispatches to the matching stack-specific security review workflow. For unknown stacks, runs a minimal generic OWASP Top 10 protocol.
+description: Security review entry point: OWASP Top 10 baseline. Detects stack and dispatches to stack-specific security review workflow.
 metadata:
   category: review
   tags: [security, owasp, vulnerabilities, auth, multi-stack, router]

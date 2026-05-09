@@ -1,6 +1,6 @@
 ---
 name: vue-code-explain
-description: Vue 3.5 / Nuxt / Vite framework signals for code explanation - reactivity (ref/reactive/computed), composition vs options API, watchers, lifecycle hooks, Pinia stores, and Nuxt server/client boundaries. Used by task-code-explain to explain Vue code with stack-aware gotchas.
+description: Vue 3.5 / Nuxt / Vite explain signals: reactivity, Composition vs Options API, watchers, lifecycle, Pinia, Nuxt server/client boundaries.
 metadata:
   category: frontend
   tags: [explanation, code-understanding, vue, nuxt, composition-api]

@@ -1,6 +1,6 @@
 ---
 name: dotnet-exception-handling
-description: Implement centralized exception handling with IExceptionHandler, RFC 7807 Problem Details responses, and a domain exception hierarchy mapped to HTTP status codes.
+description: "ASP.NET Core centralized exception handling: IExceptionHandler, RFC 7807 Problem Details, domain exception hierarchy mapped to HTTP codes."
 metadata:
   category: backend
   tags: [exception-handling, problem-details, middleware, error-responses]

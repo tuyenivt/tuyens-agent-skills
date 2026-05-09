@@ -1,6 +1,6 @@
 ---
 name: dotnet-code-explain
-description: .NET / ASP.NET Core framework signals for code explanation - DI container scopes, middleware pipeline, async/await with ConfigureAwait, EF Core change tracking, and Clean Architecture layer interactions. Used by task-code-explain to explain .NET code with stack-aware gotchas.
+description: ".NET / ASP.NET Core explanation signals: DI scopes, middleware pipeline, async/ConfigureAwait, EF Core change tracking, Clean Architecture."
 metadata:
   category: backend
   tags: [explanation, code-understanding, dotnet, aspnetcore, efcore]

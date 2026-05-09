@@ -1,6 +1,6 @@
 ---
 name: task-design-architecture
-description: Produces a staff-level architecture design proposal covering boundaries, failure modes, data consistency, trade-offs, deployment strategy, and guardrails. Also reviews existing design proposals for boundary quality, failure containment, and consistency.
+description: "Staff-level architecture design proposal: boundaries, failure modes, data consistency, trade-offs, deployment, guardrails; also reviews proposals."
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]

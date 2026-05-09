@@ -1,6 +1,6 @@
 ---
 name: task-python-refactor
-description: Python refactor planning for fat routers / views, anemic services, god modules, sync-in-async mixing, blocking I/O on the event loop, Pydantic validators that should be model validators, Django signals dispatching business logic, SQLAlchemy `relationship()` lazy traps, and Celery task fan-out. Produces a step-by-step sequence of independently-committable Python refactoring steps with a pytest coverage gate. Stack-specific override of task-code-refactor for Python.
+description: "Python / FastAPI / Django refactor plan: fat routers, anemic services, sync-in-async, Celery fan-out; phased steps with pytest coverage gate."
 agent: python-tech-lead
 metadata:
   category: backend

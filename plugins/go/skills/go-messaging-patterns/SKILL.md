@@ -1,6 +1,6 @@
 ---
 name: go-messaging-patterns
-description: "Background job and async messaging patterns for Go. Asynq (Redis-backed jobs) with retry classification, Kafka consumers with franz-go, transactional outbox, and in-process worker pools."
+description: "Go async messaging: Asynq (Redis jobs) with retry classification, Kafka consumers with franz-go, transactional outbox, in-process worker pools."
 metadata:
   category: backend
   tags: [asynq, kafka, messaging, background-jobs, async, redis, idempotency]

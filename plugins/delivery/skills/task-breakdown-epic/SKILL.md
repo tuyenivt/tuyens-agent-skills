@@ -1,6 +1,6 @@
 ---
 name: task-breakdown-epic
-description: Break a feature or epic into vertically-sliced user stories, each with explicit acceptance criteria, demoable user-visible value, and a single primary user. Optimized for sprint planning where stories must be small, independent, and shippable on their own. Use when populating a sprint backlog, refining an epic before commitment, or splitting a story that is too big to fit in a sprint.
+description: Break epic into vertically-sliced user stories with acceptance criteria and demoable value; for sprint planning and backlog refinement.
 metadata:
   category: planning
   tags: [planning, user-stories, vertical-slice, acceptance-criteria, sprint-planning]

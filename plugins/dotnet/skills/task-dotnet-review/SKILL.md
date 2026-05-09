@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-review
-description: .NET staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with ASP.NET Core / EF Core / async idioms (`async void` in non-event-handler code, `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` blocking on async, missing `CancellationToken` propagation, EF Core N+1 via lazy loading or per-iteration `.Single()`, `JsonSerializer.Deserialize<DomainEntity>` mass assignment, raw SQL string interpolation via `FromSqlRaw($"...")`, missing `[Authorize]` / `[AllowAnonymous]` decoration, scoped service captured by singleton, missing `AsNoTracking()` on read paths, `Newtonsoft.Json` in hot paths). Spawns .NET-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for .NET. Runs standalone with full PR/branch resolution.
+description: ".NET / ASP.NET Core / EF Core code review: async pitfalls, N+1, mass assignment, auth; spawns perf/security/observability subagents."
 agent: dotnet-tech-lead
 metadata:
   category: backend

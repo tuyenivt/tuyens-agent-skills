@@ -1,6 +1,6 @@
 ---
 name: eval-scorer
-description: Aggregate test-run output, spec-coverage verdicts, and review-agent verdicts from the handoff directory into a single weighted score plus pass/fail/needs-fix status. Composed by `task-spec-evaluate` and consumed by `fix-loop-controller` as the primary loop signal when an evaluation sidecar is present.
+description: Aggregate test, spec-coverage, and review verdicts into a weighted score plus pass / needs-fix / fail status for SDD evaluation.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, scoring, aggregation]

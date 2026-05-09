@@ -1,6 +1,6 @@
 ---
 name: task-rails-debug
-description: Diagnose and fix Rails application errors from stack traces, logs, Sidekiq failures, and RSpec output. Paste an error or describe unexpected behavior. Not for production incident analysis (use /task-oncall-start).
+description: Diagnose and fix Rails errors from stack traces, logs, Sidekiq failures, and RSpec output.
 agent: rails-architect
 metadata:
   category: backend

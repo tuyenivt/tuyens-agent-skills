@@ -1,6 +1,6 @@
 ---
 name: spring-security-patterns
-description: Spring Security 6.x configuration patterns for Spring Boot 3.5+ covering SecurityFilterChain, OAuth2/JWT resource server, method-level security, CORS, CSRF, and security headers.
+description: "Spring Security 6 patterns for Spring Boot 3.5+: SecurityFilterChain, OAuth2/JWT resource server, method security, CORS, CSRF, headers."
 metadata:
   category: backend
   tags: [security, spring-security, oauth2, jwt, cors, csrf, authorization]

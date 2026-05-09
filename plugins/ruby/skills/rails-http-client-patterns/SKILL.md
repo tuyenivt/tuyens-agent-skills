@@ -1,6 +1,6 @@
 ---
 name: rails-http-client-patterns
-description: External HTTP integration patterns for Rails using Faraday and Retriable. Covers connection setup, middleware stack, timeouts, retry budgets with idempotency awareness, error taxonomy, circuit-breaking posture, and test boundaries with VCR/WebMock.
+description: Rails HTTP client patterns with Faraday/Retriable: timeouts, retry budgets, error taxonomy, circuit breaking, VCR/WebMock testing.
 metadata:
   category: backend
   tags: [ruby, rails, faraday, retriable, http, integration]

@@ -1,6 +1,6 @@
 ---
 name: rails-testing-patterns
-description: RSpec testing patterns for Rails 7.2+. Covers the test type hierarchy (model, request, system, service specs), FactoryBot with traits, shoulda-matchers, Sidekiq job testing, Pundit policy specs, VCR/WebMock for external APIs, and shared examples.
+description: RSpec testing patterns for Rails 7.2+: model/request/system/service specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR.
 metadata:
   category: backend
   tags: [ruby, rails, rspec, testing, factorybot]

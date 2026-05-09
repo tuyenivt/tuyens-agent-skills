@@ -1,6 +1,6 @@
 ---
 name: dotnet-onboard-map
-description: .NET / ASP.NET Core project onboarding signals - solution layout (Clean Architecture), .csproj configuration, target framework, EF Core + migrations, and configuration/secrets. Used by task-onboard to map a .NET codebase for a new engineer.
+description: ".NET / ASP.NET Core onboarding map: solution layout (Clean Architecture), .csproj, target framework, EF Core migrations, config/secrets."
 metadata:
   category: backend
   tags: [onboarding, codebase-map, dotnet, aspnetcore, efcore]

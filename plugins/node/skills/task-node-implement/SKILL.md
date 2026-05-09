@@ -1,6 +1,6 @@
 ---
 name: task-node-implement
-description: End-to-end Node.js/TypeScript feature implementation workflow. Detects NestJS or Express and generates all layers - data model, services, controllers, DTOs, middleware, and comprehensive Jest tests.
+description: End-to-end Node.js / TypeScript feature implementation for NestJS or Express: data model, services, controllers, DTOs, middleware, Jest tests.
 agent: node-architect
 metadata:
   category: backend

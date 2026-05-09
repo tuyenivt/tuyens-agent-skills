@@ -1,6 +1,6 @@
 ---
 name: task-rails-review
-description: Rails-specific staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Rails idioms (Zeitwerk, callback abuse, fat controllers, AR-in-API, service-object boundaries, scope sprawl). Spawns Rails-specific perf/security/observability subagents for extra scopes. Stack-specific override of task-code-review for Ruby/Rails. Runs standalone with full PR/branch resolution.
+description: Rails / Ruby code review: Zeitwerk, callback abuse, fat controllers, AR-in-API, service boundaries; spawns perf/security/obs subagents.
 agent: rails-tech-lead
 metadata:
   category: backend

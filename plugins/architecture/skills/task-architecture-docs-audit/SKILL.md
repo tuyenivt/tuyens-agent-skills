@@ -1,6 +1,6 @@
 ---
 name: task-architecture-docs-audit
-description: Inventory all architecture artifacts (ADRs, design docs, runbooks, diagrams), detect stale content, conflicts between documents, and coverage gaps, then produce a prioritized remediation plan.
+description: "Audit architecture artifacts (ADRs, design docs, runbooks, diagrams): detect stale content, conflicts, coverage gaps; remediation plan."
 metadata:
   category: architecture
   tags: [architecture, documentation, audit, adr, consistency, docs-repo]

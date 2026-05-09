@@ -1,6 +1,6 @@
 ---
 name: vue-monolith-integration
-description: Integrating Vue into Rails (Inertia.js, jsbundling), Django (django-vite, webpack), and Laravel (Inertia.js) monoliths - mount strategies, asset pipelines, and shared layout handling.
+description: Integrate Vue into Rails / Django / Laravel monoliths: Inertia.js, jsbundling, django-vite, mount strategies, asset pipelines, layouts.
 metadata:
   category: frontend
   tags: [vue, rails, django, laravel, inertia, monolith, integration, asset-pipeline]

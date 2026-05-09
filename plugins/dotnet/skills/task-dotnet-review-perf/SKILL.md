@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-review-perf
-description: .NET performance review for EF Core N+1 / `Include` cartesian explosion / `AsNoTracking` discipline / connection pool sizing, async pitfalls (`.Result` blocking, `Task.Run` misuse, `async void`, missing `CancellationToken`), allocation hotspots (`string` concat, LINQ in hot paths, boxed value types), `Newtonsoft.Json` vs `System.Text.Json`, `IMemoryCache` / `IDistributedCache` strategy, response caching / output caching, and EF Core migration safety. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to .NET / ASP.NET Core.
+description: ".NET / ASP.NET Core / EF Core performance review: N+1, AsNoTracking, async pitfalls, allocations, JSON, IMemoryCache/IDistributedCache."
 agent: dotnet-performance-engineer
 metadata:
   category: backend

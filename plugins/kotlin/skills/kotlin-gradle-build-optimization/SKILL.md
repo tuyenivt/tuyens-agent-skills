@@ -1,6 +1,6 @@
 ---
 name: kotlin-gradle-build-optimization
-description: Gradle Kotlin DSL build optimization for Kotlin/Spring Boot multi-module projects. Covers version catalogs, build cache, configuration cache, parallel execution, kotlin-jpa / kotlin-spring / kotlin-allopen plugins, and common Gradle anti-patterns.
+description: Gradle Kotlin DSL build optimization for Spring Boot: version catalogs, build/config cache, parallel execution, kotlin-jpa/spring/allopen plugins.
 metadata:
   category: backend
   tags: [kotlin, gradle, build, spring-boot, multi-module, performance]

@@ -1,6 +1,6 @@
 ---
 name: react-code-explain
-description: React 19 / Next.js / Vite framework signals for code explanation - hooks rules and dependencies, component render lifecycle, server vs client components, suspense and streaming, and React 19 actions/use(). Used by task-code-explain to explain React code with stack-aware gotchas.
+description: React 19 / Next.js / Vite code explanation signals: hooks rules, render lifecycle, RSC vs Client, Suspense, streaming, actions, use().
 metadata:
   category: frontend
   tags: [explanation, code-understanding, react, nextjs, hooks]

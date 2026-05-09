@@ -1,6 +1,6 @@
 ---
 name: behavioral-principles
-description: Cross-cutting behavioral guardrails for how Claude should reason and act while executing any task workflow - think before coding, simplicity first, surgical changes, surface confusion, present tradeoffs, push back on likely-wrong requests, and verify goal completion.
+description: Behavioral guardrails for task workflows: think before coding, simplicity first, surgical changes, surface confusion, verify goals.
 metadata:
   category: core
   tags: [behavior, guardrails, reasoning, quality]

@@ -1,6 +1,6 @@
 ---
 name: task-react-implement
-description: End-to-end React feature implementation workflow - component tree, state management, API integration, routing, styling, accessibility, and tests for React 19+ / Next.js / Vite projects.
+description: Implement React 19 / Next.js / Vite feature end-to-end: component tree, state, API, routing, styling, a11y, tests.
 metadata:
   category: frontend
   tags: [react, typescript, nextjs, vite, feature, implementation, workflow, components, hooks, testing]

@@ -1,6 +1,6 @@
 ---
 name: angular-service-patterns
-description: Angular injectable services - DI hierarchy, providedIn scoping, HTTP interceptors, functional interceptors, state services, and HttpClient patterns for Angular 21+.
+description: Angular services: DI hierarchy, providedIn scoping, HTTP interceptors, functional interceptors, state services, HttpClient.
 metadata:
   category: frontend
   tags: [angular, services, dependency-injection, httpinterceptor, httpclient, di-hierarchy]

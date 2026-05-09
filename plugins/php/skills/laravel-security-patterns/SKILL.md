@@ -1,6 +1,6 @@
 ---
 name: laravel-security-patterns
-description: "Laravel security patterns - mass assignment protection, SQL injection prevention, authentication (Sanctum/Passport), authorization (Gates/Policies), CSRF, rate limiting, input validation, and secrets management."
+description: "Laravel security patterns: mass assignment, SQL injection, Sanctum/Passport auth, Gates/Policies, CSRF, rate limiting, validation, secrets."
 metadata:
   category: backend
   tags: [php, laravel, security, auth, sanctum, policies, owasp]

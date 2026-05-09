@@ -1,6 +1,6 @@
 ---
 name: python-django-patterns
-description: "Django and DRF patterns for building REST APIs. Covers ViewSets with action-specific serializers, QuerySet optimization (select_related/prefetch_related), model constraints, filtering/pagination, and object-level permissions."
+description: "Django/DRF REST API patterns: ViewSets with action serializers, QuerySet optimization (select_related/prefetch_related), constraints, permissions."
 metadata:
   category: backend
   tags: [python, django, drf, viewsets, serializers, queryset]

@@ -1,6 +1,6 @@
 ---
 name: spring-code-explain
-description: Spring Boot / Java framework signals for code explanation - bean lifecycle, AOP proxies, transaction boundaries, async execution, security filter chain, and JPA persistence context. Used by task-code-explain to explain Spring code with stack-aware gotchas.
+description: "Spring Boot / Java code-explain signals: bean lifecycle, AOP proxies, @Transactional boundaries, @Async, security filter chain, JPA context."
 metadata:
   category: backend
   tags: [explanation, code-understanding, spring, jpa, aop]

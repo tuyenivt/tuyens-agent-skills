@@ -1,6 +1,6 @@
 ---
 name: task-laravel-review-observability
-description: Laravel observability review for `Monolog` + `Log::*` (structured channels, JSON formatter, processors, log levels), correlation IDs (request-id middleware, context binding), OpenTelemetry PHP SDK + Laravel auto-instrumentation, Horizon (Redis queue dashboard) + Telescope (development) gating, Laravel Pulse (production-safe metrics), Sentry / Bugsnag / Flare error tracking with `beforeSend` PII scrubbing, graceful queue worker shutdown, scheduled job overlap protection, and `php-fpm` slow-log / `opcache.log_verbosity_level` runtime introspection. Library-level focus, not infra. Stack-specific override of task-code-review-observability for PHP / Laravel.
+description: Laravel observability review: Monolog structured logs, correlation IDs, OpenTelemetry PHP, Horizon, Telescope, Pulse, Sentry/Bugsnag PII scrubbing.
 agent: php-tech-lead
 metadata:
   category: backend

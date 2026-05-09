@@ -1,6 +1,6 @@
 ---
 name: kotlin-idioms
-description: "Idiomatic Kotlin patterns for Spring Boot projects: data classes for DTOs, null safety over Optional, scope functions (let/apply/run/also), sealed class error hierarchies, inline value classes, Kotlin-Java interop annotations, and JPA plugin configuration."
+description: "Idiomatic Kotlin for Spring Boot: data class DTOs, null safety over Optional, scope functions, sealed errors, inline value classes, JPA plugin config."
 user-invocable: false
 ---
 

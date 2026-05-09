@@ -1,6 +1,6 @@
 ---
 name: task-vue-debug
-description: Debug Vue errors - reactivity gotchas, template compilation, hydration mismatches, Nuxt-specific issues, build failures, and runtime errors for Vue 3.5+ / Nuxt 3 / Vite projects.
+description: Debug Vue 3.5 / Nuxt 3 / Vite: reactivity gotchas, template compilation, hydration mismatches, build failures, runtime errors.
 metadata:
   category: frontend
   tags: [vue, debug, reactivity, hydration, nuxt, error, troubleshooting]

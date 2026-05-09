@@ -1,6 +1,6 @@
 ---
 name: rust-messaging-patterns
-description: "Background job and async messaging patterns for Rust: Tokio task queues, Kafka consumers (rdkafka), AMQP (lapin), worker pools with JoinSet, transactional outbox, and idempotency guards."
+description: "Rust async messaging and background jobs: Tokio queues, Kafka (rdkafka), AMQP (lapin), JoinSet worker pools, transactional outbox, idempotency."
 metadata:
   category: backend
   tags: [rust, kafka, amqp, messaging, background-jobs, async, tokio, idempotency]

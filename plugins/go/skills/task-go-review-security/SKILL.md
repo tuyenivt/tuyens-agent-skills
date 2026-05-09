@@ -1,6 +1,6 @@
 ---
 name: task-go-review-security
-description: Go security review for Gin JWT middleware, ShouldBindJSON + validator input validation, GORM raw SQL injection, mass assignment, secrets management, command injection, path traversal, govulncheck dependency scanning, and Go-aware OWASP Top 10. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Go / Gin.
+description: Go / Gin security review: JWT middleware, ShouldBindJSON validation, GORM SQL injection, mass assignment, secrets, govulncheck, OWASP Top 10.
 agent: go-security-engineer
 metadata:
   category: backend

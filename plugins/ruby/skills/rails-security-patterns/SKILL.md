@@ -1,6 +1,6 @@
 ---
 name: rails-security-patterns
-description: Rails security hardening patterns covering strong parameters, Devise/JWT authentication, Pundit authorization, CSRF/XSS prevention, SQL injection guards, Rack::Attack rate limiting, and credentials management.
+description: Rails security patterns: strong params, Devise/JWT auth, Pundit authz, CSRF/XSS, SQL injection, Rack::Attack rate limiting, credentials.
 metadata:
   category: backend
   tags: [ruby, rails, security, authentication, authorization]

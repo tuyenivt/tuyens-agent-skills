@@ -1,6 +1,6 @@
 ---
 name: rails-service-objects
-description: Service object design patterns for Rails. Covers extraction criteria, verb-based naming, the .call interface with Result objects, input boundary validation, error handling, and service composition.
+description: Rails service object patterns: extraction criteria, verb naming, .call interface with Result objects, input validation, composition.
 metadata:
   category: backend
   tags: [ruby, rails, service-objects, architecture, patterns]

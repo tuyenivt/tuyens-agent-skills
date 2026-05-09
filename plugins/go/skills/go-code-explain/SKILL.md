@@ -1,6 +1,6 @@
 ---
 name: go-code-explain
-description: Go / Gin framework signals for code explanation - goroutines and channels, context.Context propagation, defer ordering, error wrapping, interface satisfaction, struct tags, and GORM/sqlx semantics. Used by task-code-explain to explain Go code with stack-aware gotchas.
+description: Go / Gin code explanation signals: goroutines, channels, context, defer, error wrapping, interface satisfaction, struct tags, GORM/sqlx.
 metadata:
   category: backend
   tags: [explanation, code-understanding, go, gin, goroutines, context]

@@ -1,6 +1,6 @@
 ---
 name: rust-security-patterns
-description: "Rust security patterns for Axum: JWT auth middleware (RS256), input validation with validator, password hashing (Argon2), path traversal prevention, CORS, secrets management, and cargo-audit."
+description: "Rust / Axum security patterns: JWT (RS256) auth middleware, validator input, Argon2 hashing, path traversal, CORS, secrets, cargo-audit."
 metadata:
   category: backend
   tags: [rust, security, jwt, authentication, validation, cors, cargo-audit]

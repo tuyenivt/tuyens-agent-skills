@@ -1,6 +1,6 @@
 ---
 name: go-onboard-map
-description: Go project onboarding signals - module layout, go.mod, framework (Gin/Echo/Chi/std-lib), build tags, ORM (GORM/sqlx/pgx), and observability stack. Used by task-onboard to map a Go codebase for a new engineer.
+description: Go project onboarding signals: module layout, go.mod, framework (Gin/Echo/Chi), build tags, ORM (GORM/sqlx/pgx), observability stack.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, go, gin, modules]

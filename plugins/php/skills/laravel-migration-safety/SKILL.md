@@ -1,6 +1,6 @@
 ---
 name: laravel-migration-safety
-description: "Zero-downtime migration patterns for Laravel and MySQL. Covers lock-safe DDL, NOT NULL via nullable-first, InnoDB online DDL, data migration separation, expand-contract renames, and multi-release deploy sequencing."
+description: "Zero-downtime Laravel/MySQL migrations: lock-safe DDL, nullable-first NOT NULL, InnoDB online DDL, expand-contract renames, multi-release sequencing."
 metadata:
   category: backend
   tags: [php, laravel, mysql, migrations, zero-downtime, ddl]

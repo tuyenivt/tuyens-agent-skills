@@ -1,6 +1,6 @@
 ---
 name: react-onboard-map
-description: React 19 / Next.js / Vite project onboarding signals - package manager, framework (Next App Router vs Pages, Vite SPA), TypeScript config, routing, state management, data fetching, styling, and component library. Used by task-onboard to map a React codebase for a new engineer.
+description: Map React 19 / Next.js / Vite codebase for onboarding: framework, TypeScript, routing, state, data fetching, styling, component library.
 metadata:
   category: frontend
   tags: [onboarding, codebase-map, react, nextjs, vite]

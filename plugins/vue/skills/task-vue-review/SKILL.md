@@ -1,6 +1,6 @@
 ---
 name: task-vue-review
-description: Vue staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Vue idioms (Composition API discipline, watcher hygiene, reactivity correctness, `v-html` audit, Pinia state categorization, Nitro endpoint validation, SSR hydration leak, accessibility regressions). Spawns Vue-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Vue. Runs standalone with full PR/branch resolution.
+description: Vue / Nuxt code review: Composition API, watchers, reactivity, v-html XSS, Pinia, Nitro, SSR hydration; spawns perf/security/obs subagents.
 agent: vue-tech-lead
 metadata:
   category: frontend

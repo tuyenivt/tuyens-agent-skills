@@ -1,6 +1,6 @@
 ---
 name: python-fastapi-patterns
-description: "FastAPI patterns for building async REST APIs. Covers Depends-based dependency injection, Pydantic v2 request/response models, router organization, custom exception handlers, pagination, CORS middleware, and lifespan events."
+description: "FastAPI async REST patterns: Depends DI, Pydantic v2 request/response, router organization, exception handlers, pagination, CORS, lifespan."
 metadata:
   category: backend
   tags: [python, fastapi, pydantic, dependency-injection, async, rest-api]

@@ -1,6 +1,6 @@
 ---
 name: vue-data-fetching
-description: Vue data fetching patterns - Nuxt useFetch/useAsyncData, TanStack Query Vue, composable-based fetching, Suspense integration, and cache management for Vue 3.5+.
+description: Vue 3.5 data fetching: Nuxt useFetch / useAsyncData, TanStack Query Vue, composables, Suspense, cache management.
 metadata:
   category: frontend
   tags: [vue, data-fetching, usefetch, useasyncdata, tanstack-query, suspense, caching]

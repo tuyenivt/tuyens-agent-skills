@@ -1,6 +1,6 @@
 ---
 name: rust-code-explain
-description: Rust / Axum framework signals for code explanation - ownership and borrowing, lifetimes, async runtimes (tokio), trait objects vs generics, error types with `?`, and sqlx compile-time queries. Used by task-code-explain to explain Rust code with stack-aware gotchas.
+description: Rust / Axum code-explain signals: ownership, borrowing, lifetimes, tokio async, trait objects vs generics, error ?, sqlx compile-time queries.
 metadata:
   category: backend
   tags: [explanation, code-understanding, rust, axum, tokio, sqlx]

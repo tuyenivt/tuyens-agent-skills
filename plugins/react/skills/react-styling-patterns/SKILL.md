@@ -1,6 +1,6 @@
 ---
 name: react-styling-patterns
-description: React styling patterns - Tailwind CSS (primary), CSS Modules, styled-components, responsive design, design tokens, dark mode, and component library integration.
+description: React styling: Tailwind CSS, CSS Modules, styled-components, responsive design, design tokens, dark mode, component library integration.
 metadata:
   category: frontend
   tags: [react, styling, tailwind, css-modules, styled-components, responsive, dark-mode]

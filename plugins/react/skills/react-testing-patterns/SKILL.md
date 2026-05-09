@@ -1,6 +1,6 @@
 ---
 name: react-testing-patterns
-description: React testing patterns - Vitest + React Testing Library, component testing, hook testing, MSW for API mocking, Server Component testing, and Playwright e2e for React 19+.
+description: React 19 testing: Vitest, React Testing Library, component and hook tests, MSW API mocking, Server Component tests, Playwright E2E.
 metadata:
   category: frontend
   tags: [react, testing, vitest, react-testing-library, msw, playwright, hooks]

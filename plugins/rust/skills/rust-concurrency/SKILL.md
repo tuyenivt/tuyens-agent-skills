@@ -1,6 +1,6 @@
 ---
 name: rust-concurrency
-description: "Rust concurrency primitives: Arc/Mutex, RwLock, channels (mpsc/oneshot), Send+Sync traits, rayon for CPU-bound parallelism, atomics, and deadlock prevention."
+description: "Rust concurrency primitives: Arc/Mutex, RwLock, mpsc/oneshot channels, Send+Sync, rayon CPU parallelism, atomics, deadlock prevention."
 metadata:
   category: backend
   tags: [rust, concurrency, mutex, channels, rayon, send-sync]

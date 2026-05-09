@@ -1,6 +1,6 @@
 ---
 name: task-rust-refactor
-description: Rust refactor planning for fat Axum handlers, anemic services, god modules, leaked Tokio tasks, missing CancellationToken, std::sync::Mutex held across .await, sqlx N+1, mass assignment via serde_json::from_value, single-implementation traits, Box<dyn Trait> defaults where generics fit, Arc<Mutex> overuse, package-level mutable state, and background-task idempotency. Produces a step-by-step sequence of independently-committable refactoring steps with a `cargo test + cargo clippy` coverage gate. Stack-specific override of task-code-refactor for Rust.
+description: Rust / Axum / Tokio refactor plan: fat handlers, leaked tasks, Mutex-across-await, sqlx N+1, Arc<Mutex> overuse; phased steps with risk/effort tags.
 agent: rust-tech-lead
 metadata:
   category: backend

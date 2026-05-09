@@ -1,6 +1,6 @@
 ---
 name: kotlin-onboard-map
-description: Kotlin / Spring Boot project onboarding signals - Gradle Kotlin DSL layout, kotlin-spring/kotlin-allopen plugins, coroutines runtime, application.yml profiles, and persistence/security configuration. Used by task-onboard to map a Kotlin codebase for a new engineer.
+description: Kotlin / Spring Boot onboarding map: Gradle Kotlin DSL, kotlin-spring/allopen plugins, coroutines, application.yml profiles, persistence/security.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, kotlin, spring, gradle]

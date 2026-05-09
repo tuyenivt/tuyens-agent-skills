@@ -1,6 +1,6 @@
 ---
 name: task-upgrade-plan
-description: Library or platform upgrade assessment - changelog analysis, breaking change detection, compatibility conflicts, migration effort estimate (S/M/L/XL), and Go/No-Go recommendation. Use before upgrading a major framework version, when a dependency has CVEs requiring upgrade, or when evaluating whether an upgrade is worth the disruption.
+description: "Library/platform upgrade plan: changelog analysis, breaking change detection, effort estimate (S/M/L/XL), Go/No-Go recommendation."
 metadata:
   category: planning
   tags: [dependencies, upgrade, migration, breaking-changes, risk]

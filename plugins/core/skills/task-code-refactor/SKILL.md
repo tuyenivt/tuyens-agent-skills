@@ -1,6 +1,6 @@
 ---
 name: task-code-refactor
-description: Safe refactoring entry point. Detects the project stack and dispatches to the matching stack-specific refactor workflow. For unknown stacks, runs a minimal generic protocol with smell identification, test-coverage gate, and step-by-step plan.
+description: Refactor entry point: smell identification, test-coverage gate, phased step-by-step plan. Detects stack and dispatches refactor workflow.
 metadata:
   category: review
   tags: [refactoring, code-quality, technical-debt, multi-stack, router]

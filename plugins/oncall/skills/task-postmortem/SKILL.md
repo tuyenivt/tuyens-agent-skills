@@ -1,6 +1,6 @@
 ---
 name: task-postmortem
-description: Post-incident postmortem for systemic prevention after an incident is resolved and root cause is known. Use after resolution - not during an active incident (use /task-oncall-start for that). Produces enforceable guardrails, not just action items. Requires a completed root cause analysis as input.
+description: Post-incident postmortem for systemic prevention: enforceable guardrails from root cause analysis, not just action items.
 metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]

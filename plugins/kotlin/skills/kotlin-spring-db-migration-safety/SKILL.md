@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-db-migration-safety
-description: Safe database migration patterns for zero-downtime deployments in Kotlin/Spring Boot - Flyway and Liquibase conventions, DDL safety rules, expand-then-contract migration ordering, and rollback strategies. SQL migration files are language-agnostic; this skill captures the surrounding Kotlin/Spring config.
+description: Zero-downtime DB migration safety for Kotlin / Spring Boot: Flyway, Liquibase, DDL safety, expand-contract ordering, rollback strategies.
 metadata:
   category: backend
   tags: [kotlin, flyway, liquibase, migrations, zero-downtime, ddl, spring-boot]

@@ -1,6 +1,6 @@
 ---
 name: eval-test-runner
-description: Detect the project's test command from the stack, run it, and parse the output into a structured pass/fail/coverage record. Composed by `task-spec-evaluate` to feed the scorer. Opt-in - only invoked when the user runs an evaluation explicitly or via `task-spec-orchestrate --with-evaluation`.
+description: Detect project test command from the stack, run it, parse output into a structured pass / fail / coverage record for SDD evaluation.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, testing, test-runner]

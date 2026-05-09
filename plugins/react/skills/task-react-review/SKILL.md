@@ -1,6 +1,6 @@
 ---
 name: task-react-review
-description: React staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with React idioms (RSC vs Client Component boundary, hooks rules, useEffect discipline, key correctness, state categorization, Server Action validation, dangerouslySetInnerHTML, prop-drilling vs context, accessibility regressions). Spawns React-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for React. Runs standalone with full PR/branch resolution.
+description: React / Next.js code review covering RSC boundaries, hooks rules, useEffect, Server Actions, XSS, a11y; spawns perf/security/observability subagents.
 agent: react-tech-lead
 metadata:
   category: frontend

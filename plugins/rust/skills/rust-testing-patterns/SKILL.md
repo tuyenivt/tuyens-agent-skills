@@ -1,6 +1,6 @@
 ---
 name: rust-testing-patterns
-description: "Rust testing patterns: unit tests with mockall, async tests with tokio::test, integration tests with testcontainers, handler tests with tower oneshot, and property-based testing with proptest."
+description: "Rust testing patterns: mockall unit tests, tokio::test async, testcontainers integration, tower oneshot handlers, proptest property tests."
 metadata:
   category: backend
   tags: [rust, testing, mockall, testcontainers, proptest, tokio]

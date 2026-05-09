@@ -1,6 +1,6 @@
 ---
 name: task-vue-test
-description: Vue test strategy and scaffolding using Vitest, Vue Test Utils, @nuxt/test-utils, MSW for HTTP stubs, Playwright for E2E, and TypeScript strict-mode test typing. Detects Nuxt 3 vs Vite + Vue Router and applies the right idioms (Nuxt server route testing, composable testing, `<script setup>` mounting). Use when designing a test plan, assessing coverage gaps, or scaffolding component / composable / route / E2E tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Vue.
+description: Vue / Nuxt test plan and scaffolding: Vitest, Vue Test Utils, @nuxt/test-utils, MSW, Playwright E2E, composable and SFC tests.
 agent: vue-test-engineer
 metadata:
   category: frontend

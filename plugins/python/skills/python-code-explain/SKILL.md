@@ -1,6 +1,6 @@
 ---
 name: python-code-explain
-description: Python / FastAPI / Django framework signals for code explanation - sync vs async boundaries, GIL implications, decorator stacking, dependency injection, ORM session lifetime, dataclass / pydantic models, and import-time side effects. Used by task-code-explain to explain Python code with stack-aware gotchas.
+description: "Python / FastAPI / Django explain signals: sync vs async, GIL, decorators, DI, ORM session lifetime, Pydantic, import-time side effects."
 metadata:
   category: backend
   tags: [explanation, code-understanding, python, fastapi, django, asyncio]

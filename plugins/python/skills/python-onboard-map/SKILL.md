@@ -1,6 +1,6 @@
 ---
 name: python-onboard-map
-description: Python project onboarding signals - dependency manager (poetry/pip/uv/pdm), framework (FastAPI/Django/Flask), virtualenv setup, settings/configuration layout, ORM and migration tool, and async runtime. Used by task-onboard to map a Python codebase for a new engineer.
+description: "Python onboarding signals: dependency manager (poetry/pip/uv/pdm), framework (FastAPI/Django/Flask), venv, settings, ORM, async runtime."
 metadata:
   category: backend
   tags: [onboarding, codebase-map, python, fastapi, django]

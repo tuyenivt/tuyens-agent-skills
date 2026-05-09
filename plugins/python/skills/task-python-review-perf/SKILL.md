@@ -1,6 +1,6 @@
 ---
 name: task-python-review-perf
-description: Python performance review for SQLAlchemy / Django ORM N+1, async event-loop blocking, sync-in-async traps, connection pool sizing, Celery throughput / acks_late, Pydantic v2 serialization cost, and migration safety. Detects FastAPI vs Django and applies the right framework idioms. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Python.
+description: "Python performance review: SQLAlchemy/Django ORM N+1, async event-loop blocking, connection pools, Celery throughput, Pydantic serialization."
 agent: python-performance-engineer
 metadata:
   category: backend

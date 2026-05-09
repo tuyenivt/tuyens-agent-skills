@@ -1,6 +1,6 @@
 ---
 name: task-rails-test
-description: Rails-specific test strategy and scaffolding using RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, and Sidekiq job specs. Use when designing a Rails test plan, assessing coverage gaps, or scaffolding model/request/service/job/policy specs. Stack-specific override of task-code-test, invoked when stack-detect resolves to Ruby/Rails.
+description: Rails test plan and scaffolding: RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq job specs; coverage gap analysis.
 agent: rails-test-engineer
 metadata:
   category: backend

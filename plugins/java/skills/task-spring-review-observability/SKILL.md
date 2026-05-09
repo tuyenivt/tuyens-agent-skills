@@ -1,6 +1,6 @@
 ---
 name: task-spring-review-observability
-description: Spring Boot observability review for Micrometer metrics, Spring Boot Actuator, structured logging via Logback / Logstash encoder, MDC correlation, OpenTelemetry / Micrometer Tracing, `@KafkaListener` / `@RabbitListener` instrumentation, and error-tracker integration (Sentry / Honeybadger / Rollbar starters). Library-level focus, not infra. Use when reviewing a Spring PR for observability gaps, before releasing a new Spring service, or after an incident where Spring diagnosis was slow. Stack-specific override of task-code-review-observability for Java/Spring Boot.
+description: "Spring Boot observability review: Micrometer, Actuator, Logback/Logstash MDC, OpenTelemetry tracing, Kafka/Rabbit listener instrumentation, Sentry."
 agent: java-tech-lead
 metadata:
   category: backend

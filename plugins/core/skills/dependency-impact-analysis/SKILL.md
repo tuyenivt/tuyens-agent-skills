@@ -1,6 +1,6 @@
 ---
 name: dependency-impact-analysis
-description: Library and service dependency graph analysis - deployment ordering, breaking change detection, and compatibility impact. Focused on dependency graph and sequencing, not code-level blast radius (use review-blast-radius for that).
+description: Dependency graph analysis: deployment ordering, breaking change detection, compatibility impact across libraries and services.
 metadata:
   category: ops
   tags: [deployment, dependencies, impact, ordering, compatibility]

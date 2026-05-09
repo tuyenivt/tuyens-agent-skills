@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-exception-handling
-description: Spring Boot @RestControllerAdvice and ProblemDetail (RFC 9457) in Kotlin - sealed-class domain exception hierarchies, HTTP status mapping, DataIntegrityViolationException handling, and consistent error responses.
+description: Kotlin / Spring exception handling: @RestControllerAdvice, ProblemDetail (RFC 9457), sealed domain exceptions, HTTP status mapping, consistent errors.
 metadata:
   category: backend
   tags: [kotlin, error-handling, rest, http, controller, sealed-class]

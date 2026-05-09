@@ -1,6 +1,6 @@
 ---
 name: review-precondition-check
-description: Gate code-review workflows before they run. Verifies the reviewer is in a reviewable state (clean working tree, not on a trunk branch, head ref resolves locally) and confirms head vs current branch when they differ. Stops with an exact user-runnable command when a precondition fails. Local git only - no `gh` CLI, no platform API.
+description: Gate code review workflows: verify clean tree, non-trunk branch, head ref resolves locally, confirm base/head pair. Local git only.
 metadata:
   category: review
   tags: [review, git, pull-request, local-git, gating]

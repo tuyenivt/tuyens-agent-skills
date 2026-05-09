@@ -1,6 +1,6 @@
 ---
 name: task-node-refactor
-description: Node.js refactor planning for fat controllers / route handlers, anemic services, god modules, sync-in-async mixing, blocking I/O on the event loop, NestJS request-scoped provider misuse, prototype-pollution surfaces, BullMQ idempotency, Prisma / TypeORM relation traps, and module-level mutable state. Produces a step-by-step sequence of independently-committable refactoring steps with a Jest coverage gate. Stack-specific override of task-code-refactor for Node.js.
+description: Node.js / NestJS / Express refactor plan: fat controllers, anemic services, blocking I/O, ORM relation traps; phased steps with Jest coverage gate.
 agent: node-tech-lead
 metadata:
   category: backend

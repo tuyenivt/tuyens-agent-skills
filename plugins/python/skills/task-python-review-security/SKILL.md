@@ -1,6 +1,6 @@
 ---
 name: task-python-review-security
-description: Python security review for FastAPI OAuth2 / JWT, Django auth / DRF permissions, Pydantic v2 validation, mass assignment, ORM injection, async-context auth-leak risks, and Python-aware OWASP Top 10. Detects FastAPI vs Django and applies the right framework idioms. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Python.
+description: "Python security review: FastAPI OAuth2/JWT, Django/DRF permissions, Pydantic validation, mass assignment, ORM injection, OWASP Top 10."
 agent: python-security-engineer
 metadata:
   category: backend

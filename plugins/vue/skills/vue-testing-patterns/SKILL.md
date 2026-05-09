@@ -1,6 +1,6 @@
 ---
 name: vue-testing-patterns
-description: Vue testing patterns - Vitest + Vue Test Utils, component testing, composable testing, @nuxt/test-utils for Nuxt, MSW for API mocking, and Playwright e2e for Vue 3.5+.
+description: Vue 3.5 testing: Vitest, Vue Test Utils, component and composable tests, @nuxt/test-utils, MSW mocking, Playwright E2E.
 metadata:
   category: frontend
   tags: [vue, testing, vitest, vue-test-utils, nuxt-test-utils, msw, playwright, composables]

@@ -1,6 +1,6 @@
 ---
 name: task-python-implement
-description: End-to-end Python feature implementation workflow. Detects FastAPI or Django and generates all layers - migrations, models, services, endpoints, schemas, Celery tasks, and pytest tests. Use for new features requiring multiple coordinated layers. Not for single-file fixes or isolated bug fixes (use task-python-debug for errors).
+description: "End-to-end Python feature implementation for FastAPI or Django: migrations, models, services, endpoints, schemas, Celery tasks, pytest tests."
 agent: python-architect
 metadata:
   category: backend

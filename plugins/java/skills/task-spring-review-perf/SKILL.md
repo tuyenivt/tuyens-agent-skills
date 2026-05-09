@@ -1,6 +1,6 @@
 ---
 name: task-spring-review-perf
-description: Spring Boot performance review for JPA/Hibernate N+1, fetch strategies, query plans, Virtual Thread compatibility, connection pool sizing, async/messaging throughput, and caching. Use when reviewing a Spring Boot PR or branch for perf regressions, or when an endpoint or `@Async` worker is slow. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Java/Spring Boot.
+description: "Spring Boot perf review: JPA/Hibernate N+1, fetch strategies, Virtual Thread compatibility, connection pool, async throughput, caching."
 agent: java-performance-engineer
 metadata:
   category: backend

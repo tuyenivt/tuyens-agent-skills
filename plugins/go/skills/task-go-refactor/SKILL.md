@@ -1,6 +1,6 @@
 ---
 name: task-go-refactor
-description: Go refactor planning for fat Gin handlers, anemic services, god packages, goroutine leaks, missing context propagation, sync.Mutex held across I/O, GORM N+1, GORM hook abuse, mass assignment, package-level mutable state, single-implementation interfaces, and Asynq idempotency. Produces a step-by-step sequence of independently-committable refactoring steps with a `go test -race` coverage gate. Stack-specific override of task-code-refactor for Go.
+description: Go / Gin refactor plan: fat handlers, goroutine leaks, context propagation, GORM N+1, mass assignment; phased steps with `go test -race` gate.
 agent: go-tech-lead
 metadata:
   category: backend

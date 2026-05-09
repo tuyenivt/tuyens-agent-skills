@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-jpa-performance
-description: JPA/Hibernate performance patterns in Kotlin/Spring Boot covering N+1 detection with fetch joins and entity graphs, batch size tuning, projection queries, second-level cache strategy, and Kotlin-specific entity caveats (regular class over data class for JPA).
+description: Kotlin / Spring Boot JPA performance: N+1 with fetch joins / entity graphs, batch tuning, projections, L2 cache, data class entity caveats.
 metadata:
   category: backend
   tags: [kotlin, jpa, hibernate, performance, queries]

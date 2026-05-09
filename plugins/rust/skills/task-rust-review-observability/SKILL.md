@@ -1,6 +1,6 @@
 ---
 name: task-rust-review-observability
-description: Rust observability review for tracing crate (structured logging + spans), OpenTelemetry Rust SDK + auto-instrumentation (HTTP / Axum / sqlx / reqwest / Kafka), metrics crate / prometheus / OTel metrics, tokio-console for runtime introspection, graceful shutdown via tokio::signal, and error-tracker SDKs (sentry-rust). Library-level focus, not infra. Use when reviewing a Rust PR for observability gaps, before releasing a new service, or after an incident where Rust diagnosis was slow. Stack-specific override of task-code-review-observability for Rust.
+description: Rust / Axum observability review: tracing crate, OpenTelemetry SDK, prometheus metrics, tokio-console, sentry-rust, graceful shutdown (library-level).
 agent: rust-tech-lead
 metadata:
   category: backend

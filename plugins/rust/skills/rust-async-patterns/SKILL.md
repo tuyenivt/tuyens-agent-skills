@@ -1,6 +1,6 @@
 ---
 name: rust-async-patterns
-description: "Tokio async patterns for Rust: runtime setup, task spawning with JoinSet, cancellation safety, select!, spawn_blocking for CPU work, and common async pitfalls."
+description: "Rust / Tokio async patterns: runtime setup, JoinSet task spawning, cancellation safety, select!, spawn_blocking for CPU work, async pitfalls."
 metadata:
   category: backend
   tags: [rust, tokio, async, concurrency, futures]

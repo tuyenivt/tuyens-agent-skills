@@ -1,6 +1,6 @@
 ---
 name: python-async-patterns
-description: "Python async/await patterns for I/O-bound operations. Covers asyncio.gather, TaskGroup, semaphore-based concurrency control, sync-to-async bridges, and event loop blocking prevention."
+description: "Python async/await patterns for I/O: asyncio.gather, TaskGroup, semaphore concurrency, sync-to-async bridges, event-loop blocking prevention."
 metadata:
   category: backend
   tags: [python, async, asyncio, concurrency, event-loop]

@@ -1,6 +1,6 @@
 ---
 name: frontend-accessibility
-description: WCAG 2.1 AA compliance - semantic HTML, ARIA, keyboard navigation, focus management, color contrast, screen reader testing. Adapts to detected frontend framework.
+description: Frontend accessibility: WCAG 2.1 AA, semantic HTML, ARIA, keyboard nav, focus management, color contrast, screen reader testing.
 metadata:
   category: frontend
   tags: [frontend, accessibility, a11y, wcag, aria, keyboard, screen-reader, multi-stack]

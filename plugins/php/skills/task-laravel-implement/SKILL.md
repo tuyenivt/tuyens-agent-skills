@@ -1,6 +1,6 @@
 ---
 name: task-laravel-implement
-description: End-to-end Laravel feature implementation workflow. Generates all coordinated layers from migration through Pest tests for new features requiring multiple Laravel components.
+description: End-to-end Laravel feature implementation: generates migration, model, controller, routes, Form Request, API Resource, Pest tests across layers.
 agent: php-architect
 metadata:
   category: backend

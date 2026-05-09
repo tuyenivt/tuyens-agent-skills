@@ -1,6 +1,6 @@
 ---
 name: task-python-review
-description: Python staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with FastAPI / Django idioms (async-in-sync mixing, blocking I/O in event loop, fat routers / views, ORM leak in API, Pydantic v2 misuse, missing `permission_classes`, anemic services). Spawns Python-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Python. Runs standalone with full PR/branch resolution.
+description: "Python / FastAPI / Django code review: async pitfalls, blocking I/O, ORM leaks, Pydantic v2, auth; spawns perf/security/observability subagents."
 agent: python-tech-lead
 metadata:
   category: backend

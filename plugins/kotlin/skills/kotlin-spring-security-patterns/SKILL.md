@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-security-patterns
-description: Spring Security 6.x configuration patterns for Kotlin/Spring Boot 3.5+ using the Kotlin DSL - SecurityFilterChain, OAuth2/JWT resource server, method-level security, CORS, CSRF, security headers, and coroutine security context propagation.
+description: Kotlin / Spring Security DSL patterns: SecurityFilterChain, OAuth2/JWT, method security, CORS, CSRF, headers, coroutine security context propagation.
 metadata:
   category: backend
   tags: [kotlin, security, spring-security, oauth2, jwt, cors, csrf, authorization, kotlin-dsl]

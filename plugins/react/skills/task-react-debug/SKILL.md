@@ -1,6 +1,6 @@
 ---
 name: task-react-debug
-description: Debug React errors - hydration mismatches, hook violations, render loops, Server Component errors, build failures, and runtime errors for React 19+ / Next.js / Vite projects.
+description: Debug React 19 / Next.js / Vite errors: hydration mismatches, hook violations, render loops, RSC errors, build and runtime failures.
 metadata:
   category: frontend
   tags: [react, debug, hydration, hooks, nextjs, error, troubleshooting]

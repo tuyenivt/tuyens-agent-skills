@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-test-integration
-description: Spring Boot test slice strategy and Testcontainers patterns in Kotlin covering @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, singleton containers, MockK / @MockkBean integration, kotest matchers, runTest for coroutines, and Awaitility for async assertions.
+description: Kotlin / Spring Boot test slices and Testcontainers: @DataJpaTest, @WebMvcTest, singleton containers, MockK, kotest, runTest, Awaitility.
 metadata:
   category: backend
   tags: [kotlin, testing, spring-boot, testcontainers, integration-test, test-slices, mockk, kotest]

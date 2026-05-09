@@ -1,6 +1,6 @@
 ---
 name: task-rust-review
-description: Rust staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Axum / sqlx / Tokio idioms (`.unwrap()` / `.expect()` in production paths, `panic!` in service code, `std::sync::Mutex` held across `.await`, fire-and-forget `tokio::spawn` without `JoinHandle`, missing `CancellationToken`, sqlx string-interpolation SQL, missing extractor validation, `Box<dyn Error>` swallowing context, unbounded channels, blocking I/O on the runtime). Spawns Rust-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Rust. Runs standalone with full PR/branch resolution.
+description: Rust / Axum / sqlx / Tokio code review: unwrap, panic, Mutex-across-await, task leaks, SQL injection; spawns perf/security/obs subagents.
 agent: rust-tech-lead
 metadata:
   category: backend

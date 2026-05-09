@@ -1,6 +1,6 @@
 ---
 name: task-db-migration-plan
-description: Database migration strategy for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk assessment, data backfill estimation, and rollback plan. Use before risky schema changes like NOT NULL columns, renames, table splits, large backfills, or multi-service migrations.
+description: "Zero-downtime DB migration plan: expand-contract phasing, lock risk, backfill, rollback for risky schema changes (NOT NULL, renames, splits)."
 metadata:
   category: data
   tags: [migration, database, schema, zero-downtime, rollback, expand-contract]

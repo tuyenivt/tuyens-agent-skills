@@ -1,6 +1,6 @@
 ---
 name: task-laravel-debug
-description: Debug Laravel application errors by classifying exceptions, locating root causes, and providing minimal before/after fixes. Covers Eloquent, controllers, queue jobs, migrations, and Pest test failures.
+description: Debug Laravel errors: classify exceptions, find root cause, minimal before/after fixes for Eloquent, controllers, jobs, migrations, Pest failures.
 agent: php-architect
 metadata:
   category: backend

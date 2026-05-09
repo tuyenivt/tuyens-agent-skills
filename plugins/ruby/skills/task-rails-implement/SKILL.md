@@ -1,6 +1,6 @@
 ---
 name: task-rails-implement
-description: Implement a multi-layer Rails feature end-to-end - migrations, models, services, controllers, serializers, Sidekiq jobs, and RSpec tests. Use for new features requiring coordinated layers; not for single-file fixes (use task-rails-debug).
+description: Implement multi-layer Rails feature: migrations, models, services, controllers, serializers, Sidekiq jobs, RSpec tests.
 agent: rails-architect
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-test
-description: Kotlin/Spring Boot test strategy and scaffolding using JUnit 5 / kotest, MockK + springmockk (@MockkBean), Spring test slices (@WebMvcTest, @DataJpaTest), Testcontainers, runTest for coroutines, Turbine for Flow, and Spring Security Test. Stack-specific override of task-code-test for Kotlin/Spring Boot.
+description: Kotlin / Spring Boot test scaffolding: JUnit 5, Kotest, MockK + @MockkBean, test slices, Testcontainers, runTest, Turbine for Flow.
 agent: kotlin-test-engineer
 metadata:
   category: backend

@@ -1,6 +1,6 @@
 ---
 name: task-spec-orchestrate
-description: Run a coordinated multi-agent pipeline (architect -> dev -> test -> review with a fix loop) over an existing SDD feature. Reads `.specs/<slug>/{spec,plan,tasks}.md`, invokes per-stack agents in sequence, writes append-only handoff envelopes under `.specs/<slug>/handoffs/`, and uses `fix-loop-controller` to decide loop / escalate / proceed. Resumable via the handoff directory.
+description: Run multi-agent SDD pipeline (architect / dev / test / review with fix loop) over a feature; handoff envelopes on filesystem, resumable.
 metadata:
   category: spec
   tags: [spec, sdd, orchestration, multi-agent, pipeline]

@@ -1,6 +1,6 @@
 ---
 name: dotnet-async-patterns
-description: Enforce async/await correctness including CancellationToken propagation, background service lifecycle, and thread-starvation prevention in ASP.NET Core.
+description: "ASP.NET Core async/await correctness: CancellationToken propagation, background service lifecycle, thread-starvation prevention."
 metadata:
   category: backend
   tags: [async, cancellation-token, background-services, hosted-services]

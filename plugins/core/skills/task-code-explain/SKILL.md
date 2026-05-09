@@ -1,6 +1,6 @@
 ---
 name: task-code-explain
-description: Explain a single file, function, class, or module - what it does, where it sits in the flow, why it exists, non-obvious gotchas, key invariants, and what to double-check before modifying it. Detects stack and composes a stack-specific atomic for framework-magic, lifecycle, and gotchas. Falls back to universal explanation for unknown stacks.
+description: Explain a file, function, class, or module: behavior, role in flow, invariants, gotchas, framework magic, what to check before modifying.
 metadata:
   category: code
   tags: [explanation, code-understanding, onboarding, review, debugging, multi-stack]

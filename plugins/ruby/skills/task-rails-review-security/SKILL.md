@@ -1,6 +1,6 @@
 ---
 name: task-rails-review-security
-description: Rails-specific security review for strong parameters, Devise/JWT auth, Pundit/CanCanCan authorization, mass assignment, CSRF, and Rails-aware OWASP Top 10. Use when reviewing a Rails PR for security regressions or running an authz drift sweep. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Ruby/Rails.
+description: Rails security review: strong params, Devise/JWT auth, Pundit/CanCanCan authz, mass assignment, CSRF, OWASP Top 10.
 agent: rails-security-engineer
 metadata:
   category: backend

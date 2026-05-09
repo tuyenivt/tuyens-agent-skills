@@ -1,6 +1,6 @@
 ---
 name: task-vue-implement
-description: End-to-end Vue feature implementation workflow - SFC components, composables, state management, API integration, routing, styling, accessibility, and tests for Vue 3.5+ / Nuxt 3 / Vite projects.
+description: End-to-end Vue 3.5 / Nuxt 3 / Vite feature implementation: SFCs, composables, Pinia, API, routing, styling, a11y, tests.
 metadata:
   category: frontend
   tags: [vue, typescript, nuxt, vite, feature, implementation, workflow, composables, pinia, testing]

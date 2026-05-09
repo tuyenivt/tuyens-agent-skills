@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-review-perf
-description: Kotlin/Spring Boot performance review for JPA/Hibernate N+1, fetch strategies, query plans, coroutine dispatcher / Virtual Thread interop, HikariCP sizing, async/messaging throughput, Flow backpressure, and caching. Stack-specific override of task-code-review-perf for Kotlin/Spring Boot.
+description: Kotlin / Spring Boot performance review: JPA N+1, coroutine dispatchers, Virtual Threads, HikariCP, Flow backpressure, async throughput, caching.
 agent: kotlin-performance-engineer
 metadata:
   category: backend

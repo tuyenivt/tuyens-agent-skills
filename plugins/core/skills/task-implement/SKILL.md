@@ -1,6 +1,6 @@
 ---
 name: task-implement
-description: Universal feature implementation entry point for new functionality requiring multiple coordinated layers (API + service + persistence + tests). Detects your stack and delegates to the appropriate workflow. Use when implementing a new endpoint, resource, domain aggregate, or cross-layer feature.
+description: Feature implementation entry point: scaffolds API, service, persistence, tests across layers. Detects stack and delegates to stack workflow.
 metadata:
   category: code
   tags: [feature, implementation, scaffold, stack-agnostic]

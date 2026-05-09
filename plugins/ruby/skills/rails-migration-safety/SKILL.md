@@ -1,6 +1,6 @@
 ---
 name: rails-migration-safety
-description: Zero-downtime migration patterns for Rails/PostgreSQL. Covers strong_migrations gem enforcement, concurrent indexes, safe column operations, data migration separation, and large table strategies.
+description: Zero-downtime Rails/PostgreSQL migrations: strong_migrations, concurrent indexes, safe column ops, data migration split, large tables.
 metadata:
   category: backend
   tags: [ruby, rails, postgresql, migration, zero-downtime]

@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-implement
-description: End-to-end Kotlin + Spring Boot feature implementation workflow. Delivers requirements clarification, design approval, Kotlin code generation across layers, Flyway migration, and tests (unit + integration + API). Not for single-file changes or isolated bug fixes (use task-kotlin-debug for errors).
+description: End-to-end Kotlin / Spring Boot feature implementation: clarification, design, layered code generation, Flyway migration, unit + integration tests.
 agent: kotlin-architect
 metadata:
   category: backend

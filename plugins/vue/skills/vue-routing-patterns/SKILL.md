@@ -1,6 +1,6 @@
 ---
 name: vue-routing-patterns
-description: Vue routing patterns - Vue Router (Vite) and Nuxt file-based routing, layouts, middleware, navigation guards, nested routes, and lazy loading for Vue 3.5+.
+description: Vue 3.5 routing: Vue Router (Vite) and Nuxt file-based routing, layouts, middleware, navigation guards, nested routes, lazy loading.
 metadata:
   category: frontend
   tags: [vue, routing, nuxt, vue-router, layouts, middleware, navigation-guards]

@@ -1,6 +1,6 @@
 ---
 name: vue-onboard-map
-description: Vue 3.5 / Nuxt / Vite project onboarding signals - package manager, build framework, TypeScript config, routing, state (Pinia), data fetching (Nuxt useFetch / TanStack Query Vue), styling, and component library. Used by task-onboard to map a Vue codebase for a new engineer.
+description: Vue 3.5 / Nuxt / Vite onboarding map: package manager, build, TS config, routing, Pinia, useFetch / TanStack Query, styling, UI library.
 metadata:
   category: frontend
   tags: [onboarding, codebase-map, vue, nuxt, vite, pinia]

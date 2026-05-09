@@ -1,6 +1,6 @@
 ---
 name: react-state-patterns
-description: React-specific state management - useState/useReducer, Zustand (primary), Redux Toolkit (enterprise), Jotai (atomic), context pitfalls, and state library selection for React 19+.
+description: React 19 state management: useState/useReducer, Zustand, Redux Toolkit, Jotai, context pitfalls, library selection.
 metadata:
   category: frontend
   tags: [react, state, zustand, redux-toolkit, jotai, context, useReducer]

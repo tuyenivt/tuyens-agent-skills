@@ -1,6 +1,6 @@
 ---
 name: react-nextjs-patterns
-description: Next.js App Router patterns - Server Components, Server Actions, ISR, middleware, dynamic routes, image optimization, and metadata API for Next.js 15+.
+description: Next.js 15 App Router: Server Components, Server Actions, ISR, middleware, dynamic routes, image optimization, metadata API.
 metadata:
   category: frontend
   tags: [nextjs, server-components, server-actions, isr, metadata, image-optimization]

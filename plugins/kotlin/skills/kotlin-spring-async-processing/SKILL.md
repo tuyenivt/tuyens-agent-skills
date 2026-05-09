@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-async-processing
-description: Spring @Async, ApplicationEvent, @TransactionalEventListener, and @Scheduled patterns in Kotlin with Virtual Thread integration and coroutine interop for Spring Boot 3.5+. Covers executor configuration, self-invocation pitfalls, async exception handling, and the @Async vs coroutines decision.
+description: Kotlin / Spring async patterns: @Async, @TransactionalEventListener, @Scheduled, Virtual Threads, coroutine interop, self-invocation pitfalls.
 metadata:
   category: backend
   tags: [kotlin, async, threading, events, idempotency, coroutines]

@@ -1,6 +1,6 @@
 ---
 name: angular-styling-patterns
-description: Angular styling patterns - ViewEncapsulation, Tailwind CSS, Angular Material/CDK, PrimeNG, CSS custom properties, theme system, and responsive design for Angular 21+.
+description: Angular styling: ViewEncapsulation, Tailwind, Angular Material/CDK, PrimeNG, CSS custom properties, theming, responsive design.
 metadata:
   category: frontend
   tags: [angular, styling, tailwind, angular-material, css, theming, responsive]

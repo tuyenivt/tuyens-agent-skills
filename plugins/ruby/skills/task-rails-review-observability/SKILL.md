@@ -1,6 +1,6 @@
 ---
 name: task-rails-review-observability
-description: Rails-specific observability review for ActiveSupport::Notifications, query_log_tags, lograge / semantic_logger, Sidekiq middleware tracing, Rack correlation IDs, and error-tracker gem wiring (Sentry / Honeybadger / Rollbar). Use when reviewing a Rails PR for observability gaps, before releasing a new Rails service, or after an incident where Rails diagnosis was slow. Stack-specific override of task-code-review-observability for Ruby/Rails.
+description: Rails observability review: ActiveSupport::Notifications, lograge, Sidekiq tracing, Rack correlation IDs, Sentry/Honeybadger/Rollbar wiring.
 agent: rails-tech-lead
 metadata:
   category: backend

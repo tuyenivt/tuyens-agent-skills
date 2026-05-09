@@ -1,6 +1,6 @@
 ---
 name: task-node-review
-description: Node.js staff-level code review umbrella - Phases A-E (risk, correctness, architecture, AI quality, maintainability) with NestJS / Express idioms (event-loop blocking, sync-in-async mixing, fat controllers, ORM leak in API, missing `ValidationPipe` whitelist, missing guards, anemic services, prototype pollution surfaces). Spawns Node-specific perf / security / observability subagents for extra scopes. Stack-specific override of task-code-review for Node.js. Runs standalone with full PR/branch resolution.
+description: Node.js / NestJS / Express code review: event-loop blocking, async pitfalls, ORM leaks, guards, validation; spawns perf/security/obs agents.
 agent: node-tech-lead
 metadata:
   category: backend

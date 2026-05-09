@@ -1,6 +1,6 @@
 ---
 name: task-angular-test
-description: Angular test strategy and scaffolding using Vitest / Jest / Karma + Angular Testing Library, TestBed, `HttpTestingController`, Angular CDK harnesses, MSW for HTTP stubs, Playwright for E2E, and TypeScript strict-mode test typing. Use when designing a test plan, assessing coverage gaps, or scaffolding component / service / guard / interceptor / E2E tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Angular.
+description: Angular test plan and scaffolding: Vitest/Jest, Angular Testing Library, TestBed, HttpTestingController, CDK harnesses, MSW, Playwright E2E.
 agent: angular-test-engineer
 metadata:
   category: frontend

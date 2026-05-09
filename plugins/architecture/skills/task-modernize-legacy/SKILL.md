@@ -1,6 +1,6 @@
 ---
 name: task-modernize-legacy
-description: Produces a staff-level modernization plan for upgrading a legacy system's language, framework, or architectural patterns -- incremental strangler fig migration with behavioral verification, target stack evaluation, and team transition planning.
+description: "Legacy modernization plan: incremental strangler fig migration, behavioral verification, target stack evaluation, team transition."
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]

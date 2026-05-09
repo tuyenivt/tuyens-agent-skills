@@ -1,6 +1,6 @@
 ---
 name: rust-onboard-map
-description: Rust project onboarding signals - Cargo workspace layout, Cargo.toml features, async runtime (tokio), framework (Axum/Actix), sqlx/sea-orm/diesel, and clippy/rustfmt. Used by task-onboard to map a Rust codebase for a new engineer.
+description: Rust onboarding map: Cargo workspace, Cargo.toml features, tokio runtime, Axum/Actix, sqlx/sea-orm/diesel, clippy/rustfmt.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, rust, axum, cargo, tokio]

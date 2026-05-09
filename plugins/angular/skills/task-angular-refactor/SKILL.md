@@ -1,6 +1,6 @@
 ---
 name: task-angular-refactor
-description: Angular refactor planning for god components, prop drilling, RxJS subscription leaks, BehaviorSubject-to-signal migration, Default change-detection migration, fat services, scattered state, missing functional guard / interceptor migration, untyped inputs, accessibility gaps, inline business logic in templates. Produces a step-by-step sequence of independently-committable refactoring steps with a test coverage gate. Stack-specific override of task-code-refactor for Angular.
+description: Angular refactor plan: god components, RxJS leaks, BehaviorSubject-to-signal, OnPush migration, fat services, a11y; phased commit-sized steps.
 agent: angular-tech-lead
 metadata:
   category: frontend

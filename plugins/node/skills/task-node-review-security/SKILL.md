@@ -1,6 +1,6 @@
 ---
 name: task-node-review-security
-description: Node.js security review for NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input validation, mass assignment, ORM injection, prototype-pollution risks, and Node-aware OWASP Top 10. Detects NestJS vs Express and applies the right framework idioms. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Node.js / TypeScript.
+description: Node.js / NestJS / Express security review: Guards, JWT, Passport, Zod/ValidationPipe, mass assignment, ORM injection, prototype pollution, OWASP.
 agent: node-security-engineer
 metadata:
   category: backend

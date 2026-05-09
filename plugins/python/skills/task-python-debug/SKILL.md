@@ -1,6 +1,6 @@
 ---
 name: task-python-debug
-description: Debug Python application errors by classifying tracebacks, locating root causes, and providing minimal before/after fixes. Covers FastAPI, Django, SQLAlchemy, Celery, and async errors. Paste a traceback or describe the unexpected behavior. Not for production incident triage (use /task-oncall-start for that).
+description: "Debug Python errors: classify tracebacks, find root cause, generate before/after fixes for FastAPI, Django, SQLAlchemy, Celery, async."
 agent: python-architect
 metadata:
   category: backend

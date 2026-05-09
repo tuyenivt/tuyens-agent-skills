@@ -1,6 +1,6 @@
 ---
 name: spring-websocket
-description: Spring WebSocket and STOMP messaging patterns covering configuration, handshake authentication, message-level security, connection lifecycle events, and Virtual Thread-compatible controllers.
+description: "Spring WebSocket / STOMP patterns: configuration, handshake auth, message-level security, lifecycle events, Virtual Thread controllers."
 metadata:
   category: backend
   tags: [websocket, stomp, messaging, real-time, spring]

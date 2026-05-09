@@ -1,6 +1,6 @@
 ---
 name: complexity-review
-description: Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth. Auto-detects project stack and adapts thresholds to the detected ecosystem.
+description: Complexity assessment: cyclomatic complexity, cognitive load, abstraction depth. Auto-detects stack and adapts thresholds.
 metadata:
   category: governance
   tags: [complexity, review, maintainability, multi-stack]

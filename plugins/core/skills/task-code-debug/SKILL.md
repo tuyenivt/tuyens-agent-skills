@@ -1,6 +1,6 @@
 ---
 name: task-code-debug
-description: Universal debugging entry point for broken or crashing code. Detects the project stack and dispatches to the matching stack-specific debug workflow. For unknown stacks, runs a minimal generic CLASSIFY/LOCATE/ROOT-CAUSE/FIX/PREVENT protocol.
+description: Debug entry point for broken or crashing code: classify, locate, root-cause, fix, prevent. Detects stack and dispatches debug workflow.
 metadata:
   category: code
   tags: [debug, troubleshooting, root-cause, multi-stack, router]

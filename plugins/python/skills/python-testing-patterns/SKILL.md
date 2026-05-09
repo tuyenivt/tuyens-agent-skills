@@ -1,6 +1,6 @@
 ---
 name: python-testing-patterns
-description: "pytest patterns for FastAPI, Django, and Celery applications. Covers fixtures, parametrize, async testing with pytest-asyncio, factory_boy for test data, mocking with respx/pytest-mock, Testcontainers for real PostgreSQL, and CI coverage configuration."
+description: "pytest patterns for FastAPI, Django, Celery: fixtures, parametrize, pytest-asyncio, factory_boy, respx, Testcontainers PostgreSQL, coverage."
 metadata:
   category: backend
   tags: [python, pytest, testing, fixtures, mocking, factory-boy, testcontainers]

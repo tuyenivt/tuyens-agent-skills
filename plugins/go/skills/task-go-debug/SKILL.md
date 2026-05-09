@@ -1,6 +1,6 @@
 ---
 name: task-go-debug
-description: Debug Go application errors - panics, context errors, SQL connectivity, data races, goroutine leaks, and GORM association issues. Paste a stack trace or describe the unexpected behavior.
+description: Debug Go errors: panics, context errors, SQL connectivity, data races, goroutine leaks, GORM association issues from stack traces or symptoms.
 agent: go-architect
 metadata:
   category: backend

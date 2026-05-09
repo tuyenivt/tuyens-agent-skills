@@ -1,6 +1,6 @@
 ---
 name: angular-onboard-map
-description: Angular 21 project onboarding signals - Angular CLI workspace, standalone components, Signals vs Zone.js, RxJS usage, routing, state management (NgRx/Akita), and styling. Used by task-onboard to map an Angular codebase for a new engineer.
+description: Map Angular codebase for onboarding: CLI workspace, standalone components, signals vs Zone.js, RxJS, routing, NgRx/Akita state, styling.
 metadata:
   category: frontend
   tags: [onboarding, codebase-map, angular, rxjs, signals]

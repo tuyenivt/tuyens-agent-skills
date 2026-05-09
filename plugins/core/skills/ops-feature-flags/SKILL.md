@@ -1,6 +1,6 @@
 ---
 name: ops-feature-flags
-description: Feature flag lifecycle - flag design, gradual rollout, rollback, and cleanup discipline. Used by release planning and feature implementation workflows.
+description: Feature flag lifecycle: flag design, gradual rollout, rollback, and cleanup discipline for release and implementation workflows.
 metadata:
   category: ops
   tags: [feature-flags, rollout, gradual-release, rollback, cleanup, multi-stack]

@@ -1,6 +1,6 @@
 ---
 name: rails-activerecord-patterns
-description: ActiveRecord query optimization and association patterns for Rails 7.2+. Covers N+1 prevention, scopes, counter_cache, batch processing, connection pooling, and PostgreSQL-specific features.
+description: ActiveRecord patterns for Rails 7.2+: N+1 prevention, scopes, counter_cache, batch processing, connection pooling, PostgreSQL features.
 metadata:
   category: backend
   tags: [ruby, rails, activerecord, postgresql, performance]

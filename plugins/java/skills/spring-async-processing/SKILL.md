@@ -1,6 +1,6 @@
 ---
 name: spring-async-processing
-description: Spring @Async, ApplicationEvent, @TransactionalEventListener, and @Scheduled patterns with Virtual Thread integration for Spring Boot 3.5+. Covers executor configuration, self-invocation pitfalls, and async exception handling.
+description: "Spring @Async, ApplicationEvent, @TransactionalEventListener, @Scheduled with Virtual Threads: executors, self-invocation, exception handling."
 metadata:
   category: backend
   tags: [async, threading, events, idempotency]

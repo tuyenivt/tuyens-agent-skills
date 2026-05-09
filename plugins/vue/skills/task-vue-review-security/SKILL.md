@@ -1,6 +1,6 @@
 ---
 name: task-vue-review-security
-description: Vue security review for XSS via `v-html`, CSP and `nonce`, Nitro server endpoint validation, server-side data exposure (Pinia hydration), env-var leakage (`NUXT_PUBLIC_` / `VITE_`), open redirect, auth on Nuxt server routes / middleware, CSRF on cookie-session apps, and Vue-aware OWASP. Detects Nuxt 3 vs Vite + Vue Router and applies the right idioms. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Vue.
+description: Vue / Nuxt security review: v-html XSS, CSP, Nitro endpoint auth, Pinia hydration leaks, env-var exposure, CSRF, open redirect, OWASP.
 agent: vue-security-engineer
 metadata:
   category: frontend

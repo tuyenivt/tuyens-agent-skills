@@ -1,6 +1,6 @@
 ---
 name: vue-component-patterns
-description: Vue SFC composition - script setup, props/emits typing, typed slots, provide/inject, Suspense, Teleport, dynamic components, and error handling for Vue 3.5+.
+description: Vue 3.5 SFC patterns: script setup, typed props/emits/slots, provide/inject, Suspense, Teleport, dynamic components, error handling.
 metadata:
   category: frontend
   tags: [vue, components, composition, script-setup, props, slots, provide-inject, teleport]

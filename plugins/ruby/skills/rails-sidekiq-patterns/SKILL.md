@@ -1,6 +1,6 @@
 ---
 name: rails-sidekiq-patterns
-description: Sidekiq background job patterns for Rails. Covers idempotent job design, retry/backoff strategy, queue priority, error handling, batch processing, deploy-time job versioning, and monitoring.
+description: Sidekiq job patterns for Rails: idempotent design, retry/backoff, queue priority, error handling, batch processing, job versioning.
 metadata:
   category: backend
   tags: [ruby, rails, sidekiq, background-jobs, async]

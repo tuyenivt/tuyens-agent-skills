@@ -1,6 +1,6 @@
 ---
 name: task-rails-review-perf
-description: Rails-specific performance review for ActiveRecord N+1, query plans, Sidekiq throughput, caching, and rendering hotspots. Use when reviewing a Rails PR or branch for perf regressions, or when a controller/job is slow. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Ruby/Rails.
+description: Rails performance review: ActiveRecord N+1, query plans, Sidekiq throughput, caching, rendering hotspots.
 agent: rails-performance-engineer
 metadata:
   category: backend

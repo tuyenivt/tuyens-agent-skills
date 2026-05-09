@@ -1,6 +1,6 @@
 ---
 name: node-typeorm-patterns
-description: TypeORM patterns for Express and NestJS - entity definition with enums and relations, repository pattern with DataSource, QueryBuilder for complex queries, transactions, N+1 prevention, migrations, pagination, connection pooling, and batch operations.
+description: TypeORM patterns for NestJS / Express: entities, repository with DataSource, QueryBuilder, transactions, N+1 prevention, migrations, pagination.
 metadata:
   category: backend
   tags: [node, typescript, typeorm, orm, database, patterns]

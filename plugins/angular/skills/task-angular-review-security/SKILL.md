@@ -1,6 +1,6 @@
 ---
 name: task-angular-review-security
-description: Angular security review for XSS via `[innerHTML]` and `bypassSecurityTrust*`, CSP, auth via functional guards / interceptors, token storage, open redirect via `Router.navigateByUrl`, `environment.ts` secret leaks, SSR data exposure, CSRF on cookie-session apps, and Angular-aware OWASP. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Angular.
+description: Angular security review: XSS via innerHTML/bypassSecurityTrust, CSP, functional guards/interceptors, token storage, open redirect, SSR, CSRF.
 agent: angular-security-engineer
 metadata:
   category: frontend

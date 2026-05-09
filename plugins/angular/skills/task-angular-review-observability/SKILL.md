@@ -1,6 +1,6 @@
 ---
 name: task-angular-review-observability
-description: Angular observability review for `web-vitals` reporting (LCP / INP / CLS / TTFB), Sentry Angular SDK + global `ErrorHandler`, OpenTelemetry browser instrumentation, SSR server-side tracing, structured client logging, RUM correlation. Library-level focus, not infra. Use when reviewing an Angular PR for observability gaps, before releasing a new app, or after an incident where client-side diagnosis was slow. Stack-specific override of task-code-review-observability for Angular.
+description: Angular observability review: web-vitals, Sentry, OpenTelemetry browser SDK, SSR tracing, structured logs, RUM correlation.
 agent: angular-tech-lead
 metadata:
   category: frontend

@@ -1,6 +1,6 @@
 ---
 name: spec-artifact-paths
-description: Resolve the canonical `.specs/<feature-slug>/` artifact paths (spec.md, clarifications.md, plan.md, tasks.md, analysis.md, evaluation.md, handoffs/) for a given feature. Slugify feature names, create directories on first write, and surface the path contract to consuming workflows.
+description: Resolve canonical .specs/<slug>/ artifact paths (spec, plan, tasks, analysis, evaluation, handoffs); slugify names, create dirs on first write.
 metadata:
   category: spec
   tags: [spec, sdd, artifacts, paths, filesystem]

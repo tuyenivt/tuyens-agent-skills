@@ -1,6 +1,6 @@
 ---
 name: fix-loop-controller
-description: Decide whether an orchestrated multi-agent run should loop back to the dev step, escalate to the user, or proceed. Reads the handoff directory written by upstream agents, classifies the latest envelope, applies iteration caps, and emits a structured next-step decision. Composed by `task-spec-orchestrate`.
+description: Decide loop / escalate / proceed for orchestrated multi-agent SDD runs - classifies handoff envelopes, applies iteration caps, emits decision.
 metadata:
   category: spec
   tags: [spec, sdd, orchestration, fix-loop, control]

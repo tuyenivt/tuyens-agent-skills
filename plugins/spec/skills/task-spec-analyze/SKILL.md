@@ -1,6 +1,6 @@
 ---
 name: task-spec-analyze
-description: Quality gate that cross-checks `spec.md`, `plan.md`, and `tasks.md` for consistency. Surfaces missing acceptance-criterion coverage, untested stories, plan elements with no spec source, tasks with no plan source, NFR gaps, and dangling out-of-scope violations. Writes `analysis.md` and recommends remediation. Speckit-aware - delegates to `/speckit.analyze` when Spec Kit is installed.
+description: Cross-check spec.md / plan.md / tasks.md consistency - AC coverage, untested stories, NFR gaps, out-of-scope violations; writes analysis.md.
 metadata:
   category: spec
   tags: [spec, sdd, analyze, quality, consistency]

@@ -1,6 +1,6 @@
 ---
 name: dotnet-ef-performance
-description: Optimize EF Core data access with N+1 prevention, projection queries, compiled queries, keyset pagination, bulk operations, and Dapper fallback for complex reads.
+description: "EF Core performance: N+1 prevention, projection queries, compiled queries, keyset pagination, bulk ops, Dapper fallback."
 metadata:
   category: backend
   tags: [ef-core, dapper, performance, queries, n+1]

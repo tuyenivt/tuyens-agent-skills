@@ -1,6 +1,6 @@
 ---
 name: laravel-onboard-map
-description: PHP / Laravel project onboarding signals - composer.json, Laravel version, environment config, Eloquent + migrations, queue backend, broadcasting, and frontend stack (Vite/Mix). Used by task-onboard to map a Laravel codebase for a new engineer.
+description: Laravel onboarding signals: composer.json, env config, Eloquent migrations, queue backend, broadcasting, Vite/Mix frontend.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, php, laravel, composer]

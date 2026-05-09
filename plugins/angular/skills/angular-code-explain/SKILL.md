@@ -1,6 +1,6 @@
 ---
 name: angular-code-explain
-description: Angular 21 / TypeScript framework signals for code explanation - signals and zoneless change detection, standalone components, dependency injection hierarchy, RxJS observables and async pipe, lifecycle hooks, and routing. Used by task-code-explain to explain Angular code with stack-aware gotchas.
+description: Explain Angular code: signals, zoneless change detection, standalone components, DI hierarchy, RxJS, async pipe, lifecycle, routing.
 metadata:
   category: frontend
   tags: [explanation, code-understanding, angular, signals, rxjs]

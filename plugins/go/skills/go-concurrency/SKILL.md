@@ -1,6 +1,6 @@
 ---
 name: go-concurrency
-description: "Go concurrency patterns: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, mixed required/optional fan-out, and common concurrency bugs."
+description: "Go concurrency: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, fan-out, common race bugs."
 metadata:
   category: backend
   tags: [go, concurrency, goroutine, channels, errgroup, sync, worker-pool]

@@ -1,6 +1,6 @@
 ---
 name: strangler-fig-pattern
-description: Produces a phased migration plan to incrementally route traffic from a legacy system to a replacement using coexistence, verification gates, and explicit rollback at each stage.
+description: "Phased migration plan to incrementally route traffic from legacy to replacement: coexistence, verification gates, per-stage rollback."
 metadata:
   category: architecture
   tags: [architecture, migration, strangler-fig, incremental, legacy, modernization]

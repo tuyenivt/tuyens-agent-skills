@@ -1,6 +1,6 @@
 ---
 name: task-code-test
-description: Test strategy, scaffolding, and coverage review entry point. Detects the project stack and dispatches to the matching stack-specific test workflow. For unknown stacks, runs a minimal generic protocol so any project can use this command.
+description: Test entry point: strategy, scaffolding, coverage review. Detects stack and dispatches to stack-specific test workflow.
 metadata:
   category: review
   tags: [testing, test-strategy, unit-test, integration-test, multi-stack, router]

@@ -1,6 +1,6 @@
 ---
 name: laravel-code-explain
-description: PHP / Laravel framework signals for code explanation - service container resolution, request lifecycle through middleware, Eloquent model events and relationships, queue workers, Blade view rendering, and broadcasting. Used by task-code-explain to explain Laravel code with stack-aware gotchas.
+description: PHP/Laravel code explanation signals: service container, middleware, Eloquent events/relationships, queue workers, Blade rendering, broadcasting.
 metadata:
   category: backend
   tags: [explanation, code-understanding, php, laravel, eloquent]

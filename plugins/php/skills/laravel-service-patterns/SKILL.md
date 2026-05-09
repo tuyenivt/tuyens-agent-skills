@@ -1,6 +1,6 @@
 ---
 name: laravel-service-patterns
-description: "Business logic patterns for Laravel - service classes, action classes, DTOs with readonly classes, repository pattern, dependency injection via Laravel container, and events/listeners for decoupled side effects."
+description: "Laravel business logic patterns: service classes, action classes, readonly DTOs, repository, container DI, events/listeners."
 metadata:
   category: backend
   tags: [php, laravel, services, actions, dto, dependency-injection, events]

@@ -1,6 +1,6 @@
 ---
 name: laravel-api-patterns
-description: "Laravel API patterns - resource controllers, route model binding, form requests, API Resources, middleware, API versioning, pagination, filtering, and exception handling for Laravel 12+."
+description: "Laravel API patterns: resource controllers, route model binding, Form Requests, API Resources, middleware, versioning, pagination, exception handling."
 metadata:
   category: backend
   tags: [php, laravel, api, controllers, form-requests, api-resources, middleware]

@@ -1,6 +1,6 @@
 ---
 name: task-node-review-perf
-description: Node.js performance review for Prisma / TypeORM N+1, event-loop blocking, sync-in-async traps, connection pool sizing, BullMQ throughput / idempotency, JSON serialization cost, and migration safety. Detects NestJS vs Express and applies the right framework idioms. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Node.js / TypeScript.
+description: Node.js performance review: Prisma/TypeORM N+1, event-loop blocking, async traps, connection pool, BullMQ throughput, JSON serialization.
 agent: node-performance-engineer
 metadata:
   category: backend

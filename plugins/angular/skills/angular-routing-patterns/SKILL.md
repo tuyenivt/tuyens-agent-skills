@@ -1,6 +1,6 @@
 ---
 name: angular-routing-patterns
-description: Angular routing patterns - lazy loading, functional route guards, resolvers, nested routes, route animations, and SSR with Angular Universal for Angular 21+.
+description: Angular routing: lazy loading, functional route guards, resolvers, nested routes, route animations, SSR with Angular Universal.
 metadata:
   category: frontend
   tags: [angular, routing, lazy-loading, guards, resolvers, nested-routes, ssr]

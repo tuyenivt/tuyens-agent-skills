@@ -1,6 +1,6 @@
 ---
 name: task-code-review-perf
-description: Performance review entry point. Detects the project stack and dispatches to the matching stack-specific perf review workflow. For unknown stacks, runs a minimal generic protocol covering DB performance, framework concurrency, caching, and frontend rendering.
+description: Performance review entry point: DB perf, concurrency, caching, frontend rendering. Detects stack and dispatches perf review workflow.
 metadata:
   category: review
   tags: [performance, optimization, profiling, database, multi-stack, router]

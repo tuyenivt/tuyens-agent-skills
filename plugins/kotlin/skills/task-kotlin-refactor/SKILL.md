@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-refactor
-description: Kotlin/Spring Boot refactor planning for fat controllers, anemic domain, service god-objects, missing layer boundaries, `!!` abuse, GlobalScope leakage, blocking-in-suspend, lateinit overuse, data class JPA entities, missing kotlin-jpa/spring plugins, @Transactional misuse, and `@Autowired` field injection. Produces a step-by-step sequence of independently-committable refactoring steps with a JUnit / Kotest / Spring slice test coverage gate. Stack-specific override of task-code-refactor for Kotlin/Spring Boot.
+description: Kotlin / Spring Boot refactor plan: fat controllers, anemic domain, !! abuse, coroutine misuse, @Transactional bugs; phased risk/effort steps.
 agent: kotlin-tech-lead
 metadata:
   category: backend

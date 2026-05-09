@@ -1,6 +1,6 @@
 ---
 name: go-error-handling
-description: "Go error patterns: explicit returns, wrapping with %w, sentinel errors, custom error types, errors.Is/As, Gin error middleware, and external API error classification. Never swallow errors."
+description: "Go error patterns: explicit returns, %w wrapping, sentinel errors, custom types, errors.Is/As, Gin error middleware, API error classification."
 metadata:
   category: backend
   tags: [go, error-handling, sentinel-errors, gin, middleware]

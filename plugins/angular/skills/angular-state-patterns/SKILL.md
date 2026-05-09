@@ -1,6 +1,6 @@
 ---
 name: angular-state-patterns
-description: Angular state management - signals (primary), NgRx (enterprise), ComponentStore, service-based state, RxJS BehaviorSubject patterns, and state library selection for Angular 21+.
+description: Angular state management: signals, NgRx, ComponentStore, service-based state, RxJS BehaviorSubject, state library selection.
 metadata:
   category: frontend
   tags: [angular, state, signals, ngrx, componentstore, rxjs, behaviorsubject]

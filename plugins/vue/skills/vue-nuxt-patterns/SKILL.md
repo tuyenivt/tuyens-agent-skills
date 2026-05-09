@@ -1,6 +1,6 @@
 ---
 name: vue-nuxt-patterns
-description: Nuxt 3 patterns - auto-imports, server routes, useFetch/useAsyncData, Nitro server engine, middleware, SEO with useHead/useSeoMeta, and hybrid rendering for Nuxt 3.
+description: Nuxt 3 patterns: auto-imports, server routes, useFetch / useAsyncData, Nitro, middleware, useHead / useSeoMeta, hybrid rendering.
 metadata:
   category: frontend
   tags: [nuxt, server-routes, usefetch, useasyncdata, nitro, seo, auto-imports, hybrid-rendering]

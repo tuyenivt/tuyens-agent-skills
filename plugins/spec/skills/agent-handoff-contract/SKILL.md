@@ -1,6 +1,6 @@
 ---
 name: agent-handoff-contract
-description: Define the structured handoff envelope every agent step writes to `.specs/<slug>/handoffs/<NN>-<step>-<agent>.md` during orchestrated multi-agent runs. Single-source contract so architect -> dev -> test -> review pipelines have a stable, inspectable bus on the filesystem (no central state machine). Read by `task-spec-orchestrate` and `fix-loop-controller`.
+description: Handoff envelope contract for orchestrated multi-agent SDD runs - filesystem bus under .specs/<slug>/handoffs/ for architect / dev / test / review.
 metadata:
   category: spec
   tags: [spec, sdd, orchestration, agents, handoff, contract]

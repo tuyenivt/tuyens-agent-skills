@@ -1,6 +1,6 @@
 ---
 name: java-gradle-build-optimization
-description: Gradle build optimization for Spring Boot multi-module projects. Covers version catalogs, build cache, configuration cache, parallel execution, and common Gradle anti-patterns.
+description: "Gradle build optimization for Spring Boot multi-module: version catalogs, build cache, configuration cache, parallel execution, anti-patterns."
 metadata:
   category: backend
   tags: [gradle, build, spring-boot, multi-module, performance]

@@ -1,6 +1,6 @@
 ---
 name: spring-exception-handling
-description: Spring Boot @RestControllerAdvice and ProblemDetail (RFC 9457) - domain exception hierarchy, HTTP status mapping, DataIntegrityViolationException handling, and error response consistency.
+description: "Spring Boot @RestControllerAdvice + ProblemDetail (RFC 9457): exception hierarchy, HTTP mapping, DataIntegrityViolation, error consistency."
 metadata:
   category: backend
   tags: [error-handling, rest, http, controller]

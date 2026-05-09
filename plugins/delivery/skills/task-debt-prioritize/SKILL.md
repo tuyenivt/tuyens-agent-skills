@@ -1,6 +1,6 @@
 ---
 name: task-debt-prioritize
-description: Prioritize technical debt items by risk-adjusted ROI - blast radius, change frequency, and team pain. Produces a ranked backlog with effort estimates and fix/spike/defer/accept recommendations, ready for sprint planning.
+description: Prioritize technical debt by risk-adjusted ROI (blast radius, change frequency, pain); ranked backlog with effort and fix/spike/defer/accept calls.
 metadata:
   category: planning
   tags: [tech-debt, prioritization, planning, risk, maintainability]

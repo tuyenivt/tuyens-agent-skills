@@ -1,6 +1,6 @@
 ---
 name: angular-component-patterns
-description: Angular component design - standalone components, signals, input/output, content projection, control flow (@if/@for/@switch), OnPush change detection, and TypeScript patterns for Angular 21+.
+description: Angular component patterns: standalone, signals, input/output, content projection, control flow (@if/@for/@switch), OnPush.
 metadata:
   category: frontend
   tags: [angular, components, standalone, signals, content-projection, onpush, typescript]

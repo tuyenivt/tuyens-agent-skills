@@ -1,6 +1,6 @@
 ---
 name: task-breakdown-story
-description: Break a feature, epic, or ticket into implementable tasks with dependency ordering, relative sizing (S/M/L/XL), and scope creep risk flags. Surfaces hidden complexity - migrations, backward compatibility, observability, rollback - before a sprint starts. Use during sprint planning, before kicking off a large feature, or when a ticket feels bigger than it looks.
+description: Break feature or ticket into implementable tasks with dependency order, S/M/L/XL sizing, scope creep flags; surfaces migration/rollback complexity.
 metadata:
   category: planning
   tags: [planning, estimation, task-breakdown, scope, complexity]

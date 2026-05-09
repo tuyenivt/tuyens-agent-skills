@@ -1,6 +1,6 @@
 ---
 name: frontend-testing-patterns
-description: Frontend testing patterns - component testing, integration testing, e2e with Playwright/Cypress, API mocking with MSW, snapshot discipline. Adapts to detected stack and test framework.
+description: Frontend testing: component, integration, e2e (Playwright/Cypress), API mocking with MSW, snapshot discipline. Adapts to stack.
 metadata:
   category: frontend
   tags: [frontend, testing, playwright, cypress, msw, vitest, jest, multi-stack]

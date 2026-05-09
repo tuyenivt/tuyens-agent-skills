@@ -1,6 +1,6 @@
 ---
 name: kotlin-coroutines-spring
-description: "Patterns for Kotlin coroutines in Spring Boot 3.5+: suspend service/controller functions, Flow streaming, coroutine-aware transactions, Virtual Thread interop, structured concurrency with coroutineScope/supervisorScope, CoroutineScope bean configuration, and retry/timeout patterns."
+description: "Kotlin coroutines in Spring Boot: suspend controllers, Flow streaming, coroutine-aware @Transactional, Virtual Thread interop, structured concurrency."
 user-invocable: false
 ---
 

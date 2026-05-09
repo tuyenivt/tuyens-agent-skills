@@ -1,6 +1,6 @@
 ---
 name: task-spring-test
-description: Spring Boot test strategy and scaffolding using JUnit 5, Spring test slices (@WebMvcTest, @DataJpaTest), Testcontainers, Mockito, and Spring Security Test. Use when designing a Spring test plan, assessing coverage gaps, or scaffolding controller/service/repository/security tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Java/Spring Boot.
+description: "Spring Boot test plan and scaffolding: JUnit 5, @WebMvcTest, @DataJpaTest, Testcontainers, Mockito, Spring Security Test."
 agent: java-test-engineer
 metadata:
   category: backend

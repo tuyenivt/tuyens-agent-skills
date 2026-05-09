@@ -1,6 +1,6 @@
 ---
 name: task-angular-review-perf
-description: Angular performance review for Core Web Vitals (LCP, INP, CLS), bundle size, change detection cost, signal vs zone.js / zoneless, RxJS subscription overhead, `@defer` placement, lazy-loaded routes, `NgOptimizedImage`, SSR + `TransferState` / HTTP transfer cache, NgRx selectors. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to Angular.
+description: Angular perf review: Core Web Vitals (LCP/INP/CLS), bundle size, change detection, signals/zoneless, @defer, NgOptimizedImage, SSR, NgRx selectors.
 agent: angular-performance-engineer
 metadata:
   category: frontend

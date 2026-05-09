@@ -1,6 +1,6 @@
 ---
 name: task-vue-review-observability
-description: Vue observability review for `web-vitals` reporting (LCP / INP / CLS / TTFB), Sentry Vue SDK + Vue error boundaries (`errorCaptured`, `app.config.errorHandler`), OpenTelemetry browser instrumentation, Nuxt server-side tracing via Nitro plugins / `instrumentation`, structured client logging, and RUM correlation. Library-level focus, not infra. Use when reviewing a Vue PR for observability gaps, before releasing a new app, or after an incident where client-side diagnosis was slow. Stack-specific override of task-code-review-observability for Vue.
+description: Vue / Nuxt observability review: web-vitals, Sentry Vue SDK, errorCaptured, OpenTelemetry browser, Nitro server tracing, structured logs, RUM.
 agent: vue-tech-lead
 metadata:
   category: frontend

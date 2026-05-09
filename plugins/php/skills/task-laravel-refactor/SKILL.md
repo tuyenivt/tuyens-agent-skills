@@ -1,6 +1,6 @@
 ---
 name: task-laravel-refactor
-description: Laravel refactor planning for fat controllers, anemic services, god classes, mass assignment via `$guarded = []` or `Model::create($request->all())`, missing Form Request, Eloquent N+1, jobs accepting Eloquent models in constructors, jobs dispatched inside transactions without `afterCommit`, single-implementation interfaces, repository-over-Eloquent for trivial reads, `env()` outside config, and queue idempotency. Produces a step-by-step sequence of independently-committable refactoring steps with a `php artisan test + composer phpstan + vendor/bin/pint` coverage gate. Stack-specific override of task-code-refactor for PHP / Laravel.
+description: Laravel refactor plan: fat controllers, anemic services, mass assignment, N+1, queue idempotency; phased steps with test+phpstan+pint gate.
 agent: php-tech-lead
 metadata:
   category: backend

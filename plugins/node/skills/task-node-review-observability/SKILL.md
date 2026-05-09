@@ -1,6 +1,6 @@
 ---
 name: task-node-review-observability
-description: Node.js observability review for pino / winston structured logging, OpenTelemetry Node SDK + auto-instrumentation (HTTP / NestJS / Express / Prisma / TypeORM / BullMQ / ioredis), prom-client, BullMQ queue events, and error-tracker SDKs (Sentry / Honeybadger / Rollbar). Library-level focus, not infra. Use when reviewing a Node PR for observability gaps, before releasing a new service, or after an incident where Node diagnosis was slow. Stack-specific override of task-code-review-observability for Node.js.
+description: Node.js observability review: pino/winston logs, OpenTelemetry Node SDK, prom-client, BullMQ events, Sentry; identifies telemetry gaps.
 agent: node-tech-lead
 metadata:
   category: backend

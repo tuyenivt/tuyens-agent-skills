@@ -1,6 +1,6 @@
 ---
 name: task-spec-specify
-description: Foundation phase of Spec-Driven Development. Elicit feature requirements (problem, users, stories, acceptance criteria, NFRs) and write a structured `spec.md` to `.specs/<feature-slug>/spec.md`. Speckit-aware - delegates to `/speckit.specify` when Spec Kit is installed, otherwise drives the elicitation itself.
+description: SDD foundation phase - elicit feature requirements (problem, users, stories, AC, NFRs) and write spec.md to .specs/<slug>/. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, requirements, specification, foundation]

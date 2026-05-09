@@ -1,6 +1,6 @@
 ---
 name: spring-test-integration
-description: Spring Boot test slice strategy and Testcontainers patterns covering @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, singleton containers, test fixtures, and Awaitility for async assertions.
+description: "Spring Boot test slices and Testcontainers: @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, singleton containers, fixtures, Awaitility."
 metadata:
   category: backend
   tags: [testing, spring-boot, testcontainers, integration-test, test-slices]

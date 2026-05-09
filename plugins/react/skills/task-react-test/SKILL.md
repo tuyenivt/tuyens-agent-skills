@@ -1,6 +1,6 @@
 ---
 name: task-react-test
-description: React test strategy and scaffolding using Vitest, React Testing Library, MSW for HTTP stubs, Playwright for E2E, and TypeScript strict-mode test typing. Detects Next.js App Router vs Vite + React Router and applies the right idioms (Server Component limitations, Server Action testing, App Router routing in tests). Use when designing a test plan, assessing coverage gaps, or scaffolding component / hook / route / E2E tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to React.
+description: React / Next.js test plan and scaffolding with Vitest, React Testing Library, MSW, Playwright E2E; covers Server Components and Server Actions.
 agent: react-test-engineer
 metadata:
   category: frontend

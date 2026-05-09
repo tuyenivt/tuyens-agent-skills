@@ -1,6 +1,6 @@
 ---
 name: task-spec-clarify
-description: Resolve ambiguities in an existing `spec.md` before planning. Runs `spec-review` to surface a structured findings list, asks the user the resulting questions, appends Q&A to `clarifications.md`, and updates `spec.md` with revisions. Speckit-aware - delegates to `/speckit.clarify` when Spec Kit is installed.
+description: Resolve spec.md ambiguities via Q&A before planning - runs spec-review, asks questions, appends to clarifications.md, updates spec. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, clarify, ambiguity, requirements]

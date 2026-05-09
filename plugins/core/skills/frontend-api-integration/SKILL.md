@@ -1,6 +1,6 @@
 ---
 name: frontend-api-integration
-description: Frontend data fetching patterns - loading/error states, caching, optimistic updates, pagination, request deduplication. Adapts to detected stack (TanStack Query, SWR, Apollo, useFetch, etc.).
+description: Frontend data fetching: loading/error states, caching, optimistic updates, pagination, request deduplication. Adapts to detected stack.
 metadata:
   category: frontend
   tags: [frontend, api, data-fetching, tanstack-query, swr, apollo, caching, multi-stack]

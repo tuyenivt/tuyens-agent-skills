@@ -1,6 +1,6 @@
 ---
 name: vue-composables-patterns
-description: Vue composable design - extraction rules, ref vs reactive, watchEffect vs watch, lifecycle hooks, cleanup patterns, and VueUse integration for Vue 3.5+.
+description: Vue 3.5 composables: extraction rules, ref vs reactive, watchEffect vs watch, lifecycle, cleanup, VueUse integration.
 metadata:
   category: frontend
   tags: [vue, composables, ref, reactive, watch, watchEffect, lifecycle, vueuse]

@@ -1,6 +1,6 @@
 ---
 name: rust-error-handling
-description: "Rust error handling: thiserror for domain errors, anyhow for applications, error propagation with ?, layer-boundary mapping (repo to service to handler), and Axum IntoResponse."
+description: "Rust error handling: thiserror domain errors, anyhow apps, ? propagation, layer-boundary mapping (repo/service/handler), Axum IntoResponse."
 metadata:
   category: backend
   tags: [rust, error-handling, thiserror, anyhow, result]

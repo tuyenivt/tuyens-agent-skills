@@ -1,6 +1,6 @@
 ---
 name: go-migration-safety
-description: "Safe migration patterns with golang-migrate and PostgreSQL. File naming, up/down pairs, zero-downtime DDL, CHECK constraints, embedding in Go binary, CI validation."
+description: "Safe Go migrations with golang-migrate + PostgreSQL: naming, up/down pairs, zero-downtime DDL, CHECK constraints, binary embedding, CI validation."
 metadata:
   category: backend
   tags: [go, migration, postgresql, golang-migrate, ddl, zero-downtime]

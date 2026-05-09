@@ -1,6 +1,6 @@
 ---
 name: node-typescript-patterns
-description: TypeScript strict mode patterns for Node.js - proper typing with no `any`, discriminated unions for result types, type guards, utility types, generics, branded types for domain IDs, and strict tsconfig settings.
+description: TypeScript strict-mode patterns for Node.js: no any, discriminated unions, type guards, generics, branded IDs, strict tsconfig.
 metadata:
   category: backend
   tags: [node, typescript, types, generics, strict-mode, patterns]

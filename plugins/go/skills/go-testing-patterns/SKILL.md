@@ -1,6 +1,6 @@
 ---
 name: go-testing-patterns
-description: "Go testing: table-driven tests, httptest for Gin handlers and webhooks, testcontainers-go for integration, testify, interface mocking, t.Parallel, test fixtures, benchmarks, and testing/synctest."
+description: "Go testing: table-driven tests, httptest, testcontainers-go, testify, interface mocking, t.Parallel, fixtures, benchmarks, testing/synctest."
 metadata:
   category: backend
   tags: [go, testing, httptest, testcontainers, testify, benchmarks]

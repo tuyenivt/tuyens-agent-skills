@@ -1,6 +1,6 @@
 ---
 name: go-data-access
-description: "Go data access with GORM and sqlx. Model definition, associations, preloading, transactions, scopes, connection pooling, upserts, and repository interface patterns. When to use GORM vs sqlx. Both can coexist."
+description: "Go data access with GORM and sqlx: models, associations, preloading, transactions, scopes, connection pooling, upserts, repository interfaces."
 metadata:
   category: backend
   tags: [go, gorm, sqlx, database, postgresql, repository]

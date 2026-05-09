@@ -1,6 +1,6 @@
 ---
 name: spring-jpa-performance
-description: JPA/Hibernate performance patterns covering N+1 detection with fetch joins and entity graphs, batch size tuning, projection queries, and second-level cache strategy.
+description: "JPA / Hibernate performance: N+1 detection via fetch joins and entity graphs, batch size tuning, projections, second-level cache."
 metadata:
   category: backend
   tags: [jpa, hibernate, performance, queries]

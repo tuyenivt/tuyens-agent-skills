@@ -1,6 +1,6 @@
 ---
 name: kotlin-code-explain
-description: Kotlin / Spring Boot framework signals for code explanation - coroutines and structured concurrency, suspend boundaries, null safety, data class equality, sealed hierarchies, and Spring AOP proxy interactions with Kotlin's `final`-by-default. Used by task-code-explain to explain Kotlin code with stack-aware gotchas.
+description: Kotlin / Spring Boot code explanation: coroutines, suspend boundaries, null safety, sealed hierarchies, AOP proxy with final-by-default classes.
 metadata:
   category: backend
   tags: [explanation, code-understanding, kotlin, spring, coroutines]

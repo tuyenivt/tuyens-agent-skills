@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-debug
-description: Diagnose and fix Kotlin + Spring Boot errors including null safety violations, coroutine stack traces, MockK setup errors, Kotlin-JPA plugin issues, Jackson serialization errors, and Spring Boot startup failures with final Kotlin classes. Not for production incident analysis with blast radius assessment (use /task-oncall-start).
+description: Debug Kotlin / Spring Boot errors: null safety, coroutine stack traces, MockK, kotlin-jpa plugin, Jackson, startup failures from final classes.
 agent: kotlin-architect
 metadata:
   category: backend

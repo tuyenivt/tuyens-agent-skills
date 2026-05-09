@@ -1,6 +1,6 @@
 ---
 name: spec-review
-description: Audit a `spec.md` document for requirements-quality issues - unmeasurable acceptance criteria, missing NFR coverage, conflicting requirements, ambiguous pronouns or undefined terms, and out-of-scope leakage. Produces a structured findings report consumable by `task-spec-clarify`, `task-spec-analyze`, and `task-spec-checklist`.
+description: Audit spec.md for requirements-quality - unmeasurable AC, missing NFR coverage, conflicts, ambiguity, out-of-scope leakage; structured findings.
 metadata:
   category: spec
   tags: [spec, sdd, review, requirements-quality, ambiguity]

@@ -1,6 +1,6 @@
 ---
 name: task-go-implement
-description: End-to-end Go/Gin feature implementation workflow. Generates all layers from migration to HTTP handler with full test coverage. Not for single-file changes or isolated bug fixes (use task-go-debug for errors).
+description: End-to-end Go / Gin feature implementation: generates migration, repository, service, handler layers with full test coverage.
 agent: go-architect
 metadata:
   category: backend

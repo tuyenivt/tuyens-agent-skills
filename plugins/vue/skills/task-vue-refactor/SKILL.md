@@ -1,6 +1,6 @@
 ---
 name: task-vue-refactor
-description: Vue refactor planning for god components, prop drilling, watcher overuse for derived state / events, fat composables, deep `reactive` over large datasets, scattered state, missing Zod on Nitro endpoints, untyped props, accessibility gaps, inline business logic in templates. Produces a step-by-step sequence of independently-committable refactoring steps with a Vitest coverage gate. Stack-specific override of task-code-refactor for Vue.
+description: Vue / Nuxt refactor plan: god components, prop drilling, watcher overuse, fat composables, untyped props, a11y; phased steps with Vitest gate.
 agent: vue-tech-lead
 metadata:
   category: frontend

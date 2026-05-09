@@ -1,6 +1,6 @@
 ---
 name: rust-migration-safety
-description: "Safe PostgreSQL migration patterns with sqlx-cli: file naming, reversible up/down migrations, zero-downtime DDL (expand-contract, CONCURRENTLY), embedded migrations, and CI validation."
+description: "Safe PostgreSQL migrations with sqlx-cli: reversible up/down, zero-downtime DDL (expand-contract, CONCURRENTLY), embedded migrations, CI validation."
 metadata:
   category: backend
   tags: [rust, sqlx, postgresql, migrations, ddl, zero-downtime]

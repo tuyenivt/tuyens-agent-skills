@@ -1,6 +1,6 @@
 ---
 name: python-celery-patterns
-description: "Celery background task patterns for Python. Covers idempotent task design, retry strategies with backoff, queue routing, canvas workflows (chain/group/chord), acks_late delivery guarantees, and integration with FastAPI and Django."
+description: "Celery task patterns: idempotent design, retry with backoff, queue routing, canvas (chain/group/chord), acks_late, FastAPI/Django integration."
 metadata:
   category: backend
   tags: [python, celery, background-tasks, queue, retry, idempotency]

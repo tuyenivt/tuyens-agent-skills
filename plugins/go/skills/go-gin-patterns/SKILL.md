@@ -1,6 +1,6 @@
 ---
 name: go-gin-patterns
-description: "Gin web framework patterns: routing groups, middleware, request binding with validation, consistent JSON responses, pagination, webhook handlers, rate limiting, graceful shutdown, health endpoints."
+description: "Gin patterns: routing groups, middleware, request binding/validation, JSON responses, pagination, webhooks, rate limiting, graceful shutdown."
 metadata:
   category: backend
   tags: [go, gin, http, middleware, routing, pagination, webhook]

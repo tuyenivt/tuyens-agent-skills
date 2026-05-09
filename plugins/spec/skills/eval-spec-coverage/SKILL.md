@@ -1,6 +1,6 @@
 ---
 name: eval-spec-coverage
-description: Map every acceptance criterion and NFR in `spec.md` to the tests / code regions that satisfy it. Emits per-criterion verdicts (covered / uncovered / violated) plus per-NFR verification status. Composed by `task-spec-evaluate` and consumed by `eval-scorer`.
+description: Map every AC and NFR in spec.md to satisfying tests / code regions; emits per-criterion verdicts (covered / uncovered / violated) plus NFR status.
 metadata:
   category: spec
   tags: [spec, sdd, evaluation, coverage, traceability]

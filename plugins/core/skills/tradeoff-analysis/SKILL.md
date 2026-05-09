@@ -1,6 +1,6 @@
 ---
 name: tradeoff-analysis
-description: Produces a structured trade-off record for a significant architectural decision -- chosen option, rejected alternatives with reasons, costs accepted, reversibility assessment, and review triggers.
+description: Structured trade-off record for an architectural decision: chosen option, rejected alternatives, costs, reversibility, review triggers.
 metadata:
   category: architecture
   tags: [architecture, decisions, trade-offs, adr]

@@ -1,6 +1,6 @@
 ---
 name: laravel-queue-patterns
-description: "Laravel Queue patterns - job classes, retry strategies, batching, chaining, rate limiting, failed job handling, driver selection (Redis/database), and Horizon monitoring."
+description: "Laravel Queue patterns: job classes, retries, batching, chaining, rate limiting, failed jobs, Redis/database drivers, Horizon monitoring."
 metadata:
   category: backend
   tags: [php, laravel, queue, jobs, redis, horizon, batching]

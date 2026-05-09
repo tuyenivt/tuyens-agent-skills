@@ -1,6 +1,6 @@
 ---
 name: task-spring-review-security
-description: Spring Boot security review for Spring Security 6.x SecurityFilterChain, OAuth2/JWT, method security, validation, CSRF, and Java-aware OWASP Top 10. Use when reviewing a Spring Boot PR for security regressions or auditing an auth flow. Stack-specific override of task-code-review-security, invoked when stack-detect resolves to Java/Spring Boot.
+description: "Spring Boot security review: Spring Security 6 SecurityFilterChain, OAuth2/JWT, method security, validation, CSRF, OWASP Top 10."
 agent: java-security-engineer
 metadata:
   category: backend

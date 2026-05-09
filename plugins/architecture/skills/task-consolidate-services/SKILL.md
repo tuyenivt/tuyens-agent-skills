@@ -1,6 +1,6 @@
 ---
 name: task-consolidate-services
-description: Produces a consolidation plan for merging over-split microservices into fewer, better-bounded services -- smell detection, merge candidates, data reunification, phased execution with rollback.
+description: "Microservices consolidation plan: smell detection, merge candidates, data reunification, phased execution with rollback."
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]

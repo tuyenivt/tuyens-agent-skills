@@ -1,6 +1,6 @@
 ---
 name: kotlin-testing-patterns
-description: "Kotlin testing patterns with MockK (coEvery/coVerify for suspend functions), Kotest matchers, Turbine for Flow testing, Spring test slice integration with @MockkBean, runTest for coroutine test bodies, Testcontainers for integration tests, and test fixture factories."
+description: "Kotlin testing patterns: MockK coEvery/coVerify for suspend, Kotest matchers, Turbine for Flow, @MockkBean test slices, runTest, Testcontainers."
 user-invocable: false
 ---
 

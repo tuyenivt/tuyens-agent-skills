@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-review-observability
-description: .NET observability review for `Microsoft.Extensions.Logging` / Serilog (structured logging + scopes), OpenTelemetry .NET SDK + auto-instrumentation (ASP.NET Core / EF Core / HttpClient / MassTransit), `System.Diagnostics.Metrics.Meter` + Prometheus exporter (`OpenTelemetry.Exporter.Prometheus.AspNetCore`), `dotnet-counters` / `dotnet-trace` for runtime introspection, graceful shutdown via `IHostApplicationLifetime` / `IHostedService.StopAsync`, health checks via `AddHealthChecks` + `MapHealthChecks`, and error-tracker SDKs (Sentry, Application Insights). Library-level focus, not infra. Use when reviewing a .NET PR for observability gaps, before releasing a new service, or after an incident where .NET diagnosis was slow. Stack-specific override of task-code-review-observability for .NET.
+description: ".NET observability review: Serilog structured logging, OpenTelemetry SDK, Prometheus metrics, dotnet-counters, health checks, Sentry."
 agent: dotnet-tech-lead
 metadata:
   category: backend

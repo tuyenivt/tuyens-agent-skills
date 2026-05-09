@@ -1,6 +1,6 @@
 ---
 name: angular-rxjs-patterns
-description: RxJS in Angular - async pipe, takeUntilDestroyed, flattening operator selection (switchMap/mergeMap/concatMap), error handling, multicasting, and signals migration path for Angular 21+.
+description: RxJS in Angular: async pipe, takeUntilDestroyed, switchMap/mergeMap/concatMap, error handling, multicasting, signals migration.
 metadata:
   category: frontend
   tags: [angular, rxjs, async-pipe, takeUntilDestroyed, switchmap, observables, subscription]

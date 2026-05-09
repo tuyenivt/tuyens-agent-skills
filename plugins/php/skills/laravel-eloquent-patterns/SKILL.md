@@ -1,6 +1,6 @@
 ---
 name: laravel-eloquent-patterns
-description: "Eloquent ORM patterns for Laravel - relationships, scopes, eager loading, N+1 prevention, casts, attribute accessors, chunking, soft deletes, and MySQL-specific query optimization."
+description: "Eloquent ORM patterns: relationships, scopes, eager loading, N+1 prevention, casts, accessors, chunking, soft deletes, MySQL query optimization."
 metadata:
   category: backend
   tags: [php, laravel, eloquent, mysql, orm, relationships, n-plus-one]

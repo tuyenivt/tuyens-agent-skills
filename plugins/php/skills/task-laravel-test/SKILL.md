@@ -1,6 +1,6 @@
 ---
 name: task-laravel-test
-description: Laravel test strategy and scaffolding using Pest (primary) / PHPUnit, model factories, `RefreshDatabase` / `DatabaseTransactions` traits, real MySQL test database via `phpunit.xml` env override (NEVER SQLite for MySQL apps), HTTP feature tests via `getJson` / `postJson` and `actingAs`, `Queue::fake` / `Event::fake` / `Notification::fake` / `Mail::fake` / `Storage::fake` / `Bus::fake` for facade dispatch testing, `Http::fake` for HTTP stub, and Sanctum / Passport token testing helpers. Stack-specific override of task-code-test for PHP / Laravel.
+description: Laravel test scaffolding with Pest/PHPUnit: factories, RefreshDatabase, HTTP feature tests, Queue/Event/Mail/Storage fakes, Sanctum/Passport helpers.
 agent: php-test-engineer
 metadata:
   category: backend

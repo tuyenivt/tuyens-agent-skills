@@ -1,6 +1,6 @@
 ---
 name: task-design-api
-description: Design or review a REST API contract -- produces an endpoint table, DTO schemas, pagination, error format (RFC 9457), backward compatibility assessment, and per-endpoint security requirements.
+description: "Design or review REST API contract: endpoint table, DTO schemas, pagination, error format (RFC 9457), backward compat, per-endpoint security."
 metadata:
   category: architecture
   tags: [api, rest, api-design, contract, specification, review, multi-stack]

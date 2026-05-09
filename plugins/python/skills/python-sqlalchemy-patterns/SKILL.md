@@ -1,6 +1,6 @@
 ---
 name: python-sqlalchemy-patterns
-description: "SQLAlchemy 2.0+ patterns for async Python applications. Covers DeclarativeBase with mapped_column, select()-style queries, N+1 prevention (selectinload/joinedload), async session safety (MissingGreenlet), connection pooling, and repository pattern."
+description: "SQLAlchemy 2.0 async patterns: DeclarativeBase, mapped_column, select(), N+1 prevention (selectinload/joinedload), pooling, repository."
 metadata:
   category: backend
   tags: [python, sqlalchemy, async, orm, n-plus-one, repository]

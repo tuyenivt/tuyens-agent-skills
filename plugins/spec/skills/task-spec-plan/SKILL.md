@@ -1,6 +1,6 @@
 ---
 name: task-spec-plan
-description: Planning phase of Spec-Driven Development. Reads `spec.md` (and `clarifications.md` if present), detects the project stack, and produces a structured `plan.md` covering architecture, data model, API contract, alternatives considered, NFR mapping, and risks. Speckit-aware - delegates to `/speckit.plan` when Spec Kit is installed.
+description: SDD planning phase - reads spec.md, produces plan.md with architecture, data model, API contract, alternatives, NFR mapping, risks. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, plan, architecture, design]

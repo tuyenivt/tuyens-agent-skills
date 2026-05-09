@@ -1,6 +1,6 @@
 ---
 name: spec-aware-preamble
-description: Spec-aware mode preamble for stack workflows. Detects whether the current feature has artifacts under `.specs/<slug>/` (spec.md, plan.md, tasks.md) and, if so, loads them in place of the workflow's own GATHER/DESIGN phases. Single-source contract so every consuming workflow behaves identically.
+description: Spec-aware preamble for stack workflows - detects .specs/<slug>/ artifacts and loads spec.md / plan.md / tasks.md in place of GATHER/DESIGN phases.
 metadata:
   category: spec
   tags: [spec, sdd, spec-aware, preamble, gather-design]

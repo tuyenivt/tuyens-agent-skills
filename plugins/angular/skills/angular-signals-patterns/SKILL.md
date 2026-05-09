@@ -1,6 +1,6 @@
 ---
 name: angular-signals-patterns
-description: Angular Signals patterns - signal(), computed(), effect(), toSignal/toObservable bridge, signal-based inputs, model signals, and reactive state management for Angular 21+.
+description: Angular Signals: signal(), computed(), effect(), toSignal/toObservable bridge, signal inputs, model signals, reactive state.
 metadata:
   category: frontend
   tags: [angular, signals, computed, effect, reactive, state, toSignal]

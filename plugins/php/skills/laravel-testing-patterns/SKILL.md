@@ -1,6 +1,6 @@
 ---
 name: laravel-testing-patterns
-description: "Testing patterns for Laravel with Pest (primary) and PHPUnit. Covers model factories, HTTP tests, database assertions, facade mocking, queue/event faking, and CI coverage configuration."
+description: "Laravel testing patterns with Pest/PHPUnit: factories, HTTP tests, DB assertions, facade mocking, queue/event fakes, CI coverage."
 metadata:
   category: backend
   tags: [php, laravel, pest, phpunit, testing, factories, mocking]

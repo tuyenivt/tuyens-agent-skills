@@ -1,6 +1,6 @@
 ---
 name: spring-db-migration-safety
-description: Safe database migration patterns for zero-downtime deployments covering Flyway and Liquibase conventions, DDL safety rules, expand-then-contract migration ordering, and rollback strategies.
+description: "Safe Flyway / Liquibase migrations for zero-downtime: DDL safety, expand-then-contract ordering, rollback strategy."
 metadata:
   category: backend
   tags: [flyway, liquibase, migrations, zero-downtime, ddl, spring-boot]

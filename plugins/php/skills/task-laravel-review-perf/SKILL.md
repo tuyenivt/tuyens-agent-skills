@@ -1,6 +1,6 @@
 ---
 name: task-laravel-review-perf
-description: Laravel performance review for Eloquent N+1 (lazy loading in Blade / controllers / API Resources, missing `with()`), `Include` cartesian explosion via multi-collection eager loads, missing indexes for `where`/`orderBy`/`groupBy` columns, MySQL slow-query patterns (LIKE with leading `%`, `OFFSET` pagination on large tables, missing FULLTEXT), `DB::transaction` boundary discipline, queue throughput (Redis vs database driver, Horizon supervisor sizing, `$tries` / `$backoff` tuning, batching, rate limiting), `Cache::remember` strategy, `Http::pool` / Guzzle connection reuse, OPcache + JIT + Octane / FrankenPHP / RoadRunner readiness, Blade view caching, route caching. Stack-specific override of task-code-review-perf for PHP / Laravel.
+description: Laravel perf review: Eloquent N+1, missing indexes, MySQL slow queries, queue throughput, Cache::remember, Octane/FrankenPHP, OPcache+JIT.
 agent: php-performance-engineer
 metadata:
   category: backend

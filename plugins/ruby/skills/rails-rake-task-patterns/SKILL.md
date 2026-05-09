@@ -1,6 +1,6 @@
 ---
 name: rails-rake-task-patterns
-description: Rake task patterns for Rails. Covers idempotency and resumability, batch processing at scale, environment safety guards, dry-run and confirmation gates, structured logging and exit codes, argument parsing, thin-orchestrator composition with services, scheduling integration, and RSpec testing.
+description: Rails Rake task patterns: idempotency, batch processing, env safety guards, dry-run, structured logs, service composition, RSpec.
 metadata:
   category: backend
   tags: [ruby, rails, rake, maintenance, backfill, ops]

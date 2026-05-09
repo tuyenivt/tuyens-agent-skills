@@ -1,6 +1,6 @@
 ---
 name: task-node-test
-description: Node.js test strategy and scaffolding using Jest, Supertest, NestJS TestingModule, Testcontainers PostgreSQL, MSW for HTTP stubs, BullMQ testing, and TypeScript strict-mode test typing. Detects NestJS vs Express and applies the right idioms. Use when designing a test plan, assessing coverage gaps, or scaffolding endpoint/service/job/security tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Node.js / TypeScript.
+description: Node.js / NestJS / Express test plan and scaffolding with Jest, Supertest, TestingModule, Testcontainers, MSW, BullMQ testing.
 agent: node-test-engineer
 metadata:
   category: backend

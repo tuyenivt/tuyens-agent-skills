@@ -1,6 +1,6 @@
 ---
 name: node-code-explain
-description: Node.js / NestJS / Express framework signals for code explanation - event loop and async semantics, NestJS DI and module graph, Express middleware chain, error propagation across async boundaries, and TypeScript runtime vs compile-time behavior. Used by task-code-explain to explain Node code with stack-aware gotchas.
+description: Node.js / NestJS / Express signals for code explanation: event loop, async semantics, DI, middleware chain, TypeScript runtime behavior.
 metadata:
   category: backend
   tags: [explanation, code-understanding, node, nestjs, express, typescript]

@@ -1,6 +1,6 @@
 ---
 name: node-migration-safety
-description: Safe database migration patterns for Prisma and TypeORM. Zero-downtime DDL rules, deploy ordering (add column vs drop column), enum management, CI validation, and rollback strategies.
+description: Safe DB migration patterns for Prisma / TypeORM: zero-downtime DDL, deploy ordering, enum management, CI validation, rollback.
 metadata:
   category: backend
   tags: [node, prisma, typeorm, migrations, database, zero-downtime]

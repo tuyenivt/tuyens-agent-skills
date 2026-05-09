@@ -1,6 +1,6 @@
 ---
 name: frontend-performance
-description: Frontend performance - Core Web Vitals, bundle splitting, lazy loading, image optimization, render performance, memoization discipline. Adapts to detected frontend framework and build tool.
+description: Frontend performance: Core Web Vitals, bundle splitting, lazy loading, image optimization, render perf, memoization. Adapts to stack.
 metadata:
   category: frontend
   tags: [frontend, performance, core-web-vitals, bundle, lazy-loading, memoization, multi-stack]

@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-transaction
-description: Spring @Transactional scope, propagation levels, and common pitfalls in Kotlin covering read-only optimization, self-invocation proxy bypass, checked exception rollback, transaction timeout, and coroutine-aware @Transactional with suspend functions.
+description: Kotlin / Spring @Transactional patterns: scope, propagation, self-invocation proxy bypass, rollback rules, coroutine-aware tx with suspend functions.
 metadata:
   category: backend
   tags: [kotlin, transactions, database, spring, consistency, coroutines]

@@ -1,6 +1,6 @@
 ---
 name: backend-db-migration
-description: Universal zero-downtime database migration patterns - expand-contract, lock risk, backfill safety. Language-specific migration skills (spring-db-migration-safety, go-migration-safety, etc.) wrap this with ecosystem-specific tooling.
+description: Zero-downtime database migration patterns: expand-contract phasing, lock risk assessment, backfill safety, rollback plan.
 metadata:
   category: data
   tags: [database, migration, zero-downtime, expand-contract, lock-risk, backfill, multi-stack]

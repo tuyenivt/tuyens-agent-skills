@@ -1,6 +1,6 @@
 ---
 name: task-rails-refactor
-description: Rails-specific refactor planning for fat models, fat controllers, callback abuse, missing service objects, scope sprawl, polymorphic-association sprawl, and concern soup. Produces a step-by-step sequence of independently-committable Rails refactoring steps with a test-coverage gate. Stack-specific override of task-code-refactor for Ruby/Rails.
+description: Rails refactor plan: fat models/controllers, callback abuse, missing service objects, scope sprawl, concern soup; phased committable steps.
 agent: rails-tech-lead
 metadata:
   category: backend

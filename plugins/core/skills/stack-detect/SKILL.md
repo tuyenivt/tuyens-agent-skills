@@ -1,6 +1,6 @@
 ---
 name: stack-detect
-description: Detect project tech stack from marker files and the repo context file (CLAUDE.md, AGENTS.md, or GEMINI.md). Extracts any declared language, framework, build tool, database, and test framework as key-value pairs. Stack-agnostic - works with any ecosystem.
+description: Detect tech stack from marker files and CLAUDE.md/AGENTS.md/GEMINI.md: language, framework, build tool, DB, test framework.
 user-invocable: false
 ---
 

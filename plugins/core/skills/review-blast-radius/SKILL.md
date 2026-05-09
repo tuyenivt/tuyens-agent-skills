@@ -1,6 +1,6 @@
 ---
 name: review-blast-radius
-description: Scope of a proposed change - what breaks if this goes wrong, which modules and services are affected. Not for tracing an existing live failure (use failure-propagation-analysis for that).
+description: Blast radius of a proposed change: what breaks if it goes wrong, affected modules and services, scope and risk assessment.
 metadata:
   category: review
   tags: [blast-radius, impact-analysis, change-scope]

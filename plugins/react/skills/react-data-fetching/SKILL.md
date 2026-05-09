@@ -1,6 +1,6 @@
 ---
 name: react-data-fetching
-description: React data fetching patterns - TanStack Query (primary), SWR, Server Components data fetching, Suspense boundaries, optimistic updates, and cache invalidation for React 19+.
+description: React 19 data fetching: TanStack Query, SWR, Server Components, Suspense boundaries, optimistic updates, cache invalidation.
 metadata:
   category: frontend
   tags: [react, data-fetching, tanstack-query, swr, suspense, caching, optimistic-updates]

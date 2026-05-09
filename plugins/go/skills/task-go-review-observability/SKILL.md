@@ -1,6 +1,6 @@
 ---
 name: task-go-review-observability
-description: Go observability review for slog structured logging, OpenTelemetry Go SDK + auto-instrumentation (HTTP / Gin / GORM / sqlx / Asynq / Redis), prometheus/client_golang, pprof endpoints, Asynq queue events, graceful shutdown, and error-tracker SDKs (Sentry / Honeybadger). Library-level focus, not infra. Use when reviewing a Go PR for observability gaps, before releasing a new service, or after an incident where Go diagnosis was slow. Stack-specific override of task-code-review-observability for Go.
+description: Go observability review: slog, OpenTelemetry Go SDK, prometheus/client_golang, pprof, Asynq events, graceful shutdown, Sentry SDK.
 agent: go-tech-lead
 metadata:
   category: backend

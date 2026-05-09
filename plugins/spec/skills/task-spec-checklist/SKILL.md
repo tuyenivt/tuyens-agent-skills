@@ -1,6 +1,6 @@
 ---
 name: task-spec-checklist
-description: Generate a requirements-quality checklist for `spec.md` - "unit tests for English." Runs `spec-review` against the spec and produces a per-category pass/fail checklist (acceptance measurability, NFR coverage, conflict-freeness, ambiguity, out-of-scope clarity, story strength) the user can sign off on. Writes themed files under `.specs/<slug>/checklists/` (default `requirements.md`). Speckit-aware - delegates to `/speckit.checklist` when Spec Kit is installed.
+description: Generate requirements-quality checklist for spec.md - measurability, NFR coverage, conflicts, ambiguity, out-of-scope clarity. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, checklist, quality, requirements]

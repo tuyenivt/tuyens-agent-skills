@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-refactor
-description: .NET refactor planning for fat controllers, anemic services, god classes, `.Result` / `.Wait()` blocking, missing CancellationToken, EF Core N+1, mass assignment via `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>`, single-implementation interfaces, AutoMapper for trivial mappings, MediatR for trivial reads, singleton-capturing-scoped services, static mutable state, and background-worker idempotency. Produces a step-by-step sequence of independently-committable refactoring steps with a `dotnet build + dotnet test + dotnet format` coverage gate. Stack-specific override of task-code-refactor for .NET.
+description: ".NET / ASP.NET Core refactor plan: fat controllers, anemic services, .Result blocking, EF Core N+1, mass assignment; phased commit-safe steps."
 agent: dotnet-tech-lead
 metadata:
   category: backend

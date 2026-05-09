@@ -1,6 +1,6 @@
 ---
 name: task-python-test
-description: Python test strategy and scaffolding using pytest, pytest-asyncio, factory_boy / model_bakery, httpx ASGITransport (FastAPI) or DRF APIClient (Django), Testcontainers PostgreSQL, and Celery testing. Detects FastAPI vs Django and applies the right idioms. Use when designing a test plan, assessing coverage gaps, or scaffolding endpoint/service/task/security tests. Stack-specific override of task-code-test, invoked when stack-detect resolves to Python.
+description: "Python test plan and scaffolding with pytest, pytest-asyncio, factory_boy, httpx ASGITransport, DRF APIClient, Testcontainers, Celery."
 agent: python-test-engineer
 metadata:
   category: backend

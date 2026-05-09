@@ -1,6 +1,6 @@
 ---
 name: task-react-review-perf
-description: React performance review for Core Web Vitals (LCP, INP, CLS), bundle size, hydration cost, React Profiler-detectable re-render storms, TanStack Query cache misuse, Suspense streaming, Next.js RSC vs Client Component boundaries, ISR / `cache` / `revalidate` correctness, and image / font optimization. Detects Next.js App Router vs Vite + React Router and applies the right idioms. Stack-specific override of task-code-review-perf, invoked when stack-detect resolves to React.
+description: React / Next.js performance review: Core Web Vitals, bundle, hydration, re-render storms, TanStack Query, Suspense, RSC boundaries, ISR/revalidate.
 agent: react-performance-engineer
 metadata:
   category: frontend

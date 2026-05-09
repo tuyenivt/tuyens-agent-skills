@@ -1,6 +1,6 @@
 ---
 name: task-migrate-monolith-to-services
-description: Produces a staff-level migration plan for incrementally decomposing a monolith into independently deployable services or bounded modules using strangler fig, domain-first decomposition, and risk-ordered extraction.
+description: "Monolith-to-services migration plan: strangler fig, domain-first decomposition, risk-ordered extraction into bounded services/modules."
 metadata:
   category: architecture
   tags: [architecture, migration, monolith, microservices, decomposition, strangler-fig]
