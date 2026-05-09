@@ -46,6 +46,21 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 | **Medium**   | Hardening gap with mitigating control (CSP missing nonce but `unsafe-inline` for styles only and no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction. Should fix this PR or the next one.                                                |
 | **Low**      | Defense-in-depth nice-to-have, dependency advisory below actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                                             |
 
+**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+
+- Missing `await auth()` on a Server Action (High, alone) + mass assignment via `prisma.user.update({ data: Object.fromEntries(formData) })` without Zod (High, alone) on the *same action* = **Critical** unauthenticated admin override (anyone on the internet can submit `<form action={updateProfile}>` with `role=admin` hidden field and elevate).
+- Missing ownership check on a Route Handler (High, alone) + Server Component passing the entire ORM row including `passwordHash` as a prop to a Client Component (Medium, alone) on the *same route* = **Critical** account takeover (any authenticated user reads any other user's password hash via the serialized RSC payload).
+- `dangerouslySetInnerHTML` on user input (High, alone) + sanitizer disabled / `DOMPurify.sanitize(html, { ADD_TAGS: ['iframe', 'script'] })` (High, alone) on the *same component* = **Critical** working XSS.
+- Missing middleware auth on `/api/admin/*` matcher (High, alone) + Route Handler mutating role data without its own `auth()` check (High, alone) + missing Zod schema (High, alone) on the *same route* = **Critical** unauthenticated admin takeover.
+- SSRF via `fetch(searchParams.get('url'))` in a Route Handler (High, alone) + reachable from an unauthenticated route (High, alone) = **Critical** unauth SSRF.
+- `NEXT_PUBLIC_API_KEY` referencing a privileged secret (Critical, alone) + the same key used to call an admin API from the browser (High, alone) = **Critical** working admin-API exposure (the key is in every browser bundle; cite both because the second piece tells the reader why this is exploitable today, not just theoretical).
+- Open redirect via `redirect(searchParams.get('returnTo'))` in a Server Component (High, alone) + the redirect target receiving a session cookie due to `sameSite: 'lax'` (High, alone) on the *same auth callback* = **Critical** session-token theft via attacker-controlled redirect.
+- `'use server'` file re-exporting a non-action utility (High, alone) + that utility mutating state without auth/validation (High, alone) on the *same module* = **Critical** unauthenticated network-callable privilege escalation (every export becomes a Server Action; the re-exported utility is now a public mutation endpoint).
+
+The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+
+**Same-handler co-location.** Combining findings requires confirming both land on the *same code path* (same Server Action, same Route Handler file, same component, or same router segment with shared middleware). When the diff doesn't make co-location obvious - e.g., the IDOR is in `app/api/orders/[id]/route.ts` but the RSC data leak appears on a different page consuming a different Server Component - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same handler; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+
 ## Invocation
 
 Mirrors `task-code-review-security`:
@@ -235,7 +250,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Image `remotePatterns` wildcards (`*.example.com`) audited for subdomain-takeover risk
 - [ ] iframe `src` from user input audited (phishing / clickjacking, beyond `sandbox` presence)
 - [ ] Server Component → Client Component prop projection reviewed: no entire ORM rows passed; DTOs / `select`-projected fields only
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
+- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented); Combined-finding rule applied where two findings compose on the same handler / component / route segment
 - [ ] Every finding includes an attack scenario, "regression risk" rationale (for missing-control gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
 
