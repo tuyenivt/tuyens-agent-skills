@@ -77,16 +77,12 @@ user-invocable: false
 
 ### Risk Hotspots Specific to Kotlin + Spring
 
-- **Missing `kotlin-spring` plugin**: Spring annotations (`@Transactional`, `@Async`, `@Cacheable`) silently no-op on `final`-by-default Kotlin classes.
-- **Missing `kotlin-jpa` plugin** with JPA entities: `org.hibernate.InstantiationException` on entity load (no no-arg constructor).
-- **`data class` as JPA `@Entity`**: cannot open; equals/hashCode tied to constructor properties only - frequently the wrong identity model.
-- **Self-invocation**: same gotcha as Java/Spring; calling `this.method()` bypasses the proxy.
-- **Coroutine launch without scope**: `GlobalScope.launch` leaks; use injected `CoroutineScope` or structured `coroutineScope { }`.
-- **Mixing blocking and suspend**: blocking I/O in suspend function freezes the dispatcher. `withContext(Dispatchers.IO)` for unavoidable blocking.
-- **`runBlocking` in production code** (not tests/main): blocks a thread, defeats coroutine benefits.
-- **Platform types from Java interop**: `Type!` bypasses null checking - frequent NPE source.
-- **OSIV (Open-Session-In-View)**: Spring Boot defaults `spring.jpa.open-in-view=true` and prints a warning at startup. With OSIV on, controllers can lazy-load associations after the service returns - convenient but causes mid-Jackson `LazyInitializationException`s under load and holds DB connections through the response phase. Confirm whether the project has explicitly disabled it; if not, flag this as a hotspot for the new engineer (don't write code that relies on OSIV - fetch eagerly via `@EntityGraph` or projection DTOs).
-- **Missing `kotlinx-coroutines-reactor` bridge with `@Transactional` on `suspend`**: Spring 6+ requires the reactor bridge to bind transaction context across suspension points. Without it, `@Transactional` on a suspend method silently fails to manage a transaction. Check `build.gradle.kts` for `org.jetbrains.kotlinx:kotlinx-coroutines-reactor` whenever the project mixes coroutines and JPA/JDBC.
+- **Missing `kotlin-spring` / `kotlin-jpa` plugins**: Spring annotations no-op on `final` classes; JPA fails with `No default constructor`. See `kotlin-gradle-build-optimization`.
+- **`data class` as JPA `@Entity`**: corrupts Hibernate proxy identity. See `kotlin-spring-jpa-performance`.
+- **`@Transactional` self-invocation, external I/O inside transactions, `@Transactional` on `suspend` without `kotlinx-coroutines-reactor`**: see `kotlin-spring-transaction`.
+- **Coroutine misuse**: `GlobalScope.launch`, `runBlocking` in production code, blocking I/O in `suspend` without dispatcher discipline. See `kotlin-coroutines-spring`.
+- **Platform types from Java interop** (`Type!`): bypass null checks - frequent NPE source. See `kotlin-idioms`.
+- **OSIV (`spring.jpa.open-in-view=true`)**: default-on; lazy-loads after service return, causing mid-Jackson `LazyInitializationException` and holding DB connections. Flag for the new engineer; fetch eagerly via `@EntityGraph` / projections (see `kotlin-spring-jpa-performance`).
 
 ### First-PR Safe Zones
 

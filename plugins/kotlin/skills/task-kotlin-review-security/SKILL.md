@@ -83,63 +83,56 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 | Data Integrity Failures       | No `ObjectInputStream.readObject` on untrusted input; Jackson typed-deserialization disabled (`enableDefaultTyping` off); SnakeYAML uses `SafeConstructor`.                                              |
 | Logging & Monitoring          | Logback pattern excludes sensitive fields; `@JsonIgnore` on PII / secret fields in DTOs; no `log.info("user={}", user)` that serializes the entity. Security events (login fail, AccessDenied) logged. |
 
-### Step 6 - Authentication (Spring Security 6.x / OAuth2 / JWT)
+### Step 6 - Authentication, Authorization, and Common Vulnerability Patterns
 
-- [ ] **`SecurityFilterChain`** is explicit and version-current; `WebSecurityConfigurerAdapter` does not exist (removed in 6.x)
-- [ ] **OAuth2 Resource Server**: `oauth2ResourceServer { jwt { } }` configured with explicit `JwtDecoder`; signature algorithm pinned; `JwtAuthenticationConverter` maps claims to authorities consistently
-- [ ] **JWT issuer / audience** validated (`JwtValidators.createDefaultWithIssuer`, custom audience validator); not just signature
-- [ ] **JWT no `alg: none`**: `JwtDecoder` rejects unsigned tokens; HMAC secret never falls back to a hardcoded default
-- [ ] **Refresh token rotation**: short access-token lifetime (5-15 min); refresh tokens revocable
-- [ ] **Form login / Basic auth**: `BCryptPasswordEncoder` minimum strength 10; no `NoOpPasswordEncoder` outside tests
-- [ ] **Session fixation** protection enabled (default in Boot 3+); session cookie `Secure`, `HttpOnly`, `SameSite=Lax|Strict`
-- [ ] **Brute-force protection**: rate limiting (Bucket4j, Resilience4j) on `/login`, `/oauth/token`, password reset
-- [ ] **No credentials in `application.yml` committed to git** - secrets via env vars, Vault, AWS Secrets Manager, or Spring Cloud Config
-- [ ] **Actuator endpoints** restricted: `management.endpoints.web.exposure.include` minimal in prod; remaining endpoints behind `ROLE_ACTUATOR`
-- [ ] **Kotlin string-template SpEL escaping**: `@PreAuthorize("hasRole('ADMIN')")` uses literal SpEL; `@Value("\${prop}")` escapes the `$` to avoid Kotlin string-template collision
+Use skill: `kotlin-spring-security-patterns` for canonical `SecurityFilterChain` (Kotlin DSL), OAuth2/JWT, method security, CORS, CSRF, headers, `@AuthenticationPrincipal`, `AuthorizationManager`, and coroutine `SecurityContext` propagation.
 
-### Step 7 - Authorization (Method Security / `@PreAuthorize` / Custom)
+Review-scoped scan (every check below should already have its canonical pattern in `kotlin-spring-security-patterns`; this list is what the *diff* must satisfy):
 
-- [ ] **`@EnableMethodSecurity`** active; `@PreAuthorize` on every service method that touches user-owned resources (defense in depth alongside controller-level matchers)
-- [ ] **Authorization drift sweep**: every new controller endpoint added in the diff has a corresponding `SecurityFilterChain` matcher OR a `@PreAuthorize` (or explicit `permitAll` with rationale)
-- [ ] **IDOR**: lookups in user-facing services scope through the principal (`repository.findByIdAndOwnerId(id, principal.id)`) returning `Order?` rather than `repository.findById(id)` followed by an authorization check (which leaks existence via 403 vs 404)
-- [ ] **List endpoints / IDOR at the collection level**: list-returning endpoints (`GET /orders`) must filter by the principal at the query level (`findAllByOwnerId(principal.id, pageable)`) rather than fetching all and filtering in memory, and must not rely on `@PostFilter("filterObject.ownerId == authentication.principal.id")` alone for large collections - `@PostFilter` is an in-memory filter and pages already constrained by the DB fetch. Use both: query-level filter for correctness/perf, `@PostFilter` only as a defense-in-depth check on small inner collections
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenantId` in the repository layer (Hibernate `@Filter`, `@TenantId` in 6.x, or query-method parameter) - never rely on controller-level filtering alone
-- [ ] **Default-deny** in `SecurityFilterChain`: `authorize(anyRequest, authenticated)` after explicit allowlist; no trailing `permitAll`
-- [ ] **CSRF**: enabled by default for stateful sessions; explicitly disabled (`csrf { disable() }`) only for stateless JWT APIs with documented rationale
-- [ ] **CORS**: `CorsConfigurationSource` bean with explicit allowed origins (not `"*"` for credentialed requests)
+**Authentication / token discipline:**
 
-### Step 8 - Input Validation and Mass Assignment
+- [ ] `SecurityFilterChain` Kotlin DSL `@Bean`; no `WebSecurityConfigurerAdapter` (removed in 6.x)
+- [ ] OAuth2 Resource Server: explicit `JwtDecoder` with issuer + audience validators; signature algorithm pinned; `alg: none` rejected; HMAC secret never defaults
+- [ ] Form login / Basic: `BCryptPasswordEncoder` strength ≥ 10; no `NoOpPasswordEncoder` outside tests
+- [ ] Session cookie `Secure` + `HttpOnly` + `SameSite=Lax|Strict`; session fixation enabled (default in Boot 3+)
+- [ ] Refresh-token rotation; short access-token TTL (5-15 min); revocable refresh tokens
+- [ ] Brute-force / rate limiting (Bucket4j, Resilience4j) on `/login`, `/oauth/token`, password reset
+- [ ] No credentials in `application.yml` committed - env vars, Vault, AWS Secrets Manager, Spring Cloud Config
+- [ ] Actuator: `management.endpoints.web.exposure.include` minimal in prod; sensitive endpoints behind a separate `SecurityFilterChain`
+- [ ] Kotlin SpEL escaping: `@Value("\${...}")` and `@PreAuthorize("hasRole('ADMIN')")` use literal SpEL (Kotlin string templates collide with `${...}`)
 
-- [ ] **Bean Validation (`jakarta.validation`)** on every `@RequestBody` `data class`: `@field:NotNull`, `@field:Size`, `@field:Email`, `@field:Pattern` etc. (Kotlin annotation site target `@field:` is required for Bean Validation to reach the property's backing field); `@Valid` on the controller parameter
-- [ ] **Constructor / `data class` DTOs** for input - immutable, no `var` properties; avoids the "mass assignment" class of bugs because Jackson uses the constructor
-- [ ] **No privilege-bearing fields in user-facing input DTOs**: `role`, `admin`, `ownerId`, `userId`, `tenantId`, `accountId`, `approved`, `status` (when status is server-controlled) - these flip authorization or ownership and must be set by the server; if they appear in a `@RequestBody` `data class`, require an admin-only controller path
-- [ ] **No exposing entities directly** as `@RequestBody` - always a `data class` DTO; Jackson on a JPA entity can populate fields the API never intended to accept
-- [ ] **Response DTO sensitive-field stripping**: response `data class` types must not contain server-only fields. Returning the JPA entity or a wide internal `data class` from a controller leaks fields that were never intended for the API surface (`passwordHash`, `lastLoginIp`, `internalNotes`, `mfaSecret`, `paymentMethodToken`, `auditTrail`). Define a separate response `data class` per endpoint (or use a Spring Data projection) and verify by inspecting the JSON shape. Flag any controller method whose return type is `<Entity>` or whose response includes a property whose name suggests credentials/auditing/internal state
-- [ ] **Password-change endpoints**: must require the current password (not just an authenticated session); enforce complexity via Bean Validation `@field:Pattern` or a `Validator`; rate-limit (Bucket4j / RateLimiter on the endpoint key, not just the user); and ideally check against a small password-history list to prevent immediate reuse. Flag any password-change path that lacks current-password verification - it lets a hijacked session permanently take over the account
-- [ ] **File uploads** (`MultipartFile`):
-  - File type validated by content (Apache Tika `Tika.detect`), not just `contentType` (client-controlled)
-  - Per-file size limit (`spring.servlet.multipart.max-file-size`) and total request size enforced
-  - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized via `Path.normalize()` and base-directory check
-- [ ] **Path traversal**: `Path.resolve(userInput).normalize().startsWith(baseDir)` check on any user-controlled file operation
-- [ ] **Process execution**: no `Runtime.exec`, `ProcessBuilder` with interpolated user input - use API alternatives or strict allowlist + tokenized arguments
+**Authorization / IDOR / tenant isolation:**
 
-### Step 9 - Common Kotlin/Spring Boot Vulnerability Patterns
+- [ ] `@EnableMethodSecurity` active; **authorization drift sweep** - every new controller endpoint has a `SecurityFilterChain` matcher OR `@PreAuthorize` (or `permitAll` with rationale)
+- [ ] Service-method `@PreAuthorize` for defense-in-depth alongside matchers
+- [ ] **IDOR**: scoped repository lookups (`findByIdAndOwnerId(id, principal.id): Order?`) - never `findById(id)` then post-fetch authorization check (leaks existence)
+- [ ] **Collection-level IDOR**: list endpoints filter at the query layer (`findAllByOwnerId(principal.id, pageable)`); `@PostFilter` only as a defense-in-depth check, not as primary enforcement
+- [ ] **Tenant isolation**: queries scoped by `tenantId` at the repository layer (Hibernate `@Filter`, `@TenantId`, query-method parameter) - never controller-only
+- [ ] Default-deny: `authorize(anyRequest, authenticated)` after explicit allowlist
+- [ ] CSRF enabled for stateful sessions; `csrf { disable() }` only for stateless JWT APIs with rationale; CORS origins explicit (no `"*"` for credentialed)
 
-- [ ] **CSRF token** on state-changing form requests; for SPAs, `CookieCsrfTokenRepository.withHttpOnlyFalse()` so JS can read the token
-- [ ] **CORS**: explicit origins (no `"*"` for credentialed endpoints)
-- [ ] **Rate limiting**: Bucket4j, Resilience4j RateLimiter, or upstream LB on `/login`, `/password`, `/signup`, `/oauth/token`, expensive search
-- [ ] **SQL injection via dynamic sort / filter**: `Sort.by(sortField)` validated against an allowlist; no JPQL string interpolation (Kotlin string templates `"... where x = $userInput"` are exactly the same vulnerability as Java string concatenation)
-- [ ] **Open redirect**: `response.sendRedirect(userInput)` validated against an allowlist
-- [ ] **Server-side template injection**: no Thymeleaf `${...}` evaluation on user-controlled template strings; SpEL evaluator never receives user input as the expression
-- [ ] **Mass assignment via JSON**: `@RequestBody` uses `data class` DTOs, not entities
-- [ ] **Spring Boot Actuator exposure**: `info`, `health` only (or behind auth) in prod; `env`, `heapdump`, `loggers`, `mappings` never public
-- [ ] **DevTools**: `spring-boot-devtools` is `developmentOnly` in Gradle - never shipped to prod
-- [ ] **Spring4Shell-class CVEs**: `DataBinder` not bound to `Class` / `ClassLoader` properties; recent dep-check passes
+**Input validation and mass assignment:**
+
+- [ ] Bean Validation on every `@RequestBody` `data class` with **`@field:`** site target (`@field:NotNull` / `@field:Size` / `@field:Pattern`) - without `@field:` the annotation is silently ignored
+- [ ] Immutable `data class` DTOs for input - no `var`; entities never accepted as `@RequestBody` (mass assignment risk)
+- [ ] **Privilege-bearing fields** (`role`, `admin`, `ownerId`, `tenantId`, `approved`, server-controlled `status`) absent from user-facing request DTOs; admin-only paths if needed
+- [ ] **Response DTOs strip server-only fields** (`passwordHash`, `lastLoginIp`, `mfaSecret`, `paymentMethodToken`, `internalNotes`); flag controller return types of `<Entity>`
+- [ ] **Password-change endpoints**: require current password; rate-limited; complexity via `@field:Pattern` or `Validator`; consider password-history check
+- [ ] **File uploads** (`MultipartFile`): content-type detected via Apache Tika; size limits enforced; stored outside webroot; filename normalized via `Path.normalize().startsWith(baseDir)`
+- [ ] **Path traversal** check on any user-controlled file path
+- [ ] **Process execution**: no `Runtime.exec` / `ProcessBuilder` with interpolated user input
+
+**Common Kotlin/Spring vulnerability patterns:**
+
+- [ ] **SQL injection** via dynamic sort / filter: `Sort.by(sortField)` validated against allowlist; **no JPQL string interpolation** (Kotlin string templates `"... where x = $userInput"` are the same vulnerability as Java string concat)
+- [ ] **Open redirect**: `response.sendRedirect(userInput)` validated against allowlist
+- [ ] **Server-side template injection**: no Thymeleaf `${...}` on user-controlled templates; SpEL never receives user input as the expression
+- [ ] **DevTools**: `spring-boot-devtools` is `developmentOnly` in Gradle
+- [ ] **Spring4Shell-class CVEs**: `DataBinder` not bound to `Class` / `ClassLoader` properties; dep-check clean
 - [ ] **H2 console** disabled in non-dev profiles
-- [ ] **Coroutine SecurityContext**: `SecurityContextHolder.getContext()` does not propagate across `suspend` dispatcher switches - use `ReactiveSecurityContextHolder.getContext().awaitFirstOrNull()` or pass principal as a method parameter; flag any `suspend` service relying on `SecurityContextHolder`
+- [ ] **Coroutine `SecurityContext`**: `SecurityContextHolder.getContext()` does not survive `suspend` dispatcher switches - use `ReactiveSecurityContextHolder.getContext().awaitFirstOrNull()`, `@AuthenticationPrincipal`, or pass principal explicitly
 
-### Step 10 - Data Protection
+### Step 7 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest (Jasypt, Spring Vault, or DB-native column encryption)
 - [ ] **Logback / Logstash encoder masking** for sensitive keys (`password`, `token`, `creditCard`, `ssn`, `apiKey`); `@JsonIgnore` on the same DTO fields
@@ -149,7 +142,7 @@ Apply OWASP Top 10 with Kotlin/Spring framing. Use skill: `kotlin-spring-securit
 - [ ] **Secrets management**: Spring Cloud Config + Vault, AWS Secrets Manager, or env-var injection - never `application-prod.yml` committed
 
 
-### Step 11 - Write Report
+### Step 8 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`.
 
@@ -173,11 +166,11 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Security surface (SecurityFilterChain bean, controllers, application.yml management/security keys, build.gradle.kts dependencies, modified tests) read directly; prior revision consulted when annotations or matchers were removed
 - [ ] OWASP Top 10 reviewed with Kotlin/Spring framing - every category checked
 - [ ] `kotlin-spring-security-patterns` consulted for canonical patterns
-- [ ] Authentication step run for the auth mechanism in use (Spring Security 6.x / OAuth2 / JWT)
-- [ ] **Authorization drift sweep**: every new controller endpoint has a matching matcher or `@PreAuthorize`
-- [ ] Bean Validation reviewed on every `@RequestBody`; entities are never accepted as input DTOs; `@field:` site target verified
-- [ ] File upload, path traversal, and process-execution checks run if applicable
-- [ ] CSRF, CORS, rate limiting, open redirect, Actuator exposure, DevTools gating verified
+- [ ] Authn discipline reviewed for the mechanism in use (Spring Security 6.x / OAuth2 / JWT); session, refresh, brute-force, secrets, Actuator exposure, SpEL-escape verified
+- [ ] **Authorization drift sweep**: every new controller endpoint has a matching matcher or `@PreAuthorize`; IDOR / collection-IDOR / tenant scoping checked at the query layer
+- [ ] Bean Validation reviewed on every `@RequestBody`; entities never accepted as input DTOs; `@field:` site target verified; privilege-bearing fields absent; response DTOs strip server-only fields
+- [ ] File upload, path traversal, process-execution, password-change current-password checks run if applicable
+- [ ] CSRF, CORS, rate limiting, open redirect, SSTI, DevTools / H2-console gating verified
 - [ ] Coroutine `SecurityContext` propagation reviewed for any `suspend` service touching auth
 - [ ] Every finding includes an attack scenario - not just "input not validated"
 - [ ] If no findings: explicitly state "No issues found" per category

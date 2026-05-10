@@ -1,6 +1,6 @@
 ---
 name: kotlin-coroutines-spring
-description: "Kotlin coroutines in Spring Boot: suspend controllers, Flow streaming, coroutine-aware @Transactional, Virtual Thread interop, structured concurrency."
+description: "Kotlin coroutines in Spring Boot: suspend controllers, Flow streaming, coroutine-aware @Transactional, Virtual Thread interop."
 user-invocable: false
 ---
 

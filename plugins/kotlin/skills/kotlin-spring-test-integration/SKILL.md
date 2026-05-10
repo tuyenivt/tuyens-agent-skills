@@ -107,47 +107,9 @@ class OrderControllerTest {
 }
 ```
 
-### Service Layer - Plain JUnit 5 / Kotest (No Spring Context)
+### Service Layer (No Spring Context)
 
-```kotlin
-class OrderServiceTest {
-    private val orderRepository = mockk<OrderRepository>()
-    private val paymentGateway = mockk<PaymentGateway>()
-    private val orderService = OrderService(orderRepository, paymentGateway)
-
-    @AfterEach
-    fun cleanup() = clearAllMocks()
-
-    @Test
-    fun `should complete order`() {
-        val order = createOrder(status = OrderStatus.PENDING)
-        every { orderRepository.findById(1L) } returns Optional.of(order)
-        every { paymentGateway.charge(any()) } returns PaymentResult.success()
-
-        val result = orderService.complete(1L)
-
-        result.status shouldBe OrderStatus.PAID
-        verify { orderRepository.save(any()) }
-    }
-}
-```
-
-Kotest FunSpec alternative:
-
-```kotlin
-class OrderServiceSpec : FunSpec({
-    val repo = mockk<OrderRepository>()
-    val service = OrderService(repo)
-
-    afterEach { clearAllMocks() }
-
-    test("returns order when found") {
-        val order = createOrder(id = 1L)
-        coEvery { repo.findById(1L) } returns order
-        service.findOrder(1L) shouldBe order
-    }
-})
-```
+For pure unit tests of services / mappers / domain logic, use plain JUnit 5 or Kotest with MockK directly - no Spring context. See `kotlin-testing-patterns` for MockK / `coEvery` / Kotest / fixture-factory patterns.
 
 ### Singleton Container Pattern (Kotlin)
 
@@ -186,36 +148,9 @@ companion object {
 }
 ```
 
-### Test Fixture Factories (Kotlin)
+### Test Fixture Factories
 
-Kotlin's named parameters with defaults make test factories cleaner than Java builders:
-
-```kotlin
-fun createOrder(
-    id: Long = 0L,
-    userId: Long = 42L,
-    status: OrderStatus = OrderStatus.PENDING,
-    total: BigDecimal = BigDecimal("99.99"),
-    createdAt: Instant = Instant.now(),
-) = Order(id = id, userId = userId, status = status, total = total, createdAt = createdAt)
-
-fun createOrderRequest(
-    userId: Long = 1L,
-    items: List<OrderItemRequest> = listOf(createOrderItemRequest()),
-    shippingAddress: String = "123 Test St",
-) = CreateOrderRequest(userId = userId, items = items, shippingAddress = shippingAddress)
-
-// Usage - only specify what differs from defaults
-@Test
-fun `calculates total for active orders`() {
-    val orders = listOf(
-        createOrder(total = BigDecimal("10.00"), status = OrderStatus.ACTIVE),
-        createOrder(total = BigDecimal("20.00"), status = OrderStatus.ACTIVE),
-        createOrder(total = BigDecimal("30.00"), status = OrderStatus.CANCELLED),
-    )
-    service.totalActiveRevenue(orders) shouldBe BigDecimal("30.00")
-}
-```
+See `kotlin-testing-patterns` for the canonical factory-function pattern (named parameters + defaults). Reuse the same `createOrder(...)` / `createOrderRequest(...)` helpers across slice and full-context tests; do not duplicate per test class.
 
 ### Mocking External HTTP Services with WireMock
 
@@ -284,30 +219,9 @@ class OrderEventIntegrationTest : AbstractIntegrationTest() {
 
 Adding `@Transactional` to a `@SpringBootTest` is also a trap when the code under test relies on commit (e.g. `@TransactionalEventListener(AFTER_COMMIT)`, async listeners): the rollback hides the post-commit side effects from the test. In that case, prefer explicit cleanup or use `@Sql(scripts = "/cleanup.sql", executionPhase = AFTER_TEST_METHOD)` instead.
 
-### Coroutine Tests with runTest
+### Coroutine Tests
 
-```kotlin
-@Test
-fun `parallel operations complete correctly`() = runTest {
-    coEvery { userService.findUser(any()) } coAnswers {
-        delay(100) // virtual time - advances instantly
-        User(id = 1L)
-    }
-
-    val result = dashboardService.getDashboard(userId = 1L)
-
-    result.user.id shouldBe 1L
-}
-
-@Test
-fun `timeout enforced`() = runTest {
-    coEvery { slowService.fetch() } coAnswers { delay(10_000); "result" }
-
-    shouldThrow<TimeoutCancellationException> {
-        withTimeout(1_000) { slowService.fetch() }
-    }
-}
-```
+Use `runTest { }` (virtual time, no real waits) with `coEvery` / `coVerify` and Turbine for `Flow`. See `kotlin-testing-patterns` for the canonical examples - the same patterns apply inside `@SpringBootTest` and `@WebMvcTest`.
 
 ### Awaitility for Non-Coroutine Async
 

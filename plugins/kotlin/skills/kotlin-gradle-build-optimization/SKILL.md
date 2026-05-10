@@ -36,28 +36,7 @@ user-invocable: false
 
 ### Required Kotlin Compiler Plugins
 
-Kotlin classes are `final` by default and have no no-arg constructors. JPA and Spring proxies require both. These plugins fix it at compile time:
-
-```kotlin
-// build.gradle.kts
-plugins {
-    kotlin("jvm") version "..."
-    kotlin("plugin.spring") version "..."   // opens @Component, @Service, @Configuration, @Transactional, etc.
-    kotlin("plugin.jpa") version "..."      // generates no-arg constructors for @Entity, @Embeddable, @MappedSuperclass
-    id("org.springframework.boot") version "..."
-    id("io.spring.dependency-management") version "..."
-}
-
-// Optional: extend allopen for custom annotations
-allOpen {
-    annotation("jakarta.persistence.Entity")
-    annotation("jakarta.persistence.MappedSuperclass")
-    annotation("jakarta.persistence.Embeddable")
-}
-```
-
-Without `kotlin-jpa`: `org.hibernate.InstantiationException: No default constructor for entity`
-Without `kotlin-spring`: `BeanNotOfRequiredTypeException` or `could not initialize proxy` on `@Transactional` classes.
+Kotlin classes are `final` by default and have no no-arg constructors; JPA and Spring proxies need both. The fix is the `kotlin("plugin.spring")` + `kotlin("plugin.jpa")` plugin pair (canonical config in `kotlin-idioms` § Gradle Plugin Configuration). Symptoms when missing: `No default constructor for entity` (JPA), `BeanNotOfRequiredTypeException` / `could not initialize proxy` on `@Transactional` (Spring).
 
 ### Version Catalog
 

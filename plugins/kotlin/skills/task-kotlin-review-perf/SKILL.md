@@ -80,26 +80,22 @@ For each finding, cite a real `file:line`. If the diff is small but the regressi
 
 ### Step 5 - JPA / Hibernate Hotspots
 
-Use skill: `kotlin-spring-jpa-performance` for canonical patterns.
+Use skill: `kotlin-spring-jpa-performance` for canonical N+1, fetch join, `@EntityGraph`, projection, batch, pagination, `data class` JPA, and collection-fetch-with-`Pageable` patterns.
+Use skill: `kotlin-spring-transaction` for `@Transactional` placement, timeout, and external-I/O-outside-transaction.
 
-Inspect every changed `@Entity`, `@Repository`, `@Service`, and `@RestController` for:
+Review-scoped scan (apply to changed `@Entity`, `@Repository`, `@Service`, `@RestController`):
 
-- [ ] **N+1 in repository calls**: any association touched after a query is preloaded with a fetch join (`@Query("... join fetch e.children ...")`), an `@EntityGraph`, or a projection. `FetchType.EAGER` on `@ManyToOne` / `@OneToMany` is a smell - prefer lazy + explicit fetch
-- [ ] **N+1 in serializers / response mappers**: extension functions like `Order.toResponse()` silently trigger N+1 when they touch lazy associations not preloaded. Fix on the repository / service (entity graph or fetch join), not the mapper. Prefer projection DTOs
-- [ ] **Multi-level N+1**: nested traversal (`order.lineItems.forEach { it.product.name }`) - resolve with multi-attribute `@EntityGraph` or JPQL `join fetch e.lineItems li join fetch li.product`
-- [ ] **`LazyInitializationException` risk**: any access to a lazy association outside the original `@Transactional` scope (in a controller after the service returns the entity, or inside a Jackson serializer). Fix: fetch join, projection DTO, keep `OpenEntityManagerInViewInterceptor` disabled (the default in Boot 3+)
-- [ ] **Missing indexes for filter/sort columns**: any field used in `@Query` `where` / `order by` / `group by` clauses without a backing index in the migration
-- [ ] **`findAll()` without pagination**: any read of an unbounded collection - require `Pageable`
-- [ ] **`Page<T>` vs `Slice<T>` vs `List<T>` cost**: `Page<T>` runs an extra `COUNT(*)` query per call - expensive on large filtered tables. Use `Slice<T>` when the UI only needs "has-more" semantics (no total count); use `List<T>` with explicit `LIMIT` for short lists. Flag any new `Page<T>` method backing an infinite-scroll endpoint
-- [ ] **Streaming for large result sets**: repository methods returning `List<T>` over potentially unbounded queries should return `Stream<T>` (annotated `@QueryHints(@QueryHint(name = HINT_FETCH_SIZE, value = "100"))`) consumed inside a `@Transactional` block, or `Flow<T>` from `CoroutineCrudRepository`. Loading 100k rows into a `List` blows heap and stalls the request thread
-- [ ] **`@Transactional(timeout = N)`** on write-heavy paths and any path that calls long external work: the default is no timeout - a stuck query holds a connection forever. Set explicit timeout (typically 5-30s) on user-facing transactional service methods; flag any new `@Transactional` without a timeout on a path that touches > 1 entity
-- [ ] **Collection fetch join with `Pageable`**: a JPQL query with `LEFT JOIN FETCH e.collection` *and* a `Pageable` parameter triggers Hibernate's `HHH90003004` warning and paginates the entire collection in application memory. Same trap with `@EntityGraph(attributePaths = ["collection"])` over a `Pageable` derived query. Fix: page the parent IDs first then re-query with `WHERE id IN (:ids)` + fetch join, or replace fetch join with `@BatchSize`
-- [ ] **`existsBy*` vs `findBy*().isPresent()` / `findBy*() != null`**: existence checks must use derived `existsBy*` (compiles to `select 1 ... limit 1`)
-- [ ] **Batch operations**: `saveAll`, `deleteAllInBatch` over loops; `spring.jpa.properties.hibernate.jdbc.batch_size` set (typically 25-50); `order_inserts` / `order_updates` enabled when batching
-- [ ] **`@Transactional(readOnly = true)`** on read paths
-- [ ] **No entity returns from controllers**: controllers return DTOs or projections (`Order.toResponse()`)
-- [ ] **Transactions scoped tightly**: no HTTP calls, message publishes, or external I/O inside `@Transactional` blocks (use `@TransactionalEventListener(phase = AFTER_COMMIT)` or outbox)
-- [ ] **`data class` for JPA entities**: this corrupts identity semantics under Hibernate proxies, surfacing as duplicated queries during `equals` / `hashCode` calls in collections - flag as both correctness and performance
+- [ ] **N+1 in repository calls** - association walked after a query without fetch join, `@EntityGraph`, or projection (`FetchType.EAGER` is a smell, not a fix)
+- [ ] **N+1 in mappers** - extension functions like `Order.toResponse()` touching lazy associations; fix on the repo/service side, not the mapper
+- [ ] **`LazyInitializationException` risk** - lazy access outside the `@Transactional` scope (controllers, Jackson)
+- [ ] **Collection fetch join + `Pageable`** - `HHH90003004` in-memory pagination trap (same with `@EntityGraph` over `Pageable` derived query)
+- [ ] **`findAll()` without `Pageable`**; `Page<T>` vs `Slice<T>` cost; existence checks via `existsBy*` not `findBy*() != null`
+- [ ] **Streaming large results** - `Stream<T>` with fetch-size hint or `Flow<T>` from `CoroutineCrudRepository`, not `List<T>`
+- [ ] **Missing indexes** for `@Query` `where` / `order by` / `group by` columns
+- [ ] **`@Transactional` correctness** - `readOnly = true` on read paths; explicit `timeout` on writes / paths touching > 1 entity; no HTTP / message publish / external I/O inside transactions (route via `@TransactionalEventListener(AFTER_COMMIT)` or outbox)
+- [ ] **Batch operations** - `saveAll` / `deleteAllInBatch`; `spring.jpa.properties.hibernate.jdbc.batch_size`, `order_inserts` / `order_updates` for write-heavy paths
+- [ ] **Entities never returned from controllers** - DTOs or projections only
+- [ ] **`data class` JPA entity** - corrupts Hibernate proxy identity (correctness + perf)
 
 ### Step 6 - Indexes and Migrations
 
@@ -117,24 +113,20 @@ Use skill: `kotlin-spring-db-migration-safety` for safe-migration checks on any 
 
 _Skipped at `quick` depth._
 
-Use skill: `kotlin-spring-async-processing` for `@Async` patterns; `kotlin-coroutines-spring` for coroutine patterns.
+Use skill: `kotlin-coroutines-spring` for `suspend` / `Flow` / scope / dispatcher / Virtual Thread interop / cancellation patterns.
+Use skill: `kotlin-spring-async-processing` for `@Async` / `TaskExecutor` / `@TransactionalEventListener` patterns.
 
-Inspect changes touching `@Async`, `TaskExecutor`, `CoroutineScope`, `suspend`, `Flow`, `withContext`, or `synchronized`:
+Review-scoped scan (apply to changes touching `@Async`, `TaskExecutor`, `CoroutineScope`, `suspend`, `Flow`, `withContext`, or `synchronized`):
 
-- [ ] **No `synchronized` on shared instances** in Virtual-Thread-enabled paths - pinning carrier thread defeats the model. Replace with `ReentrantLock`, `StampedLock`, or `kotlinx.coroutines.sync.Mutex` for coroutine code
-- [ ] **Virtual Threads enabled where appropriate**: `spring.threads.virtual.enabled=true` on Boot 3.2+; servlet container and `@Async` `TaskExecutor` use `VirtualThreadPerTaskExecutor`
-- [ ] **`Dispatchers.IO` redundant under VTs**: if VTs are active, `withContext(Dispatchers.IO) { jdbcCall() }` is added overhead - blocking JDBC on a Virtual Thread is already non-blocking from the caller's perspective. Flag and recommend removal
-- [ ] **`Dispatchers.Default` for CPU-bound only**: image processing, crypto, heavy computation - never for I/O
-- [ ] **HikariCP pool sized correctly**: with VTs, "small pool, fast queries" still holds - oversizing increases DB contention. Typical: `maximumPoolSize` between `cores x 2` and `cores x 4` for OLTP; `connectionTimeout` 1-3s; `maxLifetime` 30 min (less than DB-side `wait_timeout`). With coroutine + non-blocking JDBC drivers (R2DBC), pool sizing rules differ - document explicitly
-- [ ] **Connection leak detection**: enabled (`leakDetectionThreshold: 5000`) in non-prod
-- [ ] **`runBlocking` in production paths**: only at top-level entry (`main`, scheduled-job adapters); never inside service / controller methods
-- [ ] **`GlobalScope.launch`**: leaks coroutines on shutdown - flag as both correctness and perf
-- [ ] **Coroutine cancellation propagation**: `coroutineScope { ... }` is cancellation-aware; long-running blocks should call `ensureActive()` or `yield()` periodically; cleanup in `finally` wrapped in `withContext(NonCancellable)` only when calling `suspend` functions during cleanup
-- [ ] **`Flow` backpressure**: `Flow.buffer(...)` and `conflate()` for fast producers; `Flow.flatMapMerge(concurrency = N)` for parallel transforms - do not leave unbounded `flatMapMerge` (default concurrency 16)
-- [ ] **HTTP clients** (`WebClient`, `RestClient`) reused as beans, not instantiated per call; connection-pool timeouts set explicitly
-- [ ] **Circuit breaker** (Resilience4j) on flaky external dependencies; bulkheads on shared executors
-- [ ] **No blocking calls inside reactive (`Mono`/`Flux`) chains** - use `publishOn(Schedulers.boundedElastic())` if blocking is unavoidable
-- [ ] **Inline functions for hot higher-order paths**: `inline` on hot lambdas to eliminate function-object allocation; `inline value class` (`@JvmInline value class`) for primitive wrappers in hot paths
+- [ ] **`synchronized` on Virtual Thread paths** - pins carrier thread; replace with `ReentrantLock` or `kotlinx.coroutines.sync.Mutex`
+- [ ] **Virtual Threads wired** when appropriate - `spring.threads.virtual.enabled=true`; `VirtualThreadPerTaskExecutor` for `@Async`
+- [ ] **`Dispatchers.IO` redundant under VTs**; `Dispatchers.Default` only for CPU-bound work
+- [ ] **`runBlocking` / `GlobalScope.launch` in production paths** - flag both
+- [ ] **`Flow` backpressure** - `buffer`, `conflate`, bounded `flatMapMerge(concurrency = N)`
+- [ ] **HikariCP pool sizing** matches thread/concurrency model - `maximumPoolSize` `cores x 2`-`cores x 4` for OLTP; `connectionTimeout` 1-3s; `maxLifetime` < DB `wait_timeout`; `leakDetectionThreshold: 5000` in non-prod (R2DBC sizing rules differ - document explicitly)
+- [ ] **HTTP clients** (`WebClient`, `RestClient`) reused as beans with explicit pool / timeout config; circuit breakers on flaky deps
+- [ ] **No blocking calls inside `Mono`/`Flux` chains** - `publishOn(Schedulers.boundedElastic())` if unavoidable
+- [ ] **`inline` / `@JvmInline value class`** on hot higher-order paths to eliminate allocation
 
 ### Step 8 - Caching and Response Performance
 

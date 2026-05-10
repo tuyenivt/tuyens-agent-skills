@@ -1,6 +1,6 @@
 ---
 name: kotlin-idioms
-description: "Idiomatic Kotlin for Spring Boot: data class DTOs, null safety over Optional, scope functions, sealed errors, inline value classes, JPA plugin config."
+description: "Idiomatic Kotlin for Spring Boot: data class DTOs, null safety over Optional, scope functions, sealed errors, value classes, JPA plugin."
 user-invocable: false
 ---
 
@@ -116,35 +116,10 @@ data class CreateOrderRequest(
     val shippingAddress: String,
 )
 
-data class OrderResponse(
-    val id: Long,
-    val status: OrderStatus,
-    val total: BigDecimal,
-    val createdAt: Instant,
-)
-
-// Bad: data class for JPA entity - Hibernate proxies don't work with equals/hashCode on all fields
-@Entity
-data class Order( // avoid - use regular class
-    @Id @GeneratedValue val id: Long = 0,
-    val userId: Long,
-    var status: OrderStatus,
-)
-
-// Good: regular class for JPA entity with ID-based equals/hashCode
-@Entity
-class Order(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
-    val userId: Long,
-    var status: OrderStatus = OrderStatus.PENDING,
-    @Column(updatable = false)
-    val createdAt: Instant = Instant.now(),
-) {
-    override fun equals(other: Any?) = other is Order && id != 0L && id == other.id
-    override fun hashCode() = id.hashCode()
-}
+data class OrderResponse(val id: Long, val status: OrderStatus, val total: BigDecimal, val createdAt: Instant)
 ```
+
+JPA entities must be regular `class` (not `data class`) with ID-based `equals`/`hashCode` - `data class` corrupts Hibernate proxy identity. See `kotlin-spring-jpa-performance` for the canonical entity pattern and the `kotlin("plugin.jpa")` / `kotlin("plugin.spring")` plugin requirement.
 
 ### ConfigurationProperties with Data Class
 

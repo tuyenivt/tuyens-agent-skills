@@ -68,38 +68,26 @@ If the project has no existing tests, say so and propose conventions explicitly 
 
 ### Step 5 - Apply Kotlin Test Patterns
 
-Use skill: `kotlin-spring-test-integration` for Spring slice / Testcontainers patterns. Use skill: `kotlin-testing-patterns` for MockK, kotest, runTest, Turbine.
+Use skill: `kotlin-testing-patterns` for MockK / `coEvery` / `coVerify` / Kotest matchers / `runTest` / Turbine / fixture factories / mocking suspend extension functions.
+Use skill: `kotlin-spring-test-integration` for slice annotations (`@WebMvcTest`, `@DataJpaTest`, `@JsonTest`), `@MockkBean`, Testcontainers + `@ServiceConnection`, WireMock, Awaitility, transactional-rollback differences between slices.
 
-**Unit tests (`src/test/kotlin/.../service/`):**
+Strategy-side rules the workflow enforces (the *what*; the *how* lives in the atomic skills above):
 
-- JUnit 5 (`@Test`, `@Nested`, `@DisplayName`) **or** Kotest (`FunSpec`, `BehaviorSpec`) - match project convention
-- MockK for collaborator stubs (`mockk<T>()`); `clearAllMocks()` in `@AfterEach` or `afterEach`
-- kotest matchers (`shouldBe`, `shouldThrow`, `shouldHaveSize`) preferred over JUnit `assertEquals`
-- Test the public method - one test per outcome (success, validation failure, external failure, edge case)
-- **No Spring context** - if `@SpringBootTest` is needed for a unit test, the test is misclassified or the class has too many collaborators
-- For `suspend` functions: wrap test body in `runTest { }`; use `coEvery` / `coVerify` for stubs and verifications
-- For `Flow<T>` consumers: use Turbine `flow.test { ... awaitItem() ... awaitComplete() }` to drive the cold flow
-- Verify post-conditions via `verify { ... }` / `coVerify { ... }` on the relevant collaborator mock
-
-**Controller slice tests (`@WebMvcTest`):**
-
-- One test per `(method+path, role, outcome)` triple - covers routing, controller, request/response binding, validation, and `SecurityFilterChain` matchers
-- Use `MockMvc` Kotlin DSL (`mockMvc.get("/api/orders/1").andExpect { status { isOk() } }`) or `WebTestClient` for reactive
-- Authentication via `@WithMockUser`, `@WithUserDetails`, or `with(jwt().authorities(...))`
-- Authorization: a separate test for "user without permission gets 403" per protected endpoint
-- Validation: a "rejects invalid payload" test for any data class with `@field:NotNull` / `@field:Size` constraints
-- Response shape: assert key fields, status, headers, and `Content-Type` - not the full body
-- Mock the service layer with `@MockkBean` (springmockk) - **NOT `@MockBean` / `@MockitoBean`** for Kotlin classes
+- **Unit tests have no Spring context** - if `@SpringBootTest` seems necessary, the class has too many collaborators or the test is misclassified
+- **Controller slice tests** cover one `(method+path, role, outcome)` triple per test - routing, binding, validation, `SecurityFilterChain` matchers all in one slice; mock services with `@MockkBean` (never `@MockBean`)
+- **Authorization** gets its own denied-case test per protected endpoint
+- **Validation** gets a rejects-invalid-payload test for every `@field:`-annotated DTO
+- **Response shape** assertions check key fields + status + `Content-Type`, not the full body
 
 **HTTP stubbing - choose by test type:**
 
-| Test type                                                          | Right tool                                                                                              |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Unit test of a service that uses `WebClient` / `RestClient`        | MockK (`mockk<RestClient>()` and stub the call chain via `every { ... } returns ...`); fast and focused |
-| `@WebMvcTest` of a controller whose service depends on an HTTP collaborator | `@MockkBean` the *service*, not the HTTP client; the controller doesn't see the client                  |
-| `@SpringBootTest` covering the real `WebClient`/`RestClient` wiring | WireMock (with `@RegisterExtension` JUnit 5) - asserts retry, timeout, header propagation, error mapping behave correctly against a real HTTP transport |
+| Test type                                                  | Right tool                                                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Service unit test using `WebClient` / `RestClient`         | `mockk<RestClient>()` + `every { ... } returns ...` - fast and focused                              |
+| `@WebMvcTest` whose service has an HTTP collaborator       | `@MockkBean` the *service*; the controller never sees the client                                    |
+| `@SpringBootTest` exercising real `WebClient` wiring        | WireMock (`@RegisterExtension`) - asserts retry, timeout, header propagation against a real HTTP transport |
 
-Do not mix MockK on `WebClient` inside a `@SpringBootTest` - the framework will autowire its own bean and ignore the mock unless you replace it via `@MockkBean`. Do not bring in WireMock for unit tests - you lose the speed advantage and add server lifecycle complexity.
+Do not mix MockK on `WebClient` inside `@SpringBootTest` (framework autowires the real bean); do not pull in WireMock for unit tests (kills the speed advantage).
 
 **Idempotency tests:**
 
@@ -224,21 +212,12 @@ A test that asserts rollback by checking `repository.findById(id)` may pass even
 
 ### Step 7 - Test Data and Fixtures
 
-- Prefer factory functions with named parameters and defaults over builders (Kotlin natural):
+See `kotlin-testing-patterns` for the canonical factory-function pattern (named parameters + defaults). Strategy rules:
 
-  ```kotlin
-  fun createOrder(
-      id: Long = 0L,
-      userId: Long = 42L,
-      status: OrderStatus = OrderStatus.PENDING,
-      total: BigDecimal = BigDecimal("99.99"),
-  ) = Order(id = id, userId = userId, status = status, total = total)
-  ```
-
-- For repository tests with Testcontainers, use `@Sql("/fixtures/orders.sql")` for shared setup; isolate per-test data inside the test
-- `data class` DTOs: instantiate directly via constructor - no factories needed for trivial cases
-- **Avoid `flush + clear` patterns** unless specifically asserting first-level cache behavior
-- Test data must be minimal and focused
+- Share factories across slice + full-context tests; never duplicate per test class
+- `@Sql("/fixtures/orders.sql")` for shared Testcontainers seed data; per-test data inline
+- Trivial `data class` DTOs: constructor calls directly, no factory
+- Avoid `flush + clear` unless asserting first-level cache behavior
 
 ### Step 8 - Prioritization (when coverage is low)
 
