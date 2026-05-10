@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific Rust target (Axum handler, service, repository, sqlx model, background-task processor, DTO). Identifies Rust-specific smells (fat handler, anemic services, god modules, `tokio::spawn` without owner / cancellation, `std::sync::Mutex` held across `.await`, sqlx N+1, mass assignment via `serde_json::from_value::<DomainModel>(req.body)`, package-level mutable state via `static` / `lazy_static!`, single-impl traits, `Box<dyn Trait>` where generics fit, `Arc<Mutex<T>>` where `Arc<T>` or `Arc<RwLock<T>>` fits better, `panic!` / `.unwrap()` in service code, background-tasks lacking idempotency, `unsafe` without SAFETY comment) and proposes independently-committable refactoring steps with `cargo test` + `cargo clippy --all-targets -- -D warnings` gates between each.
+Produce a safe, step-by-step refactoring plan for a specific Rust target (Axum handler, service, repository, sqlx model, background-task processor, DTO). Identifies Rust-specific smells (Step 4 catalog) and proposes independently-committable refactoring steps with `cargo test` + `cargo clippy --all-targets -- -D warnings` gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for Rust.
 

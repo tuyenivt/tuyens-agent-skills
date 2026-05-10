@@ -102,15 +102,12 @@ Check which the project uses before describing the architecture - this drives wh
 
 ### Risk Hotspots Specific to Rust
 
-- **Holding sync `MutexGuard` across `.await`:** deadlock risk; use `tokio::sync::Mutex` for async.
-- **Spawning unowned futures:** `tokio::spawn(async {...})` without retaining the JoinHandle leaks if no shutdown coordination.
-- **Mixing async runtimes:** Tokio future called inside async-std runtime panics.
-- **Blocking calls in async context:** stalls the runtime worker; use `tokio::task::spawn_blocking`.
-- **`unsafe` blocks:** must justify the invariant; rare in app code, more common in performance-sensitive libs.
-- **Cargo features turning on/off behavior:** features like `feature = "tls"` change available types; mismatch between dependents causes subtle compile errors or runtime behavior shifts.
-- **`sqlx` offline cache (`.sqlx/`)**: must commit and regenerate via `cargo sqlx prepare`; CI failures result from stale cache.
-- **Blanket `Box<dyn Error>`** error types in app: lose type info at boundaries; `thiserror` enums are richer.
-- **`String` cloning everywhere:** profile-time perf cost; consider `Arc<str>` or `Cow<'a, str>` for shared/borrowed.
+- **Async lifetime + cancellation** (sync `MutexGuard` across `.await`, unowned `tokio::spawn`, blocking calls on the runtime, missing `CancellationToken` on long-lived tasks, mixing async runtimes): see `rust-async-patterns`, `rust-concurrency`, `task-rust-review-perf`.
+- **sqlx data-access** (N+1, missing `LIMIT`, transaction holding I/O, stale `.sqlx/` offline cache, missing `cargo sqlx prepare`): see `rust-db-access`.
+- **Background-task dispatch inside transaction**, payloads carrying owned domain models: see `rust-messaging-patterns`.
+- **Mass assignment / SQL injection / `unsafe` audit / JWT misvalidation / `Command::new("sh")`**: see `rust-security-patterns`, `task-rust-review-security`.
+- **Migration safety** (concurrent index, lock_timeout, expand-then-contract, `cargo sqlx prepare` refresh): see `rust-migration-safety`.
+- **Rust quirks** to flag on first read: `Box<dyn Error>` erasing type at domain boundaries (use `thiserror`), `.clone()` churn on hot paths, Cargo feature mismatches across dependents, `unsafe` without `// SAFETY:` comment.
 
 ### First-PR Safe Zones
 

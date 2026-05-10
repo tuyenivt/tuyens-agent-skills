@@ -119,28 +119,19 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 > If `Data Access: sqlx` was recorded in Step 1, **skip the diesel subsection entirely** below. Likewise skip the sqlx subsection on diesel-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
 
-**If sqlx** - use skill: `rust-db-access`:
+**If sqlx** - use skill: `rust-db-access` for canonical patterns. Review-scoped scan of every changed query, repository, service, and handler:
 
-Inspect every changed query, repository, service, and handler for:
+- [ ] N+1 (per-iteration `sqlx::query!` over parent set) and multi-level N+1; resolve via `WHERE id = ANY($1::int8[])` or JOIN
+- [ ] `sqlx::query!` / `query_as!` for static SQL (compile-time-checked); `.sqlx/` offline cache committed and refreshed via `cargo sqlx prepare`
+- [ ] Column projection over `SELECT *`; missing indexes on `WHERE` / `ORDER BY` / `GROUP BY` columns
+- [ ] `fetch_all` without `LIMIT` / keyset pagination on growable lists
+- [ ] Bulk insert via `UNNEST($1, $2)` or multi-VALUES (not per-row in a loop); `ON CONFLICT ... DO UPDATE` for idempotent upserts
+- [ ] Transactions wrap multi-statement writes; no HTTP / queue I/O inside `pool.begin()...tx.commit()` (capture, dispatch after commit)
+- [ ] Pool config (`PgPoolOptions::max_connections / acquire_timeout / max_lifetime`) sized against `max_connections × replicas ≤ DB cap`; pool lives on `AppState`, never per-request
 
-- [ ] **N+1 in queries**: any per-iteration `sqlx::query!(... WHERE id = $1, parent_id)` inside a `for` loop over a parent set is N+1; resolve with a single `WHERE parent_id = ANY($1::int8[])` query plus in-memory grouping, OR a JOIN query that returns the parent + child rows together
-- [ ] **Multi-level N+1**: nested traversal across two relations (`order → items → product`) - resolve via single JOIN or two batched queries
-- [ ] **Compile-time-checked queries preferred**: `sqlx::query!` / `query_as!` for static SQL (catches schema mismatch at build time); runtime `query(...).bind(...)` is acceptable for genuinely dynamic SQL but loses validation. `sqlx-data.json` (offline mode) committed when CI lacks DB access; refreshed via `cargo sqlx prepare` after schema changes
-- [ ] **Column projection over `SELECT *`**: `SELECT id, name FROM ...` to bound payload; `SELECT *` returns all columns including large `text` / `bytea` / `jsonb`. With `query_as!` and a typed struct, the macro infers the column list - but the SQL must still match the struct's fields, not implicitly select everything
-- [ ] **Missing indexes for filter/sort columns**: any column used in `WHERE` / `ORDER BY` / `GROUP BY` without a `CREATE INDEX` migration
-- [ ] **`fetch_all` without pagination**: any read of an unbounded collection - require `LIMIT $1 OFFSET $2` or keyset pagination (`WHERE id > $1 ORDER BY id LIMIT $2`) for any list endpoint that can grow
-- [ ] **Existence checks**: `sqlx::query_scalar!("SELECT EXISTS(SELECT 1 FROM ... WHERE ...)")` over fetching the row and checking
-- [ ] **Bulk operations**: `INSERT ... SELECT * FROM UNNEST($1::int8[], $2::text[])` for bulk insert (sqlx supports passing `&[T]` to `$1` with a Postgres array column type), or a single multi-VALUES insert; per-row `INSERT` in a loop is N round-trips. `ON CONFLICT (...) DO UPDATE` for idempotent upserts
-- [ ] **Transactions**: `let mut tx = pool.begin().await?; ...; tx.commit().await?;` over manual statement-level commits. Long transactions (HTTP I/O inside `tx`) hold a connection for the duration - extract I/O outside the transaction, capture inputs, dispatch after commit
-- [ ] **Connection pool sizing**: `PgPoolOptions::new().max_connections(N).min_connections(M).acquire_timeout(...).idle_timeout(...).max_lifetime(...)` documented; `max_connections × replica count ≤ DB-side max_connections`. Default is `max_connections(10)` - typically too low for production. `max_lifetime` always set so connections recycle past load-balancer / DB restarts
-- [ ] **`acquire_timeout` set**: without it, a saturated pool blocks indefinitely. 3-10 seconds is typical; document the value
-- [ ] **Per-request pool construction**: `PgPool::connect(&url).await?` inside a handler defeats pooling. The pool lives on `AppState`, cloned cheaply via `Arc`
+**If diesel** - use skill: `rust-db-access`:
 
-**If diesel:**
-
-- [ ] N+1 via per-iteration `users.find(id).first(&mut conn)` inside a loop - resolve via `users.filter(id.eq_any(ids)).load(&mut conn)`
-- [ ] **Async diesel**: `diesel-async` for non-blocking queries; bare `diesel` is sync and blocks the executor unless wrapped in `spawn_blocking`. Flag any sync diesel call in an async fn
-- [ ] **`bb8-diesel` / `deadpool-diesel`** for async pooling; native `r2d2` is sync-only
+- [ ] N+1 resolved via `filter(id.eq_any(ids))`; `diesel-async` for async paths (bare `diesel` blocks the executor unless wrapped in `spawn_blocking`); async pool via `bb8-diesel` / `deadpool-diesel` (not sync `r2d2`)
 
 ### Step 5 - Indexes and Migrations
 
@@ -166,31 +157,16 @@ Use skill: `rust-migration-safety` for safe-migration checks on any change in `m
 
 ### Step 6 - Tokio Task Lifecycle and Async Concurrency
 
-Use skill: `rust-async-patterns` for canonical patterns.
+Use skill: `rust-async-patterns` for task lifecycle / `JoinSet` / `CancellationToken` / `select!` / `spawn_blocking`. Use skill: `rust-concurrency` for `Arc` / `Mutex` / `RwLock` / channel patterns. Review-scoped scan of changes touching `tokio::spawn`, `JoinSet`, `select!`, channels, locks, worker pools:
 
-Inspect changes touching `tokio::spawn`, `JoinSet`, `select!`, channels, `Arc` + lock primitives, and worker pools:
+- [ ] Every `tokio::spawn` has an owner (`JoinHandle` retained or `JoinSet`); long-lived loops pair with `tokio::select! { _ = token.cancelled() => ... }`; fan-out bounded via `JoinSet` + `Semaphore` (not unbounded `for x in xs { tokio::spawn(...) }`)
+- [ ] No `std::sync::Mutex` held across `.await` (blocks executor); use `tokio::sync::Mutex`, or drop guard before await; read-heavy state uses `tokio::sync::RwLock` or `dashmap::DashMap`
+- [ ] Bounded `mpsc::channel(N)` over `unbounded_channel()`; non-obvious `N` justified by a comment
+- [ ] No blocking / CPU-heavy work on the runtime (`std::fs`, `std::thread::sleep`, `bcrypt::hash`, large `serde_json::to_string`); wrap in `tokio::task::spawn_blocking` or use async equivalents (`tokio::fs`, `tokio::time::sleep`)
+- [ ] `tokio::time::timeout` per outbound HTTP / DB / queue call; `reqwest::Client` built once on `AppState` (cloning is `Arc`-cheap), never per-request
+- [ ] No external I/O inside `pool.begin()...tx.commit()` (drains pool, holds row locks for upstream tail latency); capture inputs, dispatch after commit
 
-- [ ] **Every `tokio::spawn` has an owner**: bare `tokio::spawn(async move { ... })` in a request handler is fire-and-forget - `JoinError` is dropped, panics are silently lost, results are unobservable. Use `JoinSet::spawn(...)` with `set.join_next().await` or hold the `JoinHandle` and `.await` it
-- [ ] **`CancellationToken` on long-lived loops**: every `loop { ... }` in a worker / consumer pairs with `tokio::select! { _ = token.cancelled() => return, ... }`; relying on dropping the task at runtime shutdown leaks in-flight work and skips graceful drain
-- [ ] **Bounded fan-out with `JoinSet`**: fan-out over a list uses `JoinSet` with a controlled spawn count or a semaphore (`tokio::sync::Semaphore::new(N)`); unbounded fan-out via `for url in urls { tokio::spawn(...) }` over a 10k-row list will exhaust DB connections / file descriptors / scheduler queues
-- [ ] **`tokio::time::timeout` on every external call**: `tokio::time::timeout(Duration::from_millis(500), client.get(url).send()).await??` - explicit timeout per outbound HTTP / DB call beats relying on the underlying client default
-- [ ] **`reqwest::Client` reused**: `reqwest::Client::new()` per request defeats connection pooling (each call opens a new TCP / TLS connection). Build once in `AppState`, clone the `Client` (it's `Arc`-internal) where needed
-- [ ] **No `std::sync::Mutex` held across `.await`**: blocks the executor thread, deadlocks under contention. Use `tokio::sync::Mutex` when the lock must span awaits, OR restructure: `let value = { let guard = mutex.lock(); guard.clone() }; some_async(value).await;` so the guard drops before the await
-- [ ] **`tokio::sync::RwLock` for read-heavy state**: many readers + occasional writer; `tokio::sync::Mutex` on a read-mostly cache forces unnecessary serialization
-- [ ] **`dashmap::DashMap` for sharded concurrent maps**: `dashmap::DashMap<K, V>` is a sharded `RwLock<HashMap>` and avoids global contention; use over `Arc<RwLock<HashMap>>` for high-write or high-concurrency maps
-- [ ] **Bounded channels by default**: `tokio::sync::mpsc::channel(N)` over `unbounded_channel()` - unbounded is a memory leak under backpressure
-- [ ] **Channel buffer sizes intentional**: `mpsc::channel(N)` with non-obvious `N` should have a comment justifying the size (matches downstream throughput, fan-out width, or drop-policy budget)
-- [ ] **No CPU-heavy work on the runtime**: hashing (`bcrypt::hash`, `argon2`), image processing, large JSON serialization on a request future blocks the executor. Wrap in `tokio::task::spawn_blocking(move || { ... })` so it runs on the blocking pool
-- [ ] **No synchronous I/O on the runtime**: `std::fs::read_to_string`, `std::thread::sleep`, `reqwest::blocking::get`. Use `tokio::fs`, `tokio::time::sleep`, async `reqwest`
-- [ ] **No external I/O inside a sqlx transaction**: `client.get(url).send().await` inside `let mut tx = pool.begin().await?; ... tx.commit().await?;` holds the transaction's connection for the network roundtrip. Under load this drains the pool faster than QPS would predict, and locked rows stay locked for the upstream's tail latency. Recommend: capture inputs inside the transaction, dispatch the side effect after commit
-
-> **Impact heuristic - blast radius of a leaked Tokio task.** A leaked task is not just memory - it holds references to captured state (DB pool handles, channel halves, futures pinned in place). Under sustained traffic, leaked tasks compound: 100 leaks/sec for an hour = 360k zombie futures + their captured state, eventually triggering OOM or scheduler queue degradation. Phrase the impact as "compounding leak proportional to sustained traffic," not "this one request leaks."
-
-> **Synchronous external dependency on the request path.** Even when the call uses `reqwest::Client` correctly, a request to a critical-path service (fraud, auth, pricing) inherits the upstream's tail latency: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget via background queue) when the call is non-blocking-business; recommend strict `tokio::time::timeout` plus fallback values when blocking-business.
-
-> **Stating impact when load shape isn't in the diff.** Impact estimates need a concrete "at this RPS / at this row count" frame, but PRs rarely ship that data. When RPS, expected page size, or row count aren't in the diff or `CLAUDE.md`, **state the assumption alongside the impact** - e.g., "Assuming 100 RPS and a 5M-row `orders` table: the missing index forces a sequential scan of ~5M rows per request, p95 likely ~2s on warm cache." Failing to anchor the number leaves the finding as "this is slow" prose, which the Self-Check explicitly bans. If the assumption is load-bearing for severity (e.g., the High-tier "10M+-row" rule), say so and recommend confirming row count pre-merge.
-
-> **Hot loop / hot path defined.** Several checklist items below gate on "hot loop" / "hot path" - by which this workflow means: (a) any code path executed once per HTTP request on the request future, (b) any code path executed once per row in a `fetch_all` / iterator result, (c) any code path inside a worker / consumer loop processing events. Setup code, one-shot startup work, and CLI tools fall outside this definition. The allocation / CPU checks in Step 7 only fire when the code is on a hot path so understood.
+> **Impact framing.** Phrase task leaks as "compounding leak proportional to sustained traffic" (captured state + futures, not just memory). Phrase synchronous critical-path calls as "p99 = max(self, upstream p99)" - recommend cache / circuit breaker / fire-and-forget when non-blocking-business, strict `tokio::time::timeout` + fallback when blocking-business. When RPS / row count isn't in the diff or `CLAUDE.md`, state the assumption alongside the impact estimate. **Hot path** means: per-request on the request future, per-row in a `fetch_all` result, or inside a worker/consumer loop - allocation / CPU checks (Step 7) only fire on hot paths.
 
 ### Step 7 - Allocation Hotspots and CPU Cost
 
@@ -223,26 +199,12 @@ _Skipped at `quick` depth unless the diff touches caching primitives._
 
 _Skipped at `quick` depth unless the diff touches background tasks or message brokers._
 
-Use skill: `rust-messaging-patterns` for canonical patterns.
+Use skill: `rust-messaging-patterns` for canonical patterns. Review-scoped scan:
 
-**If in-process Tokio task queue:**
-
-- [ ] **Tasks idempotent**: re-fetch state, check if work was done, return early. Pass IDs / simple types as payload, never owned domain models that hold references
-- [ ] **Dispatch AFTER commit**: enqueueing inside `let mut tx = pool.begin().await?; ... tx.commit().await?;` may make the worker pick up the task before the row is visible
-- [ ] **Bounded queue**: `mpsc::channel(N)` with documented `N`; saturation policy (drop, block, return error) explicit
-- [ ] **Worker count bounded**: a fixed number of worker tasks consume from the channel; not "spawn one task per job"
-
-**If Kafka (`rdkafka`):**
-
-- [ ] **Consumer groups** for parallelism so partitions distribute across consumer instances
-- [ ] **Manual commits**: explicit `consumer.commit_message(&msg, CommitMode::Async)` after successful processing - never auto-commit on a message that may fail processing (at-least-once delivery requires explicit commit)
-- [ ] **Idempotent consumers**: same idempotency requirement as in-process queue - retries / rebalances cause re-delivery
-- [ ] **Bounded in-flight**: `queued.max.messages.kbytes`, `fetch.max.bytes` tuned for memory budget
-
-**If AMQP (`lapin`):**
-
-- [ ] **Manual ack**: `delivery.ack(BasicAckOptions::default()).await?` after successful processing; auto-ack drops messages on processing failure
-- [ ] **Prefetch (`basic_qos`)**: limit unacked deliveries per consumer to control memory and parallelism
+- [ ] **All brokers**: tasks idempotent (payload carries IDs / simple types, not owned domain models); dispatch AFTER `tx.commit().await?` (never inside an open transaction)
+- [ ] **In-process Tokio queue**: `mpsc::channel(N)` bounded with documented saturation policy; worker count fixed (not "spawn-per-job")
+- [ ] **Kafka (`rdkafka`)**: consumer groups for partition parallelism; manual `commit_message(...)` after success (never auto-commit); `queued.max.messages.kbytes` / `fetch.max.bytes` tuned for memory budget
+- [ ] **AMQP (`lapin`)**: manual `delivery.ack(...)` after success; `basic_qos` prefetch limit set
 
 ### Step 10 - Observability for Perf (delegation hand-off)
 
