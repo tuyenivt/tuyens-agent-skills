@@ -143,55 +143,47 @@ Logical correctness, error handling completeness, edge cases affecting UI integr
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding test coverage (Vitest / Jest / Karma + Angular Testing Library / TestBed), raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication / session UI, HTTP interceptors, money / billing UI, form validation, multi-step flows, error handlers. Do not bury this finding in Key Takeaways.
 
-**Angular-specific correctness checks:**
+Canonical patterns live in `angular-component-patterns`, `angular-signals-patterns`, `angular-rxjs-patterns`, `angular-service-patterns`, `angular-state-patterns`. This phase scans for diff-level findings:
 
-- [ ] **TypeScript strict mode**: `strict: true` and `strictTemplates: true` not silently disabled; `as any` flagged outside test setup; `noImplicitAny` / `strictNullChecks` not relaxed; component inputs declared via `input<T>()` (signal input) or `@Input() x!: T` with explicit type, never `any`
-- [ ] **Standalone components**: every new component / directive / pipe is standalone (`standalone: true` was the default behavior since Angular 19; flag any `standalone: false` without rationale). New code that introduces an `NgModule` is a [High] - the project's existing NgModules are fine to leave but new ones need explicit justification
-- [ ] **OnPush change detection**: every new component declares `changeDetection: ChangeDetectionStrategy.OnPush`. Default change detection is a [High] finding in Angular 17+ - signals + OnPush is the canonical shape. Existing Default-CD components in the diff but unchanged are out of scope; flag only when the diff touches the `@Component` decorator
-- [ ] **Signal-first state**: new component-local state uses `signal()` / `computed()` / `linkedSignal()` rather than `BehaviorSubject` + `async` pipe. Existing `BehaviorSubject` patterns are fine; flag new ones as a [High] AI-smell unless the surrounding feature is RxJS-heavy and the consistency argument applies
-- [ ] **`computed` / `effect` discipline**: `effect()` is for **side effects** only - DOM imperative work, third-party library sync, logging - NOT for deriving state (that's `computed`). Flag `effect(() => { mySignal.set(otherSignal() + 1) })` as a misuse - use `computed` (or `linkedSignal` if you need writability). Flag `effect()` reading signals to call `console.log`-only - use `toObservable` or remove
-- [ ] **`effect` cleanup**: side-effect `effect()` registering subscriptions / observers / intervals must use the `onCleanup` callback or run inside `effect((onCleanup) => { ...; onCleanup(() => sub.unsubscribe()) })`. Missing cleanup in a long-lived effect leaks
-- [ ] **`linkedSignal` over `computed` + `effect`**: state that derives from inputs but is locally writable (e.g., a search filter that resets when the parent changes the dataset) is the canonical `linkedSignal` shape - flag the older "computed + effect to write back" pattern
-- [ ] **Signal inputs over `@Input()`**: new components use `input<T>()` / `input.required<T>()` for inputs and `output<T>()` for outputs. Flag mixed-style components (some signal inputs, some decorator inputs) unless the migration is in progress and called out
-- [ ] **`untracked` for breaking dep tracking**: when an `effect` reads a signal but should not re-run on its change, wrap with `untracked(() => signal())`. Flag `effect` re-firing on irrelevant dep reads
-- [ ] **RxJS subscription hygiene**: every `.subscribe()` in a component / directive / service uses one of: `takeUntilDestroyed()`, `async` pipe in template, `toSignal(observable)`. Bare `.subscribe()` without cleanup in a component is a [High] memory-leak finding. `takeUntilDestroyed` requires injection context - either at field initialization or `inject(DestroyRef)` + `takeUntilDestroyed(destroyRef)`
-- [ ] **`async` pipe over manual subscribe**: new template data binding uses `someValue$ | async` (or `toSignal(someValue$)` + signal read) rather than subscribing in `ngOnInit` and storing in a field. Manual subscribe is a smell unless the value is consumed imperatively
-- [ ] **`toSignal` / `toObservable` discipline**: bridges between RxJS and signals are intentional, not casual. Flag round-trips (`toObservable(toSignal(x$))`); flag `toSignal()` without `initialValue` in a context that needs synchronous read (signal read before first emission throws unless `initialValue` or `requireSync: true` is set)
-- [ ] **`@for` `track` correctness**: every new `@for` block must declare `track`. `track $index` on a reorderable / filterable / removable list breaks DOM reuse and is a [High] finding. `track item.id` (stable) is right. `track item` (object identity) is fine when items are referentially stable across emissions; flag if items are recreated each tick
-- [ ] **`@defer` placement**: `@defer` blocks must specify a trigger (`on idle`, `on viewport`, `on interaction`, `on hover`, `on timer(...)`, `when ...`); a bare `@defer { ... }` defers but with the default `on idle` trigger - flag missing explicit trigger and missing `@placeholder` (for content-shift prevention)
-- [ ] **New control flow over structural directives**: new code uses `@if` / `@for` / `@switch`, not `*ngIf` / `*ngFor` / `*ngSwitch`. Flag mixed-style components in new files
-- [ ] **`inject()` over constructor injection**: new injection sites prefer `inject(MyService)` over constructor params. Constructor injection is still valid; flag mixed style in a single new component, or constructor injection in a class that needs to inject in field initialization (forces awkward refactor)
-- [ ] **Functional guards / resolvers / interceptors**: new guards use `CanActivateFn` / `CanMatchFn` etc.; new interceptors use `HttpInterceptorFn`. Class-based guards / interceptors in new code are a [Medium] - the functional shape is the modern idiom and works with `provideRouter` / `provideHttpClient(withInterceptors([...]))`
-- [ ] **`provideHttpClient(withInterceptors([...]))`**: HTTP interceptors registered via the functional `provideHttpClient` setup, not `HTTP_INTERCEPTORS` multi-provider. Flag new `HTTP_INTERCEPTORS` registrations
-- [ ] **`provideRouter(routes, withComponentInputBinding(), ...)`**: route configuration via standalone bootstrap, not `RouterModule.forRoot`. Flag new `RouterModule.forRoot` calls in app bootstrap
-- [ ] **HTTP error handling**: `HttpClient.get` / `post` calls in services have a `catchError` handler or rely on a global error interceptor; flag bare `.subscribe()` on an HTTP call without error handling - the unhandled error surfaces as an `ErrorHandler.handleError` console log at best, silent failure at worst
-- [ ] **Reactive Forms with `FormBuilder` / typed forms**: new forms use `FormBuilder` or typed `FormGroup<{...}>`; flag template-driven forms in new code unless project-wide convention. Validation via `Validators.*` + custom validators; flag inline validation logic in submit handlers (validators belong on the form)
-- [ ] **Form validation surfaces errors**: every required / pattern / custom validator has a corresponding error display; flag forms that validate but don't show errors (UX broken). Error association via `aria-describedby` for screen readers
-- [ ] **`NgOptimizedImage` for images**: `<img ngSrc="..." width="..." height="...">` for non-decorative images; flag raw `<img>` for hero / above-the-fold or list images. Hero image marked `priority`; missing `priority` on LCP candidate is a [Medium]
-- [ ] **`[innerHTML]` audit**: any `[innerHTML]="x"` where `x` originates from user input, URL params, or external API must be sanitized via `DomSanitizer.sanitize(SecurityContext.HTML, ...)` or rendered as text. Angular auto-escapes interpolation but `[innerHTML]` is a direct XSS vector. Flag as Critical when the content path is user-controllable
-- [ ] **`bypassSecurityTrust*` discipline**: every `DomSanitizer.bypassSecurityTrustHtml/Url/Script/Style/ResourceUrl` call has a comment justifying why (e.g., "trusted markdown processed at build time"). Bypassing for user-controlled content is Critical
-- [ ] **Open redirect**: `Router.navigateByUrl(query.returnTo)` / `window.location.href = userInput` without allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`) is an open redirect
-- [ ] **`environment.ts` for secrets**: `environment.ts` / `environment.prod.ts` compile into the client bundle - any API key, signing secret, or DB URL there is a Critical leak. Server-only secrets live in build-time-injected env vars on the SSR server, not in the client bundle
-- [ ] **SSR `TransferState` for fetched data**: when SSR is enabled, server-fetched data uses `TransferState` (`makeStateKey`, `transferState.set/get`) so the browser does not re-fetch on hydration. Flag `HttpClient` calls in `ngOnInit` / signal init that re-run on hydration without `TransferState` - request waterfall on every page load. Modern Angular: `provideClientHydration(withHttpTransferCacheOptions({...}))` enables HTTP transfer cache automatically; flag SSR projects without it
-- [ ] **Browser-only API guards under SSR**: `window`, `document`, `localStorage`, `IntersectionObserver` accessed in component code that runs server-side crashes. Wrap with `if (isPlatformBrowser(this.platformId))` or move into `afterNextRender` / `ngAfterViewInit` (which only runs on client)
-- [ ] **Form accessibility**: `<input>` has an associated `<label>` (via `for` or wrapping); error messages associated via `aria-describedby`; submit button has accessible name; required fields use `aria-required` (or `required`) and surface validation errors when invalid
-- [ ] **Interactive accessibility**: dialogs use Angular CDK `Dialog` / `Overlay` (which handle focus trap, return-focus, ARIA) rather than hand-rolled `<div>` modals; menus use `MenuModule` / proper key handling; new interactive components built on Angular Material / Angular CDK primitives by default rather than reinventing keyboard handling
-- [ ] **Image / media**: `NgOptimizedImage` enforces `width`/`height`; raw `<img>` must declare them to prevent CLS; `alt` attribute present (empty string `alt=""` for decorative); flag missing
-- [ ] **Error boundary**: app has a global `ErrorHandler` provider routing to Sentry / structured logging; flag new components with non-trivial render logic that could throw without coverage at the global handler
+**Angular correctness:**
 
-**Concurrency / state-management safety:**
+- [ ] **TypeScript strict / typed inputs**: `strict: true` + `strictTemplates: true` not silently disabled; `as any` outside test setup; inputs via `input<T>()` / `input.required<T>()` or `@Input() x!: T`, never `any`
+- [ ] **Standalone over NgModule**: new code introducing an `@NgModule({...})` is [High]; existing NgModules fine to leave
+- [ ] **OnPush mandate** on new `@Component` (Default CD is [High] in Angular 17+); flag only when diff touches the decorator
+- [ ] **Signal-first new state**: new code uses `signal()` / `computed()` / `linkedSignal()` over `BehaviorSubject` + `async` (existing RxJS-heavy code is fine for consistency)
+- [ ] **`computed` vs `effect` vs `linkedSignal`**: `effect` is side-effects only (`effect(() => mySignal.set(...))` is misuse, [High] - use `computed` / `linkedSignal`); missing `onCleanup` on long-lived effects with subscriptions / intervals leaks; `untracked` to break unintended dep tracking
+- [ ] **Signal inputs over `@Input()`** in new components (flag mixed-style unless migration in progress)
+- [ ] **`toSignal` / `toObservable` discipline**: round-trips (`toObservable(toSignal(x$))`) are smells; missing `initialValue` / `requireSync: true` for synchronous reads
+- [ ] **Bare `.subscribe()` in component / directive / service** is [High] memory leak - use `takeUntilDestroyed()` (injection context required, else `inject(DestroyRef)` + `takeUntilDestroyed(destroyRef)`), `async` pipe, or `toSignal`
+- [ ] **`@for` `track`**: missing or `track $index` on reorderable / filterable / removable list is [High]
+- [ ] **`@defer` triggers + `@placeholder`** explicit (default `on idle` rarely intended; missing `@placeholder` causes CLS)
+- [ ] **New control flow** (`@if` / `@for` / `@switch`) over structural directives (`*ngIf` / `*ngFor` / `*ngSwitch`) in new code
+- [ ] **`inject()` over constructor injection** in new code; flag mixed-style in a single component
+- [ ] **Functional guards / resolvers / interceptors** (`CanActivateFn` / `HttpInterceptorFn`) over class-based; `provideHttpClient(withInterceptors([...]))` over `HTTP_INTERCEPTORS` multi-provider; `provideRouter(...)` over `RouterModule.forRoot`
+- [ ] **HTTP error handling**: `catchError` handler or global error interceptor; bare `.subscribe()` on HTTP call surfaces as `ErrorHandler.handleError` log at best, silent failure at worst
+- [ ] **Reactive Forms** with `FormBuilder` / typed `FormGroup<{...}>` and `Validators.*`; validators belong on the form, not in submit handlers
+- [ ] **Mutable module-level state** (`let cache = {}`) leaks across SSR requests - service-scoped or signal-based state
 
-- [ ] **State categorization**: state lives in the right place - URL (route params + `withComponentInputBinding` for filters / page / sort), server (HTTP service + signal cache, or NgRx for shared), local (`signal` for UI-only). Flag local state for filter values when the URL would deep-link better; flag client-side caching of server state when HTTP cache / `TransferState` would handle it
-- [ ] **NgRx granularity**: a single mega-store with all app state vs feature-scoped stores. Feature stores (or NgRx Signal Store with one per feature) reduce blast radius of changes
-- [ ] **Service singleton scoping**: `providedIn: 'root'` is the default; `providedIn: 'platform'` / `'any'` / route-scoped are exceptions that need rationale. Flag a service that holds per-user state but is `providedIn: 'root'` (state leaks across users on log-out without explicit reset)
-- [ ] **No mutable module-level state**: `let cache = {}` mutated by render or events leaks across SSR requests. Flag for service-scoped state or signal-based state
-- [ ] **Subscription leak via `takeUntilDestroyed` outside injection context**: `takeUntilDestroyed()` called outside an injection context (e.g., inside a callback fired after construction) throws or no-ops. Flag for `inject(DestroyRef)` + explicit `takeUntilDestroyed(destroyRef)` form
+**SSR-specific (skip when SSR disabled):**
 
-Use skill: `angular-component-patterns` for canonical component shape.
-Use skill: `angular-signals-patterns` for signal correctness.
-Use skill: `angular-rxjs-patterns` for RxJS subscription hygiene.
-Use skill: `angular-service-patterns` for service / DI / HttpClient patterns.
-Use skill: `angular-state-patterns` for state-management patterns.
+- [ ] **`TransferState` for server-fetched data**: `provideClientHydration(withHttpTransferCacheOptions({...}))` enables HTTP transfer cache automatically. Flag SSR projects without it - request waterfall on every page load
+- [ ] **Browser-only API guards**: `window`, `document`, `localStorage`, `IntersectionObserver` accessed server-side crashes. Wrap with `isPlatformBrowser(platformId)` or move into `afterNextRender` (Angular 16+)
+
+**Angular cross-cutting safety:**
+
+- [ ] **`[innerHTML]` audit** ([Critical] when content path is user-controllable): sanitize via `DomSanitizer.sanitize(SecurityContext.HTML, ...)` or render as text
+- [ ] **`bypassSecurityTrust*` discipline**: every `bypassSecurityTrustHtml/Url/Script/Style/ResourceUrl` has a justifying comment; bypassing for user-controlled content is [Critical]
+- [ ] **Open redirect**: `Router.navigateByUrl(query.returnTo)` / `window.location.href = userInput` without allowlist or `url.startsWith('/') && !url.startsWith('//')`
+- [ ] **`environment.ts` for secrets** (API keys, signing secrets, DB URLs) - compiled into client bundle, [Critical]
+- [ ] **State categorization**: filters / page / sort in `signal` instead of route params + `withComponentInputBinding` (breaks deep-linking, refresh, back-button); client-side cache of server state when HTTP transfer cache / `TransferState` would handle it - see `angular-state-patterns`
+- [ ] **`providedIn: 'root'` for per-user state** leaks across users at logout without explicit reset
+- [ ] **Error boundary**: global `ErrorHandler` provider routing to Sentry / structured logging
+
+**Accessibility:**
+
+- [ ] **Form a11y**: `<input>` with associated `<label>`, `aria-describedby` for error messages, accessible submit name, `required` / `aria-required` with surfaced validation errors
+- [ ] **Interactive a11y**: dialogs use CDK `Dialog` / `Overlay` (focus trap, return-focus, ARIA) over hand-rolled `<div>` modals; reach for Angular Material / CDK primitives before reinventing key handling
+- [ ] **Images**: `<img ngSrc>` (NgOptimizedImage enforces `width`/`height`) or explicit `width`/`height` on raw `<img>` (CLS); `alt` present (`alt=""` for decorative); `priority` on hero / LCP image
 
 ### Phase C - Angular Architecture Guardrails
 

@@ -92,15 +92,12 @@ user-invocable: false
 
 ### Risk Hotspots Specific to Angular
 
-- **`OnPush` not detecting in-place mutations:** mutating an array/object input does not trigger CD. Replace the reference.
-- **Cold observable triggering one HTTP per subscription:** `<div>{{user$ | async}}</div>` and another `*ngFor` over the same observable issues two requests.
-- **`@ViewChild` undefined in `ngOnInit`:** view is not yet initialized; use `ngAfterViewInit` or `viewChild()` signal.
-- **`inject()` outside injection context:** throws; can only be called in constructor, field initializer, factory, or guard/resolver.
-- **Subscription leaks:** manual `subscribe` without `takeUntilDestroyed` or `ngOnDestroy` cleanup.
-- **Pure pipe array mutation:** in-place push to an array does not re-run pure pipes; use new array.
-- **Route guard on lazy module/route configuration drift:** missing `canActivate` cascades to children unless overridden.
-- **NgZone reentry:** mixing zone-aware and zone-free code causes change detection skips.
-- **Standalone migration churn:** some projects in mid-migration from NgModule to standalone; mixed bootstrap can confuse.
+- **OnPush + reactivity** (in-place array / object input mutation doesn't trigger CD; pure pipe mutation needs new reference): see `angular-component-patterns`, `angular-signals-patterns`, `task-angular-review`.
+- **RxJS subscription hygiene** (manual `.subscribe()` leaks, cold-observable HTTP duplication, `takeUntilDestroyed` injection-context requirement): see `angular-rxjs-patterns`, `task-angular-review-perf`.
+- **Lifecycle / DI timing** (`@ViewChild` undefined in `ngOnInit` - use `viewChild()` signal or `ngAfterViewInit`; `inject()` only in injection context): see `angular-component-patterns`, `angular-service-patterns`.
+- **Routing** (missing `canActivate` cascading to children, lazy-route configuration drift): see `angular-routing-patterns`.
+- **NgZone reentry** mixing zone-aware and zone-free code; **standalone migration churn** in mid-migration projects: see `task-angular-review`.
+- **`[innerHTML]` XSS**, **`bypassSecurityTrust*` misuse**, **`environment.ts` secret leak**, **open redirect**: see `task-angular-review-security`.
 
 ### First-PR Safe Zones
 

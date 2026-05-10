@@ -94,27 +94,21 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - Change Detection and Re-Render Hotspots
 
-Use skill: `angular-component-patterns` for component shape; use skill: `angular-signals-patterns` for signal correctness.
+Canonical CD / signal / RxJS discipline lives in `angular-component-patterns`, `angular-signals-patterns`, `angular-rxjs-patterns`. This step is a review-scoped scan for the diff:
 
-Inspect every changed component / directive / service for:
-
-- [ ] **OnPush mandate**: every `@Component` declares `changeDetection: ChangeDetectionStrategy.OnPush`. Default change detection in a new component is a [High] - it dirties on every event in the entire `NgZone` (zone.js) or every signal write (zoneless). Existing Default-CD components are out of scope; flag only when the diff touches the `@Component` decorator
-- [ ] **Signal-driven state in new code**: new local state uses `signal()` / `computed()` rather than `BehaviorSubject` + `async`. `BehaviorSubject` requires manual subscription, schedules CD via `markForCheck()` after `async` pipe emission, and bridges through the Zone for change detection. Signals integrate with the new local change detection (Angular 17+) and minimize the dirty-checking surface
-- [ ] **`computed` over getter functions in templates**: `{{ expensiveCalc() }}` in a template re-runs every change detection cycle. Wrap with `computed`, store in a field, and read `expensiveCalc()` (now a signal call - cached). For pure functions called once per render this is fine; for derived state from signals, `computed` is the idiom
-- [ ] **`effect` discipline**: `effect()` is for side effects only - DOM imperative work, third-party library sync, logging. NOT for deriving state. `effect(() => mySignal.set(otherSignal() + 1))` is a [High] - use `computed` or `linkedSignal`
-- [ ] **`effect` cleanup**: `effect((onCleanup) => { const sub = obs.subscribe(); onCleanup(() => sub.unsubscribe()) })` - flag missing cleanup on long-lived effects subscribing to observables, intervals, or DOM listeners
-- [ ] **`untracked` for cutting deps**: `effect(() => { logSomething(currentSignal()); untracked(() => trackingSignal()) })` - flag effects re-firing on irrelevant signal reads when `untracked` would prevent it
-- [ ] **`toSignal` `initialValue` / `requireSync`**: `toSignal(obs$)` returns `Signal<T | undefined>`; templates handle `undefined` poorly. Provide `initialValue` for the synchronous case, or `{ requireSync: true }` when the source is a `BehaviorSubject` / `ReplaySubject(1)` and the synchronous read is guaranteed
-- [ ] **Subscription leak via bare `.subscribe()`**: every `.subscribe()` in a component / directive must use `takeUntilDestroyed()` (in injection context) or `async` pipe / `toSignal()` in template. Bare `.subscribe()` is a [High] memory-leak finding - the subscription survives navigation and accumulates
-- [ ] **`async` pipe over manual subscribe**: template binding `{{ user$ | async }}` over `ngOnInit` `.subscribe()` + field assignment. The pipe handles unsubscription on view destroy and triggers CD via `markForCheck()` automatically
-- [ ] **`@for` `track` correctness**: `track $index` on a reorderable / filterable / removable list breaks DOM reuse and re-creates child components on every reorder - blows away component state and triggers full re-render. `track item.id` is right. Flag both missing track and `track $index` on dynamic lists
-- [ ] **`@for` over thousands of items without virtualization**: rendering 1000+ items without `cdk-virtual-scroll-viewport` (`@angular/cdk/scrolling`) causes long initial render and laggy scroll. Threshold scales with row complexity: simple row × 1000+ or complex row × 100+
-- [ ] **`@defer` placement**: heavy below-the-fold components (charts, editors, maps) wrapped in `@defer (on viewport) { <app-chart /> } @placeholder { ... }`. Flag eager `<app-chart />` for components used only on user interaction or below the fold
-- [ ] **`@defer` missing trigger**: `@defer { ... }` defaults to `on idle`; explicit triggers (`on viewport`, `on interaction`, `on hover`, `when cond()`) are clearer and often match intent better. Missing `@placeholder` causes content shift when the deferred block loads - flag for CLS impact
-- [ ] **Inline arrow / template function reference instability**: `[config]="{ a: 1 }"` or `(click)="() => doThing(item)"` in a template creates a new object/function on every CD cycle. Under OnPush this still re-evaluates the binding; in a `@for` over 1000 items this compounds. Lift to a `computed` or method reference
-- [ ] **`@HostListener` on noisy events**: `@HostListener('window:scroll')` / `'window:mousemove'` triggers a full app-tick CD pass on zone.js (every event). Use `fromEvent(window, 'scroll').pipe(throttleTime(...))` outside the zone (`runOutsideAngular`), or signal-based DOM listeners
-- [ ] **Heavy synchronous work in `ngOnInit` / `constructor`**: parsing, sorting, filtering large arrays, JSON serialization in component init blocks rendering. Move to a service with caching, a worker, or `requestIdleCallback`
-- [ ] **`NgRx` selector instability**: selectors returning a fresh object literal each call (`createSelector(..., state => ({ ...state }))`) defeat memoization - downstream `select()` re-emits on every action. Use `createSelector` with stable returns; `withMethods` / `computed` in NgRx Signal Store
+- [ ] **OnPush mandate**: new `@Component` without `changeDetection: ChangeDetectionStrategy.OnPush` is [High] - dirties on every Zone event (zone.js) or every signal write (zoneless). Flag only when the diff touches the decorator
+- [ ] **Signal-first new state**: new local state uses `signal()` / `computed()` not `BehaviorSubject` + `async` (manual subscription, Zone bridge, more dirty-checking)
+- [ ] **`computed` over template getter calls**: `{{ expensiveCalc() }}` re-runs every CD cycle - wrap with `computed` for derived signal state
+- [ ] **`effect` misuse**: `effect()` is for side effects (DOM, library sync, logging), not derivation - `effect(() => mySignal.set(...))` is [High], use `computed` / `linkedSignal`. Missing `onCleanup` callback on long-lived effects with subscriptions / intervals / observers leaks. Use `untracked` to break dep tracking when reads shouldn't re-trigger
+- [ ] **`toSignal` initial value**: missing `initialValue` returns `Signal<T | undefined>` (template handles poorly); use `{ requireSync: true }` when source is `BehaviorSubject` / `ReplaySubject(1)`
+- [ ] **Bare `.subscribe()` in component / directive**: [High] memory leak - use `takeUntilDestroyed()` (injection context required), `async` pipe, or `toSignal`
+- [ ] **`@for` `track`**: `track $index` on a reorderable / filterable / removable list breaks DOM reuse and re-creates child components ([High]); missing `track` is [High]
+- [ ] **`@for` × 1000+ items without `cdk-virtual-scroll-viewport`** (`@angular/cdk/scrolling`); threshold scales with row complexity (simple × 1000+ or complex × 100+)
+- [ ] **`@defer` placement / triggers**: heavy below-fold components (charts, editors, maps) wrapped with explicit `on viewport` / `on interaction` / `when cond()` (default `on idle` rarely intended). Missing `@placeholder` → CLS
+- [ ] **Identity instability in templates**: `[config]="{ a: 1 }"` or `(click)="() => doThing(item)"` allocates per CD cycle; in `@for × 1000` this compounds. Lift to `computed` or method reference
+- [ ] **`@HostListener('window:scroll' / 'window:mousemove')`** triggers app-tick on every event (zone.js); use `fromEvent` + `throttleTime` + `runOutsideAngular`, or signal-based listeners
+- [ ] **Heavy sync work in `ngOnInit` / constructor**: parse / sort / filter / serialize large arrays - move to cached service, worker, or `requestIdleCallback`
+- [ ] **NgRx selector instability**: `createSelector(..., state => ({ ...state }))` defeats memoization - downstream re-emits on every action. Stable returns; NgRx Signal Store `withMethods` / `computed`
 
 ### Step 5 - Bundle Size and Code Splitting
 
@@ -132,16 +126,15 @@ Inspect every changed component / directive / service for:
 
 ### Step 6 - Data Fetching and Caching
 
-Use skill: `angular-service-patterns` for HTTP service patterns; use skill: `angular-rxjs-patterns` for operator selection.
+Canonical HTTP / RxJS idioms live in `angular-service-patterns` and `angular-rxjs-patterns`. Review-scoped scan:
 
-- [ ] **HTTP cache via `provideClientHydration(withHttpTransferCacheOptions({...}))`**: under SSR, server-fetched data is automatically cached and reused on hydration - no double-fetch. Flag SSR projects without `provideClientHydration` or with HTTP transfer cache disabled
-- [ ] **`TransferState` for non-HTTP server-computed data**: `makeStateKey<T>('foo')` + `transferState.set/get` to avoid re-computing on hydration. Flag manual `HttpClient` wrappers that re-fetch the same URL on hydration
-- [ ] **`shareReplay({ bufferSize: 1, refCount: true })` for shared HTTP observables**: a service exposing `getCurrentUser()` should cache the result; flag unmemoized `HttpClient.get` calls fanned out across components
-- [ ] **N+1 fan-out over a list**: `forkJoin(items.map(i => http.get(`/api/detail/${i.id}`)))` parallelizes N requests but is still N round-trips. Flag and recommend a batched server endpoint (`/api/details?ids=...`)
-- [ ] **Sequential awaits / chained switchMap for independent fetches**: `switchMap` chains for two independent HTTP calls block end-to-end. Use `forkJoin([a$, b$])` for parallel
-- [ ] **HTTP cache headers respected**: server-set `Cache-Control` headers honored by the browser; service-side caching layered on top (not in lieu of). Flag client-side cache implementations that ignore server cache directives
-- [ ] **Mutation invalidation explicit**: after a `POST` / `PUT` / `DELETE`, dependent caches invalidated (NgRx action dispatched, signal-based cache `set()` updated, or `shareReplay` source re-triggered). Flag mutations that succeed but UI shows stale data
-- [ ] **No `HttpClient.get()` in render path**: a component template binding to a method that calls `HttpClient.get` re-fires on every CD cycle - fetches a stream of duplicate requests. Move to a service + `signal()` / `BehaviorSubject` / `shareReplay`
+- [ ] **SSR HTTP transfer cache**: `provideClientHydration(withHttpTransferCacheOptions({...}))` reuses server-fetched data on hydration. Flag SSR projects without it - double-fetch on every page
+- [ ] **`TransferState` for non-HTTP server-computed data** to avoid re-computation on hydration
+- [ ] **Shared HTTP cache**: `shareReplay({ bufferSize: 1, refCount: true })` on `getCurrentUser` / config endpoints; flag unmemoized `HttpClient.get` fanned across components
+- [ ] **N+1 fan-out**: `forkJoin(items.map(i => http.get(...)))` is N round-trips - recommend a batched endpoint
+- [ ] **Sequential `switchMap` for independent fetches** blocks end-to-end - use `forkJoin([a$, b$])` for parallel
+- [ ] **Mutation invalidation missing**: post-mutation, dependent caches must be invalidated (NgRx dispatch / signal cache `set()` / re-trigger `shareReplay` source)
+- [ ] **`HttpClient.get()` in render path / template binding** re-fires every CD cycle - move to a service + `signal()` / `shareReplay`
 
 ### Step 7 - Core Web Vitals and Page Load
 

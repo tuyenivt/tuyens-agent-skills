@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific Angular target (component, service, guard, interceptor, route configuration, NgRx store / signal store). Identifies Angular-specific smells (god component, prop drilling, BehaviorSubject for component-local state, Default change detection, manual `.subscribe()` without `takeUntilDestroyed`, fat service, conditional rendering ladder, scattered state, class-based guard / interceptor still in use, NgModule for new code, inline business logic in template, untyped inputs) and proposes independently-committable refactoring steps with test gates between each.
+Produce a safe, step-by-step refactoring plan for a specific Angular target (component, service, guard, interceptor, route configuration, NgRx store / signal store). Identifies Angular-specific smells (Step 4 catalog) and proposes independently-committable refactoring steps with `ng build` + test-suite gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for Angular.
 
