@@ -217,12 +217,12 @@ The most common Django refactor: a ViewSet `create` triggers a model save whose 
 
 1. **Pin behavior with an endpoint + service test** asserting every observable side effect (record updated, mailer queued, task dispatched, audit row written) - this is the contract the refactor must preserve
 2. **Promote signal dispatch to `transaction.on_commit`** first so side effects fire post-commit; tests still pass
-3. **Introduce a service function** (`<verb>_<noun>`) that performs the write _and_ the side effects in one call; ViewSet calls the service _but the signals still run_ - this duplicates side effects intentionally and temporarily
-4. **Make signals no-op when called from the service** via a `threading.local` flag set by the service or a flag on the model instance (`if getattr(instance, "_skip_signals", False): return`); verify tests still pass with side effects firing exactly once
-5. **Delete the signal handlers entirely**; the service is now the single source of orchestration; remove the bypass flag; tests still green
-6. **Audit other call sites** (`Model.objects.create`, `bulk_create`, migrations, scheduled tasks) - any caller relying on the old signal is now broken and must be updated to call the service or have the side effects re-derived
+3. **Introduce a service function** (`<verb>_<noun>`) that performs the write _without_ the side effects; the model save still triggers the signal which still fans out - the service is just an empty shell at this point. Tests pass unchanged
+4. **Migrate every caller** (`ViewSet.perform_create`, `Model.objects.create` callsites, scheduled tasks, management commands) to call the service. Tests still pass - the signal is still doing the side-effect work
+5. **Move the side effects from the signal handler into the service body**; in the same commit, delete the signal handler. The service is now the single source of orchestration. Tests pass because every caller already routes through the service (step 4)
+6. **Audit other write paths** (`bulk_create`, `update()`, raw SQL, migrations) that bypass `save()` and therefore never triggered the signal in the first place - if they need the side effects now, they must call the service or have them re-derived
 
-The intermediate "signals no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the signals (step 5).
+The safety property here is that **steps 3-4 are pure additions** (service exists, callers route through it, signals still fire) and **step 5 is one atomic swap** (move logic + delete signal in one commit). At no point does a "skip-signals-when-called-from-service" flag exist - that pattern (a `threading.local` or `_skip_signals` attribute on the instance) is unsafe in async code (`threading.local` does not propagate across `await`), unsafe under prefork Celery workers (state leaks across forked processes), and easy to leave behind permanently. Avoid it.
 
 **Recipe: Move side effects out of an open DB transaction (FastAPI / Django)**
 

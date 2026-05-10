@@ -96,16 +96,12 @@ user-invocable: false
 
 ### Risk Hotspots Specific to Python
 
-- **Sync I/O in `async def` endpoints (FastAPI):** blocks the event loop, stalls all concurrent requests.
-- **`requests` (sync) in async code:** use `httpx.AsyncClient` instead.
-- **Sync SQLAlchemy with `AsyncSession`:** lazy loading not supported on async sessions; need `selectinload`/`joinedload`.
-- **`bulk_create`/`update()` (Django queryset)** bypassing model `save()` and signals.
-- **Circular imports**: especially when models import each other.
-- **Missing `__init__.py`** with implicit namespace packages: imports may behave unexpectedly across Python versions.
-- **Settings via `env()` calls outside the Settings class**: drift between docs and runtime.
-- **Pinned vs unpinned dependencies**: lockfile vs `requirements.in` distinction.
-- **`from x import *`** in module init: hides what is exported.
-- **Mutable default arguments** (`def f(x=[])`): shared across calls - classic Python footgun.
+- **Sync I/O / blocking calls inside `async def`** (FastAPI): see `python-async-patterns`.
+- **`AsyncSession` lazy-loading + `MissingGreenlet`**: see `python-sqlalchemy-patterns`.
+- **Django queryset writes that bypass `save()` / signals** (`bulk_create`, `update()`, raw SQL): see `python-django-patterns` and `python-code-explain`.
+- **Celery `.delay()` dispatched inside an open transaction**: see `python-celery-patterns` and `task-python-refactor` (Move side effects out of an open DB transaction recipe).
+- **Migration safety on large tables** (full-table locks, `WHERE col IS NULL LIMIT N` backfills): see `python-migration-safety`.
+- **Pydantic v1 vs v2 API drift**, mutable default args, settings drift, circular imports: classic Python footguns flagged on first read.
 
 ### First-PR Safe Zones
 

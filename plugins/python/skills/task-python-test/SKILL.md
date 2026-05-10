@@ -72,100 +72,15 @@ The Python test pyramid maps to test types:
 
 ### Step 4 - Apply Python Test Patterns
 
-Use skill: `python-testing-patterns` for the canonical patterns referenced below.
+Canonical patterns (pytest fixtures, `pytest-asyncio` config, `httpx.ASGITransport`, DRF `APIClient`, factory_boy, Testcontainers PostgreSQL, `respx`/`responses`, Celery test modes) live in `python-testing-patterns`. Load it for the actual scaffolds. This step records the **strategy-side rules** that apply across all layers:
 
-**Unit tests (`tests/unit/`):**
+- **Test type matches the surface.** Unit = pytest + mocks, no app context. Endpoint = `httpx.ASGITransport` (FastAPI) or `APIClient` (Django). Integration = Testcontainers PostgreSQL, never SQLite for Postgres apps. Celery = `task_always_eager` for fast tests + `pytest-celery` for at-least-once semantics on `acks_late=True` tasks.
+- **One test per `(method, path/url, principal-state, outcome)` triple** for endpoints; one test per outcome (success / validation / auth-denial / external failure / edge) for unit and service tests.
+- **Auth tested separately from happy path.** Every protected endpoint gets explicit anonymous → 401 and wrong-role → 403 cases; per-owner / per-tenant resources get an IDOR (404 for other-user's resource) case.
+- **Idempotency for Celery tasks asserts the side-effect call count, not the final state.** Two deliveries, one external charge - a test that only checks final state hides non-idempotent code that converges by accident.
+- **HTTP stub library is picked per project and kept consistent.** A codebase mixing `respx` + `responses` + `pytest-httpx` for the same call surface is a refactor target.
 
-- pytest (`@pytest.mark.parametrize`, fixtures); `pytest-mock` `mocker` over manual `unittest.mock.patch`
-- Test the public function / method - one test per outcome (success, validation failure, external failure, edge case)
-- **No app context / DB** - if a unit test needs the FastAPI app or Django settings, it is misclassified
-- Stub external HTTP via `respx` (httpx) or `responses` (requests); do not stub repositories with full SQL behavior - use Testcontainers for that
-
-**FastAPI endpoint tests:**
-
-- `httpx.AsyncClient` with `ASGITransport(app=app)` (httpx 0.27+); `pytest-asyncio` `asyncio_mode = "auto"` to avoid decorating every test
-- One test per `(method, path, principal-state, outcome)` triple
-- Authentication via fixture that sets the `Authorization` header or overrides `Depends(get_current_user)` via `app.dependency_overrides`
-- Authorization: a separate test for "anonymous → 401" and "wrong role → 403" per protected endpoint
-- Validation: a "rejects invalid payload" test for any endpoint with a Pydantic body schema
-- Response shape: assert key fields, status, headers, and `Content-Type`
-- DB session: override `Depends(get_db)` to point at the Testcontainers session fixture; transactional rollback per test
-
-**Django endpoint tests (DRF):**
-
-- `rest_framework.test.APIClient` with `client.force_authenticate(user=...)` or `client.login(...)`
-- One test per `(method, url, principal, outcome)` triple
-- `pytest-django` `db` / `transactional_db` fixture for database access; `django_db` marker for fast rollback
-- Authentication: `@pytest.fixture` returning an authenticated client; per-permission cases (admin, regular user, anonymous)
-- Validation: assert `response.status_code == 400` and key error fields
-- Permissions: assert 401 unauth, 403 wrong-role, 404 IDOR-attempt (object-level perm denies before exposing existence)
-
-**Repository / ORM integration tests:**
-
-- Testcontainers PostgreSQL (`testcontainers[postgresql]`) - **not SQLite, not in-memory** - SQLite diverges from PostgreSQL on JSON / JSONB, partial indexes, window functions, `ON CONFLICT`, array types
-- Per-test transactional rollback via fixture (`session.begin_nested()` / Django `transactional_db` with savepoint)
-- One test per non-trivial query: assert SQL semantics (filter correctness, sort order, eager-load result), not just "method returns something"
-- N+1 detection: enable `engine.echo=True` or use `sqlalchemy.event` listener counting queries; for Django, `django.test.TestCase.assertNumQueries` or `CaptureQueriesContext`
-- Custom indexes / constraints: insert violating data and assert the right exception is raised
-
-**Pydantic schema tests (FastAPI):**
-
-- Direct schema validation: `OrderCreate.model_validate({...})` returns the model or raises `ValidationError`
-- Edge cases: missing fields, wrong types, out-of-range values, `extra="forbid"` rejecting unknown keys
-- Custom validators (`@field_validator`, `@model_validator`) tested in isolation - faster than going through a full endpoint test
-
-**DRF serializer tests (Django):**
-
-- `serializer.is_valid()` returns False for invalid payloads; `serializer.errors` keys asserted
-- `read_only_fields` not writable; `write_only_fields` not in serialized output
-- Object-level permissions tested via `has_object_permission` directly when complex
-
-**Celery task tests:**
-
-- `CELERY_TASK_ALWAYS_EAGER = True` for synchronous-execution tests (fast, no broker)
-- `pytest-celery` for tests that need a real worker (broker integration, `acks_late` semantics)
-- Idempotency test: invoke the task twice with the same input, assert side effect happens once
-- Retry test: stub the external call to fail twice then succeed; assert task completes; assert `self.request.retries` increments
-- DLT / max-retries test: stub the external call to fail forever; assert task ends in failure state without infinite loop
-
-**Idempotency test pattern (Celery):**
-
-```python
-@pytest.mark.django_db   # or pytest-asyncio + AsyncSession fixture for FastAPI
-def test_process_payment_is_idempotent(payment_factory, mocker):
-    payment = payment_factory(status="pending", amount=Decimal("99.99"))
-    stripe_charge = mocker.patch("app.tasks.payments.stripe_client.charge")
-    stripe_charge.return_value = {"id": "ch_123", "status": "succeeded"}
-
-    # First delivery
-    process_payment.apply(args=[payment.id]).get()
-    # Second delivery (broker re-delivery / retry)
-    process_payment.apply(args=[payment.id]).get()
-
-    payment.refresh_from_db()
-    assert payment.status == "succeeded"
-    assert payment.stripe_charge_id == "ch_123"
-    assert stripe_charge.call_count == 1, "task must dedupe by payment.id - charged twice"
-```
-
-The assertion that matters is **`stripe_charge.call_count == 1`** (or equivalent for the side effect). A test that only asserts final state hides non-idempotent code that happens to converge to the same state when both calls succeed.
-
-**HTTP stub library decision (FastAPI):**
-
-| Test surface                          | Library                | Why                                                          |
-| ------------------------------------- | ---------------------- | ------------------------------------------------------------ |
-| Service unit test calling `httpx`     | `respx`                | Async-native, clean mock-router API, project standard for httpx |
-| Service unit test calling `requests`  | `responses`            | Sync-native; library's mocks are well-known                  |
-| Endpoint test (`ASGITransport`)       | `respx` / `pytest-httpx` | Stubs the outbound HTTP call from the service the endpoint orchestrates |
-| Real-broker / contract test           | WireMock or upstream sandbox | When you need protocol-level fidelity (TLS, redirects, retries) |
-
-Pick one per project and stay consistent - a codebase mixing `respx`, `responses`, and `pytest-httpx` for the same HTTP call surface is a refactor target, not a feature.
-
-**E2E / full-context tests:**
-
-- Reserve for tests that genuinely need the full stack: auth flow end-to-end, transactional commit + Celery dispatch, scheduled-job behavior
-- Use `pytest-docker` or `testcontainers` to spin up the broker / Redis / Postgres
-- Avoid for tests that an endpoint test could cover - context-load cost compounds
+E2E / full-context tests are reserved for journeys that genuinely need the broker + Redis + Postgres stack (auth flow, commit + Celery dispatch, scheduled jobs). Anything an endpoint test can cover stays at the endpoint layer.
 
 ### Step 5 - Test Boundaries (Python-Specific)
 
