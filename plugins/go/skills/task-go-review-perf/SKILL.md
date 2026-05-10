@@ -106,35 +106,22 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - ORM Hotspots (GORM or sqlx)
 
-> If `Data Access: GORM` was recorded in Step 1, **skip the sqlx subsection entirely** below; do not scan it for non-applicable bullets. Likewise skip the GORM subsection on sqlx-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
+> If `Data Access: GORM` was recorded in Step 1, **skip the sqlx subsection** below; likewise skip GORM on sqlx-only projects. The bifurcation exists for mixed codebases.
 
-**If GORM** - use skill: `go-data-access`:
+Canonical patterns live in `go-data-access`. This step is the **review-scoped scan** - flag deviations against the canonical owner; do not re-derive idioms here.
 
-Inspect every changed model, repository, service, and handler for:
+**Review-scoped scan** (GORM or sqlx, branching on `Data Access:`):
 
-- [ ] **N+1 in queries**: any traversal of an association (`order.Items`) after a `Find` is preloaded with `db.Preload("Items").Find(...)` or `db.Joins("Items").Find(...)`. GORM's lazy access (`order.Items` triggering a query) is the smell - eager-load with `Preload` instead.
-- [ ] **Multi-level N+1**: nested traversal across two associations (`order.Items` → `item.Product`) - resolve with chained `db.Preload("Items.Product").Find(...)`.
-- [ ] **`Preload` overfetch**: pulling full child rows when only one column is needed - use `db.Preload("Items", func(db *gorm.DB) *gorm.DB { return db.Select("id", "sku") })` to bound payload size.
-- [ ] **Missing indexes for filter/sort columns**: any field used in `Where` / `Order` / `Group` without `gorm:"index"` on the model or a `CREATE INDEX` migration.
-- [ ] **`Find` without pagination**: any read of an unbounded collection - require `Limit` + `Offset` or keyset pagination (`Where("id > ?", lastID).Limit(N)`) for any list endpoint that can grow.
-- [ ] **Existence checks**: `db.Select("id").Where(...).First(...)` over `db.Find(...)` then `len(rows) > 0`; for hot paths use raw `EXISTS` via `db.Raw("SELECT EXISTS(...)")`.
-- [ ] **Bulk operations**: `db.CreateInBatches(items, 100)` over per-row `db.Create`; `db.Clauses(clause.OnConflict{DoNothing: true})` for idempotent bulk inserts; `db.Updates` / `db.Where(...).Updates(...)` for batch updates.
-- [ ] **Upsert for idempotency**: `db.Clauses(clause.OnConflict{Columns: [...], DoUpdates: clause.AssignmentColumns([...])}).Create(...)` over `Find` + `if/else` create/update - races less, fewer round trips.
-- [ ] **Transactions**: `db.Transaction(func(tx *gorm.DB) error {...})` (auto-rollback on error return) over manual `Begin` / `Commit` / `Rollback`. `db.Clauses(clause.Locking{Strength: "UPDATE"})` for row-level locks. Long transactions (HTTP I/O inside `tx`) hold a connection for the duration - extract I/O outside the closure.
-- [ ] **Connection pool sizing**: `db.SetMaxOpenConns(N)`, `SetMaxIdleConns`, `SetConnMaxLifetime` documented; total `MaxOpenConns × replica count ≤ DB-side max_connections`. Default is unlimited - that's a foot-gun under load.
-- [ ] **GORM logger in prod**: `Logger: logger.Default.LogMode(logger.Info)` flagged - logs every query at INFO; should be `logger.Warn` or `logger.Error` in prod, or use OTel instrumentation via `go-gorm/opentelemetry`.
-- [ ] **`db.Debug()` left in code**: `db.Debug().Find(...)` enables per-query debug logging for that statement; harmless but not for production hot paths.
-
-**If sqlx** - use skill: `go-data-access`:
-
-- [ ] **N+1 in queries**: any traversal that issues a per-iteration `db.Get` / `db.Select` over a parent list - resolve with a single JOIN query or batch via `sqlx.In`.
-- [ ] **`sqlx.In` for batch IN clauses**: `query, args, err := sqlx.In("SELECT * FROM orders WHERE id IN (?)", ids); query = db.Rebind(query)` - never `fmt.Sprintf("(%s)", strings.Join(...))`.
-- [ ] **Prepared statements for repeated queries**: `db.PrepareNamed(...)` reused across calls in hot paths; per-call `db.NamedExec` re-parses the SQL.
-- [ ] **`SelectContext` / `GetContext` / `NamedExecContext`**: every call uses the `Context` variant so cancellation propagates; bare `db.Select` ignores `ctx.Done()`.
-- [ ] **Column projection**: `SELECT id, name FROM ...` to bound payload - default `SELECT *` returns all columns including large `text` / `bytea`.
-- [ ] **Existence checks**: `SELECT EXISTS(SELECT 1 FROM ... WHERE ...)` over fetching the row and counting.
-- [ ] **`defer rows.Close()` immediately after `db.QueryxContext` succeeds**: forgetting leaks a connection back to the pool.
-- [ ] **Connection pool sizing**: `db.DB.SetMaxOpenConns(N)` etc. documented; same constraint as GORM.
+- [ ] **N+1**: association traversal after a list query is eager-loaded - GORM `Preload` / `Joins` (multi-level: `Preload("Items.Product")`); sqlx batches via `sqlx.In(...)` + `db.Rebind`, never per-iteration `db.Get` over a parent list
+- [ ] **Overfetch**: payload bounded via projection - GORM `Preload("Items", func(db) { return db.Select("id", "sku") })`; sqlx `SELECT id, name` over `SELECT *` (default returns large `text` / `bytea`)
+- [ ] **Missing indexes for `Where` / `Order` / `Group` columns** - flag any predicate / sort column without `gorm:"index"` or a `CREATE INDEX` migration
+- [ ] **Unbounded reads**: list endpoints use `Limit` + keyset pagination (`Where("id > ?", lastID).Limit(N)`), not bare `Find`
+- [ ] **Per-row loops** in place of bulk operations - GORM `CreateInBatches(items, 100)`, `Clauses(clause.OnConflict{DoNothing: true})`; sqlx `db.NamedExec` with slice
+- [ ] **Existence checks**: `db.Select("id").Where(...).First(...)` / `SELECT EXISTS(SELECT 1 ...)` over fetch-then-`len`
+- [ ] **`db.WithContext(ctx)` / sqlx `*Context` variants** on every query - `SelectContext` / `GetContext` / `NamedExecContext` propagate cancellation; bare variants ignore `ctx.Done()`
+- [ ] **`defer rows.Close()`** immediately after `db.QueryContext` / `QueryxContext` succeeds - missing leaks a connection back to the pool
+- [ ] **Connection pool sized**: `db.SetMaxOpenConns(N)` × replica count ≤ DB `max_connections` (GORM default is unlimited - foot-gun)
+- [ ] **Prod-unsafe config**: GORM `Logger: logger.Info` in prod flagged (every query at INFO); `db.Debug()` left in hot path; sqlx project-specific query logging enabled in prod
 
 ### Step 5 - Indexes and Migrations
 
@@ -160,25 +147,17 @@ Use skill: `go-migration-safety` for safe-migration checks on any change in `mig
 
 ### Step 6 - Goroutine Lifecycle and Concurrency
 
-Use skill: `go-concurrency` for canonical patterns.
+Canonical patterns live in `go-concurrency`. Apply the **review-scoped scan** below.
 
-Inspect changes touching goroutines, channels, `errgroup`, `sync` primitives, and worker pools:
+> **Impact heuristic.** A leaked goroutine retains the request `context`, `gin.Context`, and captured DB connections / mutexes. Under sustained traffic, leaks compound (100/sec for an hour = 360k zombie goroutines) and eventually trigger OOM or scheduler degradation. Phrase impact as "compounding leak proportional to sustained traffic," not "this one request leaks." HTTP to a critical-path upstream inherits its tail latency: p99 = max(your work, upstream p99) - recommend `context.WithTimeout` + fallback, or async pattern (decision cache, `gobreaker`, fire-and-forget via Asynq).
 
-- [ ] **Every goroutine has an owner**: `go fn()` in a request handler is a leak waiting to happen. Use `errgroup.Group.Go(...)` (returns error from group), `sync.WaitGroup` (or Go 1.25+ `WaitGroup.Go`), or a worker pool with explicit shutdown. Bare goroutine launches in long-running services are flagged.
-- [ ] **Goroutine cancellation path**: every goroutine selects on `<-ctx.Done()` or has a clear shutdown signal; goroutines blocked on a channel send/receive with no possible counterpart are leaks. Pair every blocking receive with `select { case x := <-ch: ... case <-ctx.Done(): return ctx.Err() }`.
-- [ ] **Bounded fan-out**: fan-out over a list uses a bounded `errgroup` with `g.SetLimit(N)` (Go 1.20+) or a semaphore (`golang.org/x/sync/semaphore`); unbounded `errgroup.Group.Go(...)` over a 10k-row list will exhaust DB connections / file descriptors / goroutine scheduler overhead.
-- [ ] **`context.WithTimeout` / `WithDeadline` on every external call**: `ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond); defer cancel()`; explicit timeout per outbound HTTP / DB call beats relying on Go's defaults (which are effectively infinite for `http.Client` without `Timeout` set).
-- [ ] **HTTP clients reused**: `http.Client` instance / `resty.Client` shared at package level (often via constructor), not instantiated per request - connection reuse via `Transport.MaxIdleConnsPerHost` matters at scale.
-- [ ] **Channel buffer sizes intentional**: unbuffered `make(chan T)` is fine when synchronization is the goal; buffered `make(chan T, N)` with non-obvious `N` should have a comment justifying the size.
-- [ ] **`sync.Mutex` held across I/O**: `mu.Lock(); db.Query(...); mu.Unlock()` serializes the I/O across all callers. Drop the lock before I/O; if state must be consistent across the I/O, use a different pattern (per-key mutex, optimistic locking, single-flight via `golang.org/x/sync/singleflight`).
-- [ ] **`sync.RWMutex` for read-heavy maps**: `RLock` / `RUnlock` for reads; `Lock` / `Unlock` only for writes. `sync.Mutex` on a read-mostly cache forces unnecessary serialization.
-- [ ] **`sync.Map` only when justified**: `sync.Map` is faster than `map + sync.Mutex` only for specific access patterns (write-once, read-many; disjoint key sets per goroutine). For typical concurrent maps, `map + sync.RWMutex` is faster.
-- [ ] **No CPU-heavy work on the hot path without profiling**: hashing, image processing, large JSON marshalling on a request goroutine should be moved to an Asynq task or a worker pool when measured to dominate latency.
-- [ ] **No external I/O inside a DB transaction**: `http.Client.Do(...)` / `client.Enqueue(...)` (Asynq) inside `db.Transaction(...)` holds a pooled connection for the network roundtrip. Under load this drains the pool faster than QPS would predict, and locked rows stay locked for the upstream's tail latency. Recommend: capture inputs inside the transaction, dispatch the side effect after `db.Transaction` returns nil.
-
-> **Impact heuristic - blast radius of a leaked goroutine.** A leaked goroutine is not just memory - it holds references to the request `context`, `gin.Context`, captured variables (potentially including DB connections, mutexes, channels). Under sustained traffic, leaked goroutines compound: 100 leaks/sec for an hour = 360k zombie goroutines + their captured state, eventually triggering OOM or scheduler degradation. Phrase the impact as "compounding leak proportional to sustained traffic," not "this one request leaks."
-
-> **Synchronous external dependency on the request path.** Even when the call uses `http.Client` correctly, a request to a critical-path service (fraud, auth, pricing) inherits the upstream's tail latency: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker via `gobreaker`, fire-and-forget via Asynq) when the call is non-blocking-business; recommend strict timeouts (`context.WithTimeout`) plus fallback values when blocking-business.
+- [ ] **Goroutine ownership + cancellation**: every `go fn()` has an owner (`errgroup.Group.Go`, `sync.WaitGroup`, Go 1.25+ `WaitGroup.Go`, or worker pool with shutdown); every blocking receive paired with `select { case ...: ; case <-ctx.Done(): return ctx.Err() }`. Bare `go fn()` in a request handler is a leak surface
+- [ ] **Bounded fan-out**: `errgroup.SetLimit(N)` (Go 1.20+) or `semaphore.NewWeighted` over a list - unbounded fan-out exhausts pool / FDs / scheduler
+- [ ] **`context.WithTimeout` / `WithDeadline`** on every outbound call: `ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond); defer cancel()` (`http.Client` without `Timeout` is effectively infinite)
+- [ ] **HTTP clients package-level**: `http.Client` / `resty.Client` shared via constructor, not per-request - `Transport.MaxIdleConnsPerHost` reuse matters at scale
+- [ ] **`sync.Mutex` not held across I/O**: drop lock before HTTP / DB / channel-send; if I/O must be serialized, use per-key mutex / `singleflight.Group`. Read-heavy maps use `sync.RWMutex`. `sync.Map` only for specific patterns (write-once / disjoint key sets) - `map + sync.RWMutex` faster for typical workloads
+- [ ] **No CPU-heavy work on request goroutine without profiling**: hashing, image processing, large JSON marshalling → Asynq task / worker pool when measured to dominate latency
+- [ ] **No external I/O inside `db.Transaction(...)`**: holds pooled connection for the upstream's tail latency, drains pool faster than QPS predicts. Capture inputs inside, dispatch after `Transaction` returns nil. Correctness lens (worker pickup before commit) is owned by `task-go-review`
 
 ### Step 7 - Allocation Hotspots and CPU Cost
 
@@ -210,24 +189,20 @@ _Skipped at `quick` depth unless the diff touches caching primitives._
 
 _Skipped at `quick` depth unless the diff touches Asynq or Kafka._
 
-Use skill: `go-messaging-patterns` for canonical patterns.
+Canonical patterns live in `go-messaging-patterns`. Apply the **review-scoped scan** below (branch on `Messaging:`).
 
 **If Asynq:**
 
-- [ ] **Tasks idempotent**: re-fetch state, check if work was done, return early. Pass IDs / simple types as `Payload`, never ORM models (lazy loads, stale data, serialization issues).
-- [ ] **Task IDs for dedup**: `asynq.NewTask(typ, payload, asynq.TaskID(businessKey))` where business-key collisions are intentional (Asynq rejects duplicate `TaskID` while another exists).
-- [ ] **Retry strategy declared**: `asynq.MaxRetry(N)`, `asynq.Retention(...)` per-task or via server config; `asynq.Timeout(...)` for per-task deadline.
-- [ ] **Failed-tasks queue / archive**: tasks that exceed retries move to `archived` set; processor logic / observability surfaces them.
-- [ ] **Queue priorities**: time-sensitive tasks on a dedicated queue with higher priority weight; mixed-priority on one queue starves urgent work.
-- [ ] **`client.Enqueue()` AFTER the DB transaction commits**: dispatching inside `db.Transaction(func(tx *gorm.DB) error {...})` means the worker may pick it up before the row is visible.
-- [ ] **`Server` concurrency** set explicitly via `asynq.Config{Concurrency: N}`; align with downstream capacity, not just CPU count.
+- [ ] **Idempotent + ID payloads**: re-fetch state, return early if done; payload uses IDs / primitives, never ORM models. `asynq.TaskID(businessKey)` for client-side dedup
+- [ ] **`client.Enqueue()` AFTER commit**: never inside `db.Transaction(...)` - worker may pick up before commit. Capture inputs inside, dispatch after the closure returns nil
+- [ ] **Retry policy + archive**: `asynq.MaxRetry(N)`, `asynq.Retention(...)`, `asynq.Timeout(...)` explicit; archived tasks surfaced via observability, not ignored
+- [ ] **Queue priorities + Server concurrency**: time-sensitive tasks on dedicated higher-weight queue; `asynq.Config{Concurrency: N}` aligned to downstream capacity, not just CPU count
 
 **If Kafka (franz-go):**
 
-- [ ] **Consumer groups for parallelism**: `franz.WithConsumerGroup(...)` so partitions are distributed across consumer instances.
-- [ ] **Manual commits**: `cl.CommitRecords(...)` after successful processing - never auto-commit on a message that may fail processing (at-least-once delivery requires explicit commit).
-- [ ] **Idempotent consumers**: same idempotency requirement as Asynq - retries / rebalances cause re-delivery.
-- [ ] **Bounded in-flight**: `franz.MaxConcurrentFetches`, `franz.FetchMaxBytes` tuned for memory budget.
+- [ ] **Consumer group + manual commits**: `franz.WithConsumerGroup(...)`; `cl.CommitRecords(...)` after successful processing - auto-commit drops messages on processing failure
+- [ ] **Idempotent consumers**: at-least-once delivery (retries + rebalances) - same requirement as Asynq
+- [ ] **Bounded in-flight**: `franz.MaxConcurrentFetches`, `franz.FetchMaxBytes` tuned for memory budget
 
 ### Step 10 - Observability for Perf (delegation hand-off)
 

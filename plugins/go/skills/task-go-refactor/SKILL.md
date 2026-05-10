@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific Go target (Gin handler, service, repository, GORM model, Asynq processor, DTO). Identifies Go-specific smells (fat handler, anemic services, god packages, goroutine without owner / cancellation, sync.Mutex held across I/O, GORM N+1, GORM hook abuse for business logic, mass assignment via `mapstructure.Decode`, package-level mutable state, single-impl interfaces violating "accept interfaces, return structs", `panic` in service code, Asynq tasks lacking idempotency) and proposes independently-committable refactoring steps with `go test -race` gates between each.
+Produce a safe, step-by-step refactoring plan for a specific Go target (Gin handler, service, repository, GORM model, Asynq processor, DTO). Identifies Go-specific smells (Step 4 catalog) and proposes independently-committable steps with `go build ./...` + `go test -race ./...` gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for Go.
 

@@ -150,7 +150,7 @@ The triage output funnels which downstream steps must run carefully versus which
   - File type validated by content (`http.DetectContentType`), not just `Content-Type` header (client-controlled) or extension
   - Per-file size limit enforced (`router.MaxMultipartMemory = 5 << 20` for 5MB; `c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)` for stricter)
   - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized via `filepath.Clean(name)` AND `strings.HasPrefix(filepath.Join(base, name), base)` check to reject directory traversal; never `filepath.Join(base, userInput)` without normalization
+  - Filename sanitized per the path-traversal rule below (the same `filepath.Clean` + `HasPrefix(base)` check applies)
   - Virus scan pipeline or accepted-risk documented for user uploads
 - [ ] **Path traversal**: `filepath.Clean(userInput)` followed by `filepath.Join(base, cleaned)` and `strings.HasPrefix(joined, base)` check; reject otherwise
 - [ ] **Process execution**: `exec.Command(name, args...)` with arg slice (NOT `exec.Command("sh", "-c", userInput)` and NOT a name interpolated from user input); strict allowlist of allowed binaries

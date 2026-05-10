@@ -95,17 +95,12 @@ Check which the project uses before describing the architecture - this drives wh
 
 ### Risk Hotspots Specific to Go
 
-- **Goroutine leaks:** spawning without context propagation or lifetime owner.
-- **`defer` inside loops:** stacks up to function return; use a helper instead.
-- **Default `http.Client` no timeout:** any external HTTP call can hang.
-- **`time.Sleep` in cancellable contexts:** use `select` with `ctx.Done()` for cancellable waits.
-- **Map concurrent access**: requires `sync.Mutex` or `sync.Map`; data race detected with `go test -race`.
-- **GORM AutoMigrate in production:** silently changes schema; not a substitute for migration files.
-- **Embedded fields shadowing:** struct embedding can lead to method-resolution surprises.
-- **`init()` functions doing heavy work:** runs at import time; affects test startup and binary boot.
-- **Closing a channel from receiver side:** panics; closing from non-owner is a smell.
-- **`for range`** over a channel without explicit close: blocks forever if sender never closes.
-- **JSON tag mismatches:** struct fields without `json:"name"` use Go field name (capitalized) - common API contract bug.
+- **Goroutine lifetime + cancellation** (bare `go fn()` without owner, missing `<-ctx.Done()` arm, `time.Sleep` instead of `select`-on-`ctx`, channel close from receiver, `for range` over an unclosed channel): see `go-concurrency` and `task-go-review-perf`.
+- **N+1 + connection pool** (GORM lazy access without `Preload`, `db.AutoMigrate` in prod, missing `defer rows.Close()`, missing `db.WithContext(ctx)`): see `go-data-access`.
+- **Asynq dispatch inside DB transaction**, tasks taking ORM models in payloads: see `go-messaging-patterns`.
+- **Mass assignment / SQL injection / missing JWT middleware / `mapstructure.Decode(req.Body, &model)`**: see `task-go-review-security`.
+- **Migration safety on hot tables** (concurrent index, lock_timeout, expand-then-contract, `db.AutoMigrate` in prod): see `go-migration-safety`.
+- **Go quirks** to flag on first read: default `http.Client` has no timeout, `defer` inside loops stacks until function return, `init()` doing heavy work at import time, embedded-field method shadowing, JSON tag mismatches (missing `json:"..."` exposes the Go field name), `init()`-wired globals breaking test isolation.
 
 ### First-PR Safe Zones
 
