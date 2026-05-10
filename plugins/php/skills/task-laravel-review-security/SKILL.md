@@ -127,82 +127,64 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 | Data Integrity Failures (A08) | `unserialize($userInput)` is RCE-via-gadget-chain; flagged regardless of context. `serialize` of model output round-tripped through queue is fine (Laravel's `SerializesModels` trait handles it). File uploads bounded by `MAX_FILE_SIZE` and validated MIME (`mimes:` rule + magic-byte check via `League\MimeTypeDetection` if true content-type matters). Mass assignment via `$guarded = []` or `Model::create($request->all())` - both flagged.                                                                                                                  |
 | Logging & Monitoring (A09)    | `Log::*` and `Monolog` channels do not log `password`, `token`, `Authorization` header, `Cookie` header, full request body. Auth events logged. Sentry / Bugsnag `beforeSend` strips PII (when wired).                                                                                                                                                                    |
 
-### Step 6 - Authentication
+### Step 6 - Authentication, Authorization, Input Validation, and Common Vulnerability Patterns
 
-- [ ] **Sanctum config**: `config/sanctum.php` `stateful` domains list matches actual SPA origins; not `*`. `expiration` set to a finite window for token APIs (default `null` = forever - flag for token-API projects). `EnsureFrontendRequestsAreStateful` middleware on the SPA route group only (not on token-API routes - causes confusion)
-- [ ] **`APP_KEY` from env, never committed**: `.env.example` carries `APP_KEY=` (empty); committed `APP_KEY=base64:realvalue` is `Critical` per rubric clause "secrets / Sanctum / Passport / `APP_KEY` committed in source". `php artisan key:generate` per environment
-- [ ] **`Hash::make($password)` for new passwords**: never `md5($password)`, `sha1($password)`, `password_hash($password, PASSWORD_BCRYPT)` directly (use `Hash::make` so the configured driver applies, e.g., Argon2 if set in `config/hashing.php`)
-- [ ] **`Hash::check($plaintext, $hashed)` for verification**: never `==` or `===` against the stored hash (timing attack, also wrong - hashes don't equal). `Auth::attempt(['email' => ..., 'password' => $req->password])` does this correctly
-- [ ] **`Hash::needsRehash($hashed)` flow**: on successful login, check if the cost factor in storage is below current config (`config('hashing.bcrypt.rounds')`); if so, rehash and update. Flag missing rehash flow on long-lived auth systems
-- [ ] **Brute-force protection on `/login`, `/password/reset`, `/password/email`**: `->middleware('throttle:auth')` (custom limiter at 5/min by IP), or use Laravel Fortify's built-in throttling. Flag bare auth routes
-- [ ] **Email verification on signup**: `MustVerifyEmail` interface on the `User` model + middleware `verified` on routes that require it; without verification, anyone can sign up with any email and access the app
-- [ ] **Password reset token expiry**: `config/auth.php` `passwords.users.expire` default 60 minutes - confirm appropriate for the threat model
-- [ ] **Two-factor (when present)**: TOTP via `pragmarx/google2fa-laravel` or Fortify's 2FA; recovery codes generated via `Str::random` / `random_bytes`, not `rand`
-- [ ] **No `Log::info('User logged in', ['password' => $req->password])`** that leaks credentials
-- [ ] **Session cookies** (when used): `config/session.php` `secure=true` (prod), `http_only=true`, `same_site='lax'`; signed via `APP_KEY`
-- [ ] **`auth:` middleware before authorization checks**: middleware order matters - auth must run first so `$request->user()` is populated by the time policies run
+Canonical Laravel security patterns live in `laravel-security-patterns` (Sanctum token + SPA, Passport OAuth, password hashing with `Hash::make`/`Hash::check`/`needsRehash`, CSRF flow, rate limiting, Policies + Gates, Form Request `authorize()`, mass-assignment whitelist, file upload validation, webhook signature verification, secrets management, multi-tenancy). Load it for the canonical implementation patterns. This step is the **review-scoped scan** - what the reviewer must verify on the diff. Sub-scans below are organized by concern, not by separate workflow steps.
 
-### Step 7 - Authorization
+**Authentication scan:**
 
-- [ ] **Authorization drift sweep**: every new controller action added in the diff has a Policy check (`$this->authorize('action', $model)`), Gate check (`Gate::authorize(...)`), middleware (`->middleware('can:action,modelBinding')`), OR Form Request `authorize()` override returning a real check. Bare `Order::find($id)->update(...)` without one of those is an IDOR finding
-- [ ] **Policies for owned resources**: every Eloquent model with per-owner data has a Policy; controllers call `$this->authorize('view', $order)` / `'update'` / `'delete'`; Policies check `$user->id === $order->user_id` (or richer rules for shared resources)
-- [ ] **Form Request `authorize()` not defaulting to `true`** on user-data endpoints: `public function authorize(): bool { return $this->user()->can('update', $this->route('order')); }`. Default `true` (or omitting the override) is silently default-allow - flag as `[High]` for any new Form Request on a user-data path
-- [ ] **IDOR**: lookups scope through the principal in the query (`$user->orders()->findOrFail($id)`) rather than `Order::find($id)` then a separate ownership check. Better: every domain method takes the user / tenant context in its repository signature
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenant_id` via global scopes (`Order::addGlobalScope(new TenantScope)`) AND repository / query layer (defense in depth), not at the controller layer alone. `Order::withoutGlobalScope(TenantScope::class)` usages must have an explicit comment justifying cross-tenant access (admin tooling, etc.)
-- [ ] **CORS**: `config/cors.php` `allowed_origins` is an explicit list, not `['*']`. `supports_credentials => true` requires explicit origin list (Laravel rejects `*` + credentials at runtime). Methods and headers minimal
-- [ ] **CSRF / antiforgery**: not required for stateless Sanctum-token APIs (`Authorization: Bearer ...`); required for cookie-session / Sanctum-SPA web routes - Laravel's `VerifyCsrfToken` middleware is on by default. Custom `validateCsrfTokens(except: [...])` exclusions limited to webhook endpoints with their own signature verification
+- [ ] Sanctum `stateful` domains explicit (not `*`); token API `expiration` set to a finite window; `EnsureFrontendRequestsAreStateful` middleware on SPA routes only
+- [ ] `APP_KEY` from env, never committed; committed real value is Critical
+- [ ] `Hash::make` / `Hash::check` only; never `md5` / `sha1` / direct `bcrypt(...)`; `Hash::needsRehash` on long-lived auth systems
+- [ ] `/login`, `/password/reset`, `/password/email` rate-limited (`throttle:auth` 5/min by IP)
+- [ ] `MustVerifyEmail` + `verified` middleware on routes that require it
+- [ ] Password reset token expiry appropriate; recovery codes via `random_bytes` / `Str::random`, never `rand` / `mt_rand`
+- [ ] Session cookies `secure=true`, `http_only=true`, `same_site='lax'` in prod
+- [ ] `auth:` middleware runs before authorization checks (so `$request->user()` is populated)
+- [ ] No `Log::*` call leaks credentials / tokens / Authorization header
 
-### Step 8 - Input Validation and Mass Assignment
+**Authorization scan (auth ≠ authz; per-object scoping required):**
 
-- [ ] **Form Request used for every input-accepting action**: `public function store(StoreOrderRequest $request)` not inline `$request->validate(...)`. Form Requests centralize validation + authorization
-- [ ] **`rules()` covers every field**: missing rules means anything-goes input. Specific rules: `'email' => ['required', 'email:rfc,dns', 'max:255']` (the `dns` flag enforces deliverable domains), `'url' => ['nullable', 'url:http,https']` (only http/https), `'amount' => ['required', 'numeric', 'min:0.01', 'max:99999.99']`, `'role' => ['required', Rule::in(['user', 'manager'])]` (allowlist for role values)
-- [ ] **No `$request->all()` passed to `Model::create` / `update`**: even with `$fillable`, this smells - any future fillable change adds a silent attack surface. Use `Model::create($request->validated())` (only validated fields land on the model)
-- [ ] **No `$guarded = []` on any model**: opens every column to mass assignment. Always whitelist via `$fillable` listing exactly the user-supplied columns. Server-set fields (`user_id`, `tenant_id`, `role`, `is_admin`, `verified_at`, `password`) must be assigned explicitly outside fillable
-- [ ] **No privilege-bearing fields in user-facing input rules / Form Requests**: `role`, `is_admin`, `user_id`, `tenant_id`, `is_active`, `verified_at` - server-set only. If present in `StoreUserRequest::rules()`, reject and require an admin-only path with a separate Form Request
-- [ ] **No identity / cache-key fields in user-facing input**: `id`, `created_at`, `updated_at`, anything used as a cache key. Client-controlled IDs that the server also caches by ID enable cache poisoning - flag as a mass-assignment finding even when the field looks innocuous
-- [ ] **`$model->fill($request->validated())` followed by explicit assignment** for server-set fields: `$order = (new Order)->fill($request->validated()); $order->user_id = $request->user()->id; $order->save();` - explicit > implicit
-- [ ] **`$hidden` on User and similar models**: `protected $hidden = ['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'];` so these fields don't JSON-serialize when the model is implicitly returned. Best path: never return Eloquent models directly - use API Resources. But `$hidden` is the safety net
-- [ ] **No raw Eloquent model returned from controller**: always use API Resources. Returning `$user` serializes every column not in `$hidden`, plus any column added later
-- [ ] **GUID / Ulid path params validated**: `Route::get('/orders/{order:uuid}', ...)` (route model binding by uuid) or explicit validation in Form Request
-- [ ] **File uploads (`$request->file('field')`)**:
-  - File type validated by extension AND magic bytes (Laravel's `mimes:` validation rule checks via `getMimeType()` which uses `finfo` - the actual file magic bytes, not the client-claimed `Content-Type`. Flag any `getClientMimeType()` usage - that IS client-controlled)
-  - Per-file size limit enforced via `'file' => ['max:5120']` (KB) AND PHP's `upload_max_filesize` / `post_max_size` set in `php.ini`
-  - Saved to a non-public disk (`Storage::disk('private')->put(...)`), served via signed URL or controller, not publicly accessible
-  - Filename sanitized via `pathinfo(...)['filename']` AND stored under a generated UUID, not the user-supplied name
-  - The save path canonicalized: `realpath($targetDir . '/' . $name)` and checked: `str_starts_with($real, $targetDir)`. Never `Storage::put($userPath, $contents)` with user-controlled `$userPath`
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: `Storage::download($userControlledPath)`, `Storage::get(request('file'))`, `file_get_contents($baseDir . '/' . $userInput)` without canonicalization is path traversal. Use `Storage::disk('private')->download($savedFilename)` where `$savedFilename` came from the DB, not the request
-- [ ] **Process execution**: `exec($cmd)`, `shell_exec($cmd)`, `passthru($cmd)`, `system($cmd)`, `pcntl_exec`, `popen`, `proc_open` with any user input is RCE - even `exec('convert ' . escapeshellarg($input))` is risky if the binary itself accepts shell-meta in flags. Strict allowlist of binaries, prefer SDK / library calls (e.g., Intervention Image instead of `exec('convert')`)
-- [ ] **`prepareForValidation` strip / canonicalize** for inputs that need cleanup: `protected function prepareForValidation(): void { $this->merge(['notes' => strip_tags($this->notes ?? '')]); }` for HTML-tag stripping (also prevents XSS at storage boundary)
+- [ ] Every new controller action has Policy / Gate / `can:` middleware / Form Request `authorize()` returning a real check; bare `Order::find($id)->update(...)` is an IDOR finding
+- [ ] Form Request `authorize()` does not default to `true` on user-data endpoints (silent default-allow)
+- [ ] Lookups scope through the principal (`$user->orders()->findOrFail($id)`), not `Order::find($id)` + separate ownership check
+- [ ] Multi-tenant queries scoped at the global-scope / query layer, not just at the controller; `withoutGlobalScope` usages have explicit justification comments
+- [ ] CORS `allowed_origins` is an explicit list (Laravel rejects `*` + `supports_credentials=true` at runtime)
+- [ ] CSRF middleware on cookie-session / Sanctum-SPA routes; `validateCsrfTokens(except: [...])` exclusions limited to webhook endpoints with their own signature verification
 
-### Step 9 - Common Laravel Vulnerability Patterns
+**Input validation + mass assignment scan:**
 
-- [ ] **SQL injection via raw query**: `DB::select("SELECT * FROM orders WHERE status = '$status'")` is critical. Use bindings (`DB::select('SELECT * FROM orders WHERE status = ?', [$status])`) or, better, the Eloquent query builder. `whereRaw("status = '$status'")` is the same surface; use `whereRaw('status = ?', [$status])` or `where('status', $status)`
-- [ ] **`orderByRaw($request->input('sort'))` SQL injection**: user-supplied `sort` parameter must validate against an allowlist of column names (`Rule::in(['id', 'created_at', 'total'])`). Otherwise `?sort=1)+UNION+SELECT...` is injection
-- [ ] **`DB::raw($input)` flagged**: even when the raw value comes from `Request::input`, treat it as injection unless explicitly allowlisted - safer to use `DB::raw()` with constants only and pass user input as bindings
-- [ ] **Eloquent `whereIn(`column`, $userArray)` is parameterized** and safe; flag only if the column name itself comes from user input
-- [ ] **Command injection**: any of `exec`, `shell_exec`, `passthru`, `system`, `pcntl_exec`, `popen`, `proc_open` with user-controlled string input is RCE - use SDK / library calls (e.g., Intervention for image conversion) or strict allowlist + `escapeshellarg` per parameter
-- [ ] **`unserialize($userInput)` on untrusted input**: PHP gadget chains via Composer-installed packages; `unserialize` allows object instantiation, triggering `__wakeup` / `__destruct` / `__toString` magic methods on every class in the autoloader. Critical regardless of context. Use `json_decode(...)` for cross-process data
-- [ ] **`Crypt::decrypt` on untrusted input**: Laravel's encryption is authenticated (HMAC), so `Crypt::decryptString` rejects tampered values - safe for round-trip use. But `unserialize` of decrypted data is still risky if the encrypted blob came from a user (e.g., signed URL parameters). Audit `Crypt::decrypt` callsites for the deserialization path
-- [ ] **Blade `{!! $userInput !!}` raw output**: any `{!! $variable !!}` with attacker-controlled `$variable` is XSS. Use `{{ $variable }}` (HTML-encoded by default) or sanitize via `strip_tags` / `Purifier::clean` first. Audit every `{!! ... !!}` in changed Blade files
-- [ ] **`Response::make($html)` HTML constructed via concatenation**: same XSS surface as Blade raw output - prefer `view(...)` with templated escaping
-- [ ] **Templates with user-supplied template source**: Blade compiler running on user-controlled template content is SSTI / RCE-adjacent; templates must come from disk under `resources/views/`, not from the database. Flag any `Blade::compileString($userInput)` / `Blade::render($userInput, ...)`
-- [ ] **`extract($userArray)`** in old code is variable injection (writes any local variable, including loop counters and security flags) - flag as `[High]` for legacy paths
-- [ ] **`include`/`require` with dynamic path**: any `include $userControlled` is LFI / RFI; allowlist the file path
-- [ ] **Open redirect**: `return redirect($userInput);` validated against an allowlist or via `URL::isValidUrl($url)` and host check; reject `//evil.com`, `data:`, `javascript:`, encoded forms. Laravel's `redirect()->intended()` falls back to a default safe URL - prefer it
-- [ ] **`random_bytes` / `Str::random` / `Str::uuid` (NOT `rand` / `mt_rand` / `uniqid` for security-sensitive randomness)**: `random_bytes($n)` is OS-CSPRNG; `Str::random($n)` wraps it with a base62 alphabet; `Str::uuid` (v4) is also CSPRNG. `rand()` / `mt_rand()` are seeded by `microtime` and predictable - never for tokens, password reset codes, session IDs, or anything an attacker could guess
-- [ ] **`hash_equals($expected, $received)` for HMAC / signature comparison**: `==` / `===` on string equality is timing-attack vulnerable. Stripe / GitHub / Slack webhook signature verification must use `hash_equals`. Laravel's signed-URL middleware uses `hash_equals` internally; custom webhook verification must too
-- [ ] **`APP_KEY` rotated when leaked**: `php artisan key:generate` invalidates all signed URLs and encrypted-cookie sessions; flag if a leaked key has not been rotated
-- [ ] **Debug exposure**: `APP_DEBUG=true` in prod leaks `.env`, stack traces, query state via Whoops error page - any commit pushing `APP_DEBUG=true` to a non-local env is `[Critical]`. Telescope route registered without auth in non-local: `Telescope::filter` and `Telescope::auth` (Gate `viewTelescope`) gate access. Same for Horizon (`Gate::define('viewHorizon', ...)`)
-- [ ] **`env()` outside `config/*.php`** is both correctness (`config:cache` makes it return null) AND security (no central audit point for which env vars are consumed where, makes secret rotation harder). Flag every `env(...)` call in app code
-- [ ] **`.env.example` carries placeholder values only** - never real secrets. `git log -p .env.example` for any commit that introduced a real-looking secret is `[Critical]` and requires rotation
-- [ ] **SSRF depth**: when a user-controlled value flows into `Http::get($userUrl)` / `Storage::download($userUrl)` / `file_get_contents($userUrl)`, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). PHP's URL parser quirks: backslash, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks
-- [ ] **Queue payload trust boundary**: queue jobs deserialize their payload via PHP `unserialize` (via `SerializesModels`); if the queue is reachable from untrusted inputs (webhook → queued job), the payload is implicitly trusted. Validate inside the job before acting on payload fields
-- [ ] **Webhook signature verification**: Stripe / GitHub / Slack / Twilio webhooks - signature verified via `hash_equals(...)`, not `==`. Read raw body before any model binding; for Stripe specifically use `\Stripe\Webhook::constructEvent($payload, $sigHeader, $secret)` which does both signature verification and replay-window checking
-- [ ] **Webhook idempotency**: same event delivered multiple times; dedup via stored event ID + DB unique constraint or `Cache::add($eventId, true, $ttl)` (atomic add returns false if key exists)
-- [ ] **`composer audit`** (Composer 2.4+) clean for affected; `composer outdated` reviewed; `roave/security-advisories` in `composer.json` `require-dev` blocks vulnerable packages at install time. Flag unaddressed High/Critical advisories. Dependabot / Renovate active
+- [ ] Every input-accepting action uses a typed Form Request, not inline `$request->validate(...)`
+- [ ] `rules()` covers every field with specific constraints (`email:rfc,dns`, `url:http,https`, `numeric|min:|max:`, `Rule::in([...])` allowlists for enum fields)
+- [ ] `Model::create($request->validated())` not `$request->all()` (even with `$fillable`)
+- [ ] No `$guarded = []` anywhere; explicit `$fillable` whitelist; server-set fields (`user_id`, `tenant_id`, `role`, `is_admin`, `verified_at`, `password`) assigned explicitly outside fillable
+- [ ] No privilege / identity / cache-key fields (`role`, `is_admin`, `id`, `tenant_id`, `created_at`) in user-facing Form Request rules
+- [ ] `$model->fill($validated)` + explicit server-set assignment; `$hidden` populated on User-like models (`password`, `remember_token`, `two_factor_secret`)
+- [ ] No raw Eloquent model returned from controllers (always API Resources)
+- [ ] `prepareForValidation` strips / canonicalizes user input where applicable
+- [ ] **File uploads**: validated by magic bytes (`mimes:` rule via `finfo`) not `getClientMimeType` (client-controlled); per-file size limit; non-public disk (`Storage::disk('private')`); generated UUID filename, not user-supplied; canonicalized save path with base-directory check; virus scan pipeline or accepted-risk documented
+- [ ] **Path traversal**: `Storage::download($savedFilename)` where `$savedFilename` is from DB, never `Storage::download($userInput)`; canonicalize before disk access
+- [ ] **Process execution**: `exec` / `shell_exec` / `passthru` / `system` / `pcntl_exec` / `popen` / `proc_open` with user input is RCE - prefer SDK / library calls; strict allowlist + `escapeshellarg` per parameter when shell call is unavoidable
 
-### Step 10 - Data Protection
+**Common vulnerability pattern scan:**
+
+- [ ] **SQL injection**: `whereRaw` / `DB::raw` / `orderByRaw` / `DB::select` use bindings; user-supplied `sort` validated against `Rule::in([...])` column allowlist
+- [ ] **Deserialization**: `unserialize($userInput)` on untrusted input is RCE-via-gadget-chain (Critical regardless of context); use `json_decode`. Audit `Crypt::decrypt` for downstream `unserialize` of decrypted user-supplied blobs
+- [ ] **XSS / SSTI**: `{!! $userInput !!}` flagged; `Response::make($html)` from concatenation flagged; `Blade::compileString($userInput)` / `Blade::render($userInput)` flagged (templates from disk only)
+- [ ] **Variable injection / LFI**: `extract($userArray)`, `include $userControlled`, `require $userControlled` flagged
+- [ ] **Open redirect**: `redirect($userInput)` validated via `URL::isValidUrl` + host allowlist; reject `//evil.com`, `data:`, `javascript:`, encoded forms; prefer `redirect()->intended()`
+- [ ] **CSPRNG**: `random_bytes` / `Str::random` / `Str::uuid` for security-sensitive randomness; never `rand` / `mt_rand` / `uniqid`
+- [ ] **Timing attacks**: `hash_equals($expected, $received)` for HMAC / signature comparison; never `==` / `===` on string equality
+- [ ] **`APP_KEY` rotation** flagged when leaked (invalidates signed URLs + encrypted cookies)
+- [ ] **Debug exposure**: `APP_DEBUG=true` in non-local is Critical; Telescope / Horizon / Pulse routes gated by Gate (`viewTelescope` / `viewHorizon` / `viewPulse`); Telescope filtered or dev-only
+- [ ] **`env()` outside config files** flagged (correctness + security: no central audit, breaks `config:cache`)
+- [ ] **`.env.example`** carries placeholder values only; real-looking secrets in commit history are Critical and require rotation
+- [ ] **SSRF**: user-controlled URLs into `Http::*` / `Storage::download` / `file_get_contents` validated against allowlist rejecting (a) cloud metadata `169.254.169.254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918, (d) link-local; re-resolve host at request time (DNS rebinding); reject URL parser quirks (backslash, IPv4-in-IPv6)
+- [ ] **Queue payload trust**: webhooks → queued job inherits webhook trust; validate inside `handle()`
+- [ ] **Webhook signature verification** via `hash_equals`; Stripe via `\Stripe\Webhook::constructEvent` (verifies signature + replay window); event-ID idempotency via DB unique constraint or `Cache::add(...)`
+- [ ] **Dependency hygiene**: `composer audit` clean; `roave/security-advisories` in `require-dev`; Dependabot / Renovate active
+
+### Step 7 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest via Laravel's `'encrypted'` cast (`'ssn' => 'encrypted'` in `casts()`) - uses `APP_KEY` AES-256-CBC by default; or DB-native column encryption (MySQL `AES_ENCRYPT` is **not** sufficient - it's not authenticated; prefer Laravel's cast or `Crypt::encryptString`)
 - [ ] **No raw Eloquent model returned from controller**: covered in Step 7 from the mass-assignment angle; here from the data-leak angle. Returning `User` serializes every column not in `$hidden`. Use `UserResource::make($user)` with explicit `toArray()` listing only public fields
@@ -214,7 +196,7 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 - [ ] **Secrets management**: env vars loaded from a secret store (Vault / AWS Secrets Manager / Azure Key Vault) into the runtime env; `.env` in CI / prod sourced from secret store at deploy time, never committed; `php artisan env:encrypt` (Laravel 9+) for committed encrypted env files when secrets must travel with the code
 
 
-### Step 11 - Write Report
+### Step 8 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`.
 
@@ -238,11 +220,8 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent) (Step 3)
 - [ ] Security surface (`bootstrap/app.php` / `Kernel.php`, auth config, Sanctum / Passport config, CORS, session, Policies, changed controllers / actions, Form Requests, models, migrations, routes, .env.example) read directly before applying checklists; prior revision consulted when middleware was removed (Step 4)
 - [ ] OWASP triage (Step 5) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings (Step 5)
-- [ ] Authentication checks applied (Sanctum / Passport / session config, `Hash::make`/`Hash::check`, brute-force throttling, email verification, session cookie flags, middleware order) (Step 6)
-- [ ] **Authorization drift sweep**: every new action / Form Request in the diff has `$this->authorize` / Gate / `can:` middleware / Policy enforcement OR explicit Form Request `authorize()` override; tenant isolation and CORS reviewed (Step 7)
-- [ ] Mass assignment reviewed: `$guarded = []`, `$fillable` whitelist, no `Model::create($request->all())` / `Model::find($id)->update($request->all())`, server-set fields assigned explicitly; file upload checks run if uploads in diff (Step 8)
-- [ ] SQL injection (`whereRaw`, `DB::raw`, `orderByRaw`, `DB::select`), command injection, Blade SSTI, `unserialize`, `extract`, dynamic `include`, open redirect, CSRNG, `hash_equals`, debug exposure, `env()` outside config, `.env.example` regression check, SSRF allowlist depth, webhook idempotency reviewed when the diff touches them (Step 9)
-- [ ] Data protection assessed: PII encrypted at rest, raw model not returned, `$hidden` populated, log redaction, TLS enforcement, secrets management (Step 10)
+- [ ] Step 6 sub-scans applied: Authentication (Sanctum / Passport / session config, `Hash::make`/`Hash::check`, throttling, email verification, session cookies, middleware order), Authorization (Policy / Gate / `can:` middleware / Form Request `authorize()`, IDOR, tenant isolation, CORS), Input Validation + Mass Assignment (`$guarded = []`, `$fillable` whitelist, `$request->validated()` not `$request->all()`, file upload, path traversal, process execution), Common Vulnerability Patterns (SQL injection, deserialization, XSS / SSTI, open redirect, CSPRNG, `hash_equals`, debug exposure, `env()` outside config, SSRF, webhook idempotency, dependency hygiene)
+- [ ] Data protection assessed: PII encrypted at rest, raw model not returned, `$hidden` populated, log redaction, TLS enforcement, secrets management (Step 7)
 - [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented); Combined-finding rule applied where two findings compose on the same action
 - [ ] Every finding includes an attack scenario, "regression risk" rationale, or "topology-dependent" framing - not just "input not validated"
 - [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)

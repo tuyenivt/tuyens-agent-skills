@@ -129,32 +129,25 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 5 - Eloquent / Database Hotspots
 
-Use skill: `laravel-eloquent-patterns` for canonical Eloquent perf patterns.
+Canonical Eloquent perf patterns live in `laravel-eloquent-patterns` (eager-loading strategy, N+1 prevention, `chunkById` / `lazy` / `cursor`, pagination methods, aggregates, `lockForUpdate`, atomic decrements). This step is the **review-scoped scan** for changed queries, models, controllers, services, jobs, Blade views, and API Resources:
 
-Inspect every changed query, model, controller, service, job, Blade view, and API Resource for:
-
-- [ ] **N+1 in queries**: any `$model->relation` access inside a `foreach` / Blade `@foreach` over a parent collection without `->with('relation')` is N+1. Resolve via `Model::with(['rel1', 'rel2.subrel'])->get()`. Same for API Resources accessing `$this->user->name` in `toArray()` - eager-load at the controller before passing to the Resource
-- [ ] **`Model::preventLazyLoading()` in dev**: `AppServiceProvider::boot()` guards against accidental lazy loading by throwing `LazyLoadingViolationException` outside production. Flag missing call as `[Suggestion]`
-- [ ] **`$with` auto-eager-load misuse**: `protected $with = ['user', 'items', 'shipments'];` on a model loads three relations on every fetch even when only `user.name` is needed - over-fetching at the model level. Prefer per-call `with(...)`. Flag any new `$with` declaration without justification
-- [ ] **Multi-relation eager-load explosion**: `Order::with(['items', 'shipments', 'history'])->get()` materializes one query per relation; for join-style flat-row reads, consider `selectRaw` with explicit projection or a dedicated read model
-- [ ] **`Model::all()` on growable tables**: `Order::all()` materializes every row; for any table that grows over time, use `chunkById(1000, fn ($rows) => ...)`, `lazy()` (memory-efficient generator), or `cursor()` (lowest memory, no eager loading - N+1 trap if relations are accessed)
-- [ ] **`$collection->count()` after fetch**: `Order::with('items')->get()->count()` fetches every row to count; use `Order::count()` for raw counts, or `Order::withCount('items')` to get per-row counts via a single SQL aggregate
-- [ ] **Database aggregates over collection aggregates**: `$user->reviews->avg('rating')` loads every review into memory; `$user->reviews()->avg('rating')` runs `AVG(rating)` in SQL. Same for `count`/`sum`/`min`/`max`. Use the relationship's query builder (note the `()`)
-- [ ] **`paginate()` running `COUNT(*)` on huge tables**: `Order::paginate(25)` runs both `SELECT * ... LIMIT 25` and `SELECT COUNT(*) ...`; on a 10M+-row table the COUNT is the bottleneck. Use `simplePaginate` (no count) or `cursorPaginate` (keyset, scales to any size)
-- [ ] **OFFSET pagination on large tables**: `LIMIT 25 OFFSET 100000` scans 100025 rows to skip 100000. Use `cursorPaginate` (`WHERE id > $lastId LIMIT N`) for any list endpoint that can grow
-- [ ] **Missing indexes for `where` / `orderBy` / `groupBy` / FK columns**: any column referenced in those clauses needs an index in the migration. Composite index column order matches the query's leftmost-prefix usage
-- [ ] **`whereRaw`/`orderByRaw`/`selectRaw`/`havingRaw` defeats the query plan cache**: when the SQL fragment changes per request (interpolated values, non-parameterized), MySQL re-plans every query. Use bindings (`whereRaw('JSON_EXTRACT(metadata, ?) = ?', ['$.shipping', $method])`) or the JSON query builder (`->where('metadata->shipping_method', $method)`)
-- [ ] **`LIKE '%term%'` (leading wildcard)**: cannot use a B-tree index, falls back to full-table scan. Use FULLTEXT index + `whereFullText(['col'], $term)` (MySQL 5.6+ InnoDB). For non-text exact-match prefix search, use `LIKE 'term%'` (no leading wildcard - index works) or a generated column with a B-tree
-- [ ] **`firstOrCreate` / `updateOrCreate` race**: under concurrent requests, two callers may race the SELECT and both INSERT, hitting unique-constraint violations. Wrap in `DB::transaction` + `lockForUpdate`, or use `upsert` (Laravel's `Model::upsert([...], ['unique_col'], ['updatable_cols'])` for bulk `INSERT ... ON DUPLICATE KEY UPDATE`)
-- [ ] **`save()` per row in a loop**: `foreach ($rows as $row) { Model::create($row); }` is N round-trips. Use `Model::insert([$row1, $row2, ...])` (skips Eloquent events / timestamps - careful) or `Model::upsert(...)` for bulk; or wrap in a single `DB::transaction` to amortize commit cost
-- [ ] **Soft-delete query overhead**: `SoftDeletes` adds `WHERE deleted_at IS NULL` to every query. Confirm an index exists on `deleted_at` (or composite indexes including it) for hot tables
-- [ ] **`$model->fresh()` / `$model->refresh()` per iteration**: re-fetching a model inside a loop is N round-trips. Reload the whole collection once after the bulk operation, or skip the refresh if the in-memory state is sufficient
-- [ ] **`DB::transaction()` holding row locks across HTTP / queue I/O**: `DB::transaction(function () use ($req) { $order = Order::lockForUpdate()->find($id); Http::post(...); $order->update(...); })` holds the row lock for the upstream's tail latency. Capture inputs, exit transaction, dispatch HTTP / job after commit
-- [ ] **Connection pool sizing**: `php-fpm pm.max_children` × number of replicas must be ≤ MySQL `max_connections` minus headroom for ops / replication. Octane workers count differently - one persistent worker per slot. Flag new replicas / supervisors without checking the pool budget
-- [ ] **Read replica usage**: read-heavy endpoints can route to a read replica via `config/database.php` `read` array. Sticky-after-write protects read-your-own-write flows; flag new high-read endpoints on the writer
-- [ ] **Bulk update via `Eloquent::query()->update(...)` skips events**: `Order::where('status', 'pending')->update(['status' => 'processing'])` does not fire `updating` / `updated` events, does not write `updated_at` unless explicitly included. Intentional in many cases, but flag if the codebase relies on observers for audit logging
-- [ ] **Collection-then-paginate**: `Order::all()->filter(fn ($o) => ...)->paginate(25)` materializes every row into PHP, applies the filter in PHP, then slices. This is full-table memory use to return one page. Push the filter into SQL via `where(...)` / scopes, then `paginate` / `cursorPaginate` on the query builder - the filter runs in MySQL with whatever index applies, and only the requested page hydrates models
-- [ ] **`Cache::remember(...)` callbacks materialize collections - apply Eloquent rules inside the callback**: `Cache::remember('top_users', 3600, fn () => User::all()->sortByDesc('orders_count'))` caches the result, but the `User::all()` inside the callback still loads every row on every cache miss (warmup, eviction, restart). Treat callbacks as hot paths: replace `Model::all()` with paginated / chunked / bounded queries; replace collection sorts with SQL `ORDER BY`; replace collection aggregates with SQL aggregates. The cache amortizes only when the callback's worst case is bounded
+- [ ] N+1 across loops, Blade `@foreach`, and API Resource `toArray()` - eager-load at the controller via `with(...)` (collections) or `withCount(...)` for counts
+- [ ] `Model::preventLazyLoading()` wired in `AppServiceProvider::boot()` for non-prod
+- [ ] No `$with` auto-eager-load without justification (over-fetches every fetch)
+- [ ] `Model::all()` flagged on growable tables - require `chunkById` / `lazy` / `cursor` / `cursorPaginate`
+- [ ] Pagination method matches scale: `paginate()` only when COUNT(*) is acceptable; `simplePaginate` / `cursorPaginate` on large tables; never OFFSET on millions of rows
+- [ ] Filter / sort / group / FK columns referenced in the diff have a backing index migration
+- [ ] `whereRaw` / `orderByRaw` / `DB::raw` use parameter bindings; user-supplied sort columns allowlisted (this is also a security finding - delegate to security workflow)
+- [ ] `LIKE '%term%'` flagged - require FULLTEXT or prefix-only `LIKE 'term%'`
+- [ ] `firstOrCreate` / `updateOrCreate` under concurrency uses `upsert` or `lockForUpdate` inside transaction
+- [ ] Bulk writes via `insert(...)` / `upsert(...)` over per-row `save()` loops
+- [ ] Database aggregates (`$user->reviews()->avg(...)` with parens) over collection aggregates (`$user->reviews->avg(...)` materializes everything)
+- [ ] Soft-deleted hot tables have an index on `deleted_at` (or composite including it)
+- [ ] No `DB::transaction()` holding row locks across HTTP / queue I/O - move side effects outside the transaction
+- [ ] `php-fpm pm.max_children` × replicas ≤ DB `max_connections` minus ops / replication headroom; Octane workers count differently
+- [ ] Bulk `Eloquent::query()->update(...)` skipping observer events flagged when the codebase relies on observers for audit
+- [ ] Collection-then-paginate (`Order::all()->filter(...)->paginate(...)`) flagged - push filter into SQL
+- [ ] `Cache::remember(...)` callback contents follow the same rules - the cache amortizes only when the callback's worst case is bounded
 
 ### Step 6 - Indexes and Migrations
 
@@ -178,28 +171,18 @@ Use skill: `laravel-migration-safety` for safe-migration checks on any change in
 
 ### Step 7 - Queue Throughput, Jobs, and Scheduling
 
-Use skill: `laravel-queue-patterns` for canonical queue patterns.
+Canonical queue patterns live in `laravel-queue-patterns` (job structure, retry/backoff, `acks_late`-equivalent semantics, idempotency, batching, chaining, rate limiting, Horizon, scheduling). This step is the **review-scoped scan** for changed jobs, listeners, dispatch sites, scheduled commands, and `config/queue.php` / `config/horizon.php`:
 
-Inspect every changed job, listener, dispatch site, scheduled command, and `config/queue.php` / `config/horizon.php`:
-
-- [ ] **Queue connection is not `sync` in production**: `QUEUE_CONNECTION=sync` runs jobs inline in the request thread. Flag any production env file or `dispatchSync` usage on user-request paths
-- [ ] **`$tries`, `$backoff`, `$timeout`, `$maxExceptions`, `failed()` set on every job**: defaults are unbounded retries plus a 60s timeout. Set `public int $tries = 3;`, `public array $backoff = [10, 60, 300];` (exponential), `public int $timeout = 120;`, `public int $maxExceptions = 3;`, plus `failed(Throwable $e)` for notification / dead-letter handling
-- [ ] **`retryUntil()` for time-bounded jobs** (e.g., webhook delivery): `public function retryUntil(): DateTime { return now()->addHours(2); }` stops retrying after the deadline regardless of `$tries`
-- [ ] **Scalar IDs in job constructors, not Eloquent models**: `new ProcessPayment($order)` serializes a snapshot of the model into the queue payload (and `SerializesModels` re-fetches anyway). Always pass IDs (`new ProcessPayment($order->id)`) and `Order::findOrFail($this->orderId)` inside `handle()`. Flag jobs with model-typed constructor parameters
-- [ ] **`->afterCommit()` for jobs dispatched inside transactions**: a job dispatched inside `DB::transaction(fn() => ...)` may be picked up by a Redis worker before the transaction commits. Use `dispatch((new ProcessPayment($id))->afterCommit())` or set `public bool $afterCommit = true;` on the job. For projects setting `QUEUE_AFTER_COMMIT=true` globally in `config/queue.php`, `afterCommit` is the default - flag any explicit `withoutCommit()` override
-- [ ] **Idempotent `handle()`**: queues deliver at-least-once; the same job may be processed twice (worker crash after side effect, before ack). Dedup via business key + DB unique constraint, version check, or upsert
-- [ ] **`RateLimited` middleware on third-party-API jobs**: jobs calling external APIs respect the API's rate limit via `Job::middleware()` returning `[new RateLimited('stripe-api')]` (rate limiter defined in `RouteServiceProvider`). Without it, a backlog of jobs hammers the third party and burns retry budget on 429s
-- [ ] **`WithoutOverlapping` middleware for resource-bound jobs**: jobs that mutate a single aggregate (a specific order, a specific user) use `[new WithoutOverlapping($this->orderId)]` to serialize per-key, preventing concurrent updates
-- [ ] **`Bus::batch(...)` for fan-out**: when 1000 jobs need to run as a unit (with progress, all-or-nothing failure), use `Bus::batch([...])->then(...)->catch(...)->dispatch()`. Bare `foreach { dispatch(new Job(...)) }` over a 10k-item list works but loses batch semantics
-- [ ] **`foreach`-dispatch over large lists** without `Bus::batch` AND without `chunkById`: dispatching 50k+ jobs in a single request thread blocks the request on Redis push throughput, balloons memory if the source is `Model::all()`, and gives ops zero progress visibility. Two fixes compose: (a) read the source via `chunkById(1000, fn ($rows) => ...)` so the dispatcher itself doesn't materialize all rows, (b) wrap dispatches in `Bus::batch([...])` so failures track per-batch, not per-orphan-job
-- [ ] **`Bus::chain(...)` for ordered pipelines**: when job B depends on job A's success, chain instead of dispatching B from A's `handle()` (chain handles failures cleanly)
-- [ ] **Horizon supervisor sizing** (Redis queues): `config/horizon.php` `supervisor-1.processes` matches the workload. Auto-scaling balance strategy (`balance => 'auto'`) with `minProcesses` / `maxProcesses` is canonical for variable load. Flag `simple` balance on multi-queue environments (long jobs starve short jobs)
-- [ ] **Per-queue priority**: Horizon's `queue` array order is priority order; high-priority work (`emails`, `notifications`) goes first. Flag everything dumped on `default` when priority matters
-- [ ] **`sync` driver in tests is fine**: `database`/`redis` in CI is unnecessarily slow. Use `Queue::fake()` for unit tests asserting dispatch, or `php artisan queue:work --once` patterns for integration
-- [ ] **`scheduled` jobs with `->withoutOverlapping()` and `->onOneServer()`**: scheduled commands running on multiple replicas race; `withoutOverlapping` (cache lock per command name) and `onOneServer` (one server runs the command per tick) prevent dupes. Flag scheduled commands without these on multi-replica deployments
-- [ ] **Long-running scheduled commands use `runInBackground()`**: keeps the scheduler tick from blocking on a 5-minute job
-- [ ] **Job memory leaks via collection passing**: passing `Collection` of Eloquent models in job constructors balloons payload size and serializes deeply-loaded relations. Pass IDs or scalar arrays; re-fetch in `handle()`
-- [ ] **`dispatch(...)` from web tier to a queue with high backlog**: dispatching to a depth-saturated queue blocks the request on `Redis::push` if Redis is also saturated. Monitor queue depth; alert thresholds defined
+- [ ] `QUEUE_CONNECTION` is not `sync` in production env files; `dispatchSync` not on user-request paths
+- [ ] Every job sets `$tries`, `$backoff`, `$timeout`, `$maxExceptions`, `failed()`; time-bounded jobs add `retryUntil()`
+- [ ] Job constructors take scalar IDs, not Eloquent models or collections (avoids stale-snapshot serialization + payload bloat)
+- [ ] Jobs dispatched inside `DB::transaction` use `->afterCommit()` (or job has `public bool $afterCommit = true;`); flag explicit `withoutCommit()` overrides when `QUEUE_AFTER_COMMIT=true` is global
+- [ ] `handle()` is idempotent (business-key dedup, unique constraint, or upsert)
+- [ ] Third-party-API jobs use `RateLimited` middleware; resource-bound jobs use `WithoutOverlapping`
+- [ ] Fan-out over large lists uses `Bus::batch([...])` (with `chunkById` upstream so the dispatcher itself doesn't materialize all rows); ordered pipelines use `Bus::chain([...])`
+- [ ] Horizon supervisor uses `balance => 'auto'` with `minProcesses` / `maxProcesses`; `simple` balance flagged on multi-queue setups (long jobs starve short jobs); per-queue priority order set
+- [ ] Scheduled commands on multi-replica deploys use `->withoutOverlapping()` + `->onOneServer()`; long-running scheduled commands use `->runInBackground()`
+- [ ] Dispatch path to a saturated queue surfaced if Redis depth alerts are absent
 
 ### Step 8 - HTTP Client / External Calls
 

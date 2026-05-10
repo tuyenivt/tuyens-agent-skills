@@ -116,16 +116,12 @@ Check which the project uses before describing the architecture:
 
 ### Risk Hotspots Specific to Laravel
 
-- **`env()` outside config files:** returns null after `config:cache`. Use `config('...')` in runtime code.
-- **N+1 queries:** in views and serializers; check for `$model->withCount`, `with`, eager loading.
-- **`$guarded = []`:** allows mass assignment of any field; flag immediately.
-- **Soft delete global scope** filtering queries unless `withTrashed()`.
-- **Model events firing inside transactions:** long-running listeners stretch transactions.
-- **`update()` (query builder)** vs `update()` (model instance): query builder skips events.
-- **`dispatch()` with `QUEUE_CONNECTION=sync`** in tests masking async bugs.
-- **CSRF disabled on routes**: check `VerifyCsrfToken` exclusions.
-- **Middleware aliases drift:** named middleware (`auth`, `throttle:api`) defined in `bootstrap/app.php` (L11+) or `Http/Kernel.php` (L10).
-- **Migrating in production**: use `php artisan migrate --force`; missing rollback migrations is a footgun.
+- **Mass assignment + raw input** (`$guarded = []`, `Model::create($request->all())`, `whereRaw($input)`): see `laravel-security-patterns`.
+- **N+1 in Blade / API Resources / loops**, `Model::all()` on growable tables: see `laravel-eloquent-patterns`.
+- **Job dispatched inside `DB::transaction` without `->afterCommit()`**, jobs taking Eloquent models in constructors: see `laravel-queue-patterns`.
+- **Migration safety on hot tables** (rename / drop / NOT NULL on large tables): see `laravel-migration-safety`.
+- **`env()` outside config files** returning null after `config:cache`: see `laravel-security-patterns`.
+- **Eloquent quirks** to flag on first read: soft-delete global scope, `update()` query-builder skipping events, query-builder `update()` vs model `update()`, observers firing inside transactions, middleware-alias drift between Laravel 10 / 11+.
 
 ### First-PR Safe Zones
 
