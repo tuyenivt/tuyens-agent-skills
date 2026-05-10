@@ -8,34 +8,27 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Spec - Evaluate
 
-Score the produced implementation against the spec for a feature. Runs the project's tests, maps every acceptance criterion and NFR to its evidence, aggregates with review-agent verdicts, and emits a single status (`pass` / `needs-fix` / `fail`) plus a numeric score. Result is appended to `.specs/<slug>/evaluation.md` so the user can compare iterations.
-
-This workflow shells out to run tests (`pytest`, `npm test`, `mvn test`, ...). It is opt-in and only runs when invoked explicitly or via `task-spec-orchestrate --with-evaluation`. Letting the system grade itself stays opt-in by design - it executes external commands, so the user must ask for it.
+Score the implementation against the spec for one feature. Runs the project's tests, maps every AC and NFR to evidence, aggregates review verdicts, emits a status (`pass` / `needs-fix` / `fail`) plus a 0-100 score. Result is appended to `evaluation.md` (append-only, so iterations are comparable). Opt-in only - it shells out to test runners.
 
 ## When to Use
 
-- After `task-spec-orchestrate` (or `task-spec-implement`) has produced code and tests for a feature
-- When the user wants to know "does this implementation actually satisfy the spec?"
-- When orchestration uses evaluation as the fix-loop signal (sidecar wiring under `--with-evaluation`)
-- To compare iterations - re-running this workflow appends a new dated section to `evaluation.md`; prior runs are preserved
-
-**Not for:** Reviewing requirements quality (use `task-spec-checklist`), cross-artifact consistency (use `task-spec-analyze`), code review (use `task-code-review`), running tests in CI (this workflow is for ad-hoc evaluation, not pipeline integration).
+After `task-spec-orchestrate` (or `task-spec-implement`) produces code; or as the fix-loop signal under `task-spec-orchestrate --with-evaluation`. Re-running appends a new dated section. Not for: requirements quality (`task-spec-checklist`), cross-artifact consistency (`task-spec-analyze`), code review, or CI integration.
 
 ## Inputs
 
-| Input            | Required | Notes                                                                                            |
-| ---------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| Feature slug     | Yes      | Workflow reads `.specs/<slug>/{spec,plan,tasks}.md` and (optionally) the handoff directory       |
-| `--test-command` | No       | Override `eval-test-runner`'s detected command (e.g., for monorepo workspaces, custom runners)   |
-| `--timeout`      | No       | Pass-through to `eval-test-runner` (default 300s, max 1800s)                                     |
-| `--scope`        | No       | `full` (default) or `tests-only` - skip review-verdict aggregation when no orchestration was run |
-| `--no-write`     | No       | Compute score and emit chat output without appending to `evaluation.md`                          |
+| Input            | Notes                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| `<slug>`         | Required. Aborts if `spec.md` missing.                                                      |
+| `--test-command` | Override `eval-test-runner`'s detected command.                                             |
+| `--timeout`      | Default 300s, max 1800s.                                                                    |
+| `--scope`        | `full` (default) or `tests-only` (skip review aggregation).                                 |
+| `--no-write`     | Compute and print without appending to `evaluation.md`.                                     |
 
-**Insufficient input handling:** If `spec.md` is missing, abort and recommend `task-spec-specify`. If `tasks.md` is missing, the workflow CAN run (evaluation does not strictly require tasks), but emit a one-line `notes` entry that traceability via task `Satisfies:` is unavailable. If the project has no detectable test runner, `eval-test-runner` returns `status: no-runner-detected` - the workflow surfaces this and stops; do not proceed to scoring with `null` test data.
+If `tasks.md` is missing the workflow runs but adds a `notes` line that task-side traceability is unavailable. If no runner is detectable, stop with the recommendation to pass `--test-command` - never score on null test data.
 
 ## Workflow
 
@@ -47,66 +40,64 @@ Use skill: behavioral-principles
 
 Use skill: stack-detect
 
-Capture stack and `Stack Type` so `eval-test-runner` knows which test command to use.
-
-### STEP 3 - Resolve Artifact Paths
+### STEP 3 - Resolve Paths
 
 Use skill: spec-artifact-paths
 
-Resolve `spec_path`, `plan_path`, `tasks_path`, `handoffs_dir`, and `evaluation_path` for the feature slug.
+### STEP 4 - Gather Changed Files
 
-### STEP 4 - Gather Changed Files (if orchestration ran)
-
-If `handoffs_dir` exists and contains envelopes, collect the union of `outputs:` lists from all `step: dev` and `step: fix` envelopes. This becomes `changed_files` passed to `eval-spec-coverage`.
-
-If `handoffs_dir` is empty or missing (the user ran `task-spec-evaluate` standalone after manual implementation), `changed_files` is `null` and coverage will be searched repo-wide with a notes flag.
+If `handoffs_dir` exists, union the `outputs:` fields of all `step: dev` and `step: fix` envelopes. Pass as `changed_files` to coverage. If empty/missing, pass `null` (coverage searches repo-wide and notes the broader scope).
 
 ### STEP 5 - Run Tests
 
 Use skill: eval-test-runner
 
-Pass `--test-command` and `--timeout` through if provided. Capture the structured `test_run` output.
+Pass through `--test-command` and `--timeout`. Capture `test_run`.
 
-If `test_run.status` is `no-runner-detected` -> stop, surface the gap to the user with the recommendation to provide `--test-command`. Do not score with no test data.
+- `status: no-runner-detected` -> stop, surface, recommend `--test-command`.
+- `status: error` -> continue; the scorer will hard-fail with a meaningful report rather than silent abort.
 
-If `test_run.status` is `error` -> continue to scoring, but the score will be forced to `fail` by `eval-scorer`'s hard-fail rule. The user gets a meaningful error report rather than a silent abort.
-
-### STEP 6 - Map Spec Coverage
+### STEP 6 - Map Coverage
 
 Use skill: eval-spec-coverage
 
-Pass `spec_path`, `plan_path`, `tasks_path`, `test_run`, `changed_files`. Capture the structured `spec_coverage` output (per-AC verdicts, per-NFR verification, drift report, summary counts).
+Pass `spec_path`, `plan_path`, `tasks_path`, `test_run`, `changed_files`. Capture `spec_coverage`.
 
-### STEP 7 - Collect Review Verdicts (when scope is `full`)
+### STEP 7 - Collect Review Verdicts (scope == full)
 
-If `--scope` is `tests-only`, skip this step (`review_verdicts = null`).
+If `--scope tests-only`, set `review_verdicts = null` and skip.
 
-Otherwise: list `handoffs_dir`, find all envelopes with `step: review`. The latest one drives scoring:
-
-- Read its `status`, count blockers from the body, capture `proposed_amendments`.
-- Construct the `review_verdicts` object passed to `eval-scorer`.
-
-If no review envelope exists (orchestration never ran review, e.g. it was invoked with `--skip-review`, or implementation was manual without orchestration), pass `review_verdicts = null`. The scorer redistributes the review weight.
+Otherwise: find the latest `step: review` envelope in `handoffs_dir`. Capture `status`, body blocker count, `proposed_amendments`. If no review envelope exists, pass `null` (scorer redistributes weight).
 
 ### STEP 8 - Score
 
 Use skill: eval-scorer
 
-Pass `test_run`, `spec_coverage`, `review_verdicts`. Capture the `score` block.
+Pass `test_run`, `spec_coverage`, `review_verdicts`. Capture `score`.
 
-### STEP 9 - Write `evaluation.md` (unless `--no-write`)
+### STEP 9 - Write evaluation.md (unless `--no-write`)
 
-Append a new dated section to `evaluation.md`. Existing content is preserved verbatim - this is an append-only audit trail.
+Append-only. Each invocation adds a new section using the template below.
+
+### STEP 10 - Final Summary
+
+One-line headline (`Status: <status>, score <N>/100, iteration <K>`), recommendation, path to `evaluation.md`. Then:
+- `pass`: stop.
+- `needs-fix`: top 3 blocking issues; recommend `task-spec-orchestrate <slug> --with-evaluation` (the orchestrator picks up the sidecar and loops).
+- `fail`: list hard-fail triggers; recommend fixing the structural issue (drift, violated AC) or escalating.
+
+## Output Format
+
+`evaluation.md` section template:
 
 ```markdown
 ## Evaluation - <YYYY-MM-DD HH:MM:SS>
 
 **Status:** pass | needs-fix | fail
 **Overall score:** <int>/100
-**Iteration:** <count of prior evaluations + 1 for this slug>
+**Iteration:** <count>
 
 ### Signals
-
 | Sub-score | Value          | Weight                |
 | --------- | -------------- | --------------------- |
 | Tests     | <int>          | 30                    |
@@ -114,93 +105,55 @@ Append a new dated section to `evaluation.md`. Existing content is preserved ver
 | Review    | <int or "n/a"> | 20 (or redistributed) |
 
 ### Acceptance Criteria
-
 | ID  | Verdict   | Evidence                                          |
 | --- | --------- | ------------------------------------------------- |
 | AC1 | covered   | test:should_upload_avatar_when_user_authenticated |
 | AC2 | uncovered | -                                                 |
-| ... | ...       | ...                                               |
 
 ### NFRs
-
 | Category | Verdict    | Evidence                  |
 | -------- | ---------- | ------------------------- |
 | latency  | unverified | (no load test in plan.md) |
-| security | verified   | test:should_reject_unauth |
 
 ### Out-of-Scope Drift
-
-- <none, or list of files/tests touching out-of-scope items>
+- <none, or files/tests touching out-of-scope>
 
 ### Hard-Fail Triggers
-
 - <list, or "none">
 
 ### Blocking Issues
-
-- <one line per issue, capped at 10>
+- <one line per issue, max 10>
 
 ### Recommendation
-
-<single sentence from scorer>
+<one sentence from scorer>
 
 ### Source Data
-
 - Test command: <command>
 - Test counts: passed=X failed=Y skipped=Z errored=W (duration <N>s)
 - Changed files considered: <count or "repo-wide">
 - Review envelope: <filename or "n/a">
 ```
 
-If `--no-write`, emit the same content to chat without writing.
-
-### STEP 10 - Emit Final Summary
-
-Print to chat:
-
-- A one-line headline (`Status: <status>, score <N>/100, iteration <K>`)
-- The Recommendation line from the scorer
-- The path to `evaluation.md` (so the user can read the full report)
-- If `pass`: nothing further. The user may ship.
-- If `needs-fix`: the top 3 blocking issues and a suggestion to re-invoke `task-spec-orchestrate <slug> --with-evaluation` (the orchestrator will see the sidecar score and loop).
-- If `fail`: the hard-fail triggers and a suggestion to either fix the structural issue (drift, violated AC) or escalate.
-
-## Output Format
-
-The chat output is a brief summary; the durable artifact is `evaluation.md`. Both follow the structure shown in STEP 9. Total chat output should fit within ~30 lines so the user sees the verdict at a glance.
-
-## Rules
-
-- The workflow MUST run all three sub-skills in order - skipping coverage or scoring produces no usable verdict
-- `evaluation.md` is append-only. Prior sections are never deleted, edited, or reordered. Each invocation adds a new dated section.
-- The workflow does NOT modify `spec.md`, `plan.md`, `tasks.md`, source code, tests, or handoff envelopes. It is read-only against everything except `evaluation.md`.
-- The scorer's hard-fail signals are surfaced verbatim - the workflow does not soften the status. A `fail` is reported as `fail` even if the user prefers good news.
-- Test running is opt-in by virtue of this workflow being explicitly invoked. The workflow does not auto-run on file save or other triggers; it runs once per invocation.
+Chat output mirrors this in compressed form (~30 lines).
 
 ## Self-Check
 
-- [ ] STEP 1 loaded `behavioral-principles` before any other delegation
-- [ ] STEP 2 detected stack; `eval-test-runner` could pick a test command
-- [ ] STEP 3 resolved artifact paths and confirmed `spec.md` exists
-- [ ] STEP 4 gathered `changed_files` from handoffs (or set to null with note)
-- [ ] STEP 5 ran tests; `test_run.status` is captured (and `no-runner-detected` was handled by stopping)
-- [ ] STEP 6 produced a verdict for every AC and every NFR in the spec
-- [ ] STEP 7 collected review verdicts, or explicitly set them to null
-- [ ] STEP 8 produced an aggregate score with hard-fail triggers populated
-- [ ] STEP 9 appended a new dated section to `evaluation.md` (unless `--no-write`)
-- [ ] No file outside `.specs/<slug>/evaluation.md` was modified
+- [ ] Loaded `behavioral-principles` first
+- [ ] Detected stack; runner could pick a command
+- [ ] Resolved paths; confirmed `spec.md` exists
+- [ ] Gathered `changed_files` (or set to null with note)
+- [ ] Ran tests; handled `no-runner-detected` by stopping
+- [ ] Produced a verdict for every AC and every NFR
+- [ ] Collected review verdicts or set them to null
+- [ ] Score includes `hard_fail_triggers`
+- [ ] `evaluation.md` appended (unless `--no-write`)
+- [ ] No files modified outside `.specs/<slug>/evaluation.md`
 
 ## Avoid
 
-- Skipping STEP 5 when no test runner is detected and "scoring on coverage alone" - the score is meaningless without a test signal
-- Editing prior sections of `evaluation.md` - the file is an audit trail; comparing iterations is the whole point
-- Treating `proposed_amendments` from review or coverage as TODOs to apply here - amendments require user routing through `task-spec-clarify` / `task-spec-plan` / `task-spec-tasks`
-- Auto-running this workflow on a timer or hook - it is opt-in
-- Reporting `pass` when `ac_violated > 0` or `out_of_scope_drift > 0` - hard-fail rules override the headline number
-- Substituting a different test runner to coax a passing result - the runner is whatever the project specifies; if it cannot run, that is the verdict
-
-## Notes
-
-- This workflow is the natural last step of `task-spec-orchestrate --with-evaluation`, which wires the sidecar score as the loop signal. It is also useful standalone after manual implementation, where `changed_files` is null and the report focuses on test + coverage signals.
-- The append-only `evaluation.md` makes iteration progress visible: a feature that goes from `score 62 / needs-fix` to `score 91 / pass` over three iterations has its history right in the file.
-- Pairs with `task-spec-analyze` (consistency check, structural) and `task-spec-checklist` (requirements quality, pre-implementation). `task-spec-evaluate` is the post-implementation grade; the other two are pre-implementation gates.
+- Scoring on coverage alone when no runner is detected.
+- Editing prior `evaluation.md` sections.
+- Applying `proposed_amendments` here (they require routing through clarify/plan/tasks).
+- Reporting `pass` when `ac_violated > 0` or `out_of_scope_drift > 0`.
+- Substituting a different runner to coax a passing result.
+- Auto-running on a timer or hook (this workflow is opt-in).

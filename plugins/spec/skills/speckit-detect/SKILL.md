@@ -9,57 +9,32 @@ user-invocable: false
 
 # Speckit Detection
 
-> This atomic is composed by `task-spec-*` workflows - do not invoke directly. Primary consumers: every workflow in the `spec` plugin.
-
-## When to Use
-
-- As the first detection step (after `behavioral-principles`) inside any `task-spec-*` workflow
-- Before deciding whether the workflow should delegate to a `/speckit.*` command or write artifacts to `.specs/<slug>/` itself
-- Once per workflow run; cache the result for the duration of the run
+> Composed by `task-spec-*` workflows. Run once per workflow run, after `behavioral-principles`. Read-only.
 
 ## Rules
 
-- Detection MUST be evidence-based - check for marker files or CLI presence, do not infer from project name or chat context
-- Output the chosen mode AND the evidence used, so consuming workflows can explain themselves
-- If both signals are present, prefer **speckit-installed** mode (Spec Kit owns artifacts when present)
-- If detection is ambiguous (e.g., partial `.specify/` directory), surface the ambiguity and ask the user; do not silently pick
-- Never modify the project during detection - this is a read-only inspection
+- Evidence-based only: marker files or CLI presence. Never infer from project name or chat.
+- Output mode + evidence so the consuming workflow can explain itself.
+- If `.specify/` exists at all, prefer **speckit-installed** (Spec Kit owns artifacts).
+- CLI on `$PATH` alone is not enough: project must also have `.specify/`.
 
-## Detection Procedure
+## Decision Table
 
-### Step 1 - Marker file check (primary)
+| `.specify/` | `.specs/` | Mode               | Note                                                      |
+| ----------- | --------- | ------------------ | --------------------------------------------------------- |
+| present     | -         | speckit-installed  | -                                                         |
+| present     | present   | speckit-installed  | Flag duplication; existing `.specs/` not silently dropped |
+| absent      | present   | standalone         | -                                                         |
+| absent      | absent    | standalone         | New project; first write creates `.specs/`                |
+| partial     | -         | standalone         | Recommend `speckit init` if user intended speckit mode    |
 
-Look for these in the project root:
-
-| Marker                            | Signal                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `.specify/` directory exists      | Spec Kit project structure - **speckit-installed**                       |
-| `.specify/memory/constitution.md` | Spec Kit constitution present - strengthens speckit-installed verdict    |
-| `.specs/` directory exists        | This plugin's standalone artifact root - **standalone** (already in use) |
-| Neither directory present         | Either mode is possible - default to **standalone**                      |
-
-### Step 2 - CLI check (secondary)
-
-Check whether `speckit` is available on `$PATH`:
+CLI check (informational, recorded in evidence):
 
 ```bash
 command -v speckit >/dev/null 2>&1 && echo "speckit-cli-present"
 ```
 
-A present CLI alone is NOT sufficient to choose speckit-installed mode - the project must also have `.specify/`. A user-global CLI install with no project structure means the user has Spec Kit available but has not initialized this project with it; standalone mode still applies until they run `speckit init` (or equivalent).
-
-### Step 3 - Mode decision
-
-| Evidence                                  | Mode                                                 |
-| ----------------------------------------- | ---------------------------------------------------- |
-| `.specify/` present (with or without CLI) | speckit-installed                                    |
-| `.specs/` present, no `.specify/`         | standalone                                           |
-| Neither present                           | standalone (new)                                     |
-| Both present                              | speckit-installed; flag the duplication for the user |
-
 ## Output Format
-
-Emit a structured result the calling workflow can parse:
 
 ```yaml
 mode: speckit-installed | standalone
@@ -67,25 +42,21 @@ evidence:
   specify_dir_present: true | false
   specs_dir_present: true | false
   speckit_cli_on_path: true | false
-  constitution_present: true | false
+  constitution_present: true | false   # .specify/memory/constitution.md
 notes: |
-  Free-form note. Required when both .specify/ and .specs/ exist (explain duplication),
-  or when the user should be aware of an unusual configuration.
+  Required when both .specify/ and .specs/ exist, or when configuration is unusual.
 next_action_hint: |
-  speckit-installed -> "delegate to /speckit.<command>; pre/post-process with our atomics"
-  standalone        -> "use spec-artifact-paths to resolve .specs/<slug>/* and write artifacts ourselves"
+  speckit-installed -> delegate to /speckit.<command>; pre/post-process with our atomics
+  standalone        -> use spec-artifact-paths to resolve .specs/<slug>/* and write artifacts
 ```
 
-## Handling Edge Cases
+## Edge Cases
 
-- **Neither directory, but user explicitly invoked a `task-spec-*` workflow:** standalone mode; the workflow itself (or `spec-artifact-paths`) will create `.specs/` on first write.
-- **`.specify/` exists but is empty or partial:** treat as ambiguous - report `mode: standalone` with a note recommending `speckit init` if the user intended speckit-installed mode.
-- **Monorepo with multiple sub-projects:** detection runs against the working directory the workflow is invoked from. If sub-projects have different states, surface this and ask which scope applies.
-- **`.specs/` and `.specify/` both present:** the project may be migrating between modes. Choose speckit-installed (Spec Kit is the more opinionated owner) and note the existing `.specs/` content so it is not silently abandoned.
+- **Monorepo:** detect against the workflow's working directory; if sub-projects diverge, ask which scope applies.
+- **Ambiguous `.specify/`** (empty or partial): treat as standalone, surface the ambiguity.
 
 ## Avoid
 
-- Running `speckit init` or any other state-changing command during detection
-- Picking a mode based on what the workflow "wants" rather than what the project shows
-- Caching detection across separate workflow runs - re-detect every run, cheap and safe
-- Assuming CLI presence implies project initialization
+- State-changing commands during detection (`speckit init`, etc.).
+- Picking a mode based on what the workflow wants vs. what the project shows.
+- Caching across separate workflow runs (re-detect every run).

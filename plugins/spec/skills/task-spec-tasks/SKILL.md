@@ -8,26 +8,20 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Spec - Tasks
 
-Decomposes a feature plan into an ordered task list that `task-spec-implement` (or stack-specific `task-*-new` workflows in `--spec` mode) can execute one task at a time. Output is `tasks.md`: phase-grouped tasks, dependency order, sizes, scope flags, and explicit traceability back to acceptance criteria. Each task is small enough to be implemented and reviewed independently.
+Decomposes a feature plan into an ordered task list that `task-spec-implement` (or stack `task-*-new` workflows in `--spec` mode) can execute one task at a time. Output is `tasks.md`: phase-grouped, dependency-ordered, sized, scope-flagged, with explicit traceability back to ACs/NFRs.
 
 ## When to Use
 
-- After `task-spec-plan` for a feature whose `plan.md` exists and is stable
-- When re-tasking a feature whose plan has materially changed
-- Before invoking `task-spec-implement` (the implement workflow consumes `tasks.md` directly)
-
-**Not for:** Sprint-level scope breakdown across multiple features (use `task-breakdown-story` from the `delivery` plugin if installed), feature requirement capture (use `task-spec-specify`), architecture or API design (use `task-spec-plan`), code generation (use `task-spec-implement`).
+After `task-spec-plan` (plan must be stable), to re-task a feature whose plan changed materially, or before `task-spec-implement`. Not for: cross-feature sprint planning (`task-breakdown-story` from `delivery`), requirements (`task-spec-specify`), architecture (`task-spec-plan`), code (`task-spec-implement`).
 
 ## Inputs
 
-- The feature slug (required) - workflow reads `.specs/<slug>/plan.md` (and `spec.md` for traceability)
-- Optional `--retask` to regenerate when `tasks.md` already exists; defaults to amend mode (preserve, append revision)
-
-**Insufficient input handling:** If `plan.md` does not exist, abort and recommend `task-spec-plan`. If `spec.md` is missing (an unusual state), abort and recommend `task-spec-specify`. If the plan has unresolved **Proposed Spec Amendments**, surface them and ask the user whether to task against the current plan or pause for `task-spec-clarify`.
+- `<slug>` (required). Aborts if `plan.md` or `spec.md` missing (recommends the upstream workflow). If plan has unresolved Proposed Spec Amendments, ask whether to task against current plan or pause for `task-spec-clarify`.
+- `--retask` to regenerate when `tasks.md` exists; default mode is amend.
 
 ## Workflow
 
@@ -39,151 +33,116 @@ Use skill: behavioral-principles
 
 Use skill: stack-detect
 
-Capture the detected stack so task naming and phase emphasis can adapt (e.g., a frontend-only feature has no DB phase).
-
 ### STEP 3 - Detect Mode
 
 Use skill: speckit-detect
 
-Capture `mode`. Subsequent steps branch on it.
-
-### STEP 4 - Resolve Artifact Paths
+### STEP 4 - Resolve Paths
 
 Use skill: spec-artifact-paths
 
-Capture `spec`, `plan`, and `tasks` paths plus existence flags. If `plan.md` does not exist, abort with a recommendation to run `task-spec-plan`. If `tasks.md` already exists, ask the user whether to **replace**, **amend**, or **abort** - default to amend.
+If `tasks.md` exists, default to **amend**; offer replace/abort. Replacing a tasks.md with non-`[ ]` Status markers needs explicit confirmation.
 
-### STEP 5 - Read Plan and Spec
+### STEP 5 - Read Plan + Spec
 
-Read `plan.md` end-to-end. Cross-reference `spec.md` to keep traceability:
-
-- For every API contract entry in the plan, mark which acceptance criteria it satisfies
-- For every data model change, identify the migration phase (expand, backfill, contract)
-- For every NFR with a verification step, prepare a corresponding validation task
-- Read the Out-of-Scope section - tasks must not re-introduce excluded items
+Map plan to spec for traceability:
+- Each plan API contract entry -> ACs it satisfies.
+- Each data-model change -> migration phase (expand / backfill / contract).
+- Each NFR with verification -> a validation task.
+- Out-of-scope -> hard fence; tasks must not re-introduce.
 
 ### STEP 6 - Branch on Mode
 
-#### Mode: speckit-installed
+**speckit-installed:** run STEP 7 first so Spec Kit gets the same complexity coverage. Bundle as a brief, instruct user to run `/speckit.tasks`. Post-process by running STEP 9 traceability check; surface gaps as suggestions, no silent edits. Skip to STEP 11.
 
-1. Pre-process: run the Complexity Signal Scan (STEP 7) so Spec Kit has the same hidden-cost coverage. Bundle the scan output as a brief.
-2. Delegate by instructing the user to run `/speckit.tasks` (or invoke programmatically). Spec Kit owns artifact writing.
-3. Post-process: read Spec Kit's task output and run the Traceability Check (STEP 9) over it. Surface gaps as suggestions; do not silently edit.
-4. Skip to STEP 11.
-
-#### Mode: standalone
-
-Continue to STEP 7.
+**standalone:** continue.
 
 ### STEP 7 - Complexity Signal Scan
 
-Before generating any task, scan for hidden complexity that inflates effort or introduces risk. Reuse the same atomics that `task-breakdown-story` (delivery plugin) reuses, so output quality is consistent regardless of which workflow the user invokes:
+Reuse the same atomics that `task-breakdown-story` uses, so output quality is consistent across workflows:
 
 Use skill: review-change-risk
 Use skill: review-blast-radius
 Use skill: dependency-impact-analysis
 Use skill: ops-backward-compatibility
 
-Conditionally:
+Conditional:
+- `backend-db-migration` if plan touches schema.
+- `ops-feature-flags` if high risk or gradual rollout.
+- `failure-propagation-analysis` if new cross-service calls.
 
-- Use skill: backend-db-migration - if the plan touches database schema
-- Use skill: ops-feature-flags - if the plan flags high risk or gradual rollout
-- Use skill: failure-propagation-analysis - if the plan introduces new cross-service calls
-
-Capture which signals apply. The signals drive task size and reveal tasks that would otherwise be missed (migrations, observability, rollback verification, contract tests).
+Signals drive task size and surface tasks otherwise missed (migrations, observability, rollback verification, contract tests).
 
 ### STEP 8 - Generate Tasks
 
-**Primary organization is by user story** so each story phase is an independently testable, shippable increment. Phase 1 (Setup) and Phase 2 (Foundational) are shared prerequisites; Phase 3+ is one phase per user story in priority order (P1, P2, P3...) from `spec.md`. The final phase is Polish / cross-cutting concerns. **MVP = User Story 1 alone.**
+**Organize by user story.** Phase 1 (Setup) and Phase 2 (Foundational) are shared prerequisites; Phase 3+ is one phase per story in priority order; final phase is Polish. **MVP = User Story 1 alone.**
 
-For each task:
+Per task:
+- **ID:** `T<NNN>` - stable identifier.
+- **Story label:** `[US1]`/`[US2]`/... required for story-phase tasks; not used for Setup/Foundational/Polish.
+- **Parallel marker:** `[P]` ONLY if disjoint files AND no incomplete dependencies.
+- **Name:** action-oriented, with the **exact target file path**.
+- **Type:** `data | service | api | frontend | validation | ops`.
+- **Size:** S / M / L / XL (relative t-shirt; convert to time only if asked). XL flags for further breakdown.
+- **Scope:** `must-have | nice-to-have | risk-reduction`.
+- **Satisfies:** AC IDs or NFR category.
+- **Depends on:** task IDs or `none`.
+- **Status:** `[ ]` on first write.
 
-- **ID:** `T<NNN>` - stable identifier referenced by `task-spec-implement` and progress markers
-- **Story label:** `[US1]` / `[US2]` / ... - REQUIRED for tasks inside a user-story phase; NO label for Setup, Foundational, or Polish phases
-- **Parallel marker:** `[P]` - include ONLY if the task touches different files than its peers and has no incomplete dependencies
-- **Name:** Short, action-oriented (`Implement <X>`, `Add <Y>`, `Migrate <Z>`) - MUST include the exact target file path
-- **Type:** `data` | `service` | `api` | `frontend` | `validation` | `ops`
-- **Description:** One or two sentences - what to build, not how
-- **Satisfies:** Acceptance criterion IDs from `spec.md` (e.g., `AC1, AC3`) or NFR category
-- **Depends on:** Other task IDs (or `none`)
-- **Size:** S (small / single concern), M (medium / a few related concerns), L (large / multiple coordinated changes), XL (too large - flag for breakdown). These are relative t-shirt sizes, not calendar estimates - consuming workflows turn them into time only when the user explicitly asks.
-- **Scope:** `must-have` | `nice-to-have` | `risk-reduction`
-- **Status:** `[ ]` (set by `task-spec-implement` as it progresses; always `[ ]` on first write)
-
-**One-line task format (the ONLY rendering - do not duplicate as a separate detail block below):**
+**One-line format (the only rendering - never duplicate as a detail block):**
 
 ```text
-- [ ] T<NNN> [P?] [US?] <Name with file path> - <type>, <size>, <scope>. Satisfies <ACs/NFRs>. Deps: <task ids or none>.
-  <One-sentence description if name alone is not self-explanatory.>
+- [ ] T<NNN> [P?] [US?] <Name with file path> - <type>, <size>, <scope>. Satisfies <ACs/NFRs>. Deps: <ids or none>.
+  <One sentence ONLY when name + path do not convey what to build.>
 ```
 
-The metadata (type, size, scope, satisfies, deps) lives on the same line as the checkbox. Use the optional indented description sparingly - only when the name + file path do not convey what to build. Do **not** emit a separate `### T<NNN> - <Name>` heading block repeating the same fields below; that duplication is the most common bloat in spec-driven tasks.md files and makes them unreadable at scale.
+The most common bloat in spec-driven `tasks.md` files is duplicating each task as a `### T<NNN>` heading block repeating the same fields - **do not** do this; the one-line form carries every required field.
 
 Examples:
-
-- `- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.`
-- `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.ts - service, M, must-have. Satisfies AC5. Deps: T001.`
-- `- [ ] T012 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.`
-- `- [ ] T014 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T012.`
+```
+- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
+- [ ] T005 [P] Implement auth middleware in src/middleware/auth.ts - service, M, must-have. Satisfies AC5. Deps: T001.
+- [ ] T012 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.
+- [ ] T014 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T012.
   Coordinates validation, persistence, and external storage calls; thin wrapper over the repository.
+```
 
-Phase structure (omit empty phases):
+**Phases (omit empty):**
 
-| Phase                             | Typical contents                                                                                                                                   |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Setup**                      | Project init, dependency setup, lint/test scaffolding (no story label)                                                                             |
-| **2. Foundational**               | Blocking prerequisites for ALL stories: migrations (expand phase), shared interfaces, feature-flag scaffolding (no story label)                    |
-| **3+. User Story `<n>` (P`<n>`)** | One phase per story in priority order. Within: data → service → api/frontend → validation, all tagged `[USn]`. Each phase = independent increment. |
-| **Final. Polish**                 | Cross-cutting: observability hooks, runbooks, perf tuning, deprecation removals, contract-phase migrations (no story label)                        |
+| Phase                       | Contents                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **1. Setup**                | Project init, dependency setup, lint/test scaffolding (no story label).                                                   |
+| **2. Foundational**         | Blocking for ALL stories: migrations (expand), shared interfaces, feature-flag scaffolding (no story label).              |
+| **3+. User Story `<n>`**    | One phase per story (P1, P2, ...). Within: data -> service -> api/frontend -> validation, all `[USn]`. Independent increment. |
+| **Final. Polish**           | Cross-cutting: observability, runbooks, perf tuning, deprecation removals, contract-phase migrations.                     |
 
 Rules:
-
-- Every story phase must be independently completable - do not let US2 silently depend on US3 work. Cross-story dependencies belong in Foundational.
-- Every task must trace to a spec acceptance criterion or NFR via `Satisfies`. A task with no traceability is either a bug in the plan or scope creep - flag it, do not silently include it.
-- XL tasks must be flagged with a recommendation to break down further.
-- Tests are **tasks**, not an afterthought. Every api/service task should have a paired validation task in the same story phase.
-- Mark `[P]` only when the task is truly safe to parallelize: different files AND no `Depends on` ahead of it in the queue.
-- If `delivery` plugin is installed and the breakdown spans multiple sprints, soft-suggest invoking `task-breakdown-story` for cross-feature sequencing - do not run it automatically.
+- Each story phase is independently completable. Cross-story prereqs hoist to Foundational.
+- Every task traces to an AC or NFR via `Satisfies`. No traceability -> plan bug or scope creep; flag, do not silently include.
+- Tests are tasks, not afterthoughts. Each api/service task gets a paired `validation` task in the same phase.
+- If `delivery` plugin is installed and the breakdown spans sprints, soft-suggest `task-breakdown-story`. Do not auto-run.
 
 ### STEP 9 - Traceability Check
 
 Verify before writing:
+- Every AC is `Satisfies`-targeted by at least one task.
+- Every NFR with a verification has a matching `validation` task.
+- Every plan API endpoint has implementation + validation tasks.
+- No task touches out-of-scope.
+- Dependency graph is acyclic; at least one task has `Depends on: none`.
 
-- Every acceptance criterion in `spec.md` is the `Satisfies` target of at least one task
-- Every NFR with a verification step in `plan.md` has a matching validation task
-- Every plan API endpoint has at least one implementation task and one validation task
-- No task touches an out-of-scope item
-- The dependency graph is acyclic and has at least one task with `Depends on: none` to start
-
-For each gap:
-
-- Add the missing task (preferred when plan is clear)
-- Stop and ask the user (when the gap implies a plan change)
-- Record as a **proposed plan amendment** in the output (when minor, the user can re-run `task-spec-plan` later)
+For each gap: add the missing task (preferred), stop and ask (if it implies a plan change), or record as Proposed Plan Amendment.
 
 ### STEP 10 - Critical Path and MVP
 
-Identify two things:
-
-- **Critical path:** the longest chain of dependent tasks across the whole feature. Drives `task-spec-implement` ordering and reveals where to focus risk reduction.
-- **MVP scope:** Setup + Foundational + User Story 1 (P1) only. This is the smallest shippable slice. Surface this explicitly in the summary so the user can choose to ship US1 before starting US2.
+- **Critical path:** longest dependent chain across the whole feature. Drives implement ordering and risk focus.
+- **MVP:** Setup + Foundational + US1. Surface explicitly so the user can ship US1 before starting US2.
 
 ### STEP 11 - Write tasks.md and Summarize
 
-Write to the resolved path using the template in **Output Format** below. In amend mode, preserve prior text and append a dated revision section; never delete prior content (especially completed-task markers).
-
-Print a short summary:
-
-- Path written
-- Task count, breakdown by phase, XL count, must-have count
-- Critical path
-- Mode used (speckit-installed or standalone)
-- Any proposed plan amendments
-- Suggested next command: `task-spec-implement <slug>`
+Append-only in amend mode (preserve completed-task markers). Print: path, task count, phase breakdown, XL count, must-have count, critical path, mode, proposed plan amendments, next command (`task-spec-implement <slug>`).
 
 ## Output Format
-
-`tasks.md` template (standalone mode; speckit-installed mode defers to Spec Kit's template):
 
 ```markdown
 # Tasks - <Feature Name>
@@ -195,26 +154,20 @@ Print a short summary:
 - **Last updated:** <YYYY-MM-DD>
 
 ## Complexity Signals Detected
-
-- <Signal>: <impact in one line>
-- ...
+- <Signal>: <impact>
 
 ## Phase 1 - Setup
-
 - [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
 - [ ] T002 [P] Configure linting and formatting in tooling/ - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
 
 ## Phase 2 - Foundational
-
-(blocking prerequisites for ALL user stories - migrations, shared interfaces, flag scaffolding)
-
+(blocking prerequisites for ALL user stories)
 - [ ] T005 Apply expand-phase migration in db/migrations/2026XX_add_users.sql - data, S, must-have. Satisfies AC1, AC3. Deps: T001.
 - [ ] T006 [P] Add feature-flag scaffolding in src/flags/ - ops, S, risk-reduction. Satisfies NFR-Rollout. Deps: T001.
 
 ## Phase 3 - User Story 1 (P1) - <Story Title>
-
-**Story goal:** <one line - what value US1 delivers on its own>
-**Independent test criteria:** <how to verify US1 works without US2/US3>
+**Story goal:** <one line>
+**Independent test criteria:** <how to verify US1 alone>
 
 - [ ] T010 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.
 - [ ] T011 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T010.
@@ -222,82 +175,58 @@ Print a short summary:
 - [ ] T012 [US1] Add validation tests for UserService in tests/services/user_service.test.ts - validation, S, must-have. Satisfies AC1, AC4. Deps: T011.
 
 ## Phase 4 - User Story 2 (P2) - <Story Title>
-
-**Story goal:** ...
-**Independent test criteria:** ...
-
-(same one-line layout, all tagged `[US2]`)
+(same one-line layout, all `[US2]`)
 
 ## Phase N - Polish
-
-(cross-cutting: observability, runbooks, contract-phase migrations, deprecation removals)
-
-- [ ] T040 Wire structured logging in src/observability/ - ops, S, risk-reduction. Satisfies NFR-Observability. Deps: T011.
+(cross-cutting: observability, runbooks, contract-phase migrations, deprecations)
 
 ## Dependency Order
-
 1. T001 (Setup, no deps)
-2. T002 [P] (Setup, parallel with T001)
-3. T005 (Foundational, requires T001)
-4. T010 [US1] (requires T005)
-5. ...
+2. T002 [P] (parallel with T001)
+3. T005 (requires T001)
+...
 
-**Critical path:** T001 → T005 → T010 → T011 → T020 (estimated: M + L + M + S)
-
-**MVP scope (ship US1 alone):** Phase 1 + Phase 2 + Phase 3 (User Story 1).
+**Critical path:** T001 -> T005 -> T010 -> T011 -> T020
+**MVP scope:** Phase 1 + Phase 2 + Phase 3 (US1).
 
 ## Traceability Matrix
-
-| Acceptance Criterion / NFR  | Tasks                |
+| AC / NFR                    | Tasks                |
 | --------------------------- | -------------------- |
-| AC1                         | T03, T07             |
-| AC2                         | T05                  |
-| NFR-Performance (p95 200ms) | T07, T11 (load test) |
-| ...                         | ...                  |
+| AC1                         | T010, T011           |
+| NFR-Performance (p95 200ms) | T011, T020 (load)    |
 
 ## Proposed Plan Amendments
-
-<Empty if none. Otherwise list gaps that imply plan.md should be updated.>
+<Empty if none.>
 
 ## Revisions
-
-- <YYYY-MM-DD>: <summary of change> (by `task-spec-tasks` | `task-spec-implement` | manual)
+- <YYYY-MM-DD>: <change> (by `task-spec-tasks` | `task-spec-implement` | manual)
 ```
 
 ## Self-Check
 
-- [ ] Loaded `behavioral-principles`, `stack-detect`, and `speckit-detect` before any other work
-- [ ] Resolved artifact paths through `spec-artifact-paths` (no hardcoded `.specs/` strings)
-- [ ] Aborted cleanly if `plan.md` did not exist
-- [ ] In speckit-installed mode, did not silently edit Spec Kit's output - traceability gaps surfaced as suggestions
-- [ ] Complexity signal scan completed before task generation
-- [ ] Tasks organized primarily by user story (Phase 3+ = one phase per US in priority order)
-- [ ] Every story-phase task carries a `[USn]` label; Setup/Foundational/Polish tasks do not
-- [ ] `[P]` markers applied only to tasks with no `Depends on` ahead of them and disjoint file scope
-- [ ] Every task line includes an exact target file path
-- [ ] Every task has ID, type, description, Satisfies, Depends on, Size, Scope, and Status fields
-- [ ] Every acceptance criterion in `spec.md` has at least one task referencing it
-- [ ] Every NFR verification step in `plan.md` has a matching validation task
-- [ ] No task touches an out-of-scope item
-- [ ] No story-phase task silently depends on another story's work (cross-story prereqs hoisted to Foundational)
-- [ ] XL tasks flagged for further breakdown
-- [ ] Dependency graph acyclic; critical path identified; MVP scope (Setup + Foundational + US1) called out
-- [ ] Traceability matrix produced
-- [ ] Final summary printed with task count, phase breakdown, critical path, MVP scope, next-command suggestion
+- [ ] Loaded `behavioral-principles`, `stack-detect`, `speckit-detect` first
+- [ ] Aborted on missing `plan.md`/`spec.md`
+- [ ] In speckit mode, traceability gaps surfaced (no silent edits)
+- [ ] Complexity scan ran before task generation
+- [ ] Tasks organized by user story (Phase 3+ = one phase per US)
+- [ ] `[USn]` labels on story-phase tasks only; not on Setup/Foundational/Polish
+- [ ] `[P]` only when disjoint files + no `Depends on` ahead
+- [ ] Every task line carries the exact target file path
+- [ ] Every task has all metadata fields (type, size, scope, satisfies, deps, status)
+- [ ] Every AC has >=1 task; every NFR verification has a validation task
+- [ ] No task touches out-of-scope; no story task depends on another story (hoist to Foundational)
+- [ ] XL tasks flagged for breakdown
+- [ ] Dependency graph acyclic; critical path + MVP scope identified
+- [ ] Traceability matrix written
+- [ ] Summary includes counts, critical path, MVP, next command
 
 ## Avoid
 
-- Generating implementation code in task descriptions - describe what to build, not how
-- Duplicating each task as both a one-line checkbox AND a `### T<NNN>` detail block - the one-line form already carries every required field, repeating it is the most common reason `tasks.md` becomes unreadable at scale
-- Tasks without `Satisfies` traceability - either fix the plan, ask the user, or drop the task
-- Calendar-time estimates ("3 hours") instead of relative sizes (S/M/L/XL) unless explicitly requested
-- Treating tests as a single trailing task - validation work belongs alongside the code it covers
-- Editing `plan.md` from this workflow - amendments are proposals, not changes
-- Auto-running `task-breakdown-story` from delivery plugin - soft-suggest only
-- Overwriting an existing `tasks.md` without offering replace/amend/abort, especially when tasks have non-`[ ]` Status markers (in-progress implementation work)
-
-## Notes
-
-- `tasks.md` is the unit of progress in `task-spec-implement`. Keep task IDs stable across revisions; renaming an ID breaks the implement workflow's resume semantics.
-- For fullstack features, interleave backend and frontend tasks by dependency, not by stack. The user can still filter by `Type` if they want a single-stack pass.
-- If the user has the `delivery` plugin installed and is sprint-planning across multiple specs, point them at `task-breakdown-story` for the cross-feature view - this workflow is per-feature.
+- Implementation code in task descriptions (describe what, not how).
+- Duplicating each task as one-line checkbox AND `### T<NNN>` detail block - the most common reason `tasks.md` becomes unreadable.
+- Tasks without `Satisfies` traceability.
+- Calendar-time estimates instead of S/M/L/XL unless asked.
+- Treating tests as a single trailing task - validation pairs with the code it covers.
+- Editing `plan.md` from this workflow.
+- Auto-running `task-breakdown-story` (soft-suggest only).
+- Overwriting `tasks.md` without offering replace/amend/abort, especially when non-`[ ]` markers exist.
