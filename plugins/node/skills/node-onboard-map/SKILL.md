@@ -97,16 +97,12 @@ Check which the project uses before describing the architecture:
 
 ### Risk Hotspots Specific to Node
 
-- **Sync I/O in handlers:** `readFileSync`, sync DB drivers - blocks event loop.
-- **Unhandled rejections:** Node 15+ crashes the process. Check for `process.on('unhandledRejection')` for visibility, but root cause is missing `await`.
-- **NestJS provider scope mismatches:** Singleton injecting Scoped (request-scoped) - same captive-dependency bug as in .NET.
-- **Express middleware order**: undocumented order is the common bug source. Auth middleware after route handlers does nothing.
-- **Default `http.Agent` keep-alive misconfiguration:** connection pool defaults can be too aggressive or too low for the workload.
-- **TypeScript `any` escape hatches**: especially `as any` casts; type safety is illusory in those spots.
-- **Prisma client instantiation per request**: should be a singleton; leaking new clients exhausts DB connections.
-- **TypeORM circular module imports**: `forwardRef` patterns, often masking design issues.
-- **Mixed ESM/CJS**: `__dirname` undefined in ESM; default-import shape mismatch.
-- **`npm audit` vulnerabilities**: typical project has many transitive deps; check policy.
+- **Blocking I/O / CPU on the event loop** (`readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse`, sync DB drivers, missing `await` causing unhandled rejections): see `node-typescript-patterns` and `task-node-review-perf`.
+- **N+1 + ORM client lifetime** (Prisma client per-request instead of singleton, TypeORM `eager: true` cartesian, missing `relations`/`include`): see `node-prisma-patterns` / `node-typeorm-patterns`.
+- **BullMQ dispatch inside DB transaction**, jobs taking ORM entities in payloads: see `node-bullmq-patterns`.
+- **Mass assignment / prototype pollution / missing `ValidationPipe whitelist` / Zod `.strict()`**: see `task-node-review-security`.
+- **Migration safety on hot tables** (concurrent index, lock_timeout, expand-then-contract, `synchronize: true` in prod): see `node-migration-safety`.
+- **Node quirks** to flag on first read: NestJS singleton injecting request-scoped (captive dependency), Express middleware-order bugs, mixed ESM/CJS (`__dirname` undefined under ESM), `as any` escape hatches, `forwardRef` overuse masking circular dependencies.
 
 ### First-PR Safe Zones
 

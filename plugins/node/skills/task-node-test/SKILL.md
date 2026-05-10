@@ -72,65 +72,14 @@ The Node test pyramid maps to test types:
 
 ### Step 4 - Apply Node.js Test Patterns
 
-Use skill: `node-testing-patterns` for the canonical patterns referenced below.
+Canonical patterns (TestingModule wiring, Supertest, Testcontainers fixtures, MSW setup, BullMQ mocks) live in `node-testing-patterns`. The strategy-side rules below are what changes per test type:
 
-**Unit tests (`*.spec.ts` colocated):**
-
-- Jest (`describe`, `it`, `expect`, `beforeEach`); `jest.mock(...)` for ESM modules with proper `__esModule: true` shape
-- Test the public function / method - one test per outcome (success, validation failure, external failure, edge case)
-- **No NestJS app context / DB** - if a unit test needs `TestingModule` or DB, it is misclassified
-- Stub external HTTP via `msw` setupServer; do not stub repositories with full SQL behavior - use Testcontainers for that
-- TypeScript strict: avoid `as any` in test setup; use `jest.MockedFunction<typeof fn>` / `DeepMocked<T>` (from `@golevelup/ts-jest`)
-
-**NestJS endpoint tests (`*.e2e-spec.ts`):**
-
-- `Test.createTestingModule({ imports: [AppModule] }).compile()` then `app = moduleRef.createNestApplication()` then `await app.init()`
-- Apply the same global pipes / guards / interceptors as `main.ts` - missing `app.useGlobalPipes(new ValidationPipe(...))` makes validation tests pass under test but fail in prod
-- `request(app.getHttpServer()).post('/orders').send(payload).expect(201)` via Supertest
-- One test per `(method, path, principal-state, outcome)` triple
-- Authentication via `overrideGuard(AuthGuard('jwt'))` returning a stub user, or by injecting a real JWT
-- Authorization: a separate test for "anonymous → 401" and "wrong role → 403" per protected endpoint
-- Validation: a "rejects invalid payload" test for any endpoint with a DTO body
-- Response shape: assert key fields, status, headers, and `Content-Type`
-- DB: override Prisma / TypeORM client to point at the Testcontainers connection; transactional rollback per test
-
-**Express endpoint tests:**
-
-- Build app instance once per test file; `request(app).post('/orders').send(payload).expect(201)`
-- Apply same middleware stack as production - missing `app.use(express.json())` or auth middleware silently passes tests but fails in prod
-- One test per `(method, url, principal, outcome)` triple
-- Authentication: mount `requireAuth` middleware; override with a fixture that injects `req.user` for authed cases; omit middleware for anonymous
-- Validation: assert `response.status === 400` and key error fields
-- DB: same Testcontainers approach
-
-**Repository / ORM integration tests:**
-
-- Testcontainers PostgreSQL (`testcontainers` npm package) - **not SQLite, not in-memory** - SQLite diverges from PostgreSQL on JSON / JSONB, partial indexes, window functions, `ON CONFLICT`, array types, `LATERAL` joins
-- Per-test transactional rollback via fixture (Prisma: `prisma.$transaction` with manual rollback throw; TypeORM: `dataSource.transaction` + manual rollback; or per-test schema reset)
-- One test per non-trivial query: assert SQL semantics (filter correctness, sort order, eager-load result), not just "method returns something"
-- N+1 detection: enable Prisma `log: ['query']` and count queries via event listener; for TypeORM, `dataSource.options.logging = true` and capture
-- Custom indexes / constraints: insert violating data and assert the right exception is raised (`P2002` for Prisma, `QueryFailedError` for TypeORM)
-
-**DTO / Schema tests:**
-
-- NestJS / class-validator: use `validate(plainToInstance(CreateOrderDto, {...}))` from `class-validator` + `class-transformer` directly - faster than going through a full endpoint test
-- Express / Zod: `OrderCreateSchema.safeParse({...})` - assert `success: false` and key error paths
-- Edge cases: missing fields, wrong types, out-of-range values, `forbidNonWhitelisted` / `.strict()` rejecting unknown keys
-- Custom validators tested in isolation
-
-**BullMQ job tests:**
-
-- In-memory queue or `@nestjs/bull` `getQueueToken()` overridden to a mock for synchronous-execution tests (fast, no Redis)
-- Real BullMQ + Testcontainers Redis for tests that need actual broker behavior (retry, `lockDuration` stalls, real `attempts`)
-- Idempotency test: invoke the processor twice with the same input, assert side effect happens once
-- Retry test: stub the external call to fail twice then succeed; assert job completes; assert `attempts` decrements
-- DLQ / max-retries test: stub the external call to fail forever; assert job ends in `failed` state without infinite loop
-
-**E2E / full-context tests:**
-
-- Reserve for tests that genuinely need the full stack: auth flow end-to-end, transactional commit + BullMQ dispatch, scheduled-job behavior
-- Use Testcontainers to spin up Redis + Postgres
-- Avoid for tests that an endpoint test could cover - context-load cost compounds
+- **Unit (`*.spec.ts`)**: one test per outcome (success / validation failure / external failure / edge case). No NestJS app context / DB - if a unit test needs `TestingModule` or DB, it's misclassified. External HTTP via MSW; typed mocks via `DeepMocked<T>` / `jest.MockedFunction` - no `as any`
+- **Endpoint (NestJS `*.e2e-spec.ts` / Express)**: one test per `(method, path, principal-state, outcome)` triple - happy + 401 + 403 + 4xx-validation. App built with the **same** global pipes / guards / middleware as `main.ts` / `app.ts` (missing `ValidationPipe` / auth middleware masks bugs); auth via `overrideGuard(AuthGuard('jwt'))` (NestJS) or fixture middleware (Express); response shape asserts key fields + status + `Content-Type`
+- **Repository / ORM integration**: Testcontainers PostgreSQL only - **never SQLite** (JSONB / partial indexes / `ON CONFLICT` / arrays / `LATERAL` diverge). Per-test rollback (Prisma `$transaction` + manual throw, TypeORM `dataSource.transaction` rollback, or schema reset). Assert SQL semantics, not just "method returns something"; assert constraint exceptions (`P2002` Prisma, `QueryFailedError` TypeORM)
+- **DTO / Schema**: validate directly via `validate(plainToInstance(Dto, {...}))` (class-validator) or `Schema.safeParse({...})` (Zod) - faster than a full endpoint test; cover unknown-key rejection (`whitelist:true` / `.strict()`), missing required, type mismatches, out-of-range
+- **BullMQ**: in-memory mock (`getQueueToken()` override) for fast happy-path; real broker via Testcontainers Redis when behavior depends on `attempts` / `lockDuration` / stalled redelivery; idempotency test invokes the processor twice with same input → side effect fires once; retry test fails twice then succeeds; DLQ test fails forever and asserts no infinite loop
+- **E2E**: reserve for full-stack flows (auth end-to-end, transactional commit + BullMQ dispatch, scheduled jobs); avoid for what an endpoint test could cover - context-load cost compounds
 
 ### Step 5 - Test Boundaries (Node-Specific)
 

@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific Node.js target (NestJS controller / module, Express route / router, service, repository, Prisma / TypeORM entity, BullMQ processor, DTO / Zod schema). Identifies Node-specific smells (fat controller / route, anemic services, god modules, async-sync mixing, blocking I/O in event loop, NestJS request-scoped provider misuse, TypeORM listener abuse, prototype pollution surfaces, missing `whitelist` on `ValidationPipe`) and proposes independently-committable refactoring steps with Jest gates between each.
+Produce a safe, step-by-step refactoring plan for a specific Node.js target (NestJS controller / module, Express route / router, service, repository, Prisma / TypeORM entity, BullMQ processor, DTO / Zod schema). Identifies Node-specific smells (Step 4 catalog) and proposes independently-committable steps with `tsc --noEmit` + Jest gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for Node.js.
 
@@ -245,12 +245,12 @@ The most common Node refactor: a controller `create` triggers an entity save who
 
 1. **Pin behavior with an e2e + service test** asserting every observable side effect (record updated, mailer queued, job dispatched, audit row written) - this is the contract the refactor must preserve
 2. **Promote listener dispatch to post-commit** first (NestJS `EventEmitter2.emit` after `prisma.$transaction` resolves; TypeORM `subscriber.afterCommit` hook); side effects fire post-commit; tests still pass
-3. **Introduce a service method** (`<verb><Noun>`) that performs the write _and_ the side effects in one call; controller calls the service _but the listeners still run_ - this duplicates side effects intentionally and temporarily
-4. **Make listeners no-op when called from the service** via an `AsyncLocalStorage` flag set by the service or a flag on the entity (`if (Reflect.getMetadata(SKIP_LISTENERS, entity)) return;`); verify tests still pass with side effects firing exactly once
-5. **Delete the listeners entirely**; the service is now the single source of orchestration; remove the bypass flag; tests still green
-6. **Audit other call sites** (`prisma.order.create`, `repository.save`, migrations, scheduled jobs) - any caller relying on the old listener is now broken and must be updated to call the service or have the side effects re-derived
+3. **Introduce an empty service method** (`<verb><Noun>`) that delegates straight to the existing repository / `repository.save` path - the listener still owns the side effects; behavior is unchanged
+4. **Migrate every caller** (controller, scheduled job, BullMQ processor, other services) to invoke the service method instead of the repository directly. Find them via grep on `repository.save` / `prisma.x.create` / the entity name; update each in its own commit; tests stay green because the listener still fires
+5. **Atomic swap**: in one commit, move the side-effect calls from the listener into the service method **and** delete the listener - because step 4 ensured every caller now goes through the service, no caller can reach the entity without the side effects. Run the full suite; tests stay green
+6. **Verify**: `git grep` for the deleted listener / repository entry points should show zero hits; the entity is no longer the orchestration boundary
 
-The intermediate "listeners no-op when called from service" step is a **temporary scaffold**, not a destination. Steps 4 and 5 must land in the same PR (or back-to-back PRs with step 5 explicitly tracked) - shipping step 4 without step 5 leaves a silent skip-flag in production where the next caller that forgets to set the flag double-fires side effects, and the next reader has no idea the listener is conditionally inert. If the plan must split, label step 4 `coupled-fix` and add a verification step that fails CI when both the listener and the bypass flag exist past one release cycle.
+Do **not** introduce an `AsyncLocalStorage` skip-flag or a `Reflect.getMetadata(SKIP_LISTENERS, entity)` attribute to make the listener no-op when called from the service. That pattern is unsafe (ALS without a clear `als.run(...)` boundary leaks across requests; entity-level metadata is easy to forget on a new caller), masks rather than removes the duplicate-dispatch bug, and tends to ship as a permanent footgun where the next caller that forgets the flag double-fires side effects. The caller-migration sequence above is longer but does not require a temporary toggle in production - the listener is removed only after every caller has been redirected, and the swap is atomic.
 
 **Recipe: Eliminate blocking I/O in event loop**
 
@@ -438,4 +438,4 @@ _Omit this section if the target file has no other smells._
 - Refactoring a published npm package without a backward-compatibility plan - that is a public API
 - Replacing `axios` with `undici` on a code path with no measured benefit (premature change; if the team is already on `axios` and it works, the recipe is "address the smell" not "swap libraries")
 - Replacing module-level mutable state with `AsyncLocalStorage` without checking that the codebase actually has a clear request-bound boundary - ALS without a clear `als.run(...)` boundary leaks state across requests
-- Shipping the "listeners no-op when called from service" intermediate step (Recipe: Untangle fat controller + listener-driven side effects, step 4) as a permanent state - the AsyncLocalStorage / Reflect-metadata skip flag must be deleted alongside the listener it guards (step 5), or it becomes an invisible footgun for the next caller
+- Using an `AsyncLocalStorage` flag or `Reflect.getMetadata(SKIP_LISTENERS, entity)` attribute as a "temporary" mechanism to make a listener no-op while a service takes over orchestration - the flag tends to ship as a permanent footgun. Migrate every caller off the entity-level entry point first, then atomically delete the listener and add the side effects to the service in one commit

@@ -116,25 +116,25 @@ The triage output funnels which downstream steps must run carefully versus which
 
 ### Step 5 - Authentication
 
+**Both frameworks:**
+
+- [ ] **Password hashing**: `bcrypt(password, ≥10)` or `argon2.hash(password)` (preferred for new code); flag `crypto.createHash('sha256')` / `'md5'` / homebrew hashing
+- [ ] **Brute-force protection**: rate limit on `/auth/login` / `/refresh` / `/reset-password` - NestJS `@nestjs/throttler` stricter than global; Express `express-rate-limit` per IP, or `rate-limiter-flexible` + Redis for multi-instance
+- [ ] **Password reset tokens**: time-limited, single-use, hashed before storing - never the raw token in DB
+- [ ] **No JWT in logs**: `console.log(token)` / `logger.log(token)` flagged
+
 **NestJS:**
 
-- [ ] **JWT signing**: HS256 secret in env / Vault, never committed. RS256 with key pair preferred for cross-service. `@nestjs/jwt` `JwtModule.register` uses `secretOrKeyProvider` for rotation, or static `secret` from env
-- [ ] **`alg: none` rejected**: `passport-jwt` `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly; never absent / undefined
-- [ ] **JWT issuer / audience validated**: `issuer`, `audience` fields verified in `JwtStrategy` options; not just signature
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; refresh tokens revocable via DB / Redis denylist (track `jti` claim or refresh-token UUID)
-- [ ] **Password hashing**: `bcrypt` `hash(password, 12)` (cost ≥ 10) or `argon2.hash(password)` (preferred for new code). Never plain `crypto.createHash`.
-- [ ] **`AuthGuard('jwt')` wired correctly**: `JwtStrategy` exists, `tokenUrl` matches issuer, `auto_error` behavior on missing tokens returns 401
-- [ ] **Brute-force protection**: `@nestjs/throttler` (`ThrottlerGuard`) on `/auth/login`, `/auth/refresh`, `/auth/reset-password`; configured stricter than global throttle
-- [ ] **No `console.log(token)` / `logger.log(token)`** that leaks the JWT to logs
+- [ ] **JWT signing**: HS256 secret in env / Vault, never committed; RS256 key pair preferred cross-service; `@nestjs/jwt` `JwtModule.register` uses `secretOrKeyProvider` for rotation
+- [ ] **`alg: none` rejected**: `passport-jwt` `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly - never absent / undefined
+- [ ] **JWT issuer / audience validated**: `issuer`, `audience` fields verified in `JwtStrategy` options - not just signature
+- [ ] **Access token lifetime** short (5-15 min); refresh token rotation with revocable denylist (DB / Redis, track `jti` or refresh-token UUID)
+- [ ] **`AuthGuard('jwt')` wired correctly**: `JwtStrategy` exists, `tokenUrl` matches issuer, missing-token returns 401
 
 **Express:**
 
-- [ ] **Password hashing**: `bcrypt` (cost ≥ 10) or `argon2`; flagged `crypto.createHash('sha256')` or homebrew hashing
-- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - the `algorithms` allowlist is **mandatory**; without it `jsonwebtoken` accepts `alg: none` for some token shapes
-- [ ] **`jose` (preferred over `jsonwebtoken`)**: `jose.jwtVerify(token, key, { algorithms: ['HS256'], issuer, audience })` - more strict by default
-- [ ] **Session cookies (when used)**: `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'` or `'strict'`, signed cookies via `cookie-parser` secret
-- [ ] **Brute-force protection**: `express-rate-limit` per IP on auth routes; consider `rate-limiter-flexible` with Redis for multi-instance
-- [ ] **Password reset tokens**: time-limited, single-use, hashed before storing in DB - never store the raw token
+- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - the `algorithms` allowlist is **mandatory**; without it `jsonwebtoken` accepts `alg: none` for some token shapes. `jose.jwtVerify(token, key, { algorithms, issuer, audience })` is stricter by default - prefer over `jsonwebtoken`
+- [ ] **Session cookies (when used)**: `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'|'strict'`, signed via `cookie-parser` secret
 
 ### Step 6 - Authorization
 

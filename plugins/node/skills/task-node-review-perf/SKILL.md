@@ -103,36 +103,20 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - ORM Hotspots (Prisma or TypeORM)
 
-> If `ORM: Prisma` was recorded in Step 1, **skip the TypeORM subsection entirely** below; do not scan it for non-applicable bullets. Likewise skip the Prisma subsection on TypeORM-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
+> If `ORM: Prisma` was recorded in Step 1, **skip the TypeORM subsection entirely**; likewise skip Prisma on TypeORM-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
 
-**If Prisma** - use skill: `node-prisma-patterns`:
+Canonical patterns live in `node-prisma-patterns` (Prisma) and `node-typeorm-patterns` (TypeORM). This step is the **review-scoped scan** - flag deviations against the canonical owner; do not re-derive idioms here.
 
-Inspect every changed model, repository, service, and controller for:
+**Review-scoped scan** (Prisma or TypeORM, branching on `ORM:`):
 
-- [ ] **N+1 in queries**: any traversal of a relation after a `findMany` is preloaded with `include: { rel: true }` or projected with `select: { rel: { select: {...} } }`. Prisma never lazy-loads (no proxy magic), so the smell is "a separate `findMany` inside a `for...of` loop over a parent list" - eager-load with `include` instead.
-- [ ] **Multi-level N+1**: nested traversal across two relations (`order.items` → `item.product`) - resolve with chained `include: { items: { include: { product: true } } }`.
-- [ ] **`include` overfetch**: pulling full child rows when only one column is needed - prefer `select: { items: { select: { id: true, sku: true } } }` to bound payload size.
-- [ ] **Missing indexes for filter/sort columns**: any field used in `where` / `orderBy` / `groupBy` without a backing `@@index([...])` or `@unique` in the Prisma schema.
-- [ ] **`findMany` without pagination**: any read of an unbounded collection - require `take` / cursor-based pagination for any list endpoint that can grow.
-- [ ] **Existence checks**: use `prisma.x.findFirst({ where, select: { id: true } })` over `findMany().then(r => r.length > 0)`; for hot paths consider raw `EXISTS` via `$queryRaw`.
-- [ ] **Bulk operations**: `createMany` / `updateMany` / `deleteMany` over per-row loops; `createMany` `skipDuplicates: true` for idempotent bulk inserts.
-- [ ] **Upsert for idempotency**: `upsert({ where, create, update })` over `findUnique` + `if/else` create/update - races less, fewer round trips.
-- [ ] **Transactions**: `prisma.$transaction([...])` for batch operations; interactive transactions (`prisma.$transaction(async (tx) => {...})`) only when needed - they hold a connection for the duration. `isolationLevel` set explicitly when stronger than READ COMMITTED is needed.
-- [ ] **Connection pool sizing**: `connection_limit` documented; default is `num_cpus * 2 + 1` per engine instance; multi-instance deploys require `connection_limit` × replica count ≤ DB-side `max_connections`.
-- [ ] **Prisma engine logs in prod**: `log: ['query']` flagged - logs every query at `INFO`; should be `['warn', 'error']` in prod or use OTel instrumentation.
-
-**If TypeORM** - use skill: `node-typeorm-patterns`:
-
-- [ ] **N+1 in queries**: any traversal of a relation after `find()` is preloaded with `relations: ['items']` or `createQueryBuilder().leftJoinAndSelect('order.items', 'items')`. `eager: true` on entity relations is risky - it forces eager load on every query, including the ones that don't need it; prefer per-query `relations: [...]`.
-- [ ] **N+1 via lazy relations**: `lazy: true` returns a `Promise<T[]>` - `await order.items` triggers a query per parent; same fix as Prisma N+1 but with `relations` arrays.
-- [ ] **`createQueryBuilder` cartesian explosion**: chained `leftJoinAndSelect` on multiple to-many relations duplicates parent rows; use `.distinct(true)` or split into separate queries.
-- [ ] **`select` projection**: `find({ select: ['id', 'name'] })` to bound payload - default returns all columns including large `text` / `bytea`.
-- [ ] **Existence checks**: `repository.exist({ where })` (TypeORM 0.3+) over `findOne()` then null-check.
-- [ ] **Bulk operations**: `repository.insert([...])` / `repository.update(criteria, partial)` for batch writes; `createQueryBuilder().insert().values([...]).orIgnore()` for `INSERT ... ON CONFLICT DO NOTHING`.
-- [ ] **Transactions**: `dataSource.transaction(async (manager) => {...})` or `@Transaction` decorator (deprecated in 0.3, prefer manual). `@Transactional` from `typeorm-transactional` with proper `initializeTransactionalContext()` setup.
-- [ ] **Missing indexes**: any column in `where` / `orderBy` without `@Index()` on the entity or via migration.
-- [ ] **`synchronize: true` in prod**: critical finding - drops and recreates schema; must be `false` in non-dev environments.
-- [ ] **Connection pool sizing**: `extra.max` (pg pool) documented; `extra.max × replica_count ≤ DB max_connections`.
+- [ ] **N+1**: relation traversal after a list query is eager-loaded - Prisma `include` / `select`; TypeORM `relations: [...]` or `leftJoinAndSelect` (avoid `eager: true` on collections - cartesian explosion). Multi-level N+1 (`order.items.product`) chained through one query, not nested loops
+- [ ] **Overfetch**: payload bounded via projection - Prisma `select`, TypeORM `find({ select: [...] })` - default returns all columns including large `text` / `bytea`
+- [ ] **Missing indexes for `where` / `orderBy` / `groupBy` columns** - flag any predicate / sort column without a backing `@@index` (Prisma) / `@Index` (TypeORM) or migration
+- [ ] **Unbounded reads**: list endpoints use `take` + cursor pagination, not bare `findMany` / `find()`
+- [ ] **Per-row loops** in place of bulk operations - `createMany` / `updateMany` (Prisma); `repository.insert([...])` / QueryBuilder `.insert().values([...])` (TypeORM)
+- [ ] **Existence checks**: `findFirst({ where, select: { id: true } })` / `repository.exist({ where })` over fetch-then-length
+- [ ] **Connection pool sizing documented**: Prisma `connection_limit` / TypeORM `extra.max` × replica count ≤ DB `max_connections`
+- [ ] **Prod-unsafe config**: TypeORM `synchronize: true` is a Critical finding; Prisma `log: ['query']` in prod is High (every query at INFO)
 
 ### Step 5 - Indexes and Migrations
 
@@ -156,26 +140,17 @@ Use skill: `node-migration-safety` for safe-migration checks on any change in `p
 
 ### Step 6 - Async Correctness and Event Loop
 
-Use skill: `node-typescript-patterns` for async typing patterns.
+Canonical async patterns live in `node-typescript-patterns`. Apply the **review-scoped scan** below.
 
-Inspect changes touching `async` / `await`, `Promise.all`, streams, and worker threads:
+> **Impact heuristic.** A blocking call inside an async handler stalls _every request in flight on this Node process_, not just the calling one. Phrase impact as "tail-latency contagion across in-flight requests," not "this request is slow." HTTP to a critical-path upstream inherits its tail latency: your p99 = max(your work, upstream p99) - recommend `AbortSignal.timeout(500)` + fallback, or async pattern (decision cache, circuit breaker).
 
-- [ ] **No blocking I/O on the event loop**: `fs.readFileSync` → `fs.promises.readFile`; `crypto.pbkdf2Sync` → `crypto.pbkdf2` (or worker thread); large JSON parsing of untrusted size → streaming parser. Sync file I/O on small files at startup is acceptable; in request paths it stalls every other in-flight request on this Node process.
-
-> **Impact heuristic - blast radius of an event-loop block.** A blocking call inside an async handler does not just slow the calling request - it stalls _every other request currently in flight on this Node process_. Node has a single event loop per process; with PM2 cluster mode and 4 workers, a 50ms `crypto.pbkdf2Sync` call drags tail latency across all four workers' shares of in-flight traffic until it returns. Phrase the impact as "tail-latency contagion across all in-flight requests on this process," not "this request is slow."
-
-> **Synchronous external dependency on the request path.** Even when the call uses `fetch` / `axios` correctly, an HTTP call to a critical-path service (fraud, auth, pricing) inherits the upstream's tail latency: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget) when the call is non-blocking-business; recommend strict timeouts (`AbortSignal.timeout(500)`) plus fallback values when blocking-business.
-
-- [ ] **No CPU-heavy work on the event loop**: hashing, image processing, parsing large payloads must go to a `worker_threads` pool or a BullMQ job; otherwise tail-latency for all in-flight requests degrades.
-- [ ] **No external I/O inside a DB transaction (perf lens)**: `axios` / `fetch` / `undici` / `queue.add()` inside `prisma.$transaction(async (tx) => {...})` or `dataSource.transaction(async (manager) => {...})` holds a pooled connection for the duration of the network roundtrip. Under load this drains the pool faster than QPS would predict, and locked rows stay locked for the upstream's tail latency. The correctness-lens version (worker may see uncommitted state) is owned by `task-node-review`; the perf lens here is "you turned a 5ms write into a 500ms write of pool starvation." Recommend: capture inputs inside the transaction, dispatch the side effect after `$transaction` resolves (or via `transaction.afterCommit` / event emitter).
-- [ ] **`Promise.all` for fan-out**: independent I/O calls run concurrently, not sequentially in a `for...of` loop. Use `Promise.all([...])` or `Promise.allSettled([...])` (when partial failures should not abort the batch).
-- [ ] **Concurrency cap**: fan-out over a list uses a bounded queue (`p-limit`, `bottleneck`, or BullMQ for durable work); unbounded `Promise.all` over a 10k-row list will exhaust connections / file descriptors.
-- [ ] **`AbortSignal` / timeouts** on every external call: `fetch(url, { signal: AbortSignal.timeout(500) })`; explicit timeout per call beats relying on Node's defaults (which are effectively infinite for HTTP).
-- [ ] **HTTP clients reused**: `axios.create()` instance / `undici` Pool / `node-fetch` agent shared at module level, not instantiated per request - connection reuse matters at scale.
-- [ ] **No mixing of sync ORM into async path**: TypeORM / Prisma calls are async; flag any sync wrapper (`deasync`, sync-blocking patterns) - they break the event loop.
-- [ ] **NestJS request-scoped providers**: `@Injectable({ scope: Scope.REQUEST })` creates a new instance per request - measurable overhead under load. Prefer default singleton scope; use request scope only when truly needed (per-request DB transaction, multi-tenant context).
-- [ ] **NestJS interceptor / pipe overhead**: `@UseInterceptors(LoggingInterceptor)` runs on every request - expensive logic in interceptors compounds per request. Move heavy work to async post-response (`tap` operator).
-- [ ] **Connection pool sized correctly**: Prisma `connection_limit` / TypeORM `extra.max` × replica count ≤ DB-side `max_connections`. For 4 PM2 workers and Postgres `max_connections=100`, target ~20 per worker. Oversize and DB starves.
+- [ ] **No blocking I/O / CPU on the event loop**: `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse` of untrusted size, large regex on user input - flag in any request path. Hashing / image / large parse → `worker_threads` (`piscina`) or BullMQ. Sync at startup is fine; sync in request paths stalls every in-flight request
+- [ ] **No external I/O inside a DB transaction (perf lens)**: `axios` / `fetch` / `undici` / `queue.add()` inside `prisma.$transaction` / `dataSource.transaction` holds a pooled connection for the upstream's tail latency - 5ms write becomes a 500ms write of pool starvation. Capture inputs inside, dispatch after the transaction resolves (or via `afterCommit` / event emitter). Correctness lens is owned by `task-node-review`
+- [ ] **Concurrency control**: fan-out uses `Promise.all` / `Promise.allSettled` instead of sequential `for...of` await; unbounded fan-out over a large list bounded via `p-limit` / `bottleneck` / BullMQ
+- [ ] **`AbortSignal.timeout(...)` on every external call**: Node's default HTTP timeout is effectively infinite
+- [ ] **HTTP clients module-level**: `axios.create()` / `undici` Pool / `node-fetch` agent shared, not per-request - connection reuse matters at scale
+- [ ] **NestJS request-scoped providers**: `@Injectable({ scope: Scope.REQUEST })` only when needed (per-request transaction / multi-tenant context); default-singleton otherwise. Heavy logic in interceptors / pipes runs per request - move post-response via `tap`
+- [ ] **Connection pool sized correctly**: Prisma `connection_limit` / TypeORM `extra.max` × replica count ≤ DB `max_connections` (e.g., 4 PM2 workers vs Postgres `max_connections=100` → ~20/worker)
 
 ### Step 7 - Validation / Serialization
 
@@ -212,17 +187,13 @@ _Skipped at `quick` depth unless the diff touches caching primitives._
 
 _Skipped at `quick` depth unless the diff touches BullMQ._
 
-Use skill: `node-bullmq-patterns` for canonical job patterns.
+Canonical patterns live in `node-bullmq-patterns`. Apply the **review-scoped scan** below.
 
-- [ ] **Jobs idempotent**: re-fetch state, check if work was done, return early. Pass IDs / simple types - never ORM entities (lazy loads, stale data, serialization issues).
-- [ ] **Job IDs for dedup**: `queue.add(name, data, { jobId: businessKey })` where business-key collisions are intentional (BullMQ rejects duplicate `jobId` while another exists) - turns "deliver once" into a server-side guarantee.
-- [ ] **Retry strategy declared**: `attempts`, `backoff: { type: 'exponential', delay: 1000 }` per-job or via `defaultJobOptions`; `removeOnComplete: { age, count }` and `removeOnFail` to prevent Redis growth.
-- [ ] **Failed-jobs queue / DLQ**: jobs that exceed `attempts` move to `failed` set; processor logic / observability surfaces them; not ignored.
-- [ ] **Queue routing**: time-sensitive jobs on a dedicated queue with its own `Worker` and concurrency; mixed-priority on one queue starves urgent work.
-- [ ] **`queue.add()` AFTER the DB transaction commits**: dispatching inside the transaction means the worker may pick it up before the row is visible. NestJS: `entityManager.afterCommit` or `eventEmitter.emit` from `@Transactional` post-commit hook; bare TypeORM: emit after `manager.transaction(async (m) => {...})` resolves; Prisma: `prisma.$transaction(...)` resolves before `queue.add()`.
-- [ ] **Long-running jobs split**: target sub-30-second median; longer work uses flow producer / `addBulk` chains.
-- [ ] **`Worker` concurrency** set explicitly (default 1); align with downstream capacity, not just CPU count.
-- [ ] **`lockDuration` / `stalledInterval`**: jobs that genuinely take > 30s set `lockDuration` higher; otherwise BullMQ marks them stalled and reprocesses (double-execution).
+- [ ] **Idempotent + ID payloads**: re-fetch state, return early if done; payload uses IDs / primitives, never ORM entities. `queue.add(name, data, { jobId: businessKey })` for server-side dedup
+- [ ] **`queue.add()` AFTER commit**: never inside `prisma.$transaction` / `dataSource.transaction` - worker may pick up before the row is visible. NestJS post-commit hook / `EventEmitter2`; bare TypeORM `manager.transaction` resolves first
+- [ ] **Retry + DLQ declared**: `attempts` + `backoff: { type: 'exponential' }`, `removeOnComplete` / `removeOnFail` (prevent Redis growth); failed-jobs surfaced via observability, not ignored
+- [ ] **Queue routing + Worker concurrency**: time-sensitive jobs on a dedicated queue; `Worker` concurrency explicit (default 1) and aligned to downstream capacity, not CPU count
+- [ ] **`lockDuration` matches job runtime**: jobs > 30s set `lockDuration` higher or split via flow producer / `addBulk` - otherwise BullMQ marks them stalled and reprocesses (double-execution)
 
 ### Step 10 - Observability for Perf (delegation hand-off)
 
