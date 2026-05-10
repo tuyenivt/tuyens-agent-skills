@@ -250,7 +250,7 @@ The most common Node refactor: a controller `create` triggers an entity save who
 5. **Delete the listeners entirely**; the service is now the single source of orchestration; remove the bypass flag; tests still green
 6. **Audit other call sites** (`prisma.order.create`, `repository.save`, migrations, scheduled jobs) - any caller relying on the old listener is now broken and must be updated to call the service or have the side effects re-derived
 
-The intermediate "listeners no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the listeners (step 5).
+The intermediate "listeners no-op when called from service" step is a **temporary scaffold**, not a destination. Steps 4 and 5 must land in the same PR (or back-to-back PRs with step 5 explicitly tracked) - shipping step 4 without step 5 leaves a silent skip-flag in production where the next caller that forgets to set the flag double-fires side effects, and the next reader has no idea the listener is conditionally inert. If the plan must split, label step 4 `coupled-fix` and add a verification step that fails CI when both the listener and the bypass flag exist past one release cycle.
 
 **Recipe: Eliminate blocking I/O in event loop**
 
@@ -438,3 +438,4 @@ _Omit this section if the target file has no other smells._
 - Refactoring a published npm package without a backward-compatibility plan - that is a public API
 - Replacing `axios` with `undici` on a code path with no measured benefit (premature change; if the team is already on `axios` and it works, the recipe is "address the smell" not "swap libraries")
 - Replacing module-level mutable state with `AsyncLocalStorage` without checking that the codebase actually has a clear request-bound boundary - ALS without a clear `als.run(...)` boundary leaks state across requests
+- Shipping the "listeners no-op when called from service" intermediate step (Recipe: Untangle fat controller + listener-driven side effects, step 4) as a permanent state - the AsyncLocalStorage / Reflect-metadata skip flag must be deleted alongside the listener it guards (step 5), or it becomes an invisible footgun for the next caller

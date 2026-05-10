@@ -208,16 +208,12 @@ await this.prisma.order.deleteMany({ where: { status: "EXPIRED" } });
 
 ### Migrations
 
-- `prisma migrate dev` - development (creates + applies)
-- `prisma migrate deploy` - production/CI (applies only, no generation)
-- `prisma migrate reset` - for testing only
-- `prisma db push` - for prototyping only, never production
+See `node-migration-safety` for the canonical migration commands, deploy ordering, and zero-downtime DDL rules. The Prisma-specific note: `prisma db push` is for prototyping only - never production (no migration history; can lose data).
 
 ## Edge Cases
 
 - **Cursor-based pagination with deleted records**: If the cursor record was deleted between requests, the query returns from the start. Validate that the cursor exists or handle gracefully.
 - **Transaction timeout**: Interactive transactions default to 5 seconds. For long-running transactions, set `timeout` in the `$transaction` options: `$transaction(fn, { timeout: 10000 })`.
-- **Unique constraint on upsert race condition**: Concurrent `upsert` calls can still throw P2002 if two processes check simultaneously. Wrap upserts in a retry loop or use a database-level advisory lock.
 - **Decimal precision**: Use `@db.Decimal(19, 4)` for monetary values in the schema, and handle `Decimal` objects in code (they are not plain numbers).
 
 ## Output Format

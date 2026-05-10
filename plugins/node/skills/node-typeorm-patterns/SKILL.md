@@ -238,12 +238,7 @@ async findPaginated(page: number, pageSize: number): Promise<[Order[], number]> 
 
 ### Migrations
 
-- `typeorm migration:generate -d src/data-source.ts -n AddOrders` - auto-generates from entity diff
-- `typeorm migration:create -n BackfillOrderStatus` - empty migration for custom SQL
-- `typeorm migration:run` - applies pending
-- `typeorm migration:revert` - reverts last applied
-- Always review generated migrations before applying
-- Same zero-downtime rules as core (add nullable first, backfill, then NOT NULL)
+See `node-migration-safety` for the canonical migration commands, deploy ordering, and zero-downtime DDL rules. The TypeORM-specific note: `synchronize: true` is forbidden in production - use generated migrations only.
 
 ## Edge Cases
 
