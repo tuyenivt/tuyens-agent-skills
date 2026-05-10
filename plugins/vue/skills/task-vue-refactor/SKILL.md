@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific Vue target (component, composable, page / layout, Pinia store, Nitro endpoint, plugin). Identifies Vue-specific smells (god component, prop drilling, `watch` for derived state, deep `reactive` over large data, fat composable, conditional rendering ladder, scattered state, missing Zod on Nitro endpoint, inline business logic in template, untyped props) and proposes independently-committable refactoring steps with Vitest gates between each.
+Produce a safe, step-by-step refactoring plan for a specific Vue target (component, composable, page / layout, Pinia store, Nitro endpoint, plugin). Identifies Vue-specific smells (Step 4 catalog) and proposes independently-committable refactoring steps with `vue-tsc --noEmit` + Vitest gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for Vue.
 

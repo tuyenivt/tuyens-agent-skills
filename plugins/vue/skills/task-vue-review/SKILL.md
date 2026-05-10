@@ -143,46 +143,40 @@ Logical correctness, error handling completeness, edge cases affecting UI integr
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding Vitest coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication / session UI, Nitro endpoints, money / billing UI, form validation, multi-step flows, error boundaries. Do not bury this finding in Key Takeaways.
 
-**Vue-specific correctness checks (both frameworks):**
+Canonical patterns live in `vue-component-patterns`, `vue-composables-patterns`, `vue-data-fetching`, `vue-state-patterns`, `vue-nuxt-patterns`. This phase scans for diff-level findings:
 
-- [ ] **TypeScript strict mode**: `strict: true` not silently disabled; `as any` flagged outside test setup; `noImplicitAny` / `strictNullChecks` not relaxed; component prop types declared via `defineProps<{...}>` (typed) not `defineProps(['x'])` (untyped runtime declaration)
-- [ ] **`<script setup>` over Options API**: new components use `<script setup>` (it's the modern shape); flag mixed-style PRs unless the project documents Options API as the convention. Don't churn existing Options API code into setup unless that's the PR's purpose
-- [ ] **Composition API discipline**: composables called at the top level of `<script setup>` / `setup()` - never inside conditions, loops, or after early returns. Composable functions named `use<Noun>` and called consistently
-- [ ] **`watch` / `watchEffect` discipline**: every watcher synchronizes with an external system (DOM, network, browser API) or recomputes derived state. Watchers for "compute derived state" (`watch(a, () => { state.x = a.value + b.value })`) are a smell - use `computed`. Watchers for event handling (`watch(clicked, () => { if (clicked) ... })`) are a smell - call the handler directly. Flag both
-- [ ] **`watch` deep / immediate misuse**: `watch(state, fn, { deep: true })` on a 500-key object scans on every change - costly and rarely intended. Prefer specifying `() => state.specificField`. `immediate: true` is correct for "run once now and on every future change" but smell when used to compensate for a missing initial fetch
-- [ ] **Watcher cleanup**: subscriptions / observers / intervals registered in `onMounted` return a cleanup via `onUnmounted` (or `onScopeDispose`); flag missing cleanup as a [High] memory-leak finding. `watchEffect` / `watch` auto-clean when their effect scope ends, but external resources still need explicit cleanup
-- [ ] **Reactivity loss via destructure**: `const { a, b } = reactive({ a, b })` - `a` and `b` are now plain values, not reactive. Vue 3.5+ supports props destructure (`const { count } = defineProps<{ count: number }>()`) which compiles to reactive accessors - flag destructure of non-prop reactive objects without `toRefs`
-- [ ] **Reactivity loss via spread**: `{ ...state }` makes a plain object copy; flag patterns that spread a `reactive` and expect reactivity to survive
-- [ ] **Missing `:key` on `v-for` / `:key="index"`**: `<li v-for="(item, index) in items" :key="index">` is wrong on a reorderable / filterable / removable list - reconciliation breaks. `:key="item.id"` (stable) is right. Flag both
-- [ ] **`v-for` with `v-if` on the same element**: in Vue 3, `v-if` has higher precedence and the iteration variable is not in scope inside `v-if`. Filter via a `computed` first (`<li v-for="item in visibleItems">`)
-- [ ] **Async `<script setup>` without `<Suspense>` ancestor**: a child with `await` in `<script setup>` (`await useFetch(...)`) requires a `<Suspense>` boundary somewhere up the tree, or it errors. Flag missing `<Suspense>` for the new async child
-- [ ] **Browser-only API in `<script setup>` body**: `window`, `document`, `localStorage`, `IntersectionObserver` accessed at the top level of `<script setup>` runs on the server during SSR (Nuxt) and crashes. Wrap in `onMounted` or guard with `import.meta.client` / `process.client`
-- [ ] **`<ClientOnly>` for inherently client-only components (Nuxt)**: components depending on `window` or third-party widgets that don't SSR should be wrapped; provide a `<template #fallback>` to reserve space (else CLS)
-- [ ] **Nitro endpoint input validation (Nuxt)**: every `defineEventHandler` validates input via `readValidatedBody(event, Schema.parse)` / `getValidatedQuery(event, Schema.parse)` at the top, before any auth or DB call. Missing validation is a [High] / [Blocker] depending on whether the endpoint mutates data; raw `await readBody(event)` going into `prisma.x.update({ data })` is a critical mass-assignment finding
-- [ ] **Nitro endpoint authorization (Nuxt)**: every Nitro endpoint that mutates data calls `await requireUserSession(event)` (or session equivalent) at the top and verifies the principal can act on the resource (object-level scoping, not just authenticated). An IDOR via Nitro endpoint is the same severity as IDOR via REST endpoint
-- [ ] **Server middleware widens public surface (Nuxt)**: a new entry / removal in `server/middleware/auth.ts` exclusions without a security comment justifying why the route is exempt is a [High]. Depth (whether the route should be public) belongs to security review; the umbrella owns presence
-- [ ] **Pinia / `useState` SSR leak (Nuxt)**: a Pinia store or `useState` populated server-side with a full ORM row serializes into the `__NUXT__` payload (`window.__NUXT__.pinia`) - leaks `passwordHash`, `mfaSecret`, etc. into client HTML. Project to a DTO at the data layer or before placing in the store
-- [ ] **`v-html` on user input**: any usage where the HTML originates from user input, URL params, or external API must be sanitized (`DOMPurify` client / `sanitize-html` server). Flag as Critical when the content path is user-controllable
-- [ ] **Open redirect**: `await navigateTo(query.returnTo)` (Nuxt) / `router.push(returnTo)` (Vite) without allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`)
-- [ ] **`NUXT_PUBLIC_*` / `VITE_*` for secrets**: env vars referencing API keys, DB URLs, or signing secrets compile into the client bundle - flagged as Critical. Server-only secrets live in `runtimeConfig` (Nuxt, server-only access)
-- [ ] **Form accessibility**: `<input>` has an associated `<label>` (via `for` or wrapping); error messages associated via `aria-describedby`; submit button has accessible name; required fields use `aria-required` (or `required`) and surface validation errors when invalid
-- [ ] **Interactive accessibility**: dialogs use `<dialog>` or proper ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus on close); menus use `role="menu"` / proper key handling; new interactive components built on Headless UI / Reka UI / shadcn-vue primitives by default rather than reinventing keyboard handling
-- [ ] **Image / media**: `<NuxtImg>` (Nuxt) or explicit `width`/`height` on raw `<img>` to prevent CLS; `alt` attribute present (empty string `alt=""` for decorative); flag missing
-- [ ] **Error boundaries**: components with non-trivial render logic / external data have an error boundary above them (Nuxt: `error.vue` at root + per-segment `error.vue` patterns; Vue 3 `errorCaptured`; Vite: explicit error boundary component). A bare `throw` in a render path crashes the whole tree if no boundary catches
-- [ ] **`ref` vs `reactive`**: refs for primitives and identity-based objects; `reactive` for plain object state (no top-level reassignment). Flag `reactive(0)` or `reactive(['a', 'b'])` as smells
-- [ ] **`shallowRef` / `shallowReactive` for large structures**: large datasets / API responses use shallow variants to avoid deep proxy overhead; flag deep `reactive(largeObject)` for read-only data
+**Vue correctness (both frameworks):**
 
-**Concurrency / state-management safety:**
+- [ ] **TypeScript strict / typed props**: `strict: true` not silently disabled; `as any` outside test setup; `defineProps<{...}>` not `defineProps(['x'])`
+- [ ] **`<script setup>` over Options API** for new components; mixed-style PRs flagged unless the project documents Options API
+- [ ] **Composition API discipline**: composables called at top level (no conditions / loops / after early returns); `use<Noun>` naming - see `vue-composables-patterns`
+- [ ] **Watcher discipline**: `watch` used for derived state (use `computed`) or for event handling (call the handler directly); `deep: true` on wide objects; missing `onUnmounted` / `onScopeDispose` cleanup for `onMounted`-registered subscriptions / observers / intervals (memory leak [High])
+- [ ] **Reactivity loss via destructure / spread**: `const { a } = reactive({...})`, `{ ...state }`. Flag patterns expecting reactivity to survive (Vue 3.5+ props destructure is the exception - it compiles to accessors)
+- [ ] **`v-for` keys**: missing or `:key="index"` on a reorderable / filterable / removable list breaks reconciliation
+- [ ] **`v-for` + `v-if` on same element**: filter via `computed` first
+- [ ] **Reactivity primitives**: `reactive(0)` / `reactive(['a','b'])` smells; deep `reactive(largeObject)` for read-only data should be `shallowRef` / `shallowReactive`
 
-- [ ] **State categorization**: state lives in the right place - URL (route query for filters / page / sort), server (Pinia + `useFetch` / TanStack Query for fetched data), local (`ref` for UI-only). Flag local state for filter values when the URL would deep-link better; flag client-side caching of server state when `useFetch` / TanStack Query handle it
-- [ ] **Pinia store granularity**: a single mega-store with all app state vs feature-scoped stores. Feature stores reduce blast radius of changes and reduce cross-component re-render coupling
-- [ ] **Provide / inject re-render storm**: `provide` of a non-stable reactive object propagates change to every consumer; flag for memoized provide value or fine-grained refs
-- [ ] **No mutable module-level state**: `let counter = 0; export function inc() { counter++; }` works in dev with HMR but is a smell - in SSR it leaks across requests. Flag for state lib or for moving inside a composable / Pinia store
+**Nuxt-specific correctness (skip on Vite):**
 
-Use skill: `vue-component-patterns` for canonical component shape.
-Use skill: `vue-composables-patterns` for canonical composable patterns.
-Use skill: `vue-data-fetching` for canonical data-fetching patterns.
-Use skill: `vue-state-patterns` for state-management patterns.
+- [ ] **Hydration safety**: browser-only APIs (`window`, `document`, `localStorage`, `IntersectionObserver`) at top level of `<script setup>` crash SSR - wrap in `onMounted` or guard with `import.meta.client`. Async `<script setup>` (`await useFetch`) needs a `<Suspense>` ancestor. Inherently client-only components → `<ClientOnly>` with `<template #fallback>` to avoid CLS
+- [ ] **Nitro endpoint input + auth**: `readValidatedBody(event, Schema.parse)` / `getValidatedQuery(event, Schema.parse)` at top before any DB call (raw `readBody` flowing into `prisma.x.update({ data })` is mass assignment, [Blocker]). Mutating endpoints call `requireUserSession(event)` and verify object-level ownership (IDOR). New / removed exclusions in `server/middleware/auth.ts` without security comment is [High]
+- [ ] **Pinia / `useState` SSR ORM-leak audit** (Nuxt, [Critical]): a store / state populated server-side with a full ORM row serializes into `__NUXT__` payload visible in client HTML. Audit for sensitive fields - `passwordHash`, `mfaSecret`, `apiToken`, `refreshToken`, `internal*`, `*Secret`, `recoveryCode`. Project to a DTO at the data layer (`prisma.user.findUnique({ where, select: {...} })`) or before placing in the store
+
+**Vue cross-cutting safety:**
+
+- [ ] **`v-html` on user input** without sanitizer (`DOMPurify` / `sanitize-html`) - [Critical] when content path is user-controllable
+- [ ] **Open redirect**: `navigateTo(query.returnTo)` / `router.push(returnTo)` without allowlist or `url.startsWith('/') && !url.startsWith('//')`
+- [ ] **`NUXT_PUBLIC_*` / `VITE_*` for secrets** (API keys, DB URLs, signing secrets) - compiled into client bundle, [Critical]; server-only secrets live in `runtimeConfig`
+- [ ] **State categorization**: filter / page / sort in `ref` instead of route query (breaks deep-linking, refresh, back-button); client-side caching of server state when `useFetch` / TanStack Query handle it. See `vue-state-patterns`
+- [ ] **Mutable module-level state** (`let cache = {}` mutated by render / events) - in SSR (Nuxt) leaks across requests
+- [ ] **Provide / inject re-render storm**: non-stable reactive provide value propagates to every consumer
+- [ ] **Error boundaries**: non-trivial render / external data wrapped (Nuxt `error.vue` per-segment; Vue 3 `errorCaptured`; Vite explicit boundary). A bare render-path `throw` crashes the tree
+
+**Accessibility:**
+
+- [ ] **Form a11y**: `<input>` with associated `<label>`, `aria-describedby` for error messages, accessible submit name, `required` / `aria-required` with surfaced validation
+- [ ] **Interactive a11y**: dialogs use `<dialog>` or full ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus); reach for Headless UI / Reka UI / shadcn-vue before reinventing key handling
+- [ ] **Images**: `<NuxtImg>` or explicit `width`/`height` on `<img>` (CLS); `alt` present (`alt=""` for decorative)
 
 ### Phase C - Vue Architecture Guardrails
 

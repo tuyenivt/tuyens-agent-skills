@@ -98,17 +98,13 @@ user-invocable: false
 
 ### Risk Hotspots Specific to Vue
 
-- **Destructuring `reactive`** loses reactivity: `const { x } = reactive({...})` - `x` is a plain value.
-- **Pinia destructuring** without `storeToRefs` loses reactivity in templates.
-- **`v-for` without `key`:** identity confusion on reorder; updates wrong DOM nodes.
-- **`watch` with `deep: true`** on large objects - perf cost.
-- **Nuxt `useFetch` caching:** keyed cache by URL; same URL + same args = cached. May need explicit `key` for dynamic refetching.
-- **`process.server` / `process.client`** legacy syntax (Nuxt 3.10+ uses `import.meta.server` / `import.meta.client`).
-- **`useState` (Nuxt) vs `ref`:** the former survives SSR hydration with serialized payload; the latter does not.
-- **SSR-incompatible code:** browser-only APIs (`window`, `document`, `localStorage`) in setup must be guarded with `import.meta.client`.
-- **Plugins running on both server and client:** check the file naming convention (`.client.ts` / `.server.ts` suffix in Nuxt).
-- **Composable lifecycle binding:** composables that register lifecycle hooks must be called inside `setup()`, not from arbitrary points.
-- **Component auto-import collisions:** Nuxt auto-imports are by file path; deeply nested same-named files require explicit imports.
+- **Reactivity loss** (destructure / spread of `reactive`, Pinia destructure without `storeToRefs`, deep `reactive` over large data): see `vue-composables-patterns`, `vue-state-patterns`, `task-vue-review-perf`.
+- **Watcher misuse** (`watch` for derived state, `deep: true` on wide objects, missing `onUnmounted` cleanup): see `vue-composables-patterns`, `task-vue-review`.
+- **`v-for` keys** (missing or `:key="index"` on reorderable lists), **`v-for` + `v-if` on same element**: see `vue-component-patterns`.
+- **Data fetching** (`useFetch` cache `key` / `transform` missing, mutation invalidation missing, N+1 fan-out, `$fetch` in setup runs twice on SSR): see `vue-data-fetching`, `task-vue-review-perf`.
+- **SSR boundary** (browser APIs at top of `<script setup>`, async setup without `<Suspense>`, `useState` vs `ref` for cross-request state, `.client.ts` / `.server.ts` plugin suffix, composable lifecycle binding): see `vue-nuxt-patterns`, `task-vue-review`.
+- **Pinia / `useState` SSR ORM-leak** (full rows in `__NUXT__` payload), **`v-html` XSS**, **`NUXT_PUBLIC_*` / `VITE_*` secret leak**, **open redirect**, **Nitro endpoint without Zod / auth**: see `task-vue-review-security`.
+- **Vue 3.10+ syntax**: prefer `import.meta.server` / `import.meta.client` over legacy `process.server` / `process.client`.
 
 ### First-PR Safe Zones
 

@@ -101,30 +101,18 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - Reactivity and Re-Render Hotspots
 
-Use skill: `vue-composables-patterns` for canonical composable / reactivity discipline; use skill: `vue-component-patterns` for component shape.
+Canonical reactivity / component-shape discipline lives in `vue-composables-patterns` and `vue-component-patterns`. This step is a review-scoped scan for the diff:
 
-Inspect every changed component / composable for:
-
-- [ ] **Deep `reactive(largeObject)` for read-only data**: `reactive()` recursively wraps every nested property in a proxy - on a 500-row dataset the cost compounds. Use `shallowReactive` / `shallowRef` for large immutable structures (API responses, lookup tables) and only deep-reactive the slice that actually mutates
-- [ ] **`reactive` for primitive values**: `reactive({ count: 0 })` works but `ref(0)` is the idiom; flag when the only reason for `reactive` is to share a primitive
-- [ ] **Destructuring a `reactive` loses reactivity**: `const { a, b } = reactive({ a, b })` - `a` and `b` are now plain values. Use `toRefs` / `toRef`, or in Vue 3.5+ destructure props directly (which compiles to reactive accessors)
-- [ ] **Spreading a `reactive` loses reactivity**: `{ ...state }` makes a plain object copy; pass `state` directly or use `toRefs(state)` when sharing fields with a child via `defineProps`
-- [ ] **`computed` that does heavy work without dep filtering**: a `computed` reading `largeArray.value` re-runs whenever any item shape changes (because `largeArray` itself is reactive). For derivations that only depend on a slice, isolate the slice via a smaller `computed` first or use `shallowRef` on the source
-- [ ] **`computed` used as a method**: `const x = computed(() => fn())` invoked as `x.value` repeatedly inside a template / handler - a method call would be cheaper if the result is not cached across renders. Conversely: a method called inside the template that doesn't depend on render state should be a `computed` so its result memoizes
-- [ ] **`watchEffect` with hidden side effects**: `watchEffect(() => { fetch(state.url) })` re-fires whenever any reactive read inside changes - including reads you didn't intend to track. Prefer explicit `watch(() => state.url, fn)` for known sources; reach for `watchEffect` only when the dep set is genuinely "everything I touch in this block"
-- [ ] **`watch` deep / immediate misuse**: `watch(state, fn, { deep: true })` on a 500-key object scans on every change - costly and rarely what you want. Prefer specifying `() => state.specificField`. `immediate: true` is correct for "run once now and on every future change" but smell when used to compensate for a missing initial fetch
-- [ ] **`watch` flush timing**: default `flush: 'pre'` runs before the DOM updates; `'post'` after; `'sync'` immediately. Default is right for most cases. Flag explicit `'sync'` (blocks the reactivity batch) outside DevTools / debugging
-- [ ] **Watcher cascade**: `watch(a, () => state.b = ...)` then `watch(b, () => state.c = ...)` - chained watchers re-batch through tick boundaries and produce intermediate renders. Collapse into a single `computed` or a single watcher that updates multiple targets
-- [ ] **`v-for` without `:key` / `:key="index"`**: missing key breaks reconciliation; key by stable ID. `:key="index"` on a reorderable / filterable list breaks DOM reuse and component state. Flag both
-- [ ] **`v-for` with `v-if` on the same element**: `<li v-for v-if>` - in Vue 3 `v-if` has higher precedence and the iteration variable is not in scope inside `v-if`. Filter the source array via a `computed` first (`<li v-for="item in visibleItems">`) - cleaner and faster
-- [ ] **Inline functions in template event handlers**: `<button @click="() => doSomething(item)">` allocates a new function per render per row - over a list of 1000 items that compounds. Lift to a method / `useFn` factory when measurable
-- [ ] **Inline objects / arrays in template props**: `<Child :config="{ ... }" :items="[...]">` rebuilt every parent render → cascades into deep watchers / computeds in the child. Lift to `computed` or a stable `ref`
-- [ ] **`defineProps` with deep object types accepted as plain object**: child receives a deep object and uses each field independently - prefer flat props or `toRefs(props)` to avoid subscribing to the entire object on every change
-- [ ] **List virtualization absent for long lists**: rendering 1000+ items (or 100+ rows of complex content - charts, sub-tables, rich slots) without `vue-virtual-scroller` / `@tanstack/vue-virtual` causes long initial render and laggy scroll. Threshold scales with row complexity: simple row × 1000+ or complex row × 100+. Flag steady-state lists
-- [ ] **`v-memo` opportunity missed**: `<div v-memo="[item.id, item.updatedAt]">` skips re-render when the dep array is unchanged - useful for read-heavy lists where parent re-renders but row content rarely changes. Flag when a hot list re-renders entirely on parent state updates
-- [ ] **`v-once` for static content**: marketing copy / config legends rendered inside dynamic parents but never changing - `v-once` caches the render
-- [ ] **Heavy synchronous work in render / setup body**: parsing, sorting, filtering large arrays, JSON serialization in `setup()` body or template expression. Move to a `computed` (with real dep set) or precompute outside the component
-- [ ] **`provide` / `inject` re-renders every consumer**: providing a non-stable reactive object propagates change to every injection consumer; if only one field changes, every consumer re-runs. Prefer providing fine-grained refs or splitting into multiple provides
+- [ ] **Deep `reactive` over large read-only data** (API rows, lookup tables): every nested property is proxied. Flag for `shallowRef` / `shallowReactive` - see `vue-composables-patterns`
+- [ ] **Reactivity loss via destructure / spread**: `const { a } = reactive({...})`, `{ ...state }` produce plain values. Use `toRefs` or Vue 3.5+ props destructure
+- [ ] **Watcher misuse**: `watch(state, fn, { deep: true })` on a wide object; `flush: 'sync'` outside debugging; watcher cascades (`a → b → c`); `watchEffect` over-tracking when `watch(() => specificDep, fn)` was meant. Collapse cascades into one `computed` or one multi-target watcher
+- [ ] **`v-for` keys**: missing key, or `:key="index"` on a reorderable / filterable list breaks reconciliation and component state
+- [ ] **`v-for` + `v-if` on the same element**: `v-if` has higher precedence in Vue 3 and the iteration var isn't in scope. Filter via `computed` first
+- [ ] **Identity instability in templates**: inline `{ ... }` / `[ ... ]` as props or inline `() => ...` event handlers in a hot list rebuild on every parent render and cascade into child computeds / watchers. Lift to `computed` or stable `ref`
+- [ ] **Heavy sync work in `setup()` body / template expression**: parsing, sorting, JSON serialization. Move to `computed` with the real dep set, or precompute outside the component
+- [ ] **List virtualization absent**: simple rows × 1000+ or complex rows × 100+ without `vue-virtual-scroller` / `@tanstack/vue-virtual`
+- [ ] **`v-memo` / `v-once` opportunity missed** on read-heavy lists where row content rarely changes, or static content inside dynamic parents
+- [ ] **`provide` / `inject` re-render storm**: provided non-stable reactive object propagates to every consumer. Prefer fine-grained refs or split provides - see `vue-state-patterns`
 
 ### Step 5 - Bundle Size and Code Splitting
 
@@ -145,30 +133,23 @@ Use skill: `vue-component-patterns` for split boundaries; use skill: `vue-nuxt-p
 
 ### Step 6 - Data Fetching and Caching
 
-Use skill: `vue-data-fetching` for canonical patterns.
+Canonical fetching/caching idioms live in `vue-data-fetching`. Review-scoped scan:
 
 **Nuxt 3 (`useFetch` / `useAsyncData` / `$fetch`):**
 
-- [ ] **`useFetch` over manual `$fetch` for SSR data**: `useFetch(url)` integrates with the SSR payload (server fetch reused on client hydration); raw `$fetch` in `<script setup>` runs twice (once on server, once on client) unless explicitly guarded. Flag `$fetch` for initial-render data
-- [ ] **Stable `key` for cacheable data**: `useFetch(url, { key: 'orders-' + status })` enables payload reuse across navigations; missing keys make Nuxt synthesize one from the call site (works but not portable). Flag dynamic keys built via `JSON.stringify` (cache miss every time)
-- [ ] **`getCachedData` for client-side cache reuse**: `useAsyncData(key, fn, { getCachedData: (key) => nuxtApp.payload.data[key] ?? nuxtApp.static.data[key] })` returns cached payload instead of re-fetching on client navigation; flag callsites that always re-fetch when data is rarely changing
-- [ ] **`transform` to project response down**: `useFetch(url, { transform: (data) => ({ id: data.id, name: data.name }) })` keeps the SSR payload small - the entire fetched object lands in the HTML otherwise. Flag full ORM rows surfaced in `useFetch` payload
-- [ ] **`pick` for response field selection**: `useFetch(url, { pick: ['id', 'name'] })` - lighter than `transform` for shallow projection
-- [ ] **`server: false` for client-only fetch**: `useFetch(url, { server: false })` skips SSR and runs only on client (e.g., user-specific data not eligible for SSR cache); flag missing when the call returns user-specific data being SSR'd into shared HTML
-- [ ] **`lazy: true` for non-blocking fetch**: a `useFetch` in `<script setup>` blocks SSR until it resolves - good for above-the-fold data, bad for below-fold. Flag a slow non-critical fetch blocking SSR; recommend `lazy: true` + `<Suspense>` boundary
-- [ ] **`watch` option for refetch on dep change**: `useFetch(url, { watch: [filter] })` refetches when `filter` changes; flag manual `watch(() => filter.value, () => refresh())` patterns - the option is cleaner
-- [ ] **`refresh()` / `refreshNuxtData` after mutations**: after a Nitro server-side mutation, refresh affected `useAsyncData` keys. `refreshNuxtData('orders')` re-runs the fetch; `clearNuxtData('orders')` evicts. Flag mutations without invalidation
-- [ ] **N+1 fan-out over a list**: `await Promise.all(items.map(i => $fetch(`/api/detail/${i.id}`)))` parallelizes N requests but is still N round-trips. Flag and recommend a batched server endpoint (`/api/details?ids=...`) or a Nitro-level batched query. Pure parallelism does not save the database
-- [ ] **Sequential awaits for independent fetches in `<script setup>`**: `const a = await useFetch(...); const b = await useFetch(...);` blocks SSR end-to-end. Use `Promise.all([useFetch(...), useFetch(...)])` or two parallel `useAsyncData` calls
-- [ ] **`<Suspense>` for async setup**: components with async `<script setup>` or `await useFetch` inside need a `<Suspense>` boundary in the parent for graceful fallback; flag missing
-- [ ] **LCP element not behind `<Suspense fallback>`**: hero image / above-the-fold content must not be deferred behind a Suspense fallback - that defers the LCP element itself. Suspense belongs around below-the-fold content
+- [ ] **`$fetch` in `<script setup>` for initial-render data** runs twice (server + client) - prefer `useFetch` so the SSR payload is reused on hydration
+- [ ] **Cache surface**: stable `key` for parameterized fetches (no `JSON.stringify`-built keys); `transform` / `pick` to project response down (full ORM rows in `useFetch` payload land in HTML); `getCachedData` for cross-navigation reuse on rarely-changing data
+- [ ] **SSR mode flags**: `server: false` for user-specific data not eligible for shared SSR cache; `lazy: true` + `<Suspense>` for below-fold non-critical fetches that would otherwise block SSR
+- [ ] **Mutation invalidation missing**: mutations without `refreshNuxtData(key)` / `clearNuxtData(key)` leave stale UI
+- [ ] **N+1 / waterfall**: `Promise.all(items.map(i => $fetch(...)))` is N round-trips - recommend a batched endpoint. Sequential `await useFetch(...); await useFetch(...);` for independent fetches blocks SSR - parallelize
+- [ ] **`<Suspense>` boundary**: async setup needs one in the parent. LCP element must not sit behind a Suspense fallback - that defers the LCP itself
 
-**Both frameworks (TanStack Query Vue / VueQuery, when used):**
+**TanStack Query Vue / VueQuery (both frameworks):**
 
-- [ ] **`staleTime` / `gcTime` set**: default `staleTime: 0` refetches on every mount - flag for endpoints whose data does not change per-mount. `staleTime: 60_000` for typical reads
-- [ ] **Query keys are stable, structured arrays**: `['orders', { ownerId, status }]` not `'orders-' + JSON.stringify(filters)` - structured keys enable scoped invalidation
-- [ ] **Cache invalidation explicit after mutations**: `useMutation({ onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }) })`
-- [ ] **No fetching in render body / template expression**: a `$fetch()` call in the template re-fires on every render
+- [ ] **`staleTime` / `gcTime` not configured** - default `staleTime: 0` refetches on every mount
+- [ ] **Query keys**: stable structured arrays (`['orders', { ownerId, status }]`); no JSON-stringified keys
+- [ ] **Mutation invalidation explicit** via `onSuccess: () => queryClient.invalidateQueries(...)`
+- [ ] **No `$fetch()` in template expression** - fires on every render
 
 ### Step 7 - Core Web Vitals and Page Load
 
