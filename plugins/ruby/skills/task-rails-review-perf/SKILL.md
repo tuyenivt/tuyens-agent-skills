@@ -69,21 +69,16 @@ If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk
 
 ### Step 3 - ActiveRecord Hotspots
 
-Use skill: `rails-activerecord-patterns` for the canonical patterns referenced below.
+Use skill: `rails-activerecord-patterns` for canonical query patterns (`includes`/`preload`/`eager_load` choice, `find_each`, `counter_cache`, `pluck`, `exists?`, transaction-IO discipline). Apply them as the diff scan checklist:
 
-Inspect every changed `app/models/`, `app/controllers/`, `app/services/`, and `app/views/` file for:
-
-- [ ] **N+1 in controller actions**: every association touched in a `each` (or in the response shape) is preloaded with `includes` (auto-pick), `preload` (separate IN-list query), or `eager_load` (single LEFT OUTER JOIN). Pick `eager_load` only when the join column appears in `where`/`order`; otherwise `preload` keeps the queries faster and simpler.
-- [ ] **N+1 in serializers**: serializers (`ActiveModel::Serializer`, `Blueprinter`, `JSONAPI::Serializer`, `Jbuilder`) silently trigger N+1 when they reference an association the controller did not preload. The fix is on the _controller_ (add to `includes`), not in the serializer; alternatively, attach the preload contract to the serializer (e.g., `Blueprinter` `view` + a query object) so the controller cannot forget.
-- [ ] **Multi-level N+1**: nested `each` over associations of associations (e.g., `orders.each { |o| o.line_items.each { |li| li.product.name } }`) - preload the full graph: `Order.includes(line_items: :product)`
-- [ ] **N+1 inside service objects**: services that take a collection (e.g., `BulkRefund.call(orders:)`) and call `each` on associations - the controller's preload contract doesn't extend through the service unless the service preloads internally or accepts a pre-loaded relation. State the preload contract on the service's docstring or accept a relation argument and call `.includes(...)` at the boundary.
-- [ ] **Missing scopes for filter/sort columns**: any `.where`, `.order`, or `.group` on a column without a backing index
-- [ ] **`pluck` vs `select`**: when only one or two columns are needed, prefer `pluck`/`pick` to avoid hydrating models
-- [ ] **`exists?` vs `present?`/`any?`**: existence checks must use `exists?` to issue a `LIMIT 1` query
-- [ ] **`find_each` / `in_batches`** for any iteration over > 1k records
-- [ ] **`counter_cache`** for any `count` displayed alongside a list (avoid `COUNT(*)` per row)
-- [ ] **`enum` with integer mapping** (Rails 7+ default) - never store enum as string in hot paths
-- [ ] **No `.all.each`** anywhere in production code paths
+- [ ] **N+1 in controllers / serializers / views**: every association touched in `each` or the response shape is preloaded upstream. Serializer-driven N+1 is fixed on the *controller*, not the serializer
+- [ ] **Multi-level N+1**: nested `each` over associations of associations - preload the full graph (`includes(line_items: :product)`)
+- [ ] **N+1 inside service objects**: a controller's preload contract doesn't extend through `Service.call(orders:)` - either preload at the service boundary or document the relation contract
+- [ ] **Missing index on `where` / `order` / `group` columns**
+- [ ] **Hydration waste**: `pluck`/`pick` instead of `.map(&:col)` when only a column is needed
+- [ ] **Existence checks use `exists?`** (LIMIT 1), not `any?`/`present?` which loads the relation
+- [ ] **Iteration over >1k records uses `find_each` / `in_batches`**; no `.all.each` in production paths
+- [ ] **`counter_cache`** for any `count` displayed alongside a list
 - [ ] **Transactions scoped tightly**: no HTTP calls or Sidekiq enqueues inside a transaction (use `after_commit` or `transaction.after_commit`)
 
 ### Step 4 - Indexes and Migrations
@@ -113,45 +108,20 @@ Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.
 
 ### Step 6 - Caching and Rendering
 
-For server-rendered apps (views beyond mailers), use skill: `rails-view-templates` for engine-specific rendering patterns and apply these checks to changed `.erb` / `.haml` / `.slim` files in addition to the cache checks below.
+For server-rendered apps (views beyond mailers), use skill: `rails-view-templates` for engine-specific rendering patterns and fragment-caching key rules. Apply this review-side checklist to changed `.erb` / `.haml` / `.slim` files:
 
-**View-only diffs**: when the diff touches only view files, the queries that fan out from the view live in the controller that feeds it - re-apply the relevant Step 3 checks (`includes`/`preload`, `counter_cache`, multi-level N+1) against that controller before concluding. View-side perf bugs almost never have view-side fixes.
+**View-only diffs**: the queries that fan out from a view live in the controller that feeds it - re-apply Step 3 checks against that controller. View-side perf bugs almost never have view-side fixes.
 
-View-side N+1 patterns to flag (the fix is upstream):
-
-```slim
-- @orders.each do |order|
-  span = order.customer.name      / N+1 unless controller does .includes(:customer)
-  span = order.line_items.count   / N COUNT queries; use counter_cache or pre-aggregate
-  - order.shipments.each do |s|   / multi-level N+1; controller needs .includes(:shipments)
-    span = s.tracking_number
-```
-
-Broken cache key (silent staleness):
-
-```slim
-/ Wrong - the id never changes, so the cache never invalidates after writes
-- cache order.id do
-  = render order
-
-/ Right - cache_key_with_version includes updated_at; touch parents on child writes
-- cache order do
-  = render order
-```
-
-- [ ] Russian-doll caching (`cache @collection`, `cache item`) used in views that render large collections, with cache keys including `updated_at` and association timestamps (`belongs_to :parent, touch: true`)
-- [ ] **Fragment cache keys include `updated_at`**: `cache item` (uses `cache_key_with_version`) is correct; `cache item.id` is broken - never invalidates
-- [ ] Low-level caching (`Rails.cache.fetch`) used for expensive derived data, with explicit TTL and an invalidation strategy (touch parent on child write, or write-through on update)
-- [ ] **Cache-stampede protection**: hot keys with expensive regeneration use `Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds)` so concurrent expiries do not pile up against the source of truth
-- [ ] Fragment caches keyed on the right scope (per-user vs. global) - no leakage of authorized data across users
-- [ ] HTTP caching (`fresh_when`, `stale?`) on read-heavy GET endpoints
-- [ ] No serializer (ActiveModel::Serializer, JSONAPI, Blueprinter, Jbuilder) loading associations not declared in `includes`
-- [ ] **No view partial rendering an association inside an `each` without preload** - applies to all engines: `<% @orders.each do |o| %><%= o.customer.name %>` in ERB, `- @orders.each do |o|` + `= o.customer.name` in Slim/HAML. Fix on the controller side with `includes(:customer)`
-- [ ] **Collection rendering with cache**: `render partial: 'order', collection: @orders, cached: true` is faster than per-item `cache` blocks for large lists (multi-key fetch in one Redis round-trip); flag missing `cached: true` on hot list pages
-- [ ] **`render @orders` collection form**: each item must use the partial named for its class; verify the partial uses preloaded associations
-- [ ] **Helper hot paths**: helpers called in tight `each` loops that issue queries (`current_user.can?(item)`, `item.shippable?` if it triggers SQL) - move to a presenter that takes a preloaded relation, or memoize per-request
-- [ ] **ViewComponent over heavy helpers**: components compile templates once and are faster than `render partial:` for repeated UI; flag partials rendered > 50 times per request as candidates for ViewComponent migration
-- [ ] **Turbo Stream broadcasts** during a loop (`broadcast_append_to` per item in a controller `each`) cause one WebSocket message per item - batch via `broadcast_replace_to` of a container or move to a single after-commit broadcast
+- [ ] **Per-row association access without preload** in any engine - flag and fix on the controller side with `includes(...)`
+- [ ] **Fragment cache keys include `updated_at`**: `cache item` is correct; `cache item.id` never invalidates - flag as a high-impact regression. Russian-doll caching paired with `belongs_to :parent, touch: true`
+- [ ] **Cache-stampede protection** on hot keys: `Rails.cache.fetch(key, expires_in: ..., race_condition_ttl: ...)`
+- [ ] **Per-user vs global cache scope** - no authorized data leakage across users
+- [ ] **HTTP caching** (`fresh_when`, `stale?`) on read-heavy GET endpoints
+- [ ] **Serializer associations** not in the controller's `includes`
+- [ ] **Collection rendering**: `render partial:, collection:, cached: true` for hot lists (single Redis round-trip vs per-item)
+- [ ] **Helper hot paths**: helpers issuing SQL inside `each` - move to a presenter that takes a preloaded relation, or memoize per-request
+- [ ] **ViewComponent over partials** rendered >50 times per request
+- [ ] **Turbo Stream broadcasts in loops**: batch via `broadcast_replace_to` of a container or a single after-commit broadcast
 
 ### Step 7 - Concurrency and External I/O
 

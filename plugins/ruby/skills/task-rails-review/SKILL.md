@@ -126,21 +126,18 @@ Logical correctness, error handling completeness, edge cases affecting state int
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding RSpec coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication (Devise/JWT/custom), authorization (Pundit/CanCanCan policies, `current_user.<association>` ownership scoping), money or billing flows, data-integrity writes (multi-record transactions, state machines), Sidekiq jobs that mutate data, or migrations that change column semantics. Do not bury this finding in Key Takeaways - a separate, named entry in Findings.
 
-**Rails-specific correctness checks:**
+**Rails-specific correctness checks** (depth lives in the linked atomic skills; this is the diff-scan layer):
 
-- [ ] **Transaction boundaries**: writes wrapped in `ActiveRecord::Base.transaction`; no HTTP calls or `.perform_async` _inside_ the transaction (use `after_commit` or `transaction.after_commit { ... }`)
-- [ ] **Callback discipline**: `after_create` / `after_save` callbacks not used for cross-aggregate orchestration (extract to a service object); no `after_*` callback enqueuing Sidekiq jobs without `after_commit`
-- [ ] **`save` vs `save!`**: `save!` used inside transactions and in service objects (so failures surface); `save` only when caller checks the return value
-- [ ] **Strong params**: every `create` / `update` action uses `params.require(:model).permit(...)`; no `params.permit!` or `params.to_unsafe_h` in production paths
-- [ ] **N+1 query patterns**: any `.each` over an association in controllers/views/serializers preloads via `includes` / `preload` / `eager_load` (delegate to `task-rails-review-perf` for depth)
-- [ ] **Unbounded queries**: no `Model.all` followed by `.each`; use `find_each` or pagination; serializer not iterating an unbounded collection
-- [ ] **AR entities exposed in API**: controllers do not `render json: @model` directly; responses go through a serializer (ActiveModel::Serializer, JSONAPI::Serializer, Blueprinter, Jbuilder) - models do not leak internal fields like `created_at_db_default` or password digests
-- [ ] **Serializer field-stripping audit**: when the diff adds or modifies a serializer, compare its `attributes :foo, :bar, ...` list against the model's columns. Flag any of `password_digest`, `encrypted_password`, `mfa_secret`, `otp_secret`, `api_key`, `internal_notes`, `audit_log`, `tenant_internal_flags`, `is_admin`, `internal_created_by`, `deleted_at` (when soft-delete leaks tenant data) appearing in the attribute list. Flag any endpoint returning a model directly via `render json: @model` (no serializer) as a [High] - the model's full column set leaks today and grows silently as columns are added
-- [ ] **HTTP `Idempotency-Key` header on unsafe writes**: distinct from Sidekiq job-level dedup (which protects worker-side double-processing). The header protects the *client-server boundary* against retried POSTs from a flaky network or a user double-tap. Any new endpoint in `payments`, `orders#create`, `refunds`, `subscriptions#create`, or any inbound webhook handler should accept `Idempotency-Key`, persist `(key, response_body, response_status)` on first hit, and replay the stored response on retry. Flag missing idempotency on these endpoints as [High]; flag confusion between header-based idempotency and Sidekiq `sidekiq_options unique_for:` (they protect different boundaries and both may be needed)
-- [ ] **Authorization on every action**: every controller action calls `authorize @resource` (Pundit) or `load_and_authorize_resource` (CanCanCan), or has explicit `skip_authorization` with rationale (delegate to `task-rails-review-security` for depth)
-- [ ] **Error handling**: no blanket `rescue StandardError` or `rescue => e`; rescue specific exception classes; `rescue_from` in `ApplicationController` handles `ActiveRecord::RecordNotFound`, `Pundit::NotAuthorizedError`, etc. with appropriate status codes
-- [ ] **Backward compatibility on migrations**: see Phase C migration checks
-- [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; transaction boundaries appropriate (not one giant transaction wrapping I/O, not one per row)
+- [ ] **Transaction boundaries**: writes in `ActiveRecord::Base.transaction`; no HTTP / `.perform_async` inside it - use `after_commit` (see `rails-activerecord-patterns`, `rails-sidekiq-patterns`)
+- [ ] **Callback discipline**: `after_create` / `after_save` not used for cross-aggregate work; jobs/mail dispatched via `after_commit`, not `after_save` (see `rails-sidekiq-patterns`)
+- [ ] **`save!` in transactions and services** so failures surface
+- [ ] **Strong params** with explicit `permit(...)`; no `permit!` / `to_unsafe_h` (see `rails-security-patterns`)
+- [ ] **N+1 / unbounded queries**: preload contracts in controllers and serializers; `find_each` / pagination over `.all.each` (delegate to `task-rails-review-perf`)
+- [ ] **AR-in-API**: no `render json: @model`; serializer in front. **Serializer field-strip**: flag `password_digest`, `encrypted_password`, `mfa_secret`, `otp_secret`, `api_key`, `internal_notes`, `audit_log`, `is_admin`, `internal_created_by`, `deleted_at` appearing in `attributes`. `render json: @model` (no serializer) is [High] - column set leaks today and grows silently
+- [ ] **HTTP `Idempotency-Key` on unsafe writes**: distinct from Sidekiq `unique_for:` (worker-side). The header protects the *client-server* boundary against retried POSTs. New `payments`, `orders#create`, `refunds`, `subscriptions#create`, or inbound webhooks must accept `Idempotency-Key`, persist `(key, response_body, response_status)` on first hit, replay on retry. Missing on these is [High]; flag confusion between the two layers
+- [ ] **Authorization on every action**: `authorize @resource` (Pundit) or `load_and_authorize_resource`; explicit `skip_authorization` with rationale (delegate to `task-rails-review-security`)
+- [ ] **Error handling**: no blanket `rescue StandardError` / `rescue => e`; `rescue_from` in `ApplicationController` for `RecordNotFound`, `Pundit::NotAuthorizedError`, with appropriate status codes
+- [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; transaction sized between "wraps I/O" and "one per row"
 
 **Migration PRs (any change in `db/migrate/`):**
 

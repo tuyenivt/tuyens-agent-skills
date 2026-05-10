@@ -169,16 +169,15 @@ State which option per refactor step and why. Mixing them (post-commit dispatch 
 
 **Recipe: Untangle fat controller + callback orchestration (combined case)**
 
-The most common Rails refactor: a controller action triggers a model write whose `after_save` / `after_create` callbacks fan out (mailers, jobs, audit writes). Removing the callbacks and extracting a service must happen as one logical change, but in safe sub-steps so the suite stays green between commits.
+The most common Rails refactor: a controller action triggers a model write whose `after_save` / `after_create` callbacks fan out (mailers, jobs, audit writes). Remove the callbacks and extract a service in safe sub-steps so the suite stays green between commits. **Do not use thread-local "skip from service" flags** - they leak across requests on threaded servers and produce silent test passes.
 
-1. **Pin behavior with a request spec** asserting every observable side effect (record created, mailer enqueued, job enqueued, audit row written) - this is the contract the refactor must preserve
-2. **Promote `after_save` to `after_commit`** first if the callbacks enqueue jobs or send mail mid-transaction; specs still pass, but side effects now fire post-commit (closer to the eventual service-object behavior)
-3. **Introduce a service object** (`app/services/<verb>_<noun>.rb`) that performs the write _and_ the side effects in one `.call`; controller calls the service _but the callbacks still run_ - this duplicates side effects intentionally and temporarily
-4. **Make callbacks no-op when called from the service** via a thread-local or explicit flag (`Order.transaction { ... ; order.skip_callbacks_for_service = true }`), or `update_columns` to bypass; verify spec still passes with side effects firing exactly once
-5. **Delete the callbacks entirely**; the service is now the single source of orchestration; remove the bypass flag; spec still green
-6. **Audit other call sites** (`grep` for `Order.create`, `order.save`, console scripts, rake tasks, other controllers) - any caller relying on the old callbacks is now broken and must be updated to call the service or have the side effects re-derived
+1. **Pin behavior with a request spec** asserting every observable side effect (record created, mailer enqueued, job enqueued, audit row written) - the contract the refactor must preserve
+2. **Promote `after_save` to `after_commit`** if callbacks enqueue jobs or send mail mid-transaction; specs still pass, side effects now fire post-commit (closer to eventual service-object behavior)
+3. **Audit call sites** (`grep` for `Order.create`, `order.save`, console scripts, rake tasks, other controllers). Every caller of the model's write path goes through the new service, or has its side effects re-derived. This must be done *before* step 4 - otherwise the next step deletes side effects relied on elsewhere
+4. **Introduce the service** (`app/services/<verb>_<noun>.rb`) and **delete the callbacks in the same commit**. The service is now the single source of orchestration. Specs from step 1 still green
+5. **Remove dead code**: callback methods, helper concerns the callbacks pulled in, and any tests that asserted callback behavior directly (the request spec from step 1 covers the contract)
 
-The intermediate "callbacks no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the callbacks (step 5).
+The "audit before delete" sequencing is the safety net. Skipping it is how production loses an audit row no test covered.
 
 **Recipe: Split fat model into model + service + query object**
 

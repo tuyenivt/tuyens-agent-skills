@@ -55,48 +55,14 @@ The Rails test pyramid maps to RSpec spec types:
 
 ### Step 3 - Apply Rails Test Patterns
 
-Use skill: `rails-testing-patterns` for the canonical patterns referenced below.
+Use skill: `rails-testing-patterns` for canonical model / service / request / policy / job / system spec recipes (shoulda-matchers, FactoryBot traits, Sidekiq fake/inline, Pundit). The strategy-side rules layered on top:
 
-**Model specs (`spec/models/`):**
-
-- Validations via shoulda-matchers: `it { should validate_presence_of(:email) }`
-- Associations via shoulda-matchers: `it { should belong_to(:user) }`
-- Scopes: arrange records that match and don't match; assert the scope returns the right set
-- Custom methods: behavior-focused names (`describe '#full_name'`, `it 'concatenates first and last'`)
-- **No mocking of ActiveRecord** in model specs - use FactoryBot to create real records
-
-**Service specs (`spec/services/`):**
-
-- Test the public interface (`.call` returning a Result object) - one example per outcome (success, validation failure, external failure)
-- Stub external HTTP calls with WebMock/VCR; do **not** stub ActiveRecord
-- Verify post-conditions: records created, emails enqueued, jobs scheduled
-
-**Request specs (`spec/requests/`):**
-
-- One example per `(action, role, outcome)` triple - covers routing, controller, serializer, auth, authz end-to-end
-- Authentication: helper that signs in a user (`sign_in user` for Devise, or set JWT header)
-- Authorization: a separate example for "user without permission gets 403/404" per protected action
-- Strong params: a "rejects unpermitted attributes" example for any controller using `permit`
-- Response shape: assert key fields, status, and Content-Type - not the full body
-
-**Policy specs (`spec/policies/`, when using Pundit):**
-
-- Use `pundit-matchers` or hand-rolled `permissions :action? do ... end` blocks
-- One example per `(role, action, allow|deny)` triple
-- Cover every action defined in the policy - no implicit allows
-
-**Job specs (`spec/jobs/`, `spec/sidekiq/`):**
-
-- Test `perform` directly with the right arguments
-- Idempotency: call `perform` twice with the same args; assert the side effect happened once
-- Retry behavior: stub the dependency to raise; assert the job is retried (or marked dead) per `sidekiq_options retry: N`
-- Use `Sidekiq::Testing.inline!` for end-to-end "controller enqueues -> job runs -> side effect" tests in request specs
-
-**System specs (`spec/system/`):**
-
-- One per critical user journey
-- Use Capybara with Cuprite (faster than Selenium) when JS is needed
-- Avoid CSS selectors; query by role, label, or text
+- **Model specs**: no AR mocking - FactoryBot real records; behavior-focused names
+- **Service specs**: one example per Result outcome (success / validation failure / external failure); stub HTTP at the boundary, never AR
+- **Request specs**: one example per `(action, role, outcome)` triple; "rejects unpermitted attributes" for any controller using `permit`; assert key fields + status + Content-Type, not full body
+- **Policy specs**: one example per `(role, action, allow|deny)` - cover every action defined, no implicit allows
+- **Job specs**: idempotency assertion (call `perform` twice, side effect once); bounded retry assertion per `sidekiq_options retry: N`
+- **System specs**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
 
 ### Step 4 - Test Boundaries (Rails-Specific)
 
@@ -127,13 +93,12 @@ Use skill: `rails-testing-patterns` for the canonical patterns referenced below.
 
 ### Step 5 - FactoryBot and Test Data
 
-- One factory per model under `spec/factories/`
-- Use **traits** for variations: `:admin`, `:with_orders`, `:archived` - never define separate factories for variants
-- Default factory builds a valid record with minimum attributes - no associations unless required for validity
-- Use `build_stubbed` for unit specs that don't need DB persistence (much faster)
-- Use `build` when associations matter but DB hit is unnecessary
-- Use `create` only when DB persistence is required (request specs, association queries, integration tests)
-- **Avoid `create_list(:foo, 100)`** in unit specs - signals the test belongs at integration layer
+See `rails-testing-patterns` for factory/trait shape. Strategy-side rules:
+
+- One factory per model; **traits** for variations - never duplicate factories for variants
+- Default factory builds a *valid record with minimum attributes* (no associations unless required for validity)
+- `build_stubbed` for unit specs (fastest), `build` when associations matter but DB hit is unnecessary, `create` only when persistence is required
+- `create_list(:foo, 100)` in a unit spec signals the test belongs at integration layer
 
 ### Step 6 - Prioritization (when coverage is low)
 

@@ -303,20 +303,7 @@ namespace :reports do
 end
 ```
 
-Use a PostgreSQL advisory lock to prevent two cron triggers (or a manual run during cron) from racing on the same dataset:
-
-```ruby
-task backfill: :environment do
-  ActiveRecord::Base.connection.execute("SELECT pg_advisory_lock(#{"backfill".hash})")
-  begin
-    BackfillService.call
-  ensure
-    ActiveRecord::Base.connection.execute("SELECT pg_advisory_unlock(#{"backfill".hash})")
-  end
-end
-```
-
-The second invocation blocks until the first releases - or use `pg_try_advisory_lock` and `abort` immediately if the lock is held, depending on the desired behavior.
+Use a PostgreSQL advisory lock to prevent two cron triggers (or a manual run during cron) from racing on the same dataset (see `rails-migration-safety` for the canonical lock/unlock shape). For rake tasks, prefer `pg_try_advisory_lock` so the second invocation aborts immediately rather than blocking cron.
 
 ### Composition With Other Tasks
 

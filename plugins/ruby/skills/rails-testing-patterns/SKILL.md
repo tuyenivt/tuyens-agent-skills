@@ -397,33 +397,14 @@ end
 
 > See `rails-rake-task-patterns` for the task design rules these specs verify.
 
-Rake tasks are thin shells over services. The service spec carries the behavioral coverage; the rake spec only proves the wiring is correct - ENV parsing, argument forwarding, exit behavior on failure.
+Rake tasks are thin shells over services - the service spec owns behavioral coverage; the rake spec only proves wiring (ENV parsing, argument forwarding, exit behavior, prod confirmation gate).
 
-Setup: load tasks once per suite, reenable per example so invocations are independent. Use `climate_control` (or similar) to scope ENV mutations to one example.
-
-Bad - re-implements service coverage and leaves the task in a "already invoked" state for sibling specs:
-
-```ruby
-RSpec.describe "orders:fulfill_pending" do
-  it "fulfills every pending order" do
-    create_list(:order, 3, :pending)
-    Rails.application.load_tasks
-    Rake::Task["orders:fulfill_pending"].invoke
-    expect(Order.pending.count).to eq(0)
-  end
-end
-```
-
-Good - asserts wiring, isolates ENV, reenables the task:
+Setup: `Rails.application.load_tasks` once per suite, `task.reenable` after each example. Use `climate_control` to scope ENV per example.
 
 ```ruby
 # spec/tasks/orders_rake_spec.rb
-require "rails_helper"
-require "rake"
-
 RSpec.describe "orders:fulfill_pending" do
   before(:all) { Rails.application.load_tasks }
-
   let(:task) { Rake::Task["orders:fulfill_pending"] }
   after { task.reenable }
 
@@ -431,16 +412,7 @@ RSpec.describe "orders:fulfill_pending" do
     expect(FulfillPendingOrders).to receive(:call)
       .with(dry_run: true, batch_size: 250)
       .and_return(Result.success(processed: 0, skipped: 0))
-
     ClimateControl.modify(DRY_RUN: "1", BATCH_SIZE: "250") { task.invoke }
-  end
-
-  it "uses documented defaults when ENV is unset" do
-    expect(FulfillPendingOrders).to receive(:call)
-      .with(dry_run: false, batch_size: 500)
-      .and_return(Result.success(processed: 0, skipped: 0))
-
-    ClimateControl.modify(DRY_RUN: nil, BATCH_SIZE: nil) { task.invoke }
   end
 
   it "propagates service failures so cron sees a non-zero exit" do
@@ -450,28 +422,9 @@ RSpec.describe "orders:fulfill_pending" do
 end
 ```
 
-For tasks with a production confirmation gate, assert the gate fires:
+For tasks with a production confirmation gate, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` (which is what `abort` raises) when `CONFIRM` is unset.
 
-```ruby
-RSpec.describe "sessions:purge_stale" do
-  before(:all) { Rails.application.load_tasks }
-  let(:task) { Rake::Task["sessions:purge_stale"] }
-  after { task.reenable }
-
-  it "aborts in production without CONFIRM=yes" do
-    allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("production"))
-    ClimateControl.modify(CONFIRM: nil) do
-      expect { task.invoke }.to raise_error(SystemExit) # `abort` raises SystemExit
-    end
-  end
-end
-```
-
-Notes:
-
-- `Rake::Task#invoke` runs prerequisites; `#execute` skips them. Prefer `invoke` so `:environment` actually loads.
-- `task.reenable` only re-enables that single task. If a task has chained `invoke` calls, reenable each one.
-- A failing rake task raises - `expect { ... }.to raise_error` is the right matcher. `abort` raises `SystemExit`, not `RuntimeError`.
+Notes: `invoke` runs prerequisites (so `:environment` loads); `execute` skips them. `reenable` is per-task - reenable each chained task separately.
 
 ### Test Helpers - `auth_headers` and `json_response`
 

@@ -298,13 +298,7 @@ f.use :instrumentation
 
 ### Webhook Handling (inbound)
 
-This skill is primarily about outbound HTTP, but inbound webhooks share the retry/idempotency story:
-
-- Verify the signature header **before** parsing the body
-- Use the webhook's event ID as an idempotency key - persist `webhook_events(provider, event_id)` with a unique index, ignore duplicates
-- Respond `200` quickly; do real work in a Sidekiq job
-
-See `rails-security-patterns` for signature-verification details.
+Inbound webhooks share the retry/idempotency story: verify signature **before** parsing the body, persist `webhook_events(provider, event_id)` with a unique index for replay protection, respond `200` quickly and dispatch real work to a Sidekiq job. See `rails-security-patterns` for signature verification.
 
 ### Testing
 

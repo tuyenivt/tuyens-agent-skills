@@ -121,24 +121,20 @@ Apply the OWASP Top 10 with Rails-specific framing. Use skill: `rails-security-p
 
 ### Step 6 - Input Validation and Mass Assignment
 
-- [ ] **Strong params**: every `create`/`update` action uses `params.require(:model).permit(...)` with an explicit allowlist
-- [ ] **No `params.permit!` or `params.to_unsafe_h`** in production code paths
-- [ ] **No privilege-bearing fields in user-facing permit lists**: `:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status` (when status is a state-machine controlled by server logic) - these flip authorization or ownership and must be set by the server, not the client. If they appear in a `permit(...)` call, require either an admin-only controller path with a separate Pundit policy, or removal from the permit list.
-- [ ] **Nested attributes** (`accepts_nested_attributes_for`) limited to expected child models; nested permit lists explicit; nested `_destroy: true` only when the parent policy authorizes child deletion
-- [ ] **File uploads** (Active Storage, CarrierWave, Shrine):
-  - File type validated by content (magic bytes), not just extension
-  - Per-file size limit enforced; total request body limit at Rack level (`Rack::Attack`)
-  - `Content-Disposition: attachment` on serve to prevent inline rendering of uploaded HTML/SVG
-  - Direct-upload signed URLs scoped to single object with short expiry
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: any `File.read` / `send_file` with user-controlled paths uses `File.expand_path` and verifies the result is within an allowed base directory
-- [ ] **Shell calls**: no `system(...)`, `` `...` ``, or `Open3` with interpolated user input - use API alternatives
+Use skill: `rails-security-patterns` for canonical strong-params, mass-assignment, IDOR, upload-validation, and open-redirect patterns. Apply as the review checklist:
+
+- [ ] **Strong params** with explicit allowlist on every `create`/`update`; no `params.permit!` / `to_unsafe_h`
+- [ ] **No privilege-bearing fields in user-facing permit lists**: `:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status` (when server-controlled). Either gate behind an admin-only controller with a separate policy, or drop from the permit list
+- [ ] **`accepts_nested_attributes_for`** limited to expected children; nested permit list explicit; `_destroy: true` only when the parent policy authorizes child deletion
+- [ ] **File uploads** (Active Storage / CarrierWave / Shrine): content-type from magic bytes (not extension); size limit; `Content-Disposition: attachment` on serve; signed direct-upload URLs scoped + short-expiry; virus scan or accepted-risk documented
+- [ ] **Path traversal**: `File.read` / `send_file` with user-controlled paths uses `File.expand_path` + base-directory containment check
+- [ ] **Shell calls**: no `system(...)` / `` `...` `` / `Open3` with interpolated user input
 
 ### Step 6.5 - View-Layer Escaping (server-rendered apps only)
 
-Skip if the app is API-only (no `app/views/` beyond mailers). Otherwise use skill: `rails-view-templates` for engine-specific escape rules and run these checks against every changed `.erb` / `.haml` / `.slim` file.
+Skip if the app is API-only (no `app/views/` beyond mailers). Otherwise use skill: `rails-view-templates` for engine-specific escape rules and Slim traps; this step adds the review-side scan against changed `.erb` / `.haml` / `.slim` files.
 
-**Per-engine grep recipe** for the unescape surface - run before the per-bullet review:
+**Per-engine grep recipe** for the unescape surface:
 
 ```bash
 git diff <base>...<head> -- '*.erb'  | grep -E '<%==|<%= *raw |\.html_safe'
@@ -146,22 +142,17 @@ git diff <base>...<head> -- '*.haml' | grep -E '!= |\.html_safe'
 git diff <base>...<head> -- '*.slim' | grep -E ' == |^== |\.html_safe| raw '
 ```
 
-Every hit is a candidate XSS - verify the source is trusted (i18n string, `link_to`/`form_with`/`tag` helper output, server-controlled markup) or flag it.
+Every hit is a candidate XSS - verify the source is trusted (i18n, `link_to`/`form_with`/`tag` helper output) or flag it.
 
-- [ ] **Engine identified** from Gemfile (`slim-rails`, `haml-rails`, neither = ERB) and matched to the changed files; apply each engine's rules only to its own files (Slim's `==` rule does not apply to `.erb`; ERB's `<%==` does not apply to `.slim`). When the diff mixes engines, run the checks twice with the right ruleset for each set of files
-- [ ] **No `.html_safe` on user input** anywhere in views, helpers, or models with stringly-typed attributes feeding views; if HTML rendering is required, `sanitize` with an explicit tag/attribute allowlist is used instead
-- [ ] **No `raw` / `html_safe` / unescape operators on user-controlled values** - per engine:
-  - ERB: `<%== user_value %>`, `<%= raw user_value %>`, `<%= user_value.html_safe %>` are all XSS
-  - HAML: `!= user_value` (the `!=` unescape operator) is XSS on user input
-  - Slim: `== user_value` is XSS on user input. Slim's trap: `==` looks like Ruby equality but is the unescape operator. Grep `\b== ` in `.slim` files and verify each instance renders trusted content (i18n strings, helpers like `link_to`/`form_with` that return `html_safe` markup)
-- [ ] **Slim attribute-value Ruby evaluation**: bare attribute values (`div class=user_input`) execute Ruby. Quoted forms (`div class="user_input"`) are literal. Verify class/style/id attributes containing user data are quoted, or that the method returning the value cannot be controlled by user input
-- [ ] **`sanitize` allowlist is restrictive**: no blanket `sanitize(html)` without a tags/attributes allowlist - the default config permits enough to be exploitable
-- [ ] **No string interpolation building HTML**: `"<a href='#{url}'>".html_safe` is XSS; use `link_to` / `tag.a` / `content_tag` which escape attributes correctly
-- [ ] **Turbo Stream and frame content** rendered via the same partials as initial render - so escape rules cannot diverge between paths; `turbo_stream.append("id", html: user_input)` is XSS, use `partial:` form
-- [ ] **Turbo Streams subscription authorization**: `turbo_stream_from "scope_#{record.id}"` opens a WebSocket subscription. The stream channel must verify the current user can see `record` (in the channel's `subscribed` callback or via signed stream names with `Turbo::StreamsChannel.signed_stream_name`). An unauthorized subscription is an IDOR over WebSocket - the user receives every broadcast for any id they can guess
-- [ ] **Stimulus `data-action` values** are JS event names, not Ruby - verify no user-controlled values flow into them
-- [ ] **`content_tag` / `tag` helpers used** when building HTML from user data, never string concatenation with `.html_safe`
-- [ ] **Markdown / server-rendered HTML pipelines** (`Commonmarker`, `Redcarpet`, `Kramdown`, rich-text editors): the rendered HTML is run through `sanitize` with an explicit allowlist before reaching the view, even when the renderer is configured "safe". Renderer config drifts (`raw_html: true`, `safe_links_only: false`) and the allowlist is the trust boundary, not the renderer. `== article.body_html` or `<%== article.body_html %>` without an explicit sanitize step upstream is XSS
+- [ ] **Engine matched** to changed files (Slim's `==` rule applies to `.slim` only; ERB's `<%==` to `.erb` only). When the diff mixes engines, apply each ruleset to its own files
+- [ ] **No `.html_safe` on user input** in views, helpers, or model attributes feeding views; use `sanitize` with an explicit allowlist when HTML must render
+- [ ] **Slim attribute-value Ruby evaluation**: bare values (`div class=user_input`) execute Ruby - quote literals (`div class="literal"`) so user-controlled methods can't reach attributes
+- [ ] **`sanitize` always with explicit tags/attributes allowlist** - blank `sanitize(html)` permits enough to be exploitable
+- [ ] **No HTML built via string interpolation + `.html_safe`** - use `link_to` / `tag.a` / `content_tag` so attributes are escaped
+- [ ] **Turbo Stream / frame content** rendered via the same partials as initial render so escape rules can't diverge; `turbo_stream.append("id", html: user_input)` is XSS, use `partial:` form
+- [ ] **Turbo Streams subscription authorization**: `turbo_stream_from "scope_#{record.id}"` is a WebSocket IDOR unless the channel's `subscribed` callback verifies access (or stream names are signed via `Turbo::StreamsChannel.signed_stream_name`)
+- [ ] **Stimulus `data-action` values** are JS event names - no user-controlled values
+- [ ] **Markdown / rich-text pipelines** (`Commonmarker`, `Redcarpet`, `Kramdown`): always pass rendered HTML through `sanitize` with an explicit allowlist before reaching the view. Renderer "safe mode" drifts (`raw_html: true`, `safe_links_only: false`) - the allowlist is the trust boundary
 
 ### Step 7 - Common Rails Vulnerability Patterns
 

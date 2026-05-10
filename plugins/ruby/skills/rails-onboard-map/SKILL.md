@@ -95,16 +95,15 @@ Check which the project uses before describing the architecture:
 
 ### Risk Hotspots Specific to Rails
 
-- **N+1 queries:** check for `bullet` gem; missing `includes`/`eager_load` in collection-rendering views.
-- **Callback abuse:** `app/models/` with heavy `after_save` logic - implicit invocation across the app.
-- **`update_columns` / `update_all` bypassing callbacks and validations.**
-- **Mass assignment with `permit!`** in controllers.
-- **Devise filter inheritance:** `before_action :authenticate_user!` in ApplicationController affects every controller; subclasses may forget to skip.
-- **Sidekiq concurrency vs DB pool:** Sidekiq concurrency must be ≤ `config/database.yml` `pool` size (per process), or workers stall waiting for connections.
-- **CSRF protection** disabled on API controllers; check it isn't disabled on session-based controllers.
-- **Eager loading in production**: Zeitwerk strict mode (Rails 6+) eager-loads at boot in production - any constant-loading bug surfaces at deploy time.
-- **`config/credentials.yml.enc`**: requires `master.key`; missing key blocks boot.
-- **`config.active_record.legacy_connection_handling` flags** - changed across Rails versions, especially 6.1 -> 7.
+- **N+1 queries** - missing `includes`/`eager_load` in collection-rendering views; `bullet` gem indicates active monitoring (see `rails-activerecord-patterns`)
+- **Callback abuse** - heavy `after_save` logic implicitly fires across the app (see `rails-code-explain`)
+- **`update_columns` / `update_all`** bypass callbacks and validations
+- **Mass assignment with `permit!`** in controllers (see `rails-security-patterns`)
+- **Devise filter inheritance** - `authenticate_user!` in ApplicationController affects every subclass
+- **Sidekiq concurrency vs DB pool** - Sidekiq concurrency must be ≤ DB `pool` per process, or workers stall (see `rails-sidekiq-patterns`)
+- **CSRF** - disabled on API controllers; verify it isn't disabled on session-based controllers
+- **Zeitwerk eager load at production boot** - any constant-loading bug surfaces at deploy time
+- **`config/credentials.yml.enc`** requires `master.key`; missing key blocks boot
 
 ### First-PR Safe Zones
 
