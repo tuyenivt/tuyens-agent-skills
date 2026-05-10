@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific .NET target (ASP.NET Core controller / Minimal API endpoint, MediatR handler, application service, EF Core repository, EF Core entity, background worker, DTO record). Identifies .NET-specific smells (fat controller, anemic services, god classes, `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` blocking on async, missing `CancellationToken` propagation, EF Core N+1 via lazy loading or per-iteration `.Single()`, `Include` cartesian explosion, missing `AsNoTracking()`, mass assignment via `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>(body)`, package-level mutable state via `static` fields, single-implementation interfaces, MediatR for trivial reads, AutoMapper for trivial mappings, singleton capturing scoped service (captive dependency), `new HttpClient()` per request, background workers lacking idempotency, `unsafe` without SAFETY comment) and proposes independently-committable refactoring steps with `dotnet build` + `dotnet test` + `dotnet format --verify-no-changes` gates between each.
+Produce a safe, step-by-step refactoring plan for a specific .NET target (ASP.NET Core controller / Minimal API endpoint, MediatR handler, application service, EF Core repository, EF Core entity, background worker, DTO record). Identifies .NET-specific smells (Step 4 catalog) and proposes independently-committable refactoring steps with `dotnet build` + `dotnet test` + `dotnet format --verify-no-changes` gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for .NET.
 

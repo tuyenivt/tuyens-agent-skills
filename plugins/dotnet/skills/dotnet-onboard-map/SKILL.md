@@ -102,16 +102,13 @@ Check which the project uses before describing the architecture - this drives wh
 
 ### Risk Hotspots Specific to .NET
 
-- **Captive dependency:** Singleton injecting Scoped service - the Scoped is captured for app lifetime. Enable `ValidateScopes` in dev.
-- **`DbContext` thread-safety:** not thread-safe; one per request (Scoped). Reusing across `await` in parallel work is a race.
-- **`IQueryable` -> client-side LINQ boundary:** calling a non-translatable C# method in `Where` after an EF query loads the entire table client-side.
-- **Async void**: only for event handlers; exceptions become unhandled.
-- **`ConfigureAwait(false)`** in app code: not needed in ASP.NET Core (no SyncContext); needed in libraries.
-- **`Task.Result` / `.Wait()` / `Task.GetAwaiter().GetResult()`** in async context: deadlock risk on UI/legacy frameworks; pointless in ASP.NET Core but blocks a threadpool thread.
-- **`AddDbContext` lifetime mismatch with usage**: registering as Singleton breaks; default Scoped is correct.
-- **Middleware order**: `UseAuthentication` before `UseAuthorization`; `UseRouting` before either.
-- **`appsettings.Production.json` overriding dev** when committed by accident.
-- **EF Core Migrations across multiple DbContexts**: must specify `--context` argument.
+- **Async / cancellation** (`.Result` / `.Wait()` / `GetAwaiter().GetResult()` blocking, `async void` outside event handlers, missing `CancellationToken` propagation, blocking on a `BackgroundService`): see `dotnet-async-patterns`, `task-dotnet-review-perf`.
+- **EF Core data access** (N+1 via lazy load / per-iteration `.Single()`, `Include` cartesian explosion, missing `AsNoTracking()`, `IQueryable` → client-eval boundary, multiple `SaveChangesAsync` per use case): see `dotnet-ef-performance`.
+- **DI lifetime** (Singleton capturing Scoped = captive dependency; `DbContext` is Scoped, never Singleton; enable `ValidateScopes` in dev): see `dotnet-async-patterns`, `task-dotnet-review`.
+- **Background-worker dispatch inside transaction**, payloads carrying tracked entities: see `dotnet-messaging-patterns`, `dotnet-transaction`.
+- **Mass assignment / SQL injection / JWT misvalidation / `Process.Start` shell-out**: see `dotnet-security-patterns`, `task-dotnet-review-security`.
+- **Migration safety** (online / `CONCURRENTLY` index, `lock_timeout`, expand-then-contract, multi-DbContext via `--context`): see `dotnet-db-migration-safety`.
+- **.NET quirks** to flag on first read: `ConfigureAwait(false)` is a no-op in ASP.NET Core (reserve for libraries), middleware order (`UseRouting` → `UseAuthentication` → `UseAuthorization`), `appsettings.Production.json` accidentally committed, `BinaryFormatter` / `Newtonsoft.Json TypeNameHandling.All` on untrusted input.
 
 ### First-PR Safe Zones
 
