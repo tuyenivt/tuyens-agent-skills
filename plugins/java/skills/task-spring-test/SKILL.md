@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
 > **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
 
 # Spring Boot Test
@@ -37,11 +35,15 @@ This workflow is the stack-specific delegate of `task-code-test` for Java / Spri
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-test` (parent already detected Spring Boot), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-test` instead.
 
-### Step 2 - Read the Code Under Test and Existing Tests
+### Step 3 - Read the Code Under Test and Existing Tests
 
 Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
 
@@ -52,7 +54,7 @@ Before producing assessment, scaffolds, or strategy, open both the production co
 
 If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
 
-### Step 3 - Spring Test Pyramid
+### Step 4 - Spring Test Pyramid
 
 The Spring Boot test pyramid maps to test types and slice annotations:
 
@@ -66,17 +68,20 @@ The Spring Boot test pyramid maps to test types and slice annotations:
 
 **Many** unit tests, **some** slice tests, **few** full-context / E2E tests. `@SpringBootTest` is slow (loads full context) - use sparingly.
 
-### Step 4 - Apply Spring Test Patterns
+### Step 5 - Apply Spring Test Patterns
 
-Use skill: `spring-test-integration` for the canonical patterns referenced below.
+Use skill: `spring-test-integration` for the canonical patterns referenced below. Compose the following atomic skills as the test scope demands - the goal is to load the patterns once and reference them rather than restate them here:
+
+- Authentication / authorization tests (`@WithMockUser`, `jwt()` post-processor, method-security): Use skill: `spring-security-patterns`.
+- `@Async` / `@Scheduled` / async event listener tests, executor configuration assumptions: Use skill: `spring-async-processing`.
+- Kafka / Rabbit / outbox / message-listener tests, idempotency assertions on consumers: Use skill: `spring-messaging-patterns`.
+- N+1 detection in `@DataJpaTest` (`SessionFactory.getStatistics().getQueryExecutionCount()`), fetch-graph correctness: Use skill: `spring-jpa-performance`.
+- `@TransactionalEventListener` phase assertions, `REQUIRES_NEW` / self-invocation testing, `@RecordApplicationEvents`: Use skill: `spring-transaction`.
+- `@RestControllerAdvice` / ProblemDetail assertions in controller slices: Use skill: `spring-exception-handling`.
 
 **Unit tests (`src/test/java/.../service/`):**
 
-- JUnit 5 (`@Test`, `@Nested`, `@DisplayName`); AssertJ for fluent assertions; Mockito for collaborator stubs (`@Mock`, `@InjectMocks`, `@ExtendWith(MockitoExtension.class)`)
-- Test the public method - one test per outcome (success, validation failure, external failure, edge case)
-- **No Spring context** - if you find yourself adding `@SpringBootTest` for a unit test, the test is misclassified or the class has too many collaborators
-- Stub external HTTP via Mockito on the client interface (`@HttpExchange`-declared interface or a hand-rolled `PaymentGatewayClient` interface); do not stub repositories with full SQL behavior - use a slice test or Testcontainers for that
-- Verify post-conditions (records persisted, events published) via `verify(...)` on the relevant collaborator mock. For `ApplicationEventPublisher`, captured arguments via `ArgumentCaptor<DomainEvent>` give finer assertions than `verify(...)` alone
+JUnit 5 + Mockito + AssertJ, no Spring context. One test per outcome (success, validation failure, external failure, edge case). Stub HTTP via Mockito on the client interface; never simulate repository SQL behavior in mocks - that belongs in a slice test. Use `ArgumentCaptor<DomainEvent>` on `ApplicationEventPublisher` for richer assertions than `verify(...)`.
 
 **HTTP stubbing - choose by test type, not by habit:**
 
@@ -132,7 +137,7 @@ When the code under test accepts an idempotency key (payment charge, webhook del
 - Spring Cloud Contract: contracts in `src/test/resources/contracts/`; provider verifies via generated tests; consumer pulls stubs via stub runner
 - Pact: pact files committed to a broker; provider verification runs as a separate test class
 
-### Step 5 - Test Boundaries (Spring-Specific)
+### Step 6 - Test Boundaries (Spring-Specific)
 
 **What deserves a unit test:**
 
@@ -160,7 +165,7 @@ When the code under test accepts an idempotency key (payment charge, webhook del
 - Generated boilerplate: Lombok-generated getters/setters, MapStruct identity mappings between identical fields
 - Trivial delegation: `service.findById(id) -> repository.findById(id)` with no logic
 
-### Step 6 - Test Data and Fixtures
+### Step 7 - Test Data and Fixtures
 
 - Prefer constructor-based or builder-based data factories (Instancio, Easy Random, or hand-rolled `OrderTestData.builder()`) over JSON fixtures
 - For repository tests with Testcontainers, use `@Sql("/fixtures/orders.sql")` for shared setup; isolate per-test data inside the test
@@ -168,7 +173,7 @@ When the code under test accepts an idempotency key (payment charge, webhook del
 - **Avoid `flush + clear` patterns** unless the test is specifically asserting first-level cache behavior
 - Test data must be minimal and focused - 100-row `IntStream.range` setups signal the test belongs at integration / load-test layer
 
-### Step 7 - Prioritization (when coverage is low)
+### Step 8 - Prioritization (when coverage is low)
 
 If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing controllers get full coverage.
 
@@ -201,7 +206,7 @@ When starting from low test coverage, prioritize by Spring-specific risk:
 
 - Pass-through controllers, simple CRUD - lower risk, can wait
 
-### Step 8 - Test Infrastructure Hygiene
+### Step 9 - Test Infrastructure Hygiene
 
 - [ ] Testcontainers reused across tests via `@ServiceConnection` + reusable mode (`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`) for local fast cycles
 - [ ] `@SpringBootTest` count kept low; use `@MockitoBean` / `@MockBean` sparingly (each unique mock set forces a new context cache entry)
@@ -286,8 +291,9 @@ Produce ready-to-run JUnit 5 test files using project conventions. Each scaffold
 
 ## Self-Check
 
-- [ ] Stack confirmed as Java / Spring Boot before any Spring-specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 2)
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
+- [ ] Stack confirmed as Java / Spring Boot before any Spring-specific guidance applied (Step 2)
+- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 3)
 - [ ] `spring-test-integration` consulted for canonical Spring test patterns
 - [ ] Test pyramid mapped to Spring slice annotations (unit -> plain JUnit + Mockito; slice -> `@WebMvcTest` / `@DataJpaTest` / `@JsonTest`; full-context -> `@SpringBootTest` + Testcontainers)
 - [ ] Boundaries clearly defined: each spec layer covers what it does best; no duplicated assertions across layers

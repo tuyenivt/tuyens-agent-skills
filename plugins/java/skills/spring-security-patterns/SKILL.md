@@ -34,9 +34,26 @@ user-invocable: false
 
 ### Security Filter Chain
 
-Multiple filter chains for different path groups, ordered by specificity:
+Bad - `WebSecurityConfigurerAdapter` was removed in Spring Security 6 / Spring Boot 3:
 
 ```java
+// Compile error on Boot 3.x: class no longer exists
+@Configuration
+@EnableWebSecurity
+public class LegacySecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+            .antMatchers("/api/admin/**").hasRole("ADMIN") // antMatchers also removed
+            .anyRequest().authenticated();
+    }
+}
+```
+
+Good - register one or more `SecurityFilterChain` beans (lambda DSL, `requestMatchers`):
+
+```java
+import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -119,6 +136,10 @@ JwtAuthenticationConverter jwtAuthenticationConverter() {
     return converter;
 }
 ```
+
+`hasRole("ADMIN")` checks for authority `ROLE_ADMIN`; `hasAuthority("ADMIN")` checks for authority `ADMIN`. The `setAuthorityPrefix("ROLE_")` above lets your JWT carry plain `"admin"` / `"manager"` while `hasRole(...)` matchers continue to work. If your tokens already carry `ROLE_*` prefixed authorities, set the prefix to `""` instead - otherwise you end up with `ROLE_ROLE_ADMIN`.
+
+Auth0 specific: issuer URI is `https://{tenant}.auth0.com/` (trailing slash matters for the discovery lookup). Roles set via Auth0 Action / Rule are typically nested under a custom-namespaced claim (e.g., `https://my-app/roles`); read them with a custom converter rather than `setAuthoritiesClaimName("roles")`.
 
 Multi-tenant JWT validation (multiple issuers):
 

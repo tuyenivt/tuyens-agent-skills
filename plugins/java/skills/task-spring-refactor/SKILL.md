@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Spring Boot Refactor
 
 ## Purpose
@@ -44,11 +42,15 @@ This workflow is the stack-specific delegate of `task-code-refactor` for Java/Sp
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-refactor` instead.
 
-### Step 2 - Read the Target
+### Step 3 - Read the Target
 
 Read the actual file(s) named in the Inputs table before classifying smells. A refactor plan grounded in the user's prose summary instead of the source will hallucinate smells that aren't there and miss ones that are. Specifically:
 
@@ -58,7 +60,7 @@ Read the actual file(s) named in the Inputs table before classifying smells. A r
 
 If the user named only the goal without a target file, ask for the target before proceeding. Do not guess.
 
-### Step 3 - Coverage Gate (mandatory)
+### Step 4 - Coverage Gate (mandatory)
 
 Refactoring without test coverage is a rewrite with extra steps. Before proposing any refactor:
 
@@ -66,11 +68,18 @@ Refactoring without test coverage is a rewrite with extra steps. Before proposin
 2. Run coverage assessment - if coverage is missing or thin, **stop and require coverage first** before proposing refactor steps. Recommend `task-spring-test` to fill gaps
 3. If coverage exists but is happy-path-only, flag the boundary-test gap as a prerequisite step in the plan (refactor must not silently change validation / 401 / 403 / not-found behavior)
 
-**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 4 if coverage is inadequate.
+**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 5 if coverage is inadequate.
 
-### Step 4 - Identify Spring Smells
+### Step 5 - Identify Spring Smells
 
-Inspect the target for these Spring-specific smells. Use judgment - these are signals, not hard rules.
+Inspect the target for these Spring-specific smells. Use judgment - these are signals, not hard rules. For deeper diagnosis on any flagged smell, load the matching atomic skill rather than restating its rules:
+
+- JPA / Hibernate symptoms (N+1, EAGER on `@OneToMany`, MultipleBagFetchException, paginated `JOIN FETCH`): Use skill: `spring-jpa-performance`.
+- `@Transactional` placement, propagation, self-invocation, IO-in-tx, post-commit side effects: Use skill: `spring-transaction`.
+- `@Async` / `@Scheduled` / event listener mis-wiring, executor configuration: Use skill: `spring-async-processing`.
+- Kafka / Rabbit / outbox / idempotent-consumer patterns: Use skill: `spring-messaging-patterns`.
+- Error handling refactors (`@RestControllerAdvice` + `ProblemDetail`): Use skill: `spring-exception-handling`.
+- Coverage gate filling: Use skill: `spring-test-integration` for slice / Testcontainers / security-test patterns.
 
 **Controller smells:**
 
@@ -146,7 +155,7 @@ Use skill: `complexity-review` when the target shows over-engineering signals (s
 
 Apply Spring judgment - a 25-line `@Service` method orchestrating clearly named private steps is fine; a 10-line method doing three unrelated things is not.
 
-### Step 5 - Cross-Module Risk Assessment
+### Step 6 - Cross-Module Risk Assessment
 
 Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected by the refactor.
 
@@ -161,7 +170,7 @@ Spring-specific blast-radius signals:
 
 State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single module, multiple callers) / **Wide** (cross-module, public API, broad aspect) / **Critical** (`@AutoConfiguration` published, entity used by 5+ services).
 
-### Step 6 - Propose the Step Sequence
+### Step 7 - Propose the Step Sequence
 
 Each refactoring step must be:
 
@@ -192,16 +201,14 @@ Each refactoring step must be:
 
 **Recipe: Untangle fat controller + JPA-callback orchestration (combined case)**
 
-The most common Spring Boot refactor: a controller endpoint triggers an entity write whose `@PostUpdate` / `@PostPersist` callbacks fan out (mailers, message publishes, audit writes). Removing the callbacks and extracting a service must happen as one logical change, but in safe sub-steps so the suite stays green between commits.
+A controller endpoint triggers an entity write whose `@PostUpdate` / `@PostPersist` callbacks fan out (mailers, message publishes, audit writes). Sequence:
 
-1. **Pin behavior with a `@SpringBootTest` (or `@WebMvcTest` + service test)** asserting every observable side effect (record updated, mailer queued, event published, audit row written) - this is the contract the refactor must preserve
-2. **Promote JPA callback to `@TransactionalEventListener(AFTER_COMMIT)`** first if callbacks publish events / send mail mid-transaction; tests still pass, but side effects now fire post-commit
-3. **Introduce a service** (`<Verb><Noun>Service`) that performs the write _and_ the side effects in one method; controller calls the service _but the JPA callbacks still run_ - this duplicates side effects intentionally and temporarily
-4. **Make callbacks no-op when called from the service** via a `ThreadLocal` flag set by the service or a domain-event-vs-callback dedup key (`if (event.source() == ServiceContext.SERVICE) return;`); verify tests still pass with side effects firing exactly once. **This flag is a scaffold, not a feature.** Add a `// TODO: DELETE WITH CALLBACKS IN STEP 5` comment at the call site.
-5. **Delete the JPA callbacks entirely**; the service is now the single source of orchestration; remove the bypass flag and the `ThreadLocal` plumbing; tests still green
-6. **Audit other call sites** (`@Repository.save` / `entityManager.merge` / scheduled jobs / migrations) - any caller relying on the old callbacks is now broken and must be updated to call the service or have the side effects re-derived
+1. **Pin behavior** with a test asserting every observable side effect (record updated, mailer queued, event published, audit row written)
+2. **Promote callbacks to `@TransactionalEventListener(AFTER_COMMIT)`** by publishing a domain event from the entity setter (or where the callback fires today). Side effects now run post-commit; tests stay green
+3. **Introduce a service** that owns the orchestration; controller calls it. Audit other call sites (`save`, `entityManager.merge`, scheduled jobs, migrations) and route them through the service
+4. **Delete the entity-level callbacks**; the service plus AFTER_COMMIT listeners are the single source of orchestration
 
-The intermediate "callbacks no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the callbacks (step 5). If step 5 is skipped, the `ThreadLocal` becomes a permanent fixture and the codebase ends up worse than it started; landing steps 3-5 in separate PRs is acceptable only if step 5 has a tracked owner and deadline.
+Do not introduce a `ThreadLocal` "skip when called from service" flag - it traps the codebase if the deletion step slips. Promote to AFTER_COMMIT first (step 2), then move ownership.
 
 **Recipe: Split god service into focused services**
 
@@ -260,16 +267,7 @@ The most damaging Spring smell: a `@Service` method does DB write -> HTTP call -
 
 **Recipe: Fix `@Transactional` self-invocation**
 
-`methodA()` calls `this.methodB()`; `methodB` is `@Transactional`. The proxy is bypassed; no transaction starts.
-
-1. Identify the call site. Confirm the inner method is intended to run in its own transaction (otherwise just inline)
-2. Pick one fix:
-   - **Extract `methodB` to a different bean** (preferred) - inject the new bean, call it through that reference. Forces a clearer responsibility split.
-   - **Self-injection** - inject `Self self;` (the bean's own proxy) and call `self.methodB()`. Works but signals the design needs splitting; treat as a temporary fix.
-   - **`TransactionTemplate`** - drop `@Transactional` on `methodB`, wrap the body in `transactionTemplate.execute(...)`. Verbose; useful when propagation needs differ per call site.
-3. Verify with a test that asserts the transaction *actually starts* (e.g., assert a row written in `methodB` is rolled back when an exception is thrown after the call returns)
-
-Adding `@Transactional` to `methodB` without restructuring the call does **not** fix the bug - the proxy is still bypassed. Reject that as a fix.
+See `spring-transaction` for the canonical fix patterns (extract to separate bean, self-injection, `TransactionTemplate`). The refactor adds: a regression test asserting the transaction *actually starts* (e.g., a row written in the inner method is rolled back when an exception is thrown after the call returns). Adding `@Transactional` to the inner method without restructuring the call does not fix the bug.
 
 **Recipe: Replace `synchronized` on Virtual Thread paths**
 
@@ -278,7 +276,7 @@ Adding `@Transactional` to `methodB` without restructuring the call does **not**
 3. Verify behavior with a concurrency test (multiple Virtual Threads racing the critical section)
 4. Audit other `synchronized` blocks in the same module - they pin too
 
-### Step 7 - Validate Plan Against Goal
+### Step 8 - Validate Plan Against Goal
 
 Before finalizing the plan, check:
 
@@ -346,17 +344,18 @@ Before finalizing the plan, check:
 
 ## Self-Check
 
-- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher) (Step 1)
-- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
-- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate (Step 3)
-- [ ] Spring-specific smells identified using Step 4 catalog (controller, service, persistence, configuration/DI, aspect, async/messaging) (Step 4)
-- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
-- [ ] Each step independently committable; test gate stated per step (Step 6)
-- [ ] Transaction stance stated per step (no I/O silently moved across `@Transactional` boundary) (Step 6)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, aspect rewrites, signature changes) (Step 6)
-- [ ] No step bundles unrelated cleanup (Step 6)
-- [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
-- [ ] Rollback path is one revert per step (Step 7)
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
+- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher) (Step 2)
+- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 3)
+- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate (Step 4)
+- [ ] Spring-specific smells identified using Step 5 catalog (controller, service, persistence, configuration/DI, aspect, async/messaging) (Step 5)
+- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 6)
+- [ ] Each step independently committable; test gate stated per step (Step 7)
+- [ ] Transaction stance stated per step (no I/O silently moved across `@Transactional` boundary) (Step 7)
+- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, aspect rewrites, signature changes) (Step 7)
+- [ ] No step bundles unrelated cleanup (Step 7)
+- [ ] Goal explicitly mapped to the end state of the sequence (Step 8)
+- [ ] Rollback path is one revert per step (Step 8)
 
 ## Avoid
 

@@ -18,7 +18,9 @@ user-invocable: false
 - Structuring a multi-module Spring Boot project
 - Standardizing dependency versions across modules
 - Configuring CI/CD pipelines for Gradle projects
-- Resolving dependency conflicts between Stripe/payment SDKs and Spring Boot managed versions
+- Resolving Spring-Boot-managed dependency version conflicts via BOM / `platform()`
+
+If the detected build tool is Maven, stop and use a Maven-focused skill. If the project is not Java/Kotlin on the JVM, stop.
 
 ## Rules
 
@@ -70,6 +72,8 @@ Configure `gradle.properties`:
 org.gradle.parallel=true
 org.gradle.caching=true
 org.gradle.configuration-cache=true
+# Some Spring Boot / JPA plugins are not configuration-cache compatible.
+# Start with problems=warn; flip to fail once the build is green.
 org.gradle.configuration-cache.problems=warn
 org.gradle.daemon.idletimeout=600000
 org.gradle.jvmargs=-Xmx2g -XX:+UseG1GC
@@ -88,7 +92,19 @@ include("app", "domain", "infrastructure")
 includeBuild("build-logic")
 ```
 
-Convention plugin in `build-logic/src/main/kotlin/java-conventions.gradle.kts`:
+Bad - `allprojects {}` / `subprojects {}` apply Spring Boot to every module and silently produce `bootJar` for libraries:
+
+```kotlin
+// root build.gradle.kts
+allprojects {
+    apply(plugin = "org.springframework.boot")
+}
+subprojects {
+    apply(plugin = "java")
+}
+```
+
+Good - convention plugin in `build-logic/`, applied per module that needs it:
 
 ```kotlin
 plugins {
@@ -125,6 +141,17 @@ dependencies {
 ```
 
 Library module `domain/build.gradle.kts`:
+
+Bad - applying the Spring Boot plugin produces an unwanted fat jar and rewires `jar` task:
+
+```kotlin
+plugins {
+    id("java-conventions")
+    id("org.springframework.boot") // wrong: produces bootJar for a non-runnable library
+}
+```
+
+Good - library modules use `java-library` only:
 
 ```kotlin
 plugins {
@@ -251,11 +278,16 @@ Use `--no-daemon` in CI - daemon wastes memory in ephemeral runners.
 When applying Gradle optimizations, document the changes:
 
 ```
-Optimization: {version catalog | build cache | configuration cache | parallel | convention plugin | dependency scope}
-File: {file path}
-Change: {description}
-Impact: {build time | dependency management | maintainability}
+Optimization: {version-catalog | build-cache | configuration-cache | parallel-execution | convention-plugin | dependency-scope | bom-platform | dependency-locking | bootjar-layered | ci-cache | kotlin-dsl-migration}
+File: {repo-relative path}
+Change: {one-line diff summary}
+Priority: {High | Medium | Low}
+Effort: {Trivial | Small | Medium | Large}
+Expected Impact: {clean-build delta | incremental delta | dependency-drift | maintainability}
+Risk: {None | Plugin-incompatibility | Behavior-change}
 ```
+
+Aggregate at the end: `Aggregate: estimated total clean-build reduction (%)`.
 
 ## Avoid
 

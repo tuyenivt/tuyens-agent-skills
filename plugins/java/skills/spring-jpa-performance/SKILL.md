@@ -80,6 +80,30 @@ private List<OrderItem> items;
 
 Batch fetching is the best option when an entity has multiple collections - fetch joins on more than one `@OneToMany` produce a Cartesian product that multiplies rows.
 
+Two fetch-join traps to recognize by symptom:
+
+1. **Two `JOIN FETCH` on `List` collections in the same query** → `MultipleBagFetchException` at startup. Fix: change one collection to `Set`, split into two queries, or rely on `@BatchSize`.
+2. **`Pageable` + collection `JOIN FETCH`** → Hibernate logs `HHH90003004` and paginates in memory, loading every matching row first. Silent OOM on large tables.
+
+Bad - paginated query with a collection fetch join (in-memory pagination):
+
+```java
+@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines")
+Page<Order> findAllWithLines(Pageable pageable); // loads ALL orders into memory first
+```
+
+Good - two-query pattern: page IDs first, then fetch associations by ID:
+
+```java
+@Query("SELECT o.id FROM Order o ORDER BY o.id")
+Page<Long> findOrderIds(Pageable pageable);
+
+@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines LEFT JOIN FETCH o.customer WHERE o.id IN :ids ORDER BY o.id")
+List<Order> findWithLinesByIds(@Param("ids") List<Long> ids);
+```
+
+Or skip `JOIN FETCH` on paginated endpoints entirely and lean on `default_batch_fetch_size`.
+
 ### Projection Queries
 
 For read-only endpoints that don't need the full entity, use interface or record projections to reduce memory and skip Hibernate dirty-checking:
@@ -220,7 +244,8 @@ Query Count: {before} → {after} (estimated)
 ## Avoid
 
 - EAGER fetching on `@OneToMany` relationships - it loads the collection on every query even when not needed
-- Fetch joins on multiple `@OneToMany` collections in the same query - use batch fetching instead
+- Fetch joins on multiple `@OneToMany` collections in the same query - triggers `MultipleBagFetchException`; use batch fetching or change one collection to `Set`
+- Combining `JOIN FETCH` on a collection with `Pageable` - Hibernate paginates in memory after loading all rows; use the two-query (IDs then entities) pattern or `default_batch_fetch_size`
 - `SELECT *` without projection for read-only endpoints - wastes memory and enables dirty-checking overhead
 - Unbounded `findAll()` without pagination on tables that grow over time
 - Second-level cache on frequently-written entities - cache invalidation overhead exceeds read benefit

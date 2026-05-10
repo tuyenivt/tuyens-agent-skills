@@ -1,6 +1,6 @@
 ---
 name: task-spring-review
-description: "Spring Boot code review: layer boundaries, fat controllers, JPA leak, @Transactional misuse, anemic domain, Virtual Thread pinning; spawns subagents."
+description: "Spring Boot PR review: layering, fat controllers, JPA leaks, @Transactional misuse, Virtual Thread pinning; spawns perf/security/obs subagents."
 agent: java-tech-lead
 metadata:
   category: backend
@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
 > **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
 
 # Spring Boot Code Review
@@ -92,11 +90,15 @@ Scope and depth flags compose: `/task-spring-review pr-50273 --base release/2026
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-review` (parent already detected Spring Boot), accept the pre-detected stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it.
 
@@ -112,7 +114,7 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
 Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
 
@@ -139,23 +141,19 @@ Logical correctness, error handling completeness, edge cases affecting state int
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding JUnit / Spring slice / Testcontainers coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication (Spring Security / OAuth2 / JWT), authorization (`@PreAuthorize` / `SecurityFilterChain` matchers), money or billing flows, data-integrity writes (multi-table transactions, state machines), `@Async` / `@KafkaListener` jobs that mutate data, Flyway migrations that change column semantics. Do not bury this finding in Key Takeaways - a separate, named entry in Findings.
 
-**Spring-specific correctness checks:**
+**Spring-specific correctness scan** - flag the issue and delegate to the listed atomic skill for depth:
 
-- [ ] **`@Transactional` boundaries**: writes happen inside `@Transactional` at the service layer (not the controller, not the repository); no HTTP calls / Kafka publishes / external I/O _inside_ the transaction (use `TransactionalEventListener(phase = AFTER_COMMIT)` or transactional outbox)
-- [ ] **`@Transactional` propagation**: explicit `propagation` only when needed; `REQUIRES_NEW` documented (defeats outer rollback); `readOnly = true` on read paths so Hibernate skips dirty checking
-- [ ] **`@Transactional` self-invocation**: no `this.transactionalMethod()` calls within the same bean - the Spring proxy is bypassed and the transaction silently does not start. Refactor to a separate bean or use `TransactionTemplate` / `AopContext.currentProxy()`
-- [ ] **Checked exceptions and rollback**: `@Transactional` rolls back on `RuntimeException` and `Error` by default; for checked exceptions, `rollbackFor` must be declared explicitly
-- [ ] **Bean Validation on input**: every `@RequestBody` and `@RequestParam` DTO has `@Valid` and the DTO carries `@NotNull` / `@Size` / `@Pattern`; no manual validation duplicating constraint annotations
-- [ ] **Strong typing for input**: `@RequestBody` uses DTOs / records, never JPA entities directly (mass assignment risk - see `task-spring-review-security` for depth)
-- [ ] **N+1 query patterns**: any code that walks a `@OneToMany` / `@ManyToOne` after a query uses `@EntityGraph` or `join fetch`; lazy associations not touched outside the transaction (delegate to `task-spring-review-perf` for depth)
-- [ ] **`Optional` use**: `Optional` returned from repository methods handled (`.orElseThrow`, `.map`); never `.get()` without a prior `isPresent()`; `Optional` not used as a method parameter
-- [ ] **JPA entities exposed in API**: controllers do not return `@Entity` types directly; responses go through DTO / record / projection - entities do not leak `created_at` audit fields, password hashes, or lazy collections that trigger `LazyInitializationException` mid-serialization
-- [ ] **Authorization on every endpoint**: every controller method has explicit `SecurityFilterChain` matcher coverage OR `@PreAuthorize` (defense in depth at service layer); `permitAll` documented (delegate to `task-spring-review-security` for depth)
-- [ ] **Error handling**: `@RestControllerAdvice` / `@ControllerAdvice` handles common exceptions (`MethodArgumentNotValidException`, `EntityNotFoundException`, `AccessDeniedException`) with consistent error response shape; no blanket `catch (Exception e)` swallowing root causes; no `printStackTrace()` / `e.printStackTrace()` in production code paths
-- [ ] **Migration PRs (any change in `db/migration/` or `db/changelog/`)**: see the Migration PRs subsection below
-- [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; `JdbcTemplate.batchUpdate` or JPA batch (`spring.jpa.properties.hibernate.jdbc.batch_size`) sized appropriately
-- [ ] **Idempotency for state-mutating write endpoints**: any new `POST` / `PUT` / `PATCH` / `DELETE` that produces a side effect with monetary, billing, notification, or external-side-effect impact accepts an idempotency key (`Idempotency-Key` header or business-derived key) and short-circuits duplicate requests. Without this, client retries (or load-balancer retries) double-charge / double-cancel
-- [ ] **Dual-write reliability (DB + event/HTTP)**: when a `@Transactional` method writes to the DB *and* must publish an event or call an external service, the two operations must not silently diverge. Options: transactional outbox table polled by a separate publisher, or `@TransactionalEventListener(AFTER_COMMIT)` with at-most-once acknowledgment. Flag any "save then `kafkaTemplate.send` then save again" sequence - one of the writes will be lost on crash
+- [ ] **Transaction boundaries**: writes happen at service layer; no HTTP / broker publish / external I/O inside `@Transactional`; `readOnly = true` on read paths; checked-exception `rollbackFor` declared; no `this.txMethod()` self-invocation. Use skill: `spring-transaction`.
+- [ ] **JPA in API**: controllers never return or accept `@Entity` types - DTO/record/projection only. Use skill: `spring-jpa-performance` for fetch and projection patterns.
+- [ ] **N+1 patterns**: `@EntityGraph` / `join fetch` on any code walking lazy associations after a query (delegate depth to `task-spring-review-perf`).
+- [ ] **Bean Validation**: every `@RequestBody` / `@RequestParam` DTO has `@Valid` plus `@NotNull` / `@Size` / `@Pattern`; no manual validation duplicating constraint annotations.
+- [ ] **Authorization coverage**: every controller method covered by a `SecurityFilterChain` matcher or `@PreAuthorize`; `permitAll` documented (delegate depth to `task-spring-review-security`).
+- [ ] **Error handling**: `@RestControllerAdvice` maps `MethodArgumentNotValidException` / `EntityNotFoundException` / `AccessDeniedException` consistently; no blanket `catch (Exception)`; no `printStackTrace()` in production. Use skill: `spring-exception-handling`.
+- [ ] **`Optional` discipline**: handled via `.orElseThrow` / `.map`; never `.get()` without `isPresent()`; never as a method parameter.
+- [ ] **Idempotency for state-mutating writes**: monetary / billing / notification side effects accept an idempotency key and short-circuit duplicates - retries otherwise double-charge.
+- [ ] **Dual-write reliability**: any `save` + `kafkaTemplate.send` + `save` sequence inside `@Transactional` is a smell - one write is lost on crash. Use skill: `spring-messaging-patterns` for outbox / `AFTER_COMMIT` recipes.
+- [ ] **Bulk operations**: partial-failure handling defined; `hibernate.jdbc.batch_size` set; bulk retries idempotent.
+- [ ] **Migration PRs** (`db/migration/` or `db/changelog/`): see Migration PRs below.
 
 **Migration PRs (any change in `src/main/resources/db/migration/` or `db/changelog/`):**
 
@@ -233,7 +231,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-spring-review-observability` subagent owns the depth review).
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -248,14 +246,14 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Subagent prompt contract.** Each subagent prompt must include:
 
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
+- The resolved review target from Step 3 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
 - The depth level (`quick` | `standard` | `deep`)
 - The pre-confirmed stack (Java / Spring Boot) so the subagent skips its own `stack-detect`
 - Instruction to return findings using its own skill's Output Format
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -347,19 +345,20 @@ _Omit this section if there are no actionable findings._
 - Delegate perf / security / observability depth to the appropriate Spring subagent rather than duplicating the check here
 
 
-### Step 6 - Write Report
+### Step 7 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review`.
 
 Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
 - [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher)
 - [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
+- [ ] Scope auto-escalation evaluated in Step 4; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B Spring correctness checks applied: `@Transactional` boundaries, propagation, self-invocation, Bean Validation, JPA-in-API, `@PreAuthorize` coverage, exception advice, Virtual Thread pinning

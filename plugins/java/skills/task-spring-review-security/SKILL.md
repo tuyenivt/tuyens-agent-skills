@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Spring Boot Security Review
 
 ## Purpose
@@ -42,21 +40,25 @@ Mirrors `task-code-review-security`:
 | `/task-spring-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
 | `/task-spring-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
 
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 3 below is skipped and this workflow reuses the parent's read-once artifacts.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-spring-review` (parent already detected Spring Boot), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review-security` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
 
 If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
 
-### Step 3 - Read the Security Surface
+### Step 4 - Read the Security Surface
 
 Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
 
@@ -68,7 +70,7 @@ Before applying the OWASP and authn/authz checklists, open the files that actual
 
 When the diff removes a security annotation or relaxes a matcher, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
 
-### Step 4 - OWASP Quick Check (Spring Lens)
+### Step 5 - OWASP Quick Check (Spring Lens)
 
 Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security-patterns` for canonical Spring patterns referenced below.
 
@@ -85,7 +87,7 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 | Data Integrity Failures (A08) | No `ObjectInputStream.readObject` on untrusted input; `Jackson` typed-deserialization disabled (`enableDefaultTyping` off); SnakeYAML uses `SafeConstructor`.                                          |
 | Logging & Monitoring (A09)    | Logback pattern excludes sensitive fields; `@JsonIgnore` on PII / secret fields in DTOs; no `log.info("user={}", user)` that serializes the entity. Security events (login fail, AccessDenied) logged. |
 
-### Step 5 - Authentication (Spring Security 6.x / OAuth2 / JWT)
+### Step 6 - Authentication (Spring Security 6.x / OAuth2 / JWT)
 
 - [ ] **`SecurityFilterChain`** is explicit and version-current - the deprecated `WebSecurityConfigurerAdapter` does not exist (removed in 6.x); migrations from 5.x flagged
 - [ ] **OAuth2 Resource Server**: `oauth2ResourceServer().jwt()` configured with explicit `JwtDecoder`; signature algorithm pinned; `JwtAuthenticationConverter` maps claims to authorities consistently
@@ -98,18 +100,20 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] **No credentials in `application.properties` / `application.yml` committed to git** - secrets via env vars, Vault, AWS Secrets Manager, or Spring Cloud Config; `master.key`-equivalent files gitignored
 - [ ] **Actuator endpoints** (`/actuator/env`, `/actuator/heapdump`, `/actuator/loggers`) restricted: `management.endpoints.web.exposure.include` minimal in prod; remaining endpoints behind `ROLE_ACTUATOR`
 
-### Step 6 - Authorization (Method Security / `@PreAuthorize` / Custom)
+### Step 7 - Authorization (Method Security / `@PreAuthorize` / Custom)
 
-- [ ] **`@EnableMethodSecurity`** active; `@PreAuthorize` on every service method that touches user-owned resources (defense in depth alongside controller-level matchers)
-- [ ] **Authorization drift sweep**: every new controller endpoint added in the diff has a corresponding `SecurityFilterChain` matcher OR a `@PreAuthorize` (or explicit `permitAll` with rationale)
-- [ ] **IDOR (Insecure Direct Object Reference)**: lookups in user-facing services scope through the principal (`repository.findByIdAndOwnerId(id, principal.getId())` returning `Optional`) rather than `repository.findById(id)` followed by an authorization check (which leaks existence via 403 vs 404). For SpEL-based authorization, `@PostAuthorize("returnObject.ownerId == authentication.principal.id")` works for single-object reads but not collection reads.
-- [ ] **Per-element filtering on collections**: `@PostAuthorize` checks the *whole return value*, not each element. For a method returning `List<Order>` where some elements may not belong to the principal, use `@PostFilter("filterObject.ownerId == authentication.principal.id")` or filter at the query layer (preferred - avoids loading rows that will be discarded).
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenantId` in the repository layer (Hibernate `@Filter`, `@TenantId` in 6.x, or query-method parameter) - never rely on controller-level filtering alone
+Use skill: `spring-security-patterns` for canonical method-security, IDOR, CORS, and CSRF patterns. Scan the diff for:
+
+- [ ] **`@EnableMethodSecurity`** active; `@PreAuthorize` on every service method touching user-owned resources (defense-in-depth alongside controller matchers)
+- [ ] **Authorization drift sweep**: every new controller endpoint has a `SecurityFilterChain` matcher or `@PreAuthorize` (or explicit `permitAll` with rationale)
+- [ ] **IDOR**: lookups scope through the principal (`findByIdAndOwnerId(id, principalId)`) rather than `findById(id)` + post-hoc check (which leaks existence via 403 vs 404)
+- [ ] **Per-element filtering**: collection returns use `@PostFilter` or filter at the query layer; `@PostAuthorize` does not iterate elements
+- [ ] **Tenant isolation**: queries scope by `tenantId` at repository layer (Hibernate `@Filter`, `@TenantId`, or query-method parameter) - never controller-only
 - [ ] **Default-deny** in `SecurityFilterChain`: `.anyRequest().authenticated()` after explicit allowlist; no trailing `.permitAll()`
-- [ ] **CSRF**: enabled by default for stateful sessions; explicitly disabled (`csrf().disable()`) only for stateless JWT APIs with documented rationale
-- [ ] **CORS**: `CorsConfigurationSource` bean with explicit `setAllowedOrigins` (not `"*"` for credentialed requests); `setAllowedMethods` and `setAllowedHeaders` minimal
+- [ ] **CSRF**: enabled for stateful sessions; `csrf().disable()` only for stateless JWT APIs with documented rationale
+- [ ] **CORS**: `CorsConfigurationSource` with explicit origins (never `"*"` for credentialed); minimal methods/headers
 
-### Step 7 - Input Validation and Mass Assignment
+### Step 8 - Input Validation and Mass Assignment
 
 - [ ] **Bean Validation (`jakarta.validation`)** on every `@RequestBody` DTO: `@NotNull`, `@Size`, `@Email`, `@Pattern` etc.; `@Valid` on the controller parameter
 - [ ] **Constructor / record DTOs** for input - immutable, no setters; avoids the "mass assignment" class of bugs because Jackson uses the constructor
@@ -126,7 +130,7 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] **Path traversal**: `Path.resolve(userInput).normalize().startsWith(baseDir)` check on any user-controlled file operation
 - [ ] **Process execution**: no `Runtime.exec`, `ProcessBuilder` with interpolated user input - use API alternatives or strict allowlist + tokenized arguments
 
-### Step 8 - Common Spring Boot Vulnerability Patterns
+### Step 9 - Common Spring Boot Vulnerability Patterns
 
 - [ ] **CSRF token** on state-changing form requests; for SPAs, use `CookieCsrfTokenRepository.withHttpOnlyFalse()` so JS can read the token
 - [ ] **CORS**: explicit origins (no `"*"` for credentialed endpoints)
@@ -134,13 +138,13 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] **SQL injection via dynamic sort / filter**: `Sort.by(sortField)` validated against an allowlist; no `entityManager.createQuery("... order by " + userField)`
 - [ ] **Open redirect**: `response.sendRedirect(userInput)` validated against an allowlist; Spring MVC `redirect:` view with user-controlled destination guarded
 - [ ] **Server-side template injection**: no Thymeleaf `${...}` expression evaluation on user-controlled template strings; SpEL evaluator never receives user input as the expression
-- [ ] **Mass assignment via JSON**: `@RequestBody` uses DTOs / records, not entities (see Step 7)
+- [ ] **Mass assignment via JSON**: `@RequestBody` uses DTOs / records, not entities (see Step 8)
 - [ ] **Spring Boot Actuator exposure**: `info`, `health` only (or behind auth) in prod; `env`, `heapdump`, `loggers`, `mappings` never public
 - [ ] **DevTools**: `spring-boot-devtools` is `developmentOnly` in Gradle / `<scope>runtime>` with `optional` in Maven - never shipped to prod
 - [ ] **Spring4Shell-class CVEs**: `DataBinder` not bound to `Class` / `ClassLoader` properties; recent dep-check passes
 - [ ] **H2 console** (`spring.h2.console.enabled`) disabled in non-dev profiles
 
-### Step 9 - Data Protection
+### Step 10 - Data Protection
 
 - [ ] **PII / sensitive fields encrypted** at rest (Jasypt, Spring Vault, or DB-native column encryption)
 - [ ] **Logback / Logstash encoder masking** for sensitive keys (`password`, `token`, `creditCard`, `ssn`, `apiKey`); `@JsonIgnore` on the same DTO fields
@@ -150,7 +154,7 @@ Apply the OWASP Top 10 with Spring-specific framing. Use skill: `spring-security
 - [ ] **Secrets management**: Spring Cloud Config + Vault, AWS Secrets Manager, or env-var injection from a secret store - never `application-prod.yml` committed
 
 
-### Step 10 - Write Report
+### Step 11 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`.
 
@@ -165,13 +169,14 @@ Write the fully assembled review output to the report file before ending the ses
 
 ## Self-Check
 
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
 - [ ] Stack confirmed as Java / Spring Boot before any Spring-specific check applied
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
 - [ ] Security surface (SecurityFilterChain bean, changed controllers, application.yml management/security keys, build dependencies, modified tests) read directly before applying checklists; prior revision consulted when annotations or matchers were removed
-- [ ] OWASP Top 10 reviewed with Spring framing (Step 4) - every category checked, none silently skipped
+- [ ] OWASP Top 10 reviewed with Spring framing (Step 5) - every category checked, none silently skipped
 - [ ] `spring-security-patterns` consulted for canonical Spring patterns
 - [ ] Authentication step run for the auth mechanism in use (Spring Security 6.x form login / OAuth2 / JWT)
 - [ ] **Authorization drift sweep**: every new controller endpoint in the diff has a matching `SecurityFilterChain` matcher or `@PreAuthorize`

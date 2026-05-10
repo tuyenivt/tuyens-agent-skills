@@ -8,8 +8,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
 > **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
 
 # Implement Feature
@@ -23,15 +21,15 @@ user-invocable: true
 
 ## Edge Cases
 
-- **Partial input**: If the user provides only a feature name without details, ask for entity fields, relationships, and operations before proceeding to design.
-- **No database**: If the feature does not require persistence (e.g., proxy/aggregation endpoint), skip entity, repository, migration steps; generate only controller, service, DTOs, and tests.
-- **Existing entity**: If the user references an entity that already exists, read the existing entity class and extend it rather than creating a new one. Skip the migration step if no schema change is needed.
-- **Referenced entity doesn't exist**: If the feature has a relationship to an entity not yet in the codebase (e.g., `@ManyToOne` to `Category`), ask the user whether to generate the referenced entity or assume it already exists.
-- **Maven project**: If the project uses Maven instead of Gradle, replace `./gradlew` commands with `./mvnw` equivalents in validation step.
-- **Webhook-only feature**: No CRUD endpoints needed, only a webhook receiver (e.g., Stripe, GitHub). Skip standard CRUD handler generation; generate a dedicated webhook controller with raw body reading and signature validation.
-- **State machine transitions**: Feature has explicit status transitions (e.g., pending -> completed). Generate transition validation in the service layer and a CHECK constraint in the migration.
-- **Idempotency requirements**: Feature needs deduplication (e.g., payment processing). Add a unique idempotency key column, implement find-or-create in the service layer, and validate in tests.
-- **Bulk operations**: User needs batch create/update/delete. Use `@Transactional` with `saveAll`, add a dedicated bulk endpoint, and validate collection size limits.
+- **Partial input** (feature name only): ask for entity fields, relationships, and operations before design
+- **No persistence** (proxy/aggregation endpoint): skip entity/repository/migration; generate controller + service + DTOs + tests only
+- **Existing entity referenced**: read it and extend; skip migration if no schema change
+- **Referenced entity missing**: ask whether to generate it or assume it exists
+- **Maven project**: substitute `./mvnw` for `./gradlew` in Step 9
+- **Webhook receiver**: skip CRUD scaffold; generate raw-body controller + signature validation
+- **Status transitions**: validate in service layer, add CHECK constraint in migration (Step 6, Step 4)
+- **Idempotency**: unique key column + find-or-create + duplicate-request test (Step 6, Step 8)
+- **Bulk operations**: `@Transactional` `saveAll` + size limit + dedicated endpoint
 
 ## Rules
 
@@ -40,7 +38,7 @@ user-invocable: true
 - `@Transactional(readOnly = true)` as default on service classes
 - Never expose JPA entities in API responses - always map to DTO records
 - No `synchronized` blocks - breaks Virtual Threads; use `ReentrantLock` if needed
-- Connection pool sizing: 10–40 (optimized for Virtual Threads)
+- Connection pool sizing: 10-40 (optimized for Virtual Threads)
 - Use `var` for local variables when type is obvious
 - Use `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
 - Jakarta EE 10 for Spring Boot 3.x; Jakarta EE 11 for Spring Boot 4
@@ -50,7 +48,11 @@ user-invocable: true
 
 ## Workflow
 
-### STEP 1 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### STEP 2 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
 
 Use skill: `stack-detect` to confirm the project is Spring Boot and identify framework versions, database, and project layout conventions.
 
@@ -68,7 +70,7 @@ Ask the user these questions before writing any code:
 
 Do not continue until requirements are complete. If the user provides incomplete input, ask targeted clarifying questions.
 
-### STEP 2 - DESIGN (MANDATORY APPROVAL GATE)
+### STEP 3 - DESIGN (MANDATORY APPROVAL GATE)
 
 Propose endpoints (method + URI + query params + DTOs + status), entity fields with types and constraints, service methods, transaction boundaries. Include custom filter/search endpoints (e.g., `GET /api/v1/products?categoryId=5`). Present for user approval before generating code.
 
@@ -84,7 +86,7 @@ Design decisions to present:
 
 Only generate code after user approves design.
 
-### STEP 3 - ENTITY + MIGRATION
+### STEP 4 - ENTITY + MIGRATION
 
 Use skill: `spring-jpa-performance`, `spring-db-migration-safety`. Generate entity class with:
 
@@ -107,7 +109,7 @@ For idempotency keys, add a unique index:
 CREATE UNIQUE INDEX idx_payments_idempotency_key ON payments(idempotency_key);
 ```
 
-### STEP 4 - REPOSITORY
+### STEP 5 - REPOSITORY
 
 Use skill: `spring-jpa-performance`. Extend `JpaRepository<{Name}, Long>`. Use derived query methods for simple filters (e.g., `Page<Product> findByCategoryId(Long categoryId, Pageable pageable)`). Use JPQL `@Query` only when derived method names become unwieldy. Use `Specification` only when the endpoint supports multiple optional filter parameters. `Page<>` for all list endpoints.
 
@@ -117,7 +119,7 @@ For idempotency, implement upsert-style lookup:
 Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 ```
 
-### STEP 5 - SERVICE
+### STEP 6 - SERVICE
 
 Use skill: `spring-transaction`, `spring-exception-handling`. If async/messaging: Use skill: `spring-messaging-patterns`. `@Service @Transactional(readOnly=true) @RequiredArgsConstructor @Slf4j`. `@Transactional` (read-write) on mutating methods only. Entity-to-DTO mapping via static factory method on the response DTO record: `public static XxxResponse from(Xxx entity)`. Business exceptions from common base.
 
@@ -157,7 +159,7 @@ public PaymentResponse processPayment(PaymentRequest req) {
 }
 ```
 
-### STEP 6 - CONTROLLER
+### STEP 7 - CONTROLLER
 
 Use skill: `backend-api-guidelines`, `spring-exception-handling`. If endpoints need authorization: Use skill: `spring-security-patterns`. `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `@RequestParam` for filter/search parameters (e.g., `@RequestParam(required = false) Long categoryId`). `201 CREATED` for POST, `204 NO_CONTENT` for DELETE. Request and Response DTO records.
 
@@ -174,11 +176,11 @@ public ResponseEntity<Void> handleStripeWebhook(
 }
 ```
 
-### STEP 7 - TESTS
+### STEP 8 - TESTS
 
 Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)`, `@MockitoBean` (not `@MockBean`). Integration: `@DataJpaTest` + Testcontainers. API: `@WebMvcTest` + MockMvc. Cover: happy path, not-found, validation errors (missing required fields, invalid values), unique constraint violations (409 Conflict), filter/search endpoints, error responses, idempotency (duplicate request returns same response), invalid state transitions (returns 409/422).
 
-### STEP 8 - VALIDATE
+### STEP 9 - VALIDATE
 
 `./gradlew compileJava compileTestJava`. Present file list, endpoints, test count, any warnings.
 
@@ -196,6 +198,7 @@ Use skill: `spring-test-integration`. Unit: `@ExtendWith(MockitoExtension.class)
 
 ## Self-Check
 
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
 - [ ] Requirements gathered and design approved before any code generated
 - [ ] All layers generated: Flyway migration, entity, repository, service, controller, DTOs, tests
 - [ ] `@RequiredArgsConstructor` used; no `@Autowired` fields; no `synchronized` blocks

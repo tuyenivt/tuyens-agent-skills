@@ -26,6 +26,7 @@ user-invocable: false
 - Never expose stack traces to clients
 - Use RFC 9457 `ProblemDetail` as the standard error response format (Spring Boot 3.x native support)
 - Log system exceptions only, not expected business exceptions
+- Spring picks the most specific `@ExceptionHandler` for the throwable's runtime type; a generic `DomainException` handler covers all subclasses unless a more specific handler exists. Avoid duplicating handlers that the generic one already covers.
 
 ## Domain Exception to HTTP Status Mapping
 
@@ -102,6 +103,7 @@ public class UserController {
 Good - Centralized exception handling with RFC 9457 ProblemDetail:
 
 ```java
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -164,6 +166,18 @@ public class GlobalExceptionHandler {
         pd.setProperty("traceId", MDC.get("traceId"));
         return pd;
     }
+
+    // Common Spring framework exceptions - extend ResponseEntityExceptionHandler
+    // to override Spring's defaults in one place if you want them as ProblemDetail too.
+    // Otherwise add explicit handlers for the ones you care about:
+    //   HttpMessageNotReadableException        -> 400 (malformed JSON body)
+    //   MethodArgumentTypeMismatchException    -> 400 (path/query type coerce)
+    //   ConstraintViolationException           -> 400 (@Validated on path/query)
+    //   NoResourceFoundException               -> 404 (Spring 6.1+, replaces NoHandlerFoundException for static)
+    //   HttpRequestMethodNotSupportedException -> 405
+    //   HttpMediaTypeNotSupportedException     -> 415
+    //   MaxUploadSizeExceededException         -> 413
+    //   AccessDeniedException (Spring Security)-> 403
 
     // System exception: 500, log with stack trace
     @ExceptionHandler(Exception.class)

@@ -29,6 +29,9 @@ user-invocable: false
 - Use `readOnly=true` for query-only operations
 - Rollback on runtime exception only
 - Explicit rollback rules for checked exceptions
+- No remote IO (HTTP, broker publish, email) inside `@Transactional` - it holds the DB connection for the IO duration and exhausts the pool under load
+- Side effects that must not run on rollback (events, emails, broker publishes) fire from `@TransactionalEventListener(AFTER_COMMIT)`, not from inside the transactional method
+- `@Async` methods do not inherit the caller's transaction; pass identifiers, not managed entities
 
 ## Patterns
 
@@ -85,6 +88,72 @@ public class OrderService {
     public Order create(OrderRequest req) {
         return auditService.createWithAudit(req); // goes through proxy
     }
+}
+```
+
+### No Remote IO Inside `@Transactional`
+
+A DB connection is held for the duration of the transaction. A 2-second HTTP call inside the transaction holds a connection for 2 seconds; with a Hikari pool of 20 and 30 concurrent requests, the pool is exhausted and new requests block on `HikariPool-1 - Connection is not available`.
+
+```java
+// Bad: HTTP call + Kafka publish inside the transaction
+@Transactional
+public void placeOrder(OrderRequest req) {
+    Order order = orderRepository.save(new Order(req));
+    inventoryClient.reserve(order.getId());     // 1-3s HTTP - holds DB conn
+    kafkaTemplate.send("orders", order);         // also holds DB conn
+    emailClient.sendConfirmation(order);          // and again
+}
+```
+
+```java
+// Good: only the DB write is transactional. Side effects ride AFTER_COMMIT.
+public Order placeOrder(OrderRequest req) {
+    inventoryClient.reserve(req.itemId(), req.qty()); // pre-tx orchestration
+    Order order = saveOrder(req);                      // narrow @Transactional below
+    return order;
+}
+
+@Transactional
+Order saveOrder(OrderRequest req) {
+    Order order = orderRepository.save(new Order(req));
+    events.publishEvent(new OrderPlacedEvent(order.getId())); // dispatched after commit
+    return order;
+}
+
+@Component
+class OrderPostCommit {
+    @TransactionalEventListener(phase = AFTER_COMMIT)
+    public void onPlaced(OrderPlacedEvent e) {
+        kafkaTemplate.send("orders", e.orderId());
+        emailClient.sendConfirmation(e.orderId()); // duplicates impossible: tx already committed
+    }
+}
+```
+
+If the side effect must survive a process crash between commit and publish, use the transactional outbox (see `spring-messaging-patterns`).
+
+### `@Async` Crosses the Transaction Boundary
+
+```java
+// Bad: passing a managed entity to an async method
+@Transactional
+public void process(Long id) {
+    Order order = orderRepository.findById(id).orElseThrow();
+    asyncService.handle(order); // async thread has no Session; LIE on lazy access
+}
+
+// Good: pass identifiers, let the async method open its own transaction
+@Transactional
+public void process(Long id) {
+    asyncService.handle(id);
+}
+
+@Async
+@Transactional
+public void handle(Long orderId) {
+    Order order = orderRepository.findById(orderId).orElseThrow();
+    // ...
 }
 ```
 
@@ -201,10 +270,13 @@ When applying transaction patterns, document the boundary:
 
 ```
 Method: {class.method}
-Propagation: {REQUIRED | REQUIRES_NEW | ...}
-Read-Only: {yes | no}
-Rollback: {default | rollbackFor = Exception.class | custom}
+Propagation: {REQUIRED | REQUIRES_NEW | NESTED | MANDATORY | NEVER | NOT_SUPPORTED | SUPPORTS}
+Isolation: {DEFAULT | READ_COMMITTED | REPEATABLE_READ | SERIALIZABLE}
+Read-Only: {Yes | No}
+Rollback: {default | rollbackFor=Exception.class | custom}
 Timeout: {seconds | none}
+External-IO-In-Tx: {Yes | No}
+Post-Commit Hooks: {AFTER_COMMIT events | none}
 Reason: {why this configuration was chosen}
 ```
 

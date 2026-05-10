@@ -1,6 +1,6 @@
 ---
 name: task-spring-review-observability
-description: "Spring Boot observability review: Micrometer, Actuator, Logback/Logstash MDC, OpenTelemetry tracing, Kafka/Rabbit listener instrumentation, Sentry."
+description: "Spring Boot observability review: Micrometer, Actuator, Logback MDC, Micrometer Tracing/OTel, listener instrumentation, error trackers."
 agent: java-tech-lead
 metadata:
   category: backend
@@ -8,8 +8,6 @@ metadata:
   type: workflow
 user-invocable: true
 ---
-
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
 # Spring Boot Observability Review
 
@@ -54,21 +52,25 @@ Mirrors `task-code-review-observability`:
 | `/task-spring-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
 | `/task-spring-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
 
-When invoked as a subagent of `task-code-review-observability` or `task-spring-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped.
+When invoked as a subagent of `task-code-review-observability` or `task-spring-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 3 below is skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review-observability` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent and the parent passed the handle plus pre-read artifacts.
 
 If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
 
-### Step 3 - Read the Instrumentation Surface
+### Step 4 - Read the Instrumentation Surface
 
 Before applying the checklists below, open the files that actually configure observability so findings cite real lines, not assumptions:
 
@@ -79,7 +81,7 @@ Before applying the checklists below, open the files that actually configure obs
 
 For diffs touching only one of these surfaces (a new listener but no `application.yml` change, say), still read the existing config to know whether MDC propagation, observation flags, and starters are wired - a missing wire is the finding.
 
-### Step 4 - Structured Logging (Logback + Logstash encoder / SLF4J)
+### Step 5 - Structured Logging (Logback + Logstash encoder / SLF4J)
 
 Inspect `src/main/resources/logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*` callsite in the diff:
 
@@ -94,7 +96,7 @@ Inspect `src/main/resources/logback-spring.xml`, `application.yml` `logging.*` k
 - [ ] **No log spam in hot loops** - `forEach` over large collections, scheduled jobs running every second, Kafka listener at high TPS must not log per-iteration; use `log.atDebug()` or sampled logging
 - [ ] **Async appenders** (`AsyncAppender` or Logstash async TCP) configured for high-volume paths so logging is not on the request critical path; queue-full policy explicit (`neverBlock=true` for non-critical paths)
 
-### Step 5 - Spring Boot Actuator
+### Step 6 - Spring Boot Actuator
 
 Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `HealthIndicator` / `InfoContributor`:
 
@@ -106,7 +108,7 @@ Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `Heal
 - [ ] **`info` endpoint**: build, git, and version info exposed (`management.info.git.enabled`, `management.info.build.enabled`); does not leak environment variables or sensitive config
 - [ ] **`management.server.port`** separated from main server port in prod when network isolation is required (cluster-internal access only)
 
-### Step 6 - Micrometer Metrics
+### Step 7 - Micrometer Metrics
 
 Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 
@@ -123,7 +125,7 @@ Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
 - [ ] **`MeterFilter`** trims unused metrics or denies high-cardinality dimensions where applicable
 - [ ] **No metric registration in hot loop**: `meterRegistry.counter(...)` looked up per-request returns the cached counter, but `Counter.builder(...).register(...)` _creates_ on each call. Cache the builder result in a `final` field
 
-### Step 7 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
+### Step 8 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
 
 _Skipped at `quick` depth - see Depth Levels above._
 
@@ -137,7 +139,7 @@ Inspect tracing dependencies and bridge config:
 - [ ] **Database span enrichment**: `p6spy` or `datasource-proxy` attaches SQL to spans in non-prod; `query_log_tags`-equivalent (Hibernate `hibernate.session.events.log` or `StatementInspector`) attaches the originating service/method to slow queries
 - [ ] **Spans not too granular**: do not wrap `getUserById` in an `Observation` if the JDBC span already covers it - over-instrumentation is noise
 
-### Step 8 - Async / Messaging Observability
+### Step 9 - Async / Messaging Observability
 
 _Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@JmsListener` / `@Async` / `@Scheduled`._
 
@@ -150,7 +152,7 @@ Inspect `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Schedul
 - [ ] **`@Async` decoration**: `TaskDecorator` (or `ContextPropagatingTaskDecorator` from Micrometer Context Propagation) preserves MDC, security context, and trace context across the boundary
 - [ ] **`@Scheduled` instrumentation**: each scheduled method emits an `Observation` so trace data exists; per-job duration timer; missed-execution alerting via metric
 
-### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
+### Step 10 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
 
 _Skipped at `quick` depth unless the diff modifies `@RestControllerAdvice`, error-tracker config, or DSN/API-key handling._
 
@@ -165,7 +167,7 @@ Inspect Sentry / Honeybadger / Rollbar dependencies and config:
 - [ ] **Ignored exceptions documented**: `sentry.ignored-exceptions-for-type` lists classes that should not page (e.g., `OptimisticLockException` when retry handles it); each ignore has a comment
 - [ ] **`@RestControllerAdvice` maps exceptions to user-facing responses without losing the stack** - error tracker captures the original exception before the advice replaces it with a response DTO
 
-### Step 10 - Health Checks and SLIs (deep depth only)
+### Step 11 - Health Checks and SLIs (deep depth only)
 
 When invoked at `deep`, evaluate:
 
@@ -175,13 +177,14 @@ When invoked at `deep`, evaluate:
 - [ ] Synthetic probes (k6 / Gatling) call `/actuator/health/readiness` not just `/actuator/health` - readiness reflects ability to serve
 
 
-### Step 11 - Write Report
+### Step 12 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-observability`.
 
 Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
+- [ ] Behavioral principles loaded as Step 1 before any other delegation
 - [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher)
 - [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
 - [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review

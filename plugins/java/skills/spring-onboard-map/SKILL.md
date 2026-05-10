@@ -23,6 +23,8 @@ user-invocable: false
 - Treat `application.yml` (and its profile variants) as the single source of truth for runtime configuration - never describe behavior without mapping which property drives it.
 - Identify the persistence stack (JPA/Hibernate, JDBC, MyBatis, R2DBC, none) before discussing data flow - it changes everything downstream.
 - Identify the security configuration class - on Spring Boot 3+ this is a `@Configuration` declaring one or more `SecurityFilterChain` beans (the legacy `WebSecurityConfigurerAdapter` was removed in Spring Security 6 / Spring Boot 3, so any code still extending it is on an unsupported version and the migration is itself an onboarding signal). If no security configuration class exists, the project is on the autoconfigured default - state which one (`spring-boot-starter-security` present means HTTP basic + a generated password printed to logs; absent means no auth at all).
+- Enumerate every `application-<profile>.yml` discovered. For each, list which keys override the base `application.yml` - this is the dev/staging/prod map a new engineer needs to read before changing config.
+- Build a route inventory by grepping `@RequestMapping` / `@GetMapping` / `@PostMapping` / `@PutMapping` / `@DeleteMapping` / `@PatchMapping` at class and method level. Cross-reference each route with `SecurityFilterChain.requestMatchers(...)` so the new engineer knows which routes are public, authenticated, or role-restricted.
 
 ## Patterns
 
@@ -77,16 +79,17 @@ Standard sequence to surface to the new engineer:
 
 ### Risk Hotspots Specific to Spring
 
-- **Self-invocation of `@Transactional` / `@Async` / `@Cacheable` / `@PreAuthorize`:** scan for `this.method(...)` calls inside annotated services - these silently bypass advice.
-- **`@Transactional(readOnly = false)` on heavy queries:** disables Hibernate read-only optimizations.
-- **Open-in-view (OSIV):** Spring Boot enables `spring.jpa.open-in-view=true` by default. Lazy loading works through the controller layer but silently hides N+1 queries and `LazyInitializationException` until the property is flipped. Flag this as a hotspot whenever `application.yml` either sets it to `true` or omits the key (the default applies); the recommended posture in modern Spring projects is `spring.jpa.open-in-view=false` with explicit fetch joins / entity graphs / projection DTOs.
-- **`@PostConstruct` doing heavy work:** delays startup; runs before health checks come up.
-- **`@SpringBootApplication` with non-default `scanBasePackages`:** any class outside the listed packages is invisible to component scan.
-- **Multiple `DataSource` or `PlatformTransactionManager` beans without `@Primary`:** ambiguous wiring, runtime startup failure.
-- **Custom `Filter` / `OncePerRequestFilter` registered without explicit order:** runs in undefined position relative to Spring Security filters.
-- **`@EnableAsync` without `@Configuration` `TaskExecutor` bean:** uses `SimpleAsyncTaskExecutor`, which spawns an unbounded thread per call.
-- **JPA entities with `@Data` (Lombok):** generated `equals`/`hashCode`/`toString` traverse lazy associations and trigger queries or `LazyInitializationException`.
-- **Flyway migrations with `out of order` enabled:** drift between developer-local schema and CI/prod is invisible.
+Surface these as orientation signals; defer depth to the atomic skill that owns each topic:
+
+- **Proxy self-invocation** on `@Transactional` / `@Async` / `@Cacheable` / `@PreAuthorize` (see `spring-transaction`)
+- **OSIV state**: `spring.jpa.open-in-view` set to `true` or omitted (default applies) - silently masks N+1 and `LazyInitializationException` (see `spring-jpa-performance`)
+- **`@PostConstruct` heavy work**: delays startup; runs before health checks
+- **`@SpringBootApplication` with non-default `scanBasePackages`**: classes outside listed packages are invisible
+- **Multiple `DataSource` / `PlatformTransactionManager` beans without `@Primary`**: ambiguous wiring, startup failure
+- **Custom `Filter` / `OncePerRequestFilter` without explicit order**: undefined position relative to Spring Security
+- **`@EnableAsync` without a `TaskExecutor` bean**: falls back to `SimpleAsyncTaskExecutor`, unbounded thread per call (see `spring-async-processing`)
+- **JPA entities annotated with Lombok `@Data`**: generated `equals`/`hashCode`/`toString` traverse lazy associations
+- **Flyway `out of order` enabled**: dev/CI/prod schema drift is invisible
 
 ### First-PR Safe Zones
 
@@ -126,7 +129,7 @@ This atomic produces signals consumed by `task-onboard`. Inject the following in
 
 - Exact command to run the app (`./mvnw spring-boot:run` or `./gradlew bootRun`)
 - Required local services (from `compose.yml` or external connection strings in `application-*.yml`)
-- Default profile and how to override
+- Profile inventory: every `application-<profile>.yml` discovered, the default profile, and the override mechanism (`spring.profiles.active` / `SPRING_PROFILES_ACTIVE`)
 - Default port and actuator base path
 
 **Into "Architecture Map":**
@@ -135,6 +138,7 @@ This atomic produces signals consumed by `task-onboard`. Inject the following in
 - Layer directories (controller / service / repository / domain) with file counts
 - `@Configuration` classes and what each configures
 - Cross-cutting concerns: `@RestControllerAdvice`, custom filters, AOP aspects
+- Route table: HTTP method + path -> controller method, with auth requirement read from `SecurityFilterChain` matchers (public / authenticated / role-restricted)
 
 **Into "Conventions":**
 

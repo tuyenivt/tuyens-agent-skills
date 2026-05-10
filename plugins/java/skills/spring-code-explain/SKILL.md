@@ -23,6 +23,7 @@ user-invocable: false
 - Surface JPA persistence context implications when the code reads or mutates entities - dirty checking, lazy loading, flush timing, and detached-entity behavior are not visible from the call site.
 - Surface bean scope (`singleton` default vs `prototype`, `request`, `session`) when state is stored on a field. Singletons sharing mutable state across threads is a frequent bug source.
 - Identify the security context (filter chain order, method security, or no security) before describing what the endpoint does.
+- If the target code uses no Spring annotations and no Spring-imported types (`org.springframework.*`, `jakarta.persistence.*`), return empty signal blocks and a single note "no Spring-specific signals detected" - do not invent framework behavior.
 
 ## Patterns
 
@@ -39,32 +40,30 @@ user-invocable: false
 
 ### AOP Proxy Gotchas (highest-yield Spring gotcha class)
 
-Annotations that depend on the Spring proxy: `@Transactional`, `@Async`, `@Cacheable` / `@CacheEvict` / `@CachePut`, `@PreAuthorize` / `@PostAuthorize`, `@Retryable`, `@Validated` (on parameters).
+Proxy-backed annotations: `@Transactional`, `@Async`, `@Cacheable` / `@CacheEvict` / `@CachePut`, `@PreAuthorize` / `@PostAuthorize`, `@Retryable`, `@Validated`.
 
-**Self-invocation bypasses the proxy.** When `methodA()` in a `@Service` calls `this.methodB()` and `methodB` has `@Transactional`, the transactional boundary is **not** opened. The call must go through the injected bean reference (or a self-injected proxy) for the annotation to fire.
+Three silent-failure modes - flag any of them on a proxy-backed annotation:
 
-**Private and final methods are not advised.** Default JDK / CGLIB proxies cannot intercept private or final methods; the annotation is silently ignored.
+- **Self-invocation** (`this.method()`) bypasses the proxy; the annotation does not fire
+- **Private / final methods** cannot be advised by JDK or CGLIB proxies
+- **`@PostConstruct`-time calls** may run before the proxy is wired
 
-**Initialization-time calls miss advice.** Methods called from `@PostConstruct` may run before the proxy is fully wired - `@Async` and `@Transactional` may not apply.
+For canonical patterns and fixes (self-injection, bean extraction, `TransactionTemplate`), see `spring-transaction`.
 
 ### `@Transactional` Specifics
 
-- **Propagation:** default `REQUIRED` joins existing transaction or starts a new one. `REQUIRES_NEW` always opens a new transaction; useful for audit logging that must survive parent rollback. `NESTED` requires JDBC savepoint support.
-- **Read-only flag:** `readOnly = true` enables Hibernate flush-skip and DB-level read-only hints; performance-relevant for queries.
-- **Rollback rules:** rolls back on `RuntimeException` and `Error` only by default. Checked exceptions do **not** roll back unless `rollbackFor = CheckedException.class` is set.
-- **Timeout:** measured in seconds; counts wall-clock time including waiting on locks.
-- **Isolation:** `Isolation.DEFAULT` uses the database default - usually `READ_COMMITTED` on PostgreSQL/MySQL, not `REPEATABLE_READ`.
-- **External IO inside `@Transactional`:** HTTP calls, message broker publishes, or other slow IO inside a `@Transactional` method hold the DB connection for the full duration. A 3-second payment gateway call holds a connection for 3 seconds; under load this exhausts the HikariCP pool. Flag this whenever an outbound client (`RestClient`, `WebClient`, `KafkaTemplate`, `RabbitTemplate`) is invoked inside a transaction.
+For propagation, rollback rules, read-only optimization, timeout, and the IO-in-transaction anti-pattern, see `spring-transaction`. When explaining a transactional method, surface: propagation chosen, `readOnly` flag, rollback rules (especially checked-exception handling), and any outbound client (`RestClient`, `WebClient`, `KafkaTemplate`) invoked inside the boundary.
 
 ### JPA / Hibernate Persistence Context
 
-- **Dirty checking:** entities loaded inside a transaction are tracked; field mutations are flushed at transaction commit without an explicit `save()` call. Mutating an entity outside a transaction has no DB effect.
-- **Lazy loading:** `@OneToMany`, `@ManyToOne(fetch = LAZY)`, and Hibernate proxies throw `LazyInitializationException` when accessed after the persistence context is closed (e.g., in the controller layer when `@Transactional` ended in the service, or in a mapper that runs after the service returns).
-- **N+1 queries:** loops over a collection of entities accessing a lazy association issue one query per entity. Detect: collection access in a loop + a `@OneToMany` or `@ManyToOne(LAZY)` field.
-- **Flush timing:** writes are buffered and flushed at commit, before query execution within the same transaction, or on explicit `flush()`. A `findById` after a `save` in the same transaction may return the cached entity, not a fresh DB row.
-- **Detached entities:** entities passed across transaction boundaries are detached; `merge()` reattaches but returns a new managed instance - the original reference is still detached.
-- **Optimistic locking (`@Version`):** entities with a `@Version` column throw `OptimisticLockException` (often surfacing as `ObjectOptimisticLockingFailureException`) when two transactions write to the same row. The losing writer must retry or escalate; this is an invariant the caller depends on whenever the entity has a version field.
-- **Returning managed entities to callers:** a `@Transactional` method that returns an `Entity` exposes a now-detached object to the caller. Mutations on it after the method returns do not persist, and lazy associations may fail. Returning a DTO/projection avoids this entirely.
+For N+1 detection, fetch strategies, projections, and pagination, see `spring-jpa-performance`. Surface for each entity-touching method:
+
+- **Dirty checking**: mutations inside an open transaction flush at commit without explicit `save()`; mutations outside have no DB effect
+- **Lazy access boundary**: `LazyInitializationException` fires when a lazy association is touched after the persistence context closes (controller layer, mappers, async threads)
+- **Flush timing**: writes buffer until commit, query execution, or explicit `flush()`; a `findById` after `save` in the same transaction returns the cached managed entity
+- **Detached entities**: returned from a `@Transactional` method are detached; `merge()` returns a new managed instance, the original stays detached
+- **Optimistic locking**: entities with `@Version` throw `OptimisticLockException` on concurrent writes; callers must retry or escalate
+- **Entity-as-return-type**: exposes a detached object; mutations after return do not persist. Project to DTO instead
 
 ### Async, Scheduled, and Events
 
@@ -135,7 +134,7 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 
 **Into "Change Impact Preview":**
 
-- Adding `@Transactional` to a method already called via `this.X()` will not take effect - flag the call sites
+- Adding `@Transactional` to a method already called via `this.X()` will not take effect - flag the call sites and recommend either self-injection (`@Autowired private SelfType self; self.X()`) or extraction into a separate bean
 - Removing `readOnly=true` may double DB load on queries
 - Changing return type away from `CompletableFuture` breaks `@Async` semantics
 - Switching `@EventListener` from sync to `@Async` or `@TransactionalEventListener(AFTER_COMMIT)` changes failure semantics: the publisher TX will commit even if the listener fails. Identify listeners and confirm they tolerate at-most-once execution.

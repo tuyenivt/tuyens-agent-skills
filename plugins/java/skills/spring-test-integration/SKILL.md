@@ -22,7 +22,7 @@ user-invocable: false
 ## Rules
 
 - Never use `@SpringBootTest` when a slice test suffices - it's 10x slower
-- Use Testcontainers with the real database - never H2 for integration tests
+- Use Testcontainers with the production database engine when the test exercises DB-specific syntax (JSONB, partial indexes, `ON CONFLICT`, window functions); H2 silently passes on syntax that fails in prod
 - Use `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
 - Constructor injection with manual mocks over `@MockitoBean` when no Spring context needed
 - AssertJ fluent assertions over JUnit `assertEquals`
@@ -118,14 +118,22 @@ class OrderServiceTest {
 
 ### Singleton Container Pattern
 
-For shared containers across multiple test classes:
+`@Container` + JUnit's `@Testcontainers` extension restarts the container per class. For a 6-minute suite that boots Postgres for every test class, the fix is a JVM-level singleton: declare the container `static` and start it once in a static initializer (or a base class). Subclasses inherit the running container and never pay the boot cost again.
+
+Local dev loops can shave further by enabling Testcontainers reuse - the container survives the JVM exit:
+
+```java
+.withReuse(true)  // and set testcontainers.reuse.enable=true in ~/.testcontainers.properties
+```
+
+Reuse is local-only - keep it off in CI so each pipeline run starts from a clean container.
 
 ```java
 public abstract class AbstractIntegrationTest {
     static final PostgreSQLContainer<?> POSTGRES =
-        new PostgreSQLContainer<>("postgres:16-alpine");
+        new PostgreSQLContainer<>("postgres:16-alpine").withReuse(true);
     static final GenericContainer<?> REDIS =
-        new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+        new GenericContainer<>("redis:7-alpine").withExposedPorts(6379).withReuse(true);
 
     static {
         POSTGRES.start();
@@ -177,30 +185,7 @@ public class OrderTestFixtures {
 }
 ```
 
-Bad - duplicated `@BeforeEach` setup:
-
-```java
-@BeforeEach
-void setUp() {
-    var order = new Order();
-    order.setCustomerId(1L);
-    order.setStatus(OrderStatus.PAID);
-    order.setTotalAmount(BigDecimal.valueOf(99.99));
-    // ... repeated in every test class
-}
-```
-
-Good - shared fixture via `@TestConfiguration`:
-
-```java
-@TestConfiguration
-class TestFixtureConfig {
-    @Bean
-    OrderTestFixtures orderTestFixtures() {
-        return new OrderTestFixtures();
-    }
-}
-```
+Use static factory methods on a single `*TestFixtures` class per aggregate; reach for `@TestConfiguration` only when fixtures need Spring-managed dependencies.
 
 ### Mocking External HTTP Services with WireMock
 
@@ -226,6 +211,49 @@ class PaymentIntegrationTest extends AbstractIntegrationTest {
 ```
 
 Use `@MockitoBean` for unit tests where you only care about the service logic. Use WireMock for integration tests where the HTTP contract matters.
+
+### Spring Security Test
+
+For `@WebMvcTest` controllers behind security, the security filter chain runs but no authenticated user is bound. Use `@WithMockUser` for role-based asserts and the `jwt()` post-processor for OAuth2 resource server.
+
+```java
+@WebMvcTest(OrderController.class)
+@Import(SecurityConfig.class) // controller slices don't auto-load it
+class OrderControllerTest {
+
+    @Autowired MockMvc mockMvc;
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void admin_can_delete_order() throws Exception {
+        mockMvc.perform(delete("/api/orders/1")).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void anonymous_cannot_delete() throws Exception {
+        mockMvc.perform(delete("/api/orders/1")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void with_jwt() throws Exception {
+        mockMvc.perform(get("/api/orders/1")
+                .with(jwt().jwt(j -> j.claim("scope", "orders:read"))))
+            .andExpect(status().isOk());
+    }
+}
+```
+
+### Transactional Rollback Between Tests
+
+`@DataJpaTest` wraps each test in a transaction and rolls back at the end - the DB is clean for the next test. `@SpringBootTest` does NOT roll back by default. Reusing test state between tests is the most common "my data persists between tests" footgun.
+
+```java
+@SpringBootTest
+@Transactional // opt in to per-test rollback for full-context tests
+class OrderServiceIT { ... }
+```
+
+If the code under test spawns a different transaction (e.g., `@Async`, `REQUIRES_NEW`, async event listener), `@Transactional` on the test class does NOT cover it - that data is committed and survives. Clean up explicitly via `@Sql(executionPhase = AFTER_TEST_METHOD)` or a `@AfterEach` truncate.
 
 ### Mockito in Virtual Thread Context
 

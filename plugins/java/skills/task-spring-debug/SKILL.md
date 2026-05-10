@@ -8,8 +8,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Debug - Developer Debugging Workflow
 
 ## Purpose
@@ -54,7 +52,11 @@ For production incident analysis with containment and blast radius assessment, u
 
 ## Workflow
 
-### Step 1 - Intake
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+
+### Step 2 - Intake
 
 Accept one or more of:
 
@@ -66,7 +68,7 @@ Accept one or more of:
 
 If the input is ambiguous, ask one clarifying question before proceeding.
 
-### Step 2 - Classify the Error
+### Step 3 - Classify the Error
 
 Identify the error category to guide investigation. Spring wraps exceptions heavily (`InvalidDataAccessApiUsageException` wraps `LazyInitializationException`; `TransactionSystemException` wraps `ConstraintViolationException`; `NestedServletException` wraps controller errors). **Always walk the `Caused by:` chain to the deepest non-framework cause and match the table against that** - matching the outer wrapper leads to the wrong fix.
 
@@ -102,13 +104,13 @@ Identify the error category to guide investigation. Spring wraps exceptions heav
 | `PaymentDeclinedException` (domain)       | External payment gateway declined charge | Use skill: `spring-exception-handling`  |
 | `WebSocketHandshakeException`             | WS auth or CORS failure                  | Use skill: `spring-websocket`           |
 
-If a skill is loaded above, its patterns drive Step 5's fix construction - do not re-derive a fix from first principles.
+If a skill is loaded above, its patterns drive Step 6's fix construction - do not re-derive a fix from first principles.
 
 **Test failure** → analyze assertion mismatch, check test setup and mocks
 
 **Build failure** → Gradle configuration, dependency resolution, or version conflict. Diagnose first (read the failing task output, check `gradle dependencies` for conflicts). Only load `java-gradle-build-optimization` if the failure is itself a build-config or dependency-management problem; that skill is about build *health*, not arbitrary build errors.
 
-### Step 3 - Locate in Codebase
+### Step 4 - Locate in Codebase
 
 1. Read the stack trace to identify the **source file and line number**. The first frame in **application code** (not Spring/Hibernate/Tomcat internals) is the starting point.
 2. Open the file and surrounding context (~50 lines above and below).
@@ -123,7 +125,7 @@ If a skill is loaded above, its patterns drive Step 5's fix construction - do no
 4. Check **configuration files** (`application.yml`, `application.properties`, security config, async config, datasource config) when the error could be config-related (e.g., `LazyInitializationException` with `spring.jpa.open-in-view=false` requires explicit fetch strategy, `NoSuchBeanDefinitionException` from missing component scan, `DataAccessResourceFailureException` from HikariCP pool sizing).
 5. Identify which layer the bug is in (Filter | ControllerAdvice | Controller | Service | Mapper | Repository | Configuration | Async/Messaging | Build).
 
-### Step 4 - Root Cause Analysis
+### Step 5 - Root Cause Analysis
 
 - Explain **WHY** this error occurred, not just what happened
 - Reference the **specific code** that causes the issue
@@ -133,9 +135,9 @@ If a skill is loaded above, its patterns drive Step 5's fix construction - do no
   - **MEDIUM** - likely, but alternative causes exist
   - **LOW** - need more info to confirm
 
-### Step 5 - Propose Fix
+### Step 6 - Propose Fix
 
-- If Step 2 loaded an atomic skill (e.g., `spring-jpa-performance`, `spring-transaction`, `spring-messaging-patterns`), draw the candidate fixes from that skill's Patterns section. Do not re-derive a fix from first principles when a vetted recipe exists.
+- If Step 3 loaded an atomic skill (e.g., `spring-jpa-performance`, `spring-transaction`, `spring-messaging-patterns`), draw the candidate fixes from that skill's Patterns section. Do not re-derive a fix from first principles when a vetted recipe exists.
 - Show the **exact code change** needed (before → after).
 - If multiple fixes are possible, rank by:
   1. Correctness - does it actually fix the bug?
@@ -146,7 +148,9 @@ If a skill is loaded above, its patterns drive Step 5's fix construction - do no
   - `OptimisticLockException` → retry on `@Version` conflict, narrow the transaction, or move to pessimistic lock for true contention.
   - `TransactionSystemException` (validation) → move `@Valid` to controller boundary so violations surface as 400 instead of being wrapped at commit time.
 
-### Step 6 - Prevent Recurrence
+### Step 7 - Prevent Recurrence
+
+Use skill: `spring-test-integration` for the test-slice patterns referenced below (singleton Testcontainers, `@DataJpaTest` rollback, security test post-processors, Awaitility for async).
 
 - Suggest a **test that would have caught this bug**, calibrated to the error class:
   - `LazyInitializationException` → `@SpringBootTest` (or `@DataJpaTest`) integration test that invokes the controller/mapper *outside* the original `@Transactional` boundary so lazy access actually fails. Unit tests with mocked repositories will not catch this.
@@ -187,9 +191,9 @@ Present the analysis in this structure:
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded before any other step
+- [ ] `behavioral-principles` loaded as Step 1 before any other delegation
 - [ ] Error classified by walking the `Caused by:` chain to the deepest non-framework cause, before any code is read or fix proposed
-- [ ] If the table loaded an atomic skill, Step 5's fix was drawn from that skill's Patterns - not re-derived
+- [ ] If the table loaded an atomic skill, Step 6's fix was drawn from that skill's Patterns - not re-derived
 - [ ] Root cause references the specific source file and line; confidence level stated
 - [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
 - [ ] Fix does not introduce constructs that violate project conventions (no `synchronized` blocks on Virtual Threads, no field `@Autowired`)

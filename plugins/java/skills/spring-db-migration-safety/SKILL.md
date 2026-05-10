@@ -66,14 +66,28 @@ ALTER TABLE orders RENAME COLUMN customer_ref TO customer_id;
 Good - expand-then-contract across three migrations:
 
 ```sql
--- Migration 1: add new column
+-- Migration 1 (release N, expand): add new column nullable
 ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 
--- Migration 2: backfill and keep in sync via app code or trigger
-UPDATE orders SET customer_id = customer_ref;
+-- Migration 2 (release N, backfill in batches; one big UPDATE on 30M rows
+-- locks rows, bloats WAL, and may exceed lock_timeout). Run from a job or
+-- repeated migration; pick batch size by row width.
+UPDATE orders SET customer_id = customer_ref
+WHERE customer_id IS NULL AND id BETWEEN :lo AND :hi;
 
--- Migration 3 (next release after old column unused): drop old column
+-- Migration 3 (release N+1, after all instances are reading the new column):
 ALTER TABLE orders DROP COLUMN customer_ref;
+```
+
+Rolling-deploy dual-write: during release N rollout, two app versions run concurrently behind the load balancer. Keep both columns in sync from the app layer until the rollout converges, otherwise the older instance writes only to `customer_ref` and the new instance reads `customer_id`:
+
+```java
+// Keeps customer_ref and customer_id in sync while old code is still in flight
+@PrePersist @PreUpdate
+void syncCustomerColumns() {
+    if (customerId != null && customerRef == null) customerRef = customerId;
+    if (customerRef != null && customerId == null) customerId = customerRef;
+}
 ```
 
 Bad - index creation locks the table:
@@ -120,6 +134,16 @@ ALTER TABLE payments ADD CONSTRAINT payments_status_check
 ```
 
 CHECK constraints prevent invalid status values at the database level - a safety net when application-level validation is bypassed (e.g., manual SQL, migration scripts).
+
+### Rollback Strategy
+
+Flyway Community has no automatic undo (Undo is paid-tier only). Treat every forward migration as one-way and plan rollback as a paired forward-fix migration:
+
+- DROP COLUMN cannot be rolled back without a database restore. Lean on PITR / backup retention; document the recovery window in the runbook.
+- Schema mistakes ship a `Vx_revert_*.sql` forward migration that re-adds the column or constraint, not a `git revert` of the original file (Flyway will detect a checksum change and fail validation).
+- "Rollback tested" in the checklist means: applied on a Testcontainers Postgres clone of prod-shape data, then the revert migration applied, then the app on N-1 boots cleanly.
+
+Liquibase has built-in `<rollback>` blocks (shown below); prefer them for non-auto-reversible operations.
 
 ### 2. Flyway Conventions
 
@@ -331,20 +355,17 @@ When generating migrations, document each file:
 ```
 Migration: {filename}
 Type: {DDL | DML}
-Operation: {ADD COLUMN | ADD INDEX | BACKFILL | DROP COLUMN | RENAME | CONSTRAINT}
+Operation: {ADD_COLUMN | ADD_INDEX | BACKFILL | DROP_COLUMN | RENAME | CONSTRAINT | OTHER}
 Table: {table name}
+Phase: {expand | migrate | contract}
+Release: {N | N+1 | N+2}
 Locks Table: {yes | no}
-Backward Compatible: {yes | no - why}
-Rollback: {auto-reversible | manual rollback provided | N/A}
+Concurrency Safe: {yes-CONCURRENTLY | yes-INPLACE | no}
+Dual-Write Required: {yes | no}
+Backward Compatible With N-1: {yes | no}
+Compatibility Notes: {free text - what code change shipped alongside}
+Rollback: {auto-reversible | liquibase-rollback-block | forward-fix-migration | restore-from-backup}
 ```
-
-## Checklist
-
-- [ ] Migration is backward-compatible with current running code?
-- [ ] No table locks on large tables?
-- [ ] Rollback tested?
-- [ ] Index creation is non-blocking?
-- [ ] Separate DDL and DML migrations?
 
 ## Avoid
 

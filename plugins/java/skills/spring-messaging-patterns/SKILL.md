@@ -117,35 +117,51 @@ public class RabbitConfig {
 
 ### Transactional Outbox (Spring + JPA)
 
+The phantom-event symptom (consumer receives an event whose aggregate row doesn't exist yet) happens when a broker publish runs inside `@Transactional` and the surrounding transaction later rolls back - the message is already on the wire, but the row never commits. Two fixes: (a) outbox table, (b) `@TransactionalEventListener(AFTER_COMMIT)` for in-process listeners. Use the outbox when the event must survive a process crash between commit and publish.
+
 ```java
 @Entity
 @Table(name = "outbox_events")
 public class OutboxEvent {
     @Id @GeneratedValue UUID id;
     String aggregateType;
-    String aggregateId;
+    String aggregateId;   // partition key for the broker
+    String topic;         // destination topic, NOT eventType
     String eventType;
     String payload;       // JSON
     Instant createdAt;
     boolean published;
 }
 
-// Save outbox event in the same transaction as business data
+// Save outbox row in the same transaction as the business write
 @Transactional
 public void placeOrder(PlaceOrderCommand cmd) {
     Order order = orderRepo.save(Order.from(cmd));
-    outboxRepo.save(OutboxEvent.from(order, "OrderPlaced"));
+    outboxRepo.save(OutboxEvent.from(order, "orders.events", "OrderPlaced"));
 }
 
-// Scheduled publisher reads unpublished events and publishes to broker
+// Polling publisher: claims a batch with SKIP LOCKED so multiple instances don't double-publish.
+// Each event re-fetched in its own transaction lets failures of one event not block others.
 @Scheduled(fixedDelay = 1000)
-@Transactional
 public void publishOutboxEvents() {
-    outboxRepo.findByPublishedFalse().forEach(event -> {
-        kafkaTemplate.send(event.eventType(), event.payload());
-        event.setPublished(true);
-    });
+    List<UUID> ids = outboxRepo.claimBatchForPublish(100); // see query below
+    for (UUID id : ids) publishOne(id);
 }
+
+@Transactional
+public void publishOne(UUID id) {
+    OutboxEvent e = outboxRepo.findById(id).orElseThrow();
+    // key=aggregateId preserves per-aggregate ordering on Kafka partitions
+    kafkaTemplate.send(e.getTopic(), e.getAggregateId(), e.getPayload());
+    e.setPublished(true); // dirty-checked, flushed on commit
+}
+
+// Repository - native query because JPQL has no SKIP LOCKED:
+//   SELECT id FROM outbox_events
+//   WHERE published = false
+//   ORDER BY created_at
+//   LIMIT :n
+//   FOR UPDATE SKIP LOCKED
 ```
 
 ### Spring Application Events (in-process)
@@ -191,11 +207,17 @@ public class FulfillmentConsumer {
         attempts = "3",
         backoff = @Backoff(delay = 1000, multiplier = 2),
         autoCreateTopics = "true",
-        dltStrategy = DltStrategy.FAIL_ON_ERROR
+        dltStrategy = DltStrategy.FAIL_ON_ERROR,
+        // Permanent failures (bad payload, invariant violation) skip retries and go straight to DLT
+        exclude = { ValidationException.class, IllegalArgumentException.class }
     )
     @KafkaListener(topics = "order.placed", groupId = "fulfillment-service")
-    public void onOrderPlaced(OrderPlacedEvent event) {
-        if (fulfillmentRepo.existsByOrderId(event.orderId())) return;
+    public void onOrderPlaced(
+            OrderPlacedEvent event,
+            @Header(KafkaHeaders.RECEIVED_KEY) String messageKey) {
+        // Canonical idempotency: a processed_messages(message_id PK) row.
+        // If the broker redelivers, the unique-constraint violation tells us we already handled it.
+        if (!processedMessages.markProcessed(messageKey)) return;
         fulfillmentService.initiate(event.orderId());
     }
 
