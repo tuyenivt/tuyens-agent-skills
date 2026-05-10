@@ -14,23 +14,13 @@ user-invocable: true
 
 ## Purpose
 
-Produce commit-ready diagram code from architecture descriptions or existing design documents:
-
-- **C4 model hierarchy** - Context, Container, Component levels with correct C4 semantics
-- **Sequence diagrams** - key flows across system boundaries
-- **Data flow diagrams** - how data moves through the system, including async paths
-- **Deployment diagrams** - infrastructure topology and runtime dependencies
-- **Docs-repo native** - outputs embeddable Mermaid blocks or standalone PlantUML files; no code required
-
-This skill produces diagram code only. It does not modify existing files unless asked.
+Produce commit-ready Mermaid or PlantUML diagram code from architecture descriptions or design docs - C4 (Context/Container/Component), sequence, data flow, or deployment. Outputs diagram code only; does not modify files unless asked.
 
 ## When to Use
 
-- After running `task-design-architecture` to produce visual documentation of the design
-- When an existing design doc or ADR needs a diagram to clarify structure
-- When onboarding team members who need a visual system map
-- When preparing architecture review materials for leadership or cross-team communication
-- When updating diagrams after a system change
+- After `task-design-architecture` to add visual documentation
+- When a design doc, ADR, or onboarding material needs a diagram
+- When preparing architecture review materials
 
 ## Inputs
 
@@ -111,11 +101,7 @@ C4Context
   Rel_Back(from, to, "Label")
 ```
 
-**Rules for C4 Context:**
-
-- Show only: the target system, its users/actors, and direct external systems
-- Do not show internal components - that is C4 Container level
-- Every relationship must have a direction and a brief label
+**Rules**: target system + actors + direct external systems only. No internal components. Every relationship has a direction and label.
 
 #### C4 Container Diagram (Mermaid)
 
@@ -136,11 +122,7 @@ C4Container
   Rel(from, to, "Label", "Protocol/Technology")
 ```
 
-**Rules for C4 Container:**
-
-- Show major deployable units (services, databases, queues, frontends)
-- Include the technology stack for each container
-- Do not show internal module structure - that is C4 Component level
+**Rules**: major deployable units only with technology stack labels. No internal module structure.
 
 #### C4 Component Diagram (Mermaid)
 
@@ -158,10 +140,7 @@ C4Component
   Rel(from, to, "Label")
 ```
 
-**Rules for C4 Component:**
-
-- Scope to a single container; show its internal modules/components
-- Each component should map to a bounded responsibility (not a file or class)
+**Rules**: scope to one container; components map to bounded responsibilities, not files or classes.
 
 #### Sequence Diagram (Mermaid)
 
@@ -183,13 +162,7 @@ sequenceDiagram
   API-->>User: 201 Created
 ```
 
-**Rules for Sequence:**
-
-- Use `autonumber` for numbered steps
-- Use `-->>` for responses, `->>` for requests
-- Use `--)` for async messages (fire-and-forget)
-- Include `activate`/`deactivate` for long-running operations if it adds clarity
-- Show error paths with `alt`/`else` blocks when they are architecturally significant
+**Rules**: `autonumber`; `->>` request, `-->>` response, `--)` async fire-and-forget. Use `alt`/`else` only for architecturally significant error paths.
 
 #### Data Flow Diagram (Mermaid flowchart)
 
@@ -212,12 +185,7 @@ flowchart LR
   end
 ```
 
-**Rules for Data Flow:**
-
-- Use `LR` (left-to-right) for pipeline flows, `TD` (top-down) for hierarchical flows
-- Use `[(name)]` for databases, `([name])` for queues/topics, `[name]` for services
-- Group related components with `subgraph`
-- Show async paths distinctly with dashed lines: `-->|async|`
+**Rules**: `LR` for pipelines, `TD` for hierarchies. `[(db)]`, `([queue])`, `[service]`. Async paths use dashed `-->|async|`.
 
 #### Deployment Diagram (Mermaid)
 
@@ -244,11 +212,7 @@ flowchart TD
   ECS --> MSK
 ```
 
-**Rules for Deployment:**
-
-- Use nested subgraphs for cloud provider > region > VPC > subnet hierarchy
-- Show replication/redundancy with instance counts in labels
-- Show external traffic entry points at the top
+**Rules**: nested subgraphs for provider > region > VPC > subnet. Show instance counts in labels. External traffic entry at the top.
 
 ### Step 4 - Output
 
@@ -282,28 +246,21 @@ After the diagram block, produce a brief **Diagram Notes** section:
 
 ## Rules
 
-- Never invent components not present in or strongly implied by the source material
-- Every element in the diagram must be traceable to the source
-- State assumptions explicitly in Diagram Notes, not silently in the diagram
-- Keep diagrams at one level of abstraction - do not mix C4 Context and Container in the same diagram
-- Mermaid syntax must be valid and render without modification in standard tools
-- Omit legend blocks unless the diagram uses non-standard notation
+- Every element traceable to source; never invent components to "complete" the diagram
+- Stay at one abstraction level (no Context/Container mixing)
+- State assumptions in Diagram Notes, not silently in the diagram
+- Mermaid/PlantUML syntax must render unmodified in standard tools
 
 ## Self-Check
 
-- [ ] Every actor, system, container, and relationship is traceable to the source material
-- [ ] Diagram stays at a single abstraction level
+- [ ] Every actor/system/container/relationship traces to source
+- [ ] Single abstraction level; correct C4 element types
 - [ ] Diagram Notes states scope and assumptions
-- [ ] Mermaid/PlantUML syntax is valid (no unclosed blocks, no invalid aliases)
-- [ ] Format selection (Mermaid vs PlantUML) is justified by project context or user request
-- [ ] Output target (inline vs standalone file) matches user request
-- [ ] Async paths are visually distinct from sync paths (sequence and data flow diagrams only)
-- [ ] C4 diagrams use correct C4 element types (Person, System, Container, Component)
+- [ ] Syntax valid (no unclosed blocks, no invalid aliases)
+- [ ] Async paths visually distinct from sync (sequence, data flow)
 
 ## Avoid
 
-- Mixing C4 levels in one diagram
-- Adding systems or components not present in the source to make the diagram look complete
-- Showing implementation details (classes, methods, DB tables) in Context or Container diagrams
-- Using generic labels ("Service A", "Database 1") when names are available in the source
-- Producing diagrams that require proprietary tooling to render
+- Showing implementation details (classes, methods, tables) in Context or Container diagrams
+- Generic labels ("Service A", "Database 1") when source names them
+- Diagrams that need proprietary tooling to render

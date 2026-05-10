@@ -14,27 +14,14 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level proactive risk assessment that identifies systemic risk before implementation or merge:
-
-- **Risk-first thinking** -- classify risk domains and blast radius before code is written
-- **Boundary awareness** -- every change alters boundaries; detect drift and coupling amplification
-- **Consistency protection** -- evaluate transaction, idempotency, and async failure modes early
-- **Deployment safety** -- assess rollback feasibility and backward compatibility before commit
-- **Observability readiness** -- verify detection capability matches the risk profile
-- **AI-era risk awareness** -- high code velocity with lower comprehension increases hidden complexity and boundary erosion
-
-This skill runs BEFORE implementation or merge. It focuses on systemic and operational risk, not code quality or performance.
+Staff-level pre-implementation risk assessment: classify risk domains, blast radius, consistency hazards, deployment safety, and observability readiness. Runs before implementation or merge; focuses on systemic and operational risk, not code quality.
 
 ## When to Use
 
-- Before implementing a new feature or large change
-- Before merging a significant PR with cross-module impact
-- Before executing a database migration plan
-- Before introducing async flows, events, or new integrations
-- Before a dependency or platform upgrade
-- Before a major refactor that shifts boundaries or ownership
-- When evaluating an architecture proposal for hidden risk
-- When a deployment plan needs risk sign-off
+- Before implementing a feature, merging a cross-module PR, or running a DB migration
+- Before introducing async flows, events, integrations, or dependency upgrades
+- Before a refactor shifting boundaries or ownership
+- When a deployment plan or architecture proposal needs risk sign-off
 
 ## Depth Levels
 
@@ -73,17 +60,12 @@ Handle partial inputs gracefully. When input is missing, state what additional d
 
 ## Rules
 
-- Risk classification comes before mitigation recommendations
-- Blast radius assessment is mandatory for every analysis
-- Reuse existing skills for domain-specific analysis
-- Omit empty sections in output
-- Keep output concise, actionable, and prioritized by systemic impact
-- When evidence is insufficient, state what is missing
-- Focus on systemic and operational risk, not style or code quality
-- Do not blame individuals
-- Do not overlap with deep performance review or code review
-- Avoid trivial observations -- every finding must be actionable
-- Always ask: "What fails silently if this goes wrong?"
+- Risk classification before mitigation; blast radius is mandatory
+- Every recommendation references the specific risk it mitigates
+- Focus on systemic and operational risk - not code style, performance review, or individual blame
+- State what's missing when evidence is insufficient
+- Every finding is actionable - ask "what fails silently if this goes wrong?"
+- Omit empty sections; output is concise and prioritized by systemic impact
 
 ## Risk Analysis Model
 
@@ -310,37 +292,20 @@ Walk through the worst-case failure scenario for this change end-to-end:
 **Recommendation**: {Specific change to add before this code ships to address the gap}
 ```
 
-### Output Constraints
-
-- Risk classification always comes before mitigation recommendations
-- Findings ordered by systemic impact: risk classification > blast radius > consistency > deployment > observability > mitigation
-- Omit empty sections
-- Every recommendation must reference the specific risk it mitigates
-- No generic safety advice ("test thoroughly", "monitor closely")
-- Prioritize by blast radius containment potential
-- Optimize for token efficiency and decision readiness
-
 ## Self-Check
 
-- [ ] Change summary captures scope, intent, and affected components (Section 1)
-- [ ] Risk domains classified (primary and secondary) with evidence before mitigation (Section 2)
-- [ ] Blast radius explicitly classified (Narrow / Moderate / Wide / Critical) with affected boundaries named (Section 3)
-- [ ] Consistency, idempotency, and partial failure risk assessed (Section 4)
-- [ ] Deployment, rollback, and backward compatibility assessed; "no rollback feasible" called out if present (Section 5)
+- [ ] Change summary captures scope, intent, affected components (Section 1)
+- [ ] Risk domains (primary and secondary) classified with evidence (Section 2)
+- [ ] Blast radius explicitly Narrow / Moderate / Wide / Critical with named boundaries (Section 3)
+- [ ] Consistency, idempotency, partial-failure risk assessed (Section 4)
+- [ ] Deployment, rollback, backward compatibility assessed; "no rollback feasible" called out if present (Section 5)
 - [ ] Observability gaps listed with concrete additions per failure mode (Section 6)
-- [ ] Mitigation recommendations reference specific risks and are proportional to blast radius (Section 7)
-- [ ] Staff-Level Assessment states design doc, ADR, and staged rollout requirements with confidence level
-- [ ] If depth = deep: cascading failure simulation identifies at least one containment or detection gap
+- [ ] Mitigations reference specific risks; proportional to blast radius (Section 7)
+- [ ] Staff Assessment states design-doc / ADR / staged-rollout requirements with confidence
+- [ ] If depth = deep: cascading failure simulation identifies one containment or detection gap
 
 ## Avoid
 
-- Code review or performance commentary (use dedicated skills)
 - Restating the full PR diff or input description
-- Trivial style or formatting observations
-- Generic risk warnings without specific context
-- Recommendations without blast radius context
-- Blaming individuals or teams
-- Overlapping with deep performance review or code review scope
-- Treating all changes as equal risk regardless of scope
-- Proposing overly conservative mitigation for genuinely low-risk changes
-- Ignoring AI-generated code velocity as a contributor to hidden coupling
+- Generic safety advice ("test thoroughly", "monitor closely") without specific context
+- Treating all changes as equal risk; over-mitigating low-risk changes

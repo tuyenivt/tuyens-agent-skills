@@ -20,11 +20,10 @@ user-invocable: false
 
 ## Rules
 
-- Boundaries are defined by data ownership, not by code organization
-- Every boundary must have an explicit contract (API, event, shared nothing)
-- A module must not depend on the internal implementation of another module
-- Shared mutable state across boundaries is a design smell -- make it explicit if intentional
-- Boundary decisions must state failure isolation guarantees
+- Boundaries are defined by data ownership, not code structure (packages are not boundaries)
+- Every boundary has an explicit contract (API, event, shared-nothing) and a failure-isolation guarantee
+- One module owns each entity exclusively; cross-boundary access goes through API or event - never direct DB queries
+- Shared mutable state across boundaries is a smell - make it explicit if intentional
 
 ## Pattern
 
@@ -55,12 +54,6 @@ Module: OrderService
 Does: Order stuff
 Uses: Some tables in the shared database
 ```
-
-### Data Ownership Rules
-
-- One module owns each entity exclusively -- no shared tables across boundaries
-- Cross-boundary data access uses APIs or events, never direct DB queries
-- If two modules need the same data, one owns it and the other subscribes or queries
 
 ### Boundary Communication
 
@@ -112,9 +105,6 @@ Keep together when:
 
 ## Avoid
 
-- Defining boundaries by code structure alone (packages are not boundaries)
-- Shared databases across module boundaries without explicit ownership
-- Boundaries without failure isolation assessment
 - Premature decomposition before understanding data access patterns
 - Ignoring the operational cost of each boundary (networking, serialization, monitoring)
-- Circular dependencies between boundaries -- if A depends on B and B depends on A, one dependency must become an async event or the boundaries must be redrawn
+- Circular dependencies between boundaries - convert one direction to async or redraw the boundaries

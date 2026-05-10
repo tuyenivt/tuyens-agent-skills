@@ -20,11 +20,11 @@ user-invocable: false
 
 ## Rules
 
-- Map only what is known - do not infer systems from partial evidence without flagging the gap
-- Integration points must state the protocol and direction, not just that a connection exists
-- Cross-system risks must be grounded in the landscape evidence, not generic concerns
-- Stack divergence is only a risk when it creates operational or hiring friction - do not flag it for its own sake
-- When source is a docs repo, cite the source document for each system entry
+- Map only what is known; flag inferred systems explicitly
+- Integration entries must state protocol and direction
+- Risks must cite landscape evidence (which services share what), not generic concerns
+- Flag stack divergence only when it creates operational or hiring friction
+- Cite the source document for each system entry when reading from a docs repo
 
 ## Pattern
 
@@ -116,9 +116,7 @@ After mapping the inventory and integrations, identify:
 
 ## Avoid
 
-- Listing systems without their owners - ownership is as important as the technical inventory
+- Listing systems without owners - ownership is as load-bearing as the stack
 - Treating all integrations as equivalent - coupling type determines blast radius
-- Flagging stack diversity as inherently bad - flag it only when it creates concrete friction
-- Producing a landscape without a risk section - the inventory is an input, not the output
-- Inventing integration details not supported by the source material
-- Listing risks without citing the specific evidence that reveals them (e.g., 'shared DB risk' without naming which services share which database)
+- Producing inventory without a risk section - inventory is an input, not the output
+- Inventing integration details not in source material

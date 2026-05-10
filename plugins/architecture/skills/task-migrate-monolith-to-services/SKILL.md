@@ -14,15 +14,7 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level migration planning for decomposing a monolith into services (microservices, modular monolith modules, or a hybrid). Focuses on:
-
-- **Domain-first decomposition** -- identify bounded contexts before drawing service lines
-- **Incremental migration** -- strangler fig over big-bang; every step is reversible
-- **Data ownership transfer** -- the hardest part of any decomposition; plan explicitly
-- **Coexistence strategy** -- monolith and services run side by side during migration
-- **Risk-ordered extraction** -- migrate in the order that minimizes blast radius, not developer preference
-
-This skill produces a migration plan. It does not generate implementation code.
+Staff-level plan to decompose a monolith into services (microservices, modular monolith, or hybrid): domain-first boundaries, strangler-fig incremental extraction, explicit data ownership transfer, and risk-ordered phasing with coexistence. Produces a plan; no implementation code.
 
 ## When to Use
 
@@ -61,16 +53,12 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 ## Rules
 
-- Start with domain analysis, not technical decomposition
-- Never plan a big-bang rewrite -- all extraction must be incremental
-- Data ownership transfer must be planned explicitly for every extracted service
-- Every extraction phase must have a rollback plan
-- Migration order is driven by risk and dependency analysis, not convenience
-- Shared database is the hardest coupling to break -- address it first in planning
-- Do not generate implementation code
-- Omit empty sections
-
-When the target service uses a different language or framework than the monolith, include an interoperability section in Section 3 covering serialization contracts, client library strategy, and contract testing approach.
+- Domain analysis before technical decomposition; service lines follow bounded contexts
+- All extraction is incremental with rollback per phase; no big-bang rewrite
+- Plan data ownership transfer explicitly per service; shared databases are tackled first
+- Extraction order is set by risk and dependency analysis, not convenience
+- No implementation code; omit empty sections
+- If target stack differs from monolith, add an interoperability section in Section 3 (serialization contracts, client library strategy, contract testing)
 
 ## Migration Model
 
@@ -378,26 +366,17 @@ Cleanup Plan:
 
 ## Self-Check
 
-- [ ] Domain decomposition is based on business capabilities, not code structure
-- [ ] Every bounded context has clear data ownership
-- [ ] Extraction order considers coupling, risk, and dependencies
-- [ ] Data ownership transfer has an explicit strategy per entity group
-- [ ] Every extraction phase has a rollback plan
-- [ ] Coexistence period addresses data consistency explicitly
-- [ ] No big-bang migration -- every phase is incremental
-- [ ] Operational complexity increase is acknowledged with mitigations
-- [ ] Coupling matrix populated for all major modules (Section 1)
+- [ ] Domain decomposition based on business capabilities; every bounded context has clear data ownership
+- [ ] Coupling matrix populated for major modules (Section 1)
 - [ ] Communication model (sync vs async) defined per service interaction (Section 3)
-- [ ] Observability signals and success criteria defined per extraction phase (Section 7)
-- [ ] Decision gates and rollback triggers specified (Section 8)
+- [ ] Extraction order considers coupling, risk, dependencies; rollback at every phase
+- [ ] Data ownership transfer has explicit per-entity strategy; coexistence addresses data consistency
+- [ ] Operational complexity increase acknowledged with mitigations
+- [ ] Observability signals and success criteria per phase (Section 7); decision gates and rollback triggers (Section 8)
 
 ## Avoid
 
-- Big-bang rewrite -- decompose incrementally
 - Drawing service lines by code package instead of domain boundary
-- Ignoring data ownership transfer -- this is the hardest part
-- Extracting the hardest, most coupled module first
+- Extracting the hardest, most-coupled module first
 - Assuming shared database is acceptable long-term
-- Migration plans without rollback at every phase
-- Underestimating operational complexity of distributed systems
-- Decomposing for the sake of decomposing -- validate the migration driver
+- Decomposing for the sake of it - validate the migration driver

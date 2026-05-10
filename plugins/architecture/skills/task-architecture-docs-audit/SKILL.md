@@ -14,23 +14,15 @@ user-invocable: true
 
 ## Purpose
 
-Give architects a clear picture of what documentation exists, what is accurate, and what needs attention:
-
-- **Inventory** - enumerate all architecture artifacts (ADRs, design docs, runbooks, diagrams)
-- **Staleness detection** - identify documents that no longer reflect the current system
-- **Conflict detection** - find contradictions between documents covering the same decision space
-- **Gap detection** - identify what should exist but does not
-- **Remediation plan** - prioritized list of actions ordered by impact
-
-This skill reads documents. It does not modify any files.
+Give architects a clear picture of architecture documentation health: inventory, staleness, conflicts, gaps, and a prioritized remediation plan. This skill reads documents only - it does not modify files.
 
 ## When to Use
 
-- When joining a project and needing to assess the health of its architecture documentation
-- Before a major architecture change to understand the current documented baseline
-- Periodically (quarterly) as a documentation health check
-- When conflicting information in docs is causing confusion or incorrect decisions
-- After a significant system change to identify which docs have gone stale
+- Joining a project and assessing doc health
+- Before a major architecture change (baseline review)
+- Periodic (quarterly) documentation audit
+- Conflicting docs are causing confusion or wrong decisions
+- After a significant system change, to find newly stale docs
 
 ## Inputs
 
@@ -148,15 +140,15 @@ For minimal doc inventories (fewer than 5 artifacts), suppress Low-priority gap 
 
 ### Step 6 - Produce Remediation Plan
 
-Order all findings by impact. Group into three action categories:
+Group findings by action category, ordered by impact:
 
-**Effort estimation:** High = more than 5 Fix Now items or any critical runbook gap; Medium = 2-4 Fix Now items; Low = Fix Soon and Fix Eventually items only.
+- **Fix now** - staleness or conflicts causing active confusion or wrong decisions
+- **Fix soon** - stale docs or gaps slowing onboarding or architecture work
+- **Fix eventually** - low-priority gaps and polish
 
-**Fix now** (staleness or conflicts causing active confusion or incorrect decisions)
-**Fix soon** (stale docs or gaps that slow down onboarding or architecture work)
-**Fix eventually** (low-priority gaps and polish)
+Tiebreaker: would an on-call engineer or new team member make a wrong decision today because of this? If yes, Fix Now.
 
-When uncertain between Fix Now and Fix Soon, ask: would an on-call engineer or new team member make a wrong decision today because of this gap or conflict? If yes, Fix Now.
+**Effort estimate**: High = more than 5 Fix Now items or any critical runbook gap; Medium = 2-4 Fix Now items; Low = Fix Soon and Fix Eventually items only.
 
 ## Output
 
@@ -228,27 +220,24 @@ Artifacts found: {count} ({ADRs: N, Design docs: N, Runbooks: N, Diagrams: N, Ot
 
 ## Rules
 
-- Read files, do not modify them
-- Never invent artifacts - only report what is found
-- Staleness assessment must cite the specific signal, not just assert "this is old"
-- Conflict detection must quote or specifically reference the conflicting claims
-- Gap assessment must be grounded in the landscape - do not flag gaps for hypothetical systems
-- If a docs repo is very large (>50 artifacts), ask the user to scope to a focus area
+- Read files; never modify them. Never invent artifacts
+- Cite the specific signal for staleness; quote or reference the conflicting claim for each conflict
+- Gaps must be grounded in the landscape, not hypothetical systems
+- If the repo has >50 artifacts, ask the user to scope to a focus area
+- Date alone is not stale - stable systems have stable docs
+- Recommend archival or update, never deletion
 
 ## Self-Check
 
-- [ ] Artifact inventory covers all file types searched (ADR, design, runbook, diagram)
-- [ ] Staleness classification cites a specific signal for each non-Current artifact
+- [ ] Inventory covers all file types searched
+- [ ] Each non-Current artifact cites a specific staleness signal
 - [ ] Every conflict names both documents and the specific disagreement
-- [ ] Gap recommendations are ordered by priority with rationale
-- [ ] Remediation plan is actionable - each item specifies what to do, not just that a problem exists
-- [ ] System landscape section includes System Inventory, Integration Map, and Cross-System Risks from `architecture-landscape` output
-- [ ] Remediation plan is grouped into Fix Now / Fix Soon / Fix Eventually; Fix Now is populated when any Stale or Conflict finding exists
+- [ ] Remediation plan grouped Fix Now / Fix Soon / Fix Eventually; Fix Now populated when any Stale or Conflict finding exists
+- [ ] System landscape section includes Inventory, Integration Map, and Cross-System Risks
+- [ ] Each remediation item specifies what to do, not just that a problem exists
 
 ## Avoid
 
-- Flagging every old document as stale - date alone is not sufficient; stable systems have stable docs
-- Recommending deletion of any document - flag as stale and recommend archival or update
-- Producing a list of problems without a remediation plan
-- Treating missing documentation as uniformly bad - prioritize by operational and onboarding impact
-- Generating new documentation content - this skill audits, it does not write
+- Producing problems without remediation
+- Treating all missing docs as equally bad - prioritize by operational and onboarding impact
+- Generating new documentation content (this skill audits, it does not write)

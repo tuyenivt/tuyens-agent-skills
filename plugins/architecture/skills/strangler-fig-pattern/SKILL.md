@@ -20,12 +20,11 @@ user-invocable: false
 
 ## Rules
 
-- Never plan a big-bang cutover -- all migration must be incremental
-- Legacy and new systems must coexist and serve traffic simultaneously during migration
-- Every migrated capability must have a verification gate before proceeding
-- Rollback to legacy must be possible at every stage until final decommission
-- Data consistency between legacy and new system must be explicitly addressed
-- Migration order is determined by risk and dependency, not convenience
+- Migration is always incremental; legacy and new systems coexist throughout
+- Every migrated capability passes a verification gate before promotion
+- Rollback to legacy is possible at every stage until decommission
+- Data consistency between legacy and new is addressed explicitly per phase
+- Migration order is set by risk and dependency, not convenience
 
 ## Pattern
 
@@ -108,30 +107,14 @@ Before promoting each migrated capability:
 - [ ] Downstream consumers unaffected
 - [ ] Edge cases from production traffic handled
 
-## Good: Incremental migration with verification
+### Example phase entry
 
 ```
-Capability: Order lookup (GET /orders/{id})
-Phase: Route (Phase 3)
-
-Routing: API gateway routes by traffic percentage
-  - Week 1: 5% to new OrderService, 95% to monolith
-  - Week 2: 25% (if canary metrics green)
-  - Week 3: 100%
-
-Verification:
-  - Shadow comparison: responses match for 99.9% of requests
-  - Latency: new system p99 within 10% of monolith baseline
-  - Data: new OrderService reads from replicated order data (CDC from monolith DB)
-
-Rollback: Gateway config change, <1 minute to route 100% back to monolith
-```
-
-## Bad: Big-bang migration
-
-```
-Plan: Rewrite the whole order module and deploy on March 15.
-Rollback: Redeploy the old version if something breaks.
+Capability: GET /orders/{id} | Phase: Route
+Routing: gateway %, week 1: 5% -> week 3: 100% (gated on canary metrics)
+Data: CDC replication from monolith DB
+Verification: shadow comparison >99.9%, p99 within 10% of baseline
+Rollback: gateway config flip, <1 min to 100% legacy
 ```
 
 ## Output Format
@@ -167,10 +150,7 @@ Rollback: Redeploy the old version if something breaks.
 
 ## Avoid
 
-- Big-bang cutover -- always migrate incrementally
 - Migrating multiple capabilities simultaneously before any is verified
-- Skipping the routing layer -- direct client changes are irreversible
-- Ignoring data consistency during coexistence period
+- Skipping the routing layer - direct client changes are irreversible
 - Decommissioning legacy before confirming zero traffic
-- Assuming functional parity without verification (shadow comparison or canary)
-- Migration plans without explicit rollback at every stage
+- Assuming functional parity without shadow comparison or canary verification

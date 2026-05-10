@@ -14,17 +14,9 @@ user-invocable: true
 
 ## Purpose
 
-Safe database migration planning for production systems, optimized for zero-downtime delivery:
+Safe zero-downtime DB migration plan: expand-contract phasing, lock risk, batched backfill, rollback per phase, and multi-service coordination. Produces an execution plan; no ORM code or migration scripts.
 
-- **Expand-contract first** -- sequence schema and code changes to eliminate deploy-time lock-in
-- **Lock risk assessment** -- identify which operations acquire table locks and for how long
-- **Rollback by default** -- every migration phase has an explicit rollback procedure before it runs
-- **Backfill planning** -- estimate cost and duration of data backfills to avoid surprise timeouts
-- **Multi-service coordination** -- flag when schema changes require deployment ordering across services
-
-This skill produces a migration execution plan. It does not generate ORM model code or migration scripts.
-
-**Not for:** Simple additive changes (just write the migration), writing migration files (use stack-specific `task-*-new`).
+**Not for**: Simple additive changes (just write the migration), or writing migration files (use stack-specific `task-*-new`).
 
 ## When to Use
 
@@ -51,15 +43,13 @@ Handle partial inputs gracefully. When row counts or schema are missing, state a
 
 ## Rules
 
-- Rollback plan is designed before the migration runs, not after it fails
-- Every operation that acquires a table lock must be identified and its duration estimated
-- Expand-contract is the default strategy for zero-downtime - skip it only with explicit justification
-- Backfill operations on large tables must be batched - never run unbounded UPDATE on a production table
-- Additive changes (new nullable column, new table) are safe; destructive changes (drop column, add NOT NULL) need extra phases
-- Application code must be backward compatible with both old and new schema during the transition window
-- Flag changes that affect multiple services - deployment order matters
-- Omit empty sections in output
-- When evidence is insufficient, state what is missing rather than guessing
+- Rollback designed before the migration runs, not after it fails; flag any phase needing backup restore
+- Every lock-acquiring operation states lock type and estimated duration
+- Expand-contract is the default for zero-downtime; skip only with explicit justification
+- Backfill is always batched and idempotent - never unbounded UPDATE on a production table
+- Application code stays backward compatible with old and new schema during transition
+- Flag multi-service deployment ordering when schemas are shared
+- State missing inputs rather than guessing; omit empty sections
 
 ## Migration Planning Model
 
@@ -144,18 +134,7 @@ For any change that is not purely additive, apply expand-contract to eliminate t
 
 Apply this pattern to: column renames, type changes, table splits, constraint additions on existing data.
 
-**Adding NOT NULL on large tables (PostgreSQL-specific):**
-
-For tables with millions of rows, `ALTER TABLE ADD CONSTRAINT NOT NULL` acquires an ACCESS EXCLUSIVE lock and performs a full table scan to validate. Use deferred validation instead:
-
-1. **Expand**: Add column as nullable (`ALTER TABLE ADD COLUMN tenant_id UUID`)
-2. **Deploy app**: write `tenant_id` on all new rows
-3. **Backfill**: update existing rows in batches
-4. **Add constraint NOT VALID**: `ALTER TABLE ADD CONSTRAINT orders_tenant_id_not_null CHECK (tenant_id IS NOT NULL) NOT VALID` - brief lock, skips historical row validation
-5. **Validate in background**: `ALTER TABLE VALIDATE CONSTRAINT orders_tenant_id_not_null` - ShareUpdateExclusiveLock (non-blocking to reads/writes)
-6. **Contract**: once validated, the constraint is enforced for all new writes
-
-Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever validating a constraint against >1M rows.
+**Adding NOT NULL on large tables (PostgreSQL):** validating with a full scan acquires ACCESS EXCLUSIVE. Use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking) whenever validating against >1M rows. Sequence: nullable column -> app dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT`.
 
 Skip expand-contract only when:
 
@@ -323,30 +302,15 @@ For each step, state:
 - [Question that would change the plan if answered]
 ```
 
-### Output Constraints
-
-- No ORM model code or migration script code
-- Every phase must have a rollback procedure
-- Every lock-acquiring step must state lock type and estimated duration
-- Backfill operations must always be batched - never unbounded
-- Omit phases that do not apply to this migration
-- Flag any phase where rollback requires a restore - make this explicit, not a footnote
-
 ## Self-Check
 
-- [ ] Lock risk assessed for every schema operation
-- [ ] No unbounded UPDATE or DELETE on large tables - backfill is batched and idempotent
-- [ ] Rollback procedure defined before any step; phases needing backup restore are flagged
+- [ ] Lock risk assessed for every schema operation; phases needing backup restore are flagged explicitly
+- [ ] No unbounded UPDATE/DELETE; backfill is batched and idempotent
 - [ ] Expand-contract applied to all non-additive changes unless downtime is explicitly accepted
-- [ ] All phases sequenced with pre-conditions; application code changes aligned per phase
-- [ ] Plan answers "what happens if this fails at phase N?" with concrete validation per phase
+- [ ] All phases sequenced with pre-conditions and concrete, checkable validations
+- [ ] Application code changes aligned per phase
 
 ## Avoid
 
-- Generating ORM model code or migration script code
-- Running migrations without a defined rollback plan
-- Recommending unbounded UPDATE/DELETE on production tables
-- Skipping expand-contract for non-additive changes without explicit justification
-- Treating "add a column" as always trivially safe (NOT NULL, DEFAULT, and constraint additions are not)
-- Ignoring multi-service deployment ordering when shared databases are involved
-- Vague validation steps ("verify the migration ran") - validations must be concrete and checkable
+- Treating "add a column" as trivially safe (NOT NULL, DEFAULT, constraint adds are not)
+- Vague validation steps ("verify the migration ran") - must be concrete and checkable

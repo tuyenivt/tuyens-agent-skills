@@ -1,7 +1,7 @@
 {
   "name": "ruby",
-  "version": "1.93.0",
   "description": "Claude Code plugin for Ruby 3.4+ / Ruby on Rails 7.2+. RSpec, Sidekiq, ActiveRecord, PostgreSQL. Works with core plugin.",
+  "version": "1.94.0",
   "author": {
     "name": "Tuyen"
   },

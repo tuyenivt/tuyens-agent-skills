@@ -14,15 +14,7 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level planning for modernizing a legacy system by migrating to a new language, framework, or architectural pattern. Focuses on:
-
-- **Incremental replacement** -- strangler fig over big-bang rewrite; the legacy system keeps running
-- **Technology selection with trade-offs** -- choose the target stack based on constraints, not hype
-- **Knowledge transfer** -- legacy domain knowledge must survive the migration
-- **Behavioral preservation** -- the new system must do what the old system does, including undocumented behaviors
-- **Risk-ordered migration** -- migrate capabilities in the order that minimizes blast radius
-
-This skill produces a modernization plan. It does not generate implementation code. For database-specific migration, use `task-db-migration-plan`.
+Staff-level legacy modernization plan: incremental strangler-fig migration, target stack selection by trade-offs, behavioral preservation including undocumented behaviors, and team transition. Produces a plan; no implementation code. For DB-specific migration use `task-db-migration-plan`.
 
 ## When to Use
 
@@ -56,14 +48,11 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 ## Rules
 
-- Never plan a big-bang rewrite -- all modernization must be incremental
-- Target stack selection must be justified with trade-offs, not technology preference
-- Undocumented behaviors in the legacy system must be discovered and preserved or explicitly deprecated
-- The legacy system must keep running and serving traffic during modernization
-- Every modernized capability must be verified against legacy behavior before cutover
-- Domain knowledge must be extracted from legacy code and preserved in documentation or tests
-- Do not generate implementation code
-- Omit empty sections
+- Modernization is incremental; legacy keeps serving traffic throughout
+- Justify target stack with trade-offs, not preference or hype
+- Discover and preserve (or explicitly deprecate) undocumented behaviors; verify each capability against legacy before cutover
+- Extract and preserve domain knowledge in docs or tests
+- No implementation code; omit empty sections
 
 ## Modernization Model
 
@@ -363,24 +352,17 @@ Historical Data: {migrate / archive / cutover date}
 
 ## Self-Check
 
-- [ ] Legacy system assessment covers integration points, scaling limits, and knowledge concentration (Section 1)
+- [ ] Section 1 covers integration points, scaling limits, knowledge concentration
 - [ ] Modernization driver is specific and validated, not "legacy is old" (Section 2)
-- [ ] Target stack selection has trade-off analysis with at least one alternative evaluated (Section 3)
-- [ ] Migration approach (strangler fig, branch by abstraction, etc.) is explicitly chosen and justified (Section 5)
+- [ ] Target stack selection has trade-off analysis with at least one alternative (Section 3)
 - [ ] Behavioral inventory captures undocumented behaviors and edge cases (Section 4)
-- [ ] Every migration phase has behavioral verification against legacy (Section 5)
-- [ ] Data coexistence strategy is explicit with consistency guarantees during transition (Section 6)
-- [ ] Team knowledge transition is planned (Section 7)
-- [ ] High-risk scenarios have mitigations, not just risk labels (Section 8)
-- [ ] No big-bang rewrite -- every phase is independently reversible
+- [ ] Migration approach explicitly chosen; every phase has behavioral verification (Section 5)
+- [ ] Data coexistence strategy explicit with consistency guarantees (Section 6)
+- [ ] Team transition planned (Section 7); high-risk scenarios have mitigations (Section 8)
+- [ ] Every phase is independently reversible
 
 ## Avoid
 
-- Big-bang rewrite -- the single biggest cause of failed modernizations
-- Choosing target stack based on hype instead of constraints and trade-offs
-- Ignoring undocumented behaviors -- they will surface as production bugs
-- Treating modernization as an opportunity to redesign everything
-- Underestimating the coexistence period -- plan for months or years, not weeks
-- Losing domain knowledge when replacing legacy code
-- Migration plans without behavioral verification at every phase
+- Treating modernization as an excuse to redesign everything (second-system effect)
+- Underestimating coexistence period - plan in months/years, not weeks
 - Assuming the new system is better until proven by traffic

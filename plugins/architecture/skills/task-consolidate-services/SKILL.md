@@ -14,15 +14,7 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level planning for consolidating over-split microservices into fewer, better-bounded services. Focuses on:
-
-- **Merge-first thinking** -- identify services that should never have been split
-- **Operational cost reduction** -- fewer services = fewer deployments, less monitoring, less network hops
-- **Data reunification** -- merge databases that were artificially separated
-- **Incremental consolidation** -- merge services safely without big-bang
-- **Boundary correction** -- the goal is right-sized services, not monolith restoration
-
-This skill produces a consolidation plan. It does not generate implementation code.
+Staff-level plan to consolidate over-split microservices into fewer, well-bounded services through smell detection, merge candidates, data reunification, and incremental phasing with rollback. The goal is right-sized services, not monolith restoration. Produces a plan; no implementation code.
 
 ## When to Use
 
@@ -58,34 +50,19 @@ For inputs naming only 1-3 specific services, skip the full landscape map and fo
 
 ## Rules
 
-- Consolidation must be justified by concrete operational or architectural problems
-- Merge decisions are based on coupling analysis, not convenience
-- Every merge must be incremental -- no big-bang service fusion
-- Data reunification strategy must be planned explicitly
-- Rollback must be possible at every stage
-- The goal is right-sized services, not returning to a monolith
-- Do not generate implementation code
-- Omit empty sections
+- Justify every merge by a concrete smell or operational problem; coupling analysis, not convenience
+- Every merge is incremental with rollback at each phase; no big-bang fusion
+- Plan data reunification explicitly per merge group
+- Goal is right-sized services, not monolith restoration
+- No implementation code; omit empty sections
 
 ## Consolidation Model
 
 ### 1. Service Landscape Assessment [standard/deep only]
 
-**Understand the current state before proposing merges.**
+Use skill: `stack-detect`, `architecture-guardrail`, `architecture-landscape`.
 
-Use skill: `stack-detect` to identify the technology stack.
-Use skill: `architecture-guardrail` to assess current boundary quality.
-Use skill: `architecture-landscape` to build the service landscape map -- system inventory, integration map, and cross-system risks. This produces the coupling and ownership data that drives merge candidate identification in Section 2.
-
-If the user provides a service inventory directly, use it as input to `architecture-landscape` to enrich with integration map and cross-system risks.
-
-The `architecture-landscape` output replaces manual analysis of:
-
-- **Service inventory** -- all services, their responsibilities, team ownership
-- **Dependency graph** -- who calls whom, sync vs async, call frequency
-- **Data ownership** -- which service owns which data, shared databases if any
-- **Operational profile** -- deploy frequency, incident rate, monitoring overhead per service
-- **Team mapping** -- which team owns which services, cognitive load per team
+`architecture-landscape` produces the system inventory, integration map, ownership, and cross-system risks that drive Section 2's merge candidate identification. If the user supplied a raw service inventory, feed it as input to `architecture-landscape` to enrich.
 
 ### 2. Over-Split Detection
 
@@ -315,23 +292,16 @@ Duration: {estimate}
 
 ## Self-Check
 
-- [ ] Every merge is justified by a concrete smell or operational problem
-- [ ] Merge groups respect domain boundaries -- not merging unrelated services
-- [ ] Data reunification has an explicit strategy per merge group
-- [ ] Consumer migration is planned with deprecation timeline
-- [ ] Every consolidation phase has a rollback plan
-- [ ] Services that should stay separate are explicitly listed with reasons
-- [ ] No big-bang merge -- every phase is incremental
+- [ ] Every merge justified by a concrete smell; merge groups respect domain boundaries
+- [ ] Data reunification has explicit per-group strategy
+- [ ] Consumer migration plan with deprecation timeline; every phase has rollback
+- [ ] Services that stay separate are listed with reasons
 - [ ] Blast radius increase from merging is acknowledged with mitigations
-- [ ] Service landscape completed before smell detection (Section 1)
+- [ ] Section 1 landscape completed before smell detection
 - [ ] If depth = deep: dependency deep-dive and latency model present
 
 ## Avoid
 
-- Merging everything back into a monolith -- the goal is right-sized services
-- Merging services from different domains just to reduce count
-- Ignoring data reunification -- separate databases do not magically merge
-- Big-bang consolidation -- merge incrementally
-- Merging without consumer migration plan
+- Merging across unrelated domains just to reduce service count
+- Assuming merge is simpler than split - undoing a merge is expensive
 - Consolidation without clear operational or architectural justification
-- Assuming merge is simpler than split -- undoing a merge is expensive

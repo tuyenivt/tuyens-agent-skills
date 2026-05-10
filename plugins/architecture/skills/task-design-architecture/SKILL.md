@@ -14,76 +14,42 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level architecture design that prioritizes boundaries, failure containment, and trade-off clarity:
-
-- **Boundary-first thinking** -- design module boundaries and data ownership before classes
-- **Failure-aware design** -- every component has a failure mode; design for containment, not just the happy path
-- **Explicit trade-offs** -- document what was chosen, what was rejected, and why
-- **Evolution-friendly** -- optimize for change velocity and rollback safety, not just day-one delivery
-- **Implementation-ready** -- produce enough structure for AI-generated code to follow guardrails
-
-This skill produces a structured design proposal. It does not generate implementation code.
+Staff-level architecture design or review prioritizing boundaries, failure containment, and explicit trade-offs. Produces a structured proposal (or review); no implementation code.
 
 ## When to Use
 
-- Designing a new feature or system before implementation
-- Evaluating architecture alternatives for a complex requirement
+- New feature/system design before implementation
 - Pre-implementation design review for Staff/Principal sign-off
-- Establishing module boundaries and data ownership for a new domain
-- Architecture proposal for cross-team or cross-service changes
-- Reviewing an existing design proposal for architectural quality, failure modes, and guardrails
+- Architecture proposal for cross-team changes
+- Reviewing an existing design proposal or comparing competing proposals
 
 ## Mode Detection
 
-**At the start of every invocation, ask the user:**
-
-> Are you designing something new, or reviewing an existing design or proposal?
->
-> - **New design** - I'll help structure and produce a full architecture proposal
-> - **Review existing** - I'll evaluate the proposal's boundaries, failure modes, consistency, and guardrails
-
-Use the answer to select the appropriate mode below. If the user's initial message already makes the mode obvious (e.g., "here's a design doc, review it" or "I need to design a payment service"), skip the question and proceed directly. If mode remains unclear after the question, default to New Design Mode.
+If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
 
 ### New Design Mode
 
-Run all 10 sections. This is the default path described in the Design Model below.
+Run all 10 sections per the Design Model.
 
 ### Review Existing Design Mode
 
-**If the user provides 2 or more proposals for the same problem:**
+For 2+ proposals on the same problem: use `architecture-proposal-compare` first, then review the recommended proposal as a single-proposal review.
 
-Use skill: `architecture-proposal-compare` to produce a side-by-side comparison matrix and recommendation. Then apply the single-proposal review sections below only to the recommended proposal.
+For a single proposal: the user is not the author. Run Sections 1-6 and 10 fully; for Sections 7, 8, 9, write at most one paragraph each only when a gap is present.
 
-**If the user provides a single proposal:**
+- Section 7 (Performance): flag only obvious capacity blind spots
+- Section 8 (Deployment): flag only rollback or compatibility issues
+- Section 9 (Trade-Offs): comment only on **undocumented** trade-offs
 
-The user provides an existing design doc, ADR, or architecture proposal. Skip sections that assume you are the author. Run only:
-
-- **Problem Framing** (Section 1) - confirm you understand scope and constraints as stated in the proposal
-- **System Context and Boundary Definition** (Section 2) - evaluate boundary clarity, data ownership, and coupling risks
-- **Architecture Overview** (Section 3) - evaluate component responsibilities, communication model, and integration patterns
-- **Data and Consistency Model** (Section 4) - evaluate consistency guarantees and partial failure behavior
-- **Failure Mode and Risk Analysis** (Section 5) - this is the primary focus in review mode
-- **Observability Plan** (Section 6) - identify gaps in the proposed observability coverage
-- **Guardrails and Review Guidance** (Section 10) - produce concrete guardrails for implementation
-
-Skip or significantly compress: One paragraph maximum per section, only if a gap or risk is found; omit entirely if none found.
-
-- Section 7 (Performance) - only flag if the proposal has obvious capacity blind spots
-- Section 8 (Deployment) - only flag if rollback or compatibility issues are present
-- Section 9 (Trade-Offs) - only comment on trade-offs that are **implicit or undocumented** in the proposal; do not re-document ones already stated
-
-Output header for review mode: `# Architecture Review` (not `# Architecture Design Proposal`)
-
-Add a **Review Summary** at the end (in place of Staff-Level Summary):
+Output header: `# Architecture Review`. Replace Staff-Level Summary with:
 
 ```markdown
 ## Review Summary
 
-- Boundary clarity: Strong | Adequate | Weak (with specific gaps)
-- Failure containment: Strong | Adequate | Weak (with specific scenarios)
+- Boundary clarity / Failure containment: Strong | Adequate | Weak (with specifics)
 - Consistency model: Clear | Incomplete | Missing
 - Observability readiness: Covered | Gaps (list)
-- Top 3 concerns: (ordered by systemic impact)
+- Top 3 concerns (by systemic impact)
 - Recommendation: Approve | Approve with changes | Needs rework
 ```
 
@@ -125,15 +91,12 @@ Default: `standard`. If the user asks for a "quick design check" or "rough archi
 
 ## Rules
 
-- Design boundaries and data ownership first, not classes or endpoints
-- Every architectural decision must state at least one trade-off
-- Failure modes and blast radius must be assessed for every component boundary
-- Do not generate implementation code -- describe components, responsibilities, and interactions
-- Do not over-specify internal implementation details that belong to coding time
-- Reuse existing skills for domain-specific patterns
-- Omit empty sections in output
-- Keep output strategic, concise, and high-signal
-- When constraints conflict, make the conflict explicit and propose resolution options
+- Boundaries and data ownership first, not classes or endpoints
+- Every component states a primary failure mode and isolation guarantee
+- Every significant decision states at least one trade-off and one rejected alternative with reason
+- No implementation code; describe components, responsibilities, and interactions
+- Make conflicting constraints explicit; propose resolution options
+- Omit empty sections; output is strategic, concise, high-signal
 
 ## Design Model
 
@@ -523,39 +486,21 @@ Walk through the failure end-to-end:
 - **If team size changes significantly**: {What becomes hard to maintain, what should be simplified}
 ```
 
-### Output Constraints
-
-- No implementation code
-- Every component must state its failure mode
-- Every boundary must state its isolation guarantee
-- Every significant decision must state a trade-off
-- Findings ordered by structural impact
-- Omit empty sections
-- No trivial detail inflation
-- Optimize for implementation team clarity and AI code generation guidance
-
 ## Self-Check
 
-- [ ] Every module boundary has a stated responsibility and data ownership
-- [ ] Every component lists its primary failure mode and isolation guarantee
-- [ ] Every significant decision has at least one rejected alternative with a reason; trade-offs include negatives
-- [ ] Consistency model stated for each data boundary, including partial failure behavior
+- [ ] Every module boundary states responsibility, data ownership, and isolation guarantee
+- [ ] Every component lists primary failure mode
+- [ ] Every significant decision has a rejected alternative with reason; trade-offs include negatives
+- [ ] Consistency model stated per data boundary, with partial-failure behavior
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
-- [ ] Rollback strategy exists; SLO candidate identified in observability plan
-- [ ] Guardrails are concrete rules (not general principles) and detectable during implementation
-- [ ] Design is grounded in stated requirements - no hypothetical future scope
-- [ ] Deployment section states rollout approach and rollback trigger criteria
-- [ ] At least one concrete guardrail exists per module boundary
-- [ ] If depth = deep: capacity model populated per component, at least 2 failure scenarios simulated, evolution notes address traffic doubling
+- [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate
+- [ ] Guardrails are concrete, detectable rules (one per module boundary minimum)
+- [ ] Design grounded in stated requirements - no hypothetical future scope
+- [ ] If depth = deep: capacity model per component, 2+ failure scenarios simulated, evolution notes cover traffic doubling
 
 ## Avoid
 
-- Generating implementation code or class-level design
-- Over-specifying internal component structure
-- Ignoring failure modes and blast radius
-- Implicit trade-offs -- if it is a decision, make it explicit
-- Architecture astronautics -- designs must be grounded in stated requirements and constraints
-- Designing for hypothetical future requirements not stated in inputs
-- Verbose explanations where a table communicates more clearly
+- Class-level design or over-specifying internal component structure
+- Architecture astronautics; designing for unstated future requirements
 - Generic advice ("use microservices", "add caching") without context-specific reasoning
-- Treating this as a code review or implementation plan
+- Verbose prose where a table communicates more clearly

@@ -14,38 +14,13 @@ user-invocable: true
 
 ## Purpose
 
-Capture significant architectural decisions in a durable, reviewable format:
-
-- **Context-first** - record the situation that forced the decision, not just the decision itself
-- **Alternatives documented** - every accepted ADR must show what was rejected and why
-- **Trade-off explicit** - state what is sacrificed, not just what is gained
-- **Actionable consequences** - what changes, what teams need to know, what to watch for
-- **Review trigger** - when to revisit this decision so it doesn't calcify into received wisdom
-
-This skill produces a ready-to-commit `.md` file. It does not implement the decision.
+Capture significant architectural decisions as a durable, reviewable `.md` file with context, alternatives, trade-offs, consequences, and review trigger. This skill produces the document only - it does not implement the decision.
 
 ## When to Use
 
-- Before or after making a significant architectural choice that affects multiple teams or components
-- When choosing between valid competing approaches (framework, pattern, protocol, data model)
-- When overriding a previous ADR or changing an established pattern
-- When a design decision will be hard to reverse and future engineers need context
-- After an incident reveals a design assumption that should be made explicit
+Write an ADR when the decision affects more than one module/service/team, would be hard or expensive to reverse, overrides an existing convention, or would prompt a future engineer to ask "why did they do it this way?".
 
-## What Qualifies as an ADR
-
-**Write an ADR when:**
-
-- The decision affects more than one module, service, or team
-- The decision would be hard or expensive to reverse
-- A future engineer would reasonably ask "why did they do it this way?"
-- The decision overrides an existing convention or previous ADR
-
-**Skip the ADR when:**
-
-- The decision is purely local to one module with no cross-cutting impact
-- It follows an established pattern already documented in the codebase
-- It is a style or formatting choice with no architectural consequence
+Skip when: purely local to one module, follows an already-documented pattern, or is a style/formatting choice.
 
 ## Inputs
 
@@ -74,74 +49,40 @@ Identify any existing ADR that this new decision supersedes or amends.
 
 ### Step 2 - Clarify Inputs
 
-If any required input is missing, ask before writing:
+Ask before writing if any required input is missing:
 
-- **No alternatives provided**: "What other approaches did you consider? An ADR without alternatives documents an outcome, not a decision."
-- **Status unclear**: default to `Proposed` - the author or team lead marks it `Accepted` after review.
-- **Context vague**: ask "What situation or constraint made this decision necessary right now?"
-- **Decide vs justify check**: Ask 'Is this decision already implemented, or is the ADR being written before the change lands?' ADRs are most valuable as a forcing function for the decision itself, not as after-the-fact justification. If already implemented, ask whether the author has revisited the alternatives with fresh eyes - if not, prompt them to before proceeding, and note in the ADR's References that the rationale was reconstructed post-implementation. Default status to `Proposed` if unclear; set `Accepted` only when the author confirms it is already implemented and reviewed.
+- **No alternatives**: "What else did you consider? An ADR without alternatives documents an outcome, not a decision."
+- **Vague context**: "What situation or constraint made this decision necessary right now?"
+- **Decide vs justify**: Ask whether the decision is already implemented. If yes, prompt the author to revisit alternatives with fresh eyes; note in References that rationale was reconstructed post-implementation.
+- **Status default**: `Proposed`. Set `Accepted` only on explicit author confirmation.
 
 ### Step 3 - Analyse Trade-Offs
 
 Use skill: `stack-detect`
 
-**If three or more alternatives are provided**, use skill: `architecture-proposal-compare` to produce a side-by-side criteria matrix across all options. Treat each alternative as a proposal. The matrix becomes the basis of the Alternatives Considered section in Step 4 and is the artifact stakeholders use to see that the decision was made on evidence rather than preference. Then use skill: `tradeoff-analysis` on the chosen option only, to deepen its costs and risks for the Consequences section.
+For 3+ alternatives, run `architecture-proposal-compare` to produce a criteria matrix (it becomes the Alternatives Considered evidence base), then `tradeoff-analysis` on the chosen option to deepen Consequences. For exactly 2 alternatives, skip the matrix and run `tradeoff-analysis` on each.
 
-**If only two alternatives are provided**, skip `architecture-proposal-compare` (the matrix overhead is not worth it for a binary choice) and use skill: `tradeoff-analysis` on each alternative.
+For every alternative (chosen and rejected), evaluate:
+- What it provides; what it costs (complexity, coupling, latency, operational burden, team learning)
+- Reversibility (Easy/Moderate/Hard) and what reversing requires
+- Risk: assumptions that would make this choice wrong
 
-For each alternative (including the chosen option), evaluate:
-
-- What it provides (capability, simplicity, performance, cost)
-- What it costs (complexity, coupling, latency, operational burden, team learning)
-- Reversibility: Easy / Moderate / Hard - and specifically what reversing it would require
-- Risk: what conditions or assumptions would make this choice wrong
-
-The chosen option must have the same rigour applied as the rejected ones - document its costs, not just its benefits.
-
-Use the `tradeoff-analysis` output (and `architecture-proposal-compare` matrix when produced) to populate the Alternatives Considered and Consequences sections in Step 4.
+Apply the same rigour to the chosen option - document its costs, not only its benefits.
 
 ### Step 4 - Write the ADR
 
-Compose the ADR following the Output Format below.
+Compose using the Output Format below. Conventions:
 
-**Filename convention:** `NNNN-kebab-case-title.md` where `NNNN` is the zero-padded sequence number.
-
-Example: `0007-use-outbox-pattern-for-event-publishing.md`
-
-**Title rules:**
-
-- Imperative phrase describing the decision: "Use X for Y", "Replace X with Y", "Adopt X pattern"
-- Under 72 characters
-- No "ADR:" prefix in the title itself (the filename and H1 carry the number)
-
-**Context rules:**
-
-- Describe the situation, constraint, or failure that made a decision necessary
-- Include relevant scale, team, or operational context
-- Do not describe the decision itself here - that belongs in the Decision section
-
-**Decision rules:**
-
-- One clear statement of what was decided
-- Present tense: "We will use X" or "X is adopted as the standard for Y"
-- Reference the relevant module, layer, or service scope
-
-**Consequences rules:**
-
-- Split into Positive and Negative (or Neutral) - never list only positives
-- Include operational consequences (what teams need to monitor, change, or learn)
-- Include migration notes if existing code needs to change
-
-**Review trigger rules:**
-
-- State a specific, observable condition - not "when the team feels it's time"
-- Examples: a metric threshold, a team size, a dependency version EOL, an incident type
+- **Filename**: `NNNN-kebab-case-title.md` (e.g., `0007-use-outbox-pattern-for-event-publishing.md`)
+- **Title**: imperative under 72 chars ("Use X for Y", "Replace X with Y"); no "ADR:" prefix
+- **Context**: situation/constraint that forced the decision, never the decision itself
+- **Decision**: one present-tense statement with explicit scope
+- **Consequences**: must include negatives or trade-offs; add migration notes when existing code changes
+- **Review trigger**: specific observable condition (metric threshold, team size, EOL, incident type) - never "when needed"
 
 ### Step 5 - Output the File
 
-Write the ADR to the target directory. State the full file path at the top of your response.
-
-If the target directory does not exist, note that it needs to be created and provide the `mkdir` command.
+Write the ADR to the target directory and state the full path. If the directory does not exist, provide the `mkdir` command.
 
 ## Output Format
 
@@ -221,32 +162,20 @@ Revisit this decision if:
 - [Related ADR-NNNN: title] _(if applicable)_
 ```
 
-### Output Constraints
-
-- File must include a zero-padded 4-digit sequence number (`0001`, `0012`, `0123`)
-- Every ADR must have at least one rejected alternative - stop and ask if none provided
-- Consequences section must include at least one negative or trade-off item
-- Review trigger must be a specific, observable condition - never "when needed"
-- Date must be today's date in YYYY-MM-DD format
-- Omit Migration Notes and Option 3 if not applicable - do not leave empty sections
-- References section omitted if no links were provided
-
 ## Rules
 
-- Never write an ADR with only one option evaluated - it is not a decision record
-- Default status is `Proposed` - do not mark `Accepted` without explicit author instruction
-- Do not implement the decision - produce the document only
-- If the decision supersedes an existing ADR, update the superseded ADR's Status line to `Superseded by ADR-NNNN` and note this as a follow-up action
+- At least one rejected alternative is required - if none provided, stop and ask
+- Chosen option must list costs, not only benefits; Consequences must contain at least one negative or trade-off
+- Default status is `Proposed`; only set `Accepted` on explicit author instruction
+- Date is today in YYYY-MM-DD; omit empty sections (Migration Notes, Option 3, References)
+- If the decision supersedes an existing ADR, update the superseded ADR's Status to `Superseded by ADR-NNNN` as a follow-up
 - Respect any project-specific ADR format observed in existing ADRs over this template
 
 ## Self-Check
 
-- [ ] Filename is `NNNN-kebab-case.md` with zero-padded sequence number
-- [ ] Date is today in YYYY-MM-DD format
-- [ ] Context section describes the situation, not the decision itself
-- [ ] Decision section is one present-tense statement with explicit scope
-- [ ] At least one alternative is present with a "Why rejected" rationale
-- [ ] Chosen option lists at least one cost, not only benefits
-- [ ] Consequences section contains at least one negative or trade-off item
-- [ ] Review trigger is a specific observable condition, not "when needed"
-- [ ] Status is `Proposed` unless author explicitly set otherwise
+- [ ] Filename `NNNN-kebab-case.md`; date is today (YYYY-MM-DD)
+- [ ] Context describes the forcing situation, not the decision
+- [ ] Decision is one present-tense statement with explicit scope
+- [ ] At least one rejected alternative with "Why rejected"; chosen option lists costs
+- [ ] Consequences contains at least one negative or trade-off
+- [ ] Review trigger is a specific observable condition

@@ -20,12 +20,10 @@ user-invocable: false
 
 ## Rules
 
-- All proposals must be evaluated against the same criteria set - no selective application
-- The recommendation must state a winner with reasoning - a tie is not a valid output
-- Every criterion score must cite evidence from the proposal, not general assumptions
-- Proposals that are missing information on a criterion are scored lower, not skipped
-- If proposals address different scopes, state the scope mismatch before comparing
-- If one proposal is a sketch with fewer than three criteria addressed, state this before the matrix and weight the recommendation accordingly -- a sparse proposal cannot be fairly compared against a complete one.
+- Apply the same criteria set to every proposal; missing information scores lower, not skipped
+- Every score must cite proposal evidence, not assumptions
+- A tie is not a valid output - state a winner with reasoning
+- State scope mismatches before comparing; if one proposal addresses fewer than three criteria, flag the asymmetry and weight the recommendation accordingly
 
 ## Pattern
 
@@ -102,8 +100,6 @@ Conditions:
 
 ## Avoid
 
-- Scoring without evidence - every score needs a citation from the proposal text
-- Recommending a hybrid when one proposal is clearly stronger - hybrids avoid the decision
-- Treating "more detail" as equivalent to "stronger" - a concise, clear proposal may outrank a verbose one
-- Ignoring the problem scope check - comparing proposals that solve different problems produces a meaningless matrix
-- Recommending the most recent or most polished proposal by default - evaluate substance
+- Recommending a hybrid when one proposal is clearly stronger - hybrids dodge the decision
+- Treating "more detail" as "stronger" - a concise proposal may outrank a verbose one
+- Recommending the most recent or polished proposal by default; evaluate substance

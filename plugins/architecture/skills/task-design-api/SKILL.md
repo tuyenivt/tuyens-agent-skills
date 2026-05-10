@@ -14,22 +14,13 @@ user-invocable: true
 
 ## Purpose
 
-Catch API design issues before implementation by producing a validated, implementation-ready API specification:
-
-- **Contract-first** -- design the API contract before writing code
-- **Consistency enforcement** -- naming, methods, status codes, error format
-- **Compatibility awareness** -- detect breaking changes before they ship
-- **Security by default** -- authentication, authorization, and input validation on every endpoint
-
-This skill produces an API specification. It does not generate implementation code.
+Produce a validated, implementation-ready REST API specification: contract-first design, consistency, backward-compat detection, and security defaults. No implementation code.
 
 ## When to Use
 
 - Designing a new REST API before implementation
-- Reviewing existing controller/handler code for API design issues
-- Validating an OpenAPI/Swagger spec against organizational standards
+- Reviewing existing controllers/handlers or an OpenAPI spec for design issues
 - Checking backward compatibility of API changes
-- Pre-implementation API contract review
 
 ## Workflow
 
@@ -149,16 +140,9 @@ Default page size: 20, max: 100
 }
 ```
 
-### Step 4 - Framework-Specific Patterns
+### Step 4 - Framework Patterns
 
-After loading stack-detect, apply API implementation patterns appropriate to the detected ecosystem:
-
-- **Input validation**: Use the framework's standard validation mechanism (annotations, struct tags, strong parameters, schema validators, etc.)
-- **Response shaping**: Use dedicated response objects appropriate to the ecosystem (DTOs, serializers, response structs, schemas)
-- **Pagination**: Use the framework's pagination library or implement a consistent pagination pattern
-- **JSON field naming**: Follow the convention standard for the detected ecosystem (camelCase, snake_case, etc.)
-
-If the detected stack is unfamiliar, apply the universal API design rules from Step 3 and recommend the user consult their framework's documentation.
+Apply the detected ecosystem's standards for input validation, response shaping (DTOs/serializers/schemas), pagination, and JSON field casing. If the stack is unfamiliar, fall back to the universal rules in Step 3.
 
 ### Step 5 - Backward Compatibility Check
 
@@ -199,18 +183,12 @@ For each endpoint, verify:
 
 **Endpoint Table:**
 
-| Method | Path                | Description   | Auth  | Request           | Response              | Status   |
-| ------ | ------------------- | ------------- | ----- | ----------------- | --------------------- | -------- |
-| GET    | /api/v1/orders      | List orders   | USER  | Pageable params   | Page<OrderResponse>   | 200      |
-| POST   | /api/v1/orders      | Create order  | USER  | OrderRequest      | OrderResponse         | 201      |
-| GET    | /api/v1/orders/{id} | Get order     | USER  | --                | OrderResponse         | 200, 404 |
-| PUT    | /api/v1/orders/{id} | Replace order | ADMIN | OrderRequest      | OrderResponse         | 200, 404 |
-| PATCH  | /api/v1/orders/{id} | Update order  | USER  | OrderPatchRequest | OrderResponse         | 200, 404 |
-| DELETE | /api/v1/orders/{id} | Delete order  | ADMIN | --                | --                    | 204, 404 |
+| Method | Path           | Description  | Auth | Request         | Response            | Status |
+| ------ | -------------- | ------------ | ---- | --------------- | ------------------- | ------ |
+| GET    | /api/v1/orders | List orders  | USER | Pageable params | Page<OrderResponse> | 200    |
+| POST   | /api/v1/orders | Create order | USER | OrderRequest    | OrderResponse       | 201    |
 
-**DTO/Schema Definitions** (language-appropriate):
-
-Use the detected ecosystem's standard approach for defining request/response schemas.
+**DTO/Schema Definitions**: Use the detected ecosystem's standard approach.
 
 **Error Response Examples:**
 
@@ -223,44 +201,27 @@ Use the detected ecosystem's standard approach for defining request/response sch
 - List of breaking changes with migration guidance
 - List of safe changes
 
-### Output Constraints
-
-- No implementation code (no service classes, no repository code)
-- Every endpoint must specify auth requirements
-- Every collection endpoint must include pagination
-- Error format must be consistent (RFC 9457)
-- Findings ordered by severity (breaking → warning → info)
-- Omit empty sections
-
 ## Rules
 
-- Never generate implementation code -- produce API specifications only
-- Every endpoint must have defined request/response shapes
-- Every collection endpoint must support pagination
-- Error format must follow RFC 9457 (Problem Details for HTTP APIs)
-- All endpoints must state authentication and authorization requirements
-- Breaking changes must be explicitly flagged with migration guidance
+- No implementation code (controllers, service classes, repository methods)
+- Every endpoint specifies auth mechanism (not just "required: yes"), request/response shapes, and pagination if a collection
+- Error format follows RFC 9457 consistently
+- Breaking changes flagged with explicit migration path
+- Findings ordered breaking -> warning -> info; omit empty sections
 
 ## Self-Check
 
-- [ ] Every endpoint has defined auth requirements (not just "required: yes" but which mechanism)
-- [ ] Every collection endpoint has pagination in request params and response envelope
-- [ ] Error format follows RFC 9457 consistently across all endpoints
-- [ ] Breaking changes explicitly identified with migration path - not just flagged
-- [ ] DTO/schema definitions use the detected ecosystem's standard approach
-- [ ] No implementation code generated - specification only
-- [ ] If reviewing existing code: every violation states the fix, not just the rule
-- [ ] Framework-specific patterns applied for the detected stack, not generic advice
-- [ ] Idempotency-Key documented on state-mutating endpoints with financial or irreversible side effects
+- [ ] Every endpoint specifies auth mechanism, request/response, and status codes
+- [ ] Every collection endpoint has consistent pagination params and response envelope
+- [ ] Errors follow RFC 9457 across all endpoints
+- [ ] Breaking changes have a stated migration path
+- [ ] DTO/schema uses the detected ecosystem's standard approach
+- [ ] If reviewing code: every violation states the fix
+- [ ] Idempotency-Key documented on state-mutating, financially or irreversibly significant endpoints
 - [ ] Multi-tenancy isolation pattern defined when API serves multiple tenants
 
 ## Avoid
 
-- Generating implementation code (service classes, repository methods, or controllers)
-- Omitting auth requirements on any endpoint - no implicit "this one is probably public"
-- Collections without pagination - every list endpoint must have it
-- Inconsistent error formats across endpoints
-- Breaking change warnings without migration guidance
-- Generic naming advice without checking against the actual detected stack convention
-- Treating OpenAPI/Swagger spec validation as a separate concern from design quality
-- Inconsistent pagination across endpoints -- same envelope and parameter names everywhere
+- Implicit "probably public" endpoints; missing auth statement on any endpoint
+- Generic naming advice that ignores the detected stack convention
+- Inconsistent pagination shape across endpoints

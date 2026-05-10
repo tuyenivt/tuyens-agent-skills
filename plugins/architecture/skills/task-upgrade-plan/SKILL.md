@@ -14,15 +14,7 @@ user-invocable: true
 
 ## Purpose
 
-Structured upgrade assessment for tech leads deciding whether and how to upgrade a library or platform version:
-
-- **Breaking change detection** -- identify API removals, behavior changes, and configuration renames that require code changes
-- **Migration effort estimate** -- size the work before committing to the upgrade
-- **Compatibility analysis** -- detect conflicts with other dependencies in the dependency graph
-- **Rollback plan** -- define rollback criteria and procedure before the upgrade starts
-- **Go / No-Go recommendation** -- a clear recommendation with reasoning, not just a list of findings
-
-This skill produces an upgrade assessment. It does not write migration code (use `/task-implement` for the implementation phase).
+Structured upgrade assessment: breaking change detection, compatibility analysis, effort estimate (S/M/L/XL), rollback plan, and Go/No-Go recommendation. Produces an assessment; no migration code (use `/task-implement` after).
 
 ## When to Use
 
@@ -48,13 +40,11 @@ Handle partial inputs gracefully. When codebase context is missing, surface like
 
 ## Rules
 
-- Always surface breaking changes before migration effort - breaking changes determine feasibility
-- Every breaking change must have a migration action (update / replace / workaround / defer)
-- Compatibility conflicts with other dependencies must be surfaced before the effort estimate
-- Effort estimates are relative (S/M/L/XL) - never calendar time unless asked
-- Every assessment must produce a Go / No-Go recommendation with reasoning
-- Rollback plan must be defined even for low-risk upgrades
-- Omit empty sections in output
+- Surface breaking changes and compatibility conflicts before estimating effort
+- Every breaking change has a migration action (update / replace / workaround / defer)
+- Effort estimates are relative S/M/L/XL - no calendar time unless asked
+- Every assessment ends with a Go/No-Go recommendation and a rollback plan
+- Omit empty sections
 
 ## Assessment Model
 
@@ -246,26 +236,16 @@ State the primary reason for the recommendation.
 - {Assumption made due to missing codebase context}
 ```
 
-### Output Constraints
-
-- Breaking changes must be categorized by type and migration action
-- Every Go recommendation must include a rollback plan
-- Every No-Go must state the blocker or reason
-- Effort estimates are relative - no false precision in days or hours
-- Omit sections with no content (e.g., no compatibility issues found)
-
 ## Self-Check
 
-- [ ] Breaking changes identified and categorized before effort estimate
-- [ ] Compatibility conflicts surfaced (transitive deps, build tool, runtime); blockers distinguished from warnings
+- [ ] Breaking changes categorized by type and migration action before effort estimate
+- [ ] Compatibility conflicts surfaced (transitive, build tool, runtime); blockers vs warnings
 - [ ] Security status of current version stated
-- [ ] Rollback plan addresses data and config compatibility - not just "revert the version bump"
-- [ ] Go/No-Go recommendation is clear and actionable with reasoning; usable to create a spike ticket
+- [ ] Rollback plan addresses data/config compatibility, not just "revert the version"
+- [ ] Go/No-Go recommendation is actionable and usable for a spike ticket
 
 ## Avoid
 
-- Recommending an upgrade without identifying breaking changes first
-- Estimating effort before surfacing compatibility blockers
-- Vague rollback plans ("just revert the version")
 - Producing a changelog summary instead of a focused impact analysis
-- Writing migration code (use `task-implement` after this assessment)
+- Vague rollback plans ("just revert the version")
+- Writing migration code
