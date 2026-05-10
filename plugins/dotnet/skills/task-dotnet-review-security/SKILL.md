@@ -275,7 +275,7 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 - **Location:** [file:line, or comma-separated list for multi-site findings]
 - **Issue:** [vulnerability described in .NET terms - e.g., "OrdersController.Update binds the request body directly into a domain entity via `[FromBody] Order request`; client can submit `{ \"OwnerId\": \"00000000-0000-0000-0000-000000000999\" }` and override the server-assigned owner via mass assignment because there is no separate request DTO with explicit fields"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" — for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" — for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
 - **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
 - **Fix:** [specific .NET remediation with code example - separate request DTO record + explicit field copy, `Where(o => o.Id == id && o.OwnerId == User.GetUserId())`, `[Authorize(Policy = "...")]`, etc.]
 

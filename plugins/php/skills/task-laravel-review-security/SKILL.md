@@ -270,7 +270,7 @@ Write the fully assembled review output to the report file before ending the ses
 
 - **Location:** [file:line, or comma-separated list for multi-site findings]
 - **Issue:** [vulnerability described in Laravel terms - e.g., "OrderController.update calls `Model::create($request->all())` and the Order model declares `$guarded = []`; client can submit `{ \"user_id\": 999 }` and override the server-assigned owner via mass assignment"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" — for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" — for infra-flavored findings. Pick one and label which.]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which.]
 - **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
 - **Fix:** [specific Laravel remediation with code example - explicit `$fillable` + `Model::create($request->validated())`, `$user->orders()->findOrFail($id)`, Form Request with rules + `authorize()` returning real check, `$this->authorize('update', $order)`, etc.]
 

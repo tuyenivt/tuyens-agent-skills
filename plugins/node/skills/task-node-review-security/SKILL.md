@@ -288,7 +288,7 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 - **Location:** [file:line, or comma-separated list for multi-site findings]
 - **Issue:** [vulnerability described in Node terms - e.g., "CreateOrderDto lacks `whitelist: true` enforcement; client can submit `{ ownerId: 999 }` and override the server-assigned owner via mass assignment because `ValidationPipe` config in app.module.ts is missing `forbidNonWhitelisted`"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" — for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" — for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
 - **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
 - **Fix:** [specific Node remediation with code example - `ValidationPipe` config, `@Exclude()`, `@UseGuards(AuthGuard('jwt'))`, etc.]
 

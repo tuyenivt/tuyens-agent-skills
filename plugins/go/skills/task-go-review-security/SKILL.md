@@ -264,7 +264,7 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 - **Location:** [file:line, or comma-separated list for multi-site findings]
 - **Issue:** [vulnerability described in Go terms - e.g., "OrderHandler.Update accepts `req.Body` directly into a domain model via `mapstructure.Decode(req.Body, &order)`; client can submit `{ \"user_id\": 999 }` and override the server-assigned owner via mass assignment because there is no separate request DTO with explicit fields"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" — for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" — for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
 - **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
 - **Fix:** [specific Go remediation with code example - separate request DTO + explicit field copy, `db.Where("id = ? AND user_id = ?", id, claims.UserID)`, JWT middleware at group level, etc.]
 
