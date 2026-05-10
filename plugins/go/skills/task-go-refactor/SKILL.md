@@ -274,14 +274,15 @@ Pick **one** of these options per refactor; do not stack them. Option A is simpl
 
 The most common Go refactor: a handler `Create` triggers a `db.Create(&order)` whose `AfterCreate` hook fans out (mailers, Asynq dispatches, audit writes). Removing the hook and extracting a service must happen as one logical change, but in safe sub-steps so the suite stays green between commits.
 
-1. **Pin behavior with a handler + service test** asserting every observable side effect (record updated, mailer enqueued, task dispatched, audit row written) - this is the contract the refactor must preserve
-2. **Promote hook dispatch to post-commit** first (move the dispatch out of `AfterCreate` and into the calling service after `db.Transaction(...)` returns); side effects fire post-commit; tests still pass
-3. **Introduce a service method** (`func (s *OrderService) Create(ctx context.Context, in CreateOrderInput) (*model.Order, error)`) that performs the write _and_ the side effects in one call; handler calls the service _but the hook still runs_ - this duplicates side effects intentionally and temporarily
-4. **Make the hook no-op when called from the service** via a context flag (`ctx = context.WithValue(ctx, skipHooksKey{}, true)`) checked at the top of the hook; verify tests still pass with side effects firing exactly once
-5. **Delete the hook entirely**; the service is now the single source of orchestration; remove the bypass flag; tests still green
-6. **Audit other call sites** (`db.Create`, scheduled tasks, migrations, other services) - any caller relying on the old hook is now broken and must be updated to call the service or have the side effects re-derived
+Do **not** introduce a context-value bypass flag (`context.WithValue(ctx, skipHooksKey{}, true)`) to silence the hook while the service runs in parallel. A request-scoped skip flag is invisible control flow: the hook still exists in source, fires for some callers, no-ops for others, and a future caller who forgets the flag silently re-doubles the side effect. The same anti-pattern in JVM land is the ThreadLocal hook-skip flag - both fail the same way. Audit-then-delete is the safe sequence; never ship a hook that lies about what it does.
 
-The intermediate "hook no-op when called from service" step is the safety net - it keeps the codebase shippable between the introduction of the service (step 3) and the deletion of the hook (step 5).
+1. **Pin behavior with a handler + service test** asserting every observable side effect (record updated, mailer enqueued, task dispatched, audit row written) - this is the contract the refactor must preserve
+2. **Promote hook dispatch to post-commit** first (move the dispatch out of `AfterCreate` and into the calling service after `db.Transaction(...)` returns); side effects fire post-commit; tests still pass. The hook is now empty
+3. **Audit every caller of `db.Create(&Order{...})`** - handler, scheduled tasks, migrations, other services. List them. Each one must move to the new service method **before** step 4 (so the hook can be deleted without leaving a caller relying on it)
+4. **Introduce the service method** (`func (s *OrderService) Create(ctx context.Context, in CreateOrderInput) (*model.Order, error)`) that performs the write *and* the side effects; migrate all audited callers to it in one PR each; the now-empty hook still runs but does nothing
+5. **Delete the hook entirely** once no caller bypasses the service; tests still green
+
+If the audit in step 3 finds a caller that genuinely cannot move to the service yet (e.g., a migration that runs before the service is wired), pause: either keep the hook and defer the refactor, or split the work across releases. Do not paper over with a bypass flag.
 
 **Recipe: Eliminate goroutine leak**
 
@@ -497,6 +498,7 @@ _Omit this section if the target file has no other smells._
 - Making "while we're here" unrelated cleanups - they belong in their own PR
 - Renaming during a refactor (rename PRs are separate; mixing the two doubles the review surface)
 - Removing GORM hooks without a test asserting the original side effects are preserved (post-commit, in the right order)
+- Adding a `context.Value` skip-flag to silence a hook for "the new path" while the old path still triggers it - the hook now lies about what it does and a future caller will silently re-double or skip the side effect; audit callers and delete the hook outright instead
 - Extracting a single-implementation interface without a real second use case - wait for the second use case before generalizing
 - Moving HTTP calls or Asynq dispatches from a non-transactional context to inside a `db.Transaction(...)` (or vice versa) without explicitly stating the transaction stance
 - Changing a function from no-context to context-aware without auditing every call site - missing context plumbing means cancellation does not propagate, and the bug is silent

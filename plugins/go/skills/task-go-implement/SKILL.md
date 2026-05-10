@@ -124,22 +124,7 @@ CREATE UNIQUE INDEX idx_payments_idempotency_key ON payments(idempotency_key);
 
 Use skill: `go-data-access`. Generate repository interface (in service package) and implementation. Use GORM for CRUD with associations, sqlx for complex reporting queries. Configure connection pool immediately after opening.
 
-For idempotency, implement upsert with `ON CONFLICT`:
-
-```go
-func (r *paymentRepo) CreateIdempotent(ctx context.Context, payment *Payment) (*Payment, error) {
-    result := r.db.WithContext(ctx).
-        Clauses(clause.OnConflict{
-            Columns:   []clause.Column{{Name: "idempotency_key"}},
-            DoNothing: true,
-        }).Create(payment)
-    if result.RowsAffected == 0 {
-        // Already exists - fetch and return the existing record
-        return r.FindByIdempotencyKey(ctx, payment.IdempotencyKey)
-    }
-    return payment, result.Error
-}
-```
+For idempotency, implement upsert with `ON CONFLICT` per the canonical pattern in `go-data-access` (Upsert with Idempotency Key).
 
 ### STEP 5 - SERVICE
 
@@ -200,45 +185,7 @@ Use skill: `go-gin-patterns`. Gin handlers with `ShouldBindJSON` for request bin
 | Invalid transition   | 422         |
 | External timeout     | 503         |
 
-For webhook endpoints (Stripe, GitHub, etc.), use raw body reading with signature validation middleware:
-
-```go
-// Middleware: validate webhook signature before handler runs
-func WebhookSignatureMiddleware(secret string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        body, err := c.GetRawData()
-        if err != nil {
-            c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResponse{Error: "invalid body"})
-            return
-        }
-        sig := c.GetHeader("Stripe-Signature")
-        if _, err := webhook.ConstructEvent(body, sig, secret); err != nil {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid signature"})
-            return
-        }
-        // Store raw body for handler to parse events from
-        c.Set("webhook_body", body)
-        c.Next()
-    }
-}
-
-// Handler: reads pre-validated body from context
-func HandleStripeWebhook(svc PaymentService) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        body := c.MustGet("webhook_body").([]byte)
-        var event stripe.Event
-        if err := json.Unmarshal(body, &event); err != nil {
-            c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid event"})
-            return
-        }
-        if err := svc.HandleWebhookEvent(c.Request.Context(), event); err != nil {
-            c.Error(err)
-            return
-        }
-        c.JSON(http.StatusOK, gin.H{"received": true})
-    }
-}
-```
+For webhook endpoints (Stripe, GitHub, etc.), use raw body reading with signature validation middleware per the canonical pattern in `go-gin-patterns` (Webhook Handler). The middleware reads `c.GetRawData()` *before* any JSON binding (because `ShouldBindJSON` consumes the body), validates the signature, then stashes the raw bytes on `gin.Context` for the handler to unmarshal. Webhook routes go in their own group, *outside* the JWT-auth group - signature is the auth.
 
 ### STEP 7 - TESTS
 

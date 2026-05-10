@@ -72,31 +72,7 @@ The Go test pyramid maps to test types:
 
 ### Step 4 - Apply Go Test Patterns
 
-Use skill: `go-testing-patterns` for the canonical patterns referenced below.
-
-**Table-driven tests (the canonical Go form, all layers):**
-
-```go
-func TestPlaceOrder(t *testing.T) {
-    tests := []struct {
-        name    string
-        input   PlaceOrderInput
-        setup   func(repo *mock_repo.MockOrderRepository)
-        wantErr error
-    }{
-        {name: "happy path", input: validInput, setup: ..., wantErr: nil},
-        {name: "validation error", input: badInput, setup: nil, wantErr: ErrValidation},
-        {name: "repo failure", input: validInput, setup: ..., wantErr: ErrRepo},
-    }
-    for _, tc := range tests {
-        t.Run(tc.name, func(t *testing.T) {
-            // setup, exercise, assert
-        })
-    }
-}
-```
-
-`t.Run(tc.name, ...)` so failures cite the case name. `t.Parallel()` only when test cases are independent and side-effect-free.
+Use skill: `go-testing-patterns` for the canonical table-driven, fixtures, testcontainers, mocking, and `synctest` patterns. The notes below cover only what is layer-specific or layout-specific to this workflow's output.
 
 **Unit tests (`*_test.go` colocated):**
 

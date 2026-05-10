@@ -79,32 +79,7 @@ If the nil panic is **intermittent**, check whether some records have the associ
 
 **Data Race**
 
-- `WARNING: DATA RACE` -> concurrent read/write without synchronization. The race detector output shows the two goroutines and the memory address. Fix: use `sync.Mutex`, `sync.RWMutex`, channels, or `sync/atomic`. Use skill: `go-concurrency`.
-
-```go
-// BEFORE (data race - concurrent map access)
-type Cache struct {
-    data map[string]string
-}
-func (c *Cache) Get(key string) string { return c.data[key] }
-func (c *Cache) Set(key, val string)   { c.data[key] = val }
-
-// AFTER (sync.RWMutex protects concurrent access)
-type Cache struct {
-    mu   sync.RWMutex
-    data map[string]string
-}
-func (c *Cache) Get(key string) string {
-    c.mu.RLock()
-    defer c.mu.RUnlock()
-    return c.data[key]
-}
-func (c *Cache) Set(key, val string) {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-    c.data[key] = val
-}
-```
+- `WARNING: DATA RACE` -> concurrent read/write without synchronization. The race detector output shows the two goroutines and the memory address. The two stacks are the bug - find the shared field they both touch, then choose `sync.Mutex` / `sync.RWMutex` (shared state), channels (ownership transfer), or `sync/atomic` (single integer/pointer). Use skill: `go-concurrency` for the canonical patterns.
 
 **Goroutine Leak**
 
