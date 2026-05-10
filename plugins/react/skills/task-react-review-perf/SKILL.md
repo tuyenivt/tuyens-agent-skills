@@ -101,26 +101,19 @@ For each finding produced later, cite a real `file:line`. If the diff is small b
 
 ### Step 4 - Render and Re-Render Hotspots
 
-Use skill: `react-hooks-patterns` for canonical hook discipline; use skill: `react-component-patterns` for component shape.
+Canonical hook / component-shape discipline lives in `react-hooks-patterns` and `react-component-patterns`. This step is a review-scoped scan for the diff:
 
-Inspect every changed component for:
-
-- [ ] **`"use client"` placement (Next.js)**: Client directive is at the **leaf** of the tree, not the root. A `"use client"` on a layout pulls all descendants client-side, defeating RSC. Move state-holding fragments into small Client Components and keep the surrounding tree on the server
-- [ ] **Unnecessary client-side conversion**: a component marked `"use client"` that has no hook, no event handler, no browser API call, no `useState` / `useEffect` / `useRef` - revert to Server Component for free bundle savings
-- [ ] **Ref / state in Server Component**: any `useState` / `useRef` / `useEffect` in a file without `"use client"` is a build error; flagged as a code smell that signals confused RSC mental model
-- [ ] **Object / array / function props rebuilt every render**: `<Child config={{...}} onClick={() => ...} items={[...]}>` triggers re-render of memoized children every parent render; lift to module scope, `useMemo`, or `useCallback` when the child is `React.memo`-wrapped or expensive
-- [ ] **`useMemo` / `useCallback` on cheap values**: memoizing primitives (`useMemo(() => count + 1, [count])`) costs more than the recomputation; flag as noise. Only memo when (a) the value is a stable reference for `React.memo` children, (b) the computation is genuinely expensive (>1ms in dev), or (c) it gates an expensive `useEffect` dependency
-- [ ] **`React.memo` on always-changing props**: `React.memo(Component)` is useless if the parent passes a new object / array / function each render. Pair with stable references at the call site, or skip
-- [ ] **Context value rebuilt every render**: `<Provider value={{ a, b }}>` recreates the object every render → every consumer re-renders. Memoize via `useMemo(() => ({ a, b }), [a, b])` or split into multiple contexts (state vs dispatch) for finer-grained re-rendering
-- [ ] **`useEffect` for derived state**: `useEffect(() => setX(a + b), [a, b])` re-renders twice. Compute during render: `const x = a + b`. Reserve `useEffect` for synchronization with external systems (subscriptions, DOM, intervals), not "things that depend on state"
-- [ ] **`useEffect` for event handlers**: handling user actions inside `useEffect(() => { if (clicked) ... }, [clicked])` is the wrong primitive; call the handler from the event directly. The React docs' "you might not need an effect" applies
-- [ ] **`useEffect` without cleanup**: subscriptions, intervals, observers without a return cleanup leak across re-renders; flag explicitly
-- [ ] **Missing `key` on lists / wrong `key`**: `key={index}` on a reorderable list breaks reconciliation; key by stable ID. Flag missing `key` (React warns but it is still a perf bug) and `key={index}` on lists that mutate
-- [ ] **Inline style objects**: `style={{ color: 'red' }}` allocates per render; for hot paths prefer Tailwind / CSS Modules / cva variants - constant class strings, no per-render allocation
-- [ ] **Heavy synchronous work in render**: parsing, sorting, filtering large arrays, JSON serialization in render body. Move to `useMemo` (with real cost) or precompute outside the component
-- [ ] **`useState` initializer not lazy when expensive**: `useState(expensiveCompute())` runs on every render; use `useState(() => expensiveCompute())` for one-shot init
-- [ ] **Inline anonymous components inside parent body**: `function Row({ data }) {...}` declared inside the parent's render function (`function Table() { function Row(...) {} return <ul>{rows.map(d => <Row data={d} />)}</ul> }`) is recreated every parent render - new function identity each time, which (a) makes `React.memo(Row)` a no-op, (b) destroys any `useState` inside `Row` between renders, (c) breaks reconciliation. Move the inner component to module scope (or a sibling file) so its identity is stable
-- [ ] **List virtualization absent for long lists**: rendering 1000+ items (or 100+ rows of complex content - charts, sub-tables, rich JSX) without `@tanstack/react-virtual` / `react-window` causes long initial render and laggy scroll. Threshold scales with row complexity: simple row × 1000+ or complex row × 100+. Flag steady-state lists, not transient ones (e.g., a search-result dropdown showing 50 items is fine without virtualization)
+- [ ] **`"use client"` placement (Next.js)**: directive at the leaf of the tree, not the root - a layout-level `"use client"` pulls all descendants client-side and defeats RSC. Also flag unnecessary `"use client"` (no hooks / events / browser APIs)
+- [ ] **Identity instability in props**: `<Child config={{...}} onClick={() => ...} items={[...]}>` triggers re-render of memoized children every parent render. Lift to module scope, `useMemo`, or `useCallback` when the child is `React.memo`-wrapped. `React.memo` is a no-op when props are unstable
+- [ ] **`useMemo` / `useCallback` on cheap values**: memoizing primitives costs more than recomputation. Only memo when value is a stable ref for `React.memo` children, computation is >1ms, or it gates an expensive `useEffect` dependency
+- [ ] **Context value rebuilt every render**: `<Provider value={{ a, b }}>` re-renders every consumer. Memoize via `useMemo` or split into state vs dispatch contexts - see `react-state-patterns`
+- [ ] **`useEffect` misuse**: derived state (`useEffect(() => setX(a + b))` → compute during render); event handling (`useEffect(() => { if (clicked) ... })` → call from handler); missing cleanup for subscriptions / intervals / observers
+- [ ] **List keys**: missing `key` or `key={index}` on a reorderable / filterable list breaks reconciliation
+- [ ] **Inline style objects in hot paths**: `style={{ color: 'red' }}` allocates per render. Prefer Tailwind / CSS Modules / cva (constant class strings)
+- [ ] **Heavy sync work in render** (parsing, sorting, filtering large arrays, JSON serialization): move to `useMemo` with real deps or precompute outside the component
+- [ ] **`useState` initializer not lazy when expensive**: `useState(expensiveCompute())` runs every render - use `useState(() => expensiveCompute())`
+- [ ] **Inline anonymous components inside parent body**: `function Row({...}) {...}` declared in render makes `React.memo(Row)` a no-op, destroys inner `useState` between renders, and breaks reconciliation. Move to module / sibling scope
+- [ ] **List virtualization absent**: simple rows × 1000+ or complex rows × 100+ without `@tanstack/react-virtual` / `react-window`
 
 ### Step 5 - Bundle Size and Code Splitting
 
@@ -140,29 +133,24 @@ Use skill: `react-component-patterns` for split boundaries; use skill: `react-ne
 
 ### Step 6 - Data Fetching and Caching
 
-Use skill: `react-data-fetching` for canonical patterns.
+Canonical fetching / caching idioms live in `react-data-fetching`. Review-scoped scan:
 
-**Next.js (Server Components and `fetch`):**
+**Next.js (Server Components + `fetch`):**
 
-- [ ] **`fetch` cache options explicit**: every Server Component `fetch(url, { cache: 'force-cache' | 'no-store', next: { revalidate: N, tags: [...] } })` declares its caching intent. Default in Next.js 15+ is `cache: 'no-store'` (uncached) - flag missing `cache` / `revalidate` on data that could be cached
-- [ ] **Tag-based revalidation**: long-cached data revalidated via `revalidateTag('orders')` after Server Action mutations; not relying on full-route `revalidatePath` for fine-grained updates
-- [ ] **`unstable_cache` for non-fetch IO**: ORM queries / file reads / Redis lookups in Server Components wrapped in `unstable_cache(fn, key, { revalidate, tags })` - else they hit the DB on every render
-- [ ] **Parallel data fetching**: Server Component awaits `await Promise.all([getA(), getB()])` for independent fetches, not sequential `const a = await getA(); const b = await getB();` - waterfall doubles latency
-- [ ] **N+1 fan-out over a list**: `await Promise.all(items.map(item => getDetail(item.id)))` parallelizes N requests but is still N round-trips. Flag and recommend a batched query (`getDetailsByIds(items.map(i => i.id))`) or DataLoader-style batching. Pure parallelism does not save the database
-- [ ] **Suspense streaming used**: long-running fetches in Server Components wrapped in `<Suspense fallback={<Skeleton />}>` so the rest of the page streams immediately; not blocking the entire route on the slowest query
-- [ ] **LCP element not inside Suspense fallback**: the hero image / above-the-fold content must not be deferred behind `<Suspense fallback={<Skeleton />}>` - that defers the LCP element itself. Suspense belongs around below-the-fold or non-critical content; the LCP element renders eagerly with `priority` (Next.js `<Image priority>`) so it is in the initial paint
-- [ ] **`use()` for promise unwrapping (React 19)**: deeper components consume promises via `use(promise)` instead of waterfalling `await` calls; fall back to `<Suspense>` boundaries
-- [ ] **No client-side fetch when server fetch would do**: a Client Component `useEffect(() => { fetch(...) }, [])` is a request waterfall (server renders, client hydrates, then client requests) - move the fetch to the parent Server Component and pass data down
+- [ ] **`fetch` cache options explicit**: every Server Component `fetch(url, { cache, next: { revalidate, tags } })` declares intent (Next 15+ defaults to `no-store`); non-fetch IO (ORM / Redis) wrapped in `unstable_cache(fn, key, {...})` else it hits DB every render
+- [ ] **Revalidation granularity**: `revalidateTag('orders')` after mutation, not full-route `revalidatePath`
+- [ ] **Parallelism**: independent fetches via `Promise.all` (not sequential `await`); N+1 fan-out (`Promise.all(items.map(...))`) recommend a batched endpoint - pure parallelism doesn't save the DB
+- [ ] **Suspense streaming**: long fetches inside `<Suspense fallback>` so the rest streams. **LCP element must not sit behind Suspense fallback** - that defers the LCP itself; render eagerly with `<Image priority>`
+- [ ] **`use(promise)` (React 19)** for deep consumers instead of waterfalling `await` chains
+- [ ] **No client-side `useEffect` fetch when a Server Component parent could fetch** and pass props down (request waterfall: server render → hydrate → client fetch)
 
-**Both frameworks (TanStack Query):**
+**TanStack Query (both frameworks):**
 
-- [ ] **`staleTime` / `gcTime` set**: default `staleTime: 0` refetches on every mount - flag for endpoints whose data does not change per-mount. `staleTime: 60_000` for typical reads; longer for catalog / config data
-- [ ] **Query keys are stable, structured arrays**: `['orders', { ownerId, status }]` not `'orders-' + JSON.stringify(filters)` - structured keys enable `queryClient.invalidateQueries({ queryKey: ['orders'] })` to invalidate per resource
-- [ ] **Cache invalidation explicit after mutations**: `useMutation({ onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }) })` - never rely on time-based revalidation for write paths
-- [ ] **Optimistic updates for high-perceived-latency mutations**: `onMutate` snapshots state, sets optimistic value, `onError` rolls back. React 19 `useOptimistic` for component-local optimism
-- [ ] **`useQueries` / `parallel queries` for fan-out**: independent reads run in parallel, not sequentially via dependent `useQuery` chains
-- [ ] **Prefetch on intent**: `queryClient.prefetchQuery` on hover / focus for likely-next routes
-- [ ] **No fetching in render body**: `fetch()` directly in component render (not via `useQuery` / Server Component) is a bug - re-fires on every render
+- [ ] **`staleTime` / `gcTime` not set** - default `staleTime: 0` refetches on every mount
+- [ ] **Query keys**: stable structured arrays (`['orders', { ownerId, status }]`); never JSON-stringified
+- [ ] **Mutation invalidation explicit** via `useMutation({ onSuccess: () => queryClient.invalidateQueries(...) })`; React 19 `useOptimistic` / `onMutate` for high-latency mutations
+- [ ] **Parallel via `useQueries`** for fan-out; `prefetchQuery` on hover / focus for likely-next routes
+- [ ] **No `fetch()` in render body** - re-fires every render
 
 ### Step 7 - Core Web Vitals and Page Load
 

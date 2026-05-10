@@ -103,16 +103,12 @@ user-invocable: false
 
 ### Risk Hotspots Specific to React
 
-- **Stale closures in `useEffect`:** insufficient deps cause "the value never updates".
-- **Inline objects/arrays/functions in JSX:** break memoization; `<Child config={{x: 1}} />` re-creates on every render.
-- **Server Components importing Client Components correctly, but client importing server components directly** (forbidden in Next App Router).
-- **`'use client'` boundary creep:** marking too many files as client undermines SSR/streaming benefits.
-- **`useEffect` for derived state:** state that should be `useMemo` (or no state at all) wrapped in effect causes update cycles.
-- **Race conditions in async effects:** missing AbortController; response from old request applied after newer request resolved.
-- **Default Next.js fetch caching:** Next aggressively caches `fetch` calls; `cache: 'no-store'` or `next: { revalidate: ... }` may be needed.
-- **`process.env` in client code:** in Next.js, only `NEXT_PUBLIC_*` vars are exposed; others are `undefined` at runtime in the browser.
-- **Hydration mismatch:** Server render diverges from client render (timestamps, random IDs, browser-only APIs in render).
-- **Unbounded re-renders:** state setter called inside render without condition.
+- **`useEffect` misuse** (stale closures from missing deps, derived state, event handling, missing AbortController in async effects, missing cleanup): see `react-hooks-patterns`, `task-react-review`.
+- **Identity instability** (inline `{...}` / `[...]` / `() => ...` in JSX breaking memoization): see `react-component-patterns`, `task-react-review-perf`.
+- **`"use client"` boundary** (creep, root-of-layout placement, importing server-only into Client Component): see `react-nextjs-patterns`, `task-react-review`.
+- **Next.js fetch caching** (default behavior, `cache: 'no-store'` / `next: { revalidate }` / `unstable_cache`): see `react-data-fetching`, `task-react-review-perf`.
+- **Server → Client ORM-row leak** (full Prisma rows as props serialize sensitive fields into HTML), **`dangerouslySetInnerHTML` XSS**, **`NEXT_PUBLIC_*` secret leak**, **Server Action without Zod / auth**: see `task-react-review-security`.
+- **Hydration mismatch** (timestamps / random IDs / browser-only APIs in render body); **unbounded re-renders** (setState in render without condition): see `task-react-review`.
 
 ### First-PR Safe Zones
 

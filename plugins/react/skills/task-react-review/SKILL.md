@@ -143,44 +143,41 @@ Logical correctness, error handling completeness, edge cases affecting UI integr
 
 **Test coverage finding:** If the PR adds or modifies logic without corresponding Vitest coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication / session UI, Server Actions, money / billing UI, form validation, multi-step flows, error boundaries. Do not bury this finding in Key Takeaways.
 
-**React-specific correctness checks (both frameworks):**
+Canonical patterns live in `react-component-patterns`, `react-hooks-patterns`, `react-data-fetching`, `react-state-patterns`, `react-nextjs-patterns`. This phase scans for diff-level findings:
 
-- [ ] **TypeScript strict mode**: `strict: true` not silently disabled; `as any` flagged outside test setup; `noImplicitAny` / `strictNullChecks` not relaxed; component prop interfaces are typed (no `props: any`)
-- [ ] **Hooks rules**: `useState` / `useEffect` / custom hooks called at the top level - never inside conditions, loops, or after early returns. `eslint-plugin-react-hooks` enabled; flag any `// eslint-disable-next-line react-hooks/rules-of-hooks` without a comment justifying
-- [ ] **`useEffect` discipline**: every `useEffect` synchronizes with an external system (subscription, DOM, interval, network). Effects for "compute derived state" (`useEffect(() => setX(a + b))`), event handling (`useEffect(() => { if (clicked) ... })`), or "running on mount" (when initialization could happen during render) are smells - flag and recommend the right primitive
-- [ ] **`useEffect` dependency array correct**: every value used inside the effect appears in the deps array OR is a stable ref (set state, ref); flag exhaustive-deps eslint disables; flag `[]` deps when the effect uses props / state (stale closure)
-- [ ] **`useEffect` cleanup**: subscriptions / observers / intervals return a cleanup function; flag missing cleanup as a [High] memory-leak finding
-- [ ] **Missing `key` on lists / `key={index}`**: `.map((item, index) => <Row key={index} />)` is wrong on a reorderable / filterable / removable list - reconciliation breaks. `key={item.id}` (stable) is right. Flag both
-- [ ] **`"use client"` placement (Next.js)**: directive is at the leaf of the tree (a small interactive component), not the root of a layout / page. A root-level `"use client"` pulls the entire descendent tree into the client bundle and defeats RSC. Flag as a [High] correctness + perf finding
-- [ ] **Unnecessary `"use client"` (Next.js)**: a Client Component file with no hook, event handler, browser API, or `useState` / `useEffect` / `useRef` - revert to Server Component. The umbrella review owns presence (it's a code smell signaling confused mental model); `task-react-review-perf` owns the bundle-cost depth
-- [ ] **State / hooks in Server Component (Next.js)**: any `useState` / `useEffect` / `useRef` in a file without `"use client"` is a build error - flag as a code smell that signals confused mental model even if the build catches it
-- [ ] **Server Component data leak**: Server Component passing entire ORM rows (Prisma model / TypeORM entity) as a prop to a Client Component serializes internal fields (`passwordHash`, `mfaSecret`) into the page HTML. Project to a DTO at the data layer or before passing the prop
-- [ ] **Server Action input validation (Next.js)**: every `'use server'` function or `<form action={...}>` target validates input via Zod / `zod-form-data` `.strict()` at the top, before any auth or DB call. Missing validation is a [High] / [Blocker] depending on whether the action mutates data; raw `Object.fromEntries(formData)` going into `prisma.x.update({ data })` is a critical mass-assignment finding (`{ role: 'admin' }` in a FormData wins)
-- [ ] **Server Action authorization (Next.js)**: every Server Action that mutates data calls `await auth()` (or session equivalent) at the top and verifies the principal can act on the resource (object-level scoping, not just authenticated). An IDOR via Server Action is the same severity as IDOR via REST endpoint
-- [ ] **`'use server'` file exports only Server Actions (Next.js)**: a file with the `'use server'` directive at the top makes every export network-callable. Re-exporting a utility (`export { formatOrderId } from './utils'`) silently exposes that utility as an authentication-less, validation-less network endpoint. Flag any non-action export in a `'use server'` module as [High] - the depth (exploit walkthrough) belongs to `task-react-review-security`, but the umbrella review owns presence/absence
-- [ ] **Server Action return value leaks server-only fields**: `return order` where `order` is a full Prisma row leaks `internalNotes` / `paymentMethodToken` back through the Server Action response into client-visible state. Project to a DTO before returning, or use Prisma `select` / `omit`
-- [ ] **`middleware.ts` change widens the public surface**: a new entry in `matcher` exclusions (`'/api/test/*'`, `'/internal/*'`) without a security comment justifying why the route is exempt from auth is a [High]. The depth (whether the route should be public) belongs to security review; the umbrella owns presence
-- [ ] **`dangerouslySetInnerHTML` on user input**: any usage where the HTML originates from user input, URL params, or external API must be sanitized (`DOMPurify` client / `sanitize-html` server). Flag as Critical when the content path is user-controllable
-- [ ] **Open redirect**: `redirect(searchParams.get('returnTo'))` (Next.js) / `navigate(returnTo)` (React Router) without allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`)
-- [ ] **`NEXT_PUBLIC_*` for secrets**: `process.env.NEXT_PUBLIC_*` referencing API keys, DB URLs, or signing secrets compiles into the client bundle - flagged as Critical
-- [ ] **Form accessibility**: `<input>` has an associated `<label>` (via `htmlFor` or wrapping); error messages associated via `aria-describedby`; submit button has accessible name; required fields use `aria-required` (or `required`) and surface validation errors when invalid
-- [ ] **Interactive accessibility**: dialogs use `<dialog>` or proper ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus on close); menus use `role="menu"` / proper key handling; new interactive components built on Radix / shadcn primitives by default rather than reinventing keyboard handling
-- [ ] **Image / media**: `next/image` (Next.js) or explicit `width`/`height` on raw `<img>` to prevent CLS; `alt` attribute present (empty string `alt=""` for decorative); flag missing
-- [ ] **Error boundaries**: components with non-trivial render logic / external data have an error boundary above them (Next.js: `error.tsx` per route segment; Vite: explicit `<ErrorBoundary>` wrapper). A bare `throw` in a render path crashes the whole tree if no boundary catches
-- [ ] **Stale state in effects / closures**: refs (`useRef`) for mutable values needed inside callbacks; flag `setState` calls inside effects that read prior state without the functional setter form
-- [ ] **`useRef` vs `useState`**: refs do not trigger re-render; flag `useState` for values used only inside `onChange` handlers / refs but never rendered
-- [ ] **Async state setter after unmount**: `useEffect(() => { fetch().then(setX) }, [])` without cleanup or `AbortController` produces "state update on unmounted component" warnings; modern React tolerates it but the underlying request is wasted - flag for an `AbortController`
+**React correctness (both frameworks):**
 
-**Concurrency / state-management safety:**
+- [ ] **TypeScript strict / typed props**: `strict: true` not silently disabled; `as any` outside test setup; no `props: any`
+- [ ] **Hooks rules**: top-level only (no conditions / loops / after early returns); flag any `// eslint-disable-next-line react-hooks/rules-of-hooks` without justification
+- [ ] **`useEffect` discipline**: derived state (use compute during render) and event handling (call from handler) are smells; missing deps / `[]` with closure reads (stale closure); missing cleanup on subscriptions / observers / intervals = [High] memory leak. See `react-hooks-patterns`
+- [ ] **List keys**: missing or `key={index}` on a reorderable / filterable / removable list breaks reconciliation
+- [ ] **Stale state / `useRef` vs `useState`**: refs for mutable values used in callbacks; functional setter form for state-from-prior-state; `useState` for values never rendered is a smell (use `useRef`)
+- [ ] **Async state setter after unmount**: `useEffect(() => { fetch().then(setX) }, [])` without `AbortController` wastes the in-flight request
 
-- [ ] **State categorization**: state lives in the right place - URL (search params for filters / page / sort), server (TanStack Query for fetched data), local (`useState` for UI-only). Flag `useState` for filter state when the URL would deep-link better; flag client-side caching of server state when TanStack Query / Server Components handle it
-- [ ] **Context boundaries**: a context that re-renders every consumer on every change (no memoized value, no split provider) for a frequently-changing piece of state - flag for memoization or state-management library (Zustand / Jotai)
-- [ ] **No mutable module-level state**: `let counter = 0; export function inc() { counter++; }` works in dev with HMR but is a smell - flag for state lib or for moving the state inside a hook / component
+**Next.js-specific correctness (skip on Vite):**
 
-Use skill: `react-component-patterns` for canonical component shape.
-Use skill: `react-hooks-patterns` for canonical hook patterns.
-Use skill: `react-data-fetching` for canonical data-fetching patterns.
-Use skill: `react-state-patterns` for state-management patterns.
+- [ ] **`"use client"` placement**: directive at the leaf, not root of a layout / page (root-level pulls descendant tree into bundle and defeats RSC, [High]). Unnecessary `"use client"` (no hooks / events / browser APIs) is a code smell. State / hooks in a file without `"use client"` is a build error
+- [ ] **Server Component → Client Component prop ORM-leak audit** ([Critical]): full Prisma rows passed as props serialize internal fields into HTML. Audit for sensitive fields - `passwordHash`, `mfaSecret`, `apiToken`, `refreshToken`, `internal*`, `*Secret`, `recoveryCode`. Project to a DTO at the data layer
+- [ ] **Server Action input + auth**: every `'use server'` / `<form action={...}>` validates via Zod / `zod-form-data` at the top; raw `Object.fromEntries(formData)` into `prisma.x.update({ data })` is mass assignment ([Blocker]: `{role:'admin'}` wins). Mutating actions call `await auth()` and verify object-level ownership (IDOR same severity as REST IDOR)
+- [ ] **`'use server'` file exports only Server Actions** - any non-action export becomes an authentication-less, validation-less network endpoint, [High]
+- [ ] **Server Action return values** projected to a DTO (no `internalNotes` / `paymentMethodToken` flowing back into client state)
+- [ ] **`middleware.ts` `matcher` exclusions** widening the public surface flagged [High] without justifying security comment
+
+**React cross-cutting safety:**
+
+- [ ] **`dangerouslySetInnerHTML` on user input** without sanitizer ([Critical] when path is user-controllable)
+- [ ] **Open redirect**: `redirect(searchParams.get('returnTo'))` / `navigate(returnTo)` without allowlist or `url.startsWith('/') && !url.startsWith('//')`
+- [ ] **`NEXT_PUBLIC_*` for secrets** (API keys, DB URLs, signing secrets) - compiled into client bundle, [Critical]
+- [ ] **State categorization**: filter / page / sort in `useState` instead of search params (breaks deep-linking, refresh, back-button); client-side caching of server state when TanStack Query / Server Components handle it. See `react-state-patterns`
+- [ ] **Context re-render storm**: non-memoized value or unsplit provider for frequently-changing state - flag for memoization or state lib
+- [ ] **Mutable module-level state** (`let cache = {}` / `const handlers = []`) leaks across HMR, tests, requests (SSR)
+- [ ] **Error boundaries**: non-trivial render / external data wrapped (Next.js `error.tsx` per segment; Vite explicit `<ErrorBoundary>`). Bare render-path `throw` crashes the tree
+
+**Accessibility:**
+
+- [ ] **Form a11y**: `<input>` with associated `<label>` (`htmlFor` or wrapping), `aria-describedby` for error messages, accessible submit name, `required` / `aria-required` with surfaced validation
+- [ ] **Interactive a11y**: dialogs use `<dialog>` or full ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus); reach for Radix / shadcn primitives before reinventing key handling
+- [ ] **Images**: `next/image` or explicit `width`/`height` on `<img>` (CLS); `alt` present (`alt=""` for decorative)
 
 ### Phase C - React Architecture Guardrails
 

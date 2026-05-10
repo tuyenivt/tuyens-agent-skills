@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Produce a safe, step-by-step refactoring plan for a specific React target (component, hook, route, Server Action, page / layout, provider). Identifies React-specific smells (god component, prop drilling, `useEffect` for derived state, `"use client"` at root of layout, fat hook, conditional rendering ladder, scattered state, missing Zod on Server Action, inline business logic in JSX, untyped props) and proposes independently-committable refactoring steps with Vitest gates between each.
+Produce a safe, step-by-step refactoring plan for a specific React target (component, hook, route, Server Action, page / layout, provider). Identifies React-specific smells (Step 4 catalog) and proposes independently-committable refactoring steps with `tsc --noEmit` + Vitest gates between each.
 
 This workflow is the stack-specific delegate of `task-code-refactor` for React.
 
