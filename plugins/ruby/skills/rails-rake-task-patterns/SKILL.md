@@ -1,6 +1,6 @@
 ---
 name: rails-rake-task-patterns
-description: Rails Rake task patterns: idempotency, batch processing, env safety guards, dry-run, structured logs, service composition, RSpec.
+description: Rails rake task patterns: idempotency, chunked transactions, leader lock, fan-out to Sidekiq, dry-run, structured logs, signal handling.
 metadata:
   category: backend
   tags: [ruby, rails, rake, maintenance, backfill, ops]
@@ -11,41 +11,40 @@ user-invocable: false
 
 ## When to Use
 
-- Writing data backfills that run alongside (not inside) a schema migration
-- One-off operational tasks (re-process stuck records, regenerate derived data, recompute counters)
-- Recurring maintenance jobs invoked by cron, whenever, systemd timers, or Kubernetes CronJob
-- Reporting/export tasks that produce files or push to external systems
-- Bootstrap and seeding tasks beyond `db:seed` (per-environment fixtures, demo data)
-- Any task triggered from a deploy hook (e.g., post-release cache warm, index rebuild)
+- Data backfills running alongside (not inside) a schema migration
+- One-off operational tasks (re-process stuck records, regenerate derived data)
+- Recurring maintenance jobs (cron, whenever, systemd, Kubernetes CronJob)
+- Reporting/export tasks producing files or pushing to external systems
+- Bootstrap/seeding beyond `db:seed`
+- Tasks triggered from a deploy hook
 
 Not for:
 
-- Logic that belongs in a service object - the rake task should call the service, not reimplement it
-- Long-running async work with retries - use a Sidekiq job (rake tasks have no retry, no dead set, no UI)
-- Schema changes - use a migration, not a rake task
+- Logic that belongs in a service object - rake task should call the service
+- Long-running async work with retries - use a Sidekiq job
+- Schema changes - use a migration
 - User-triggered actions during a request - use a controller + service
 
 ## Rules
 
-- Rake tasks are thin orchestrators - they parse input, set up logging, and call services. Business logic lives in services or PORO classes under `app/`, never in the `Rakefile` or `lib/tasks/*.rake`
-- Every task that mutates data must support `DRY_RUN=1` and log what it would do without writing
-- Tasks that mutate production data must require an explicit confirmation gate (`CONFIRM=yes` or interactive prompt) when `Rails.env.production?`
-- Every task must be idempotent - running it twice must be safe. Re-runs after partial failure must resume, not duplicate
-- Always batch over large tables with `find_each` / `in_batches` - never load entire tables into memory
-- Always use `task: :environment` when the task touches Rails (models, config, services); never `require "config/environment"` manually
-- Log progress with structured fields (count processed, count skipped, elapsed) and exit non-zero on failure so cron/CI can detect it
-- Pass IDs and primitives as arguments, not objects. Prefer ENV vars for optional flags, positional task args for required identifiers
-- Group tasks under a namespace that matches the domain (`namespace :orders do ... end`), never put loose tasks at the top level of `lib/tasks/`
-- Never call `exit` from inside a task - raise an exception or `abort "message"` so Rake records failure correctly
+- Rake tasks are thin orchestrators - they parse input, set up logging, call services. Business logic lives in services or POROs under `app/`
+- Every task that mutates data must support `DRY_RUN=1`
+- Tasks mutating production data must require explicit confirmation (`CONFIRM=yes` or interactive) when `Rails.env.production?`
+- Every task must be idempotent - running it twice must be safe; re-runs after partial failure must resume, not duplicate
+- Always batch over large tables with `find_each` / `in_batches`
+- Always use `task: :environment` when the task touches Rails
+- Log progress with structured fields and exit non-zero on failure
+- Pass IDs and primitives, not objects
+- Group tasks under namespaces matching the domain
+- Never call `exit` inside a task - raise or `abort "message"`
 
 ## Patterns
 
 ### Thin Orchestrator - Delegate to a Service
 
-Bad - business logic embedded in the rake file (untestable, unreusable, no Result handling):
+Bad - business logic embedded:
 
 ```ruby
-# lib/tasks/orders.rake
 namespace :orders do
   task fulfill_pending: :environment do
     Order.where(status: :pending).find_each do |order|
@@ -66,13 +65,6 @@ class FulfillPendingOrders
     new(dry_run: dry_run, batch_size: batch_size).call
   end
 
-  def initialize(dry_run:, batch_size:)
-    @dry_run = dry_run
-    @batch_size = batch_size
-    @processed = 0
-    @skipped = 0
-  end
-
   def call
     Order.where(status: :pending).in_batches(of: @batch_size) do |batch|
       batch.each { |order| process(order) }
@@ -83,9 +75,8 @@ class FulfillPendingOrders
   private
 
   def process(order)
-    return @skipped += 1 if order.fulfilled_at.present? # idempotency guard
+    return @skipped += 1 if order.fulfilled_at.present?
     return @processed += 1 if @dry_run
-
     FulfillOrder.call(order: order)
     @processed += 1
   end
@@ -104,11 +95,9 @@ namespace :orders do
 end
 ```
 
-The service is testable in isolation; the rake task is trivial enough that an integration test of the rake invocation is cheap.
-
 ### Idempotency and Resumability
 
-Bad - no guard, re-running re-emails everyone:
+Bad - re-running re-emails everyone:
 
 ```ruby
 task send_welcome_emails: :environment do
@@ -116,79 +105,53 @@ task send_welcome_emails: :environment do
 end
 ```
 
-Good - state-driven idempotency, safe to re-run:
+Good - state-driven:
 
 ```ruby
-task send_welcome_emails: :environment do
-  User.where(welcome_sent_at: nil).find_each do |user|
-    User.transaction do
-      user.update!(welcome_sent_at: Time.current)
-      UserMailer.welcome(user).deliver_later
-    end
+User.where(welcome_sent_at: nil).find_each do |user|
+  User.transaction do
+    user.update!(welcome_sent_at: Time.current)
+    UserMailer.welcome(user).deliver_later
   end
 end
 ```
 
-For tasks that cannot mark per-row state, use a checkpoint:
+Or checkpoint-based when you can't mark per-row state:
 
 ```ruby
-namespace :reports do
-  task :rebuild, [:since_id] => :environment do |_, args|
-    last_id = Integer(args[:since_id] || Rails.cache.read("reports:rebuild:cursor") || 0)
-    Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
-      RebuildReportRows.call(orders: batch)
-      Rails.cache.write("reports:rebuild:cursor", batch.last.id)
-    end
-  end
+last_id = Integer(args[:since_id] || Rails.cache.read("reports:rebuild:cursor") || 0)
+Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
+  RebuildReportRows.call(orders: batch)
+  Rails.cache.write("reports:rebuild:cursor", batch.last.id)
 end
 ```
 
 ### Dry Run and Production Confirmation
 
-Bad - destructive task with no safeguards:
-
-```ruby
-task purge_stale_sessions: :environment do
-  Session.where("last_seen_at < ?", 90.days.ago).delete_all
-end
-```
-
-Good - dry-run by default in production, explicit opt-in to write:
-
 ```ruby
 namespace :sessions do
-  desc "Purge sessions inactive >90 days. ENV: DRY_RUN=1 (default in prod), CONFIRM=yes to write"
+  desc "Purge sessions inactive >90 days. ENV: DRY_RUN=1, CONFIRM=yes"
   task purge_stale: :environment do
     cutoff = 90.days.ago
-    scope = Session.where("last_seen_at < ?", cutoff)
-    count = scope.count
+    scope  = Session.where("last_seen_at < ?", cutoff)
+    count  = scope.count
 
     if Rails.env.production? && ENV["CONFIRM"] != "yes"
       abort "Refusing to purge #{count} sessions in production without CONFIRM=yes"
     end
 
     if ENV["DRY_RUN"] == "1"
-      Rails.logger.info(task: "sessions:purge_stale", dry_run: true, would_delete: count, cutoff: cutoff)
+      Rails.logger.info(task: "sessions:purge_stale", dry_run: true, would_delete: count)
       next
     end
 
     deleted = scope.in_batches(of: 5_000).delete_all
-    Rails.logger.info(task: "sessions:purge_stale", deleted: deleted, cutoff: cutoff)
+    Rails.logger.info(task: "sessions:purge_stale", deleted: deleted)
   end
 end
 ```
 
 ### Batch Processing at Scale
-
-Bad - loads entire table into memory; lock-prone:
-
-```ruby
-task recompute_totals: :environment do
-  Order.all.each { |o| o.update!(total_cents: o.line_items.sum(:price_cents)) }
-end
-```
-
-Good - batched, low-lock, throttled:
 
 ```ruby
 task recompute_totals: :environment do
@@ -199,20 +162,22 @@ task recompute_totals: :environment do
         order.update_columns(total_cents: total) if order.total_cents != total
       end
     end
-    sleep(Float(ENV.fetch("THROTTLE_S", 0.1))) # gentle on replicas
+    sleep(Float(ENV.fetch("THROTTLE_S", 0.1)))
   end
 end
 ```
 
-`find_each` for per-row processing, `in_batches` when you can operate on the relation (`update_all`, `delete_all`). `update_columns` skips callbacks and validations - use deliberately on backfills where you know the data shape.
+`find_each` for per-row processing, `in_batches` when you operate on the relation. `update_columns` skips callbacks/validations - use deliberately on backfills.
+
+For chunked-transaction shape, memory safety, and gotchas, see `rails-batch-processing-patterns`.
 
 ### Argument Parsing - Positional Args vs ENV
 
-Use positional args for required identifiers; use ENV for optional flags:
+Positional for required identifiers; ENV for optional flags:
 
 ```ruby
 namespace :customers do
-  desc "Recompute LTV for one customer or all. Usage: rake customers:recompute[123] or rake customers:recompute"
+  desc "Recompute LTV. Usage: rake customers:recompute[123] or rake customers:recompute"
   task :recompute, [:customer_id] => :environment do |_, args|
     if args[:customer_id]
       RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
@@ -223,42 +188,27 @@ namespace :customers do
 end
 ```
 
-Quoting note: zsh requires `rake 'customers:recompute[123]'` (square brackets are globs). Document this in the `desc` to save users five minutes of debugging.
+zsh requires `rake 'customers:recompute[123]'` (square brackets are globs). Document in `desc`.
 
 ### Structured Logging and Exit Codes
-
-Bad - `puts` only, swallows errors, exits 0 on failure:
-
-```ruby
-task backfill: :environment do
-  begin
-    BackfillService.call
-    puts "done"
-  rescue => e
-    puts "error: #{e.message}"
-  end
-end
-```
-
-Good - structured log fields, propagates failure:
 
 ```ruby
 task backfill: :environment do
   started_at = Time.current
   result = BackfillService.call
   Rails.logger.info(
-    task: "users:backfill",
-    status: "ok",
+    task: "users:backfill", status: "ok",
     processed: result.value[:processed],
     elapsed_s: (Time.current - started_at).round(2)
   )
 rescue => e
-  Rails.logger.error(task: "users:backfill", status: "error", class: e.class.name, message: e.message)
-  raise # non-zero exit, cron/CI sees failure
+  Rails.logger.error(task: "users:backfill", status: "error",
+                     class: e.class.name, message: e.message)
+  raise # non-zero exit; cron/CI sees failure
 end
 ```
 
-`abort "message"` for expected refusals (failed precondition, missing CONFIRM); `raise` for unexpected errors so the backtrace surfaces.
+`abort "message"` for expected refusals (failed precondition, missing CONFIRM); `raise` for unexpected errors.
 
 ### Rake Task vs Sidekiq Job vs Sidekiq Cron
 
@@ -270,44 +220,70 @@ end
 | Recurring schedule, simple, ops-visible | Rake task + cron / whenever   |
 | Deploy hook (run once per release)      | Rake task in deploy script    |
 
-Rule of thumb: if the work needs retries, a UI, or a dead set, it is a Sidekiq job. If it is fire-and-forget maintenance with cron-level retry semantics, it is a rake task. A rake task can fan out to Sidekiq jobs - that is often the right shape for large backfills.
+A rake task can fan out to Sidekiq jobs - often the right shape for large backfills.
+
+### Signal Handling
+
+Long backfills get killed mid-run. Trap signals so the in-flight batch finishes cleanly and the cursor advances:
 
 ```ruby
-task backfill_user_segments: :environment do
-  User.where(segment: nil).in_batches(of: 1_000) do |batch|
-    SegmentBackfillJob.perform_bulk(batch.pluck(:id).map { |id| [id] })
-  end
-end
-```
+task :rebuild => :environment do
+  interrupted = false
+  Signal.trap("INT")  { interrupted = true }
+  Signal.trap("TERM") { interrupted = true }
 
-### Signal Handling and Concurrent Invocation Guard
-
-Long backfills get killed mid-run - by Kubernetes when the pod is rescheduled, by an ops engineer typing Ctrl-C, by systemd on host reboot. Trap signals so the in-flight batch finishes cleanly and the cursor advances. Without this, the next run repeats the killed batch (wasted work) or skips it (lost work, depending on idempotency).
-
-```ruby
-namespace :reports do
-  task :rebuild => :environment do
-    interrupted = false
-    Signal.trap("INT")  { interrupted = true }
-    Signal.trap("TERM") { interrupted = true }
-
-    Order.in_batches(of: 1_000) do |batch|
-      RebuildReportRows.call(orders: batch)
-      Rails.cache.write("reports:rebuild:cursor", batch.last.id)
-      if interrupted
-        Rails.logger.warn(task: "reports:rebuild", status: "interrupted", cursor: batch.last.id)
-        break
-      end
+  Order.in_batches(of: 1_000) do |batch|
+    RebuildReportRows.call(orders: batch)
+    Rails.cache.write("reports:rebuild:cursor", batch.last.id)
+    if interrupted
+      Rails.logger.warn(task: "reports:rebuild", status: "interrupted",
+                        cursor: batch.last.id)
+      break
     end
   end
 end
 ```
 
-Use a PostgreSQL advisory lock to prevent two cron triggers (or a manual run during cron) from racing on the same dataset (see `rails-migration-safety` for the canonical lock/unlock shape). For rake tasks, prefer `pg_try_advisory_lock` so the second invocation aborts immediately rather than blocking cron.
+### Concurrent Invocation Guard
+
+Prevent two cron triggers (or manual run during cron) from racing:
+
+```ruby
+task rebuild: :environment do
+  acquired = ApplicationRecord.with_advisory_lock("reports:rebuild", timeout_seconds: 0) do
+    RebuildReports.call
+    true
+  end
+  abort "another reports:rebuild is running; exiting cleanly" unless acquired
+end
+```
+
+For full leader-election (raw `GET_LOCK` / `pg_try_advisory_lock`, transaction-scoped variants), see `rails-db-locking-patterns`.
+
+### Fan-out to Sidekiq
+
+Common production shape: cron rake task enqueues N Sidekiq jobs, one per shard. Rake is the *coordinator*; Sidekiq jobs are *executors*.
+
+```ruby
+namespace :backfill do
+  desc "Recompute order totals across N shards. ENV: SHARD_COUNT=8"
+  task recompute_totals: :environment do
+    shard_count = Integer(ENV.fetch("SHARD_COUNT", 8))
+
+    acquired = ApplicationRecord.with_advisory_lock("backfill:recompute_totals", timeout_seconds: 0) do
+      jobs = (0...shard_count).map { |i| [i, shard_count] }
+      Sidekiq::Client.push_bulk("class" => "BackfillShardJob",
+                                "args" => jobs, "queue" => "low")
+      true
+    end
+    abort "another backfill:recompute_totals is running" unless acquired
+  end
+end
+```
+
+For the work-splitting decision matrix and `push_bulk` sizing, see `rails-work-splitter-patterns`.
 
 ### Composition With Other Tasks
-
-Use `Rake::Task#invoke` for one-time chaining; use `enhance` to add steps to an existing task. Avoid `prerequisites` for slow tasks that you do not always want to run.
 
 ```ruby
 namespace :reports do
@@ -318,11 +294,11 @@ namespace :reports do
 end
 ```
 
-If a chained task needs to run twice in one process (e.g., during tests), call `Rake::Task["foo"].reenable` between invocations.
+If a chained task needs to run twice in one process, call `Rake::Task["foo"].reenable`.
 
-### Testing Rake Tasks
+### Testing
 
-See `rails-testing-patterns` (Rake Task Specs section) for the recipe. The rule: behavioral coverage lives on the service spec; the rake spec only verifies wiring - ENV parsing, argument forwarding, exit behavior, and any production confirmation gate. Load tasks with `Rails.application.load_tasks` once per suite and `task.reenable` after each example.
+See `rails-testing-patterns` Rake Task Specs section. Behavioral coverage on the service spec; the rake spec only verifies wiring (ENV parsing, argument forwarding, exit behavior, production confirmation gate).
 
 ### File Layout
 
@@ -330,42 +306,40 @@ See `rails-testing-patterns` (Rake Task Specs section) for the recipe. The rule:
 lib/tasks/
   orders.rake          # namespace :orders
   reports.rake         # namespace :reports
-  maintenance.rake     # namespace :maintenance (purge, vacuum, reindex)
+  maintenance.rake     # namespace :maintenance
 app/services/
-  fulfill_pending_orders.rb   # the actual logic, called by the rake task
+  fulfill_pending_orders.rb   # the actual logic
 spec/tasks/
   orders_rake_spec.rb
 ```
 
-One `.rake` file per top-level namespace. Never define tasks in `Rakefile` itself - it should only require the Rails application.
+One `.rake` per top-level namespace. Never define tasks in `Rakefile` itself.
 
 ## Output Format
 
-When generating a rake task, document each task:
-
 ```
 Task: {namespace:name}
-Description: {desc string - shown in `rake -T`}
+Description: {desc string}
 Trigger: {manual | cron | deploy-hook | sidekiq-cron}
 Arguments: {positional args and ENV vars with defaults}
 Idempotency: {state-column guard | checkpoint | natural idempotence}
 Dry-run: {DRY_RUN=1 supported, behavior described}
-Production gate: {CONFIRM=yes required | none | not-applicable}
-Service delegated to: {ServiceClassName or "none - trivial wiring only"}
+Production gate: {CONFIRM=yes required | none}
+Service delegated to: {ServiceClassName or "trivial wiring only"}
 Exit behavior: {raises on failure | abort with message on precondition fail}
 ```
 
 ## Avoid
 
-- Business logic in `.rake` files - extract to a service or PORO under `app/`
-- Loading entire tables (`Model.all.each`) - always batch with `find_each` / `in_batches`
-- Forgetting `task: :environment` - the task will fail at the first model reference
-- Destructive tasks without `DRY_RUN` and without a production confirmation gate
-- `puts` for progress - use `Rails.logger` with structured fields so cron/log aggregation can parse it
-- Calling `exit 0` after a failure - cron will think the job succeeded; raise or `abort` instead
-- Passing ActiveRecord objects through `Rake::Task#invoke` - pass IDs
-- Defining tasks at the top level (no namespace) - they collide and pollute `rake -T`
-- Long-running tasks (>30 min) without resumability - on failure you start over from zero
-- Re-implementing retry/backoff in a rake task - if you need that, the work belongs in a Sidekiq job
-- Using `default_scope` models inside backfills without `unscoped` - silent row skips
-- Skipping the `desc` line - tasks without `desc` are hidden from `rake -T` and forgotten
+- Business logic in `.rake` files - extract to a service
+- Loading entire tables (`Model.all.each`) - always batch
+- Forgetting `task: :environment`
+- Destructive tasks without `DRY_RUN` and production confirmation
+- `puts` for progress - use `Rails.logger` with structured fields
+- `exit 0` after a failure - cron thinks the job succeeded; raise or `abort`
+- Passing AR objects through `Rake::Task#invoke` - pass IDs
+- Top-level tasks (no namespace) - they collide
+- Long tasks (>30 min) without resumability - failure starts over from zero
+- Re-implementing retry/backoff - if you need that, use a Sidekiq job
+- `default_scope` models inside backfills without `unscoped` - silent row skips
+- Skipping `desc` - tasks without `desc` are hidden from `rake -T`

@@ -9,156 +9,193 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing.
 
 # Rails Performance Review
 
 ## Purpose
 
-Rails-aware performance review that names ActiveRecord, Sidekiq, and Rails caching idioms directly instead of routing through the generic backend adapter. Produces findings with measured or estimated impact (latency, throughput, query count) and concrete fixes using Rails 7.2+ patterns.
+Rails-aware performance review naming ActiveRecord, Sidekiq, and Rails caching idioms directly. Produces findings with measured or estimated impact (latency, throughput, query count) and concrete fixes using Rails 7.2+ patterns.
 
-This workflow is the stack-specific delegate of `task-code-review-perf` for Ruby/Rails. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-perf` for Ruby/Rails.
 
 ## When to Use
 
 - Reviewing a Rails PR or branch for performance regressions
 - Investigating a slow controller action, view, or Sidekiq job
-- Pre-merge perf pass on changes touching ActiveRecord queries, scopes, or job dispatch
+- Pre-merge perf pass on changes touching ActiveRecord, scopes, or job dispatch
 - Quarterly N+1 / query-plan sweep against APM-flagged endpoints
 
 **Not for:**
 
 - General Rails code review (use `task-code-review`)
-- Security review (use `task-code-review-security` or its Rails delegate)
+- Security review (use `task-code-review-security`)
 - Production incident response (use `/task-oncall-start`)
 - Pre-implementation feature design (use `task-rails-implement`)
 
 ## Depth Levels
 
-| Depth      | When to Use                                                             | What Runs                                        |
-| ---------- | ----------------------------------------------------------------------- | ------------------------------------------------ |
-| `quick`    | Single endpoint or scope ("is this query ok?")                          | Steps 3 + 4 only; ActiveRecord + indexes         |
-| `standard` | Default - full Rails perf review                                        | All steps                                        |
-| `deep`     | Profiling-driven review with rack-mini-profiler / bullet / scout output | All steps + capacity guidance and load-test plan |
+| Depth      | When to Use                                                     | What Runs                                |
+| ---------- | --------------------------------------------------------------- | ---------------------------------------- |
+| `quick`    | Single endpoint or scope                                        | Steps 3 + 4 only                         |
+| `standard` | Default - full Rails perf review                                | All steps                                |
+| `deep`     | Profiling-driven review with bullet/scout output                | All steps + capacity guidance + load-test |
 
 Default: `standard`.
 
 ## Invocation
 
-Mirrors `task-code-review-perf`:
+| Invocation                         | Meaning                                                              |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `/task-rails-review-perf`          | Review current branch vs base; fails fast on a trunk branch          |
+| `/task-rails-review-perf <branch>` | Review `<branch>` vs base (3-dot diff)                               |
+| `/task-rails-review-perf pr-<N>`   | Review PR head fetched into local branch `pr-<N>`                    |
 
-| Invocation                         | Meaning                                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-rails-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-rails-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-rails-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-perf`, Step 2 is skipped and this workflow reuses the parent's read-once artifacts.
 
 ## Workflow
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Ruby / Rails. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-rails-review` (parent already detected Rails), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rails, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Rails 7.2+ idioms.
+Use skill: `stack-detect`. If invoked as a delegate (parent already detected Rails), accept the pre-confirmed stack and skip re-detection. If not Rails, stop and tell the user to invoke `/task-code-review-perf` instead.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 2 - Resolve the Diff
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check`. On approval, read the diff and commit log once via `git diff <base>...<head>` and `git log <base>..<head>`, then reuse them for all subsequent steps. Skip if running as a subagent and the parent passed the handle plus pre-read artifacts.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+If `review-precondition-check` stops with a fail-fast message, surface it verbatim and stop. Do not run state-changing git commands.
 
 ### Step 3 - ActiveRecord Hotspots
 
-Use skill: `rails-activerecord-patterns` for canonical query patterns (`includes`/`preload`/`eager_load` choice, `find_each`, `counter_cache`, `pluck`, `exists?`, transaction-IO discipline). Apply them as the diff scan checklist:
+Use skill: `rails-activerecord-patterns`.
 
-- [ ] **N+1 in controllers / serializers / views**: every association touched in `each` or the response shape is preloaded upstream. Serializer-driven N+1 is fixed on the *controller*, not the serializer
-- [ ] **Multi-level N+1**: nested `each` over associations of associations - preload the full graph (`includes(line_items: :product)`)
-- [ ] **N+1 inside service objects**: a controller's preload contract doesn't extend through `Service.call(orders:)` - either preload at the service boundary or document the relation contract
+- [ ] **N+1 in controllers / serializers / views**: every association touched in `each` is preloaded upstream. Serializer-driven N+1 is fixed on the controller, not the serializer
+- [ ] **Multi-level N+1**: nested `each` over associations of associations - `includes(line_items: :product)`
+- [ ] **N+1 inside service objects**: caller's preload contract doesn't extend through `Service.call(orders:)` - preload at the boundary or document the relation contract
 - [ ] **Missing index on `where` / `order` / `group` columns**
 - [ ] **Hydration waste**: `pluck`/`pick` instead of `.map(&:col)` when only a column is needed
-- [ ] **Existence checks use `exists?`** (LIMIT 1), not `any?`/`present?` which loads the relation
-- [ ] **Iteration over >1k records uses `find_each` / `in_batches`**; no `.all.each` in production paths
+- [ ] **Existence checks use `exists?`** (LIMIT 1), not `any?`/`present?`
+- [ ] **Iteration over >1k records uses `find_each` / `in_batches`**; no `.all.each`
 - [ ] **`counter_cache`** for any `count` displayed alongside a list
-- [ ] **Transactions scoped tightly**: no HTTP calls or Sidekiq enqueues inside a transaction (use `after_commit` or `transaction.after_commit`)
+- [ ] **Transactions scoped tightly**: no HTTP / Sidekiq enqueues inside (use `after_commit`)
 
 ### Step 4 - Indexes and Migrations
 
-Use skill: `rails-migration-safety` for safe-migration checks on any change in `db/migrate/`.
+Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG).
 
 - [ ] Every column referenced in `where` / `order` / `group` is backed by an index
-- [ ] Composite indexes match the leftmost-prefix pattern of the queries
-- [ ] Foreign keys have indexes (`add_reference :foo, :bar, foreign_key: true, index: true`)
-- [ ] Indexes on large tables use `algorithm: :concurrently` and `disable_ddl_transaction!`
-- [ ] Unique constraints are enforced at the database level (`add_index ..., unique: true`), not just `validates :uniqueness`
-- [ ] Partial indexes used for boolean/enum filters that select a small subset (e.g., `where: "active IS true"`)
+- [ ] Composite indexes match the leftmost-prefix pattern of queries
+- [ ] FKs have indexes
+- [ ] Indexes on large tables use the right algorithm: MySQL `algorithm: :inplace` (or `INSTANT` for index ops where supported); PG `algorithm: :concurrently` + `disable_ddl_transaction!`. **`algorithm: :concurrently` raises on MySQL** - flag if seen
+- [ ] Unique constraints at the database level, not just `validates :uniqueness`
+- [ ] **PG only**: partial indexes for boolean/enum filters selecting a small subset. MySQL has no partial-index equivalent; flag `where:` clauses in MySQL migrations
 
 ### Step 5 - Sidekiq and Background Jobs
 
-Use skill: `rails-sidekiq-patterns` for retry/idempotency patterns.
+Use skill: `rails-sidekiq-patterns`.
 
-Inspect changes under `app/jobs/`, `app/sidekiq/`, and any `.perform_later` / `.perform_async` callsite:
-
-- [ ] Jobs are dispatched **after** the enclosing transaction commits (use `after_commit_on_create`, `after_commit`, or `Sidekiq.transactional_push`) - never enqueue mid-transaction
-- [ ] Job arguments are primitive (IDs, not AR records) to avoid `DeserializationError` and bloated Redis payloads
-- [ ] Idempotency guard at the top of `perform`: re-fetch state, check whether work was already done, return early if so
-- [ ] Retries are bounded (`sidekiq_options retry: <N>`) - do not rely on the default 25 retries for non-idempotent jobs
-- [ ] Queue priority assignment is explicit (no orphan jobs in the `default` queue for time-sensitive work)
-- [ ] Long-running jobs are split (a single `perform` should target sub-30-second median latency at p50)
-- [ ] Bulk dispatch uses `Sidekiq::Client.push_bulk` for > 100 jobs
+- [ ] Jobs dispatched **after** the enclosing transaction commits (use `after_commit_everywhere` for nested transactions) - never enqueue mid-transaction
+- [ ] Job arguments primitive (IDs, not AR records)
+- [ ] Idempotency guard at the top of `perform`: re-fetch state, return early if done
+- [ ] Retries bounded (`sidekiq_options retry: <N>`) - don't rely on the default 25 for non-idempotent jobs
+- [ ] Queue priority assignment explicit
+- [ ] Long-running jobs split (single `perform` targets sub-30-second p50)
+- [ ] Bulk dispatch uses `Sidekiq::Client.push_bulk` for >100 jobs
+- [ ] No network calls (Stripe, S3) inside `Model.transaction`
 
 ### Step 6 - Caching and Rendering
 
-For server-rendered apps (views beyond mailers), use skill: `rails-view-templates` for engine-specific rendering patterns and fragment-caching key rules. Apply this review-side checklist to changed `.erb` / `.haml` / `.slim` files:
+For server-rendered apps, use skill: `rails-view-templates`.
 
-**View-only diffs**: the queries that fan out from a view live in the controller that feeds it - re-apply Step 3 checks against that controller. View-side perf bugs almost never have view-side fixes.
+**View-only diffs**: queries that fan out from a view live in the controller - re-apply Step 3 against that controller.
 
-- [ ] **Per-row association access without preload** in any engine - flag and fix on the controller side with `includes(...)`
-- [ ] **Fragment cache keys include `updated_at`**: `cache item` is correct; `cache item.id` never invalidates - flag as a high-impact regression. Russian-doll caching paired with `belongs_to :parent, touch: true`
-- [ ] **Cache-stampede protection** on hot keys: `Rails.cache.fetch(key, expires_in: ..., race_condition_ttl: ...)`
-- [ ] **Per-user vs global cache scope** - no authorized data leakage across users
+- [ ] **Per-row association access without preload** in any engine - flag and fix on the controller side
+- [ ] **Fragment cache keys include `updated_at`**: `cache item` is correct; `cache item.id` never invalidates. Russian-doll caching paired with `belongs_to :parent, touch: true`
+- [ ] **Cache-stampede protection** on hot keys: `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)`
+- [ ] **Per-user vs global cache scope** - no authorized data leakage
 - [ ] **HTTP caching** (`fresh_when`, `stale?`) on read-heavy GET endpoints
-- [ ] **Serializer associations** not in the controller's `includes`
-- [ ] **Collection rendering**: `render partial:, collection:, cached: true` for hot lists (single Redis round-trip vs per-item)
-- [ ] **Helper hot paths**: helpers issuing SQL inside `each` - move to a presenter that takes a preloaded relation, or memoize per-request
+- [ ] **Serializer associations** included in the controller's `includes`
+- [ ] **Collection rendering**: `render partial:, collection:, cached: true` for hot lists
+- [ ] **Helper hot paths**: helpers issuing SQL inside `each` - move to a presenter or memoize
 - [ ] **ViewComponent over partials** rendered >50 times per request
-- [ ] **Turbo Stream broadcasts in loops**: batch via `broadcast_replace_to` of a container or a single after-commit broadcast
+- [ ] **Turbo Stream broadcasts in loops**: batch via `broadcast_replace_to` of a container
 
-### Step 7 - Concurrency and External I/O
+### Step 7 - Connection Pool and External I/O
 
-- [ ] Connection pool sized correctly per process: web `DB_POOL >= RAILS_MAX_THREADS` (Puma threads per worker); Sidekiq runs as its own process so set its `DB_POOL >= sidekiq.concurrency` independently. The total connections at the database must accommodate `(puma_workers x RAILS_MAX_THREADS) + (sidekiq_processes x sidekiq.concurrency)` plus headroom for rails console / rake tasks
-- [ ] HTTP clients (Faraday, HTTParty, Net::HTTP) reused, not instantiated per request
+Use skill: `rails-connection-pool-sizing`.
+
+- [ ] Per-process pool sized to in-process thread count (Puma `pool >= RAILS_MAX_THREADS`, +1-2 if `load_async`/Action Cable; Sidekiq `pool >= concurrency`)
+- [ ] Deployment-wide total stays under DB `max_connections` with 15-25% headroom for the rolling-deploy window
+- [ ] Connection multiplexer (RDS Proxy / ProxySQL / PgBouncer) when total backend processes exceed ~200
+- [ ] HTTP clients reused, not instantiated per request
 - [ ] Timeouts set on every external call (`open_timeout`, `read_timeout`)
-- [ ] Circuit breaker (Stoplight, Semian) on flaky external dependencies
-- [ ] No blocking I/O inside Puma worker threads beyond the configured timeout
+- [ ] Circuit breaker (Stoplight, Semian) on flaky dependencies
 
-### Step 8 - Observability for Perf
+### Step 8 - Locking and Work Splitting
+
+Use skills: `rails-db-locking-patterns` and `rails-work-splitter-patterns`.
+
+- [ ] **MySQL row-locking**: `with_lock` / `lock("FOR UPDATE")` paths lock by primary key only. Range scans under default RR flagged for review (gap-lock cascade)
+- [ ] Cron rake tasks guarded by leader lock (`with_advisory_lock` gem)
+- [ ] No network calls inside open transactions or held advisory locks
+- [ ] No `find_each` inside `Model.transaction { ... }`
+- [ ] `SKIP LOCKED` claim queries hit a unique-index path
+- [ ] Batch fan-out documented choice (modulo / `SKIP LOCKED` / shards-table)
+- [ ] **Isolation tiers correct**: default RR (MySQL) / RC (PG) with chunked transactions; per-transaction `isolation: :read_committed` only at specific call sites with rationale; no blanket per-connection RC unless documented
+- [ ] `innodb_lock_wait_timeout` (MySQL) or `lock_timeout` (PG) at session level
+
+### Step 9 - Batch Processing Safety
+
+Use skill: `rails-batch-processing-patterns`.
+
+**Chunked-transaction shape:**
+
+- [ ] No `Model.transaction { ... in_batches/find_each ... }` over a whole batch run (Mode A)
+- [ ] No `find_each { |row| Model.transaction { row.update! } }` per-row commits (Mode B)
+- [ ] Transaction boundary is one chunk: `in_batches(of: N) { |batch| Model.transaction { ... } }`
+- [ ] Chunk size justified for row size and contention (500-1000 OLTP, 5000-10000 cold backfills, lower for big payloads)
+- [ ] Idempotency at chunk granularity
+- [ ] No HTTP / Redis / S3 calls inside chunk transactions
+
+**Memory:**
+
+- [ ] jemalloc or `MALLOC_ARENA_MAX=2` set for Sidekiq and long rake tasks
+- [ ] Long rake tasks log RSS periodically
+- [ ] Sidekiq `WorkerKiller` at 70-80% of container memory limit
+- [ ] Memory-heavy queues run at lower `concurrency`
+- [ ] `pluck(:id)` cursors over `find_each` when full AR objects aren't needed
+
+### Step 10 - Observability
 
 - [ ] Slow paths instrumented with `ActiveSupport::Notifications` or APM custom spans
-- [ ] N+1 detection enabled in non-prod (Bullet gem) - flag any change that disables it
-- [ ] Query log tags (`config.active_record.query_log_tags_enabled = true`) on so APM can attribute queries to controllers/jobs
+- [ ] N+1 detection enabled in non-prod (Bullet) - flag any change that disables it
+- [ ] Query log tags (`config.active_record.query_log_tags_enabled = true`) so APM attributes queries
+- [ ] **Slow-query inspection**: MySQL `performance_schema.events_statements_summary_by_digest` or slow_query_log; PG `pg_stat_statements`
+- [ ] **Worker memory telemetry**: Sidekiq + Prometheus exporter
 
+### Step 11 - Write Report
 
-### Step 9 - Write Report
+Use skill: `review-report-writer` with `report_type: review-perf`. Write the report to file before ending. Print the confirmation line.
 
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
 - [ ] Stack confirmed as Rails before any Rails-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] `rails-activerecord-patterns` consulted; N+1, multi-level N+1, scope/index alignment all checked
-- [ ] `rails-migration-safety` consulted for any `db/migrate/` change; concurrent index and composite-index leftmost-prefix verified
-- [ ] `rails-sidekiq-patterns` consulted for any job change; post-commit dispatch and idempotency guard verified
+- [ ] `review-precondition-check` ran (or handle received from parent); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
+- [ ] Diff and commit log read once and reused
+- [ ] When `head_matches_current` was false, explicit user approval obtained before review (skipped if parent already gated)
+- [ ] `rails-activerecord-patterns` consulted; N+1, multi-level N+1, scope/index alignment checked
+- [ ] `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG) consulted for any `db/migrate/` change
+- [ ] `rails-sidekiq-patterns` consulted; post-commit dispatch and idempotency verified
+- [ ] `rails-connection-pool-sizing` consulted
+- [ ] `rails-db-locking-patterns` consulted; lock-by-PK and isolation-tier correctness verified
+- [ ] `rails-work-splitter-patterns` consulted for any fan-out / batch parallelism change
+- [ ] `rails-batch-processing-patterns` consulted; chunked-transaction shape and memory mitigations verified
 - [ ] Caching strategy assessed (Russian-doll, low-level, HTTP); invalidation explicit
-- [ ] For server-rendered apps: `rails-view-templates` consulted; partial-render N+1, fragment cache key correctness, collection `cached: true`, helper hot paths, and Turbo Stream broadcast batching all checked against changed view files
-- [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never just "this is slow"
+- [ ] For server-rendered apps: `rails-view-templates` consulted
+- [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
 - [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] Next Steps section produced; each item tagged `[Implement]` or `[Delegate]` ordered High > Medium > Low
+- [ ] Report written to file via `review-report-writer`; confirmation printed
 
 ## Output Format
 
@@ -174,15 +211,11 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the Rails idiom: N+1, missing index, mid-transaction enqueue, etc.]
-- **Impact:** [estimated effect - e.g., "N+1 in OrdersController#index adds ~200 queries per request at 100 orders" or measured "p95 800ms -> 120ms after fix"]
-- **Fix:** [specific Rails change with code example - includes/preload/eager_load choice, after_commit dispatch, etc.]
+- **Issue:** [name the Rails idiom: N+1, missing index, mid-transaction enqueue]
+- **Impact:** [estimated effect, e.g., "N+1 in OrdersController#index adds ~200 queries per request at 100 orders" or measured "p95 800ms -> 120ms after fix"]
+- **Fix:** [specific Rails change with code]
 
-### Medium Impact
-
-[Same structure]
-
-### Low Impact / Quick Wins
+### Medium Impact / Low Impact / Quick Wins
 
 [Same structure]
 
@@ -190,25 +223,24 @@ _Omit sections with no findings._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Enable Bullet in staging", "Add query_log_tags for APM attribution", "Introduce counter_cache on Order#line_items_count"]
+[Structural improvements: "Enable Bullet in staging", "Add query_log_tags", "Introduce counter_cache on Order#line_items_count"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, schema migration, or load-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Prioritized action list. Each tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `includes(:line_items, :customer)` to OrdersController#index"]
-2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at) - spawn DB migration subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: schema] - [one-line action]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- Running `git fetch`, `git checkout`, or any state-changing git command - the user must run these
 - Reporting issues without naming the Rails idiom ("this is slow" vs "N+1 in serializer; preload `:line_items`")
-- Recommending generic backend advice when a Rails-specific pattern applies (say "use `find_each`", not "use batch processing")
-- Suggesting caching without an invalidation strategy (Russian-doll requires `touch: true` or it goes stale)
-- Conflating performance review with general code review or security review - delegate those to their workflows
-- Recommending `joins` where `includes`/`preload` is correct (or vice versa) - choose based on whether the join column is used for filtering vs. only for hydration
-- Treating Sidekiq retries as a substitute for idempotency - retries with non-idempotent jobs cause double-processing
+- Generic backend advice when a Rails-specific pattern applies
+- Suggesting caching without an invalidation strategy (Russian-doll requires `touch: true`)
+- Conflating performance review with general code review or security review
+- `joins` where `includes`/`preload` is correct (or vice versa)
+- Treating Sidekiq retries as a substitute for idempotency

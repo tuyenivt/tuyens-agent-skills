@@ -9,135 +9,141 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing. These rules govern every step.
 
 ## When to Use
 
-- Diagnosing Rails application errors from stack traces or log output
-- Debugging ActiveRecord errors (RecordNotFound, RecordInvalid, StatementInvalid)
-- Fixing controller/routing errors (ParameterMissing, RoutingError, Pundit::NotAuthorizedError)
-- Debugging Sidekiq job failures (DeserializationError, argument issues)
-- Resolving Zeitwerk autoloading errors (LoadError, NameError)
-- Tracing nil reference errors (NoMethodError on nil)
+- Diagnosing Rails errors from stack traces or log output
+- Debugging ActiveRecord errors (`RecordNotFound`, `RecordInvalid`, `StatementInvalid`)
+- Fixing controller/routing errors (`ParameterMissing`, `RoutingError`, `Pundit::NotAuthorizedError`)
+- Debugging Sidekiq job failures (`DeserializationError`, argument issues)
+- Resolving Zeitwerk autoloading errors (`LoadError`, `NameError`)
+- Tracing nil reference errors
 
 Not for:
 
 - Production incident analysis or runbook execution (use `/task-oncall-start`)
 - Feature implementation (use `task-rails-implement`)
-- Performance optimization without an error
+- Performance optimization without an error (use `task-rails-review-perf`)
 
 ## Rules
 
-- Always classify the error before proposing a fix - understand the category first
-- Always state root cause confidence level (HIGH/MEDIUM/LOW)
-- Try to reproduce locally (failing spec or rails console snippet) before proposing the fix - a fix that can't be reproduced is a guess
+- Always classify the error before proposing a fix
+- Always state root cause confidence (HIGH/MEDIUM/LOW)
+- Try to reproduce locally (failing spec or rails console snippet) before proposing the fix
 - Fix must be minimal and address root cause, not symptoms
-- Never bypass strong params, Pundit policies, or Zeitwerk to "fix" an error
-- Never rescue exceptions globally - handle specific error types
+- Never bypass strong params, Pundit policies, or Zeitwerk
+- Never rescue exceptions globally
 - Always include a prevention step (test, validation, or linting rule)
 
 ## Workflow
 
 ### STEP 1 - INTAKE
 
-Ask for: full stack trace or error message, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip gem/library frames) and read that file.
+Ask for: full stack trace or error message, source file where it originates, what the user expected. Identify the first application-code frame and read that file.
 
-If the user provides only a partial error (e.g., just an error class name or a single line), ask for the full stack trace or the relevant log output before proceeding. If the user describes unexpected behavior without an error, ask them to reproduce it and capture the Rails log output (`tail -f log/development.log`).
+If the user provides a partial error, ask for the full stack trace or log output before proceeding.
 
-**If "no error, just wrong behavior":** When the user reports "the value I sent in the body is nil in the DB" or "the field I added to the request gets ignored" with no exception, reframe as a boundary-loss question: at which layer does the value disappear? Trace the path: `params` -> `params.require(:model).permit(...)` (strong params silently drops keys not in the permit list - the most common cause) -> form object / DTO if any (`attr_accessor` / `attribute :foo` declared?) -> service-object whitelist (`Order.create!(name: dto.name, total: dto.total)` vs `Order.create!(dto.attributes)`) -> AR `alias_attribute :promo, :coupon_code` / `attribute :foo, :string` mismatch with the migration column name -> DB column. Same shape for ActiveJob / Sidekiq jobs: dispatch site -> `after_commit` block (does the value still hold then? `record.previous_changes` vs `record.attributes`) -> GlobalID round-trip (AR records are re-fetched from DB on `perform`, so changes between enqueue and perform are lost; conversely, the worker sees the *latest* DB state, not the enqueue-time snapshot - flag any job whose correctness depends on enqueue-time field values) -> `perform` body -> side effect. The bug is almost always at one of these boundaries, not in the controller body. Identify which boundary lost the value before reading any code.
+**If "no error, just wrong behavior":** When a value is silently dropped (e.g., "the field I added gets ignored"), reframe as a boundary-loss question: at which layer does the value disappear? Trace the path:
+
+`params -> params.require.permit (silently drops keys not in the list - most common cause) -> form object / DTO (`attribute :foo` declared?) -> service whitelist (`Order.create!(name: dto.name)` vs `dto.attributes`) -> AR `alias_attribute` / `attribute :foo, :string` mismatch with migration column name -> DB`
+
+Same shape for ActiveJob/Sidekiq: `dispatch site -> after_commit block (still holds value? `record.previous_changes` vs `record.attributes`) -> GlobalID round-trip (AR records re-fetched on perform; correctness depending on enqueue-time field values is a bug) -> perform body -> side effect`. The bug is almost always at one of these boundaries.
 
 ### STEP 2 - CLASSIFY
 
-Match the error to one of these categories, then load the relevant atomic skill:
+Match the error and load the relevant atomic skill:
 
-**ActiveRecord / Database Errors:**
+**ActiveRecord / Database:**
 
-| Error                            | Likely Cause                                             | Skill                         |
-| -------------------------------- | -------------------------------------------------------- | ----------------------------- |
-| `ActiveRecord::RecordNotFound`   | Missing record, bad params/scopes                        | `rails-activerecord-patterns` |
-| `ActiveRecord::RecordInvalid`    | Validation failure - check `record.errors.full_messages` | `rails-activerecord-patterns` |
-| `ActiveRecord::StatementInvalid` | Raw SQL error, missing migration, wrong column type      | `rails-migration-safety`      |
-| `PG::UniqueViolation`            | Duplicate record - needs upsert or idempotency guard     | `rails-activerecord-patterns` |
-| `PG::LockNotAvailable`           | Migration lock or long transaction                       | `rails-migration-safety`      |
+| Error                                                        | Likely Cause                                              | Skill                              |
+| ------------------------------------------------------------ | --------------------------------------------------------- | ---------------------------------- |
+| `RecordNotFound`                                             | Missing record, bad params/scopes                         | `rails-activerecord-patterns`      |
+| `RecordInvalid`                                              | Validation failure - check `record.errors.full_messages`  | `rails-activerecord-patterns`      |
+| `StatementInvalid`                                           | Raw SQL error, missing migration, wrong column type       | `rails-migration-safety`           |
+| `Mysql2::Error: Lock wait timeout exceeded`                  | Long-running transaction or held advisory lock            | `rails-db-locking-patterns`        |
+| `Mysql2::Error: Deadlock found`                              | Gap-lock cascade under default RR - non-PK `with_lock`    | `rails-db-locking-patterns`        |
+| `Mysql2::Error: Too many connections` / `MySQL gone away`    | Pool / network / `max_connections` / `wait_timeout`       | `rails-connection-pool-sizing`     |
+| `Mysql2::Error::TimeoutError`                                | `read_timeout` exceeded                                   | `rails-activerecord-patterns`      |
+| MySQL `History list length` / Aurora `undo_log_records` high | Long-running transaction holding undo (Failure mode A)    | `rails-batch-processing-patterns`  |
+| `PG::UniqueViolation`                                        | Duplicate record - needs upsert or idempotency guard      | `rails-activerecord-patterns`      |
+| `PG::LockNotAvailable`                                       | Migration lock or long transaction                        | `rails-postgresql-migration-safety` |
+| `PG::ConnectionBad: remaining slots reserved`                | DB-side `max_connections` reached                         | `rails-connection-pool-sizing`     |
+| PG `idle in transaction` long-runner                         | Worker crashed mid-transaction; `idle_in_transaction_session_timeout` not set | `rails-batch-processing-patterns` |
 
-**Controller / Request Errors:**
+**Controller / Request:**
 
 | Error                                | Likely Cause                                         | Skill                     |
 | ------------------------------------ | ---------------------------------------------------- | ------------------------- |
 | `ActionController::ParameterMissing` | Strong params expects nested key client doesn't send | `rails-security-patterns` |
 | `ActionController::RoutingError`     | Route not defined - run `rails routes`               | -                         |
 | `Pundit::NotAuthorizedError`         | Policy denies action for user's role                 | `rails-security-patterns` |
+| `ActionController::InvalidAuthenticityToken` | Missing CSRF token / `protect_from_forgery` mismatch | `rails-security-patterns` |
+| `JSON::ParserError` / `Parameters::ParseError` | Malformed request body; should return 400 not 500 - add `rescue_from` | - |
 
-**Autoloading / Require Errors:**
+**Autoloading:**
 
-| Error                                             | Likely Cause                                             | Skill |
-| ------------------------------------------------- | -------------------------------------------------------- | ----- |
-| `LoadError` / `NameError: uninitialized constant` | Zeitwerk naming mismatch (file path must match constant) | -     |
+| Error                                     | Cause                                                    |
+| ----------------------------------------- | -------------------------------------------------------- |
+| `LoadError` / `NameError: uninitialized constant` | Zeitwerk filename/constant mismatch              |
 
-Run `bin/rails zeitwerk:check` to verify. Prevention: add `Rails.application.eager_load!` test.
+Run `bin/rails zeitwerk:check` to verify. Prevention: `Rails.application.eager_load!` test.
 
-**Sidekiq Errors:**
+**Sidekiq:**
 
-| Error                             | Likely Cause                                                                                                | Skill                    |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Sidekiq job failure               | Non-serializable args, missing idempotency guard                                                            | `rails-sidekiq-patterns` |
-| `ActiveJob::DeserializationError` | Record deleted, OR job enqueued inside a DB transaction that hasn't committed yet (worker races the commit) | `rails-sidekiq-patterns` |
+| Error                                                              | Likely Cause                                                                | Skill                              |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------- |
+| Sidekiq job failure                                                | Non-serializable args, missing idempotency guard                            | `rails-sidekiq-patterns`           |
+| `ActiveJob::DeserializationError`                                  | Record deleted, OR job enqueued inside a transaction that hasn't committed  | `rails-sidekiq-patterns`           |
+| OOM-kill / SIGKILL on Sidekiq (no Ruby exception, process gone)    | RSS exceeded container memory limit; missing `WorkerKiller`                 | `rails-batch-processing-patterns`  |
+| `NoMemoryError` / `Errno::ENOMEM`                                  | In-process or kernel-side memory exhaustion - unbounded array in batch loop | `rails-batch-processing-patterns`  |
 
-**Nil Reference Errors:**
+**Concurrency / Resource:**
 
-| Error                                         | Likely Cause                                                  |
+| Error                                       | Likely Cause                                                                          | Skill                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------- |
+| `Rack::Timeout::RequestTimeoutException`    | Slow query, external API hang, or N+1                                                 | `rails-activerecord-patterns`      |
+| `ActiveRecord::Deadlocked`                  | Two transactions taking row locks in opposite order; on MySQL RR more often gap-lock cascade | `rails-db-locking-patterns`  |
+| `ActiveRecord::ConnectionTimeoutError`      | Pool exhausted; check `connection_pool.stat` for `waiting > 0`                        | `rails-connection-pool-sizing`     |
+| `ActiveRecord::StaleObjectError`            | Optimistic lock conflict - retry with fresh state. Storms on hot rows = wrong choice  | `rails-db-locking-patterns`        |
+| `PG::ConnectionBad` / `PG::UnableToSend`    | DB restart, network blip, or pool corruption after fork                               | `rails-connection-pool-sizing`     |
+
+**Nil Reference:**
+
+| Error                                         | Cause                                                         |
 | --------------------------------------------- | ------------------------------------------------------------- |
 | `NoMethodError: undefined method 'X' for nil` | Missing association, failed `find_by`, uninitialized variable |
 
-**Concurrency / Resource Errors:**
-
-| Error                                       | Likely Cause                                                                          | Skill                         |
-| ------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
-| `Rack::Timeout::RequestTimeoutException`    | Slow query, external API hang, or N+1 - request exceeded the Rack::Timeout window     | `rails-activerecord-patterns` |
-| `ActiveRecord::Deadlocked`                  | Two transactions taking row locks in opposite order; reorder writes or add row-locks  | `rails-activerecord-patterns` |
-| `ActiveRecord::ConnectionTimeoutError`      | Pool exhausted - too many concurrent threads vs `pool` size, or leaked connections    | `rails-activerecord-patterns` |
-| `ActiveRecord::StaleObjectError`            | Optimistic lock conflict - someone else updated the row first; retry with fresh state | `rails-activerecord-patterns` |
-| `PG::ConnectionBad` / `PG::UnableToSend`    | Database restart, network blip, or pool corruption after a fork                       | -                             |
-
-**Auth / CSRF / Format Errors:**
-
-| Error                                            | Likely Cause                                                                                       | Skill                     |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------- |
-| `ActionController::InvalidAuthenticityToken`     | Missing CSRF token on a non-API form, or `protect_from_forgery` mismatched with `with: :null_session` for API | `rails-security-patterns` |
-| `JSON::ParserError`                              | Client sent malformed JSON; should return 400 not 500 - add `rescue_from` in BaseController        | -                         |
-| `ActionDispatch::Http::Parameters::ParseError`   | Same family - malformed request body                                                               | -                         |
-
 ### STEP 3 - LOCATE
 
-1. Read the stack trace top-to-bottom; find the first application-code frame (not gem code)
-2. Open that source file and read the failing method
-3. Trace the data path: where does the problematic value originate? Follow it upstream through controller params, service calls, or ORM queries
-4. For Sidekiq errors: check both the job's `perform` method and the code that enqueues it
+1. Read the stack trace top-to-bottom; find the first application-code frame
+2. Open that file and read the failing method
+3. Trace the data path upstream (controller params, service calls, ORM queries)
+4. For Sidekiq errors: check both the `perform` method and the enqueue site
 
 ### STEP 3.5 - REPRODUCE (when feasible)
 
-A fix you can't reproduce is a guess. Before STEP 4, try to reduce the failure to one of:
+A fix you can't reproduce is a guess. Reduce the failure to:
 
-- A failing RSpec example (preferred - the prevention step in STEP 6 builds on it)
+- A failing RSpec example (preferred - prevention step builds on it)
 - A `rails console` snippet that triggers the error
-- A `curl`/`httpie` request that triggers the error in dev
+- A `curl`/`httpie` request in dev
 
-If reproduction is impossible (race condition, prod-only data shape, third-party outage), state that explicitly, and lower your root-cause confidence accordingly. A non-reproducible "MEDIUM-confidence" diagnosis is more honest than a fabricated "HIGH-confidence" one.
+If reproduction is impossible (race condition, prod-only data, third-party outage), state that explicitly and lower confidence accordingly.
 
 ### STEP 4 - ROOT CAUSE
 
-Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
+Explain **why**, not just what. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (pattern match), **LOW** (multiple possible causes).
 
 ```
 ROOT CAUSE: [HIGH/MEDIUM/LOW confidence]
 The ParameterMissing error occurs because the controller expects params nested
-under :order (params.require(:order)) but the client sends a flat JSON body
-{ total: 99.99 } without the :order wrapper key.
+under :order but the client sends a flat JSON body without the wrapper key.
 ```
 
 ### STEP 5 - FIX
 
-Provide before/after code. Fix must be minimal and address root cause, not symptoms.
+Provide before/after code. Fix must be minimal and address root cause.
 
 ```ruby
 # BEFORE (expects { order: { total: 99.99 } })
@@ -146,9 +152,7 @@ def order_params
 end
 
 # AFTER - Option A: fix the client to wrap params
-# POST body: { "order": { "total": 99.99, "customer_id": 1, "status": "pending" } }
-
-# AFTER - Option B: if API convention is flat params
+# AFTER - Option B (if API convention is flat):
 def order_params
   params.permit(:total, :status, :customer_id)
 end
@@ -159,7 +163,7 @@ end
 Add a guard so this class of error cannot recur:
 
 - **RSpec request spec** that exercises the exact code path with the expected params shape
-- **Validation** at the model level to catch bad data early
+- **Validation** at the model level
 - **Linting rule** (rubocop) if applicable
 
 ## Output Format
@@ -175,25 +179,28 @@ Add a guard so this class of error cannot recur:
 [Before/after code blocks]
 
 ## Prevention
-[RSpec test, validation, or config change to prevent recurrence]
+[RSpec test, validation, or config change]
 ```
 
 ## Self-Check
 
 - [ ] Error classified into a specific category before any fix proposed
-- [ ] Reproduction attempted (failing spec, console snippet, or curl); if not feasible, that limitation is stated and confidence lowered accordingly
-- [ ] Root cause references the specific source file and line; confidence level stated
-- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
-- [ ] Rails conventions preserved - strong params, service objects, Pundit patterns not bypassed
-- [ ] Prevention step included (RSpec test, validation, or linting rule)
-- [ ] For `PG::LockNotAvailable`: `rails-migration-safety` skill referenced; for Sidekiq: idempotency and retry state checked
-- [ ] For `Rack::Timeout` / `ConnectionTimeoutError`: pool / external-call timeout root causes considered, not just retry-the-request
+- [ ] Reproduction attempted; if not feasible, that limitation is stated and confidence lowered
+- [ ] Root cause references the specific file:line; confidence stated
+- [ ] Concrete before/after fix; minimal, addresses root cause not symptom
+- [ ] Rails conventions preserved - strong params, service objects, Pundit not bypassed
+- [ ] Prevention step included
+- [ ] Migration-lock errors: `rails-postgresql-migration-safety` (PG) or `rails-migration-safety` (MySQL) referenced
+- [ ] Sidekiq errors: idempotency and retry state checked
+- [ ] `Rack::Timeout` / `ConnectionTimeoutError`: `rails-connection-pool-sizing` referenced
+- [ ] OOM-kill / `NoMemoryError` / `History list length`: `rails-batch-processing-patterns` referenced
+- [ ] `Lock wait timeout` / `Deadlock`: `rails-db-locking-patterns` referenced; lock-by-PK and isolation-tier escalation considered
 
 ## Avoid
 
-- Bypassing strong params with `params.permit!` or `to_unsafe_h` to "fix" ParameterMissing
-- Rescuing exceptions globally with `rescue => e; render json: { error: e.message }` - handle specific errors
-- Disabling Zeitwerk with `config.autoloader = :classic` to fix autoloading errors
-- Adding `dependent: :destroy` as a fix for DeserializationError (destroys data; add a nil guard instead)
-- Adding blanket `rescue StandardError` to suppress errors in Sidekiq jobs
+- Bypassing strong params with `params.permit!` or `to_unsafe_h` to "fix" `ParameterMissing`
+- `rescue => e; render json: { error: e.message }` - handle specific errors
+- `config.autoloader = :classic` to fix autoloading errors - fix the filename/constant mismatch
+- Adding `dependent: :destroy` as a fix for `DeserializationError` - add a nil guard instead
+- Blanket `rescue StandardError` to suppress errors in Sidekiq jobs
 - Proposing a fix before classifying and locating the root cause

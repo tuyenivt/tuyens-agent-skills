@@ -8,7 +8,7 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 - Ruby 3.4+
 - RSpec
 - Sidekiq
-- PostgreSQL
+- MySQL 8.0+ (primary), PostgreSQL 17+ (supported)
 - ActiveRecord
 
 ## Agents
@@ -38,8 +38,13 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 
 | Skill                         | Description                                                                                                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rails-activerecord-patterns` | ActiveRecord optimization: N+1 prevention, scopes, enum with integer mapping, associations with dependent options, counter_cache, batch processing, PostgreSQL features.           |
-| `rails-migration-safety`      | Safe migration patterns: strong_migrations gem, concurrent indexes, partial indexes, zero-downtime column operations, data migration separation, large table strategies.           |
+| `rails-activerecord-patterns` | ActiveRecord optimization: N+1 prevention, scopes, enum with integer mapping, associations with dependent options, counter_cache, batch processing, MySQL/PostgreSQL features, locking. |
+| `rails-migration-safety`      | Zero-downtime Rails migrations: MySQL 8.0 online/instant DDL, invisible indexes, gh-ost; PG concurrent indexes via sibling skill.                                                  |
+| `rails-postgresql-migration-safety` | Zero-downtime Rails/PostgreSQL migrations: concurrent indexes, validate-false check constraints, pg_advisory_lock, lock_timeout, large tables.                              |
+| `rails-connection-pool-sizing` | Connection pool sizing for Rails: Puma + Sidekiq + console budget vs DB max_connections, deploy spikes, RDS Proxy / ProxySQL / PgBouncer.                                         |
+| `rails-db-locking-patterns`   | Database locking for Rails: GET_LOCK / pg_advisory_lock leader election, lock-hold discipline, isolation tiers, deadlock avoidance.                                                |
+| `rails-work-splitter-patterns` | Splitting batch work across Rake/Sidekiq: modulo shards, SKIP LOCKED cursors, shards-table, rake fan-out with leader lock and push_bulk.                                          |
+| `rails-batch-processing-patterns` | Batch processing for Rails: chunked transactions, memory-safe iteration, jemalloc, pluck cursors, GC.compact, WorkerKiller, MySQL undo log.                                    |
 | `rails-testing-patterns`      | RSpec testing: model specs, service specs, Pundit policy specs, request specs, FactoryBot with state traits, Sidekiq testing, VCR/WebMock, shared examples.                        |
 | `rails-security-patterns`     | Rails security: strong parameters, Devise/JWT, Pundit authorization with role-based policies, CSRF, XSS, SQL injection, Rack::Attack, Rails credentials.                           |
 | `rails-sidekiq-patterns`      | Sidekiq job patterns: idempotency guards, post-transaction dispatch, retry strategy, queue priority, error handling, job versioning, monitoring.                                   |

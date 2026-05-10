@@ -22,7 +22,7 @@ model: sonnet
 - ActiveRecord: associations, validations, scopes, callbacks (sparingly), STI, polymorphism
 - Service objects: command pattern, result objects, domain event publishing
 - RESTful API design with Jbuilder, ActiveModel::Serializers, or Alba
-- PostgreSQL: indexing strategy, partitioning, advisory locks, full-text search
+- Database (MySQL primary, PostgreSQL secondary): indexing strategy, partitioning, advisory locks (`GET_LOCK` / `pg_advisory_lock`), full-text search (`FULLTEXT` / `tsvector`), online DDL (`ALGORITHM=INPLACE/INSTANT` on MySQL; concurrent indexes on PG)
 - Sidekiq: job design, idempotency, retry strategy, queue priority
 - RSpec: model specs, request specs, system specs, FactoryBot
 - ActionCable for real-time features; Active Storage for file attachments
@@ -62,7 +62,7 @@ New feature needs dynamic UI?
 - Every foreign key column has an explicit index
 - Add `null: false` + DB default for boolean and enum columns
 - Use `bigint` primary keys; consider UUID only for external-facing IDs
-- Partial indexes for soft-delete patterns (`WHERE deleted_at IS NULL`)
+- Partial indexes for soft-delete patterns on PostgreSQL (`WHERE deleted_at IS NULL`); on MySQL use a functional index on the `deleted_at IS NULL` predicate or accept a full index
 - Never store computed values that can be derived from other columns
 
 ## Service Object Pattern
@@ -115,7 +115,11 @@ Use modern Ruby features where they sharpen intent. Do not retrofit working code
 ## Reference Skills
 
 - Use skill: `rails-activerecord-patterns` for model, query, and association design
-- Use skill: `rails-migration-safety` for schema change planning
+- Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG) for schema change planning
+- Use skill: `rails-connection-pool-sizing` for Puma + Sidekiq + DB capacity planning
+- Use skill: `rails-db-locking-patterns` for advisory locks, leader election, and the three-tier transaction-isolation framework
+- Use skill: `rails-work-splitter-patterns` for backfill fan-out, `SKIP LOCKED` queues, and shards-table design
+- Use skill: `rails-batch-processing-patterns` for chunked transactions, memory bounding, and long-running rake/Sidekiq work
 - Use skill: `rails-service-objects` for command and result object patterns
 - Use skill: `rails-sidekiq-patterns` for background job architecture
 - Use skill: `rails-security-patterns` for auth, policy, and input validation design

@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## Overview
 
-This is a **Claude Code plugin marketplace repository** - a collection of agent skills and agents for Claude Code and Codex, organized by tech stack. It contains no application code; all files are Markdown skill definitions (`.md`) consumed by the Claude Code plugin system.
+A **Claude Code plugin marketplace repository** - agent skills and agents for Claude Code and Codex, organized by tech stack. Contains only Markdown skill definitions (`.md`); no application code, no build scripts, no test runners.
 
 ## Repository Structure
 
@@ -29,11 +29,11 @@ plugins/
   angular/       # Angular 21+ / TypeScript / Angular CLI
 ```
 
-Each plugin folder has its own `README.md`. Each skill lives in its own directory as a `SKILL.md` file.
+Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
+
+`core` is required by all other plugins. `spec` requires only `core`; per-stack agents come from whichever stack plugins are installed.
 
 ## Skill File Format
-
-Every `SKILL.md` begins with YAML frontmatter:
 
 ```yaml
 ---
@@ -47,189 +47,151 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 ---
 ```
 
-- **Workflow skills** (`task-*`, `user-invocable: true`): invoked by users as slash commands, orchestrate multiple atomic skills
-- **Atomic skills** (`user-invocable: false`): focused reusable patterns, composed into workflows via `Use skill: <name>` directives
+- **Workflow skills** (`task-*`, `user-invocable: true`): user-facing slash commands that orchestrate atomic skills end-to-end.
+- **Atomic skills** (`user-invocable: false`): focused single-concern patterns, composed via `Use skill: <name>` directives in Markdown bodies.
 
-## Skill Naming Conventions
+**Naming.** Workflow skills are prefixed `task-` (e.g., `task-spring-implement`). Atomic skills use `<framework>-<concern>` (e.g., `spring-jpa-performance`).
 
-- Workflow skills are always prefixed `task-` (e.g., `task-spring-implement`, `task-code-review`)
-- Atomic skills use `<framework>-<concern>` format (e.g., `spring-jpa-performance`, `go-error-handling`)
-- Agent files are plain Markdown in `plugins/<stack>/agents/`
+**Stack adaptation.** `stack-detect` reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is how skills adapt output to different ecosystems.
 
-## Plugin Dependencies
+## Skill Placement
 
-- `core` is required by all other plugins
-- `spec` requires only `core`; per-stack agents are supplied by whichever stack plugins are installed (e.g., `java`, `kotlin`, `python`, `react`)
+A skill belongs in `core` when **all** hold:
 
-## Skill Placement: When a Skill Belongs in `core`
+1. It is atomic (`user-invocable: false`), not a workflow.
+2. It is referenced by skills/agents in two or more other plugins, OR is needed by a `core` workflow.
+3. It is stack-agnostic.
+4. It does not encode a single plugin's domain identity (ADRs are architecture's; release plans are delivery's).
 
-Use this rule to decide where a new or existing skill should live. A skill belongs in `core` when **all** of the following hold:
+Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work.
 
-1. It is an **atomic** skill (`user-invocable: false`), not a workflow.
-2. It is referenced by skills or agents in **two or more other plugins**, OR is needed by a `core` workflow.
-3. It is **stack-agnostic** - no language- or framework-specific guidance baked in.
-4. It does **not** encode a single plugin's domain identity (e.g., ADRs are architecture's identity; release plans are delivery's identity).
+## Spec-Driven Development (opt-in)
 
-Workflow skills (`task-*`) stay in the plugin whose domain they represent. If another plugin needs the same capability, it composes the same atomic building blocks rather than depending on the workflow.
+The `spec` plugin adds an optional SDD pipeline mirroring GitHub Spec Kit. Nothing in `core` or stack plugins depends on it.
 
-When a skill fails any condition, leave it where it is. When it satisfies all four, the move is a directory rename - skills are resolved by name, not path, so `Use skill: <name>` references continue to work.
-
-## Stack Detection Pattern
-
-Many core workflow skills begin with `Use skill: stack-detect`, which reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is the primary mechanism by which skills adapt their output to different ecosystems.
-
-## Spec-Driven Development
-
-The `spec` plugin adds an optional Spec-Driven Development (SDD) pipeline mirroring GitHub Spec Kit. It is opt-in - install the plugin only when a project wants spec-first delivery; nothing in `core` or the stack plugins depends on it.
-
-**Artifact convention.** All SDD artifacts for a feature live under `.specs/<slug>/`:
+All SDD artifacts for a feature live under `.specs/<slug>/`:
 
 ```
 .specs/<slug>/
-  spec.md              # what + why (acceptance criteria, NFRs, out-of-scope)
-  clarifications.md    # append-only Q&A log from task-spec-clarify
+  spec.md              # what + why (ACs, NFRs, out-of-scope)
+  clarifications.md    # append-only Q&A log
   plan.md              # how (architecture, tech choices, contracts)
   tasks.md             # ordered, dependency-aware execution list
   analysis.md          # cross-artifact consistency findings (append-only)
-  checklists/          # requirements-quality gate; one append-only file per theme (default: requirements.md)
+  checklists/          # requirements-quality gate (append-only per theme)
   constitution.md      # project principles (append-only amendments)
   evaluation.md        # post-implementation scoring (append-only)
   handoffs/            # orchestration envelopes <NN>-<step>-<agent>.md
 ```
 
-Append-only files preserve iteration history; comparing runs is part of the workflow.
-
-**Dual-mode (speckit / standalone).** `speckit-detect` decides whether the consuming project already has Spec Kit installed. When Spec Kit is present, SDD workflows defer to its templates and slash commands; otherwise they run standalone using the artifact layout above. Both modes produce the same `.specs/<slug>/` shape.
-
-**Spec-aware workflow contract.** Existing stack workflows (e.g., `task-spring-implement`, `task-react-implement`) accept a `--spec <slug>` flag. When set, they load `Use skill: spec-aware-preamble` to ingest the spec artifacts and skip their own GATHER/DESIGN steps - the spec is the source of truth. When unset, workflows run their normal interactive flow.
-
-**Orchestration model.** `task-spec-orchestrate` sequences architect → dev → test → review using per-stack agents. Agents communicate by appending YAML envelopes to `handoffs/` (filesystem-as-bus, no central state machine; see `agent-handoff-contract`). After each step `fix-loop-controller` reads the directory and decides `proceed` / `loop` / `pause-for-amendment` / `escalate`. Default fix-loop budget is 3 iterations; hard cap 5.
-
-**Opt-in evaluation.** `task-spec-evaluate` shells out to run the project's tests (`eval-test-runner`), maps every AC and NFR to evidence (`eval-spec-coverage`), and aggregates with review verdicts (`eval-scorer`) into a single `pass` / `needs-fix` / `fail` status appended to `evaluation.md`. When `task-spec-orchestrate` is invoked with `--with-evaluation`, the score is written as a sidecar `<NN>-review-score.yaml` next to each review envelope and becomes the primary fix-loop signal (sidecar wins over envelope status when both exist).
+`speckit-detect` chooses dual-mode (defer to Spec Kit) or standalone; both produce the same `.specs/<slug>/` shape. Stack workflows (`task-spring-implement` etc.) accept `--spec <slug>` to ingest spec artifacts via `spec-aware-preamble` and skip their own GATHER/DESIGN steps. Orchestration, fix-loop, and evaluation details live in the `spec` plugin's own skills and README.
 
 ## Environment
 
-- Shell: Git Bash on Windows - use Unix commands (`mv`, `cp`, `mkdir -p`, forward slashes). Do not use PowerShell cmdlets or CMD commands.
-- **Git: read-only**. Only read operations are allowed (`git log`, `git diff`, `git status`, `git blame`, etc.). Never run state-changing git commands (`git add`, `git commit`, `git push`, `git checkout`, `git reset`, `git rebase`, `git merge`, `git stash`, `git branch -d/-D`, etc.). The user manages all commits and branch operations manually.
+- **Shell:** Git Bash on Windows. Use Unix commands (`mv`, `cp`, `mkdir -p`, forward slashes). No PowerShell or CMD.
+- **Git: read-only.** Run only read operations (`git log`, `git diff`, `git status`, `git blame`). Never run state-changing git commands - the user manages all commits and branches.
 
 ## Writing Conventions
 
-- Always use `-` (hyphen-minus) instead of `-` (em dash) in all Markdown files.
-
-## Key Design Principles
-
-- **Atomic vs workflow separation**: Atomic skills are focused single-concern patterns; workflow skills (`task-*`) orchestrate them into end-to-end user-facing flows.
-- **Stack-agnostic core**: The `core` plugin adapts to any detected stack - it never hardcodes framework assumptions.
-- **No application code**: This repo contains only Markdown; there are no build scripts, test runners, or executables to run.
-- **Composition via `Use skill:`**: Skills reference other skills using `Use skill: <skill-name>` directives in their Markdown body - this is how skill composition works at runtime.
+- Use `-` (hyphen-minus). Never `—` or `–` (em/en dash) in any Markdown file.
 
 ## Behavioral Principles
 
-These principles govern how Claude should reason and act when working in this repository. They apply in addition to, not instead of, the technical rules above.
+How Claude reasons and acts in this repo, in addition to the technical rules above.
 
-- **Think before acting.** State assumptions explicitly before editing. If a request has multiple interpretations, present them - don't pick silently. If something is unclear, stop and name it. Read a skill before editing it; confirm a referenced skill exists before citing it; count skills before claiming a number.
-- **Simplicity first.** Make the minimum change that satisfies the request. No speculative additions, no restructuring beyond the stated scope. If an edit touches 10 files but 3 would do, use 3.
-- **Surgical changes.** Touch only what the request requires. Don't improve adjacent skills, bump unrelated versions, or reformat files that weren't the target. Match existing conventions even if you'd do it differently.
-- **Surface confusion, don't paper over it.** When two skills contradict each other, when a frontmatter field is missing, when a `Use skill:` target does not exist, when a plugin version is inconsistent across `plugin.json` and `marketplace.json` - stop and name the inconsistency. Do not silently pick one side.
-- **Present tradeoffs, don't hide them.** When multiple viable approaches exist (e.g., atomic skill vs. workflow step, new skill vs. extending an existing one), state the options and the tradeoff explicitly. Let the user pick. A chosen default is acceptable, but the alternative must be named.
-- **Push back when the user is likely wrong.** If a request would break a documented convention (e.g., skipping the Post-Change Checklist, mixing workflow steps into an atomic skill, using an em dash), say so before acting. Compliance without challenge produces drift.
-- **Goal-driven execution with verification.** Treat each instruction as a declarative goal, not an imperative script. After every edit, verify the goal is met: re-read the changed section, check cross-references still resolve, confirm the Post-Change Checklist items are addressed. Work is not done until verified.
+- **Think before acting.** State assumptions before editing. If a request has multiple interpretations, present them. Read a skill before editing it; confirm referenced skills exist; count before claiming a number.
+- **Minimum change, surgical scope.** Make the smallest edit that satisfies the request. Don't reformat untouched files, bump unrelated versions, or improve adjacent skills. Match existing conventions even if you'd do them differently.
+- **Surface confusion, don't paper over it.** When skills contradict, frontmatter is missing, a `Use skill:` target doesn't exist, or versions disagree across `plugin.json`/`marketplace.json` - stop and name it. Don't silently pick a side.
+- **Present tradeoffs.** When multiple viable approaches exist (atomic vs. workflow, new skill vs. extension), state the options and tradeoff. A default is fine; the alternative must be named.
+- **Push back when the user is likely wrong.** If a request would break a documented convention (skipping the Post-Change Checklist, mixing workflow steps into an atomic skill, em dashes), say so before acting.
+- **Verify after editing.** Re-read the changed section, check cross-references resolve, confirm the Post-Change Checklist is addressed. Work isn't done until verified.
 
 ## Adding a New Skill
 
-1. Create `plugins/<stack>/skills/<skill-name>/SKILL.md`
-2. Add YAML frontmatter with `name`, `description`, `metadata`, and `user-invocable`
-3. For workflow skills: prefix with `task-`, set `user-invocable: true`, `type: workflow`
-4. For atomic skills: set `user-invocable: false`
-5. Write skill body following the content standards below
-6. Update the plugin's `README.md` skill table
+1. Create `plugins/<stack>/skills/<skill-name>/SKILL.md` with the frontmatter above.
+2. Workflow skills: prefix `task-`, set `user-invocable: true`, `type: workflow`. Atomic skills: set `user-invocable: false`.
+3. Write the body following the standards below.
+4. Update the plugin's `README.md` skill table.
 
-### Workflow Skill Contract Convention
+### Composition Contracts
 
-**Every workflow skill (`task-*`) must load `Use skill: behavioral-principles` as its first workflow step, before any other delegation including `stack-detect`.** This is universal and unconditional - it applies to stack-specific workflows (e.g., `task-spring-implement`), stack-agnostic workflows (e.g., `task-db-migration-plan`), and any future workflow regardless of whether it needs stack detection. The behavioral-principles skill governs how Claude reasons throughout the workflow; it must be loaded first so the rules are in effect for every subsequent step.
-
-Workflow skills that also adapt output to the project tech stack should load `Use skill: stack-detect` as Step 2 (immediately after behavioral-principles). Workflows that do not depend on the stack (e.g., delivery, release, database-migration-plan workflows) should skip stack-detect entirely.
-
-### Atomic Skill Contract Convention
-
-Atomic skills that consume stack-detect output must declare this dependency at the top of their body with a blockquote:
-
-```markdown
-> Load `Use skill: stack-detect` first to determine the project stack.
-```
-
-This signals to workflow authors that `stack-detect` must have already run before invoking this atomic skill. The consuming workflow is responsible for loading `stack-detect` - the atomic skill does not load it itself.
+- **Workflow skills must load `Use skill: behavioral-principles` as Step 1**, before any other delegation including `stack-detect`. Universal and unconditional - the behavioral rules must be in effect for every subsequent step.
+- Workflows that adapt output to the project's stack load `Use skill: stack-detect` as Step 2. Workflows that don't depend on stack (delivery, release, db-migration-plan) skip it entirely.
+- Atomic skills that consume `stack-detect` output declare it at the top of the body with a blockquote: `> Load `Use skill: stack-detect` first to determine the project stack.` The consuming workflow loads `stack-detect`, not the atomic skill itself.
 
 ### Skill Content Standards
 
-Every skill must follow these content quality standards. Skills that skip these produce weaker output.
-
 #### Description (frontmatter)
 
-- **Hard cap: 150 characters.** Descriptions are loaded into context on every Claude Code session; long descriptions trigger `/doctor` truncation warnings (default skill-listing budget is ~1% of the context window). Aim for 100-140 chars to leave headroom.
-- **Keyword-dense, not prose.** The skill picker matches on description text - lead with a verb ("Review...", "Plan...", "Detect..."), pack identifying tokens (framework names, key tools, primary problem space), and drop filler.
-- **Drop boilerplate.** Phase enumerations ("Phases A-E (risk, correctness, ...)"), "Spawns X-specific subagents for extra scopes", "Stack-specific override of task-Y", "Library-level focus, not infra", "Use when... Use before..." instructional text, and long parenthetical anti-pattern walls all belong in the body's **When to Use** / **Patterns** sections, not the description.
-- 1-2 sentences focused on what the skill **does** (positive framing)
-- Do not list what the skill is NOT for in the description - move that to "When to Use" in the body
-- Description drives skill selection in the slash menu - make it trigger-accurate
+- **Hard cap 150 chars; aim for 100-140.** Descriptions load on every session and trigger `/doctor` truncation past ~1% of the context window.
+- **Keyword-dense, not prose.** Lead with a verb (Review/Plan/Detect), pack identifying tokens (framework names, key tools, problem space). The skill picker matches on this text - make it trigger-accurate.
+- **Positive framing only.** Describe what the skill does. Move "when not to use", phase enumerations, and anti-pattern walls into the body's `When to Use` / `Patterns` sections.
 
 #### Required Body Sections
 
-**Workflow skills** (`task-*`) must include:
+**Workflow skills** (`task-*`):
 
-| Section           | Purpose                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| **When to Use**   | Scope, constraints, and when NOT to use                                             |
-| **Workflow**      | Numbered steps (STEP 1, STEP 2, ...) with `Use skill:` delegations to atomic skills |
-| **Output Format** | Template showing the expected deliverable structure                                 |
-| **Self-Check**    | Checkbox list of completion criteria, aligned 1:1 with workflow steps               |
-| **Avoid**         | Anti-patterns and common mistakes                                                   |
+| Section           | Purpose                                                                  |
+| ----------------- | ------------------------------------------------------------------------ |
+| **When to Use**   | Scope, constraints, when NOT to use                                      |
+| **Workflow**      | Numbered steps with `Use skill:` delegations to atomic skills            |
+| **Output Format** | Template showing the expected deliverable                                |
+| **Self-Check**    | Checkbox list aligned 1:1 with workflow steps                            |
+| **Avoid**         | Anti-patterns and common mistakes                                        |
 
-**Atomic skills** must include:
+**Atomic skills:**
 
 | Section           | Purpose                                                |
 | ----------------- | ------------------------------------------------------ |
 | **When to Use**   | Usage scope                                            |
-| **Rules**         | Non-negotiable constraints governing the pattern       |
-| **Patterns**      | Detailed guidance with bad/good code example pairs     |
-| **Output Format** | Structured contract that consuming workflows depend on |
+| **Rules**         | Non-negotiable constraints                             |
+| **Patterns**      | Detailed guidance with bad/good code pairs             |
+| **Output Format** | Structured contract that consuming workflows parse     |
 | **Avoid**         | Domain-specific anti-patterns                          |
 
 #### Content Quality Rules
 
-- **Output format is a contract.** Consuming workflow skills parse atomic skill output. Use exact field names and value enums (e.g., `Blast Radius: {Narrow | Moderate | Wide | Critical}`).
-- **Self-check items must match workflow steps.** Every numbered step should have a corresponding checkbox. Do not add checks for steps that do not exist.
-- **Code examples use bad/good pairs.** Show the mistake immediately followed by the correct approach, both with brief explanations.
-- **Tables for decision support.** Use tables for depth levels, scope options, classification criteria - anything a user needs to scan quickly.
-- **Handle edge cases explicitly.** Skills must handle: missing input, unknown stack, partial information. Do not fail silently.
-- **Workflow skills must delegate to all relevant atomic skills.** If an atomic skill exists for a concern the workflow touches, compose it via `Use skill:`.
-- **Consistent depth across stacks.** A Python atomic skill should cover the same categories (patterns, anti-patterns, output format, avoid) as an equivalent Java skill.
+- **Output format is a contract.** Use exact field names and value enums (e.g., `Blast Radius: {Narrow | Moderate | Wide | Critical}`) - workflow skills parse this.
+- **Self-check matches workflow steps 1:1.** No checks for steps that don't exist.
+- **Bad/good code pairs.** Show the mistake then the fix, both with brief explanation.
+- **Tables for decision support** (depth levels, scope options, classification).
+- **Handle missing input, unknown stack, partial information explicitly.** Don't fail silently.
+- **Workflows compose every relevant atomic skill** via `Use skill:`.
+- **Consistent depth across stacks.** Equivalent skills (Python vs. Java) cover the same categories.
+
+#### Authoring for Token Efficiency
+
+Skills load into context on every invocation - longer is not better. Optimize up front so skills ship close to their post-eval state.
+
+- **Rewrite, don't patch.** Layered patches accumulate ambiguity. When a section grows unclear, rewrite it.
+- **Abstract, don't accumulate.** Three rules saying variations of the same thing collapse to one. Specific cases live in `Patterns`, not `Rules`.
+- **Micro-examples beat large examples.** A 3-5 line bad/good pair clarifies more than a 30-line scenario. Keep examples only when they clarify behavior, define output structure, or show a non-obvious convention.
+- **No duplication.** Each rule appears once. If it overlaps with `behavioral-principles` or another atomic skill, delete the local copy and let composition handle it.
+- **Cut filler.** Drop "this skill helps you...", restated frontmatter, repeated motivation, procedural narration. Every sentence adds new information.
+- **No hedging.** Skills are contracts - state the rule or omit it. No "you might want to consider...".
+- **Halve any section that doesn't lose meaning when halved.**
+- **Don't add unless necessary.** Default to simplify/compress/generalize over append.
 
 ## Adding a New Agent
 
-1. Create `plugins/<stack>/agents/<agent-name>.md`
-2. Follow the standard agent frontmatter schema below
-3. Update the plugin's `README.md` agents table
-
-### Agent Frontmatter Schema
-
-All agent files use this standard frontmatter schema:
+1. Create `plugins/<stack>/agents/<agent-name>.md` with the frontmatter below.
+2. Update the plugin's `README.md` agents table.
 
 ```yaml
 ---
-name: <stack>-<role> # required: kebab-case, matches filename
-description: Short description # required: shown in agent picker
-category: quality | engineering | planning | ops # optional but encouraged
-tools: Read, Write, Edit, Bash, Glob, Grep # optional: restrict available tools
-model: sonnet | opus # optional: override default model
+name: <stack>-<role>                              # required: kebab-case, matches filename
+description: Short description                    # required: shown in agent picker
+category: quality | engineering | planning | ops  # optional but encouraged
+tools: Read, Write, Edit, Bash, Glob, Grep        # optional: restrict tools
+model: sonnet | opus                              # optional: override default
 ---
 ```
 
-Minimum required: `name` and `description`. The `category`, `tools`, and `model` fields are optional but should be included when they provide meaningful constraints.
+Only `name` and `description` are required; include the others when they meaningfully constrain the agent.
 
 ## Post-Change Checklist
 
-After any change that affects plugin content (skills, agents, structure, conventions) - **excluding changes that only touch `CLAUDE.md` or `README.md` files** - review and update the following:
+After any change to plugin content (skills, agents, structure, conventions) - **excluding changes that only touch `CLAUDE.md` or `README.md`**:
 
-1. **`CLAUDE.md`**: Update if the change affects repository structure, conventions, naming rules, design principles, or workflow guidance documented here.
-2. **Root `README.md` and affected plugin `README.md`**: Reflect any added/removed/renamed skills, agents, or structural changes.
+1. **`CLAUDE.md`** - update if structure, conventions, naming, design principles, or workflow guidance changed.
+2. **Root `README.md` and affected plugin `README.md`** - reflect added/removed/renamed skills or agents.

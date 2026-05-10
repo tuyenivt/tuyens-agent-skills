@@ -1,380 +1,308 @@
 ---
 name: rails-migration-safety
-description: Zero-downtime Rails/PostgreSQL migrations: strong_migrations, concurrent indexes, safe column ops, data migration split, large tables.
+description: Zero-downtime Rails/MySQL migrations: 8.0 instant DDL, online INPLACE, invisible indexes, gh-ost for >100M-row tables.
 metadata:
   category: backend
-  tags: [ruby, rails, postgresql, migration, zero-downtime]
+  tags: [ruby, rails, mysql, migration, zero-downtime]
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first. MySQL-primary. For PostgreSQL projects, use `rails-postgresql-migration-safety`.
 
 ## When to Use
 
-- Creating or modifying database tables, columns, or indexes
+- Creating or modifying tables, columns, or indexes on MySQL/MariaDB
 - Adding NOT NULL constraints or renaming/removing columns on deployed tables
 - Running data backfills on tables with >100K rows
-- Adding foreign keys to existing tables without downtime
-- Adding partial indexes on status or enum columns
+- Adding foreign keys without downtime
+- Choosing between in-process Rails migration, `gh-ost`, and `pt-online-schema-change`
 - Reviewing migrations for production safety before merge
 
 ## Rules
 
-- One structural change per migration - do not mix adding columns with adding indexes
-- Every migration must be reversible - use `change` method or explicit `up`/`down`
-- Separate data migrations from schema migrations - use maintenance_tasks, `db/data_migrate/`, or a rake task (see `rails-rake-task-patterns`)
+- One structural change per migration
+- Every migration must be reversible
+- Separate data migrations from schema migrations - use a rake task (see `rails-rake-task-patterns`)
 - Always include `timestamps` on new tables
-- Always add indexes on foreign key columns and frequently-filtered columns
-- Use `disable_ddl_transaction!` for all `CONCURRENTLY` operations
+- Always add indexes on FK columns and frequently-filtered columns
+- Set `config.active_record.schema_format = :sql` so MySQL-specific DDL round-trips through `structure.sql`
 - Add `ignored_columns` to the model before removing a column
 - Use `safety_assured` only after verifying the operation is safe for your table size
+- For tables >100M rows, use `gh-ost` or `pt-online-schema-change`, not in-process Rails migrations
 
 ## Patterns
 
-### strong_migrations Gem
+### `schema_format = :sql` for MySQL projects
 
-Bad - adding a non-concurrent index on a large table (locks reads/writes):
+`:ruby` (default) flattens MySQL-specific DDL into a normalized DSL that loses character set/collation per column, generated columns, functional indexes, `ALGORITHM=INSTANT` defaults, `CHECK` constraints, and full-text parsers. Switch to `:sql`:
 
 ```ruby
-class AddIndexToOrders < ActiveRecord::Migration[7.2]
+# config/application.rb
+config.active_record.schema_format = :sql
+```
+
+Recommended from day one for new MySQL apps.
+
+### strong_migrations gem
+
+```ruby
+# config/initializers/strong_migrations.rb
+StrongMigrations.lock_timeout = 5.seconds
+StrongMigrations.statement_timeout = 1.hour
+StrongMigrations.target_version = 12
+```
+
+`safety_assured` overrides a check; use only after confirming the operation is safe.
+
+### Online DDL: `ALGORITHM=INPLACE` and `LOCK=NONE`
+
+MySQL 5.6+ runs most index operations online without blocking writes. MySQL 8.0 picks the best algorithm automatically. Rails does **not** auto-emit `algorithm: :concurrently` (PostgreSQL-only) - use `:inplace` or omit:
+
+```ruby
+# Bad - PG syntax, raises on MySQL
+add_index :orders, :status, algorithm: :concurrently
+
+# Good
+add_index :orders, :status, algorithm: :inplace
+# or, for exact control:
+execute "ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE"
+```
+
+### Instant DDL (MySQL 8.0)
+
+`ALGORITHM=INSTANT` is metadata-only - finishes in milliseconds even on TB-scale tables.
+
+| Operation                            | Supported since |
+| ------------------------------------ | --------------- |
+| Add column (last position)           | 8.0.12          |
+| Add column (any position)            | 8.0.29          |
+| Drop column                          | 8.0.29          |
+| Rename column                        | 8.0.13          |
+| Modify default value                 | 8.0.0           |
+| Add/drop virtual generated column    | 8.0.0           |
+| Modify enum/set members (additions)  | 8.0.0           |
+| Rename table                         | 8.0.0           |
+
+**Rails 7.2 does not auto-emit `INSTANT`.** Use `execute` or rely on 8.0.29+ defaulting to INSTANT for supported ops:
+
+```ruby
+class AddNotesToOrders < ActiveRecord::Migration[7.2]
   def change
-    add_index :orders, :status # blocks the table
+    execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT, LOCK=NONE"
   end
 end
 ```
 
-Good - concurrent index with `disable_ddl_transaction!`:
+This collapses many "add NOT NULL with default" three-step dances into a single instant ALTER on supported tables.
+
+### Invisible indexes (MySQL 8.0)
+
+Soft-drop an index to verify nothing breaks before actually dropping:
 
 ```ruby
-class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
+execute "ALTER TABLE orders ALTER INDEX idx_orders_legacy INVISIBLE"
+# Soak; monitor query plans, slow log
+# If anything breaks: ALTER INDEX ... VISIBLE (instant)
+remove_index :orders, name: "idx_orders_legacy"
+```
 
-  def change
-    add_index :orders, :status, algorithm: :concurrently
-  end
+No PostgreSQL equivalent.
+
+### Adding a NOT NULL column
+
+For MySQL 8.0.12+ adding a column at the end with a default is `INSTANT`-eligible - one migration:
+
+```ruby
+def change
+  execute "ALTER TABLE users ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'standard', ALGORITHM=INSTANT, LOCK=NONE"
 end
 ```
 
-The `strong_migrations` gem automatically blocks unsafe operations. Override with `safety_assured` only after verifying safety:
+Otherwise, classic three-step (works on any version):
 
 ```ruby
-# Gemfile
-gem "strong_migrations"
+# Step 1: Add nullable with default
+add_column :orders, :status, :string, default: "pending"
 
-class AddIndexToOrders < ActiveRecord::Migration[7.2]
-  def change
-    safety_assured do
-      add_index :orders, :customer_id, algorithm: :concurrently
-    end
-  end
+# Step 2: Backfill (separate migration, batched)
+def up
+  Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }
 end
+
+# Step 3: Enforce NOT NULL
+change_column_null :orders, :status, false
 ```
 
-### Adding a NOT NULL Column
+**Large tables (>100M rows): don't `change_column_null` directly.** MySQL has no PG-style `validate: false` for `CHECK`. Two options:
 
-Bad - adding NOT NULL column directly (fails if rows exist):
+1. **App-side validation forever** - leave column nullable, enforce `validates :status, presence: true`. Many production MySQL shops do this on hot tables.
+2. **Use `gh-ost`**:
+
+```bash
+gh-ost --user=app --host=primary.db --database=app --table=orders \
+  --alter="MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pending'" --execute
+```
+
+### MySQL `CHECK` constraints (8.0.16+)
+
+Validates on creation - no `validate: false` shortcut. For very large tables, the addition scans every row:
 
 ```ruby
-add_column :orders, :status, :string, null: false
+add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative"
 ```
 
-Good - three-step pattern:
+For very large tables, run during a maintenance window or use `gh-ost` with the constraint in `--alter`.
+
+### Functional indexes
+
+MySQL has no partial indexes (`where:` clause). Functional index on an expression is the closest analogue:
 
 ```ruby
-# Step 1: Add nullable column with default
-class AddStatusToOrders < ActiveRecord::Migration[7.2]
-  def change
-    add_column :orders, :status, :string, default: "pending"
-  end
-end
-
-# Step 2: Backfill (separate migration)
-class BackfillOrderStatus < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
-
-  def up
-    Order.in_batches(of: 10_000) do |batch|
-      batch.where(status: nil).update_all(status: "pending")
-    end
-  end
-
-  def down; end
-end
-
-# Step 3: Add NOT NULL constraint
-class AddNotNullToOrderStatus < ActiveRecord::Migration[7.2]
-  def change
-    change_column_null :orders, :status, false
-  end
-end
+add_index :users, "((LOWER(email)))", name: "idx_users_email_lower"
+add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_users_tier"
 ```
 
-**Large tables (>1M rows): use a NOT NULL check constraint instead of `change_column_null`.** Direct `change_column_null` rewrites the table and holds an `ACCESS EXCLUSIVE` lock for the duration. A `NOT VALID` check constraint validates new rows immediately and lets you validate existing rows without blocking writes:
+Note the double parentheses required by Rails for raw expressions.
 
-```ruby
-# Step 3a: Add unvalidated constraint (fast, no full-table scan)
-class AddOrderStatusNotNullCheck < ActiveRecord::Migration[7.2]
-  def change
-    add_check_constraint :orders, "status IS NOT NULL", name: "orders_status_null", validate: false
-  end
-end
-
-# Step 3b: Validate constraint (no write lock, scans table)
-class ValidateOrderStatusNotNullCheck < ActiveRecord::Migration[7.2]
-  def change
-    validate_check_constraint :orders, name: "orders_status_null"
-  end
-end
-```
-
-The `strong_migrations` gem flags `change_column_null` on large tables and recommends this exact pattern.
-
-### Adding a Timestamp Column to an Existing Table
-
-Good - nullable timestamp with partial index (e.g., `fulfilled_at` on orders):
-
-```ruby
-class AddFulfilledAtToOrders < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
-
-  def change
-    add_column :orders, :fulfilled_at, :datetime
-    add_index :orders, :fulfilled_at, where: "fulfilled_at IS NOT NULL",
-              algorithm: :concurrently, name: "idx_orders_fulfilled"
-  end
-end
-```
-
-### Partial Indexes on Status/Enum Columns
-
-Partial indexes reduce index size by only indexing relevant rows. Useful for status columns where queries target non-terminal states:
-
-```ruby
-class AddPartialIndexOnOrderStatus < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
-
-  def change
-    add_index :orders, :status,
-              where: "status IN (0, 1, 2)", # pending, confirmed, processing
-              algorithm: :concurrently,
-              name: "idx_orders_active_status"
-  end
-end
-```
-
-### Renaming Columns (Never Directly)
-
-Bad - locks table and breaks running code:
-
-```ruby
-rename_column :orders, :total, :amount
-```
-
-Good - four-step deploy sequence:
+### Renaming columns (never directly)
 
 ```ruby
 # Step 1: Add new column
-add_column :orders, :amount, :decimal
+add_column :orders, :amount, :decimal, precision: 10, scale: 2
 
 # Step 2: Backfill
 Order.in_batches { |b| b.update_all("amount = total") }
 
-# Step 3: Update code to use new column, add ignored_columns
-# class Order < ApplicationRecord
-#   self.ignored_columns += ["total"]
-# end
+# Step 3: Update code; add ignored_columns
+# self.ignored_columns += ["total"]
 
 # Step 4: Remove old column (next deploy)
-safety_assured { remove_column :orders, :total, :string }
+safety_assured { remove_column :orders, :total, :decimal }
 ```
 
-### Dropping Columns
+MySQL 8.0.13+ supports `RENAME COLUMN` with `INSTANT`, but the four-step is still required because step 3 must complete before step 4.
 
-Bad - removing column while app still references it:
-
-```ruby
-remove_column :orders, :legacy_field
-```
-
-Good - two-deploy sequence:
+### Dropping columns
 
 ```ruby
 # Deploy 1: Add to ignored_columns
-class Order < ApplicationRecord
-  self.ignored_columns += ["legacy_field"]
-end
+self.ignored_columns += ["legacy_field"]
 
-# Deploy 2: Remove column
-class RemoveLegacyFieldFromOrders < ActiveRecord::Migration[7.2]
-  def change
-    safety_assured { remove_column :orders, :legacy_field, :string }
-  end
-end
+# Deploy 2: Remove
+safety_assured { remove_column :orders, :legacy_field, :string }
 ```
 
-### Creating Tables with Proper Conventions
+On 8.0.29+, `DROP COLUMN` is `INSTANT`-eligible - second deploy completes in ms.
+
+### Creating tables with proper conventions
 
 ```ruby
-class CreateOrders < ActiveRecord::Migration[7.2]
-  def change
-    create_table :orders do |t|
-      t.references :user, null: false, foreign_key: true
-      t.decimal :total, precision: 10, scale: 2, null: false
-      t.integer :status, null: false, default: 0
-      t.datetime :fulfilled_at
-      t.timestamps
-    end
-
-    add_index :orders, :status
-    add_index :orders, [:user_id, :status]
-  end
+create_table :orders, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci" do |t|
+  t.references :user, null: false, foreign_key: true
+  t.decimal :total, precision: 10, scale: 2, null: false
+  t.integer :status, null: false, default: 0
+  t.datetime :fulfilled_at
+  t.timestamps
 end
-
-class CreateOrderItems < ActiveRecord::Migration[7.2]
-  def change
-    create_table :order_items do |t|
-      t.references :order, null: false, foreign_key: true
-      t.references :product, null: false, foreign_key: true
-      t.integer :quantity, null: false
-      t.decimal :unit_price, precision: 10, scale: 2, null: false
-      t.timestamps
-    end
-  end
-end
+add_index :orders, [:user_id, :status]
 ```
 
-### Large Tables (>1M Rows)
+`utf8mb4` (not `utf8`) is the only character set for 4-byte sequences (emoji, supplementary plane CJK). Set collation explicitly for reproducible `db:schema:load`.
+
+### Large tables (>100M rows): use `gh-ost`
+
+Rails in-process migrations don't throttle on replication lag, disk usage, or master CPU. `gh-ost` does:
+
+```bash
+gh-ost --user=app --host=primary.db --database=app --table=orders \
+  --alter="ADD COLUMN amount DECIMAL(10,2) NOT NULL DEFAULT 0" \
+  --max-load=Threads_running=25 --critical-load=Threads_running=100 \
+  --max-lag-millis=1500 --execute
+```
+
+Alternative: `pt-online-schema-change` (Percona Toolkit) - trigger-based, slower, works on more topologies.
+
+For data backfills (not structural), see `rails-batch-processing-patterns`.
+
+### Foreign keys
+
+MySQL validates FKs on creation; the operation acquires a metadata lock briefly. For very large tables under load, use `gh-ost --alter="ADD CONSTRAINT ..."`.
+
+### Lock timeouts
+
+Set `innodb_lock_wait_timeout` so a migration waiting behind a long query fails fast:
 
 ```ruby
-# Batched data changes with throttling
-Order.in_batches(of: 10_000) do |batch|
-  batch.update_all(processed: true)
-  sleep(0.1) # throttle to reduce DB load
-end
-
-# Background migration with maintenance_tasks gem
-class Maintenance::BackfillOrderAmountTask < MaintenanceTasks::Task
-  def collection
-    Order.where(amount: nil)
-  end
-
-  def process(order)
-    order.update!(amount: order.total * 1.1)
-  end
+def change
+  execute "SET SESSION innodb_lock_wait_timeout = 5"
+  add_index :orders, :status, algorithm: :inplace
 end
 ```
 
-### Foreign Keys Without Table Lock
+Configure globally via `StrongMigrations.lock_timeout = 5.seconds`.
 
-Good - add FK without full validation, then validate separately:
+### Advisory locks for backfills
 
-```ruby
-# Migration 1: Add FK (no validation - fast)
-class AddForeignKeyToOrders < ActiveRecord::Migration[7.2]
-  def change
-    add_foreign_key :orders, :users, validate: false
-  end
-end
-
-# Migration 2: Validate FK (no lock)
-class ValidateOrdersUserFk < ActiveRecord::Migration[7.2]
-  def change
-    validate_foreign_key :orders, :users
-  end
-end
-```
-
-### Lock Timeouts and Statement Timeouts
-
-A migration that waits behind a long-running query can pile up blocked sessions and effectively take the table down. Set `lock_timeout` so the migration fails fast instead of holding back every other writer:
-
-```ruby
-class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
-
-  def change
-    execute "SET lock_timeout = '5s'"
-    add_index :orders, :status, algorithm: :concurrently
-  end
-end
-```
-
-If the lock cannot be acquired in 5 seconds, the migration aborts cleanly. Re-run during a quieter window. `strong_migrations` enforces this in CI when `StrongMigrations.lock_timeout` is configured globally - prefer the global config over per-migration `execute`.
-
-For long-running data backfills, also set `statement_timeout` per-batch - a single runaway query on a large table shouldn't block deploys:
-
-```ruby
-Order.in_batches(of: 10_000) do |batch|
-  ActiveRecord::Base.connection.execute("SET LOCAL statement_timeout = '30s'")
-  batch.update_all(processed: true)
-end
-```
-
-### `change_column_default`
-
-Changing a default on a large table is fast in PostgreSQL 11+ - the default is stored in metadata, no table rewrite. But in earlier versions or when using `change_column` (which combines type+default+null), it rewrites every row. Use the targeted helper:
-
-```ruby
-# Safe on PG 11+: metadata-only change
-change_column_default :orders, :status, from: nil, to: "pending"
-
-# Avoid: change_column rewrites the table even if you only meant to change the default
-```
-
-### Advisory Locks for Backfills
-
-When a backfill might be triggered twice (deploy retry, two ops engineers), guard the body with a PostgreSQL advisory lock so only one runs at a time. The second invocation exits cleanly instead of double-writing:
+When a backfill might be triggered twice (deploy retry, two ops engineers), guard with `with_advisory_lock` (cross-reference `rails-db-locking-patterns`):
 
 ```ruby
 def up
-  lock_id = "backfill_order_amount".hash
-  ActiveRecord::Base.connection.execute("SELECT pg_advisory_lock(#{lock_id})")
-  begin
-    Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
-  ensure
-    ActiveRecord::Base.connection.execute("SELECT pg_advisory_unlock(#{lock_id})")
-  end
+  ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
+    Order.in_batches(of: 10_000) do |b|
+      b.where(amount: nil).update_all(amount: ...)
+    end
+  end || abort("another backfill_order_amount is running")
 end
 ```
 
-### Rollback Safety
+### Rollback safety
 
-Every migration must be reversible. Test with `rails db:rollback` in CI:
-
-```bash
-rails db:migrate && rails db:rollback && rails db:migrate
-```
-
-Use `reversible` block for operations that need explicit up/down:
+Test with `rails db:migrate && rails db:rollback && rails db:migrate` in CI.
 
 ```ruby
 def change
   reversible do |dir|
-    dir.up { execute "CREATE EXTENSION IF NOT EXISTS citext" }
-    dir.down { execute "DROP EXTENSION IF EXISTS citext" }
+    dir.up   { execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT" }
+    dir.down { execute "ALTER TABLE orders DROP COLUMN notes, ALGORITHM=INSTANT" }
   end
 end
 ```
 
-## Output Format
+Note: instant DDL is irreversible in some cases (8.0.29+ records the operation in instant-add metadata; rollback may require a table rebuild). Test rollback on a clone before merging.
 
-When generating migrations, document each change:
+### MariaDB caveats
+
+- `ALGORITHM=INSTANT` not until 10.3+, narrower coverage than MySQL 8.0
+- `CHECK` since 10.2 with different naming syntax
+- Invisible indexes not supported
+- `GET_LOCK`: 10.0.2+ supports multiple locks per session
+
+If you hit a divergence, use `pt-online-schema-change` (MariaDB-friendly).
+
+## Output Format
 
 ```
 Migration: {file name}
 Operation: {Create Table | Add Column | Add Index | Add FK | Backfill | Remove Column}
 Table: {table name}
+Adapter: MySQL {version}
+Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change}
+Lock window: {none (online) | brief MDL | maintenance required}
 Safety: {Zero-Downtime | Requires Maintenance Window | Batched Backfill}
-Notes: {any special considerations - partial index conditions, concurrent algorithm, etc.}
+Notes: {character set / collation, instant-DDL eligibility, gh-ost throttle config}
 ```
 
 ## Avoid
 
-- Data changes in schema migrations - use separate data migrations
-- `remove_column` without `ignored_columns` first - causes errors on deploy
-- Non-concurrent index on large tables (>100K rows) - locks the table
-- Changing column type directly - use add/backfill/remove pattern
-- Running `CONCURRENTLY` inside a transaction - they are incompatible
+- `algorithm: :concurrently` on MySQL - PG-only, raises
+- `where:` partial-index clauses on MySQL - not supported
+- Data changes in schema migrations
+- `remove_column` without `ignored_columns` first
+- Changing column type directly - use add/backfill/remove
 - Irreversible migrations without explicit `raise ActiveRecord::IrreversibleMigration`
-- Missing indexes on foreign key columns - slows joins and cascading deletes
-- `add_column` with `null: false` on existing tables without default - fails if rows exist
+- Missing indexes on FK columns
+- `add_column` with `null: false` on existing tables without default
+- In-process migrations on tables >100M rows - use `gh-ost`
+- `change_column_null` on a hot multi-100M-row table - prefer model-side validation or `gh-ost`
+- Default character set assumptions - always specify `utf8mb4` and collation explicitly
+- `:ruby` schema format on MySQL projects with functional indexes / generated columns / CHECK constraints

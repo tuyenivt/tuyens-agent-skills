@@ -23,7 +23,7 @@ category: quality
   - Business logic in services → plain RSpec unit tests, no database
   - HTTP API / controller behavior → request specs (`rails_helper`, no controller specs)
   - Background jobs → Sidekiq's `fake` or `inline` adapter; `have_enqueued_sidekiq_job`
-  - Database-heavy queries → model/service specs with real PostgreSQL (Testcontainers or CI DB)
+  - Database-heavy queries → model/service specs with real production-equivalent DB (MySQL or PostgreSQL via Testcontainers or CI DB), never SQLite for query correctness or isolation/locking behavior
   - Browser interactions → system specs with Capybara + Selenium (use sparingly)
 - **FactoryBot**: `create` only when DB persistence needed; prefer `build` or `build_stubbed` for unit tests
 - **Shoulda-matchers**: `validate_presence_of`, `belong_to`, `have_many` for model spec one-liners
@@ -49,7 +49,7 @@ category: quality
 | Service object logic       | Unit spec      | RSpec (no database, use build_stubbed) |
 | API endpoint behavior      | Request spec   | RSpec + rails_helper + FactoryBot      |
 | Sidekiq job                | Worker spec    | sidekiq-testing fake/inline adapter    |
-| Complex ActiveRecord query | Model/svc spec | RSpec + real PostgreSQL                |
+| Complex ActiveRecord query | Model/svc spec | RSpec + real MySQL or PostgreSQL       |
 | Full user flows            | System spec    | Capybara + Selenium (last resort)      |
 
 ## Principles
@@ -57,6 +57,6 @@ category: quality
 - Test behavior, not implementation
 - The fastest test that catches the bug is the best test
 - `build_stubbed` over `create` for unit tests - no unnecessary DB writes
-- Real PostgreSQL over SQLite for query correctness
+- Real production-equivalent DB (MySQL or PostgreSQL) over SQLite - SQLite hides isolation, locking, and query-plan bugs that surface only on the production engine
 - Pyramid over ice cream cone (unit > request > system)
 - Tests are specifications

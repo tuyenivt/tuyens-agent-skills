@@ -159,7 +159,7 @@ Sync Impact Report:
 ## Tech Stack Commitments
 - **Language:** Java 21+ (pinned)         _(source: CLAUDE.md#tech-stack)_
 - **Framework:** Spring Boot 3.5+         _(source: CLAUDE.md#tech-stack)_
-- **Database:** PostgreSQL 15+            _(source: CLAUDE.md#tech-stack)_
+- **Database:** PostgreSQL 17+            _(source: CLAUDE.md#tech-stack)_
 
 ## Code Quality
 - Constructor injection only; no field `@Autowired`   _(source: backend-coding-standards#di)_
