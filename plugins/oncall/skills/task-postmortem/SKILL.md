@@ -1,6 +1,6 @@
 ---
 name: task-postmortem
-description: Post-incident postmortem for systemic prevention: enforceable guardrails from root cause analysis, not just action items.
+description: Post-incident postmortem producing enforceable guardrails (with persistence targets) plus MTTR-anchored systemic fixes from confirmed root cause.
 metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]
@@ -8,273 +8,105 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
-# Postmortem -- Staff Edition
+# Postmortem
 
-## Purpose
-
-Staff-level postmortem that converts incident data into systemic improvements:
-
-- **Systemic thinking** -- identify failure classes, not just local bugs
-- **Boundary reinforcement** -- detect erosion, coupling amplification, and blast radius growth
-- **Guardrail evolution** -- produce enforceable rules, not wishful suggestions
-- **Governance improvement** -- strengthen review, testing, and deployment processes
-- **Organizational learning** -- every incident teaches something about the system's structural weaknesses
-
-This skill runs AFTER an incident has been resolved and root cause analysis is complete. It focuses on prevention and structural reinforcement, not debugging.
-
-Use skill: `incident-root-cause` for active incident investigation and root cause analysis.
+Convert a resolved incident into systemic prevention. Run AFTER root cause is known (typically downstream of `incident-root-cause`); this skill is not for debugging.
 
 ## When to Use
 
-- Post-incident postmortem after resolution
-- Converting root cause analysis into long-term improvements
-- Identifying patterns across multiple related incidents
-- Strengthening engineering guardrails after a failure
-- Architecture reinforcement planning after a production event
+- Post-incident retrospective after resolution
+- Converting RCA into long-term guardrails
+- Identifying recurring failure classes across incidents
 
-## Depth Levels
+## Depth
 
-| Depth      | When to Use                                                              | What Runs                                               |
-| ---------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
-| `quick`    | SEV3 or low-impact incident needing a brief written record               | Timeline + 3 action items only - no systemic analysis   |
-| `standard` | Default - SEV1/SEV2 or any incident requiring team learning              | All 8 sections                                          |
-| `deep`     | Major incident, recurring failure class, or cross-team systemic analysis | All 8 sections + pattern analysis across past incidents |
-
-**Quick depth produces:**
-
-- Incident summary (what happened, impact, duration)
-- Root cause (one paragraph)
-- 3 action items with owners and due dates
-
-**Deep depth adds (on top of standard):**
-
-- Pattern analysis: is this failure class recurring? How many times in the last 6 months?
-- Cross-system analysis: which other services have the same structural weakness?
-- Long-term systemic recommendation: if this class recurs, what architectural change eliminates it?
-
-Default: `standard`. Use `quick` for minor incidents or when stakeholders need a brief written record. Use `deep` for incidents that represent systemic risk or have recurred.
+| Depth      | When                                                | Sections produced                            |
+| ---------- | --------------------------------------------------- | -------------------------------------------- |
+| `quick`    | SEV3 / low-impact - brief written record            | Overview + 3 action items                    |
+| `standard` | Default - SEV1/SEV2 needing team learning           | All 8 sections                               |
+| `deep`     | Major or recurring failure class, cross-team impact | All 8 sections + Pattern Analysis            |
 
 ## Inputs
 
-| Input                   | Required | Description                                                   |
-| ----------------------- | -------- | ------------------------------------------------------------- |
-| Incident summary        | Yes      | What happened, severity, duration, user impact                |
-| Root cause analysis     | Yes      | Output from root cause investigation or `incident-root-cause` |
-| Timeline                | No       | Sequence of events from detection to resolution               |
-| Logs or metrics summary | No       | Key signals observed during the incident                      |
-| Recent PR diff          | No       | Changes deployed before the incident                          |
-| Deployment context      | No       | Deploy timestamp, version, environment details                |
-| Containment actions     | No       | What was done to stop the bleeding                            |
-| Business impact         | No       | Revenue, SLA, customer trust, regulatory implications         |
-| Past incident history   | No       | Required for `deep` depth - prior incidents of the same class |
-
-Handle partial inputs gracefully. When input is missing, state what additional data would strengthen the analysis.
+Required: incident summary (what/severity/duration/impact), root cause analysis. Optional: timeline, logs, recent PR diff, deploy metadata, containment actions, business impact, prior incidents (required for `deep`). State what is missing if it weakens analysis.
 
 ## Rules
 
-- Focus on systemic prevention, not blame or storytelling
-- Every recommendation must address a failure class, not just this instance
-- Prioritize by blast radius reduction potential
-- Produce enforceable guardrails, not vague improvement wishes
-- Reuse existing skills for domain-specific analysis
-- Omit empty sections in output
-- Keep output strategic, concise, and high-signal
-- When evidence is insufficient, state what is missing
-- Always ask: "Why did our system allow this category of failure?"
+- Every recommendation addresses a failure class, not just this instance
+- Output enforceable guardrails (lint, CI gate, checklist, monitor), not wishes
+- Order findings by leverage: guardrails > architecture > governance > observability
+- Omit empty sections; no blame, no narrative, no raw logs
 
-## Postmortem Model
+## Workflow
 
-### Step 0 - Timeline Construction (if no timeline provided)
+### Step 0 - Construct Timeline (if not provided)
 
-If no structured timeline is provided as input, construct one from available evidence before proceeding:
+Order events: triggering change → first symptom → detection → containment → resolution. Format: `{timestamp} - {event} - {source}`. If a deploy/config change preceded the incident, calculate deploy-to-symptom lag and explain the mechanism (gradual leak, load-dependent trigger, cache expiry, batch alignment).
 
-- Extract timestamps from any log lines, alert notifications, deploy metadata, or notes provided
-- Order events chronologically: triggering change (deploy/config) → first symptom → detection → containment → resolution
-- Note gaps where timing is unknown
-- Format each event as: `{timestamp} - {event} - {source}`
-- **Deploy-to-symptom lag**: if a deployment or config change preceded the incident, calculate the delay between deploy and first symptom. Explain the lag mechanism (gradual resource leak, load-dependent trigger, cache expiry, batch schedule alignment, connection pool drain rate)
+### Step 1 - Incident Overview
 
-This constructed timeline becomes the input for Section 1 and Section 3.
+Capture failure type, severity, user impact, duration, triggering change (with timestamp/commit), and **MTTR breakdown**: detection gap (first symptom → first alert), containment lag (first alert → blast stopped), resolution lag (containment → full recovery). Flag detection gap > 5 min as observability gap. List immediate containment actions taken.
 
-### 1. Incident Overview
+### Step 2 - Failure Classification
 
-**Summarize concisely. No narrative.**
+Use skill: `ops-failure-classification`.
 
-Capture:
+Most production incidents are compound: identify the chain (root → amplifier → user impact). Example: "Long-running transaction (root) → connection pool drain (amplifier) → cascading 503 (impact)."
 
-- Failure type (from root cause analysis or classify using skill: `ops-failure-classification`)
-- Severity: Low | Medium | High | Critical
-- User impact scope and nature
-- Duration from first symptom to resolution
-- **Triggering change**: the deploy, config change, batch job, or traffic pattern that initiated the failure - include timestamp and version/commit if available
-- **Detection gap**: time between first symptom and first alert/acknowledgment - flag if > 5 minutes as an observability gap
-- **Timeline summary**: key milestones from Step 0 (triggering change → first symptom → detection → containment → resolution) with timestamps
-- **Immediate actions taken**: what was done to stop the bleeding (rollback, config revert, feature flag disable, etc.) - document separately before systemic analysis
+Apply domain skills based on classification:
 
-### 2. Failure Pattern Classification
+- Concurrency: `architecture-concurrency`
+- Data consistency: `architecture-data-consistency`
+- External dependency / resource exhaustion: `ops-resiliency`
+- DB performance: `backend-db-indexing`
 
-Use skill: `ops-failure-classification` to categorize by type, mechanism, and system layer.
+### Step 3 - Systemic Weaknesses
 
-Identify the primary failure category:
+Identify structural conditions that allowed this failure class. Evaluate:
 
-- Concurrency issue
-- Transaction boundary failure
-- Async/event ordering error
-- Data integrity violation
-- Resource exhaustion
-- External dependency failure
-- Configuration drift
-- Architecture drift / boundary erosion
-- Workload contention (batch vs. online, scheduled job vs. user traffic)
-- Guardrail failure (review, test, or monitoring gap)
+- Boundary erosion / coupling amplification
+- Shared mutable state, shared resource contention (pools, threads, memory shared across batch and online workloads)
+- Hidden assumptions (e.g., "transactions complete in <1s", "batch runs off-peak")
+- Blast radius amplification - what made impact worse than necessary?
 
-**Compound failures**: most production incidents involve chained categories where one failure triggers another. Identify the full chain. Example: "Transaction boundary failure (long-running transactions) → Resource exhaustion (connection pool drain) → cascading user-facing outage." Classify both the root category and the amplifying category.
+Use skill: `review-blast-radius` for propagation scope.
+Use skill: `architecture-guardrail` for boundary violations.
 
-Apply domain-specific skills based on classification:
+### Step 4 - Review and Process Gaps
 
-- Concurrency: use skill: `architecture-concurrency`
-- Data consistency: use skill: `architecture-data-consistency`
-- External dependency: use skill: `ops-resiliency`
-- DB performance: use skill: `backend-db-indexing`
-- Resource exhaustion: use skill: `ops-resiliency` for pool sizing, timeouts, and bulkhead patterns
+Use skill: `review-gap-analysis`.
 
-Identify contributing factors that amplified the failure.
+### Step 5 - Observability Improvements
 
-### 3. Systemic Weakness Analysis
+Use skill: `ops-observability`. For each gap: missing signal → diagnostic question it could not answer → concrete addition (with threshold/trigger).
 
-Go beyond the immediate failure. Identify structural conditions that allowed this category of failure.
+### Step 6 - Architecture Reinforcement
 
-Evaluate:
+Use skill: `ops-resiliency` for fault tolerance, `architecture-guardrail` for boundaries, `backend-idempotency` for retry safety.
 
-- **Boundary weakness** -- did the failure cross boundaries it should not have?
-- **Coupling amplification** -- did tight coupling spread the impact?
-- **Shared mutable state risk** -- was shared state a contributing factor?
-- **Shared resource contention** -- did multiple workloads (batch, online, scheduled) compete for the same resource pool without isolation? (connection pools, thread pools, memory, I/O bandwidth)
-- **Layer violation trend** -- is there a pattern of bypassing abstractions?
-- **Incomplete abstraction** -- did a leaky abstraction expose internals?
-- **Hidden assumption** -- was there an undocumented assumption that broke? (e.g., "transactions complete in < 1s", "batch jobs run during off-peak hours")
-- **Blast radius amplification** -- what structural factors made the impact worse than necessary?
-- **AI-generated code cognitive risk** (evaluate only when AI-generated code is in the failure path) -- did code volume or complexity from AI-generated contributions obscure the failure path?
+Evaluate: pool/queue isolation (per workload), explicit statement and transaction timeouts, bulkheads, circuit breakers, idempotent retries, decoupling, shared-state isolation.
 
-Use skill: `review-blast-radius` to assess propagation scope.
-Use skill: `architecture-guardrail` to identify boundary violations exposed by the incident.
-Use skill: `complexity-review` to assess whether AI-generated complexity contributed (only when relevant).
+### Step 7 - Governance and Process
 
-### 4. Guardrail and Review Gap Analysis
+Use skill: `ops-engineering-governance`.
 
-Determine why existing safeguards did not prevent this incident.
+Cover: review checklist updates, risk-based reviewer requirements, design-doc triggers, ADR updates, chaos experiments, test strategy, PR-size limits, deployment safeguards (canary, flags, progressive rollout).
 
-Use skill: `review-gap-analysis` to evaluate:
+### Step 8 - Guardrails and Persistence (highest leverage)
 
-- Why did code review not catch this?
-- Was PR risk scoring insufficient for the change scope?
-- Was architecture drift undetected during review?
-- Were critical test scenarios missing?
-- Was monitoring insufficient to detect early?
-- Was cognitive load too high for effective review?
-- Did the review assess resource impact? (new batch jobs, background tasks, or scheduled jobs that share connection pools, thread pools, or memory with user-facing workloads)
-- Were load/stress tests required before deploying resource-consuming changes?
+For each new guardrail, name a concrete persistence target so the lesson outlives this document:
 
-Use skill: `ops-engineering-governance` to propose specific guardrail improvements.
+| Target                                                       | Use when                                              | Patch shape                                                          |
+| ------------------------------------------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| Stack-specific skill (`rails-*`, `node-*`, ...)              | Rule encodes a framework pattern                      | New bullet under `## Rules` or `## Patterns` with bad/good pair      |
+| Stack-agnostic core skill (`ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks                  | New bullet in the relevant core skill                                |
+| Project `CLAUDE.md`                                          | Project-specific policy that does not generalize      | Entry under `## Lessons from Incidents` (create if absent)           |
+| Review checklist / CI gate                                   | Mechanically enforceable                              | Concrete file + check name + failure message                         |
+| Runbook                                                      | Recovery procedure, not prevention                    | New runbook entry                                                    |
 
-### 5. Observability and Detection Improvements
-
-Use skill: `ops-observability` to evaluate signal coverage and recommend additions.
-
-For each gap:
-
-- **What signal was missing** -- specific metric, log, trace span, or alert
-- **How it slowed detection or diagnosis** -- what question could not be answered
-- **What to add** -- concrete improvement with threshold or trigger
-
-Common improvements to evaluate:
-
-- New RED metrics for affected paths
-- Alert threshold adjustments
-- Trace span coverage for the failure propagation path
-- Correlation ID enforcement across service boundaries
-- Structured logging additions for the failure category
-- SLO definition or revision if missing or violated
-
-### 6. Architecture Reinforcement
-
-Propose structural changes that prevent the failure class.
-
-Use skill: `ops-resiliency` for fault tolerance patterns.
-Use skill: `architecture-data-consistency` for data consistency redesign.
-Use skill: `architecture-guardrail` for boundary enforcement.
-Use skill: `backend-idempotency` for retry safety.
-
-Evaluate:
-
-- Boundary reinforcement (isolate failure domains)
-- Decoupling (reduce propagation paths)
-- **Resource pool isolation** -- separate connection pools, thread pools, or queues for different workload types (batch vs. OLTP, background vs. user-facing). Prevent one workload from starving another.
-- **Transaction timeout enforcement** -- set explicit statement and transaction timeouts to prevent long-running transactions from holding resources. Evaluate both application-level and database-level timeout configuration.
-- Idempotency guarantees (make retries safe)
-- Retry and timeout policy corrections
-- Circuit breaker additions or adjustments
-- **Bulkhead pattern** -- isolate critical paths so that failures in non-critical paths (batch processing, reports, analytics) cannot degrade user-facing operations
-- Data consistency redesign
-- Shared state isolation
-
-### 7. Governance and Process Improvements
-
-Use skill: `ops-engineering-governance` to recommend process-level changes.
-Use skill: `ops-engineering-governance` for prevention strategies tied to failure classes.
-
-Evaluate:
-
-- Review checklist updates (new items based on this failure class)
-- Risk-based review enforcement (mandatory second reviewer for high-risk changes)
-- Mandatory design doc triggers (what change scope should require a design doc)
-- ADR updates (record the architectural decision or constraint learned)
-- Chaos experiment design (fault injection to simulate this failure class)
-- Test strategy improvements (integration, contract, or chaos tests to add)
-- PR size limit enforcement (if change scope contributed to review miss)
-- Deployment safeguards (canary, feature flag, progressive rollout)
-
-### 8. Convert Lessons into Reusable Guardrails
-
-This is the highest-leverage section. Produce concrete, enforceable outputs.
-
-For each guardrail:
-
-- **Rule** -- specific, enforceable constraint
-- **Scope** -- where it applies (review, CI, deployment, architecture)
-- **Enforcement** -- how it is checked (automated lint, review checklist, CI gate, monitoring alert)
-- **Failure class prevented** -- which category of failure this guards against
-
-Categories:
-
-- New code review rules
-- Architecture constraints (boundary enforcement, dependency rules)
-- Monitoring baseline requirements (mandatory metrics or alerts)
-- Deployment safeguards (mandatory canary, rollback criteria)
-- Coding standards updates (patterns to require or prohibit)
-- AI-generated code constraints (complexity limits, mandatory simplification review)
-
-### 9. Persist the Lesson (Feedback Loop)
-
-The highest-leverage section is worthless if the guardrails live only inside this postmortem document. Each adopted guardrail must land in a durable, automatically-loaded surface so the same class of bug is harder to repeat.
-
-For every row in the "New Guardrails to Adopt" table, pick exactly one persistence target and propose the concrete patch:
-
-| Target                                                                           | Use when                                                                                                             | Patch shape                                                                                                                 |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| **Stack-specific skill** (e.g., `rails-*`, `node-*`)                             | Rule encodes a framework-specific pattern (e.g., Sidekiq idempotency, ActiveRecord lock_timeout, FastAPI dep limits) | New bullet under `## Rules` or `## Patterns` in the matching atomic skill, with bad/good code pair                          |
-| **Stack-agnostic core skill** (e.g., `ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks (timeout policy, bulkhead, blast-radius constraint)                                       | New bullet in the relevant `core` atomic skill                                                                              |
-| **Project `CLAUDE.md`**                                                          | Rule is project-specific policy (deploy windows, on-call escalation, business invariants) that does not generalize   | New entry under a `## Lessons from Incidents` section (create the section if absent), one line: rule + linked incident date |
-| **Review checklist / CI gate**                                                   | Rule is enforceable mechanically (lint, schema check, required label)                                                | Concrete file + check name + failure message; do not ship as prose                                                          |
-| **Runbook**                                                                      | Rule is recovery procedure, not prevention                                                                           | New runbook entry or step; out of scope for skill/`CLAUDE.md` updates                                                       |
-
-For each guardrail, produce a one-row patch plan: **target file** + **insertion point** + **exact text to add**. Do not hand-wave with "update Rails skills". Name the skill. Quote the bullet.
-
-If a guardrail does not fit any persistence target, that is a signal the rule is too vague - tighten it until it does, or drop it.
-
-**MTTR accounting.** For the executive readout, restate: detection gap (first symptom → first alert), containment lag (first alert → blast radius stopped), and resolution lag (containment → full recovery). For each persisted guardrail, state which of those three numbers it would have reduced and by roughly how much. This is what makes the lesson defensible to leadership ("guardrail X would have cut detection gap from 14m to <2m") rather than a wishlist.
+For each guardrail produce: target file + insertion point + exact text. State which MTTR number it would have reduced and roughly by how much. If a guardrail does not fit any target, the rule is too vague - tighten or drop.
 
 ## Output
 
@@ -285,139 +117,79 @@ Failure Type:
 Severity: Low | Medium | High | Critical
 User Impact:
 Duration:
-Triggering Change: {deploy, config change, batch job, traffic pattern - with timestamp}
-Timeline: {triggering change → first symptom → detection → containment → resolution, with timestamps}
-MTTR Breakdown:
-
-- Detection gap: {first symptom → first alert}
-- Containment lag: {first alert → blast radius stopped}
-- Resolution lag: {containment → full recovery}
-
+Triggering Change: {deploy/config/batch/traffic - with timestamp}
+Timeline: {triggering → first symptom → detection → containment → resolution}
+MTTR: detection gap {X}, containment lag {Y}, resolution lag {Z}
 Containment Actions:
 
-## Failure Pattern Classification
+## Failure Classification
 
 Primary Category:
-Chained Categories: {if compound failure, list the chain: root category → amplifying category → user impact}
+Chain (if compound): {root → amplifier → impact}
 System Layer:
 Contributing Factors:
 
 ## Systemic Weaknesses
 
-- Boundary weakness:
-- Coupling risk:
-- Shared resource contention: {did multiple workloads compete for the same pool?}
-- Hidden assumption: {what undocumented assumption broke?}
-- Blast radius amplification: {what structural factor made impact worse than necessary?}
-- Observability blind spot:
+- {Boundary/coupling/shared-resource/hidden-assumption finding} (one bullet each that applies; omit those that do not)
 
-## Guardrail and Review Gaps
+## Review and Process Gaps
 
-- Missed during review because:
-- Missing checklist item:
-- Missing test scenario:
-- Missing monitoring:
+{From review-gap-analysis: top 1-3 gaps with priority and structural fix}
 
 ## Observability Improvements
 
 | Missing Signal | Detection Impact | Recommended Addition |
 | -------------- | ---------------- | -------------------- |
-| Signal         | Impact           | Addition             |
 
 ## Architecture Reinforcement
 
-| Structural Change | Failure Class Prevented | Priority       |
-| ----------------- | ----------------------- | -------------- |
-| Specific change   | Class it prevents       | immediate/next |
+| Structural Change | Failure Class Prevented | Priority |
+| ----------------- | ----------------------- | -------- |
 
 ## Governance Improvements
 
 - Review process change:
-- Design requirement trigger:
+- Design-doc trigger:
 - ADR update:
-- Chaos scenario to simulate:
+- Chaos scenario:
 - Deployment safeguard:
 
-## New Guardrails to Adopt
+## Guardrails and Persistence
 
-| Rule          | Scope | Enforcement | Failure Class Prevented |
-| ------------- | ----- | ----------- | ----------------------- |
-| Specific rule | Where | How checked | What it prevents        |
+3-7 rows for `standard` depth. Every row names a real file or check.
 
-## Persistence Plan (Feedback Loop)
-
-One row per guardrail above. Every row must name a real file or check.
-
-| Guardrail | Target (skill / CLAUDE.md / CI gate / runbook)                | Insertion Point  | Exact Patch             | MTTR Number Reduced                                            |
-| --------- | ------------------------------------------------------------- | ---------------- | ----------------------- | -------------------------------------------------------------- |
-| {rule}    | {e.g., `plugins/ruby/skills/rails-sidekiq-patterns/SKILL.md`} | {section / line} | {bullet or code to add} | {detection gap / containment lag / resolution lag, est. delta} |
+| Rule | Scope | Enforcement | Failure Class | Persistence Target | Exact Patch | MTTR Reduced |
+| ---- | ----- | ----------- | ------------- | ------------------ | ----------- | ------------ |
+| {specific enforceable rule} | review/CI/arch/monitoring | {how checked} | {class prevented} | {file path} | {bullet/code} | {detection / containment / resolution, ~delta} |
 
 ## Staff-Level Takeaways
 
-- 3-5 systemic insights. Each must name a failure class and state the structural principle that prevents it.
-- Format: "{Failure class}: {structural principle or policy change that eliminates the class}"
-- Focus on transferable lessons: resource isolation policies, workload governance, deployment safety invariants, or boundary enforcement rules that apply beyond this incident.
+3-5 lines: "{Failure class}: {structural principle that eliminates it}". Transferable beyond this incident.
 
 ## Pattern Analysis (deep only)
 
-### Recurrence Check
-
-- Has this failure class occurred before? {Yes - N times in last 6 months | No | Unknown}
-- Previous incidents: {list with dates and severity, or "none on record"}
-- Pattern: {Is this random, triggered by deploys, triggered by traffic spikes, or cyclical?}
-
-### Cross-System Weakness
-
-- Which other services or components have the same structural weakness as identified in Section 3?
-- Recommended proactive assessment: {where to look for the same failure class before it triggers}
-
-### Long-Term Elimination
-
-If this failure class recurs, what architectural change eliminates it permanently?
-
-- Option A: {architectural change} - Effort: {S/M/L/XL} - Risk: {Low/Medium/High}
-- Option B: {alternative} - Effort: - Risk:
-- Recommended: {which option and why}
+- Recurrence: prior incidents of this class (count + dates) | "none on record"
+- Cross-system weakness: which other services share this structural weakness
+- Long-term elimination: Option A {change, effort, risk} / Option B / Recommended
 ```
-
-### Output Constraints
-
-- No blame or individual attribution
-- No narrative storytelling or raw log reproduction
-- Findings ordered by leverage: guardrails > architecture > governance > observability
-- Omit empty sections
-- Every recommendation must be actionable and scoped
-- Prioritize high-leverage structural changes over trivial suggestions
-- Optimize for token efficiency and long-term organizational value
 
 ## Self-Check
 
-- [ ] Failure pattern classified by type and system layer - not just described narratively
-- [ ] Compound failure chain identified if multiple categories are involved (root → amplifier → impact)
-- [ ] Triggering change identified with timestamp; deploy-to-symptom lag explained if applicable
-- [ ] Systemic weaknesses identified beyond the immediate failure (boundary, coupling, shared resources, hidden assumptions)
-- [ ] Every observability gap has a concrete recommended addition with threshold or trigger
-- [ ] At least one new enforceable guardrail produced (lint rule, checklist item, CI gate) - not a process wish
-- [ ] Every recommendation addresses a failure class, not just this specific incident
-- [ ] Architecture reinforcement includes resource isolation if shared resources were involved
-- [ ] New guardrails table has at least one item implementable in the next sprint
-- [ ] Every guardrail has a Persistence Plan row naming a concrete file (skill, `CLAUDE.md`, CI gate, or runbook) and an exact patch - no "update the Rails skills" hand-waving
-- [ ] MTTR breakdown reports detection gap, containment lag, and resolution lag separately
-- [ ] Each persisted guardrail names which MTTR number it would have reduced and by roughly how much
-- [ ] No blame or individual attribution in any section
+- [ ] Failure classified by type and layer; compound chain identified if applicable
+- [ ] Triggering change identified with timestamp; deploy-to-symptom lag explained if relevant
+- [ ] MTTR broken into detection / containment / resolution
+- [ ] At least one enforceable guardrail produced (lint, checklist, CI gate, monitor)
+- [ ] Every guardrail row names a concrete persistence target and an exact patch
+- [ ] Each guardrail names which MTTR number it reduces and roughly by how much
+- [ ] Architecture reinforcement includes resource isolation when shared resources were involved
+- [ ] No blame, no narrative, no raw log reproduction
 
 ## Avoid
 
-- Blaming individuals or teams
-- Narrative storytelling about the incident timeline
-- Repeating raw logs or stack traces
-- Generic advice ("improve monitoring", "add more tests")
-- Recommendations that only fix this specific instance
-- Unbounded improvement wishlists without prioritization
-- Proposing architectural rewrites when targeted fixes suffice
-- Treating the postmortem as a debugging session
-- Classifying only the immediate failure without tracing the compound chain
-- Omitting the triggering change when deployment or config change evidence exists
-- Recommending resource pool changes without specifying concrete sizing or timeout values
-- Producing guardrails that live only inside the postmortem document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson will not survive the next quarter
-- Reporting a single "duration" number instead of breaking MTTR into detection gap, containment lag, and resolution lag - the breakdown is what makes guardrails defensible to leadership
+- Generic advice ("improve monitoring", "add more tests") - every recommendation must address a failure class
+- Guardrails that live only inside this document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson dies
+- Reporting a single "duration" instead of detection/containment/resolution split
+- Recommending pool/timeout changes without concrete sizing values
+- Ignoring the compound chain: classifying only the immediate failure, not the amplifier
+- Architectural rewrites when targeted fixes suffice

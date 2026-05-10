@@ -1,6 +1,6 @@
 ---
 name: task-oncall-start
-description: Oncall entry point routing shift-starts and incoming alerts/pages: classifies work type and severity, dispatches to correct workflow.
+description: Oncall entry point routing shift-starts and alerts: classifies work type and severity, dispatches to incident-root-cause or oncall-investigate.
 metadata:
   category: ops
   tags: [oncall, routing, incident, investigation, handoff, rotation]
@@ -8,153 +8,80 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Oncall
 
-## Purpose
+Two modes:
 
-Entry point for oncall work covering two modes:
-
-1. **Shift-start mode** - You are beginning your oncall rotation and need to assess the current state of your service area before anything fires.
-2. **Triage mode** - You received a specific alert, ticket, or report and need to classify it and route to the right workflow.
-
-Most oncall time is lost by treating everything as an incident or jumping to debugging before understanding what type of work this is. Equally, oncall engineers who skip shift-start review get blindsided by context they should have had.
-
-## When to Use
-
-**Shift-start (beginning a rotation or handoff):**
-
-- You are starting your oncall rotation and want to know the current state
-- You are taking over from a previous oncall engineer
-- You want a checklist of what to review before you start receiving pages
-
-**Triage (incoming alert or request):**
-
-- You received a page, alert, or Slack message and need to decide what to do
-- A support ticket or user report landed in the oncall queue
-- A teammate forwarded something with "can you look at this?"
-- You're not sure whether to use `incident-root-cause`, `task-code-debug`, or something else
-
-For known incidents, go directly to `incident-root-cause`. For known non-incident investigations, go directly to `oncall-investigate`.
-
-## Inputs
-
-**For shift-start mode:** team or service area name (e.g., "payments team", "order service"). No alert or ticket needed.
-
-**For triage mode:** paste any of the following:
-
-- Alert text or PagerDuty title
-- Error message or stack trace
-- Support ticket or user report
-- Slack message or description of what was observed
-- Dashboard screenshot description
+1. **Shift-start** - beginning a rotation; assess current state before pages fire
+2. **Triage** - alert/ticket/report just landed; classify and route
 
 ## Mode Detection
 
-Determine which mode to use based on the input:
+- "starting my shift", "taking over", "what should I check?" → **Shift-Start**
+- A specific alert, error, ticket, or symptom is provided → **Triage**
+- Ambiguous → ask: "Are you starting your shift, or do you have a specific alert to triage?"
 
-- If the user mentions starting a rotation, shift, handoff, or asks "what should I check?" - use **Shift-Start Mode** (go to Shift-Start Checklist below)
-- If the user provides a specific alert, error, ticket, or symptom - use **Triage Mode** (go to Classification Model below)
-- If unclear, ask: "Are you starting your oncall shift, or do you have a specific alert or issue to triage?"
+If the user already knows it is an incident, route directly to `incident-root-cause`. If they already know it is non-incident investigation, route to `oncall-investigate`.
 
 ---
 
-## Shift-Start Checklist
+## Shift-Start Mode
 
-Run this when beginning an oncall rotation. The goal is to build situational awareness before anything fires.
+Goal: build situational awareness before anything fires.
 
 ### Step 1 - Detect Stack
 
 Use skill: `stack-detect`
 
-### Step 2 - Review Handoff Notes
+### Step 2 - Review Handoff
 
-Check for context from the previous oncall engineer:
+Check: open or recently resolved incidents (24-72h), known flaky alerts, in-progress investigations, active workarounds, escalation contacts. If no handoff notes exist, flag it as a process gap.
 
-- Open or recently resolved incidents (last 24-72 hours)
-- Known flaky alerts or false positives to expect
-- In-progress investigations that may need follow-up
-- Temporary workarounds or manual interventions in place
-- Escalation contacts for issues the previous oncall was tracking
+### Step 3 - Assess Health and Risks
 
-If no handoff notes exist, note this as a process gap to flag with the team.
+| Area               | What to check                                              | Source                                            |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
+| Open incidents     | Any active or recently resolved                            | Incident tracker, PagerDuty, Slack                |
+| Error rates        | Current vs. baseline for owned services                    | APM (Datadog, New Relic, Grafana)                 |
+| Recent deploys     | Shipped in last 24-48h, including unvalidated production traffic | CI/CD log, release channel                  |
+| Pending alerts     | Unacknowledged or unresolved                               | PagerDuty                                         |
+| Queue health       | Depth, consumer lag, DLQ size                              | Broker dashboard, queue metrics                   |
+| Dependencies       | Status pages for critical third parties                    | Stripe, AWS, Twilio, etc.                         |
+| Scheduled changes  | Maintenance, migrations, cron during your window           | Change calendar                                   |
 
-### Step 3 - Assess Current System Health
+Identify risks not yet alerting: elevated error rates, unvalidated deploys, upcoming jobs that may trigger pages.
 
-Review these areas for the services you own:
-
-| Area                      | What to Check                                           | Where to Look                                        |
-| ------------------------- | ------------------------------------------------------- | ---------------------------------------------------- |
-| **Open incidents**        | Any active or recently resolved incidents               | Incident tracker, PagerDuty, Slack incident channels |
-| **Error rates**           | Current error rate vs. baseline for owned services      | Dashboards, APM tools (Datadog, New Relic, Grafana)  |
-| **Recent deploys**        | What shipped in the last 24-48 hours                    | CI/CD pipeline, deploy log, release channel          |
-| **Pending alerts**        | Alerts that fired but were not acknowledged or resolved | PagerDuty, alerting tool                             |
-| **Queue health**          | Queue depth, consumer lag, dead-letter queue size       | Message broker dashboard, CloudWatch, queue metrics  |
-| **Dependency status**     | Third-party API status pages for critical dependencies  | Status pages (e.g., Stripe, AWS, Twilio)             |
-| **Scheduled maintenance** | Planned changes during your rotation window             | Change calendar, team channel                        |
-
-### Step 4 - Identify Known Risks
-
-Based on the review, identify:
-
-- Services with elevated error rates that have not triggered an alert yet
-- Recent deploys that have not been validated in production
-- Known issues that might escalate during your rotation
-- Upcoming scheduled jobs or migrations that could cause alerts
-
-### Step 5 - Confirm Readiness
-
-Before signing off on shift-start:
-
-- [ ] Handoff notes reviewed (or absence noted)
-- [ ] Dashboards checked for owned services
-- [ ] Recent deploys identified and noted
-- [ ] Alerting tool access confirmed and notifications routing to you
-- [ ] Escalation path known (who to contact for what)
-- [ ] Runbook locations known for owned services
-
-### Shift-Start Output
+### Output
 
 ```
 ## Oncall Shift-Start Summary
 
-Team/Service Area: {team or service name}
+Team/Service: {name}
 Rotation Start: {date/time}
-Previous Oncall: {name if known, or "Unknown"}
+Previous Oncall: {name or "Unknown"}
 
 ### Handoff Review
-
 - Open incidents: {list or "None"}
-- Known flaky alerts: {list or "None identified"}
+- Known flaky alerts: {list or "None"}
 - In-progress investigations: {list or "None"}
 - Active workarounds: {list or "None"}
 
-### Current System Health
-
+### Current Health
 - Error rates: {normal / elevated for {service} / unknown}
-- Recent deploys (last 48h): {list with timestamps, or "None"}
-- Queue health: {normal / {queue} showing lag / unknown}
-- Dependency status: {all green / {dependency} degraded}
+- Recent deploys (48h): {list with timestamps, or "None"}
+- Queue health: {normal / {queue} lagging / unknown}
+- Dependencies: {all green / {dep} degraded}
 
-### Known Risks for This Rotation
-
-- {Risk 1 - e.g., "v2.4.1 deployed 6h ago, not yet validated under peak traffic"}
+### Known Risks
+- {Risk 1 - e.g., "v2.4.1 deployed 6h ago, not yet validated under peak"}
 - {Risk 2}
-- {or "No elevated risks identified"}
-
-### Readiness
-
-- [ ] Notifications routing correctly
-- [ ] Escalation contacts confirmed
-- [ ] Runbook locations known
 ```
 
 ---
 
-## Classification Model (Triage Mode)
-
-Use this when you have a specific alert, ticket, or report to classify.
+## Triage Mode
 
 ### Step 1 - Detect Stack
 
@@ -162,97 +89,74 @@ Use skill: `stack-detect`
 
 ### Step 2 - Classify Work Type
 
-| Type                               | Signals                                                                                       | Route to                                        |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| **Active incident**                | Service down, error rate spike, multiple users affected, SLA breach, data loss risk           | `incident-root-cause`                           |
-| **Code bug**                       | Stack trace, test failure, crash, specific reproducible error in code                         | `task-code-debug`                               |
-| **Operational investigation**      | "Why did X happen?", batch job missed, queue backed up, unexpected behavior for specific case | `oncall-investigate`                            |
-| **User / support request**         | Single user issue, access problem, data question, "why can't I see X?"                        | `oncall-investigate`                            |
-| **Performance concern**            | Slow response, high latency, timeout (no outage)                                              | `oncall-investigate` or `task-code-review-perf` |
-| **Monitoring / alerting question** | Alert fired but unclear why, alert seems false positive, dashboard anomaly                    | `oncall-investigate`                            |
+| Type                       | Signals                                                                                | Route to                                        |
+| -------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Active incident**        | Service down, error rate spike, multiple users affected, SLA breach, data loss risk    | `incident-root-cause`                           |
+| **Code bug**               | Stack trace, test failure, crash, reproducible error                                   | `task-code-debug`                               |
+| **Operational issue**      | Batch missed, queue backed up, "why did X happen?"                                     | `oncall-investigate`                            |
+| **User / support request** | Single user issue, access problem, data question                                       | `oncall-investigate`                            |
+| **Performance**            | Slow response, high latency, timeout (no outage)                                       | `oncall-investigate` or `task-code-review-perf` |
+| **Alert investigation**    | Alert fired, unclear if real or false positive                                         | `oncall-investigate`                            |
 
-Apply the highest matching type. If signals are mixed, classify as **Active incident** to err on the side of urgency.
+Tiebreaker: if a symptom matches both **Performance** and **Active incident**, choose Active incident when user-visible impact is ongoing OR multiple users are affected; otherwise Performance.
 
-### Step 3 - Severity Assessment
+### Step 3 - Severity
 
-| Severity     | Criteria                                                                     |
-| ------------ | ---------------------------------------------------------------------------- |
-| **Critical** | Service fully down, data loss occurring, SLA breached, payment/auth broken   |
-| **High**     | Partial outage, significant user population affected, degraded critical path |
-| **Medium**   | Feature broken for subset of users, workaround exists, no data loss          |
-| **Low**      | Single user affected, cosmetic issue, non-critical feature, no user impact   |
+| Severity     | Criteria                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| **Critical** | Service fully down, data loss, SLA breached, payment/auth broken                                      |
+| **High**     | Partial outage, >10% of users on critical path, or critical-path latency >2x baseline                 |
+| **Medium**   | Feature broken for a subset, workaround exists, no data loss                                          |
+| **Low**      | Single user, cosmetic, non-critical feature                                                           |
 
-For Critical and High: route immediately - do not spend time on further classification.
+For Critical / High: route immediately. Skip further classification.
 
-For Medium and Low: complete classification fully before investigating.
+### Step 4 - Scope Check
 
-### Step 4 - Scope Check (30 seconds)
-
-- **Is this ongoing?** (Yes = urgency up; No = investigation can be measured)
-- **Is data at risk?** (Yes = Critical regardless of other signals)
-- **Has this happened before?** (Yes = check runbooks or prior postmortems first)
-- **Did an external dependency degrade?** (Yes = check third-party API status pages, latency dashboards before assuming internal cause)
-- **Was there a recent deploy or config change?** (Yes = rollback may be fastest resolution)
+- Ongoing? → urgency up
+- Data at risk? → Critical regardless of other signals
+- Happened before? → check runbooks and prior postmortems
+- External dependency degraded? → check status pages before assuming internal cause
+- Recent deploy or config change? → rollback may be the fastest resolution
 
 ### Step 5 - Route and Package Context
 
-State the classification, severity, and recommended next step. Package the key context the next workflow needs:
+State the classification, severity, recommended workflow, and the context the next workflow needs.
 
-- Relevant error message, log snippet, or symptom description
-- Time window (when did it start?)
-- Affected scope (who/what is impacted?)
-- Recent changes (deploy, config, feature flag, traffic change)
-
-## Triage Output
+### Output
 
 ```
 ## Oncall Classification
 
-Work Type: {Active incident | Code bug | Operational investigation | User request | Performance | Monitoring}
+Work Type: {Active incident | Code bug | Operational | User request | Performance | Alert}
 Severity: {Critical | High | Medium | Low}
 Ongoing: {Yes | No | Unknown}
 
 ### Recommended Workflow
-
 Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-review-perf}
 
 ### Context Package
-
-- Symptom: {one-sentence description}
-- Time window: {when did it start or occur?}
-- Affected scope: {who or what is impacted}
-- Recent change: {deploy, config, or flag change if known, or "None identified"}
-- Runbook exists: {Yes - link | No | Unknown}
+- Symptom: {one sentence}
+- Time window: {when did it start?}
+- Affected scope: {who/what is impacted}
+- Recent change: {deploy/config/flag, or "None identified"}
+- Runbook: {Yes - link | No | Unknown}
 
 ### Immediate Action (Critical/High only)
-
-- [ ] {First thing to do right now}
+- [ ] {first thing to do now}
 ```
 
 ## Self-Check
 
-**Shift-start mode:**
-
-- [ ] Handoff notes reviewed or absence flagged
-- [ ] Dashboard and error rates checked for owned services
-- [ ] Recent deploys identified
-- [ ] Alerting access confirmed and routing to you
-- [ ] Escalation path documented
-
-**Triage mode:**
-
-- [ ] Work type classified before any investigation starts
-- [ ] Severity assessed - Critical/High routes immediately
-- [ ] Scope check completed (ongoing? data at risk? recent change?)
-- [ ] Context package ready for the target workflow
-- [ ] Output can be read in under 30 seconds
+- [ ] Mode detected (shift-start vs triage); stack detection invoked
+- [ ] Triage: work type and severity assigned; scope check completed; context package ready
+- [ ] Shift-start: handoff reviewed (or absence flagged); health and risks identified
+- [ ] Critical/High routed immediately, no further classification time spent
+- [ ] Output is readable in under 30 seconds
 
 ## Avoid
 
-- Spending more than 2 minutes on classification for Critical/High severity - route immediately
-- Treating every alert as an incident - most oncall work is investigation, not incident response
-- Starting debugging before classifying - classification shapes what to look for
-- Routing to `task-code-debug` when there is no stack trace or reproducible error
-- Skipping the "recent change?" check - this is the fastest path to resolution for many issues
-- Starting an oncall rotation without reviewing handoff notes and current system health
-- Assuming "no alerts = all healthy" at shift start - check dashboards to confirm
+- Treating every alert as an incident; most oncall work is investigation
+- Routing to `task-code-debug` without a stack trace or reproducible error
+- Skipping the recent-change check - it is the fastest path to resolution for many alerts
+- Assuming "no alerts = healthy" at shift start; check dashboards

@@ -1,6 +1,6 @@
 ---
 name: log-analysis
-description: Structured log analysis for oncall investigation - time-window isolation, correlation ID tracing, frequency analysis, and healthy/unhealthy comparison
+description: Structured log analysis: time-window isolation, correlation tracing, frequency distribution, multi-error sequencing, healthy/unhealthy comparison.
 metadata:
   category: ops
   tags: [logs, investigation, tracing, correlation, oncall]
@@ -13,151 +13,124 @@ user-invocable: false
 
 ## When to Use
 
-- During active incident investigation to find the root cause in logs
-- When tracing a specific request across multiple services
-- When investigating a user report or support ticket using log evidence
-- When comparing behavior between a healthy and unhealthy time window
+- Active incident investigation
+- Tracing a specific request across services
+- Investigating a user report or support ticket via log evidence
+- Comparing healthy vs unhealthy time windows
 
 ## Rules
 
-- Always isolate the time window before reading log volume
-- Lead with correlation ID tracing when available - this is the fastest path to truth
-- Distinguish signal (meaningful patterns) from noise (expected errors, health checks)
-- Quantify frequency and distribution - "many errors" is not useful; "47 errors in 3 minutes all from user ID 8821" is
-- When multiple error classes appear together, establish temporal ordering to determine causation direction - which error type appeared first matters more than which is most frequent
-- State what the logs confirm, what they contradict, and what remains unresolved
-- If logs are insufficient, state exactly what additional log signal is needed
+- Isolate the time window before reading log volume
+- Lead with correlation ID tracing when available - fastest path to truth
+- Quantify - "many errors" is useless; "47 timeouts in 3 min, all on /api/orders, all EU users" is signal
+- When multiple error classes appear together, establish first-appearance ordering - one is almost always causing the other
+- State what logs confirm, contradict, and cannot resolve
 
 ## Pattern
 
 ### Step 1 - Time-Window Isolation
 
-Identify the relevant time window before reading log volume:
+- **Failure start**: timestamp of first anomalous log (NOT alert fire time - alert lag is common)
+- **Failure end**: when logs returned to baseline (if resolved)
+- **Comparison window**: equivalent healthy period (same time of day, same day of week)
 
-- **Failure start**: When did the first anomalous log appear? (not when the alert fired)
-- **Failure end** (if resolved): When did logs return to normal?
-- **Comparison window**: Identify an equivalent "healthy" window (same time of day, same day of week) for contrast
+Default window: 5-10 min around onset. If the window has >2000 lines or spans >10 min, sample strategically: first 30s of anomaly (root signal), peak (saturation pattern), last 30s before recovery (resolution pattern).
 
-Narrow the window to 5-10 minutes around the failure onset unless the issue is intermittent or slow-burn.
+### Step 2 - Correlation Tracing
 
-**High-volume windows**: If the failure window contains thousands of log lines, sample strategically rather than reading everything. Focus on: (1) the first 30 seconds of the anomaly for root signal, (2) a sample from peak error rate, (3) the last 30 seconds before recovery (if resolved). This avoids drowning in repetitive error lines while capturing onset, peak, and resolution patterns.
+If trace/request IDs are present: extract from the failing case, follow chronologically across services, identify where the chain breaks (missing span = likely failure point), note ID propagation gaps.
 
-### Step 2 - Correlation ID Tracing
+If absent: flag as observability gap.
 
-If correlation IDs / trace IDs / request IDs are present:
+### Step 3 - Frequency and Distribution
 
-1. Extract the ID(s) from the failing request or reported case
-2. Trace all log lines with that ID across services in chronological order
-3. Identify where the chain breaks (missing span = likely failure point)
-4. Note any ID propagation gaps (correlation ID present in service A but not service B)
+For errors in the window, characterize:
 
-If no correlation IDs are present, note this as an observability gap.
+| Dimension            | What to capture                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Rate                 | Errors per minute - constant, spiking, tapering                                                            |
+| Affected users       | One user, a segment (extract distinct user IDs, cross-reference with attributes - region, plan, cohort), or all |
+| Affected endpoints   | One route or many                                                                                          |
+| Error classes        | Single class or mixed                                                                                      |
+| Service distribution | One service or many                                                                                        |
+| Timing correlation   | Coincides with deploy, traffic spike, cron job?                                                            |
 
-### Step 3 - Frequency and Distribution Analysis
+Report distribution as a single sentence: e.g., *"47 timeout errors in 3 min, all on `/api/orders`, all EU users, starting 14:23 UTC immediately after deploy v2.4.1."*
 
-For error logs in the window:
+### Step 4 - Multi-Error Sequencing
 
-| Dimension            | What to Check                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rate                 | Errors per minute - is it constant, spiking, or tapering?                                                                                                                                                                                                                                                                                                                       |
-| Affected users       | Is it one user, a segment, or all users? To identify a segment: extract distinct user IDs from error logs, then cross-reference with user attributes (e.g., users with no billing address, users in a specific region, users on a specific plan). Query pattern: `SELECT attribute, COUNT(*) FROM error_logs JOIN users USING (user_id) GROUP BY attribute ORDER BY COUNT DESC` |
-| Affected endpoints   | Is it one route or many?                                                                                                                                                                                                                                                                                                                                                        |
-| Error type           | Are all errors the same class or mixed?                                                                                                                                                                                                                                                                                                                                         |
-| Service distribution | Which services are logging errors - one or many?                                                                                                                                                                                                                                                                                                                                |
-| Timing correlation   | Does the error rate correlate with a deploy, traffic spike, or cron job?                                                                                                                                                                                                                                                                                                        |
+When multiple error classes interleave, determine causation direction:
 
-State the distribution as a sentence: "47 timeout errors in 3 minutes, all on `/api/orders`, all from users in the EU region, starting at 14:23 UTC immediately after deploy v2.4.1."
+1. **First-appearance ordering**: which class logged first? Earliest type is the likely upstream cause
+2. **Saturation signals**: if an error is a resource-exhaustion type (pool exhausted, queue full, OOM, FD limit, thread pool rejected), check the resource metric leading up - gradual climb confirms exhaustion, sudden jump suggests a burst
 
-### Step 3b - Multi-Error-Class Sequencing
+Common upstream → downstream chains:
 
-When multiple distinct error types appear in the same window (e.g., "connection timeout" and "pool exhausted" interleaved), determine causation direction:
+| Upstream                  | Downstream                | Mechanism                                                                |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------------ |
+| Dependency timeout        | Connection pool exhausted | Slow responses hold connections, starving the pool                       |
+| Connection pool exhausted | Request timeout / 503     | New requests cannot acquire a connection                                 |
+| Memory pressure           | GC pause → timeouts       | Long pauses look like dependency failures                                |
 
-1. **First-appearance ordering**: Which error class logged first? The earliest error type is the likely upstream cause
-2. **Frequency crossover**: Plot both error types by minute - does one consistently precede the other, or do they start simultaneously?
-3. **Request-level correlation**: For requests that produce both error types, which appears first in the request lifecycle? (e.g., timeout at 14:30:01 on request R1, then pool exhausted at 14:30:02 on request R2 because R1 held the last connection)
-4. **Saturation signals**: If one error is a resource exhaustion type (pool exhausted, queue full, memory limit, file descriptor limit, thread pool rejected), check the resource metric leading up to the spike - gradual climb to limit confirms exhaustion, sudden jump suggests a burst
+State the chain as: *"{upstream} causes {downstream} because {mechanism}, confirmed by {evidence}."*
 
-Common causal chains to check:
+### Step 5 - Healthy vs Unhealthy Comparison
 
-| Upstream Error            | Downstream Effect          | Mechanism                                                                |
-| ------------------------- | -------------------------- | ------------------------------------------------------------------------ |
-| Dependency timeout        | Connection pool exhausted  | Slow responses hold connections open, starving the pool                  |
-| Connection pool exhausted | Request timeout / HTTP 503 | New requests cannot acquire a connection and time out or get rejected    |
-| Memory pressure           | GC pauses, then timeouts   | Long GC pauses cause request timeouts that look like dependency failures |
-| DNS resolution failure    | Connection timeout         | Connections hang waiting for DNS, then time out                          |
-| TLS handshake failure     | Connection timeout         | Handshake stalls consume connection slots                                |
+Compare windows on:
 
-State the causal chain as: "{upstream error} causes {downstream error} because {mechanism}, confirmed by {evidence}."
+- **Volume change**: log volume higher or lower
+- **New error classes**: types appearing in failing window absent in healthy
+- **Missing logs**: expected entries absent (e.g., "payment processed" gone = payments not completing)
+- **Latency signals**: duration / elapsed fields shifted
 
-### Step 4 - Healthy vs. Unhealthy Comparison
+### Step 6 - Key Evidence
 
-Compare the failing window against the healthy comparison window:
+Produce a focused evidence set:
 
-- **Volume change**: Is log volume higher or lower than normal?
-- **New error classes**: What error types appear in the failing window that don't appear in healthy?
-- **Missing log lines**: Are expected log lines absent (e.g., "payment processed" logs gone = payments not completing)?
-- **Latency signals**: Are duration/elapsed fields higher in the failing window?
-- **Stack trace evolution**: Did a new exception class appear, or did an existing one increase in frequency?
+- Earliest anomalous log: exact timestamp + message
+- Highest-frequency error: class, count, distribution
+- Likely trigger: what changed just before onset?
+- Confirmed scope: users, endpoints, services affected by log evidence
 
-### Step 5 - Key Evidence Extraction
-
-Produce a focused evidence set for downstream analysis:
-
-- **Earliest anomalous log**: Exact timestamp and message
-- **Highest-frequency error**: Error class, count, and time distribution
-- **Causal chain** (when multiple error types): Which error class appeared first and caused the others, with mechanism
-- **Correlation chain**: Traced request path (or gap where tracing breaks)
-- **Likely trigger**: What changed just before the first anomalous log?
-- **Affected scope**: Users, endpoints, or services confirmed affected by log evidence
-
-## Output Format
+## Output
 
 ```
 ## Log Analysis
 
 Time Window: {start} to {end} ({duration})
-Comparison Window: {healthy period used for contrast}
+Comparison Window: {healthy period}
 
 ### Correlation Trace
-
-{Traced request path, or "No correlation IDs present - observability gap"}
+{Traced path, or "No correlation IDs - observability gap"}
 
 ### Error Distribution
-
 - Rate: {errors/minute, spike pattern}
-- Affected scope: {users / endpoints / services}
-- Error classes: {type and count for each distinct error type}
-- Causal chain: {upstream error -> downstream error with mechanism, or "Single error class" if only one type}
-- Timing trigger: {what correlates with onset}
+- Scope: {users / endpoints / services}
+- Classes: {type and count for each}
+- Causal chain: {upstream → downstream + mechanism, or "Single class"}
+- Trigger: {what correlates with onset}
 
-### Healthy vs. Unhealthy Delta
-
-| Dimension     | Healthy Window | Failing Window | Delta       |
-| ------------- | -------------- | -------------- | ----------- |
-| Error rate    | {value}        | {value}        | {change}    |
-| New errors    | -              | {list}         | -           |
-| Missing logs  | {expected log} | absent         | -           |
-| Latency (p99) | {value}        | {value}        | {change}    |
+### Healthy vs Unhealthy
+- Error rate: {healthy} → {failing} ({delta})
+- New classes: {list}
+- Missing logs: {list, or "None notable"}
+- {Other notable shifts}
 
 ### Key Evidence
-
-- Earliest anomaly: {timestamp} - {log message}
+- Earliest anomaly: {timestamp} - {message}
 - Primary signal: {most diagnostic finding}
-- Causal chain: {error A -> error B because mechanism, or "Single error class"}
-- Likely trigger: {what changed before onset}
+- Likely trigger: {what changed}
 - Confirmed scope: {affected users/endpoints/services}
 
 ### Log Gaps
-
 - {Signal missing that would resolve ambiguity, or "None identified"}
 ```
 
 ## Avoid
 
-- Reading raw log volume without time-window isolation first
-- Treating alert firing time as failure start time (alert lag is common)
-- Reporting individual log lines without frequency context
+- Reading raw log volume without time-window isolation
+- Treating alert firing time as failure start (alert lag is common)
+- Reporting individual lines without frequency context
 - Skipping the healthy comparison - patterns only have meaning relative to baseline
+- Treating interleaved error types as independent - first-appearance ordering usually exposes causation
 - Concluding root cause from logs alone without linking to code or config evidence
-- Treating interleaved error types as independent problems - when two error classes spike together, one is almost always causing the other
-- Reading all log lines in a high-volume spike - sample onset, peak, and recovery instead
