@@ -25,6 +25,9 @@
       "Bash(git remote -v)",
       "Bash(git ls-files:*)",
       "Bash(git ls-tree:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash:*)",
       "Bash(go build:*)",
       "Bash(go mod:*)",
       "Bash(go vet:*)",
@@ -163,10 +166,7 @@
       "Bash(docker:*)",
       "Bash(docker-compose:*)",
       "Bash(sed:*)",
-      "Bash(awk:*)",
-      "Bash(git add:*)",
-      "Bash(git restore:*)",
-      "Bash(git stash:*)"
+      "Bash(awk:*)"
     ],
     "defaultMode": "acceptEdits"
   },
