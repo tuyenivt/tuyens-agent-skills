@@ -184,15 +184,49 @@ MySQL 8.0.13+ supports `RENAME COLUMN` with `INSTANT`, but the four-step is stil
 
 ### Dropping columns
 
-```ruby
-# Deploy 1: Add to ignored_columns
-self.ignored_columns += ["legacy_field"]
+Column drops are final; treat them as a three-phase change (audit, prep if needed, two deploys), not a one-line `remove_column`.
 
-# Deploy 2: Remove
-safety_assured { remove_column :orders, :legacy_field, :string }
+**Phase 1 - Pre-flight audit.** Grep for every reference, then look outside the repo:
+
+```bash
+rg -n "legacy_field" app/ lib/ config/ spec/ test/ db/ -g '!*.lock' \
+  -g '*.rb' -g '*.erb' -g '*.haml' -g '*.slim' -g '*.sql'
 ```
 
-On 8.0.29+, `DROP COLUMN` is `INSTANT`-eligible - second deploy completes in ms.
+Also check: BI dashboards, ETL pipelines, materialized views, stored procedures, triggers, replicas with custom subscribers. Drop dependent FKs / indexes / generated-column references / `CHECK` constraints / views in a *prior* migration; `safety_assured { remove_column ... }` otherwise fails or cascades. `strong_migrations` catches most dependency cases.
+
+**Phase 2 - Prep migration (only if the column is `NOT NULL` with no DB-side default AND the app writes to it on every insert).** Once deploy A stops writing, the next insert hits the constraint. Pick one (both are metadata-only on MySQL 8.0):
+
+- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - no NULLs ever, existing rows unchanged. Choose when a sensible default fits all rows.
+- `change_column_null :users, :legacy_field, true` - new omitted-INSERT rows get `NULL` during the window. Choose when NULL is acceptable for the (short) window before column drop.
+
+**Phase 3 - Two deploys.** Schema cache lives in every process; a single-deploy approach races old workers (still issuing `INSERT INTO users (..., legacy_field, ...)`) against the DDL.
+
+```ruby
+# Deploy A: model only, no migration. Use += so concerns/parents are preserved.
+class User < ApplicationRecord
+  self.ignored_columns += ["legacy_field"]
+end
+```
+
+Remove all read/write references to the column. Wait for confirmed full rollout across web, Sidekiq, schedulers, and any other process that boots Rails - Sidekiq fleets often lag web; plan for the slower one. Don't proceed on a clock; confirm via the deploy system.
+
+```ruby
+# Deploy B: migration + remove the ignored_columns line in the same PR.
+class RemoveLegacyFieldFromUsers < ActiveRecord::Migration[7.2]
+  def change
+    safety_assured do
+      remove_column :users, :legacy_field, :string, null: false, default: "guest"
+    end
+  end
+end
+```
+
+Restate the original type/null/default on `remove_column` so `db:rollback` can re-add the column. `DROP COLUMN` is `INSTANT`-eligible on MySQL 8.0.29+ (milliseconds, no lock).
+
+**This procedure is independent of `partial_inserts`.** `ignored_columns` removes the column from Rails' attribute map entirely.
+
+**Edge cases requiring extra prior steps:** dependent objects (FK / index / generated column / `CHECK` / view), external systems consuming the column, tables >100M rows (use `gh-ost --alter="DROP COLUMN ..."` to throttle on replication lag).
 
 ### Creating tables with proper conventions
 

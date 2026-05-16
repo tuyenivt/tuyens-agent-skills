@@ -124,15 +124,59 @@ safety_assured { remove_column :orders, :total, :string }
 
 ### Dropping Columns
 
-```ruby
-# Deploy 1: Add to ignored_columns
-self.ignored_columns += ["legacy_field"]
+Column drops are final; treat them as a three-phase change (audit, prep if needed, two deploys), not a one-line `remove_column`.
 
-# Deploy 2: Remove
-safety_assured { remove_column :orders, :legacy_field, :string }
+**Phase 1 - Pre-flight audit.** Grep every reference, then look outside the repo:
+
+```bash
+rg -n "legacy_field" app/ lib/ config/ spec/ test/ db/ -g '!*.lock' \
+  -g '*.rb' -g '*.erb' -g '*.haml' -g '*.slim' -g '*.sql'
 ```
 
-`remove_column` on a column with no FK or index is metadata-only in PG.
+Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical replication subscribers, FDW foreign tables. Drop dependent FKs / indexes / generated-column references / `CHECK` constraints / **views** in a *prior* migration. `strong_migrations` catches FK / index cases but not view dependencies - find those with `pg_depend`:
+
+```sql
+SELECT dependent_view.relname
+FROM pg_depend
+JOIN pg_rewrite ON pg_rewrite.oid = pg_depend.objid
+JOIN pg_class dependent_view ON dependent_view.oid = pg_rewrite.ev_class
+JOIN pg_class source_table ON source_table.oid = pg_depend.refobjid
+JOIN pg_attribute ON pg_attribute.attrelid = pg_depend.refobjid AND pg_attribute.attnum = pg_depend.refobjsubid
+WHERE source_table.relname = 'orders' AND pg_attribute.attname = 'legacy_field';
+```
+
+**Phase 2 - Prep migration (only if the column is `NOT NULL` with no DB-side default AND the app writes to it on every insert).** Once deploy A stops writing, the next insert hits the constraint. Pick one (both are metadata-only on PG 11+):
+
+- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - no NULLs ever, existing rows unchanged. Choose when a sensible default fits all rows.
+- `change_column_null :users, :legacy_field, true` - new omitted-INSERT rows get `NULL` during the window. Choose when NULL is acceptable for the (short) window before column drop.
+
+**Phase 3 - Two deploys.** Schema cache lives in every process; a single-deploy approach races old workers (still issuing `INSERT INTO users (..., legacy_field, ...)`) against the DDL.
+
+```ruby
+# Deploy A: model only, no migration. Use += so concerns/parents are preserved.
+class User < ApplicationRecord
+  self.ignored_columns += ["legacy_field"]
+end
+```
+
+Remove all read/write references to the column. Wait for confirmed full rollout across web, Sidekiq, schedulers, and any other process that boots Rails - Sidekiq fleets often lag web; plan for the slower one. Don't proceed on a clock; confirm via the deploy system.
+
+```ruby
+# Deploy B: migration + remove the ignored_columns line in the same PR.
+class RemoveLegacyFieldFromUsers < ActiveRecord::Migration[7.2]
+  def change
+    safety_assured do
+      remove_column :users, :legacy_field, :string, null: false, default: "guest"
+    end
+  end
+end
+```
+
+Restate the original type/null/default on `remove_column` so `db:rollback` can re-add the column. `DROP COLUMN` is metadata-only in PG (no table rewrite, milliseconds). Disk space reclaims via autovacuum, or `pg_repack` if you need it back promptly.
+
+**This procedure is independent of `partial_inserts`.** `ignored_columns` removes the column from Rails' attribute map entirely.
+
+**Edge cases requiring extra prior steps:** dependent objects (FK / index / generated column / `CHECK` / view via `pg_depend`), external systems (BI / ETL / logical-replication subscribers / FDW foreign tables) consuming the column, tables >100M rows where space reclamation is urgent (plan `pg_repack` after the drop).
 
 ### Creating Tables
 
