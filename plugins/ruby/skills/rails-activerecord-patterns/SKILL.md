@@ -230,6 +230,12 @@ end
 # Option C: when the side effect is needed only sometimes, scope it
 order.update!(order_params)                     # default path: no preload
 order.line_items.reload if reprice_needed       # explicit, scoped to the case
+
+# Option D: when a callback needs the FK but not the record, pass the FK directly
+# Bad - loads shipping_address every save:
+#   after_commit { WarehouseJob.perform_later(self.shipping_address.id) }
+# Good - uses the FK already in memory, no SELECT:
+#   after_commit { WarehouseJob.perform_later(self.shipping_address_id) }
 ```
 
 For an audit of the implicit-configuration state (including `has_many_inversing`, `automatic_scope_inversing`, and `new_framework_defaults_*.rb` footguns), use `rails-implicit-config-audit`.

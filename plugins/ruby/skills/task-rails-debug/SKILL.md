@@ -62,6 +62,7 @@ Match the error and load the relevant atomic skill:
 | ------------------------------------------------------------ | --------------------------------------------------------- | ---------------------------------- |
 | `RecordNotFound`                                             | Missing record, bad params/scopes                         | `rails-activerecord-patterns`      |
 | `RecordInvalid`                                              | Validation failure - check `record.errors.full_messages`  | `rails-activerecord-patterns`      |
+| No error, but `update`/`save` loads associations the action body never references | `touch:` / `autosave:` / `accepts_nested_attributes_for` / callback reads `self.<association>` / missing `inverse_of` under `load_defaults <= 6.1` | `rails-implicit-config-audit` |
 | `StatementInvalid`                                           | Raw SQL error, missing migration, wrong column type       | `rails-migration-safety`           |
 | `Mysql2::Error: Lock wait timeout exceeded`                  | Long-running transaction or held advisory lock            | `rails-db-locking-patterns`        |
 | `Mysql2::Error: Deadlock found`                              | Gap-lock cascade under default RR - non-PK `with_lock`    | `rails-db-locking-patterns`        |

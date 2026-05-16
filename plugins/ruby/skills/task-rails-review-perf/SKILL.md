@@ -71,6 +71,8 @@ Use skill: `rails-activerecord-patterns`.
 
 For any N+1 surfacing on an `update`/`save` path (not a list/index), also use skill: `rails-implicit-config-audit` to check whether the source is `touch:` / `autosave:` / `accepts_nested_attributes_for` / a callback / missing `inverse_of` under `load_defaults <= 6.1`. The fix is to remove the source, not to add `.includes` in the controller.
 
+If the PR or existing code shows `.includes` / `preload` on an `update`/`save` action (as opposed to an index/list action), treat it as suspect rather than as a correct fix already in place. The controller fetch happens *before* the save; loads triggered by `touch:` / `autosave:` / callbacks happen *during* the save. `.includes` upstream cannot suppress them. Flag the `.includes` as misdirected and find the real source.
+
 - [ ] **N+1 in controllers / serializers / views**: every association touched in `each` is preloaded upstream. Serializer-driven N+1 is fixed on the controller, not the serializer
 - [ ] **Multi-level N+1**: nested `each` over associations of associations - `includes(line_items: :product)`
 - [ ] **N+1 inside service objects**: caller's preload contract doesn't extend through `Service.call(orders:)` - preload at the boundary or document the relation contract

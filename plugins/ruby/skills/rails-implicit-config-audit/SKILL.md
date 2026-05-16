@@ -60,6 +60,8 @@ For the canonical full table including ActionMailer, ActionCable, ActiveJob, and
 - **Callbacks that touch associations**: `before_save`, `before_validation`, `after_commit` that reference `self.association` cause loads at save time.
 - **`ApplicationController` `before_action` chain**: Devise's `authenticate_user!`, Pundit's `verify_authorized` / `verify_policy_scoped`, custom audit middleware - all fire on every action unless explicitly skipped.
 
+When multiple behaviours converge on a single symptom (e.g., an `update` action shows queries for several associations), report them together with an explicit *synthesis*: "behaviours X, Y, Z explain the N extra queries observed at <location>". Listing them in isolation forces the reader to do the assembly; the audit's job is to do it for them.
+
 ### C. `new_framework_defaults_*.rb` initializer-timing footgun
 
 When Rails 7.x adds a new default, the upgrade flow creates `config/initializers/new_framework_defaults_7_X.rb` with the flips commented out. Uncomment them one at a time, ship, then eventually bump `load_defaults`.
@@ -73,6 +75,8 @@ Known affected flags (audit must check):
 - `config.active_record.run_after_transaction_callbacks_in_order_defined` ([rails#52098](https://github.com/rails/rails/issues/52098))
 
 Detection: if `new_framework_defaults_7_X.rb` exists AND one of these lines is uncommented in that file (not in `application.rb`), flag as `Footgun: initializer-timing` even if the team believes it is enabled.
+
+**Flags NOT affected by the initializer-timing footgun** (safe to set in `new_framework_defaults_*.rb`): `partial_inserts`, `raise_on_assign_to_attr_readonly`, `default_column_serializer`, `cache_format_version`. When these appear uncommented in the initializer, report them as active with `Footgun: none`. The audit should make this distinction explicit so reviewers don't have to deduce it from absence.
 
 ### D. Environment-specific overrides
 
