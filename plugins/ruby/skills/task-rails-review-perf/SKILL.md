@@ -69,6 +69,8 @@ If `review-precondition-check` stops with a fail-fast message, surface it verbat
 
 Use skill: `rails-activerecord-patterns`.
 
+For any N+1 surfacing on an `update`/`save` path (not a list/index), also use skill: `rails-implicit-config-audit` to check whether the source is `touch:` / `autosave:` / `accepts_nested_attributes_for` / a callback / missing `inverse_of` under `load_defaults <= 6.1`. The fix is to remove the source, not to add `.includes` in the controller.
+
 - [ ] **N+1 in controllers / serializers / views**: every association touched in `each` is preloaded upstream. Serializer-driven N+1 is fixed on the controller, not the serializer
 - [ ] **Multi-level N+1**: nested `each` over associations of associations - `includes(line_items: :product)`
 - [ ] **N+1 inside service objects**: caller's preload contract doesn't extend through `Service.call(orders:)` - preload at the boundary or document the relation contract
@@ -184,6 +186,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write the rep
 - [ ] Diff and commit log read once and reused
 - [ ] When `head_matches_current` was false, explicit user approval obtained before review (skipped if parent already gated)
 - [ ] `rails-activerecord-patterns` consulted; N+1, multi-level N+1, scope/index alignment checked
+- [ ] For N+1 on update/save paths, `rails-implicit-config-audit` consulted to identify the source (`touch:` / `autosave:` / nested-attributes / callback / missing `inverse_of`) before recommending `.includes`
 - [ ] `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG) consulted for any `db/migrate/` change
 - [ ] `rails-sidekiq-patterns` consulted; post-commit dispatch and idempotency verified
 - [ ] `rails-connection-pool-sizing` consulted

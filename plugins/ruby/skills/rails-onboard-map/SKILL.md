@@ -87,6 +87,7 @@ user-invocable: false
 | Area                              | What to check                                        | Skill                          |
 | --------------------------------- | ---------------------------------------------------- | ------------------------------ |
 | N+1 queries                       | `bullet` gem in Gemfile, `includes` in collection views | `rails-activerecord-patterns` |
+| Implicit config (load_defaults)   | `config.load_defaults <= 6.1`, `new_framework_defaults_*.rb` flips, `touch:` / `autosave:` / `accepts_nested_attributes_for`, missing `inverse_of` | `rails-implicit-config-audit` |
 | Callback abuse                    | Heavy `after_save` business logic                    | `rails-code-explain`           |
 | `update_columns` / `update_all`   | Bypass callbacks/validations                         | -                              |
 | `permit!` mass assignment         | Audit controllers                                    | `rails-security-patterns`      |

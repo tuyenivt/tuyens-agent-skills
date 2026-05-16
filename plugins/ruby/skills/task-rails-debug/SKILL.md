@@ -50,6 +50,8 @@ If the user provides a partial error, ask for the full stack trace or log output
 
 Same shape for ActiveJob/Sidekiq: `dispatch site -> after_commit block (still holds value? `record.previous_changes` vs `record.attributes`) -> GlobalID round-trip (AR records re-fetched on perform; correctness depending on enqueue-time field values is a bug) -> perform body -> side effect`. The bug is almost always at one of these boundaries.
 
+**If the wrong behaviour is "an action loads associations / fires callbacks / runs queries the code doesn't seem to ask for":** use skill `rails-implicit-config-audit` before tracing the data path. Common invisible sources: `config.load_defaults <= 6.1` (no `has_many_inversing`, no `automatic_scope_inversing`), `belongs_to ... touch: true`, `has_many ... autosave: true`, `accepts_nested_attributes_for`, callbacks that reference `self.<association>`, `default_scope`. Identify the source before reaching for `.includes`.
+
 ### STEP 2 - CLASSIFY
 
 Match the error and load the relevant atomic skill:
@@ -195,6 +197,7 @@ Add a guard so this class of error cannot recur:
 - [ ] `Rack::Timeout` / `ConnectionTimeoutError`: `rails-connection-pool-sizing` referenced
 - [ ] OOM-kill / `NoMemoryError` / `History list length`: `rails-batch-processing-patterns` referenced
 - [ ] `Lock wait timeout` / `Deadlock`: `rails-db-locking-patterns` referenced; lock-by-PK and isolation-tier escalation considered
+- [ ] "Wrong behaviour, no error" cases: `rails-implicit-config-audit` consulted when the symptom looks like invisible loads, unexpected callback order, or silent persistence drops
 
 ## Avoid
 

@@ -194,6 +194,46 @@ add_column :orders, :lock_version, :integer, null: false, default: 0
 
 Choose pessimistic for short read-then-write critical sections; optimistic when conflicts are rare and retry is cheap. **For hot rows with frequent contention, optimistic produces `StaleObjectError` storms - use pessimistic by PK instead.**
 
+### Association Side Effects on Save
+
+`update`/`save` can load associations the action body never references. The cause is *declarative* (in the model file or initializer), not visible in the controller. When N+1-like queries appear on an update action and `.includes` "fixes" it without you wanting those associations in scope, the real fix is one of these:
+
+- **`belongs_to :parent, touch: true`** - saving the child touches the parent's `updated_at`. The parent is loaded to be touched, even if the action only changed a child column.
+- **`has_many :children, autosave: true`** (explicit, or implicit via `accepts_nested_attributes_for :children`) - parent save iterates and saves children, triggering association load. `accepts_nested_attributes_for` loads the collection even when params omit nested attributes.
+- **Callback that references an association**: `before_save`/`after_save`/`after_commit` reading `self.linked_model` forces a load at save time.
+- **Missing `inverse_of` combined with `has_many_inversing` / `automatic_scope_inversing` off** (the `load_defaults` 6.1-era state). Traversing back to the parent re-queries instead of reusing the in-memory object.
+
+Bad - controller "fix" papering over an autosave side effect:
+
+```ruby
+# OrdersController#update
+def update
+  @order = Order.includes(:line_items, :shipping_address).find(params[:id])  # only to suppress N+1
+  @order.update!(order_params)                                               # only changes order.status
+end
+```
+
+Good - identify and remove the source instead:
+
+```ruby
+# Option A: drop unneeded autosave/touch
+class Order < ApplicationRecord
+  has_many :line_items                          # no autosave: true unless params include line_items
+  belongs_to :shipping_address                  # no touch: true unless cache invalidation needs it
+end
+
+# Option B: keep the side effect, ensure inverse_of so the load is one query, not N
+class Order < ApplicationRecord
+  has_many :line_items, inverse_of: :order
+end
+
+# Option C: when the side effect is needed only sometimes, scope it
+order.update!(order_params)                     # default path: no preload
+order.line_items.reload if reprice_needed       # explicit, scoped to the case
+```
+
+For an audit of the implicit-configuration state (including `has_many_inversing`, `automatic_scope_inversing`, and `new_framework_defaults_*.rb` footguns), use `rails-implicit-config-audit`.
+
 ### Async Queries with `load_async`
 
 For dashboards fetching several independent queries, `load_async` runs them on a background pool so wall clock is the slowest, not the sum:
@@ -255,6 +295,7 @@ Queries: {before} -> {after} (estimated)
 
 - `default_scope` - infects all queries
 - N+1 in serializers - preload before serializing
+- `.includes` papering over `touch:` / `autosave:` / `accepts_nested_attributes_for` / callback side effects on save - remove the source or set `inverse_of` instead
 - `.all.each` on large tables - use `find_each`
 - `with_lock` / `lock!` on a non-PK scan under MySQL `REPEATABLE READ` - gap-lock cascade
 - Optimistic locking on hot contended rows - `StaleObjectError` storms; use pessimistic by PK
