@@ -92,13 +92,17 @@ Scope and depth flags compose: `/task-go-review pr-50273 --base release/2026.05 
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Data-Access Mix
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step (think before acting, surgical changes, surface confusion, push back when the user is likely wrong). When invoked as a subagent of `task-code-review`, accept the parent's confirmation that this skill is already loaded; do not re-load.
+
+### Step 2 - Confirm Stack and Detect Data-Access Mix
 
 Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-review` (parent already detected Go), accept the pre-detected stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review` instead.
 
 Detect data access: GORM (`gorm.io/gorm` import), sqlx (`github.com/jmoiron/sqlx` import), raw `database/sql`, or mixed. Detect messaging: Asynq (`hibiken/asynq`) vs franz-go Kafka (`twmb/franz-go`) vs none. Record `Data Access: GORM | sqlx | mixed | database/sql`, `Messaging: Asynq | Kafka | none`. Each Phase B / C / D / E checklist below branches on this signal where the idiom differs.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it.
 
@@ -114,7 +118,7 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
 Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
 
@@ -135,7 +139,7 @@ Surface the decision in the Summary's `Scope:` field. If escalated, append `auto
 
 **Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth middleware, JWT validation, router groups, shared interfaces, `cmd/api/main.go`, golang-migrate files), skip Phases C-D and produce a streamlined output with Phase B findings only.
 
-### Step 3.5 - Re-evaluate Depth After Phase A
+### Step 4.5 - Re-evaluate Depth After Phase A
 
 If `Blast Radius` (from Phase A) is `Wide` or `Critical` and the user did not explicitly pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in the Summary. Do this **before** launching Phases B-E so deep-only behaviors (historical pattern matching, cross-PR context, anemic-domain assessment) are in scope for the rest of the review.
 
@@ -217,19 +221,15 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 ### Phase D - AI-Generated Code Quality Control
 
 Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `go-overengineering-review` for: `binding:` / service-layer validation duplicating GORM / DB constraints, defensive nil checks after non-nil constructors, `if err != nil { return nil }` silent swallows, single-impl interfaces declared at the implementation side / `BaseRepository` embedded by two children / speculative config / `Result[T]` aliases for `(T, error)`, naked `go fn()` wrapping sequential calls. Each finding cites the redundancy source.
 
-**Go-specific AI smells:**
+**Additional Go AI smells not covered by the above:**
 
-- [ ] **Pattern inflation**: a `Manager` / `Service` / `Helper` struct with one method that wraps a single function call where a free function would do; abstract base struct with a single concrete embedder; a custom `Result[T]` type where `(T, error)` would suffice
-- [ ] **Over-abstraction**: `BaseRepository` parent struct embedded by two children; premature interface for one consumer; factory functions for objects that have one constructor path; generics used for code that handles only one type
-- [ ] **Speculative configurability**: config keys with documented but unused values; environment-conditional code paths for environments that do not exist; feature flags with no off path
 - [ ] **Redundant mapping layers**: `Model → InternalDTO → ServiceDTO → ResponseDTO` when one mapping would suffice; chained `mapstructure.Decode` calls
 - [ ] **Test verbosity**: setup helpers > 30 lines for a single assertion; `gomock` chains that could be a unit test on a smaller surface; full deep-equal `assert.Equal(t, response, full struct...)` when a few key field assertions would suffice
-- [ ] **Goroutine misapplication**: `go fn()` to "make it concurrent" where the call is sequential by nature (e.g., a single DB query); conversely, sequential I/O calls in a `for` loop that should be `errgroup.Group.Go(...)` for concurrent fan-out
 - [ ] **DTO noise**: identical DTOs reimplemented per endpoint; field-level `json:"name,omitempty"` boilerplate when the field is genuinely optional
 - [ ] **Comment cruft**: comments restating function names; `// end of function foo` markers; godoc on private helpers that just repeat the signature; auto-generated TODOs left in
 - [ ] **`interface{}` / `any` proliferation**: legitimate uses are rare in non-test code; `any` to bypass a real type bug is a finding. Generics (Go 1.18+) replace most legitimate `interface{}` uses
-- [ ] **Try-catch noise** (Go form): `if err != nil { return err }` is fine; `if err != nil { return fmt.Errorf("%v", err) }` loses the chain (use `%w`); `if err := fn(); err != nil { return nil }` swallows the error silently - either log + return or return wrapped
 
 ### Phase E - Go Maintainability and Clarity
 
@@ -249,7 +249,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-go-review-observability` subagent owns the depth review).
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -264,14 +264,14 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Subagent prompt contract.** Each subagent prompt must include:
 
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
+- The resolved review target from Step 3 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
 - The depth level (`quick` | `standard` | `deep`)
 - The pre-confirmed stack (Go / Gin) and detected data-access mix (GORM / sqlx / database/sql / mixed) so the subagent skips its own `stack-detect` and data-access branching
 - Instruction to return findings using its own skill's Output Format
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -281,6 +281,10 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Order findings by severity, not by scope.** Produce one merged Findings list.
 - **Note missing scopes.** If any subagent failed, add `Scope incomplete: <scope> review did not complete` under Summary.
 - **Merge Next Steps.** Combine Core Next Steps with each subagent's Next Steps into one prioritized list under `## Next Steps`. Preserve `[Implement]` / `[Delegate]` tags; deduplicate items mapping to the same fix; re-sort by severity (Blocker/Critical > High > Medium/Suggestion > Low).
+
+### Step 7 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`. Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 
 ## Feedback Labels
 
@@ -375,20 +379,15 @@ _Omit this section if there are no actionable findings._
 - Default to Core scope; auto-escalate on signals; honor `core-only` flag
 - Delegate perf / security / observability depth to the appropriate Go subagent rather than duplicating the check here
 
-
-### Step 6 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded as Step 1 (or accepted from parent dispatcher)
 - [ ] Stack confirmed as Go / Gin (or accepted from parent dispatcher); data-access mix and messaging library detected and recorded
 - [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded
 - [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
 - [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
 - [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
+- [ ] Scope auto-escalation evaluated (Step 4); promotion (or `core-only` suppression) recorded in Summary along with the firing signals
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B - every `error` return checked; wrapping uses `%w`; sentinels matched via `errors.Is`
@@ -401,7 +400,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Phase B - transaction boundaries + post-commit Asynq / Kafka dispatch checked
 - [ ] Phase B - migration safety (concurrent index, lock_timeout, expand-contract, keyset backfill, no `db.AutoMigrate` in prod) checked when migrations changed
 - [ ] Phase C Go architecture checks applied: layering, interface-at-consumer, constructor injection, internal vs public, settings discipline, GORM hook discipline, multi-tenant
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl interfaces, over-abstraction, speculative configurability, goroutine misapplication
+- [ ] Phase D applied via `complexity-review` and `go-overengineering-review` (binding tags / service guards vs GORM/DB, defensive nil after non-nil constructors, silent error swallows, single-impl interface at implementation / `BaseRepository` / speculative config / `Result[T]` over `(T, error)`, naked `go fn()` wrapping sequential calls); Go-specific AI smells covered: redundant mapping layers, test verbosity, DTO noise, `interface{}` / `any` proliferation
 - [ ] Phase E Go maintainability checks applied: naming, magic numbers, function length, structured logging vs `fmt.Println`
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 - [ ] Every Blocker states a system risk, not just a code observation
@@ -418,7 +417,7 @@ Write the fully assembled review output to the report file before ending the ses
 - Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
 - Reviewing without reading the full diff and commit log first
 - Applying generic backend conventions when a Go idiom exists (say "define the interface in the consuming package", not "use dependency inversion")
-- Nitpicking style where `gofmt` / `goimports` already apply; no `[Nitpick]` or `[Praise]` labels
+- Nitpicking style where `gofmt` / `goimports` already apply
 - Providing vague feedback without a concrete Go fix ("this could be better")
 - Blocking on personal preference rather than correctness, risk, or maintainability
 - Running perf / security / observability sub-workflows when user passed `core-only`

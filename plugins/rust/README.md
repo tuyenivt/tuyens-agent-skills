@@ -49,6 +49,7 @@ Claude Code plugin for Rust development.
 | `rust-security-patterns`  | JWT authentication, input validation, SQL injection prevention, secrets management, CORS, cargo-audit.                                            |
 | `rust-code-explain`       | Ownership and borrowing, lifetimes, async runtimes (tokio), trait objects vs generics, error types with `?`, sqlx compile-time queries - injected into `task-code-explain`. |
 | `rust-onboard-map`        | Cargo workspace layout, Cargo.toml features, async runtime, framework (Axum/Actix), DB layer (sqlx/sea-orm/diesel), clippy/rustfmt - injected into `task-onboard`. |
+| `rust-overengineering-review` | Necessity review: validator-crate rules duplicating sqlx column types / DB / the Rust type system, unreachable `match` arms / `Result` where `E` is never constructed / dead `.unwrap_or_default()` on non-Option values, single-impl trait at the implementation (consumer-side traits are idiomatic) / `Box<dyn Trait>` on hot single-callsite / `Arc<Mutex<T>>` on never-mutated data / hot-loop `.clone()` / speculative `cfg(feature)`. Intentionally narrow - the type system eliminates most categories. Composed into `task-rust-review` Phase D. |
 
 ## Usage Examples
 
