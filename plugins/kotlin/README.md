@@ -23,7 +23,7 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM, coroutine SecurityContext propagation.                                                                                    |
 | `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, dispatcher selection vs Virtual Threads, GC tuning.                                                                       |
 
-### Atomic skills (11)
+### Atomic skills (12)
 
 | Skill                              | Description                                                                                                                                                                            |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,6 +40,7 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-gradle-build-optimization` | Gradle Kotlin DSL, version catalog, build cache, configuration cache, parallel execution, kotlin-jpa / kotlin-spring / kotlin-allopen plugins, springmockk + mockito-core exclusion    |
 | `kotlin-code-explain`              | Coroutines and structured concurrency, suspend boundaries, null safety, data class equality, sealed hierarchies, AOP-proxy interactions with `final`-by-default - injected into `task-code-explain` |
 | `kotlin-onboard-map`               | Gradle Kotlin DSL layout, `kotlin-spring`/`kotlin-allopen`/`kotlin-jpa` plugin checks, coroutines runtime, application.yml profiles - injected into `task-onboard`                        |
+| `kotlin-overengineering-review`    | Necessity review: Bean Validation duplicating JPA / DB / Kotlin non-null types, defensive `?.let` / `requireNotNull` / `!!` on guarantees, `Optional<T>` in pure-Kotlin code, single-impl `@Service` interfaces / `BaseService` / speculative config / `Result<T>` / single-variant sealed classes. Composed into `task-kotlin-review` Phase D. |
 
 ### Workflow skills (8)
 

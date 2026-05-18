@@ -199,7 +199,8 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 - [ ] **Module / package boundaries**: feature-package layout (`com.acme.order.*` contains controller/service/repo for orders) preferred over layer-package layout; cross-feature imports go through public service interfaces
 - [ ] **Multi-tenant isolation**: tenant scoping at the repository / `@Filter` layer, not at the controller layer alone. Derived-query repositories should bake tenant into the query signature (`findByIdAndTenantId(id, tenantId)`) so a lookup with the wrong tenant cannot return another tenant's row; flag any `findById(id)` followed by an in-controller `if (entity.tenantId != currentTenant)` check - that pattern is racy and easy to miss in new endpoints
 - [ ] **Aspect / interceptor discipline**: AOP aspects used for genuinely cross-cutting concerns - not as a hidden control-flow mechanism that swallows exceptions or rewrites return values
-- [ ] **Single-impl interfaces**: no `OrderService` interface + single `OrderServiceImpl` pair without a test double or AOP requirement (Kotlin doesn't need interface for testability - MockK works on final classes)
+
+Single-implementation `@Service` interface bloat is owned by Phase D's `kotlin-overengineering-review`.
 
 **Multi-service PRs:**
 
@@ -209,19 +210,16 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 
 ### Phase D - AI-Generated Code Quality Control
 
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `complexity-review` for verbosity and over-engineering.
+Use skill: `kotlin-overengineering-review` for necessity-review findings (redundant Bean Validation vs Kotlin types / JPA / DB, defensive guards on guarantees, premature abstraction including scope-function over-nesting and single-variant sealed classes). The atomic skill owns the pattern catalog and citation contract.
 
-**Kotlin-specific AI smells:**
+**Kotlin AI smells not covered by the necessity skill:**
 
-- [ ] **Java-in-Kotlin patterns**: `Optional<T>` usage in pure-Kotlin code; `if (x != null)` chains instead of `?.`/`?:`/`let`; `for` loops where `map`/`filter`/`forEach` is idiomatic; utility classes with companion-object static methods where extension functions would be cleaner; `CompletableFuture` instead of `suspend` / coroutines
-- [ ] **`!!` abuse**: non-null assertions used when a `?:` default, safe call, or `requireNotNull(...)` would express intent more clearly
-- [ ] **Pattern inflation**: a `@Service` interface + single `@Service` implementation pair where the interface adds nothing; custom `Result<T>` wrapper where a sealed class or domain exception suffices; `BaseService<T>` parent classes for two services
-- [ ] **Speculative configurability**: `@ConfigurationProperties` data classes with documented but unused keys; profile-conditional beans for environments that do not exist
-- [ ] **Redundant mapping layers**: `Entity -> DomainObject -> ServiceDTO -> ResponseDTO` when one mapping (an extension function) would suffice
-- [ ] **Test verbosity**: `@SpringBootTest` setup blocks > 30 lines for a single assertion; `@MockkBean` chains that could be a slice test; AssertJ assertion builders reimplemented when kotest matchers exist
-- [ ] **Reactive / coroutine misapplication**: `Mono` / `Flux` (or `suspend`) in a non-coroutine servlet stack ("just in case we go reactive") - the runtime cost without the runtime benefit
-- [ ] **Comment cruft**: comments restating method names; KDoc on private helpers that just repeats the signature; auto-generated TODOs left in
-- [ ] **Scope function over-nesting**: more than 2 levels of `let`/`apply`/`run` nested - refactor to a named function
+- [ ] **Java-in-Kotlin patterns**: `if (x != null)` chains instead of `?.`/`?:`; `for` loops where `map`/`filter` is idiomatic; companion-object statics where extension functions fit; `CompletableFuture` instead of `suspend`
+- [ ] **Redundant mapping layers**: `Entity -> Domain -> ServiceDTO -> ResponseDTO` when one extension function would suffice
+- [ ] **Test verbosity**: `@SpringBootTest` setup > 30 lines for a single assertion; `@MockkBean` chains that could be a slice test
+- [ ] **Reactive / coroutine misapplication**: `Mono` / `Flux` (or `suspend`) in a non-coroutine servlet stack
+- [ ] **Comment cruft**: comments restating method names; KDoc on private helpers; stale TODOs
 
 ### Phase E - Kotlin Maintainability and Clarity
 
@@ -373,7 +371,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B Kotlin correctness checks applied: null-safety, `!!` discipline, `data class` JPA, kotlin-jpa/spring plugins, `@Transactional` boundaries / self-invocation / suspend, `GlobalScope`, `runBlocking`, Dispatchers vs VTs, `Flow` exception transparency, Bean Validation, JPA-in-API, `@PreAuthorize` coverage, exception advice, Virtual Thread pinning
 - [ ] Phase C architecture checks applied: layering, anemic domain, primary-constructor injection, configuration discipline, package boundaries, multi-tenant
-- [ ] Phase D AI-quality checks applied: Java-in-Kotlin, `!!` abuse, pattern inflation, speculative configurability, reactive/coroutine misapplication, scope-function over-nesting
+- [ ] Phase D applied via `complexity-review` and `kotlin-overengineering-review`; remaining Kotlin AI smells covered (Java-in-Kotlin, redundant mapping, test verbosity, reactive/coroutine misapplication)
 - [ ] Phase E maintainability checks applied: naming, magic numbers, method length, parameterized SLF4J logging, KDoc, `val` over `var`
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 - [ ] Every Blocker states a system risk

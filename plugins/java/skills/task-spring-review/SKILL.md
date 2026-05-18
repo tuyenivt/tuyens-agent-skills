@@ -203,17 +203,15 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 
 ### Phase D - AI-Generated Code Quality Control
 
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `complexity-review` for verbosity and over-engineering.
+Use skill: `spring-overengineering-review` for necessity-review findings (redundant Bean Validation, defensive guards on framework guarantees, premature abstraction). The atomic skill owns the pattern catalog and citation contract.
 
-**Spring-specific AI smells:**
+**Spring AI smells not covered by the necessity skill:**
 
-- [ ] **Pattern inflation**: a `@Service` interface + single `@Service` implementation pair where the interface adds no value (no second implementation, no test double); a custom `Result<T>` wrapper where `Optional` or a checked domain exception would suffice; a class created where a `static` method would do
-- [ ] **Over-abstraction**: `BaseService<T>` / `BaseController<T>` parent classes for two services; premature `Strategy` pattern with one strategy; `Factory` classes for objects that have one constructor path
-- [ ] **Speculative configurability**: `@ConfigurationProperties` with documented but unused keys; profile-conditional beans for environments that do not exist; `@ConditionalOnProperty` flags with no off path
-- [ ] **Redundant mapping layers**: `Entity → DomainObject → ServiceDTO → ResponseDTO` when one mapping would suffice; MapStruct mappers chained 3+ deep
-- [ ] **Test verbosity**: `@SpringBootTest` setup blocks > 30 lines for a single assertion; `@MockBean` chains that could be a slice test; AssertJ assertion builders reimplemented when standard matchers exist
-- [ ] **Reactive misapplication**: `Mono` / `Flux` used in a non-reactive servlet stack ("just in case we go reactive") - the runtime cost without the runtime benefit
-- [ ] **Comment cruft**: comments restating method names; `// end of method foo` markers; Javadoc on private helpers that just repeats the method signature; auto-generated TODOs left in
+- [ ] **Redundant mapping layers**: `Entity → DomainObject → ServiceDTO → ResponseDTO` when one mapping would suffice
+- [ ] **Test verbosity**: `@SpringBootTest` setup > 30 lines for a single assertion; `@MockBean` chains that could be a slice test
+- [ ] **Reactive misapplication**: `Mono` / `Flux` in a non-reactive servlet stack
+- [ ] **Comment cruft**: comments restating method names; Javadoc on private helpers; stale TODOs
 
 ### Phase E - Spring Maintainability and Clarity
 
@@ -363,7 +361,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Risk level and blast radius stated before any line-level findings
 - [ ] Phase B Spring correctness checks applied: `@Transactional` boundaries, propagation, self-invocation, Bean Validation, JPA-in-API, `@PreAuthorize` coverage, exception advice, Virtual Thread pinning
 - [ ] Phase C Spring architecture checks applied: layering, anemic domain, constructor injection only, configuration discipline, package boundaries, multi-tenant
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl interfaces, over-abstraction, speculative configurability, reactive misapplication
+- [ ] Phase D applied via `complexity-review` and `spring-overengineering-review`; remaining Spring AI smells covered (redundant mapping, test verbosity, reactive misapplication)
 - [ ] Phase E Spring maintainability checks applied: naming, magic numbers, method length, parameterized SLF4J logging
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 - [ ] Every Blocker states a system risk, not just a code observation
