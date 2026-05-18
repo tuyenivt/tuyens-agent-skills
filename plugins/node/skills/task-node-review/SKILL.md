@@ -1,6 +1,6 @@
 ---
 name: task-node-review
-description: Node.js / NestJS / Express code review: event-loop blocking, async pitfalls, ORM leaks, guards, validation; spawns perf/security/obs agents.
+description: Node.js/NestJS/Express code review - event-loop blocking, async pitfalls, ORM leaks, missing guards, validation; spawns perf/security/obs agents.
 agent: node-tech-lead
 metadata:
   category: backend
@@ -92,13 +92,17 @@ Scope and depth flags compose: `/task-node-review pr-50273 --base release/2026.0
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Load Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every subsequent step (think before acting, surgical changes, surface confusion, push back when the user is likely wrong). When invoked as a subagent of `task-code-review`, accept the parent's confirmation that this skill is already loaded; do not re-load.
+
+### Step 2 - Confirm Stack and Detect Framework
 
 Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate of `task-code-review` (parent already detected Node), accept the pre-detected stack and skip re-detection. If the detected stack is not Node, stop and tell the user to invoke `/task-code-review` instead.
 
 Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` in deps without NestJS). Detect ORM: Prisma vs TypeORM. Record `Framework: NestJS | Express | mixed`, `ORM: Prisma | TypeORM`. Each Phase B / C / D / E checklist below branches on this signal where the idiom differs.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it.
 
@@ -114,7 +118,7 @@ All subsequent phases operate on this read-once diff and log; do not re-derive t
 
 **Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
 Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
 
@@ -135,11 +139,9 @@ Surface the decision in the Summary's `Scope:` field. If escalated, append `auto
 
 **Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, Prisma / TypeORM migrations), skip Phases C-D and produce a streamlined output with Phase B findings only.
 
-### Step 3.5 - Re-evaluate Depth After Phase A
+### Step 4.5 - Re-evaluate Depth After Phase A
 
 If `Blast Radius` (from Phase A) is `Wide` or `Critical` and the user did not explicitly pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in the Summary. Do this **before** launching Phases B-E so deep-only behaviors (historical pattern matching, cross-PR context, anemic-domain assessment) are in scope for the rest of the review.
-
-This step is the inflection point where the workflow chooses how far Phases B-E reach. Keeping it as an explicit numbered step (rather than burying it in Depth Levels prose) prevents the depth promotion from getting lost between Phase A's output and Phase B's checklists.
 
 ### Phase B - Node Correctness and Safety
 
@@ -212,20 +214,17 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 
 ### Phase D - AI-Generated Code Quality Control
 
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `complexity-review` for verbosity, over-engineering, and simplification opportunities. Then load **one** framework-specific necessity skill based on Step 2's detection:
 
-**Node-specific AI smells:**
+- **NestJS:** Use skill: `node-nestjs-overengineering-review` (validator/ORM/DB/TS-strict-null redundancy, defensive DI guards, single-impl interfaces, `Scope.REQUEST` on stateless providers, `Result<T,E>`, broad `catch (e)`).
+- **Express:** Use skill: `node-express-overengineering-review` (Zod/TypeORM/DB redundancy, defensive null on typed values, middleware-of-one, Repository wrappers over `Repository<T>`, custom error hierarchies without `instanceof` branching, broad `catch (e)`).
 
-- [ ] **Pattern inflation**: a service module + abstract base class + single concrete implementation where the ABC adds no value (no second implementation, no test double); a custom `Result<T, E>` wrapper where domain exceptions or `null` would suffice; a class created where a module-level function would do
-- [ ] **Over-abstraction**: `BaseService<T>` / `BaseRepository<T>` parent classes for two children; premature interface for one consumer; factory modules for objects that have one constructor path
-- [ ] **Speculative configurability**: config keys with documented but unused values; profile-conditional code paths for environments that do not exist; feature flags with no off path
-- [ ] **Redundant mapping layers**: `Entity → DomainObject → ServiceDTO → ResponseDto` when one mapping would suffice; multiple class-validator DTOs / Zod schemas chained 3+ deep
-- [ ] **Test verbosity**: `beforeEach` setup blocks > 30 lines for a single assertion; `jest.mock` chains that could be a unit test on a smaller surface; full deep-equal `expect(response.body).toEqual({...full dict...})` when a few key field assertions would suffice
-- [ ] **Async misapplication**: `async` on functions that do no I/O ("just in case we go async") - the runtime cost without the benefit. Conversely, sync helpers inside async paths that block the loop
-- [ ] **DTO / schema noise**: identical DTOs reimplemented per endpoint; `@IsOptional() @IsString() name?: string` boilerplate where the field is genuinely optional; Zod `z.object({...}).partial()` over manual restating
-- [ ] **Comment cruft**: comments restating function names; `// end of function foo` markers; JSDoc on private helpers that just repeat the signature; auto-generated TODOs left in
-- [ ] **`as any` / `as unknown as T` proliferation**: legitimate uses are rare in non-test code; `as any` to bypass a real type bug is a finding
-- [ ] **Try-catch noise**: `try { ... } catch (e) { throw e }` does nothing - delete it; `try { return await x() } catch (e) { throw new Error(`wrap: ${e.message}`) }`loses the stack and the cause - use`throw new Error('wrap', { cause: e })` (Node 16.9+) or just rethrow
+**Additional Node AI smells not covered by the above:**
+
+- [ ] **Redundant mapping layers**: `Entity -> DomainObject -> ServiceDTO -> ResponseDto` when one would suffice
+- [ ] **Test verbosity**: `beforeEach` > 30 lines for a single assertion; full deep-equal `expect(response.body).toEqual({...})` when a few field assertions would suffice
+- [ ] **Comment cruft**: JSDoc on private helpers that repeats the signature; auto-generated TODOs left in
+- [ ] **`as any` / `as unknown as T` proliferation**: in non-test code, `as any` to bypass a real type bug is a finding
 
 ### Phase E - Node Maintainability and Clarity
 
@@ -243,7 +242,7 @@ Naming that obscures intent, mixed responsibilities, large unreviewable chunks, 
 Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
 Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-node-review-observability` subagent owns the depth review).
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
 If scope is **Core only**, skip this step.
 
@@ -258,14 +257,14 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 
 **Subagent prompt contract.** Each subagent prompt must include:
 
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
+- The resolved review target from Step 3 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
 - The depth level (`quick` | `standard` | `deep`)
 - The pre-confirmed stack (Node.js / TypeScript) and detected framework (NestJS / Express / mixed) and ORM (Prisma / TypeORM) so the subagent skips its own `stack-detect` and framework branching
 - Instruction to return findings using its own skill's Output Format
 
 **Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
 
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
@@ -275,6 +274,10 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Order findings by severity, not by scope.** Produce one merged Findings list.
 - **Note missing scopes.** If any subagent failed, add `Scope incomplete: <scope> review did not complete` under Summary.
 - **Merge Next Steps.** Combine Core Next Steps with each subagent's Next Steps into one prioritized list under `## Next Steps`. Preserve `[Implement]` / `[Delegate]` tags; deduplicate items mapping to the same fix; re-sort by severity (Blocker/Critical > High > Medium/Suggestion > Low).
+
+### Step 7 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`. Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 
 ## Feedback Labels
 
@@ -365,58 +368,37 @@ _Omit this section if there are no actionable findings._
 - Lead with risk assessment before line-level findings
 - Apply Node conventions, not generic backend conventions
 - Provide actionable feedback with TypeScript code examples
-- Never comment on trivial formatting or style where no project standard exists
 - Default to Core scope; auto-escalate on signals; honor `core-only` flag
 - Delegate perf / security / observability depth to the appropriate Node subagent rather than duplicating the check here
 
-
-### Step 6 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] Stack confirmed as Node.js / TypeScript (or accepted from parent dispatcher); framework and ORM detected and recorded
-- [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
-- [ ] Risk level and blast radius stated before any line-level findings
-- [ ] Phase B - TypeScript strict mode + async discipline + `await` everywhere checked
-- [ ] Phase B - `ValidationPipe` whitelist (NestJS) / Zod `.strict()` (Express) checked for changed schemas
-- [ ] Phase B - authentication AND authorization both checked (object-level scoping, not just `AuthGuard('jwt')`)
-- [ ] Phase B - SSRF / outbound URL safety + edge middleware presence checked
-- [ ] Phase B - ORM-in-API leakage (no entities returned, no raw `res.json(entity)` to client) checked
-- [ ] Phase B - transaction boundaries + post-commit BullMQ dispatch checked
-- [ ] Phase B - new ORM column with predicate use checked for index migration
-- [ ] Phase B - migration safety (concurrent index, lock_timeout, expand-contract, keyset backfill, no `synchronize: true`) checked when migrations changed
-- [ ] Phase C Node architecture checks applied: layering, anemic domain, settings discipline, listener / middleware discipline, package boundaries, multi-tenant
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl interfaces, over-abstraction, speculative configurability, async misapplication
-- [ ] Phase E Node maintainability checks applied: naming, magic numbers, function length, structured logging vs `console.log`
+- [ ] `behavioral-principles` loaded as Step 1 (or accepted from parent dispatcher)
+- [ ] Stack confirmed (Step 2); framework and ORM recorded
+- [ ] `review-precondition-check` ran (Step 3); diff and commit log read once and reused by all phases and subagents
+- [ ] Scope auto-escalation evaluated (Step 4); promotion or `core-only` suppression recorded in Summary with firing signals
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick` (Step 4.5)
+- [ ] Risk level and blast radius stated before any line-level findings (Phase A)
+- [ ] Phase B Node correctness checklist applied (TS strict + async discipline, ValidationPipe/Zod strict, authn + authz/IDOR, SSRF + edge middleware, ORM leak + DTO field hygiene, transaction + post-commit dispatch, new column predicate index, error handling)
+- [ ] Phase B migration safety delegated to `node-migration-safety` when migrations changed
+- [ ] Phase C architecture checks applied (layering, anemic domain, settings discipline, listener/middleware discipline, package boundaries, multi-tenant)
+- [ ] Phase D applied via `complexity-review` + the framework-matching necessity skill (`node-nestjs-overengineering-review` or `node-express-overengineering-review`); Node AI smells from Phase D (mapping layers, test verbosity, comment cruft, `as any`) addressed
+- [ ] Phase E maintainability checks applied (naming, magic numbers, function length, structured logging)
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
-- [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Every finding has a label, location (file:line), and actionable Node fix
+- [ ] Every Blocker states a system risk; every finding has a label, file:line, and actionable Node fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] For non-Core scopes, Node-specific subagents (`task-node-review-perf`, `-security`, `-observability`) ran in parallel and received the pre-resolved diff/log handle plus framework / ORM detection
-- [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended
-- [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>`
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] For non-Core scopes, subagents ran in parallel and received the pre-resolved diff/log handle plus framework/ORM detection (Step 5)
+- [ ] Subagent findings merged with deduplication and highest-severity-wins; raw subagent reports not appended (Step 6)
+- [ ] Any failed/missing subagent scope noted as `Scope incomplete: <scope>`
+- [ ] Next Steps section produced (tagged `[Implement]` / `[Delegate]`, ordered Blocker > High > Suggestion) unless no actionable findings exist
+- [ ] Review report written via `review-report-writer`; confirmation line printed (Step 7)
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these
 - Reviewing without reading the full diff and commit log first
 - Applying generic backend conventions when a Node idiom exists (say "extract to a service module", not "extract to a helper class")
-- Nitpicking style where no project standard exists; no `[Nitpick]` or `[Praise]` labels
 - Providing vague feedback without a concrete Node fix ("this could be better")
-- Blocking on personal preference rather than correctness, risk, or maintainability
-- Running perf / security / observability sub-workflows when user passed `core-only`
-- Treating auto-escalation signals as advisory; the default is to promote and let the user opt out via `core-only`
-- Duplicating perf / security / observability depth checks here when the dedicated Node subagent owns them - flag and delegate
 - Running multiple extra scopes sequentially when they could spawn in parallel
 - Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
-- Recommending sync `fs.readFileSync` / `crypto.pbkdf2Sync` in request paths, `eval` / `new Function` on untrusted input, or `Object.assign(target, req.body)` for "merging defaults" as acceptable patterns - all are anti-patterns
+- Recommending sync `fs.readFileSync` / `crypto.pbkdf2Sync` in request paths, `eval` / `new Function` on untrusted input, or `Object.assign(target, req.body)` as acceptable patterns

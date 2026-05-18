@@ -230,25 +230,16 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 
 ### Phase D - AI-Generated Code Quality Control
 
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `complexity-review` for verbosity, over-engineering, and simplification opportunities.
+Use skill: `laravel-overengineering-review` for redundancy and premature-abstraction findings (every finding cites its constraint source).
 
-**Laravel-specific AI smells:**
+**Additional Laravel AI smells not covered by the above:**
 
-- [ ] **Pattern inflation**: `Manager` / `Helper` / `Service` class with one method that wraps a single Eloquent call; abstract base class hidden behind an interface with one implementer; a custom `Result` value object used inconsistently
-- [ ] **Single-implementation interface**: `OrderRepositoryInterface` with one `EloquentOrderRepository` implementation, no Mockery mock, no second implementer - inline the concrete class via constructor injection. Interfaces for testability are fine when actually mocked; interfaces for abstraction's sake are smells
-- [ ] **Repository over Eloquent for trivial queries**: wrapping `Order::find($id)` behind `OrderRepositoryInterface::findById($id)` adds nothing; Eloquent already abstracts storage. Reserve repositories for queries with multiple data sources or genuinely non-Eloquent stubs
-- [ ] **AutoMapper-style mappers for trivial DTOs**: configuring an `OrderMapper::fromModel($order): OrderDto` when `OrderResource` does the same job - API Resources are Laravel's mapping primitive; do not parallel-build a second one
-- [ ] **Service for trivial reads**: `OrderService::find($id)` that just returns `Order::findOrFail($id)` with no business logic - the indirection adds nothing. Services earn their keep on multi-step operations / cross-aggregate orchestration / external calls
-- [ ] **Over-abstraction**: `BaseRepository<T>` with one consumer; premature interface for one consumer; factory classes for objects with one constructor path; generics-style abstractions in PHP via templates with no callers
-- [ ] **Speculative configurability**: config keys with documented but unused values; environment-conditional code paths for environments that do not exist; feature flags with no off path
-- [ ] **Redundant mapping layers**: `Eloquent -> InternalDto -> ServiceDto -> ApiResource` when one mapping would suffice
-- [ ] **Test verbosity**: factory state setup > 30 lines for a single assertion; deeply nested `Mockery::mock` chains; `assertJson` matching the full payload when a few key fields would do
-- [ ] **`Bus::dispatch` / queue for synchronous work**: pushing trivial in-memory operations through the queue for "decoupling"; the queue is for external I/O, slow work, or cross-aggregate side effects
-- [ ] **`Event::dispatch` for direct method calls**: replacing `$searchIndex->update($order)` with `event(new OrderUpdated($order))` and a single listener that calls `$searchIndex->update($order)` is indirection without benefit unless multiple listeners exist
-- [ ] **Excessive `string` building in hot paths**: `str()->of(...)->...` chains in tight loops; for high-frequency log lines use structured context arrays (`Log::info('placing order', ['order_id' => $id])`) instead of interpolated strings
-- [ ] **Comment cruft**: PHPDoc restating method names; `// end of method` markers; `/** Returns the user. */` on `getUser()` with no extra info
-- [ ] **`\Throwable` catch-all in business code**: `try { ... } catch (\Throwable $e) { return null; }` swallows every error; catch specific exception types and let the global handler handle the rest
-- [ ] **`@phpstan-ignore` / `@phpstan-ignore-next-line` to silence analyzers**: each suppression must have a `// reason: ...` comment; bare suppressions on a file or block are findings
+- [ ] **Redundant mapping layers**: `Eloquent -> InternalDto -> ServiceDto -> ApiResource` when one would suffice
+- [ ] **Test verbosity**: factory setup > 30 lines for a single assertion; full-payload `assertJson` when key fields would do
+- [ ] **Queue for synchronous work**: trivial in-memory operations pushed through `Bus::dispatch` for "decoupling"
+- [ ] **Comment cruft**: PHPDoc restating method names; `/** Returns the user. */` on `getUser()`
+- [ ] **`@phpstan-ignore` without a `// reason: ...` comment**: bare suppressions are findings
 
 ### Phase E - Laravel Maintainability and Clarity
 
@@ -298,11 +289,15 @@ For any selected extra scope, spawn an independent subagent **in parallel** with
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate cross-cutting findings.** The same issue may surface in multiple scopes (e.g., a per-iteration `Order::find($id)` inside a request loop can be flagged by both Core/Phase B and Perf). Keep one entry, citing all scopes that raised it.
-- **Severity wins.** When the same finding has different labels across scopes, use the highest severity (`Blocker` > `High` > `Suggestion` > `Question`). Subagent reviews (perf / security / observability) use their own scales (`Critical` / `High` / `Medium` / `Low`); when merging, map subagent severities into this skill's labels: `Critical` → `Blocker`, `High` → `High`, `Medium` → `Suggestion`, `Low` → `Suggestion`. Do not introduce `Critical` / `Medium` / `Low` into the merged Findings list.
+- **Severity wins.** When the same finding has different labels across scopes, use the highest severity (`Blocker` > `High` > `Suggestion` > `Question`). Subagent reviews use their own scales (`Critical` / `High` / `Medium` / `Low`); when merging, map: `Critical` -> `Blocker`, `High` -> `High`, `Medium` -> `Suggestion`, `Low` -> `Suggestion`. Do not introduce `Critical` / `Medium` / `Low` into merged Findings.
 - **Preserve `file:line` citations** from the originating subagent.
 - **Order findings by severity, not by scope.** Produce one merged Findings list.
 - **Note missing scopes.** If any subagent failed, add `Scope incomplete: <scope> review did not complete` under Summary.
-- **Merge Next Steps.** Combine Core Next Steps with each subagent's Next Steps into one prioritized list under `## Next Steps`. Preserve `[Implement]` / `[Delegate]` tags; deduplicate items mapping to the same fix; re-sort by severity (Blocker/Critical > High > Medium/Suggestion > Low).
+- **Merge Next Steps.** Combine Core Next Steps with each subagent's into one prioritized list. Preserve `[Implement]` / `[Delegate]` tags; deduplicate; re-sort by severity.
+
+### Step 7 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`. Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 
 ## Feedback Labels
 
@@ -392,68 +387,38 @@ _Omit this section if there are no actionable findings._
 
 - Review the whole change as a system impact, not file-by-file in isolation
 - Lead with risk assessment before line-level findings
-- Apply Laravel conventions (PSR-12, Laravel docs, Pint preset, the framework's own naming), not generic backend conventions
+- Apply Laravel conventions (PSR-12, Laravel docs, Pint preset), not generic backend conventions
 - Provide actionable feedback with PHP / Laravel code examples
-- Never comment on trivial formatting or style where Pint already applies - focus on substance
 - Default to Core scope; auto-escalate on signals; honor `core-only` flag
 - Delegate perf / security / observability depth to the appropriate Laravel subagent rather than duplicating the check here
 
-
-### Step 7 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded as Step 1 before any other delegation (or accepted from parent dispatcher)
-- [ ] Stack confirmed as PHP / Laravel (or accepted from parent dispatcher); auth strategy, queue driver, and test framework detected and recorded (Step 2)
-- [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded (Step 3)
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review (Step 3)
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued (Step 3)
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (Step 3)
-- [ ] Scope auto-escalation evaluated in Step 4; promotion (or `core-only` suppression) recorded in Summary along with the firing signals; migration-on-hot-table signal triggered +Perf when applicable (Step 4)
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary (Step 4.5)
-- [ ] Risk level and blast radius stated before any line-level findings
-- [ ] Phase B - mass assignment (`$guarded = []`, `Model::create($request->all())`), Form Request usage, Form Request `authorize()` checked
-- [ ] Phase B - `$this->authorize` / Policy on every protected action; ownership scoping (not just `auth:` middleware) checked
-- [ ] Phase B - `whereRaw` / `DB::raw` / `orderByRaw` SQL injection surfaces checked; user-supplied `orderBy` allowlisted
-- [ ] Phase B - N+1 via lazy loading in controllers and Blade checked; `Model::all()` on growable tables flagged
-- [ ] Phase B - jobs dispatched after commit; jobs accept scalar IDs not models; `$tries` / `$backoff` / `$timeout` / `failed()` set
-- [ ] Phase B - raw Eloquent model not returned from controller; API Resource present
-- [ ] Phase B - `env()` outside config files flagged; queue connection not `sync` in prod; rate limiting on auth routes
-- [ ] Phase B - migration safety (reversible, two-phase rename/drop, indexes online, FK constraints, chunked backfills) checked when migrations changed
-- [ ] Phase C Laravel architecture checks applied: thin controllers, services / actions for business logic, no model in controller responses, repository / interface only when justified, multi-tenant isolation, middleware order
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl interfaces, repository-over-Eloquent for trivial reads, AutoMapper-style mappers, service-for-trivial-reads, redundant mapping layers, queue-for-sync-work, event-as-direct-call, `@phpstan-ignore` without reason
-- [ ] Phase E Laravel maintainability checks applied: naming, magic strings / backed enums, method length, structured logging vs `dd()` / `dump()`, `declare(strict_types=1)`, Pint / PHPStan clean
+- [ ] `behavioral-principles` loaded as Step 1 (or accepted from parent dispatcher)
+- [ ] Stack confirmed (Step 2); auth strategy, queue driver, and test framework recorded
+- [ ] `review-precondition-check` ran (Step 3); diff and commit log read once and reused by all phases and subagents
+- [ ] Scope auto-escalation evaluated (Step 4); promotion or `core-only` suppression recorded in Summary with firing signals
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick` (Step 4.5)
+- [ ] Risk level and blast radius stated before any line-level findings (Phase A)
+- [ ] Phase B Laravel correctness checklist applied (mass assignment, Form Request, authorization + IDOR, SQL injection, N+1, queue safety, controller responses, env/config, rate limits)
+- [ ] Phase B migration safety delegated to `laravel-migration-safety` when migrations changed
+- [ ] Phase C architecture checks applied (thin controllers, services/actions, no model in responses, repository only when justified, multi-tenant isolation, middleware order)
+- [ ] Phase D applied via `complexity-review` + `laravel-overengineering-review`; Laravel AI smells from Phase D (mapping layers, test verbosity, queue-for-sync, `@phpstan-ignore` without reason) addressed
+- [ ] Phase E maintainability checks applied (naming, backed enums, method length, structured logging, `declare(strict_types=1)`)
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
-- [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Every finding has a label, location (file:line), and actionable Laravel fix
+- [ ] Every Blocker states a system risk; every finding has a label, file:line, and actionable Laravel fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] For non-Core scopes, Laravel-specific subagents (`task-laravel-review-perf`, `-security`, `-observability`) ran in parallel and received the pre-resolved diff/log handle plus stack detection (and `--spec` slug if active) (Step 5)
-- [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended (Step 6)
-- [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>` (Step 6)
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] For non-Core scopes, subagents ran in parallel and received the pre-resolved diff/log handle plus stack detection (Step 5)
+- [ ] Subagent findings merged with deduplication and highest-severity-wins; raw subagent reports not appended (Step 6)
+- [ ] Any failed/missing subagent scope noted as `Scope incomplete: <scope>`
+- [ ] Next Steps section produced (tagged `[Implement]` / `[Delegate]`, ordered Blocker > High > Suggestion) unless no actionable findings exist
+- [ ] Review report written via `review-report-writer`; confirmation line printed (Step 7)
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these
 - Reviewing without reading the full diff and commit log first
-- Applying generic backend conventions when a Laravel idiom exists (say "wrap in a Form Request and validate via `rules()` + `authorize()`", not "validate input")
-- Nitpicking style where Pint already applies; no `[Nitpick]` or `[Praise]` labels
+- Applying generic backend conventions when a Laravel idiom exists (say "wrap in a Form Request", not "validate input")
 - Providing vague feedback without a concrete Laravel fix ("this could be better")
-- Blocking on personal preference rather than correctness, risk, or maintainability
-- Running perf / security / observability sub-workflows when user passed `core-only`
-- Treating auto-escalation signals as advisory; the default is to promote and let the user opt out via `core-only`
-- Duplicating perf / security / observability depth checks here when the dedicated Laravel subagent owns them - flag and delegate
 - Running multiple extra scopes sequentially when they could spawn in parallel
 - Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
-- Recommending `$guarded = []` for "convenience" - mass-assignment vector; always whitelist via `$fillable`
-- Recommending `Model::create($request->all())` - bypasses validation discipline; use `Model::create($request->validated())` from a Form Request
-- Recommending `whereRaw("col = '$input'")` for "dynamic" queries - SQL injection; use bindings or the query builder
-- Recommending raw `Eloquent` model returned from controller actions - leaks columns; use API Resources
-- Recommending `env()` outside `config/*.php` - returns null after `config:cache`; reads must go through `config()`
-- Recommending `queue` driver `sync` outside local dev - defeats every queue guarantee
-- Recommending passing Eloquent models into queue job constructors - use scalar IDs and re-fetch in `handle()`
-- Recommending dispatching jobs inside `DB::transaction(...)` without `afterCommit()` - worker may pick up before commit

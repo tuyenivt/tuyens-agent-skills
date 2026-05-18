@@ -37,6 +37,7 @@ Claude Code plugin for PHP development.
 | laravel-testing-patterns  | Pest syntax, model factories, HTTP tests, database assertions, facade mocking, CI coverage      |
 | laravel-code-explain      | Service container, request lifecycle (middleware, form requests, controllers), Eloquent events/scopes, queues, broadcasting - injected into `task-code-explain` |
 | laravel-onboard-map       | composer.json, Laravel version, .env config, Eloquent + migrations, queue backend, frontend stack (Vite/Mix), auth - injected into `task-onboard` |
+| laravel-overengineering-review | Necessity review: Form Request rules / `unique:` validators duplicating Eloquent / DB constraints, defensive null after `findOrFail` / `auth()->user()` after middleware, blanket `catch (\Throwable)` defeating the exception handler, single-impl Repository interfaces / `BaseRepository` / service-for-trivial-reads / AutoMapper-style mappers parallel to API Resources / speculative config keys / Event + single Listener for direct method calls. Composed into `task-laravel-review` Phase D. |
 
 ## Agents
 

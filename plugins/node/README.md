@@ -77,6 +77,8 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | `node-bullmq-patterns`     | BullMQ background jobs: job design, idempotency, retry strategy, queue routing, fan-out, worker lifecycle, testing strategies |
 | `node-code-explain`        | Event loop and async semantics, NestJS DI/module graph, Express middleware, error propagation across async, TS-vs-runtime - injected into `task-code-explain` |
 | `node-onboard-map`         | Package manager (npm/yarn/pnpm/bun), framework (NestJS/Express), TS config, build/run scripts, ORM, ESM/CJS - injected into `task-onboard` |
+| `node-nestjs-overengineering-review` | Necessity review for NestJS: class-validator decorators duplicating Prisma/TypeORM / DB / TS strict-null, defensive guards on DI-injected providers / guards / `findUniqueOrThrow`, single-impl service interfaces / `BaseService<T>` / `Scope.REQUEST` on stateless providers / `Result<T,E>` wrappers / AutoMapper-style mappers / speculative `ConfigService` keys, broad `catch (e)` defeating the global exception filter. Composed into `task-node-review` Phase D when NestJS is detected. |
+| `node-express-overengineering-review` | Necessity review for Express: Zod schemas duplicating TypeORM / DB / TS strict-null, defensive null after `findOneOrFail` or on typed values, middleware factories of one, Repository wrappers over TypeORM's `Repository<T>`, custom error hierarchies with no consumer branching, `Result<T,E>` wrappers, broad `catch (e)` defeating Express's error-handling middleware. Composed into `task-node-review` Phase D when Express is detected. |
 
 ## Agents
 
