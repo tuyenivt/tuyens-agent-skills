@@ -55,6 +55,7 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 | `rails-http-client-patterns`  | External HTTP integration with Faraday + Retriable: client-class wrappers, explicit timeouts, idempotency-aware retries with bounded budgets, domain error taxonomy (transient vs permanent), circuit-breaker posture, and boundary-stubbed tests with WebMock / VCR.                     |
 | `rails-code-explain`          | Request lifecycle (middleware, filters, controllers), AR callbacks/scopes/transactions, ActiveJob, ActionCable, concerns, Zeitwerk autoload - injected into `task-code-explain`. |
 | `rails-onboard-map`           | Gemfile, Rails version, environment configs, AR + migrations, ActiveJob backend, ActionCable wiring, asset pipeline (importmap/jsbundling/Propshaft) - injected into `task-onboard`. |
+| `rails-overengineering-review` | Necessity review: validations duplicating DB constraints (FK / NOT NULL / UNIQUE / enum), defensive guards on impossible states, service objects / Result types / base classes wrapping trivial logic. Includes "when redundancy is justified" (form UX, system boundaries, 3+ call sites). Composed into `task-rails-review` Phase D. |
 
 ## Usage Examples
 
