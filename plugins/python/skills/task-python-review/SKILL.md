@@ -218,16 +218,17 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 ### Phase D - AI-Generated Code Quality Control
 
 Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Then load **one** of the framework-specific necessity skills based on Step 2's detection:
 
-**Python-specific AI smells:**
+- **FastAPI:** Use skill: `python-fastapi-overengineering-review`
+- **Django:** Use skill: `python-django-overengineering-review`
 
-- [ ] **Pattern inflation**: a service module + abstract base class + single concrete implementation where the ABC adds no value (no second implementation, no test double); a custom `Result[T]` wrapper where domain exceptions or `Optional` would suffice; a class created where a module-level function would do
-- [ ] **Over-abstraction**: `BaseService` / `BaseRepository` parent classes for two children; premature `Protocol` for one consumer; `Factory` modules for objects that have one constructor path
-- [ ] **Speculative configurability**: settings keys with documented but unused values; profile-conditional code paths for environments that do not exist; feature flags with no off path
-- [ ] **Redundant mapping layers**: `Model → DomainObject → ServiceDTO → ResponseSchema` when one mapping would suffice; multiple Pydantic schemas / DRF serializers chained 3+ deep
+Each finding cites the redundancy source (FK / `null=False` / `Mapped[T]` non-Optional / Pydantic or DRF rule / framework guarantee).
+
+**Additional Python AI smells not covered by the above:**
+
 - [ ] **Test verbosity**: `@pytest.fixture` setup blocks > 30 lines for a single assertion; `mocker.patch` chains that could be a unit test on a smaller surface; `assert response.json() == {...full dict...}` when a few key field assertions would suffice
 - [ ] **Async misapplication**: `async def` on functions that do no I/O ("just in case we go async") - the runtime cost without the benefit. Conversely, sync helpers inside `async def` paths that block the loop
-- [ ] **Pydantic / DRF noise**: identical schemas reimplemented per endpoint; `Field(default=None, description="...")` boilerplate where defaults are framework-provided
 - [ ] **Comment cruft**: comments restating function names; `# end of function foo` markers; docstrings on private helpers that just repeat the signature; auto-generated TODOs left in
 - [ ] **`# type: ignore` proliferation**: legitimate uses are rare; `# type: ignore[attr-defined]` to bypass a real bug is a finding
 
@@ -397,7 +398,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Phase B - new ORM column with predicate use checked for index migration
 - [ ] Phase B - migration safety (concurrent index, lock_timeout, expand-contract, keyset backfill) checked when migrations changed
 - [ ] Phase C Python architecture checks applied: layering, anemic domain, settings discipline, signal / event listener discipline, package boundaries, multi-tenant
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl ABCs, over-abstraction, speculative configurability, async misapplication
+- [ ] Phase D applied via `complexity-review` + the framework-matching necessity skill (`python-fastapi-overengineering-review` for FastAPI, `python-django-overengineering-review` for Django); Python-specific AI smells covered: test verbosity, async misapplication, comment cruft, `# type: ignore` proliferation
 - [ ] Phase E Python maintainability checks applied: naming, magic numbers, function length, parameterized structured logging
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 - [ ] Every Blocker states a system risk, not just a code observation

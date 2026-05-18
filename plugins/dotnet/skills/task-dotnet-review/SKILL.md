@@ -217,21 +217,15 @@ Use skill: `architecture-guardrail` to detect layer violations, new coupling, ci
 ### Phase D - AI-Generated Code Quality Control
 
 Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
+Use skill: `dotnet-overengineering-review` for redundancy vs EF Core / DB / NRT, defensive guards on framework guarantees, and premature abstraction (single-impl interfaces, MediatR for trivial reads, AutoMapper, speculative `IOptions<T>`). Each finding cites the redundancy source.
 
-**.NET-specific AI smells:**
+**Additional .NET AI smells not covered by the above:**
 
-- [ ] **Pattern inflation**: a `Manager` / `Service` / `Helper` class with one method that wraps a single function call where a static method or extension method would do; abstract base class hidden behind an interface with one implementer; a custom `Result<T>` type alias used inconsistently
-- [ ] **Single-implementation interface**: interface declared with one implementation, no `NSubstitute` mock, no second implementer - inline to the concrete class via constructor injection. Interfaces for testability are fine; interfaces for abstraction's sake are smells
-- [ ] **AutoMapper for trivial mappings**: configuring AutoMapper profiles for `record OrderResponse(Guid Id, decimal Total)` ↔ `class Order { public Guid Id; public decimal Total; }` adds runtime cost, hides errors, and the explicit `new OrderResponse(o.Id, o.Total)` is shorter and refactor-safe. Reserve AutoMapper for genuinely complex transforms with reverse mappings
-- [ ] **MediatR for non-CQRS**: every method routed through MediatR even when the call is a simple `_repository.GetById(id)` - the indirection adds nothing for trivial reads. MediatR is for cross-cutting concerns (validation pipeline, transaction wrapping, authorization behavior, logging); not for hiding a single repository call
-- [ ] **Over-abstraction**: `BaseRepository<T>` with one consumer; premature interface for one consumer; factory classes for objects with one constructor path; generics used for code that handles only one type
-- [ ] **Speculative configurability**: config keys with documented but unused values; environment-conditional code paths for environments that do not exist; feature flags with no off path; `IFeatureManager.IsEnabledAsync("X")` for features no consumer enables
 - [ ] **Redundant mapping layers**: `Entity → InternalDto → ServiceDto → ResponseDto` when one mapping would suffice
 - [ ] **Test verbosity**: Bogus / NSubstitute setup helpers > 30 lines for a single assertion; deeply nested mock chains; `result.Should().BeEquivalentTo(full_object)` when a few key field assertions would do
 - [ ] **`Task.Run` misapplication**: `await Task.Run(() => syncMethod())` on an already-async runtime offloads to a thread-pool thread for no reason; the call ships the thread but does the same work. `Task.Run` is for offloading CPU-bound work from the request thread, not for "making sync code async"
 - [ ] **Excessive `string` allocations in hot paths**: `string.Format` / `+` concatenation / `string.Join` in tight loops where `StringBuilder`, `string.Create`, or `Span<char>` would work
 - [ ] **Comment cruft**: XML doc comments restating method names; `// end of method` markers; `/// <summary>...</summary>` on private helpers that just repeat the signature
-- [ ] **`Exception` catch-all**: `catch (Exception ex)` at every level - prefer specific exception types; a top-level `IExceptionHandler` handles the fallthrough
 - [ ] **`#pragma warning disable` to silence analyzers**: each suppression must have a `// reason: ...` comment; bare `#pragma warning disable` on a file or block is a finding
 
 ### Phase E - .NET Maintainability and Clarity
@@ -406,7 +400,7 @@ Write the fully assembled review output to the report file before ending the ses
 - [ ] Phase B - single `SaveChangesAsync` per use case + post-commit dispatch checked
 - [ ] Phase B - migration safety (online/concurrent index, lock_timeout, expand-contract, keyset backfill, startup-vs-deploy migration) checked when migrations changed
 - [ ] Phase C .NET architecture checks applied: layering (Domain ← Application ← Infrastructure ← Api), no `DbContext` in Application, MediatR pipeline order, repository interfaces in Application/Interfaces, `IOptions<T>` for typed config, multi-tenant
-- [ ] Phase D AI-quality checks applied: pattern inflation, single-impl interfaces, MediatR-for-trivial-reads, AutoMapper-for-trivial, speculative configurability, `Task.Run` misapplication, redundant mapping layers
+- [ ] Phase D applied via `complexity-review` and `dotnet-overengineering-review`; .NET-specific AI smells covered: redundant mapping layers, `Task.Run` misapplication, hot-path string allocations
 - [ ] Phase E .NET maintainability checks applied: naming, magic numbers, method length, structured logging vs `Console.WriteLine`, XML doc comments, nullable reference types
 - [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
 - [ ] Every Blocker states a system risk, not just a code observation

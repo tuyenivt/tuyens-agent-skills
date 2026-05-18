@@ -53,6 +53,7 @@ Atomic skills provide focused, reusable .NET patterns. These are hidden from the
 | `dotnet-messaging-patterns`  | MassTransit consumers, outbox pattern, Hangfire jobs   |
 | `dotnet-code-explain`        | DI container scopes, middleware pipeline, async/await with cancellation tokens, EF Core change tracking, Clean Architecture layers - injected into `task-code-explain` |
 | `dotnet-onboard-map`         | Solution layout (Clean Architecture), .csproj target framework, EF Core + migrations, configuration/secrets - injected into `task-onboard` |
+| `dotnet-overengineering-review` | Necessity review: FluentValidation duplicating EF Core / DB / nullable references, defensive `ArgumentNullException.ThrowIfNull` / `null!` / blanket `catch (Exception)` defeating `IExceptionHandler`, single-impl interfaces / `BaseRepository<T>` / speculative `IOptions<T>` / `Result<T>` wrappers / AutoMapper for trivial mappings / MediatR for trivial reads. Composed into `task-dotnet-review` Phase D. |
 
 ## Agents
 

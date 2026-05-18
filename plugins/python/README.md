@@ -37,6 +37,8 @@ Claude Code plugin for Python development.
 | python-async-patterns      | async/await, asyncio.gather, event loop blocking prevention, TaskGroup                      |
 | python-code-explain        | Sync vs async boundaries, GIL, decorator stacking, FastAPI Depends, Django lifecycle, ORM session - injected into `task-code-explain` |
 | python-onboard-map         | Dependency manager (poetry/pip/uv/pdm), framework, virtualenv, settings, ORM + migrations, async runtime - injected into `task-onboard` |
+| python-fastapi-overengineering-review | Necessity review for FastAPI: Pydantic validators duplicating SQLAlchemy `Mapped[T]` / DB constraints, defensive `None` checks after `scalar_one()` / on typed values, single-impl `Protocol` / `BaseService` / speculative `BaseSettings` / `Result[T]` wrappers, bare `except` defeating the global exception handler. Composed into `task-python-review` Phase D when FastAPI is detected. |
+| python-django-overengineering-review | Necessity review for Django: DRF serializer validators duplicating Django ORM `null=False` / model validators / unique constraints, defensive `None` after `.objects.get()`, single-impl `ABC` / `BaseService` / `Result[T]` / multiple serializers, `post_save` signals hiding business logic. Composed into `task-python-review` Phase D when Django is detected. |
 
 ## Agents
 
