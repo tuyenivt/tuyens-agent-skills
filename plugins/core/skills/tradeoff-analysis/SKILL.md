@@ -9,7 +9,7 @@ user-invocable: false
 
 # Trade-Off Analysis
 
-> Load `Use skill: stack-detect` first to determine the project stack. Primary consumers: `task-design-architecture` Section 9, `task-adr-create` Step 3, `task-modernize-legacy` Section 3.
+> Load `Use skill: stack-detect` first to determine the project stack. Primary consumers: `task-design-architecture` Section 9, `task-modernize-legacy` Section 3.
 
 ## When to Use
 

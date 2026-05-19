@@ -9,7 +9,7 @@ user-invocable: false
 
 # Architecture Landscape
 
-> This atomic is composed by workflows - do not invoke directly. Primary consumers: `task-consolidate-services` Section 1, `task-migrate-monolith-to-services` Section 3, `task-architecture-docs-audit`.
+> This atomic is composed by workflows - do not invoke directly. Primary consumers: `task-consolidate-services` Section 1, `task-migrate-monolith-to-services` Section 3.
 
 ## When to Use
 

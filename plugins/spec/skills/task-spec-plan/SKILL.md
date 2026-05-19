@@ -67,7 +67,7 @@ Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the 
 | **NFR mapping**               | `Use skill: nfr-specification` - every spec NFR has a concrete plan element (or explicit waiver).                     |
 | **Alternatives considered**   | `Use skill: tradeoff-analysis` for every significant decision. At least one rejected option each.                     |
 | **Risks and mitigations**     | Failure modes, rollback strategy, data-loss surfaces. Cross-reference NFRs.                                           |
-| **Decisions worth recording** | Candidate ADRs - actual creation is the user's call (via `task-adr-create` if `architecture` plugin installed).        |
+| **Decisions worth recording** | Candidate ADRs - list each with rationale; actual ADR authoring is the user's call (typically using the project's ADR template). |
 | **Out of scope (reaffirmed)** | Restate spec's out-of-scope verbatim - prevents tasks from re-introducing exclusions.                                 |
 
 Composition rules:
@@ -189,5 +189,5 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 - Editing `spec.md`.
 - Skipping Alternatives Considered because "the choice was obvious" - record at least one rejected option.
 - Overwriting `plan.md` without offering replace/amend/abort.
-- Auto-running `task-adr-create` or `task-design-architecture`.
+- Auto-running `task-design-architecture`.
 - Silently absorbing an arithmetically infeasible NFR.

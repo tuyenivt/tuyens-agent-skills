@@ -9,7 +9,7 @@ user-invocable: false
 
 # Architecture Proposal Compare
 
-> This atomic is composed by workflows - do not invoke directly. Primary consumers: `task-design-architecture` review mode (multiple proposals), `task-architecture-docs-audit` (conflicting design docs).
+> This atomic is composed by workflows - do not invoke directly. Primary consumer: `task-design-architecture` review mode (multiple proposals).
 
 ## When to Use
 

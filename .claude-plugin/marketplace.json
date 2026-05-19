@@ -39,7 +39,7 @@
     {
       "name": "architecture",
       "source": "./plugins/architecture",
-      "description": "Stack-agnostic architecture design plugin: system design, API contract design, pre-implementation risk analysis, ADR creation, diagram generation, docs repo auditing, re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, and dependency upgrade assessment.",
+      "description": "Stack-agnostic architecture design plugin: unified system design (boundaries + API contracts + C4 diagrams), re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, and dependency upgrade assessment. Every workflow doubles as a review workflow with severity-tagged findings and verdict.",
       "version": "1.99.0",
       "author": {
         "name": "Tuyen",
@@ -49,12 +49,11 @@
         "architecture",
         "system-design",
         "api-design",
-        "risk-analysis",
-        "adr",
         "diagrams",
-        "docs-repo",
+        "re-architecture",
         "db-migration",
         "upgrade-plan",
+        "review",
         "stack-agnostic"
       ]
     },

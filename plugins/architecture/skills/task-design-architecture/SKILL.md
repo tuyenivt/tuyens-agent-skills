@@ -1,6 +1,6 @@
 ---
 name: task-design-architecture
-description: "Staff-level architecture design proposal: boundaries, failure modes, data consistency, trade-offs, deployment, guardrails; also reviews proposals."
+description: "Design or review architecture: boundaries, failures, consistency, trade-offs, deployment, guardrails, API contracts (RFC 9457), C4 diagrams."
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]
@@ -41,20 +41,22 @@ Use skill: `architecture-review-lens` for severity taxonomy, completeness audit,
 
 Supply this design-specific factor list to the completeness audit:
 
-| Factor                                | What "Present" Looks Like                                          |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| Problem framing and NFRs              | Business objective, measurable NFRs, explicit constraints          |
-| System context and boundaries         | Upstream/downstream, module boundaries, data ownership             |
-| Component design                      | Named components, responsibilities, failure modes                  |
-| Data and consistency model            | Per-boundary consistency, partial-failure behavior, recovery       |
-| Failure mode analysis                 | Per-component failure modes, blast radius, mitigations             |
-| Observability plan                    | Metrics, logs, traces, alerts, SLO candidates                      |
-| Performance and capacity              | Traffic estimates, bottlenecks, scaling model                      |
-| Deployment and rollback               | Rollout approach, migration order, rollback trigger                |
-| Trade-off analysis                    | Alternatives considered, why rejected, reversibility               |
-| Guardrails                            | Architecture constraints implementation must follow                |
+| Factor                                | What "Present" Looks Like                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Problem framing and NFRs              | Business objective, measurable NFRs, explicit constraints                                  |
+| System context and boundaries         | Upstream/downstream, module boundaries, data ownership                                     |
+| Component design                      | Named components, responsibilities, failure modes                                          |
+| Data and consistency model            | Per-boundary consistency, partial-failure behavior, recovery                               |
+| Failure mode analysis                 | Per-component failure modes, blast radius, mitigations                                     |
+| Observability plan                    | Metrics, logs, traces, alerts, SLO candidates                                              |
+| Performance and capacity              | Traffic estimates, bottlenecks, scaling model                                              |
+| Deployment and rollback               | Rollout approach, migration order, rollback trigger                                        |
+| Trade-off analysis                    | Alternatives considered, why rejected, reversibility                                       |
+| Guardrails                            | Architecture constraints implementation must follow                                        |
+| API contracts                         | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat |
+| Diagrams                              | At minimum a C4 Container; sequence/data-flow/deployment when relevant                     |
 
-For per-factor depth, compose the same atomic skills as authoring mode (see Design Model sections 2-10) to evaluate quality of what the author wrote. Treat performance, deployment, and trade-offs as first-class review targets, not "flag-only-if-gap."
+For per-factor depth, compose the same atomic skills as authoring mode (see Design Model sections 2-12) to evaluate quality of what the author wrote. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets, not "flag-only-if-gap."
 
 Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens`. Skip the New Design output template.
 
@@ -74,23 +76,25 @@ Handle partial inputs gracefully. When input is missing, state assumptions expli
 
 ## Depth Levels
 
-| Depth      | When to Use                                                                      | Sections Produced                                      |
-| ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `quick`    | Early ideation, async review, or "is this direction sensible?" check             | Problem framing + boundaries + top 1-2 trade-offs only |
-| `standard` | Default - pre-implementation design for Staff/Principal sign-off                 | All 10 sections                                        |
-| `deep`     | Large cross-team changes, capacity-sensitive systems, or post-incident redesigns | All 10 sections + capacity model + failure simulation  |
+| Depth      | When to Use                                                                      | Sections Produced                                                      |
+| ---------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `quick`    | Early ideation, async review, or "is this direction sensible?" check             | Problem framing + boundaries + top 1-2 trade-offs only                 |
+| `standard` | Default - pre-implementation design for Staff/Principal sign-off                 | All 12 sections (API contracts, C4 Container diagram included)         |
+| `deep`     | Large cross-team changes, capacity-sensitive systems, or post-incident redesigns | All 12 sections + capacity model + failure simulation + extra diagrams |
 
 **Quick depth produces:**
 
 - Problem framing (functional scope, NFRs, constraints)
 - System boundary sketch (modules, data ownership, one sentence per component)
 - Top 1-2 trade-offs with reasoning
+- Skips API contracts (Section 11) and diagrams (Section 12)
 
 **Deep depth adds (on top of standard):**
 
 - Capacity model with per-component throughput estimates and saturation point
 - Failure simulation: walk through 2-3 cascading failure scenarios end-to-end
 - Evolution notes: what changes if traffic doubles or a key dependency is removed
+- Additional diagrams beyond C4 Container: sequence diagrams for every non-trivial flow, data flow, deployment topology
 
 Default: `standard`. If the user asks for a "quick design check" or "rough architecture", use `quick`. If they ask for "full design" or "staff-level review", use `standard` or `deep`.
 
@@ -277,7 +281,7 @@ For each significant decision:
 - **Reversibility** -- how hard is it to change this decision later
 - **Risk** -- what could make this decision wrong
 
-**ADR candidates:** For any decision with High reversibility cost or significant trade-offs (messaging broker, consistency model, primary storage engine, async vs sync communication), recommend creating an ADR using `/task-adr-create`. State which decisions warrant an ADR so the team can commit the rationale before implementation begins.
+**High-impact decisions:** For any decision with High reversibility cost or significant trade-offs (messaging broker, consistency model, primary storage engine, async vs sync communication), call it out under a **Significant Decisions** subsection of the trade-off table. State that the team should commit the rationale (typically as a project-specific ADR or design-decision note) before implementation begins.
 
 ### 10. Guardrails and Review Guidance
 
@@ -298,6 +302,202 @@ For each constraint:
 - State the rule
 - State what violation looks like
 - State the consequence of violation
+
+### 11. API Contracts
+
+Define the REST contracts this system exposes. Run for any design that exposes APIs to external clients, other services, or browsers. **Skip with a one-liner only if the system has no public APIs** (e.g., "Internal event-driven worker; no HTTP surface").
+
+Use skill: `backend-api-guidelines` for HTTP method semantics, naming, pagination, error format, idempotency.
+Use skill: `ops-backward-compatibility` for versioning and contract evolution.
+
+For each exposed API surface, define:
+
+**Naming and structure:**
+
+- Plural nouns for resources (`/api/v1/orders`); nested resources for relationships (`/api/v1/orders/{id}/items`); no verbs in URLs
+- Version prefix on every endpoint
+- Consistent casing: kebab-case for URLs, JSON field casing per stack convention
+
+**HTTP method semantics:**
+
+| Method | Purpose                           | Success               | Common Errors |
+| ------ | --------------------------------- | --------------------- | ------------- |
+| GET    | Read                              | 200                   | 404           |
+| POST   | Create                            | 201 + Location header | 400, 409      |
+| PUT    | Full replace                      | 200                   | 404, 400      |
+| PATCH  | Partial update (JSON Merge Patch) | 200                   | 404, 400      |
+| DELETE | Remove                            | 204                   | 404           |
+
+**State transitions** (when resources have a lifecycle):
+
+- Model transitions as sub-resource actions (`POST /orders/{id}/transitions` with `{"to":"pending"}`) or named actions (`POST /orders/{id}/cancel`)
+- Reject arbitrary `status` values via `PUT` - this bypasses state-machine validation
+- Invalid transitions return 422 with the reason
+
+**Idempotency:**
+
+- POST is not idempotent by default
+- For financially or state-sensitive endpoints, support `Idempotency-Key` header; document the deduplication window (e.g., "24 hours")
+
+**Multi-tenancy** (when applicable):
+
+| Pattern                          | Use When                                                | Trade-off                              |
+| -------------------------------- | ------------------------------------------------------- | -------------------------------------- |
+| Path segment                     | Tenant ID must be explicit per request                  | Verbose URLs; clear isolation          |
+| JWT claim                        | Single-tenant context per session                       | Simpler URLs; auth on every endpoint   |
+| Header (`X-Tenant-ID`)           | Pre-authenticated service-to-service                    | Easy to forget; middleware-enforced    |
+
+Per endpoint, verify: tenant isolation (can Tenant A reach Tenant B's data?), tenant-scoped rate limits, admin endpoints explicitly marked.
+
+**Pagination** (mandatory for collections):
+
+- Request: `?page=0&size=20&sort=createdAt,desc`
+- Response envelope: `{ "content": [], "page": { "number", "size", "totalElements", "totalPages" } }`
+- Default size: 20, max: 100
+
+**Error format (RFC 9457, consistent across all endpoints):**
+
+```json
+{
+  "type": "https://api.example.com/errors/validation-failed",
+  "title": "Validation Failed",
+  "status": 400,
+  "detail": "Request body has 2 validation errors",
+  "errors": [{"field": "email", "message": "must be a valid email"}]
+}
+```
+
+**Per-endpoint security:**
+
+- Authentication mechanism (JWT, OAuth2, API key, public) - never blank
+- Authorization (role-based or resource-based / owner check)
+- Rate limit (global or per-tenant)
+- Input validation on all request bodies and params
+- No passwords, tokens, or PII in URLs or logs
+- CORS: allowed origins/methods/headers and preflight caching when consumed by browsers
+
+**Backward compatibility** (when modifying existing APIs):
+
+| Change                           | Impact   |
+| -------------------------------- | -------- |
+| Removed/renamed/retyped field    | BREAKING |
+| Added required request field     | BREAKING |
+| Changed URL path or method       | BREAKING |
+| Narrowed accepted values         | BREAKING |
+| Added optional field (req/resp)  | SAFE     |
+| Added new endpoints              | SAFE     |
+| Widened accepted values          | SAFE     |
+
+For each breaking change: state what breaks, for which consumers, and propose a migration path (versioning, deprecation, dual-write).
+
+### 12. Diagrams
+
+Produce diagram code that makes the design legible at a glance. Run at `standard` and `deep` depth. **Skip with a one-liner only if** a current diagram already exists and remains accurate, or the design is too narrow to diagram meaningfully (e.g., adding a single nullable column).
+
+Default format: **Mermaid** (renders in GitHub/GitLab markdown). Use **PlantUML** when explicitly requested or when documentation tooling prefers it (e.g., Confluence with the PlantUML plugin).
+
+Always include:
+
+- **C4 Container diagram** - shows the major deployable units inside the system and their technology stack
+
+Include when applicable:
+
+- **C4 Context diagram** - if the system has 3+ external interactors that matter to the design
+- **Sequence diagram** - for any flow whose ordering or async/sync semantics are non-obvious (multi-service flow, distributed transaction, event-driven path)
+- **Data flow diagram** - if data takes multiple paths (request, event, batch) through the system
+- **Deployment diagram** - if infrastructure topology is part of the design (multi-region, VPC structure, networking)
+
+**Rules:**
+
+- Every element traces to a component, boundary, or relationship defined earlier in this design - never invent elements to "complete" the diagram
+- Stay at one abstraction level per diagram (no Context/Container mixing)
+- State assumptions in Diagram Notes, not silently inside the diagram
+- Mermaid/PlantUML syntax must render unmodified in standard tools
+
+**Mermaid templates:**
+
+C4 Container:
+
+```
+C4Container
+  title Container Diagram - {System Name}
+
+  Person(user, "User", "Description")
+
+  System_Boundary(sys, "System Name") {
+    Container(api, "API Gateway", "Technology", "Description")
+    Container(svc, "Service", "Technology", "Description")
+    ContainerDb(db, "Database", "Technology", "Description")
+    ContainerQueue(q, "Queue", "Technology", "Description")
+  }
+
+  System_Ext(ext, "External System", "Description")
+
+  Rel(user, api, "Uses", "HTTPS")
+  Rel(api, svc, "Routes to", "REST")
+  Rel(svc, db, "Reads/writes", "SQL")
+  Rel(svc, q, "Publishes", "AMQP")
+```
+
+Sequence (use `->>` request, `-->>` response, `--)` async fire-and-forget; `autonumber` always):
+
+```
+sequenceDiagram
+  autonumber
+  actor User
+  participant API as API Gateway
+  participant Service as OrderService
+  participant DB as PostgreSQL
+  participant Queue as Kafka
+
+  User->>API: POST /orders
+  API->>Service: createOrder(command)
+  Service->>DB: INSERT order (txn)
+  DB-->>Service: order_id
+  Service--)Queue: OrderCreated event
+  Service-->>API: 201 Created
+  API-->>User: 201 Created
+```
+
+Data flow (use `LR` for pipelines, `TD` for hierarchies; shapes: `[service]`, `[(db)]`, `([queue])`; dashed arrows for async):
+
+```
+flowchart LR
+  subgraph Ingestion
+    A[API Gateway] --> B[OrderService]
+  end
+  subgraph Processing
+    B --> C[(PostgreSQL)]
+    B -.->|async| D([Kafka: orders])
+    D --> E[FulfillmentService]
+  end
+```
+
+Deployment (nested subgraphs for provider > region > VPC > subnet; show instance counts):
+
+```
+flowchart TD
+  subgraph Cloud["AWS us-east-1"]
+    subgraph VPC["VPC 10.0.0.0/16"]
+      subgraph Public["Public Subnet"]
+        ALB[Application Load Balancer]
+      end
+      subgraph Private["Private Subnet"]
+        ECS[ECS Cluster: OrderService x3]
+        RDS[(RDS PostgreSQL Multi-AZ)]
+      end
+    end
+  end
+  Client([Client]) --> ALB
+  ALB --> ECS
+  ECS --> RDS
+```
+
+**Diagram Notes** (required per diagram):
+
+- **Scope:** what this diagram shows and deliberately omits
+- **Assumptions:** anything inferred from the design that was not explicit
+- **Next level:** which diagram type would show more detail
 
 ## Output
 
@@ -452,6 +652,67 @@ Feature Flags:
 
 - Signal to watch for erosion
 
+## 11. API Contracts
+
+_Skip with a one-liner if no public API surface._
+
+### Endpoints
+
+| Method | Path           | Description  | Auth | Request         | Response            | Status |
+| ------ | -------------- | ------------ | ---- | --------------- | ------------------- | ------ |
+| GET    | /api/v1/orders | List orders  | USER | Pageable params | Page<OrderResponse> | 200    |
+| POST   | /api/v1/orders | Create order | USER | OrderRequest    | OrderResponse       | 201    |
+
+### Idempotency
+
+| Endpoint              | Idempotent | Mechanism                            |
+| --------------------- | ---------- | ------------------------------------ |
+| POST /api/v1/payments | Required   | Idempotency-Key header, 24h window   |
+
+### Multi-Tenancy
+
+Pattern: [Path segment | JWT claim | Header X-Tenant-ID]
+Isolation enforced at: [middleware / repository / both]
+Rate limits: per-tenant or global
+
+### Error Format
+
+RFC 9457 problem details; example examples for 400, 404, 409, 422.
+
+### Backward Compatibility (if modifying existing API)
+
+| Change | Impact | Migration Path |
+| ------ | ------ | -------------- |
+| ...    | ...    | ...            |
+
+## 12. Diagrams
+
+_Skip with a one-liner if a current diagram already exists or the design is too narrow to diagram meaningfully._
+
+### Container Diagram (C4)
+
+```mermaid
+{C4Container code per Section 12 template}
+```
+
+### Sequence Diagram - {Flow name} _(when ordering or async/sync semantics are non-obvious)_
+
+```mermaid
+{sequenceDiagram code per Section 12 template}
+```
+
+### Data Flow / Deployment _(include when applicable)_
+
+```mermaid
+{flowchart code per Section 12 template}
+```
+
+### Diagram Notes
+
+- **Scope:**
+- **Assumptions:**
+- **Next level:**
+
 ## Staff-Level Summary
 
 Each bullet should be specific to this design, not generic advice. Example: 'Key systemic risks: Retry amplification from SMS provider timeouts can overload the outbox worker under burst load.'
@@ -500,8 +761,10 @@ Walk through the failure end-to-end:
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
 - [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate
 - [ ] Guardrails are concrete, detectable rules (one per module boundary minimum)
+- [ ] Section 11 produced if any API surface exists: auth per endpoint, RFC 9457 errors, idempotency on state-mutating endpoints, pagination on collections, multi-tenancy if applicable
+- [ ] Section 12 produced at standard/deep: at minimum a C4 Container diagram; every diagram element traces to a component/boundary defined in Sections 2-3; Diagram Notes state scope and assumptions
 - [ ] Design grounded in stated requirements - no hypothetical future scope
-- [ ] If depth = deep: capacity model per component, 2+ failure scenarios simulated, evolution notes cover traffic doubling
+- [ ] If depth = deep: capacity model per component, 2+ failure scenarios simulated, evolution notes cover traffic doubling, sequence/data-flow/deployment diagrams added where applicable
 
 ## Avoid
 

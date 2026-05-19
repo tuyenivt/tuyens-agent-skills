@@ -16,7 +16,7 @@ Captures the **what** and **why** of a feature as a persistent artifact (`spec.m
 
 ## When to Use
 
-For new features, re-specs of drifted features, or producing a portable handoff artifact. Not for: technical design (`task-spec-plan`), API design (`task-design-api`), system architecture (`task-design-architecture`), bug reports (`task-code-debug`).
+For new features, re-specs of drifted features, or producing a portable handoff artifact. Not for: technical design (`task-spec-plan`), system architecture or API design (`task-design-architecture`), bug reports (`task-code-debug`).
 
 ## Inputs
 
