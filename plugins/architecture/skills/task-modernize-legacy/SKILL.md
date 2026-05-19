@@ -14,7 +14,7 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level legacy modernization plan: incremental strangler-fig migration, target stack selection by trade-offs, behavioral preservation including undocumented behaviors, and team transition. Produces a plan; no implementation code. For DB-specific migration use `task-db-migration-plan`.
+Staff-level legacy modernization plan: incremental strangler-fig migration, target stack selection by trade-offs, behavioral preservation including undocumented behaviors, and team transition. Produces a plan; no implementation code. For DB-specific migration use `task-db-migration`.
 
 ## When to Use
 
@@ -60,7 +60,7 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 Before analysis, confirm the modernization scope:
 
-- If the user mentions "modular architecture", "services", or "microservices" as a target, clarify: "Is the goal to restructure within the monolith (this skill), or to extract into independently deployable services (use `/task-migrate-monolith-to-services`)?"
+- If the user mentions "modular architecture", "services", or "microservices" as a target, clarify: "Is the goal to restructure within the monolith (this skill), or to extract into independently deployable services (use `/task-decompose-monolith`)?"
 - If the user specifies a target stack, note it for validation in Section 3.
 - If the user does not specify depth, default to `standard`. Auto-escalate to `deep` for systems older than 5 years or with more than 50K lines.
 
@@ -214,7 +214,7 @@ Address:
 
 **Calendar-critical systems:** For systems with mandatory processing windows (payroll on the 1st/15th, month-end closes, regulatory reporting deadlines), explicitly identify blackout periods during which no data migration, schema change, or cutover may occur. Schedule all risky migration phases in the windows between these dates, and add a "pre-blackout freeze" buffer of at least 3 business days.
 
-This section focuses on application-level data coexistence. For detailed database migration planning (schema changes, zero-downtime DDL, rollback scripts), use `task-db-migration-plan`.
+This section focuses on application-level data coexistence. For detailed database migration planning (schema changes, zero-downtime DDL, rollback scripts), use `task-db-migration`.
 
 ### 7. Team and Knowledge Transition
 

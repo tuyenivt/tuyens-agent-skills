@@ -1,5 +1,5 @@
 ---
-name: task-db-migration-plan
+name: task-db-migration
 description: "Plan or review zero-downtime DB migration: expand-contract phasing, lock risk, backfill, rollback for risky schema changes."
 metadata:
   category: data

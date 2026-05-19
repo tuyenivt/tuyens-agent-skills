@@ -9,7 +9,7 @@ user-invocable: false
 
 # System Boundary Design
 
-> Load `Use skill: stack-detect` first. Primary consumers: `task-migrate-monolith-to-services` Section 2, `task-consolidate-services` Section 3, `task-design-architecture` Section 2.
+> Load `Use skill: stack-detect` first. Primary consumers: `task-decompose-monolith` Section 2, `task-consolidate-services` Section 3, `task-design-architecture` Section 2.
 
 ## When to Use
 

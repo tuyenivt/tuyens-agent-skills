@@ -163,9 +163,9 @@ I want to...
   hand off an on-call shift               -> /task-oncall-start [oncall]
   onboard to a codebase                   -> /task-onboard
   understand a file or function           -> /task-code-explain
-  plan/review a database migration        -> /task-db-migration-plan [architecture]
+  plan/review a database migration        -> /task-db-migration [architecture]
   refactor safely                         -> /task-code-refactor
-  decompose monolith into services        -> /task-migrate-monolith-to-services [architecture]
+  decompose monolith into services        -> /task-decompose-monolith [architecture]
   consolidate over-split services         -> /task-consolidate-services [architecture]
   modernize a legacy system               -> /task-modernize-legacy [architecture]
   assess risk on a PR / change            -> /task-code-review
@@ -173,7 +173,7 @@ I want to...
   check for performance issues            -> /task-code-review-perf
   check for observability gaps            -> /task-code-review-observability
   triage tech debt by ROI                 -> /task-debt-triage [delivery]
-  assess a version upgrade                -> /task-upgrade-plan [delivery]
+  assess a version upgrade                -> /task-dependency-upgrade [architecture]
   draft release notes from a diff         -> /task-release-notes [delivery]
 ```
 
@@ -320,7 +320,7 @@ Angular (plugin: angular)
 **Common decision points:**
 
 - "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
-- "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration-plan`, `/task-upgrade-plan`, `/task-migrate-monolith-to-services`, `/task-consolidate-services`, `/task-modernize-legacy`) each double as a review workflow for the corresponding design artifact - paste an existing artifact instead of authoring requirements.
+- "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration`, `/task-dependency-upgrade`, `/task-decompose-monolith`, `/task-consolidate-services`, `/task-modernize-legacy`) each double as a review workflow for the corresponding design artifact - paste an existing artifact instead of authoring requirements.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.

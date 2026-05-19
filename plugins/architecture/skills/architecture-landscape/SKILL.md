@@ -9,7 +9,7 @@ user-invocable: false
 
 # Architecture Landscape
 
-> Composed by workflows; not invoked directly. Primary consumers: `task-consolidate-services` Section 1, `task-migrate-monolith-to-services` Section 3.
+> Composed by workflows; not invoked directly. Primary consumers: `task-consolidate-services` Section 1, `task-decompose-monolith` Section 3.
 
 ## When to Use
 

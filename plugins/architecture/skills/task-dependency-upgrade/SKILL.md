@@ -1,5 +1,5 @@
 ---
-name: task-upgrade-plan
+name: task-dependency-upgrade
 description: "Plan or review library/platform upgrade: changelog analysis, breaking change detection, effort estimate (S/M/L/XL), Go/No-Go."
 metadata:
   category: planning

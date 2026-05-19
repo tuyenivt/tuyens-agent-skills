@@ -120,7 +120,7 @@ Consuming workflow skills depend on this structure to surface compatibility brea
 
 **{Contract type}: {change description}**
 - Consumers affected: {list or "unknown - verify before deploy"}
-- Migration plan: {expand-contract phases or "use expand-contract - see task-db-migration-plan"}
+- Migration plan: {expand-contract phases or "use expand-contract - see task-db-migration"}
 - Dual-write needed: Yes / No
 - Dual-read needed: Yes / No
 

@@ -9,11 +9,11 @@ Workflow skills (`task-*`) for architecture design and re-architecture. Invoked 
 | Skill                               | Description                                                                                                                                                                                                                                                                          |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-design-architecture`          | Design or review system architecture in a single workflow: boundaries, failure containment, data consistency, observability, performance, deployment, trade-offs, guardrails, API contracts (REST/RFC 9457), and C4 diagrams (Mermaid). Supports `quick`, `standard`, `deep` depths. |
-| `task-migrate-monolith-to-services` | Plan or review a monolith-to-microservices decomposition with domain boundaries, extraction order, and data ownership transfer.                                                                                                                                                     |
+| `task-decompose-monolith` | Plan or review a monolith-to-microservices decomposition with domain boundaries, extraction order, and data ownership transfer.                                                                                                                                                     |
 | `task-consolidate-services`         | Plan or review a microservices consolidation - merge over-split services into fewer, well-bounded services with data reunification and consumer migration.                                                                                                                          |
 | `task-modernize-legacy`             | Plan or review a legacy system modernization - migrate from outdated language/framework to modern stack with behavioral verification and incremental cutover.                                                                                                                       |
-| `task-db-migration-plan`            | Plan or review a database migration for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk, backfill, and rollback.                                                                                                                              |
-| `task-upgrade-plan`                 | Plan or review a library or platform upgrade - changelog analysis, breaking change detection, compatibility conflicts, effort estimate (S/M/L/XL), and Go/No-Go.                                                                                                                    |
+| `task-db-migration`            | Plan or review a database migration for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk, backfill, and rollback.                                                                                                                              |
+| `task-dependency-upgrade`                 | Plan or review a library or platform upgrade - changelog analysis, breaking change detection, compatibility conflicts, effort estimate (S/M/L/XL), and Go/No-Go.                                                                                                                    |
 
 ## Atomic Skills
 
@@ -21,9 +21,9 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 
 | Skill                           | Description                                                                                                                  | Composed By                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `system-boundary-design`        | Formal boundary modeling for module and service decomposition                                                                | `task-design-architecture`, `task-migrate-monolith-to-services`, `task-consolidate-services` |
-| `strangler-fig-pattern`         | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases              | `task-migrate-monolith-to-services`, `task-consolidate-services`, `task-modernize-legacy`    |
-| `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks                      | `task-consolidate-services` (Section 1), `task-migrate-monolith-to-services` (Section 3)     |
+| `system-boundary-design`        | Formal boundary modeling for module and service decomposition                                                                | `task-design-architecture`, `task-decompose-monolith`, `task-consolidate-services` |
+| `strangler-fig-pattern`         | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases              | `task-decompose-monolith`, `task-consolidate-services`, `task-modernize-legacy`    |
+| `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks                      | `task-consolidate-services` (Section 1), `task-decompose-monolith` (Section 3)     |
 | `architecture-proposal-compare` | Compare 2-3 architecture proposals against a fixed criteria set and produce a ranked recommendation                          | `task-design-architecture` (review mode, multiple proposals)                                 |
 | `architecture-review-lens`      | Review lens for architecture artifacts - severity taxonomy, completeness audit, consistency check, criteria scoring, verdict | All 6 authoring workflows in their Review Mode                                               |
 
@@ -61,11 +61,11 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 | Workflow                            | Atomic Skills Used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task-design-architecture`          | `nfr-specification`, `architecture-proposal-compare` (review mode, multi-proposal), `architecture-review-lens` (review mode), `system-boundary-design`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `review-blast-radius`, `architecture-data-consistency`, `backend-idempotency`, `backend-caching`, `ops-resiliency`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-observability`, `backend-db-indexing`, `architecture-capacity`, `ops-release-safety`, `dependency-impact-analysis`, `architecture-concurrency`, `ops-engineering-governance`, `backend-api-guidelines`, `ops-backward-compatibility` |
-| `task-migrate-monolith-to-services` | `architecture-landscape` (optional, Section 3), `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-observability`, `ops-engineering-governance`, `ops-release-safety`, `ops-feature-flags`, `architecture-review-lens` (review mode)                                                                                                                                                              |
+| `task-decompose-monolith` | `architecture-landscape` (optional, Section 3), `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-observability`, `ops-engineering-governance`, `ops-release-safety`, `ops-feature-flags`, `architecture-review-lens` (review mode)                                                                                                                                                              |
 | `task-consolidate-services`         | `architecture-landscape`, `system-boundary-design`, `strangler-fig-pattern`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-feature-flags`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                              |
 | `task-modernize-legacy`             | `strangler-fig-pattern`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-feature-flags`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                           |
-| `task-db-migration-plan`            | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `task-upgrade-plan`                 | `stack-detect`, `ops-backward-compatibility`, `review-blast-radius`, `ops-release-safety`, `dependency-impact-analysis`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `task-db-migration`            | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `task-dependency-upgrade`                 | `stack-detect`, `ops-backward-compatibility`, `review-blast-radius`, `ops-release-safety`, `dependency-impact-analysis`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ## Usage Examples
 
@@ -87,10 +87,10 @@ Pass an existing artifact and the workflow switches to Review Mode automatically
 /task-design-architecture
 [paste a design doc, OpenAPI spec, or proposal here]
 
-/task-db-migration-plan
+/task-db-migration
 [paste someone's migration plan]
 
-/task-upgrade-plan
+/task-dependency-upgrade
 [paste someone's upgrade assessment]
 ```
 
@@ -106,7 +106,7 @@ Pass an existing artifact and the workflow switches to Review Mode automatically
 **Plan a monolith to services migration:**
 
 ```
-/task-migrate-monolith-to-services
+/task-decompose-monolith
 System: E-commerce monolith (Java/Spring Boot), 200k LOC, shared PostgreSQL database
 Driver: Teams stepping on each other during deploys, order processing can't scale independently
 ```
@@ -130,7 +130,7 @@ Driver: Can't hire PHP 5.6 developers, framework has no community support, scali
 **Plan a complex database schema migration:**
 
 ```
-/task-db-migration-plan
+/task-db-migration
 Change: Rename user_id column to account_id across orders table (50M rows, multi-service)
 Database: PostgreSQL
 Deployment: Rolling, zero-downtime required
@@ -139,6 +139,6 @@ Deployment: Rolling, zero-downtime required
 **Assess a dependency upgrade:**
 
 ```
-/task-upgrade-plan
+/task-dependency-upgrade
 Upgrade: Spring Boot 3.3 -> 3.5
 ```

@@ -1,5 +1,5 @@
 ---
-name: task-migrate-monolith-to-services
+name: task-decompose-monolith
 description: "Plan or review monolith-to-services migration: strangler fig, domain-first decomposition, risk-ordered extraction into bounded services."
 metadata:
   category: architecture
