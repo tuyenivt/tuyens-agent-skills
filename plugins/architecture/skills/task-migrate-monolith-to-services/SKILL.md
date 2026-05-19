@@ -1,6 +1,6 @@
 ---
 name: task-migrate-monolith-to-services
-description: "Monolith-to-services migration plan: strangler fig, domain-first decomposition, risk-ordered extraction into bounded services/modules."
+description: "Plan or review monolith-to-services migration: strangler fig, domain-first decomposition, risk-ordered extraction into bounded services."
 metadata:
   category: architecture
   tags: [architecture, migration, monolith, microservices, decomposition, strangler-fig]
@@ -244,6 +244,37 @@ Define:
 - **Feature flag strategy** -- flags for routing traffic between monolith and service
 - **Communication plan** -- how to keep stakeholders informed of migration progress
 - **Cleanup discipline** -- removing monolith code, sync jobs, and compatibility shims after extraction
+
+## Review Mode
+
+When reviewing a monolith-to-services decomposition plan authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this decomposition-plan-specific factor list to the completeness audit:
+
+| Factor                          | What "Present" Looks Like                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| Current state assessment        | Module inventory, deployment profile, pain points justifying decomposition         |
+| Domain decomposition            | Bounded contexts identified; data ownership per service stated                     |
+| Target architecture             | Services named with single-sentence responsibility and primary failure mode        |
+| Extraction order                | Sequenced with rationale (lowest-coupling first, highest-pain first, etc.)         |
+| Strangler-fig routing           | Coexistence phases, traffic routing strategy, sync between monolith and services   |
+| Data ownership transfer         | Per-service: how data moves out of monolith DB; dual-write or read-replica phase   |
+| Cross-cutting concerns          | Auth, observability, deployment pipeline addressed for new services                |
+| Risks and mitigations           | Distributed-transaction risk, latency, operational overhead with mitigations       |
+| Migration governance            | Decision gates, rollback triggers, feature flags, cleanup discipline               |
+| Per-extraction rollback         | Each extraction has a rollback path; data un-extraction is feasible or flagged     |
+
+Specific quality checks beyond the standard lens:
+
+- **No extraction order rationale**: Major; "we will extract services" is not a plan
+- **Shared database across services in steady state**: Blocker (distributed monolith) unless explicit transitional phase
+- **No strangler-fig coexistence phase**: Blocker for production systems; big-bang decomposition is rarely safe
+- **No cleanup plan for monolith code post-extraction**: Major; tech debt is the predictable outcome
+- **Distributed transactions assumed to work like local transactions**: Blocker
+
+Output header: `# Decomposition Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
 
 ## Output
 

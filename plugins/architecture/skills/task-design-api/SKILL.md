@@ -33,7 +33,7 @@ Use skill: `stack-detect` to identify language, framework, and tooling.
 Classify the input:
 
 - **New design** -- natural language or endpoint list → proceed to Step 3 (Design)
-- **Review** -- existing code or OpenAPI spec → proceed to Step 3 (Review mode: validate against rules, report violations)
+- **Review** -- existing code or OpenAPI spec → proceed to the Review Mode section below; Steps 3-7 run in support of the review
 
 Accept one of:
 
@@ -200,6 +200,34 @@ For each endpoint, verify:
 
 - List of breaking changes with migration guidance
 - List of safe changes
+
+## Review Mode
+
+When reviewing an existing API contract, code, or OpenAPI spec authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this API-specific factor list to the completeness audit:
+
+| Factor                | What "Present" Looks Like                                                     |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Resource modeling     | Plural nouns, nested resources for relationships, no verbs in URLs            |
+| HTTP method semantics | Correct verb per operation, correct success/error status codes                |
+| State transitions     | Explicit sub-resource actions or transition endpoints (not arbitrary `status`) |
+| Idempotency           | Idempotency-Key on state-mutating, financial, or irreversible endpoints       |
+| Multi-tenancy         | Tenant isolation pattern stated; tenant-scoped rate limiting; admin marked    |
+| Pagination            | Consistent params and response envelope across all collection endpoints       |
+| Error format          | RFC 9457 problem details, consistent across all endpoints                     |
+| Versioning            | Version prefix; backward-compat strategy for changes                          |
+| Authentication        | Mechanism stated per endpoint (JWT, OAuth2, API key, public)                  |
+| Authorization         | Role-based or resource-based check stated per endpoint                        |
+| Rate limiting         | Limits stated per endpoint or globally; per-tenant when multi-tenant          |
+| Input validation      | All request bodies and parameters validated                                   |
+| CORS                  | Allowed origins/methods/headers stated if consumed by browser clients         |
+
+Use Steps 3-6 of this workflow to evaluate each factor's quality. Treat breaking-change detection (Step 5) as a first-class review concern when the artifact modifies an existing API.
+
+Output header: `# API Review` and use the output structure defined in `architecture-review-lens`. Skip the New Design output (endpoint table, DTO schemas).
 
 ## Rules
 

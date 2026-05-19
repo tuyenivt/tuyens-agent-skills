@@ -29,29 +29,34 @@ If the user's input makes mode obvious (e.g., "here's a design doc, review it" o
 
 ### New Design Mode
 
-Run all 10 sections per the Design Model.
+Run all 10 sections per the Design Model below.
 
-### Review Existing Design Mode
+### Review Mode
 
-For 2+ proposals on the same problem: use `architecture-proposal-compare` first, then review the recommended proposal as a single-proposal review.
+For 2+ proposals on the same problem: use `architecture-proposal-compare` first, then apply Review Mode to the recommended proposal.
 
-For a single proposal: the user is not the author. Run Sections 1-6 and 10 fully; for Sections 7, 8, 9, write at most one paragraph each only when a gap is present.
+For a single proposal:
 
-- Section 7 (Performance): flag only obvious capacity blind spots
-- Section 8 (Deployment): flag only rollback or compatibility issues
-- Section 9 (Trade-Offs): comment only on **undocumented** trade-offs
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Output header: `# Architecture Review`. Replace Staff-Level Summary with:
+Supply this design-specific factor list to the completeness audit:
 
-```markdown
-## Review Summary
+| Factor                                | What "Present" Looks Like                                          |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| Problem framing and NFRs              | Business objective, measurable NFRs, explicit constraints          |
+| System context and boundaries         | Upstream/downstream, module boundaries, data ownership             |
+| Component design                      | Named components, responsibilities, failure modes                  |
+| Data and consistency model            | Per-boundary consistency, partial-failure behavior, recovery       |
+| Failure mode analysis                 | Per-component failure modes, blast radius, mitigations             |
+| Observability plan                    | Metrics, logs, traces, alerts, SLO candidates                      |
+| Performance and capacity              | Traffic estimates, bottlenecks, scaling model                      |
+| Deployment and rollback               | Rollout approach, migration order, rollback trigger                |
+| Trade-off analysis                    | Alternatives considered, why rejected, reversibility               |
+| Guardrails                            | Architecture constraints implementation must follow                |
 
-- Boundary clarity / Failure containment: Strong | Adequate | Weak (with specifics)
-- Consistency model: Clear | Incomplete | Missing
-- Observability readiness: Covered | Gaps (list)
-- Top 3 concerns (by systemic impact)
-- Recommendation: Approve | Approve with changes | Needs rework
-```
+For per-factor depth, compose the same atomic skills as authoring mode (see Design Model sections 2-10) to evaluate quality of what the author wrote. Treat performance, deployment, and trade-offs as first-class review targets, not "flag-only-if-gap."
+
+Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens`. Skip the New Design output template.
 
 ## Inputs
 

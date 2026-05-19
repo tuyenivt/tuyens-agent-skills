@@ -1,6 +1,6 @@
 ---
 name: task-adr-create
-description: "Write an Architecture Decision Record (ADR): context, alternatives, trade-offs, consequences, review triggers; ready-to-commit .md file."
+description: "Write or review an Architecture Decision Record (ADR): context, alternatives, trade-offs, consequences, review trigger; .md output."
 metadata:
   category: workflow
   tags: [adr, architecture, decisions, trade-offs, documentation]
@@ -83,6 +83,39 @@ Compose using the Output Format below. Conventions:
 ### Step 5 - Output the File
 
 Write the ADR to the target directory and state the full path. If the directory does not exist, provide the `mkdir` command.
+
+## Review Mode
+
+When reviewing a draft ADR authored by someone else (do not write a new file - produce a review):
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this ADR-specific factor list to the completeness audit:
+
+| Factor                  | What "Present" Looks Like                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Title                   | Imperative under 72 chars ("Use X for Y", "Replace X with Y"); no "ADR:" prefix      |
+| Status                  | Proposed / Accepted / Deprecated / Superseded; not blank or "TBD"                    |
+| Context                 | Situation, constraint, or forcing function; describes the problem, not the decision  |
+| Decision                | One present-tense statement with explicit scope                                      |
+| Alternatives considered | At least one rejected alternative with a specific "Why rejected" reason              |
+| Costs of chosen option  | Chosen option lists what it costs, not only benefits                                 |
+| Consequences            | Contains at least one negative or trade-off; concrete, not aspirational              |
+| Reversibility           | Easy / Moderate / Hard, with what reversing would require                            |
+| Migration notes         | When existing code changes, notes which teams/services need notification             |
+| Review trigger          | Specific observable condition (metric threshold, team size, EOL); not "when needed"  |
+| References              | Tickets, PRs, superseded ADRs; reconstructed-rationale flagged when post-hoc         |
+
+Specific quality checks beyond the standard lens:
+
+- **Decision masquerading as context**: Context section that pre-announces the decision is a Major finding
+- **Decree, not decision**: Zero rejected alternatives is a Blocker (cannot proceed without them)
+- **No costs on chosen option**: A Major finding; the artifact reads as advocacy, not analysis
+- **Vague review trigger**: "Revisit periodically" or "when needed" is a Minor; promote to Major if reversibility is Hard
+
+If the ADR proposes 3+ alternatives, also run `architecture-proposal-compare` to validate the criteria-based comparison the author should have produced.
+
+Output header: `# ADR Review: ADR-NNNN {title}` and use the output structure defined in `architecture-review-lens`. Do not write a file; emit the review to chat.
 
 ## Output Format
 

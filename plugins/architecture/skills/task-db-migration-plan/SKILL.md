@@ -1,6 +1,6 @@
 ---
 name: task-db-migration-plan
-description: "Zero-downtime DB migration plan: expand-contract phasing, lock risk, backfill, rollback for risky schema changes (NOT NULL, renames, splits)."
+description: "Plan or review zero-downtime DB migration: expand-contract phasing, lock risk, backfill, rollback for risky schema changes."
 metadata:
   category: data
   tags: [migration, database, schema, zero-downtime, rollback, expand-contract]
@@ -207,6 +207,38 @@ For each step, state:
 - **Lock risk**: Lock acquired, estimated duration
 - **Rollback**: How to undo this step specifically
 - **Validation**: How to confirm this step succeeded before proceeding
+
+## Review Mode
+
+When reviewing a migration plan authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this migration-plan-specific factor list to the completeness audit:
+
+| Factor                          | What "Present" Looks Like                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| Change classification           | Schema change type and risk level per sub-change; compound migrations sequenced |
+| Lock risk per operation         | Lock type, estimated duration, concurrent/online alternative when applicable    |
+| Expand-contract strategy        | Three phases for non-additive changes, or explicit justification for skipping   |
+| Application backward compat     | Code stays compatible with old AND new schema during transition                 |
+| Backfill plan                   | Batched (100-1000 rows), idempotent, re-run safe, monitored                     |
+| Rollback per phase              | What rolls back, time estimate, data safety, trigger condition                  |
+| Backup-restore dependency       | Phases requiring backup restore explicitly flagged as go/no-go                  |
+| Multi-service coordination      | Deploy order across services with schema compatibility requirements             |
+| Per-step pre-conditions         | What must be true before each step runs                                         |
+| Per-step validation             | Concrete, checkable confirmation that the step succeeded                        |
+
+Specific quality checks beyond the standard lens:
+
+- **Unbounded UPDATE/DELETE on production**: Blocker; never acceptable
+- **NOT NULL, FK, or unique constraint added without backfill or validation**: Blocker
+- **Rollback requires backup restore but not flagged as go/no-go**: Major minimum, often Blocker
+- **Expand-contract skipped on a non-additive change with no downtime authorization**: Blocker
+- **Vague validation ("verify migration ran")**: Minor; promote to Major when on a Blocker-risk step
+- **Lock duration estimated relative to table size for high-risk operations**: required - absence is Major
+
+Output header: `# Migration Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
 
 ## Output
 

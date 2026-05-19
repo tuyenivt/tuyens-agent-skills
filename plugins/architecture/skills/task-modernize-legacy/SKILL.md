@@ -1,6 +1,6 @@
 ---
 name: task-modernize-legacy
-description: "Legacy modernization plan: incremental strangler fig migration, behavioral verification, target stack evaluation, team transition."
+description: "Plan or review legacy modernization: strangler fig migration, behavioral verification, target stack evaluation, team transition."
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]
@@ -250,6 +250,39 @@ For each high-risk scenario:
 - State the likelihood (High / Medium / Low)
 - State the impact
 - State the mitigation
+
+## Review Mode
+
+When reviewing a legacy-modernization plan authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this modernization-plan-specific factor list to the completeness audit:
+
+| Factor                       | What "Present" Looks Like                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| Legacy system assessment     | Technology, architecture, age, team size, hidden behaviors / undocumented features |
+| Modernization justification  | Specific drivers (hiring, EOL, scaling ceiling, security); not just "it's old"     |
+| Target stack                  | Named language/framework/runtime with rationale, not "modern stack"                |
+| Behavioral inventory          | How current behavior is captured (tests, characterization, prod traffic capture)   |
+| Strangler-fig migration       | Coexistence phases, traffic routing, gradual replacement; not big-bang             |
+| Data migration                | Schema mapping, backfill plan, rollback safety, consistency during dual-run        |
+| Behavioral verification       | Shadow traffic, replay, diff testing - how new system is proven to match old       |
+| Cutover strategy              | Phased traffic shift with rollback gates; not a one-shot DNS swap                  |
+| Team transition               | Training plan, knowledge transfer from legacy maintainers, hiring timeline         |
+| Scope discipline              | Explicit non-goals (no new features during migration); cleanup of old system       |
+| Risks and mitigations         | Behavioral drift, performance regression, scope creep with mitigations             |
+
+Specific quality checks beyond the standard lens:
+
+- **Rewrite without behavioral inventory**: Blocker; rewrites without behavioral capture fail to match the legacy
+- **Big-bang cutover**: Blocker for any system serving real users
+- **"Modernize and add features" combined scope**: Major minimum; usually doubles the timeline and risk
+- **Target stack without rationale beyond "modern"**: Major; "use Rust because it's modern" is not a justification
+- **No team transition plan for the legacy maintainers**: Major; the people who understand the legacy are critical during migration
+- **No diff testing or shadow traffic plan**: Major; behavioral parity must be measurable
+
+Output header: `# Modernization Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
 
 ## Output
 

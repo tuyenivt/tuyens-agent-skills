@@ -1,6 +1,6 @@
 ---
 name: task-upgrade-plan
-description: "Library/platform upgrade plan: changelog analysis, breaking change detection, effort estimate (S/M/L/XL), Go/No-Go recommendation."
+description: "Plan or review library/platform upgrade: changelog analysis, breaking change detection, effort estimate (S/M/L/XL), Go/No-Go."
 metadata:
   category: planning
   tags: [dependencies, upgrade, migration, breaking-changes, risk]
@@ -168,6 +168,36 @@ Produce a clear recommendation:
 | No-Go - Block  | Compatibility blockers, unresolved conflicts, or critical breaking changes       |
 
 State the primary reason for the recommendation.
+
+## Review Mode
+
+When reviewing an upgrade assessment authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this upgrade-assessment-specific factor list to the completeness audit:
+
+| Factor                       | What "Present" Looks Like                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| Version path                 | Current and target versions stated; intermediate minor versions assessed          |
+| Breaking changes             | Categorized by type (removal/rename/behavior/config) with migration action        |
+| Compatibility conflicts      | Transitive, build tool, runtime conflicts surfaced; blockers vs warnings          |
+| Multi-dependency interaction | When upgrading multiple deps, interaction effects and required ordering assessed  |
+| Security status              | Current version EOL/CVE status stated, even when upgrade is not security-driven   |
+| Effort estimate              | S/M/L/XL per component (breaking changes, compatibility, tests, validation)       |
+| Blast radius                 | Which features/flows depend on the dependency; canary/feature-flag options        |
+| Rollback plan                | Trigger, procedure, data compatibility, time window - not just "revert version"   |
+| Recommendation               | Go-Now / Go-Planned / Go-Epic / No-Go-Defer / No-Go-Block with primary reason     |
+
+Specific quality checks beyond the standard lens:
+
+- **Minor-version upgrade assumed safe without changelog review**: Blocker for ecosystems known to break in minor versions (Spring Boot, Django, Rails)
+- **Effort estimate without breaking change inventory**: Major; the estimate is unbacked
+- **"Just revert" rollback plan**: Major when the upgrade changes schema, config, or message format
+- **No security status for an EOL or vulnerable current version**: Major minimum
+- **Recommendation not actionable for a spike ticket**: Minor; promote to Major when blast radius is Wide
+
+Output header: `# Upgrade Assessment Review` and use the output structure defined in `architecture-review-lens`. Skip the New Assessment output template.
 
 ## Output
 

@@ -151,33 +151,33 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 
 ```
 I want to...
-  review code (PR / AI-gen)         -> /task-code-review
-  implement a feature               -> /task-implement (dispatches to stack-specific)
-  fix a bug or crash                -> /task-code-debug (dispatches to stack-specific)
-  break an epic into user stories   -> /task-breakdown-epic [delivery]
-  break a story into dev tasks      -> /task-breakdown-story [delivery]
-  design a system or architecture   -> /task-design-architecture [architecture]
-  design an API contract            -> /task-design-api [architecture]
-  write tests                       -> /task-code-test
-  create a PR description           -> /task-pr-create
-  write a postmortem                -> /task-postmortem (run after root-cause) [oncall]
-  hand off an on-call shift         -> /task-oncall-start [oncall]
-  onboard to a codebase             -> /task-onboard
-  understand a file or function     -> /task-code-explain
-  plan a database migration         -> /task-db-migration-plan
-  refactor safely                   -> /task-code-refactor
-  record an architecture decision   -> /task-adr-create [architecture]
-  decompose monolith into services  -> /task-migrate-monolith-to-services [architecture]
-  consolidate over-split services   -> /task-consolidate-services [architecture]
-  modernize a legacy system         -> /task-modernize-legacy [architecture]
-  assess risk before writing code   -> /task-design-risk-analysis [architecture]
-  assess risk after writing code    -> /task-code-review
-  check for security issues         -> /task-code-review-security
-  check for performance issues      -> /task-code-review-perf
-  check for observability gaps      -> /task-code-review-observability
-  triage tech debt by ROI           -> /task-debt-triage [delivery]
-  assess a version upgrade          -> /task-upgrade-plan [delivery]
-  draft release notes from a diff   -> /task-release-notes [delivery]
+  review code (PR / AI-gen)               -> /task-code-review
+  implement a feature                     -> /task-implement (dispatches to stack-specific)
+  fix a bug or crash                      -> /task-code-debug (dispatches to stack-specific)
+  break an epic into user stories         -> /task-breakdown-epic [delivery]
+  break a story into dev tasks            -> /task-breakdown-story [delivery]
+  design/review a system or architecture  -> /task-design-architecture [architecture]
+  design/review an API contract           -> /task-design-api [architecture]
+  write tests                             -> /task-code-test
+  create a PR description                 -> /task-pr-create
+  write a postmortem                      -> /task-postmortem (run after root-cause) [oncall]
+  hand off an on-call shift               -> /task-oncall-start [oncall]
+  onboard to a codebase                   -> /task-onboard
+  understand a file or function           -> /task-code-explain
+  plan a database migration               -> /task-db-migration-plan
+  refactor safely                         -> /task-code-refactor
+  record an architecture decision         -> /task-adr-create [architecture]
+  decompose monolith into services        -> /task-migrate-monolith-to-services [architecture]
+  consolidate over-split services         -> /task-consolidate-services [architecture]
+  modernize a legacy system               -> /task-modernize-legacy [architecture]
+  assess risk before writing code         -> /task-design-risk-analysis [architecture]
+  assess risk after writing code          -> /task-code-review
+  check for security issues               -> /task-code-review-security
+  check for performance issues            -> /task-code-review-perf
+  check for observability gaps            -> /task-code-review-observability
+  triage tech debt by ROI                 -> /task-debt-triage [delivery]
+  assess a version upgrade                -> /task-upgrade-plan [delivery]
+  draft release notes from a diff         -> /task-release-notes [delivery]
 ```
 
 ### Spec-Driven Development (plugin: spec, opt-in)
@@ -323,7 +323,7 @@ Angular (plugin: angular)
 **Common decision points:**
 
 - "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
-- "Review code" vs "Design a system" - if code already exists, use a review skill. If it doesn't, use `/task-design-architecture` or `/task-design-risk-analysis`.
+- "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs. Architecture workflows (`/task-design-architecture`, `/task-design-api`, `/task-adr-create`, `/task-db-migration-plan`, `/task-upgrade-plan`, `/task-migrate-monolith-to-services`, `/task-consolidate-services`, `/task-modernize-legacy`) each double as a review workflow for the corresponding design artifact - paste an existing artifact instead of authoring requirements. For risk analysis of a pending change (with or without a design doc), use `/task-design-risk-analysis`.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.

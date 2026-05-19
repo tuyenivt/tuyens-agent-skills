@@ -1,6 +1,6 @@
 ---
 name: task-consolidate-services
-description: "Microservices consolidation plan: smell detection, merge candidates, data reunification, phased execution with rollback."
+description: "Plan or review microservices consolidation: smell detection, merge candidates, data reunification, phased execution with rollback."
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]
@@ -199,6 +199,37 @@ For each high-risk scenario:
 - State the blast radius
 - State the mitigation
 - State the rollback approach
+
+## Review Mode
+
+When reviewing a service-consolidation plan authored by someone else:
+
+Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+
+Supply this consolidation-plan-specific factor list to the completeness audit:
+
+| Factor                       | What "Present" Looks Like                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| Service landscape            | Inventory, dependency graph, operational overhead justifying consolidation      |
+| Over-split detection         | Specific signals (sync-call count, shared DB, single team owns many services)   |
+| Merge candidates             | Named target service(s) with bounded-context rationale, not just "merge these"  |
+| Target boundaries            | Post-merge module boundaries explicit; data ownership clear                     |
+| Data reunification           | How separate DBs/schemas merge; foreign-key reintroduction; backfill plan       |
+| Consumer migration           | Old service endpoints kept compatible or migration window stated per consumer   |
+| Consolidation phases         | Stepwise: code merge -> data merge -> endpoint deprecation -> decommission      |
+| Backward compatibility       | Old endpoints, events, and contracts remain consumable during transition        |
+| Risks and mitigations        | Re-coupling risk, blast-radius expansion, single-deploy risk with mitigations   |
+| Rollback per phase           | Each phase has a rollback path; data un-merging is feasible or flagged          |
+
+Specific quality checks beyond the standard lens:
+
+- **Merge target without bounded-context rationale**: Major; consolidation that ignores bounded contexts recreates the original problem
+- **Big-bang code-and-data merge in one deploy**: Blocker for production systems
+- **No consumer migration plan**: Blocker if consumers are external or cross-team
+- **Recombined service that exceeds the team's deploy/operate capacity**: Major
+- **Endpoints unified but data stays sharded across the old service DBs**: Major; partial consolidation often worse than none
+
+Output header: `# Consolidation Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
 
 ## Output
 
