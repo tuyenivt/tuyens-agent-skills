@@ -12,11 +12,12 @@
       "Bash(grep:*)",
       "Bash(which:*)",
       "Bash(file:*)",
-      "Bash(Get-ChildItem:*)",
-      "Bash(Get-Location:*)",
+      "Bash(sed:*)",
       "Bash(mkdir:*)",
       "Bash(touch:*)",
       "Bash(echo:*)",
+      "Bash(Get-ChildItem:*)",
+      "Bash(Get-Location:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -139,6 +140,7 @@
       "Bash(cp:*)",
       "Bash(mv:*)",
       "Bash(rm:*)",
+      "Bash(awk:*)",
       "Bash(Copy-Item:*)",
       "Bash(Move-Item:*)",
       "Bash(Rename-Item:*)",
@@ -164,9 +166,7 @@
       "Bash(node:*)",
       "Bash(python:*)",
       "Bash(docker:*)",
-      "Bash(docker-compose:*)",
-      "Bash(sed:*)",
-      "Bash(awk:*)"
+      "Bash(docker-compose:*)"
     ],
     "defaultMode": "acceptEdits"
   },
