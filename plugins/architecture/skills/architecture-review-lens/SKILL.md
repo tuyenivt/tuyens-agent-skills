@@ -9,105 +9,65 @@ user-invocable: false
 
 # Architecture Review Lens
 
-> This atomic is composed by workflow skills - do not invoke directly. It provides the review framework (severity, audits, scoring, verdict) that workflow skills apply to artifact-specific factor lists.
-
-## When to Use
-
-Compose this skill from any architecture workflow operating in **review mode** - reviewing an artifact authored by someone else (design doc, API contract, ADR, DB migration plan, upgrade assessment, decomposition plan, consolidation plan, modernization plan).
-
-The consuming workflow supplies the **artifact-specific factor list** (what "complete" means for that artifact type). This skill supplies the **lens** (how to audit, score, and judge).
+> Composed by workflow skills in review mode; not invoked directly. The workflow supplies the **artifact-specific factor list**; this skill supplies the **lens** (how to audit, score, judge).
 
 ## Rules
 
 - Review the artifact as written, not the artifact you would have authored
-- Every finding cites a specific section, claim, or omission in the artifact
+- Every finding cites a specific section, claim, or omission
 - Every finding carries a severity: Blocker | Major | Minor | Nit
-- Distinguish **not present** (missing) from **present but weak** (under-specified) from **present and wrong** (incorrect)
-- An assumption becomes a finding only when it materially affects a decision
+- Distinguish **Missing** (not present) from **Under-specified** (vague) from **Wrong** (incorrect)
+- An assumption becomes a finding only when wrong-it would change the verdict
 - The verdict is supported by the highest-severity findings, not a count
 - Recommend the smallest concrete change that resolves each finding; do not propose a redesign
 
-## Severity Taxonomy
+## Severity
 
-| Severity   | Meaning                                                                                       | Blocks Merge / Approval |
-| ---------- | --------------------------------------------------------------------------------------------- | ----------------------- |
-| Blocker    | Decision cannot be made or the artifact is fundamentally wrong on a load-bearing dimension    | Yes                     |
-| Major      | A significant gap, contradiction, or risk that must be addressed before adoption              | Yes (must be resolved)  |
-| Minor      | A weak spot the author should improve but does not block adoption                             | No                      |
-| Nit        | Wording, formatting, or stylistic preference                                                  | No                      |
+| Severity | Meaning                                                                                |
+| -------- | -------------------------------------------------------------------------------------- |
+| Blocker  | Decision cannot be made or the artifact is fundamentally wrong on a load-bearing axis  |
+| Major    | Significant gap, contradiction, or risk that must be addressed before adoption         |
+| Minor    | Weak spot the author should improve but does not block adoption                        |
+| Nit      | Wording, formatting, or style preference                                               |
 
 Lead with the highest severity present. Do not pad a Blocker review with Nits.
 
-## Review Lens
+## Lens
 
-Apply the lens in this order. Skip a step when it does not fit the artifact (e.g., a one-page ADR may not need a Section 6 capacity rubric).
+Apply in order. Skip a step that does not fit the artifact (e.g., consistency scoring on a one-page ADR).
 
-### 1. Intake and Scope Check
+### 1. Intake
 
-Determine before auditing:
-
-- **Problem being solved** - restate in one sentence; flag if unclear from the artifact
-- **Stated scope** - in-scope, out-of-scope, explicit non-goals
-- **Stated constraints** - NFRs, compliance, timeline, dependencies the author surfaced
-- **Author's recommendation** - what the artifact advocates for (or the decision/plan it commits to)
-- **Artifact count** - single artifact or comparing 2-3 competing artifacts
-
-If multiple artifacts on the same problem are provided, use `architecture-proposal-compare` first, then apply the rest of the lens to the recommended artifact.
+State, in one sentence each: the problem being solved (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. If multiple artifacts on the same problem are supplied, run `architecture-proposal-compare` first, then apply the rest of the lens to the recommended artifact.
 
 ### 2. Completeness Audit
 
-The consuming workflow provides the **factor list** for the artifact type. For each factor, mark:
+The workflow provides the factor list. For each factor mark **Present** (explicit, specific), **Under-specified** (mentioned but vague), or **Missing**.
 
-- **Present** - explicit, specific, actionable
-- **Under-specified** - mentioned but vague, hand-waved, or missing required substructure
-- **Missing** - not addressed at all
+- Missing → Major minimum; Blocker if the factor is required to make the approval decision (e.g., rollback for a high-blast-radius change)
+- Under-specified → Minor minimum; Major if the gap forces guesswork on a load-bearing decision
 
-Severity rules:
+### 3. Internal Consistency
 
-- **Missing** factor → Major minimum; promote to Blocker if the factor is required to make the approval decision (e.g., a rollback plan for a high-blast-radius change)
-- **Under-specified** factor → Minor minimum; promote to Major if the gap forces guesswork on a load-bearing decision
+Find contradictions inside the artifact. Quote both sides with section references and state which is correct (or that the author must resolve). Severity: Major by default, Blocker if it flips the verdict.
 
-### 3. Internal Consistency Check
+Common patterns:
 
-Find contradictions inside the artifact itself.
-
-Common contradiction patterns:
-
-- Section claims one mode (async, stateless, strong consistency) but a later section assumes another
-- Stated NFR conflicts with the design's capacity ceiling or failure mode
-- Trade-off section claims "easy to reverse" but the change implies a multi-step migration
-- Rollback plan contradicts the migration or deploy ordering
-- Backward-compat claim contradicts an explicit field rename or type change
-
-For each contradiction:
-
-- Quote both sides with section references
-- State which is more likely correct, or that the author must resolve
-- Severity: Major by default; Blocker if it flips the verdict
+- Section claims async/stateless/strong-consistency but a later section assumes the opposite
+- Stated NFR conflicts with capacity ceiling or failure mode
+- "Easy to reverse" claim contradicted by multi-step migration
+- Rollback contradicts migration/deploy ordering
+- Backward-compat claim contradicted by an explicit field rename or type change
 
 ### 4. Assumptions Audit
 
-Surface load-bearing assumptions the author treats as facts.
+Surface load-bearing assumptions, distinguishing **Stated** (explicit; verify still plausible) from **Implicit** (the artifact only works if X is true, but the author did not say so). For each: assumption, what fails if wrong, severity.
 
-Distinguish:
-
-- **Stated assumptions** - explicit; verify they remain plausible
-- **Implicit assumptions** - the artifact only works if X is true, but the author did not say so
-
-Audit categories (apply those relevant to the artifact):
-
-- Traffic volume, growth, burst profile
-- Dependency availability and SLOs
-- Data volume, distribution, access patterns
-- Team capacity, skills, timeline
-- Existing infrastructure (DB capacity, broker, deploy pipeline)
-- Regulatory or compliance scope being unchanged
-
-For each load-bearing assumption: state the assumption, state what fails if it is wrong, assign severity.
+Audit categories (apply those relevant): traffic volume and growth; dependency availability/SLOs; data volume and access patterns; team capacity/skills/timeline; existing infrastructure; regulatory scope.
 
 ### 5. Per-Factor Findings
 
-For each factor marked Present or Under-specified in Section 2, evaluate quality. The consuming workflow supplies the quality bar per factor and the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution).
+For each factor marked Present or Under-specified, evaluate quality. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution).
 
 Findings format:
 
@@ -120,121 +80,44 @@ Treat the factors authors typically hand-wave (performance, deployment, trade-of
 
 ### 6. Criteria Scoring
 
-Score the artifact against the standard rubric. Apply even for a single artifact review.
+Score the artifact against this rubric (applies even for a single artifact). Score each **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**, citing artifact evidence:
 
-Score each: **Strong** / **Adequate** / **Weak** / **Not addressed**. Each score cites artifact evidence, not impressions.
-
-| Criterion               | What to Assess                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Boundary clarity**    | Are scope, responsibilities, and ownership explicit?                                                         |
-| **Failure containment** | Are failure modes identified? Is blast radius assessed? Is isolation guaranteed?                             |
-| **Consistency model**   | Where applicable: is the consistency or compatibility strategy stated, with partial-failure behavior?        |
-| **Operability**         | Is deployment / rollout strategy defined? Is observability planned? Is rollback feasible?                    |
-| **Reversibility**       | How hard is it to change key decisions later? Are one-way doors identified?                                  |
-| **Cost and complexity** | Is operational and implementation cost stated? Is complexity proportional to the problem?                    |
-
-For artifacts where a criterion does not apply (e.g., consistency model on an ADR), mark **Not applicable** with a one-line reason instead of forcing a score.
+| Criterion           | What to Assess                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Boundary clarity    | Scope, responsibilities, and ownership explicit?                                                     |
+| Failure containment | Failure modes identified? Blast radius assessed? Isolation guaranteed?                               |
+| Consistency model   | Consistency or compatibility strategy stated with partial-failure behavior? (Mark N/A if irrelevant) |
+| Operability         | Deployment/rollout defined? Observability planned? Rollback feasible?                                |
+| Reversibility       | How hard to change key decisions later? Are one-way doors identified?                                |
+| Cost and complexity | Operational and implementation cost stated? Complexity proportional to the problem?                  |
 
 ### 7. Questions for the Author
 
-Unresolved questions the author should answer before approval. Group by category:
-
-- **Clarification** - ambiguous statements that need to be made specific
-- **Justification** - decisions stated without a reason
-- **Evidence** - claims that need data (capacity estimates, dependency SLOs, CVE references)
-- **Scope** - in/out of scope statements that need confirmation
-- **Risk** - failure scenarios the author should think through
-
-Each question is answerable. Prefer "what happens if X" over "have you thought about X."
+Unresolved, answerable questions grouped by category: **Clarification** (ambiguities), **Justification** (decisions without reasons), **Evidence** (claims that need data), **Scope** (confirm in/out), **Risk** (failure scenarios). Prefer "what happens if X" over "have you thought about X."
 
 ### 8. Verdict
 
 | Verdict                  | Criteria                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| **Approve**              | No Blocker findings; at most one Major addressable post-merge; all required factors Present           |
-| **Approve with changes** | No Blocker findings; one or more Major findings bounded and specifically addressable before merge     |
-| **Needs rework**         | One or more Blocker findings, or structural issues spanning multiple factors                          |
+| **Approve**              | No Blockers; at most one Major addressable post-merge; all required factors Present                   |
+| **Approve with changes** | No Blockers; Major findings bounded and specifically addressable before merge                         |
+| **Needs rework**         | One or more Blockers, or structural issues spanning multiple factors                                  |
 
-The verdict references the findings that drove it. "Approve with changes" lists the required changes as a checkbox list.
+The verdict references the driving findings. "Approve with changes" lists the required changes as a checkbox list.
 
-## Output Format
+## Output Structure
 
-The consuming workflow shapes the final output but must include these sections, in this order:
+The workflow shapes formatting (tables vs. lists) but must produce sections in this order:
 
-```markdown
-# Review: {Artifact name or description}
-
-## Review Context
-
-- Artifact(s) reviewed: {what was provided}
-- Depth: {workflow-specific: quick | standard | deep}
-- Reviewer assumptions: {inputs assumed because not provided}
-
-## 1. Intake
-
-- Problem solved: {one sentence}
-- Stated scope:
-- Stated constraints / NFRs:
-- Author's recommendation:
-
-## 2. Completeness Audit
-
-| Factor              | Status                                |
-| ------------------- | ------------------------------------- |
-| {Factor 1}          | Present / Under-specified / Missing   |
-| ...                 | ...                                   |
-
-## 3. Internal Consistency
-
-| Contradiction       | Sections     | Resolution Needed                          | Severity |
-| ------------------- | ------------ | ------------------------------------------ | -------- |
-| {What contradicts}  | {§X vs §Y}   | {Which is correct or author must resolve}  | Major    |
-
-## 4. Assumptions Audit
-
-| Assumption  | Stated / Implicit | What Fails if Wrong | Severity |
-| ----------- | ----------------- | ------------------- | -------- |
-| {...}       | Implicit          | {Failure mode}      | Major    |
-
-## 5. Per-Factor Findings
-
-### {Factor 1}
-- {Severity}: {Finding}. Recommendation: {Concrete change}.
-
-### {Factor 2}
-- ...
-
-## 6. Criteria Scoring
-
-| Criterion             | Score                                       | Evidence    |
-| --------------------- | ------------------------------------------- | ----------- |
-| Boundary clarity      | Strong / Adequate / Weak / Not addressed / N/A | {citation} |
-| Failure containment   | ...                                         | ...         |
-| Consistency model     | ...                                         | ...         |
-| Operability           | ...                                         | ...         |
-| Reversibility         | ...                                         | ...         |
-| Cost and complexity   | ...                                         | ...         |
-
-## 7. Questions for the Author
-
-**Clarification**: {questions}
-**Justification**: {questions}
-**Evidence**: {questions}
-**Scope**: {questions}
-**Risk**: {questions}
-
-## 8. Verdict
-
-**{Approve | Approve with changes | Needs rework}**
-
-Driven by:
-- {Top finding with severity}
-- {Top finding with severity}
-
-Required before approval (if not Approve):
-- [ ] {Specific change}
-- [ ] {Specific change}
-```
+1. **Review Context** - artifacts reviewed, depth, reviewer assumptions
+2. **Intake** - from Section 1
+3. **Completeness Audit** - factor table from Section 2
+4. **Internal Consistency** - contradiction table from Section 3
+5. **Assumptions Audit** - assumption table from Section 4
+6. **Per-Factor Findings** - per-factor lists from Section 5
+7. **Criteria Scoring** - rubric table from Section 6
+8. **Questions for the Author** - from Section 7
+9. **Verdict** - from Section 8, with required-changes checklist if not Approve
 
 ## Avoid
 
@@ -242,6 +125,6 @@ Required before approval (if not Approve):
 - Generic critique ("needs more detail") without naming the section
 - Padding findings with Nits when Blockers exist
 - Recommending a redesign when a targeted change resolves the gap
-- Issuing "Approve with changes" without stating the changes
+- Issuing "Approve with changes" without naming the changes
 - Treating verbosity as quality; a concise artifact can outscore a long one
-- Scoring criteria that do not apply to the artifact; mark Not applicable instead
+- Scoring criteria that do not apply; mark N/A with a one-line reason instead

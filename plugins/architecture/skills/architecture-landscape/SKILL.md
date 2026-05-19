@@ -9,82 +9,53 @@ user-invocable: false
 
 # Architecture Landscape
 
-> This atomic is composed by workflows - do not invoke directly. Primary consumers: `task-consolidate-services` Section 1, `task-migrate-monolith-to-services` Section 3.
+> Composed by workflows; not invoked directly. Primary consumers: `task-consolidate-services` Section 1, `task-migrate-monolith-to-services` Section 3.
 
 ## When to Use
 
-- When a migration or design decision affects more than one system
-- When assessing the current service landscape before consolidation or decomposition
-- When building context from a docs repo rather than a live codebase
-- When cross-system risks, redundancies, or stack divergence need to be surfaced
+- A migration or design decision affects more than one system
+- Assessing the current service landscape before consolidation or decomposition
+- Building context from a docs repo rather than a live codebase
+- Cross-system risks, redundancies, or stack divergence need to be surfaced
 
 ## Rules
 
-- Map only what is known; flag inferred systems explicitly
-- Integration entries must state protocol and direction
-- Risks must cite landscape evidence (which services share what), not generic concerns
+- Map only what is known; flag inferred systems explicitly (Confirmed vs Inferred)
+- Integration entries state protocol AND direction; coupling type determines blast radius
+- Risks cite landscape evidence (which services share what), not generic concerns
 - Flag stack divergence only when it creates operational or hiring friction
 - Cite the source document for each system entry when reading from a docs repo
+- Every entry has an owner; ownership is as load-bearing as the stack
 
 ## Pattern
 
-### System Inventory
-
-For each system in scope:
-
-| System | Owner (team) | Stack                 | Role         | Data Owned   |
-| ------ | ------------ | --------------------- | ------------ | ------------ |
-| Name   | Team         | Language/Framework/DB | What it does | Key entities |
-
-### Integration Map
-
-For each integration between systems:
-
-| From     | To       | Protocol              | Direction  | Coupling Type | Notes                  |
-| -------- | -------- | --------------------- | ---------- | ------------- | ---------------------- |
-| System A | System B | REST/gRPC/Event/Batch | Sync/Async | Tight/Loose   | Frequency, criticality |
-
-**Coupling classification:**
+### Coupling classification
 
 - **Tight**: caller blocks on response; failure in target propagates to caller
 - **Loose**: async events or eventual sync; caller continues on target failure
 
 ### Discovery Methods
 
-When the integration map cannot be read from documentation alone, use these discovery approaches:
+When the integration map cannot be read from docs alone:
 
-- **Codebase scan**: Search for HTTP client instantiation, service URLs in config, message broker topic names, and queue consumer registrations
-- **Infrastructure config**: Check API gateway routing rules, service mesh (Istio/Linkerd) configuration, or load balancer upstream definitions
-- **Environment variables / secrets**: Service hostnames and API endpoints in `.env`, Kubernetes ConfigMaps/Secrets, or Terraform variables reveal integration targets
-- **Database foreign keys and shared tables**: Cross-schema foreign keys or tables accessed from multiple services reveal hidden coupling
-- **Message broker inspection**: List topics/queues and their producers/consumers from broker admin UI or infrastructure-as-code
+- **Codebase scan**: HTTP client instantiation, service URLs in config, message-broker topic names, queue consumer registrations
+- **Infrastructure config**: API gateway routing, service mesh (Istio/Linkerd), load balancer upstream definitions
+- **Environment variables / secrets**: service hostnames in `.env`, ConfigMaps/Secrets, Terraform variables
+- **Database FKs and shared tables**: cross-schema FKs or tables accessed from multiple services reveal hidden coupling
+- **Message broker inspection**: topics/queues with their producers/consumers, from broker admin UI or IaC
 
-Flag each integration entry with confidence: **Confirmed** (documented or code-verified) vs **Inferred** (derived from config or naming convention). Do not invent integrations.
+Tag each integration **Confirmed** (documented or code-verified) or **Inferred** (derived from config/naming).
 
 ### Cross-System Risk Assessment
 
-After mapping the inventory and integrations, identify:
+After mapping, identify:
 
-**Single points of failure**
+- **Single points of failure** - systems that take multiple downstreams with them; shared infrastructure (DB, auth, broker) with no fallback
+- **Stack divergence** - multiple systems solving the same concern with different tech, only when it creates operational friction or hiring risk
+- **Shared data risks** - DBs, caches, queues accessed by more than one system; identify the authoritative writer per shared resource
+- **Missing systems** - capabilities implied by the landscape but not represented (e.g., audit logging implied but no audit service)
 
-- Systems that, if down, take multiple downstream systems with them
-- Shared infrastructure (shared DB, shared auth service, shared message broker) with no fallback
-
-**Stack divergence**
-
-- Multiple systems solving the same concern with different technology choices (e.g., three different ORMs, two auth libraries)
-- Flag only when divergence creates operational friction or hiring risk
-
-**Shared data risks**
-
-- Databases, caches, or queues accessed by more than one system (shared state = hidden coupling)
-- Identify who is the authoritative writer for each shared resource
-
-**Missing systems**
-
-- Capabilities implied by the landscape but not represented by any system (e.g., audit logging implied but no audit service exists)
-
-### Output Format
+## Output Format
 
 ```markdown
 ## System Landscape
@@ -109,14 +80,12 @@ After mapping the inventory and integrations, identify:
 
 ### Gaps
 
-| Gap                             | Affected Systems             | Impact                   |
-| ------------------------------- | ---------------------------- | ------------------------ |
-| {missing system or integration} | {which systems are affected} | {consequence of the gap} |
+| Gap                             | Affected Systems | Impact                   |
+| ------------------------------- | ---------------- | ------------------------ |
+| {missing system or integration} | {systems}        | {consequence of the gap} |
 ```
 
 ## Avoid
 
-- Listing systems without owners - ownership is as load-bearing as the stack
-- Treating all integrations as equivalent - coupling type determines blast radius
-- Producing inventory without a risk section - inventory is an input, not the output
+- Inventory without a risk section - inventory is an input, not the output
 - Inventing integration details not in source material
