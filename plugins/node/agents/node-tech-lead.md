@@ -2,7 +2,6 @@
 name: node-tech-lead
 description: Holistic Node.js/TypeScript quality gate - code review, architectural compliance, NestJS/Express patterns, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

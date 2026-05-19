@@ -2,7 +2,6 @@
 name: go-architect
 description: "Go architect for Gin, GORM/sqlx, clean architecture, and production Go patterns. Designs features, structures projects, and makes architecture decisions for Go 1.25+ services."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 # Go Architect

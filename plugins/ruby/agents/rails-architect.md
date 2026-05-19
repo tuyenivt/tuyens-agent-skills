@@ -2,7 +2,6 @@
 name: rails-architect
 description: "Ruby on Rails architect for Rails 7.2+, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 # Rails Architect

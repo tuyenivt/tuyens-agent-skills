@@ -2,7 +2,6 @@
 name: python-architect
 description: "Python architect for FastAPI and Django/DRF. Designs async APIs, repository patterns, SQLAlchemy models, Celery task pipelines, and project structure. Detects FastAPI vs Django from project context."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 # Python Architect

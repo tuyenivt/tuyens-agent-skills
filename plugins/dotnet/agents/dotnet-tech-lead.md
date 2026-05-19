@@ -2,7 +2,6 @@
 name: dotnet-tech-lead
 description: Holistic .NET 8/ASP.NET Core quality gate - code review, Clean Architecture compliance, async safety, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

@@ -2,7 +2,6 @@
 name: rust-architect
 description: "Rust architect for Axum, sqlx, clean architecture, and production Rust patterns. Designs features, structures projects, and makes architecture decisions for Rust 1.94+ services."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 # Rust Architect

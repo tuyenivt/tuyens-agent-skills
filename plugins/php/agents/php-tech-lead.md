@@ -2,7 +2,6 @@
 name: php-tech-lead
 description: Holistic PHP/Laravel quality gate - code review, architectural compliance, Laravel conventions, type safety, and refactoring guidance across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

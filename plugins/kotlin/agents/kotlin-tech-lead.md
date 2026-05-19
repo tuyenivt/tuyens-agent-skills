@@ -2,7 +2,6 @@
 name: kotlin-tech-lead
 description: Holistic Kotlin/Spring Boot quality gate - code review, architectural compliance, Kotlin idiom enforcement, refactoring guidance, observability review, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

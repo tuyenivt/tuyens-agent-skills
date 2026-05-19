@@ -2,7 +2,6 @@
 name: kotlin-architect
 description: "Kotlin + Spring Boot architect. Designs services with data classes, coroutines, null safety, extension functions, sealed-class result hierarchies, Kotlin DSL configuration, and JPA entity conventions specific to Kotlin (regular class for entities, kotlin-jpa/spring plugins)."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 > This agent is part of the kotlin plugin. Primary workflows: `/task-kotlin-implement`, `/task-kotlin-review`, `/task-kotlin-refactor`, `/task-kotlin-test`, `/task-kotlin-debug`.

@@ -2,7 +2,6 @@
 name: java-tech-lead
 description: Holistic Java/Spring Boot quality gate - code review, architectural compliance, refactoring guidance, and documentation standards enforcement across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

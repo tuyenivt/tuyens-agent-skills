@@ -41,13 +41,13 @@ Claude Code plugin for PHP development.
 
 ## Agents
 
-| Agent                    | Model  | Description                                                                                      |
-| ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
-| php-architect            | sonnet | Designs Laravel APIs, Eloquent models, service/action layers, queue pipelines, project structure |
-| php-tech-lead            | sonnet | Code review, refactoring guidance, Laravel conventions, type safety, architectural decisions     |
-| php-security-engineer    | sonnet | OWASP Top 10 for PHP/Laravel, auth review, mass assignment, SQL injection, dependency scanning   |
-| php-performance-engineer | sonnet | Eloquent query tuning, MySQL EXPLAIN analysis, queue throughput, caching strategy, N+1 detection |
-| php-test-engineer        | sonnet | Pest/PHPUnit strategies, model factories, HTTP testing, mocking Laravel facades                  |
+| Agent                    | Description                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| php-architect            | Designs Laravel APIs, Eloquent models, service/action layers, queue pipelines, project structure |
+| php-tech-lead            | Code review, refactoring guidance, Laravel conventions, type safety, architectural decisions     |
+| php-security-engineer    | OWASP Top 10 for PHP/Laravel, auth review, mass assignment, SQL injection, dependency scanning   |
+| php-performance-engineer | Eloquent query tuning, MySQL EXPLAIN analysis, queue throughput, caching strategy, N+1 detection |
+| php-test-engineer        | Pest/PHPUnit strategies, model factories, HTTP testing, mocking Laravel facades                  |
 
 ## Framework Detection
 

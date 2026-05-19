@@ -2,7 +2,6 @@
 name: angular-tech-lead
 description: Persistent Angular tech lead that tracks team standards, recurring feedback patterns, and past findings for consistent, context-aware code reviews across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

@@ -2,7 +2,6 @@
 name: node-architect
 description: "Node.js/TypeScript architect for NestJS and Express. Designs APIs, module structure, DI patterns, Prisma/TypeORM data access, and TypeScript-first patterns. Detects NestJS vs Express from project context."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 ---
 
 Senior Node.js/TypeScript architect. Expertise:

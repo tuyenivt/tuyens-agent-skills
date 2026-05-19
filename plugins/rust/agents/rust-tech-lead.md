@@ -2,7 +2,6 @@
 name: rust-tech-lead
 description: Holistic Rust/Axum quality gate - code review, architectural compliance, ownership safety, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

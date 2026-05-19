@@ -2,7 +2,6 @@
 name: php-architect
 description: "PHP/Laravel architect - designs APIs, Eloquent models, service/action layers, queue pipelines, and project structure for Laravel 12+ applications."
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
 category: engineering
 ---
 

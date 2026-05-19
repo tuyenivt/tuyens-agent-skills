@@ -82,10 +82,10 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 
 ## Agents
 
-| Agent                       | Model  | Description                                                                                                         |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
-| `node-architect`            | sonnet | Node.js/TypeScript architect for NestJS and Express. Designs APIs, module structure, DI, Prisma/TypeORM data access |
-| `node-tech-lead`            | sonnet | Code review, refactoring guidance, doc standards for TypeScript strictness, NestJS/Express patterns, test coverage  |
-| `node-security-engineer`    | sonnet | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with bun audit / npm audit   |
-| `node-performance-engineer` | sonnet | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
-| `node-test-engineer`        | sonnet | Jest/Supertest strategies, NestJS TestingModule, Testcontainers, MSW, and test pyramid design                       |
+| Agent                       | Description                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `node-architect`            | Node.js/TypeScript architect for NestJS and Express. Designs APIs, module structure, DI, Prisma/TypeORM data access |
+| `node-tech-lead`            | Code review, refactoring guidance, doc standards for TypeScript strictness, NestJS/Express patterns, test coverage  |
+| `node-security-engineer`    | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with bun audit / npm audit   |
+| `node-performance-engineer` | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
+| `node-test-engineer`        | Jest/Supertest strategies, NestJS TestingModule, Testcontainers, MSW, and test pyramid design                       |

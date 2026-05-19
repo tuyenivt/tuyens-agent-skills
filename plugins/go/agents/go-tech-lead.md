@@ -2,7 +2,6 @@
 name: go-tech-lead
 description: Holistic Go/Gin quality gate - code review, architectural compliance, idiomatic Go enforcement, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

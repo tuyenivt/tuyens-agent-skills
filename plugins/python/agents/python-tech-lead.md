@@ -2,7 +2,6 @@
 name: python-tech-lead
 description: Holistic Python/FastAPI/Django quality gate - code review, architectural compliance, Pythonic standards, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 category: quality
 ---
 

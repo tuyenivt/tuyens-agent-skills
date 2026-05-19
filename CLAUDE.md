@@ -183,7 +183,6 @@ name: <stack>-<role>                              # required: kebab-case, matche
 description: Short description                    # required: shown in agent picker
 category: quality | engineering | planning | ops  # optional but encouraged
 tools: Read, Write, Edit, Bash, Glob, Grep        # optional: restrict tools
-model: sonnet | opus                              # optional: override default
 ---
 ```
 

@@ -42,13 +42,13 @@ Claude Code plugin for Python development.
 
 ## Agents
 
-| Agent                       | Model  | Description                                                                                            |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
-| python-architect            | sonnet | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure        |
-| python-tech-lead            | sonnet | Code review, refactoring guidance, doc standards for Pythonic patterns, type safety, async correctness |
-| python-security-engineer    | sonnet | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan       |
-| python-performance-engineer | sonnet | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
-| python-test-engineer        | sonnet | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
+| Agent                       | Description                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| python-architect            | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure        |
+| python-tech-lead            | Code review, refactoring guidance, doc standards for Pythonic patterns, type safety, async correctness |
+| python-security-engineer    | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan       |
+| python-performance-engineer | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
+| python-test-engineer        | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
 
 ## Framework Detection
 
