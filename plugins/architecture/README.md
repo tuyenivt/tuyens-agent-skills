@@ -26,6 +26,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks                      | `task-consolidate-services` (Section 1), `task-decompose-monolith` (Section 3)     |
 | `architecture-proposal-compare` | Compare 2-3 architecture proposals against a fixed criteria set and produce a ranked recommendation                          | `task-design-architecture` (review mode, multiple proposals)                                 |
 | `architecture-capacity`         | Throughput estimation, scaling analysis, and bottleneck prediction                                                           | `task-design-architecture`                                                                   |
+| `backend-caching`               | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem.                         | `task-design-architecture`                                                                   |
 | `architecture-review-lens`      | Review lens for architecture artifacts - severity taxonomy, completeness audit, consistency check, criteria scoring, verdict | All 6 authoring workflows in their Review Mode                                               |
 
 ## Core Atomics Used
@@ -43,7 +44,6 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 - `ops-observability` - structured logging, metrics, and distributed tracing
 - `ops-resiliency` - circuit breakers, retries, timeouts, bulkheads
 - `backend-idempotency` - idempotency key pattern for safe retries
-- `backend-caching` - caching patterns and invalidation strategies
 - `ops-release-safety` - rollout, rollback, and deployment risk patterns
 - `ops-backward-compatibility` - API and data contract compatibility
 - `dependency-impact-analysis` - deployment ordering and dependency impact

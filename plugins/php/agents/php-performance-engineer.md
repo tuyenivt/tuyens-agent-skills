@@ -40,7 +40,7 @@ category: engineering
 
 - Use skill: `laravel-eloquent-patterns` for N+1 prevention, query optimization, and relationship loading
 - Use skill: `laravel-queue-patterns` for job routing, batch processing, and throughput optimization
-- Use skill: `backend-caching` for caching strategy and invalidation patterns
+- Caching: cache reads via Laravel's `Cache` facade with explicit TTLs and jitter; cache-aside for read-heavy data, DTOs not Eloquent models. Use Redis tags or versioned keys for invalidation; apply singleflight (e.g., `Cache::lock()`) on hot keys to prevent stampedes
 
 ## Principle
 

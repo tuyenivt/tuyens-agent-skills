@@ -76,10 +76,11 @@ Use skill: `review-precondition-check` if running standalone (skip if invoked as
 **Caching** (Backend / Fullstack):
 
 - Cache-aside applied for read-heavy data via the framework's cache abstraction
-- Invalidation strategy defined; TTL appropriate
-- Cache key design avoids collisions and hot keys
-- Stampede protection considered for high-traffic keys
-- Use skill: `backend-caching`
+- Every cache entry has a TTL (no indefinite caching); jitter applied to avoid synchronized expiry
+- Invalidation strategy defined (TTL-based, event-based, or version-keyed)
+- Cache key design: `{service}:{entity}:{id}:{version}`, deterministic hashing for query params, no user-controlled input
+- Stampede protection on high-traffic keys (singleflight / lock-based or probabilistic early expiry)
+- DTOs cached, never ORM entities or mutable objects
 
 **Memory and I/O:**
 
