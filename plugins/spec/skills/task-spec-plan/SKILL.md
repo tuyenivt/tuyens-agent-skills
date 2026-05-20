@@ -53,7 +53,7 @@ Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the 
 
 ### STEP 6 - Branch on Mode
 
-**speckit-installed:** pre-process by running `Use skill: tradeoff-analysis` over implied decisions and `Use skill: nfr-specification` to verify NFRs are plan-actionable. Bundle as a brief, instruct user to run `/speckit.plan`. Post-process by running the cross-check (STEP 9) and surface gaps as suggestions. Skip to STEP 11.
+**speckit-installed:** pre-process by surfacing implied decisions as a trade-off brief (for each significant decision: name 2-3 viable options, list the dimensions that differ - cost, latency, complexity, lock-in, reversibility - and state the leaning with rationale; mark Decision/Rejected explicitly) and by running `Use skill: nfr-specification` to verify NFRs are plan-actionable. Bundle as a brief, instruct user to run `/speckit.plan`. Post-process by running the cross-check (STEP 9) and surface gaps as suggestions. Skip to STEP 11.
 
 **standalone:** continue.
 
@@ -65,7 +65,7 @@ Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the 
 | **Data model**                | Entities, key fields, relationships, indexes. Migration approach if existing schema is touched.                       |
 | **API contract**              | Endpoints, request/response shapes, error model. Frontend: component contracts, state shape.                          |
 | **NFR mapping**               | `Use skill: nfr-specification` - every spec NFR has a concrete plan element (or explicit waiver).                     |
-| **Alternatives considered**   | `Use skill: tradeoff-analysis` for every significant decision. At least one rejected option each.                     |
+| **Alternatives considered**   | For every significant decision: list 2-3 viable options, compare on dimensions that differ (cost, latency, complexity, lock-in, reversibility), state the chosen option with rationale and mark rejected ones with the reason. At least one rejected option each. |
 | **Risks and mitigations**     | Failure modes, rollback strategy, data-loss surfaces. Cross-reference NFRs.                                           |
 | **Decisions worth recording** | Candidate ADRs - list each with rationale; actual ADR authoring is the user's call (typically using the project's ADR template). |
 | **Out of scope (reaffirmed)** | Restate spec's out-of-scope verbatim - prevents tasks from re-introducing exclusions.                                 |
@@ -177,7 +177,7 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 - [ ] Every AC has a testable plan element
 - [ ] Every NFR has a plan entry or explicit waiver
 - [ ] Every quantitative NFR ran through STEP 8; infeasible budgets are Proposed Spec Amendments (not silently absorbed)
-- [ ] Every significant decision has an Alternatives Considered entry from `tradeoff-analysis`
+- [ ] Every significant decision has an Alternatives Considered entry with options compared on differing dimensions and explicit chosen/rejected labels
 - [ ] No plan element touches out-of-scope
 - [ ] `spec.md` not edited from this workflow
 - [ ] Summary includes sections, alternatives, ADR candidates, next command

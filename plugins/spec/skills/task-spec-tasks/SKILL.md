@@ -63,13 +63,15 @@ Reuse the same atomics that `task-breakdown-story` uses, so output quality is co
 
 Use skill: review-change-risk
 Use skill: review-blast-radius
-Use skill: dependency-impact-analysis
 Use skill: ops-backward-compatibility
+
+Inline scans:
+- **Dependency impact** - for each plan element, list upstream callers and downstream services. Flag deployment ordering (consumer-before-producer for new fields; producer-before-consumer for removals) and shared-library bumps that cross service boundaries.
+- **Failure propagation** (if plan adds cross-service calls) - for each new call edge, name the upstream blast radius on timeout/error, the fallback (cached value / degraded response / fail-closed), and whether a circuit breaker or bulkhead is required.
 
 Conditional:
 - `backend-db-migration` if plan touches schema.
-- `ops-feature-flags` if high risk or gradual rollout.
-- `failure-propagation-analysis` if new cross-service calls.
+- **Feature flags** (if high risk or gradual rollout) - add a flag with: ramp plan (% buckets or cohorts), kill-switch path, success metric, and cleanup task (remove flag + dead branch after full rollout). No indefinite flags.
 
 Signals drive task size and surface tasks otherwise missed (migrations, observability, rollback verification, contract tests).
 
