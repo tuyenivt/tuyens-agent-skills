@@ -98,7 +98,6 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | Skill                   | Description                                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `backend-caching`       | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem. |
-| `architecture-capacity` | Throughput estimation, scaling analysis, and bottleneck prediction                                   |
 | `backend-db-indexing`   | Database index strategy and query optimization                                                       |
 | `backend-db-migration`  | Universal zero-downtime database migration patterns - expand-contract, lock risk, backfill safety.   |
 

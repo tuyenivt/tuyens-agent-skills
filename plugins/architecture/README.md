@@ -25,6 +25,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `strangler-fig-pattern`         | Strangler fig migration pattern - incremental traffic routing from legacy to new system with coexistence phases              | `task-decompose-monolith`, `task-consolidate-services`, `task-modernize-legacy`    |
 | `architecture-landscape`        | Build a landscape view of multiple systems - owners, stacks, integration points, and cross-system risks                      | `task-consolidate-services` (Section 1), `task-decompose-monolith` (Section 3)     |
 | `architecture-proposal-compare` | Compare 2-3 architecture proposals against a fixed criteria set and produce a ranked recommendation                          | `task-design-architecture` (review mode, multiple proposals)                                 |
+| `architecture-capacity`         | Throughput estimation, scaling analysis, and bottleneck prediction                                                           | `task-design-architecture`                                                                   |
 | `architecture-review-lens`      | Review lens for architecture artifacts - severity taxonomy, completeness audit, consistency check, criteria scoring, verdict | All 6 authoring workflows in their Review Mode                                               |
 
 ## Core Atomics Used
@@ -34,7 +35,6 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 - `nfr-specification` - elicit and structure NFRs from business context into measurable SLOs and constraints
 - `tradeoff-analysis` - structured architectural decision and trade-off documentation
 - `architecture-guardrail` - layer violation and boundary erosion detection
-- `architecture-capacity` - throughput estimation and scaling analysis
 - `architecture-data-consistency` - consistency strategy across data boundaries
 - `ops-engineering-governance` - engineering process and guardrail evolution
 - `review-blast-radius` - failure propagation and change impact scope
