@@ -1,6 +1,6 @@
 ---
 name: rails-db-locking-patterns
-description: Database locking for Rails: GET_LOCK / pg_advisory_lock leader election, isolation tiers, lock-hold discipline, deadlock avoidance.
+description: Database locking for Rails: advisory locks for leader election & per-tenant serialization, MySQL/PG isolation tiers, hold-time discipline.
 metadata:
   category: backend
   tags: [ruby, rails, locking, mysql, postgresql, concurrency, transactions]
@@ -11,65 +11,53 @@ user-invocable: false
 
 ## When to Use
 
-- Coordinating cron-style rake tasks across N pods (de-dup against double-runs)
-- Serializing per-tenant or per-resource operations spanning multiple statements
-- Choosing between Redis locks, Kubernetes leases, and database advisory locks
-- Preventing deadlock cascades on MySQL `REPEATABLE READ` workers using row locks
-- Deciding whether to keep RR (MySQL default), escalate to per-transaction RC, or set RC at the connection level
-- Reviewing existing lock code for hold-time and connection-accounting risk
+- De-duping cron rake tasks against double-runs across N pods
+- Serializing per-tenant or per-resource work between web and workers
+- Choosing between Redis locks, Kubernetes leases, and DB advisory locks
+- Preventing deadlock cascades on MySQL `REPEATABLE READ`
+- Deciding between RR default, per-transaction RC at the call site, or per-connection RC
+- Reviewing lock code for hold-time and connection-accounting risk
 
 ## Rules
 
-- Use database locks when the lock guards a database write; Redis locks only for non-DB resources (API rate limits, cache stampede)
-- Acquire lock, do DB work, release - never wrap a network call inside an open transaction or held advisory lock
-- Lock by primary key only on MySQL `REPEATABLE READ` - non-PK locks gap-lock ranges
-- Never `find_each` inside `Model.transaction { ... }` - the transaction holds for the whole iteration
-- Set `innodb_lock_wait_timeout` (MySQL) or `lock_timeout` (PostgreSQL) to 5-10s at the worker session
-- Default isolation stays as the database's default; escalate per-transaction at the call site, not per-connection or globally
-- Document the rationale when a Sidekiq middleware sets connection-level isolation
+- DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (API rate limits, cache stampede)
+- Acquire lock, do DB work, release - never wrap network calls in an open transaction or held lock
+- Lock by PK only on MySQL `REPEATABLE READ` - non-PK scans gap-lock ranges (see `rails-activerecord-patterns`)
+- Never `find_each` inside `Model.transaction { ... }`
+- Set `innodb_lock_wait_timeout` (MySQL) / `lock_timeout` (PG) to 5-10s at the worker session
+- Default stays at the DB's default isolation; escalate per-transaction at the call site, not per-connection or globally
 
 ## Patterns
 
-### Why the database, not Redis or Kubernetes leases
+### Which coordination primitive
 
-| Coordination need                          | Pick                                  |
-| ------------------------------------------ | ------------------------------------- |
-| Lock guards a database write               | Database advisory lock                |
-| Lock guards a non-DB resource (API, cache) | Redis (Redlock, `redis-mutex`)        |
-| Cluster-wide leader election decoupled from app | Kubernetes Lease                 |
-| Mutual exclusion within one process        | Mutex / `Concurrent::Lock`            |
+| Coordination need                          | Pick                              |
+| ------------------------------------------ | --------------------------------- |
+| Lock guards a database write               | DB advisory lock                  |
+| Lock guards a non-DB resource (API, cache) | Redis (Redlock, `redis-mutex`)    |
+| Cluster-wide leader election decoupled from app | Kubernetes Lease             |
+| Mutual exclusion within one process        | Mutex / `Concurrent::Lock`        |
 
-A DB advisory lock taken in the same DB as the work-table commits and aborts atomically with the work itself. Redis locks (without fencing tokens) are not safe under network partitions for "must run exactly once across N pods".
+A DB advisory lock taken in the same DB as the work commits/aborts atomically with the work. Redis without fencing tokens is not safe for "exactly once across N pods".
 
-### MySQL: `GET_LOCK` / `RELEASE_LOCK`
+### `with_advisory_lock` (recommended abstraction)
 
-- Named string lock, session-scoped (auto-released on connection drop).
-- 8.0+: multiple named locks per connection (5.7: one per).
-- `GET_LOCK(name, timeout)` returns 1 (acquired), 0 (timeout), NULL (error).
-
-### PostgreSQL: `pg_advisory_lock` family
-
-- Integer-keyed, session-scoped.
-- `pg_try_advisory_lock(key)` non-blocking - the right primitive for cron de-dup.
-- `pg_advisory_xact_lock(key)` auto-releases at commit/rollback - bind lock lifetime to the transaction.
-
-### Recommended abstraction: `with_advisory_lock` gem
-
-Wraps both adapters behind one API. Don't branch on adapter at the call site.
+Wraps MySQL `GET_LOCK` and PG `pg_advisory_lock` behind one API. The gem holds the connection for the duration of the block and releases the lock before checking the connection back in - safe under Sidekiq concurrency.
 
 ```ruby
-# Gemfile
 gem "with_advisory_lock"
 
 ApplicationRecord.with_advisory_lock("reports:rebuild", timeout_seconds: 0) do
   # ... work ...
 end
-# Returns false if not acquired; the block doesn't run.
+# Returns false when not acquired; the block doesn't run.
 ```
+
+MySQL `GET_LOCK` is session-scoped (auto-released on connection drop). PG offers `pg_advisory_xact_lock(key)` that auto-releases at commit - cleaner crash-safety than ensure blocks.
 
 ### Pattern: leader election for cron rake tasks
 
-Default failure mode: cron triggers a rake task while the previous run hasn't finished, two processes mutate the same rows.
+Cron triggers a task while the previous run is still going - two processes mutate the same rows.
 
 ```ruby
 namespace :reports do
@@ -85,171 +73,139 @@ namespace :reports do
 end
 ```
 
-### Pattern: transaction-scoped advisory lock (PostgreSQL)
+### Pattern: per-tenant serialization across web and worker
 
-Lock releases exactly when the transaction ends - cleaner than ensure-blocks because crash safety is automatic.
+The reconciler and the web ledger-write endpoint share one lock name namespaced by tenant. They cannot run concurrently on the same tenant but run freely across tenants. Combine with chunked transactions and PK-only row locks inside the lock.
 
 ```ruby
-ApplicationRecord.transaction do
-  ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{tenant_id})")
-  # ... work scoped to this tenant ...
+class BalanceReconciler
+  def self.call(tenant_id)
+    ApplicationRecord.with_advisory_lock("reconcile:tenant:#{tenant_id}", timeout_seconds: 10) do
+      Account.where(tenant_id: tenant_id).in_batches(of: 200) do |slice_ids|
+        ApplicationRecord.transaction(isolation: :read_committed) do
+          Account.where(id: slice_ids.pluck(:id)).order(:id).lock("FOR UPDATE").each(&:recompute_balance!)
+        end
+      end
+    end
+  end
+end
+
+# Controller takes the same lock around the write
+class LedgerEntriesController < ApplicationController
+  def create
+    ApplicationRecord.with_advisory_lock("reconcile:tenant:#{current_tenant.id}", timeout_seconds: 3) do
+      ApplicationRecord.transaction(isolation: :read_committed) do
+        Ledger.create!(ledger_params)
+        Account.where(id: ledger_params[:account_id]).lock("FOR UPDATE").first.increment!(:balance, ledger_params[:amount])
+      end
+    end
+  end
 end
 ```
 
-MySQL has no transaction-scoped variant of `GET_LOCK`. Use session-scoped `GET_LOCK` with `ensure { RELEASE_LOCK }`, or use a row-lock on a sentinel row in a `tenant_locks` table.
+### Transaction isolation: three-tier framework
 
-### Row-level pessimistic locking
+The intuitive "RR for web, RC for jobs" is half right, half footgun. Worker code hits RR's stale-snapshot and gap-lock pathologies more than web, but blanket-setting RC on the Sidekiq pool changes shared-service semantics silently.
 
-For row-locking discipline (lock by PK, short critical section, MySQL gap-lock cascade explanation), see `rails-activerecord-patterns` "Pessimistic Locking" section. Two rules summarized:
+**Recommendation: per-transaction RC at the call site** - visible to reviewers, easy to grep, easy to undo.
 
-1. Lock by primary key only on MySQL RR.
-2. Keep critical section short. No external calls, no `find_each`.
+**Tier 1 - Default: keep RR, fix the transaction shape.** Most "stale data" / deadlock complaints under RR are symptoms of long transactions. A 30s transaction sees a 30s-old snapshot and holds 30s of gap locks; a 200ms one doesn't. Apply chunked transactions + lock-by-PK first - resolves ~80% of cases at zero cost.
 
-### Optimistic locking with `lock_version`
+**Tier 2 - Per-transaction RC at the call site.** Aurora/RDS MySQL with `binlog_format=ROW` (default since 5.7.7) makes RC replication-safe - the "RR is the MySQL default because SBR needed it" reason is obsolete on modern RDS/Aurora.
 
-For low-contention concurrent updates (rare conflicts, cheap retry), see `rails-activerecord-patterns` "Optimistic Locking". For hot rows with frequent contention, optimistic produces `StaleObjectError` storms - use pessimistic by PK instead.
+Use Tier 2 for:
+- `SKIP LOCKED` queue claim under contention - RC reduces gap-lock cascades
+- Reconciliation that wants fresh reads of concurrently-updated counters
+- Hot-row updates re-read after each commit
 
-### Lock-hold-time discipline
-
-The single biggest production failure mode for DB locks is "held too long":
-
-- A long-held `GET_LOCK` blocks every other holder behind it - queue stalls, deploy hangs.
-- A long-held row lock under MySQL RR accumulates gap locks - deadlock cascades.
-- A long-held transaction holds *every* row written or scanned within it - one bad query in a loop locks the whole batch.
-
-Rules:
-
-- Never wrap a network call (HTTP, Redis, S3) inside an open transaction or advisory lock.
-- Use chunked transactions instead of `find_each` inside a transaction (cross-reference `rails-batch-processing-patterns`).
-- Set lock-wait timeouts at session level so a stuck holder fails fast:
-
-```ruby
-# MySQL
-ActiveRecord::Base.connection.execute("SET SESSION innodb_lock_wait_timeout = 5")
-
-# PostgreSQL (per-transaction)
-ActiveRecord::Base.connection.execute("SET LOCAL lock_timeout = '5s'")
-```
-
-- Inside `SKIP LOCKED` workers, claim small batches (50-500 rows) per transaction.
-
-### Connection accounting for lock holders
-
-Every advisory lock held = one DB connection held for the lock duration. A rake task holding a 6-hour lock holds a connection for 6 hours - counted against `max_connections`.
-
-For long coordinators: prefer `pg_advisory_xact_lock` inside short transactions, or release-and-reacquire with a heartbeat between work batches. Cross-reference `rails-connection-pool-sizing`.
-
-### Transaction isolation: the three-tier framework
-
-The intuitive proposal "use RR for web, RC for jobs" is half right and half a footgun. Workers genuinely hit RR's stale-snapshot and gap-lock pathologies more than web requests; but blanket-setting RC on Sidekiq connections changes the semantics of every transaction sharing the pool - including code paths shared with web. A service object called from both contexts now behaves differently per caller, producing a bug class where the same code passes tests on the web side (RR snapshot masks a missing reload) and fails on the worker side, or vice versa.
-
-The recommendation: **per-transaction RC at the call site** - visible to reviewers, easy to grep, easy to undo.
-
-#### Tier 1 - Default: keep RR, fix the transaction shape
-
-Most "stale data" and deadlock complaints under RR are symptoms of long transactions, not the isolation level. A transaction that holds 30s sees a 30s-old snapshot and accumulates 30s of gap locks; one that holds 200ms does not. Apply chunked transactions and lock-by-PK discipline first - resolves ~80% of cases at zero cost.
-
-#### Tier 2 - Per-transaction RC at the call site
-
-For specific paths where Tier 1 isn't sufficient, escalate the *individual transaction*.
-
-`SKIP LOCKED` queue claim under contention - RC reduces gap-lock cascades:
+Don't use Tier 2 for:
+- Jobs that scan rows A and B and join them in app code expecting a consistent snapshot - keep RR or restructure into one SQL join
+- "Feels safer" without a measured contention or staleness problem
 
 ```ruby
 ApplicationRecord.transaction(isolation: :read_committed) do
   ids = WorkItem.where(state: "ready").order(:id).limit(BATCH)
                 .lock("FOR UPDATE SKIP LOCKED").pluck(:id)
   WorkItem.where(id: ids).update_all(state: "claimed")
-  ids
 end
 ```
 
-Reconciliation that wants fresh reads of concurrently-updated counters:
+**Tier 3 - Per-connection RC (Sidekiq middleware).** Only when most transactions on the worker process want RC and per-transaction wrapping gets noisy. Audit shared services first. The middleware must `ensure` reset to default - otherwise isolation leaks to the next job on the same connection.
+
+PostgreSQL: default is already RC; for code that needs a stable snapshot, use `transaction(isolation: :repeatable_read)`.
+
+### Nested transactions and isolation
+
+`transaction(isolation: :read_committed) do ... transaction(isolation: ...) end` - the inner `isolation:` is silently ignored. The inner block becomes a savepoint (`requires_new: true`) or a no-op under MySQL/PG. If you need different isolation per chunk, don't nest - flatten:
 
 ```ruby
-ApplicationRecord.transaction(isolation: :read_committed) do
-  current = Account.find(account_id).balance
-  Ledger.create!(account_id: account_id, before: current, ...)
-end
-```
-
-When to reach for Tier 2:
-- `SKIP LOCKED` queue claim under contention
-- Long-ish scans where snapshot drift is acceptable and freshness matters
-- Reconciliation jobs that want "see committed writes from concurrent jobs"
-- Hot row updates re-read after each commit
-
-When NOT to reach for Tier 2:
-- Jobs that scan rows A and B and join them in app code expecting a consistent snapshot - keep RR (or restructure to a single SQL join)
-- Anywhere the gain is "feels safer" without a measured contention or staleness problem
-
-#### Tier 3 - Per-connection RC (Sidekiq middleware)
-
-Only when *most* transactions on the worker process want RC and per-transaction wrapping gets noisy.
-
-```ruby
-Sidekiq.configure_server do |config|
-  config.server_middleware do |chain|
-    chain.add(Class.new do
-      # Documented rationale: this worker's queues are dominated by SKIP LOCKED claim
-      # cycles and short reconciliation transactions. Service objects shared with web
-      # (FulfillOrder, ChargeCustomer) audited to confirm no RR snapshot dependency.
-      def call(_w, _j, _q)
-        ActiveRecord::Base.connection.execute(
-          "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED"
-        )
-        yield
-      end
-    end)
+slice_ids.each do |slice|
+  ApplicationRecord.transaction(isolation: :read_committed) do
+    Account.where(id: slice).lock("FOR UPDATE").each(&:recompute_balance!)
   end
 end
 ```
 
-Pitfalls:
-- Connection-pool reuse - a connection set to RC may later be used by a non-Sidekiq path on the same pool (rake task, console).
-- Isolation applies to *the next* transaction on that connection - timing matters.
-- Service objects shared between web and worker have different semantics per context.
+### Lock-hold discipline
 
-#### Aurora MySQL / RDS MySQL
+The single biggest failure mode is "held too long":
 
-RC is replication-safe under `binlog_format=ROW` (default since 5.7.7). The "RR is the MySQL default because statement-based replication needed it" reason is obsolete on modern RDS/Aurora. This unblocks Tier 2/3 without replication risk.
+- A long `GET_LOCK` blocks every other holder - queue stalls, deploy hangs
+- A long row lock under RR accumulates gap locks - deadlock cascade
+- A long transaction holds *every* row written or scanned within it
 
-#### PostgreSQL
+Fail-fast lock-wait timeouts:
 
-Default is already RC. The escalation goes the other direction: for code that *needs* a stable snapshot, use `transaction(isolation: :repeatable_read)` per-transaction.
+```ruby
+# MySQL
+ActiveRecord::Base.connection.execute("SET SESSION innodb_lock_wait_timeout = 5")
+# PostgreSQL (per transaction)
+ActiveRecord::Base.connection.execute("SET LOCAL lock_timeout = '5s'")
+```
 
-### Common failure modes
+Inside `SKIP LOCKED` claim workers, claim small batches (50-500 rows) per transaction.
 
-| Symptom                                                                | Likely root cause                                                       |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `Deadlock found when trying to get lock`                               | Non-PK `with_lock` under RR causing gap-lock cascade                    |
-| `Lock wait timeout exceeded`                                           | Long-running transaction or held advisory lock; check `SHOW ENGINE INNODB STATUS\G` |
-| Two cron runs of the same task overlapping                             | Missing leader lock around the rake task body                           |
-| `pg_advisory_lock` connection still held after process crash           | Session-scoped; releases on TCP close. Use `pg_advisory_xact_lock` for crash-safety |
-| Sidekiq job sees stale data even after `reload`                        | Long RR transaction; close and re-open or escalate to per-tx RC         |
-| `StaleObjectError` storms in a hot table                               | Optimistic locking is wrong for hot rows; use pessimistic by PK         |
+### Connection accounting
+
+Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours. For long coordinators, prefer `pg_advisory_xact_lock` inside short transactions, or release-and-reacquire with a heartbeat between work batches. Cross-reference `rails-connection-pool-sizing`.
+
+### Row locking and optimistic locking
+
+For row-locking discipline (PK-only, short critical section, MySQL gap-lock cascade) and optimistic `lock_version`, see `rails-activerecord-patterns`.
+
+### Failure modes
+
+| Symptom                                                       | Likely root cause                                                       |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `Deadlock found when trying to get lock`                      | Non-PK `lock` under RR causing gap-lock cascade                          |
+| `Lock wait timeout exceeded`                                  | Long-running transaction or held advisory lock; `SHOW ENGINE INNODB STATUS\G` |
+| Two cron runs of the same task overlapping                    | Missing leader lock around the rake task body                            |
+| `pg_advisory_lock` still held after process crash             | Session-scoped; releases on TCP close. Use `pg_advisory_xact_lock`       |
+| Sidekiq job sees stale data even after `reload`               | Long RR transaction; close+reopen or escalate to per-tx RC               |
+| `StaleObjectError` storms on a hot row                        | Optimistic locking on hot rows; use pessimistic by PK                    |
 
 ## Output Format
 
 ```
-Lock kind: {advisory leader | row pessimistic | row optimistic | transaction-scoped advisory}
-Adapter: {MySQL | PostgreSQL} (primitive: {GET_LOCK | pg_advisory_lock | with_advisory_lock gem})
+Lock kinds: {comma-separated: advisory leader | advisory per-resource | row pessimistic | optimistic | transaction-scoped advisory}
+Adapter: {MySQL | PostgreSQL} (primitive: {GET_LOCK | pg_advisory_lock | pg_advisory_xact_lock | with_advisory_lock gem})
 Scope: {session | transaction}
-Hold time: {expected ms; reviewed for network calls / find_each / external IO}
-Lock target: {PK lookup | ID list | non-PK scan (flagged for review)}
+Hold time: {expected ms / s; reviewed for network calls / find_each / external IO}
+Lock target: {PK lookup | ID list | non-PK scan (flagged)}
 Isolation tier: {Tier 1 default | Tier 2 per-tx RC at call site | Tier 3 connection-level RC with documented rationale}
-Failure mode considered: {deadlock cascade | leader-lock starvation | connection exhaustion | StaleObjectError storm}
+Failure modes considered: {deadlock cascade | leader-lock starvation | connection exhaustion | StaleObjectError storm}
 ```
 
 ## Avoid
 
-- Wrapping HTTP / Redis / S3 calls inside an open transaction or advisory lock
+- Network calls inside an open transaction or advisory lock
 - `find_each` inside `Model.transaction { ... }`
-- Non-PK `with_lock` on MySQL `REPEATABLE READ` - gap-lock deadlock cascade
-- Long-held session-scoped advisory locks for transactions that should use `pg_advisory_xact_lock`
-- Setting `READ COMMITTED` on the entire Sidekiq pool without documented rationale and shared-services audit
-- Treating "RR for web, RC for jobs" as a one-line recipe - it changes shared-service behavior silently
-- Holding `GET_LOCK` across a long backfill - one connection consumed for hours, blocks rolling deploys
-- Conflating advisory locks (mutual exclusion) with row locks (data consistency) - they solve different problems
-- Skipping `innodb_lock_wait_timeout` / `lock_timeout` tuning - default 50s makes stuck holders look like a hang
-- Optimistic locking for hot rows - use pessimistic by PK
+- Non-PK row locks on MySQL `REPEATABLE READ`
+- Session-scoped advisory locks for transactions that should use `pg_advisory_xact_lock`
+- Blanket `READ COMMITTED` on the Sidekiq pool without shared-services audit and `ensure`-reset
+- "RR for web, RC for jobs" as a one-line recipe - changes shared-service behavior silently
+- Long-held `GET_LOCK` across a backfill - one connection consumed for hours, blocks rolling deploys
+- Conflating advisory locks (mutual exclusion) with row locks (data consistency)
+- Default `innodb_lock_wait_timeout` / `lock_timeout` (50s) - makes stuck holders look like a hang
+- Optimistic locking on hot rows - use pessimistic by PK
+- Nesting `transaction(isolation:)` - the inner isolation is silently ignored

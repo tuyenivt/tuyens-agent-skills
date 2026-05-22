@@ -1,6 +1,6 @@
 ---
 name: rails-activerecord-patterns
-description: ActiveRecord patterns for Rails 7.2+: N+1 prevention, scopes, counter_cache, locking, async queries, MySQL/PostgreSQL features.
+description: ActiveRecord patterns for Rails 7.2+: N+1 prevention, scopes, enum, locking, callbacks, async queries, MySQL/PostgreSQL features.
 metadata:
   category: backend
   tags: [ruby, rails, activerecord, mysql, postgresql, performance]
@@ -11,120 +11,108 @@ user-invocable: false
 
 ## When to Use
 
-- Designing model associations and scopes
+- Designing associations, scopes, enums
 - Fixing N+1 queries (Bullet flags, slow index endpoints)
 - Choosing dependent options, counter_cache placement
-- Choosing optimistic vs pessimistic locking, or `with_lock` under MySQL `REPEATABLE READ`
+- Choosing optimistic vs pessimistic locking under MySQL `REPEATABLE READ`
+- Placing callbacks: `after_save` (in-transaction) vs `after_commit` (post-commit)
 - Adding DB-specific columns (MySQL JSON / functional indexes; PG JSONB / arrays / partial indexes)
 
-For chunked-transaction shape inside batches, memory safety, OOM mitigations, see `rails-batch-processing-patterns`.
-For advisory locks, leader election, isolation tiers, see `rails-db-locking-patterns`.
-For pool sizing across Puma/Sidekiq/CLI vs `max_connections`, see `rails-connection-pool-sizing`.
+Cross-references:
+- Chunk shape, memory safety, OOM mitigations -> `rails-batch-processing-patterns`
+- Advisory locks, leader election, isolation tiers -> `rails-db-locking-patterns`
+- Pool sizing across Puma/Sidekiq/CLI -> `rails-connection-pool-sizing`
 
 ## Rules
 
 - Default associations to lazy loading; eager load explicitly per query
 - Never `default_scope` - infects every query
 - Always set `dependent:` on `has_many` / `has_one`
-- Use `enum` with explicit integer mapping for status fields
+- `enum` with explicit integer mapping - positional shorthand shifts when entries reorder
 - Parameterized queries only - never string interpolation
-- Use `find_each` / `in_batches` for large datasets - never `.all.each`
-- Prefer `exists?` over `any?`, `size` over `count` on loaded associations
-- Lock by primary key only with `with_lock` / `lock!` on MySQL `REPEATABLE READ` - non-PK scans gap-lock ranges
+- `find_each` / `in_batches` for large datasets - never `.all.each`
+- `exists?` over `any?`; `size` over `count` on loaded associations
+- Lock by primary key only on MySQL `REPEATABLE READ` - non-PK scans gap-lock ranges
+- Side-effect callbacks (jobs, mail, HTTP) go in `after_commit`, never `after_save`
 
 ## Patterns
 
 ### N+1 Detection and Fix
 
-Bad - one query per user:
-
 ```ruby
-User.all.each { |u| puts u.orders.count }
+# Bad - one query per user
+User.all.each { |u| u.orders.count }
+
+# Good - eager load variants
+User.includes(:orders)                                          # separate query (default)
+User.preload(:orders)                                           # always separate (safe with complex scopes)
+User.eager_load(:orders).where(orders: { status: :active })     # LEFT OUTER JOIN (WHERE on assoc)
 ```
 
-Good - eager loading variants:
-
-```ruby
-User.includes(:orders)                                  # separate query (default)
-User.preload(:orders)                                   # always separate (safe with complex scopes)
-User.eager_load(:orders).where(orders: { status: :active }) # LEFT OUTER JOIN (needed for WHERE on assoc)
-```
-
-Surface lazy loading in development:
+Surface lazy loads in dev:
 
 ```ruby
 # config/environments/development.rb
 config.active_record.strict_loading_by_default = true   # raises on lazy load (Rails 6.1+)
-
-# Gemfile (development group)
-gem "bullet"
+# Gemfile (development): gem "bullet"
 ```
 
 ### Scopes and Enum
-
-Bad - `default_scope` infects every query:
-
-```ruby
-default_scope { where(active: true) }
-```
-
-Good - explicit chainable scopes, explicit enum mapping prevents reordering bugs:
 
 ```ruby
 class Order < ApplicationRecord
   enum :status, { pending: 0, confirmed: 1, processing: 2, shipped: 3, delivered: 4, cancelled: 5 }
 
-  scope :active,    -> { where.not(status: :cancelled) }
-  scope :for_user,  ->(id) { where(user_id: id) }
-  scope :with_active_users, -> { joins(:user).merge(User.active) }
+  scope :active,   -> { where.not(status: :cancelled) }
+  scope :for_user, ->(id) { where(user_id: id) }
 end
 ```
 
-### Normalization
+`default_scope { where(active: true) }` infects every query, including joins from unrelated models - the #1 source of "why is this query so weird" debugging.
 
-`normalizes` canonicalizes attributes on assignment (Rails 7.1+) - replaces hand-rolled `before_validation` for trim/downcase. Finder methods (`find_by`, `where`) apply normalization to lookup values.
-
-```ruby
-class User < ApplicationRecord
-  normalizes :email, with: ->(e) { e.strip.downcase }
-end
-```
-
-### Associations
+### Associations and `dependent:`
 
 `belongs_to` is required by default since Rails 5; pass `optional: true` only for genuinely nullable parents.
 
-```ruby
-class User < ApplicationRecord
-  has_many :orders, dependent: :destroy
-  has_many :order_items, through: :orders
-  has_one  :profile, dependent: :destroy
-end
+| Option                 | Behavior                    | Use When                                        |
+| ---------------------- | --------------------------- | ----------------------------------------------- |
+| `:destroy`             | Runs callbacks per child    | Children have their own dependents or callbacks |
+| `:delete_all`          | Direct SQL, skips callbacks | Performance-critical, no child callbacks        |
+| `:nullify`             | Sets FK to NULL             | Children can exist independently                |
+| `:restrict_with_error` | Prevents parent deletion    | Children must not be orphaned                   |
 
-class Order < ApplicationRecord
-  belongs_to :user, counter_cache: true
-  has_many :order_items, dependent: :destroy
-  has_many :comments, as: :commentable, dependent: :destroy
-end
+### Normalization (Rails 7.1+)
+
+`normalizes` canonicalizes attributes on assignment - replaces hand-rolled `before_validation` for trim/downcase. Applied to lookup values in `find_by` / `where`.
+
+```ruby
+normalizes :email, with: ->(e) { e.strip.downcase }
 ```
 
-**Dependent options:**
+### Callbacks: `after_save` vs `after_commit`
 
-| Option                 | Behavior                  | Use When                                        |
-| ---------------------- | ------------------------- | ----------------------------------------------- |
-| `:destroy`             | Runs callbacks per child  | Children have their own dependents or callbacks |
-| `:delete_all`          | Direct SQL, skips callbacks | Performance-critical, no child callbacks       |
-| `:nullify`             | Sets FK to NULL           | Children can exist independently                |
-| `:restrict_with_error` | Prevents parent deletion  | Children must not be orphaned                   |
+`after_save` fires **inside** the transaction. `after_commit` fires **after** the outermost transaction commits.
+
+| Use case                          | Callback        | Why                                               |
+| --------------------------------- | --------------- | ------------------------------------------------- |
+| Sync to external service (Stripe) | `after_commit`  | Outside transaction; row is durably persisted     |
+| Enqueue Sidekiq job               | `after_commit`  | Worker may run before commit otherwise            |
+| Send email                        | `after_commit`  | Same; also extends lock-hold time inside the txn  |
+| Compute a derived in-row column   | `before_save`   | Must persist with the same row                    |
+| Audit row inside the same txn     | `after_save`    | Rolls back atomically with the parent             |
+
+Callback inside a locked transaction (`with_lock`, `Model.lock.find`) that makes a network call holds the row lock for the network round-trip - the most common cause of `Lock wait timeout` storms.
+
+Prefer service objects for business logic; reserve callbacks for invariants tied to the row itself (normalization, derived columns, audit).
 
 ### Query Optimization
 
 ```ruby
-# Batch large datasets
-Order.find_each(batch_size: 1000) { |o| process(o) }     # one record at a time
-Order.in_batches(of: 1000) { |b| b.update_all(synced: true) } # relation per batch
+# Batch
+Order.find_each(batch_size: 1000) { |o| process(o) }
+Order.in_batches(of: 1000) { |b| b.update_all(synced: true) }
 
-# Pluck and select - skip AR object overhead
+# Skip AR object overhead
 User.where(active: true).pluck(:email)
 User.select(:id, :name, :email)
 
@@ -141,39 +129,37 @@ user.orders.size              # uses counter_cache if available
 
 ```ruby
 OrderRollup.insert_all(rows, returning: %w[id])
-
-OrderRollup.upsert_all(rows,
-  unique_by: :order_id,
-  update_only: %i[total_cents updated_at])
+OrderRollup.upsert_all(rows, unique_by: :order_id, update_only: %i[total_cents updated_at])
 ```
 
 Caveats: timestamps not auto-set unless in `rows`; validations and `before_save` don't run; serialized columns not coerced.
 
-### Pessimistic Locking (`with_lock` / `lock!`)
+### Pessimistic Locking
 
-`with_lock` issues `SELECT ... FOR UPDATE`. **On MySQL under default `REPEATABLE READ`, lock granularity is row + gap (next-key lock).** Non-unique-index range scans gap-lock the range, blocking inserts into the gap from other sessions - the #1 source of MySQL deadlocks in Sidekiq workloads.
-
-Two rules under MySQL:
-
-1. Lock by primary key only.
-2. Keep the critical section short - no external calls, no `find_each`.
-
-Bad - non-PK lock under MySQL RR:
+`SELECT ... FOR UPDATE`. Two forms, equivalent except for transaction scope:
 
 ```ruby
-Order.where(customer_id: id).lock.each(&:close!)  # gap-lock cascade
-```
+# Form A: with_lock opens its own transaction
+order = Order.find(order_id)
+order.with_lock { order.update!(state: "closed") }
 
-Good - lock by PK:
-
-```ruby
+# Form B: explicit transaction, lock as part of the find
 Order.transaction do
-  order = Order.lock.find(order_id)               # WHERE id = ? FOR UPDATE
+  order = Order.lock.find(order_id)   # WHERE id = ? FOR UPDATE
   order.update!(state: "closed")
 end
 ```
 
-For multiple rows, fetch IDs unlocked first:
+Don't wrap `with_lock` in an outer `Model.transaction` - redundant and confusing.
+
+**MySQL under default `REPEATABLE READ`: lock granularity is row + gap (next-key lock).** Non-unique-index range scans gap-lock the range, blocking inserts. The #1 source of MySQL deadlocks in Sidekiq workloads.
+
+Two rules under MySQL:
+
+1. Lock by primary key only.
+2. Keep the critical section short - no network calls, no `find_each`, no callbacks that fire HTTP/Sidekiq inline.
+
+For multiple rows, fetch IDs unlocked first, then lock per-ID:
 
 ```ruby
 ids = Order.where(customer_id: id).pluck(:id)
@@ -182,63 +168,35 @@ ids.each_slice(100) do |batch|
 end
 ```
 
+For high-contention nightly jobs, fan out from one orchestrator to N per-record Sidekiq workers - each worker locks one row by PK in its own short transaction. See `rails-sidekiq-patterns` for the dispatch shape.
+
 PostgreSQL has no gap-lock equivalent; the lock-by-PK and short-section discipline still applies for clarity.
 
 ### Optimistic Locking
 
-Add a `lock_version` column for low-contention concurrent updates (e.g., two admins editing one order). Rails bumps it on every update and raises `ActiveRecord::StaleObjectError` if another writer beat this one.
+Add a `lock_version` column for low-contention concurrent updates. Rails bumps it on every update and raises `ActiveRecord::StaleObjectError` when another writer beat this one.
 
 ```ruby
 add_column :orders, :lock_version, :integer, null: false, default: 0
 ```
 
-Choose pessimistic for short read-then-write critical sections; optimistic when conflicts are rare and retry is cheap. **For hot rows with frequent contention, optimistic produces `StaleObjectError` storms - use pessimistic by PK instead.**
+For hot rows with frequent contention, optimistic produces `StaleObjectError` storms - use pessimistic by PK instead.
 
 ### Association Side Effects on Save
 
-`update`/`save` can load associations the action body never references. The cause is *declarative* (in the model file or initializer), not visible in the controller. When N+1-like queries appear on an update action and `.includes` "fixes" it without you wanting those associations in scope, the real fix is one of these:
+`update`/`save` can load associations the action body never references. The cause is declarative (model file or initializer), not in the controller. When `.includes` "fixes" an N+1 on an update action without you wanting those associations in scope, find the source:
 
-- **`belongs_to :parent, touch: true`** - saving the child touches the parent's `updated_at`. The parent is loaded to be touched, even if the action only changed a child column.
-- **`has_many :children, autosave: true`** (explicit, or implicit via `accepts_nested_attributes_for :children`) - parent save iterates and saves children, triggering association load. `accepts_nested_attributes_for` loads the collection even when params omit nested attributes.
-- **Callback that references an association**: `before_save`/`after_save`/`after_commit` reading `self.linked_model` forces a load at save time.
-- **Missing `inverse_of` combined with `has_many_inversing` / `automatic_scope_inversing` off** (the `load_defaults` 6.1-era state). Traversing back to the parent re-queries instead of reusing the in-memory object.
+- `belongs_to :parent, touch: true` - saving the child touches the parent's `updated_at`
+- `has_many :children, autosave: true` (explicit or via `accepts_nested_attributes_for`) - parent save iterates children
+- Callback reading `self.<association>` - forces a load at save time
+- Missing `inverse_of` under `load_defaults <= 6.1` (no `has_many_inversing`)
 
-Bad - controller "fix" papering over an autosave side effect:
+Two fixes, in order:
 
-```ruby
-# OrdersController#update
-def update
-  @order = Order.includes(:line_items, :shipping_address).find(params[:id])  # only to suppress N+1
-  @order.update!(order_params)                                               # only changes order.status
-end
-```
+1. **Remove the source** if the side effect isn't actually needed.
+2. **Keep it but make the load cheap**: add `inverse_of` so traversal reuses the in-memory object; if a callback only needs the FK, use `self.foo_id` not `self.foo.id` to avoid the SELECT.
 
-Good - identify and remove the source instead:
-
-```ruby
-# Option A: drop unneeded autosave/touch
-class Order < ApplicationRecord
-  has_many :line_items                          # no autosave: true unless params include line_items
-  belongs_to :shipping_address                  # no touch: true unless cache invalidation needs it
-end
-
-# Option B: keep the side effect, ensure inverse_of so the load is one query, not N
-class Order < ApplicationRecord
-  has_many :line_items, inverse_of: :order
-end
-
-# Option C: when the side effect is needed only sometimes, scope it
-order.update!(order_params)                     # default path: no preload
-order.line_items.reload if reprice_needed       # explicit, scoped to the case
-
-# Option D: when a callback needs the FK but not the record, pass the FK directly
-# Bad - loads shipping_address every save:
-#   after_commit { WarehouseJob.perform_later(self.shipping_address.id) }
-# Good - uses the FK already in memory, no SELECT:
-#   after_commit { WarehouseJob.perform_later(self.shipping_address_id) }
-```
-
-For an audit of the implicit-configuration state (including `has_many_inversing`, `automatic_scope_inversing`, and `new_framework_defaults_*.rb` footguns), use `rails-implicit-config-audit`.
+For an audit of implicit-config state (`has_many_inversing`, `automatic_scope_inversing`, `new_framework_defaults_*.rb`), use `rails-implicit-config-audit`.
 
 ### Async Queries with `load_async`
 
@@ -247,10 +205,9 @@ For dashboards fetching several independent queries, `load_async` runs them on a
 ```ruby
 @recent_orders = Order.recent.limit(10).load_async
 @top_products  = Product.top_sellers.limit(5).load_async
-@open_tickets  = Ticket.open.load_async
 ```
 
-Each async query holds an extra connection from the executor pool - cross-reference `rails-connection-pool-sizing`. Don't use inside transactions (the async thread can't see uncommitted state).
+Each async query holds an extra connection (cross-reference `rails-connection-pool-sizing`). Don't use inside transactions - the async thread can't see uncommitted state.
 
 ### Database-specific features
 
@@ -261,52 +218,45 @@ add_column :orders, :metadata, :json, null: false
 add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_users_tier"
 
 Order.where("JSON_CONTAINS(metadata, ?)", { source: "web" }.to_json)
-Order.where("metadata->>'$.source' = ?", "web")
-
 add_index :products, :description, type: :fulltext
-Product.where("MATCH(description) AGAINST(? IN NATURAL LANGUAGE MODE)", "ergonomic chair")
 ```
 
-No native array column type; no partial indexes (`where:` clause). Closest to partial: functional index on a `CASE` expression - rarely worth it. Slow-query inspection: `performance_schema.events_statements_summary_by_digest`.
+No native array column; no partial indexes. Slow-query inspection: `performance_schema.events_statements_summary_by_digest`.
 
 #### PostgreSQL
 
 ```ruby
 add_column :orders, :metadata, :jsonb, default: {}, null: false
 add_index :orders, :metadata, using: :gin
-
-Order.where("metadata @> ?", { source: "web" }.to_json)
-
 add_column :users, :tags, :string, array: true, default: []
-User.where("'admin' = ANY(tags)")
-
 add_index :orders, :created_at, where: "status IN (0, 1, 2)", name: "idx_active_orders"
 ```
 
-Slow-query inspection: `pg_stat_statements` extension.
+Slow-query inspection: `pg_stat_statements`.
 
-For migration safety per adapter, see `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG).
+Per-adapter migration safety: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG).
 
 ## Output Format
 
 ```
-Pattern: {N+1 Fix | Scope | Association | Batch | Locking | DB Feature}
-Model: {model name}
+Pattern: {N+1 Fix | Scope | Association | Callback | Batch | Locking | DB Feature}
+Model: {name}
 Adapter: {MySQL | PostgreSQL}
 Change: {description}
-Queries: {before} -> {after} (estimated)
+Queries: {before} -> {after}
 ```
 
 ## Avoid
 
 - `default_scope` - infects all queries
 - N+1 in serializers - preload before serializing
-- `.includes` papering over `touch:` / `autosave:` / `accepts_nested_attributes_for` / callback side effects on save - remove the source or set `inverse_of` instead
+- `.includes` papering over `touch:` / `autosave:` / callback side effects - remove the source or add `inverse_of`
 - `.all.each` on large tables - use `find_each`
-- `with_lock` / `lock!` on a non-PK scan under MySQL `REPEATABLE READ` - gap-lock cascade
-- Optimistic locking on hot contended rows - `StaleObjectError` storms; use pessimistic by PK
+- `with_lock` wrapped in an outer `Model.transaction` - redundant
+- Non-PK `lock` on MySQL `REPEATABLE READ` - gap-lock cascade
+- HTTP / Sidekiq / mail in `after_save` - use `after_commit`
+- Optimistic locking on hot rows - `StaleObjectError` storms
 - Callbacks for business logic - use service objects
 - `update_attribute` - skips validations; use `update!`
-- String interpolation in queries - SQL injection
 - Missing `dependent:` on `has_many` - orphaned records
-- Enum without explicit integer mapping - values shift when entries reorder
+- Enum with positional shorthand `[:a, :b]` - values shift when entries reorder

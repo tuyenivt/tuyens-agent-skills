@@ -1,43 +1,37 @@
 ---
 name: rails-postgresql-migration-safety
-description: Zero-downtime Rails/PostgreSQL migrations: concurrent indexes, NOT VALID check constraints, pg_advisory_lock, lock_timeout, large tables.
+description: Zero-downtime Rails/PostgreSQL migrations: CONCURRENTLY, NOT VALID + VALIDATE, pg_advisory_lock, lock_timeout, large tables.
 metadata:
   category: backend
   tags: [ruby, rails, postgresql, migration, zero-downtime]
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. Use when `Database: PostgreSQL` is declared in CLAUDE.md. For MySQL, see `rails-migration-safety`.
+> Load `Use skill: stack-detect` first. Use when `Database: PostgreSQL`. For MySQL, see `rails-migration-safety`.
 
 ## When to Use
 
-- Creating or modifying tables, columns, or indexes on PostgreSQL
+- Creating or modifying tables, columns, indexes on PostgreSQL
 - Adding NOT NULL or renaming/removing columns on deployed tables
-- Running data backfills on tables with >100K rows
+- Backfilling >100K rows
 - Adding foreign keys without downtime
-- Adding partial indexes on status or enum columns
+- Partial indexes on status / enum columns
 - Reviewing PG migrations before merge
 
 ## Rules
 
-- One structural change per migration
-- Every migration must be reversible
-- Separate data migrations from schema migrations - use a rake task (see `rails-rake-task-patterns`)
-- Always include `timestamps` on new tables
-- Always add indexes on FK columns and frequently-filtered columns
-- Use `disable_ddl_transaction!` for all `CONCURRENTLY` operations
-- Add `ignored_columns` before removing a column
-- Use `safety_assured` only after verifying the operation is safe
+- One structural change per migration; reversible
+- Data backfills in rake tasks, not `db/migrate/`
+- New tables include `timestamps` + indexes on FK and filter columns
+- `disable_ddl_transaction!` for all `CONCURRENTLY` operations
+- `ignored_columns` before removing a column
+- `safety_assured` only after verifying the operation is safe
 
 ## Patterns
 
-### strong_migrations gem
+### strong_migrations
 
 ```ruby
-# Bad - non-concurrent index on a large table
-add_index :orders, :status
-
-# Good
 class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
   def change
@@ -46,7 +40,7 @@ class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
 end
 ```
 
-`strong_migrations` blocks unsafe ops; `safety_assured` overrides only after verifying:
+`safety_assured` overrides a check; use only after verifying:
 
 ```ruby
 safety_assured { add_index :orders, :customer_id, algorithm: :concurrently }
@@ -55,85 +49,62 @@ safety_assured { add_index :orders, :customer_id, algorithm: :concurrently }
 ### Adding a NOT NULL column
 
 ```ruby
-# Step 1: Add nullable with default
+# 1. add nullable + default
 add_column :orders, :status, :string, default: "pending"
 
-# Step 2: Backfill (separate migration)
+# 2. backfill (separate migration)
 disable_ddl_transaction!
 def up
-  Order.in_batches(of: 10_000) do |batch|
-    batch.where(status: nil).update_all(status: "pending")
-  end
+  Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }
 end
 
-# Step 3: Add NOT NULL
+# 3. enforce
 change_column_null :orders, :status, false
 ```
 
-**Large tables (>1M rows): use a NOT VALID check constraint.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. A `NOT VALID` check validates new rows immediately and lets existing rows validate without blocking writes:
+**Large tables (>1M rows): use NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes:
 
 ```ruby
-# Step 3a: Add unvalidated constraint (fast, no table scan)
 add_check_constraint :orders, "status IS NOT NULL", name: "orders_status_null", validate: false
-
-# Step 3b: Validate (no write lock; sequential scan)
 validate_check_constraint :orders, name: "orders_status_null"
 ```
 
-`strong_migrations` flags `change_column_null` on large tables and recommends this pattern. In PG 12+, with a validated CHECK in place, promoting to column-level `NOT NULL` is metadata-only.
+`strong_migrations` flags `change_column_null` on large tables and recommends this. In PG 12+, with a validated CHECK in place, promoting to column-level NOT NULL is metadata-only.
 
-### Adding a Timestamp Column with Partial Index
-
-```ruby
-class AddFulfilledAtToOrders < ActiveRecord::Migration[7.2]
-  disable_ddl_transaction!
-  def change
-    add_column :orders, :fulfilled_at, :datetime
-    add_index :orders, :fulfilled_at, where: "fulfilled_at IS NOT NULL",
-              algorithm: :concurrently, name: "idx_orders_fulfilled"
-  end
-end
-```
-
-### Partial Indexes on Status / Enum Columns
-
-Partial indexes reduce size by only indexing relevant rows:
+### Partial Indexes
 
 ```ruby
+add_index :orders, :fulfilled_at, where: "fulfilled_at IS NOT NULL",
+          algorithm: :concurrently, name: "idx_orders_fulfilled"
+
 add_index :orders, :status, where: "status IN (0, 1, 2)",
           algorithm: :concurrently, name: "idx_orders_active_status"
 ```
 
-### Renaming Columns (never directly)
-
-Four-step deploy sequence:
+### Renaming Columns (four steps)
 
 ```ruby
-# Step 1: Add new column
+# 1. add new
 add_column :orders, :amount, :decimal
-
-# Step 2: Backfill
+# 2. backfill
 Order.in_batches { |b| b.update_all("amount = total") }
-
-# Step 3: Update code; add ignored_columns
+# 3. ignored_columns + deploy
 # self.ignored_columns += ["total"]
-
-# Step 4: Remove (next deploy)
+# 4. remove (next deploy)
 safety_assured { remove_column :orders, :total, :string }
 ```
 
-### Dropping Columns
+### Dropping Columns (two deploys + audit)
 
-Column drops are final; treat them as a three-phase change (audit, prep if needed, two deploys), not a one-line `remove_column`.
+Drops are final. Three phases.
 
-**Phase 1 - Pre-flight audit.** Grep every reference, then look outside the repo:
+**Phase 1 - Audit.** Grep every reference:
 
 ```bash
-rg -n "legacy_field" app/ lib/ config/ spec/ test/ db/ -g '!*.lock' \
-  -g '*.rb' -g '*.erb' -g '*.haml' -g '*.slim' -g '*.sql'
+rg -n "legacy_field" app/ lib/ config/ spec/ db/ -g '*.{rb,erb,haml,slim,sql}' -g '!*.lock'
 ```
 
-Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical replication subscribers, FDW foreign tables. Drop dependent FKs / indexes / generated-column references / `CHECK` constraints / **views** in a *prior* migration. `strong_migrations` catches FK / index cases but not view dependencies - find those with `pg_depend`:
+Also: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical replication subscribers, FDW foreign tables. Drop dependent FK / index / generated-column / CHECK / **views** in a *prior* migration. `strong_migrations` catches FK/index but not view dependencies - find with `pg_depend`:
 
 ```sql
 SELECT dependent_view.relname
@@ -141,42 +112,34 @@ FROM pg_depend
 JOIN pg_rewrite ON pg_rewrite.oid = pg_depend.objid
 JOIN pg_class dependent_view ON dependent_view.oid = pg_rewrite.ev_class
 JOIN pg_class source_table ON source_table.oid = pg_depend.refobjid
-JOIN pg_attribute ON pg_attribute.attrelid = pg_depend.refobjid AND pg_attribute.attnum = pg_depend.refobjsubid
+JOIN pg_attribute ON pg_attribute.attrelid = pg_depend.refobjid
+  AND pg_attribute.attnum = pg_depend.refobjsubid
 WHERE source_table.relname = 'orders' AND pg_attribute.attname = 'legacy_field';
 ```
 
-**Phase 2 - Prep migration (only if the column is `NOT NULL` with no DB-side default AND the app writes to it on every insert).** Once deploy A stops writing, the next insert hits the constraint. Pick one (both are metadata-only on PG 11+):
+**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails. Both metadata-only on PG 11+:
 
-- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - no NULLs ever, existing rows unchanged. Choose when a sensible default fits all rows.
-- `change_column_null :users, :legacy_field, true` - new omitted-INSERT rows get `NULL` during the window. Choose when NULL is acceptable for the (short) window before column drop.
+- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - sensible default fits all rows
+- `change_column_null :users, :legacy_field, true` - NULL acceptable for the short window
 
-**Phase 3 - Two deploys.** Schema cache lives in every process; a single-deploy approach races old workers (still issuing `INSERT INTO users (..., legacy_field, ...)`) against the DDL.
+**Phase 3 - Two deploys.**
 
 ```ruby
-# Deploy A: model only, no migration. Use += so concerns/parents are preserved.
+# Deploy A: model only
 class User < ApplicationRecord
   self.ignored_columns += ["legacy_field"]
 end
-```
+# Remove read/write refs. Wait for full rollout - Sidekiq fleets lag web.
 
-Remove all read/write references to the column. Wait for confirmed full rollout across web, Sidekiq, schedulers, and any other process that boots Rails - Sidekiq fleets often lag web; plan for the slower one. Don't proceed on a clock; confirm via the deploy system.
-
-```ruby
-# Deploy B: migration + remove the ignored_columns line in the same PR.
-class RemoveLegacyFieldFromUsers < ActiveRecord::Migration[7.2]
-  def change
-    safety_assured do
-      remove_column :users, :legacy_field, :string, null: false, default: "guest"
-    end
-  end
+# Deploy B: migration + remove ignored_columns in same PR
+safety_assured do
+  remove_column :users, :legacy_field, :string, null: false, default: "guest"
 end
 ```
 
-Restate the original type/null/default on `remove_column` so `db:rollback` can re-add the column. `DROP COLUMN` is metadata-only in PG (no table rewrite, milliseconds). Disk space reclaims via autovacuum, or `pg_repack` if you need it back promptly.
+Restate type/null/default for `db:rollback`. `DROP COLUMN` is metadata-only in PG (no rewrite). Disk reclaims via autovacuum or `pg_repack` if needed promptly.
 
-**This procedure is independent of `partial_inserts`.** `ignored_columns` removes the column from Rails' attribute map entirely.
-
-**Edge cases requiring extra prior steps:** dependent objects (FK / index / generated column / `CHECK` / view via `pg_depend`), external systems (BI / ETL / logical-replication subscribers / FDW foreign tables) consuming the column, tables >100M rows where space reclamation is urgent (plan `pg_repack` after the drop).
+Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view via `pg_depend`), external systems (BI / ETL / logical-replication / FDW), >100M-row tables where space reclamation is urgent (plan `pg_repack`).
 
 ### Creating Tables
 
@@ -194,30 +157,24 @@ add_index :orders, [:user_id, :status]
 ### Foreign Keys Without Table Lock
 
 ```ruby
-# Migration 1: Add FK without validation (fast)
-add_foreign_key :orders, :users, validate: false
-
-# Migration 2: Validate FK (no write lock; sequential scan)
-validate_foreign_key :orders, :users
+add_foreign_key :orders, :users, validate: false  # fast
+validate_foreign_key :orders, :users              # no write lock; sequential scan
 ```
 
-If validation fails, fix orphan rows and rerun.
+Fix orphans if validation fails, then rerun.
 
 ### Large Tables (>1M Rows)
 
 ```ruby
-# Batched data changes with throttling
 Order.in_batches(of: 10_000) do |batch|
   batch.update_all(processed: true)
   sleep(0.1)
 end
 ```
 
-For chunked-transaction shape, idempotency, memory safety, see `rails-batch-processing-patterns`.
+See `rails-batch-processing-patterns` for chunked-transaction shape, idempotency, memory safety.
 
-### Lock Timeouts and Statement Timeouts
-
-A migration waiting behind a long query can pile up blocked sessions. Set `lock_timeout`:
+### Lock and Statement Timeouts
 
 ```ruby
 class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
@@ -229,7 +186,7 @@ class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
 end
 ```
 
-Configure globally via `StrongMigrations.lock_timeout = 5.seconds`.
+Or globally: `StrongMigrations.lock_timeout = 5.seconds`.
 
 For long backfills, also set `statement_timeout` per-batch:
 
@@ -242,7 +199,7 @@ end
 
 ### `change_column_default`
 
-PG 11+ stores defaults as metadata - `change_column_default` is fast, no table rewrite. Avoid `change_column` (which combines type+default+null and rewrites every row even if you only meant to change the default):
+PG 11+ stores defaults as metadata - fast, no rewrite. Avoid `change_column` (combines type+default+null and rewrites every row):
 
 ```ruby
 change_column_default :orders, :status, from: nil, to: "pending"
@@ -258,11 +215,11 @@ def up
 end
 ```
 
-For full leader-election patterns and `pg_advisory_xact_lock`, see `rails-db-locking-patterns`.
+See `rails-db-locking-patterns` for full leader-election patterns and `pg_advisory_xact_lock`.
 
 ### Rollback Safety
 
-Test with `rails db:migrate && rails db:rollback && rails db:migrate` in CI.
+Test `db:migrate && db:rollback && db:migrate` in CI.
 
 ```ruby
 def change
@@ -275,8 +232,6 @@ end
 
 ### INVALID indexes recovery
 
-If `CONCURRENTLY` fails midway you'll have an `INVALID` index. Detect:
-
 ```sql
 SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
 ```
@@ -288,11 +243,11 @@ Then `DROP INDEX CONCURRENTLY` and rerun.
 ```
 Migration: {file name}
 Operation: {Create Table | Add Column | Add Index | Add FK | Backfill | Remove Column}
-Table: {table name}
+Table: {name}
 Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE}
 Lock window: {none | brief MDL | requires maintenance}
-Safety: {Zero-Downtime | Requires Maintenance Window | Batched Backfill}
-Notes: {partial-index conditions, validate: false flag, etc.}
+Safety: {Zero-Downtime | Maintenance Window | Batched Backfill}
+Notes: {partial-index conditions, validate: false, etc.}
 ```
 
 ## Avoid
@@ -300,9 +255,9 @@ Notes: {partial-index conditions, validate: false flag, etc.}
 - Data changes in schema migrations
 - `remove_column` without `ignored_columns` first
 - Non-concurrent index on large tables (>100K rows)
-- Changing column type directly - use add/backfill/remove
-- Running `CONCURRENTLY` inside a transaction (incompatible)
-- `change_column_null` on large tables - use NOT VALID + VALIDATE pattern
+- Direct column type changes - use add/backfill/remove
+- `CONCURRENTLY` inside a transaction (incompatible)
+- `change_column_null` on large tables - use NOT VALID + VALIDATE
 - Irreversible migrations without explicit `raise ActiveRecord::IrreversibleMigration`
 - Missing indexes on FK columns
 - `add_column` with `null: false` on existing tables without default

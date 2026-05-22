@@ -1,6 +1,6 @@
 ---
 name: rails-testing-patterns
-description: RSpec testing patterns for Rails 7.2+: model/request/system/service specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR.
+description: RSpec for Rails 7.2+: model/request/system/service/policy/job/rake specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR.
 metadata:
   category: backend
   tags: [ruby, rails, rspec, testing, factorybot]
@@ -11,75 +11,59 @@ user-invocable: false
 
 ## When to Use
 
-- Writing tests for a new feature (models, services, request specs, policies)
-- Setting up FactoryBot factories with traits for different model states
-- Testing Sidekiq jobs with fake/inline modes
-- Testing Pundit policies for role-based access control
-- Mocking external API calls with VCR or WebMock
-- Reviewing test quality: checking for mystery guests, excessive mocking, or missing edge cases
+- Writing tests for a new feature (models, services, requests, policies, jobs)
+- Setting up FactoryBot factories with state traits
+- Testing Sidekiq jobs (`fake` / `inline`)
+- Pundit policy tests for role-based access
+- Mocking external API calls (VCR / WebMock)
+- Reviewing for mystery guests, over-mocking, missing edge cases
 
 ## Rules
 
-- Never use controller specs - use request specs instead (full HTTP stack)
-- Test through the public interface - never test private methods directly
-- Use FactoryBot for test data, not fixtures - factories are more flexible and explicit
-- Use `build_stubbed` when no DB hit is needed, `build` for in-memory, `create` only when persistence is required
-- Mock at boundaries (external APIs, third-party services), not internal code
-- Every model spec must cover associations, validations, scopes, and enum definitions
-- Every request spec must cover happy path, error cases, and authorization
-- Every service spec must assert Result object success/failure states
-- Rake specs cover wiring only (ENV parsing, exit behavior, argument forwarding) - put behavioral coverage on the underlying service spec
+- Never use controller specs - use request specs
+- Test through the public interface, never private methods
+- FactoryBot for test data, not fixtures
+- `build_stubbed` when no DB needed; `build` for in-memory; `create` only when persistence is required
+- Mock at boundaries (external APIs), not internal code
+- Model specs cover associations, validations, scopes, enums
+- Request specs cover happy path, errors, authorization
+- Service specs assert `Result.success?` / `failure?` and side effects
+- Rake specs cover wiring (ENV, exit, forwarding); behavioral coverage on the underlying service
 
 ## Patterns
 
-### Test Type Hierarchy
+### Test Type Map
 
 | Type          | Speed   | Scope           | Use For                                  |
 | ------------- | ------- | --------------- | ---------------------------------------- |
 | Model specs   | Fastest | Single model    | Validations, scopes, associations, enums |
-| Service specs | Fast    | Business logic  | Service objects with Result assertions   |
-| Policy specs  | Fast    | Authorization   | Pundit policy rules per role             |
-| Request specs | Medium  | Full HTTP stack | Endpoints, status codes, response bodies |
-| Job specs     | Fast    | Background work | Sidekiq job behavior and idempotency     |
-| Rake specs    | Fast    | Task wiring     | ENV parsing, exit behavior, delegation   |
-| System specs  | Slowest | Browser-driven  | Critical user flows (Capybara)           |
+| Service specs | Fast    | Business logic  | `Result` success/failure + side effects  |
+| Policy specs  | Fast    | Authorization   | Pundit rules per role                    |
+| Request specs | Medium  | Full HTTP stack | Endpoints, status, response bodies       |
+| Job specs     | Fast    | Background      | Job behavior + idempotency               |
+| Rake specs    | Fast    | Task wiring     | ENV, exit behavior, delegation           |
+| System specs  | Slowest | Browser         | Critical user flows (Capybara)           |
 
 ### Model Specs
 
-Bad - testing implementation details:
-
 ```ruby
-it "calls calculate_total internally" do
-  expect(order).to receive(:calculate_total) # testing private method
-  order.save
-end
-```
-
-Good - testing behavior through public interface:
-
-```ruby
-# spec/models/order_spec.rb
 RSpec.describe Order, type: :model do
   describe "associations" do
     it { is_expected.to belong_to(:user).counter_cache(true) }
     it { is_expected.to have_many(:order_items).dependent(:destroy) }
-    it { is_expected.to have_many(:products).through(:order_items) }
   end
 
   describe "validations" do
     it { is_expected.to validate_presence_of(:status) }
     it { is_expected.to validate_numericality_of(:total).is_greater_than(0) }
-    it { is_expected.to define_enum_for(:status).with_values(pending: 0, confirmed: 1, processing: 2, shipped: 3, delivered: 4, cancelled: 5) }
+    it { is_expected.to define_enum_for(:status).with_values(pending: 0, confirmed: 1, shipped: 2) }
   end
 
-  describe "scopes" do
-    describe ".fulfillable" do
-      it "returns only confirmed orders" do
-        confirmed = create(:order, :confirmed)
-        create(:order, :pending)
-        create(:order, :shipped)
-        expect(described_class.fulfillable).to eq([confirmed])
-      end
+  describe ".fulfillable" do
+    it "returns only confirmed orders" do
+      confirmed = create(:order, :confirmed)
+      create(:order, :pending)
+      expect(described_class.fulfillable).to eq([confirmed])
     end
   end
 end
@@ -87,70 +71,28 @@ end
 
 ### Service Specs
 
-Bad - not testing Result object contract:
-
 ```ruby
-it "fulfills the order" do
-  FulfillOrder.new(order: order).call
-  expect(order.reload.status).to eq("processing")
-end
-```
-
-Good - asserting Result success/failure and side effects:
-
-```ruby
-# spec/services/fulfill_order_spec.rb
 RSpec.describe FulfillOrder do
   let(:order) { create(:order, :confirmed, :with_order_items) }
 
   describe "#call" do
-    context "when order is confirmed with sufficient inventory" do
-      it "returns a success result" do
-        result = described_class.new(order: order).call
-        expect(result).to be_success
-        expect(result.value).to eq(order)
-      end
-
-      it "transitions order to processing" do
-        described_class.new(order: order).call
-        expect(order.reload.status).to eq("processing")
-      end
-
-      it "sets fulfilled_at timestamp" do
-        freeze_time do
-          described_class.new(order: order).call
-          expect(order.reload.fulfilled_at).to eq(Time.current)
-        end
-      end
-
-      it "enqueues a shipment notification job" do
-        expect {
-          described_class.new(order: order).call
-        }.to change(ShipmentNotificationJob.jobs, :size).by(1)
-      end
+    it "returns success and transitions status" do
+      result = described_class.new(order: order).call
+      expect(result).to be_success
+      expect(order.reload.status).to eq("processing")
     end
 
-    context "when order is not confirmed" do
-      let(:order) { create(:order, :pending) }
-
-      it "raises ArgumentError" do
-        expect {
-          described_class.new(order: order)
-        }.to raise_error(ArgumentError, /must be confirmed/)
-      end
+    it "enqueues a shipment job" do
+      expect { described_class.new(order: order).call }
+        .to change(ShipmentNotificationJob.jobs, :size).by(1)
     end
 
     context "when inventory is insufficient" do
       before { allow(InventoryService).to receive(:new).and_raise(Inventory::InsufficientStockError) }
 
-      it "returns a failure result" do
+      it "returns failure and does not transition" do
         result = described_class.new(order: order).call
         expect(result).to be_failure
-        expect(result.errors).to include(/insufficient/i)
-      end
-
-      it "does not transition order status" do
-        described_class.new(order: order).call
         expect(order.reload.status).to eq("confirmed")
       end
     end
@@ -160,61 +102,31 @@ end
 
 ### Pundit Policy Specs
 
-Bad - testing authorization only in request specs (slow, indirect):
-
 ```ruby
-# Only testing authorization through HTTP - misses edge cases
-it "returns 403 for non-admin" do
-  get "/api/v1/orders/#{order.id}", headers: user_headers
-  expect(response).to have_http_status(:forbidden)
-end
-```
-
-Good - dedicated policy specs covering each role:
-
-```ruby
-# spec/policies/order_policy_spec.rb
 RSpec.describe OrderPolicy do
   subject { described_class.new(user, order) }
-
   let(:order) { create(:order, user: owner) }
   let(:owner) { create(:user) }
 
-  context "when user is the order owner" do
+  context "owner" do
     let(:user) { owner }
-
-    it { is_expected.to permit_action(:show) }
+    it { is_expected.to     permit_action(:show) }
     it { is_expected.not_to permit_action(:fulfill) }
   end
 
-  context "when user is an admin" do
+  context "admin" do
     let(:user) { create(:user, :admin) }
-
     it { is_expected.to permit_action(:show) }
     it { is_expected.to permit_action(:fulfill) }
   end
 
-  context "when user is another user" do
-    let(:user) { create(:user) }
-
-    it { is_expected.not_to permit_action(:show) }
-    it { is_expected.not_to permit_action(:fulfill) }
-  end
-
   describe OrderPolicy::Scope do
     let(:admin) { create(:user, :admin) }
-    let(:regular_user) { create(:user) }
-    let!(:user_order) { create(:order, user: regular_user) }
-    let!(:other_order) { create(:order) }
+    let!(:own_order) { create(:order, user: admin) }
+    let!(:other) { create(:order) }
 
-    it "returns all orders for admin" do
-      scope = described_class.new(admin, Order).resolve
-      expect(scope).to include(user_order, other_order)
-    end
-
-    it "returns only own orders for regular user" do
-      scope = described_class.new(regular_user, Order).resolve
-      expect(scope).to contain_exactly(user_order)
+    it "admin sees all" do
+      expect(described_class.new(admin, Order).resolve).to include(own_order, other)
     end
   end
 end
@@ -223,48 +135,32 @@ end
 ### Request Specs
 
 ```ruby
-# spec/requests/api/v1/orders_spec.rb
 RSpec.describe "Api::V1::Orders", type: :request do
-  let(:user) { create(:user) }
+  let(:user)  { create(:user) }
   let(:admin) { create(:user, :admin) }
 
   describe "GET /api/v1/orders" do
     it "returns paginated orders for the current user" do
       create_list(:order, 3, user: user)
-      create(:order) # another user's order
+      create(:order)
       get "/api/v1/orders", headers: auth_headers(user)
-
       expect(response).to have_http_status(:ok)
       expect(json_response["data"].size).to eq(3)
     end
   end
 
   describe "POST /api/v1/orders/:id/fulfill" do
-    let(:order) { create(:order, :confirmed, :with_order_items) }
+    let(:order) { create(:order, :confirmed) }
 
-    context "as admin" do
-      it "fulfills the order" do
-        post "/api/v1/orders/#{order.id}/fulfill", headers: auth_headers(admin)
-
-        expect(response).to have_http_status(:ok)
-        expect(order.reload.status).to eq("processing")
-      end
+    it "admin can fulfill" do
+      post "/api/v1/orders/#{order.id}/fulfill", headers: auth_headers(admin)
+      expect(response).to have_http_status(:ok)
+      expect(order.reload.status).to eq("processing")
     end
 
-    context "as order owner" do
-      it "returns forbidden" do
-        post "/api/v1/orders/#{order.id}/fulfill", headers: auth_headers(order.user)
-        expect(response).to have_http_status(:forbidden)
-      end
-    end
-
-    context "when order is not confirmed" do
-      let(:order) { create(:order, :pending) }
-
-      it "returns unprocessable entity" do
-        post "/api/v1/orders/#{order.id}/fulfill", headers: auth_headers(admin)
-        expect(response).to have_http_status(:unprocessable_entity)
-      end
+    it "owner gets 403" do
+      post "/api/v1/orders/#{order.id}/fulfill", headers: auth_headers(order.user)
+      expect(response).to have_http_status(:forbidden)
     end
   end
 end
@@ -272,123 +168,69 @@ end
 
 ### FactoryBot
 
-Bad - minimal factory without traits (forces inline overrides everywhere):
+State traits avoid inline overrides:
 
 ```ruby
-factory :order do
-  total { 99.99 }
-  status { :pending }
-end
-# Usage: create(:order, status: :confirmed, fulfilled_at: Time.current)
-```
-
-Good - factory with traits for each state:
-
-```ruby
-# spec/factories/orders.rb
 FactoryBot.define do
   factory :order do
     user
-    total { 99.99 }
+    total  { 99.99 }
     status { :pending }
 
-    trait :confirmed do
-      status { :confirmed }
-    end
-
-    trait :processing do
-      status { :processing }
-      fulfilled_at { Time.current }
-    end
-
-    trait :shipped do
-      status { :shipped }
-      fulfilled_at { 1.day.ago }
-    end
+    trait :confirmed  { status { :confirmed } }
+    trait :processing { status { :processing }; fulfilled_at { Time.current } }
+    trait :shipped    { status { :shipped };    fulfilled_at { 1.day.ago } }
 
     trait :with_order_items do
-      transient do
-        items_count { 3 }
-      end
-
-      after(:create) do |order, ctx|
-        create_list(:order_item, ctx.items_count, order: order)
-      end
+      transient { items_count { 3 } }
+      after(:create) { |order, ctx| create_list(:order_item, ctx.items_count, order: order) }
     end
   end
 end
 
-# Usage
-order = build_stubbed(:order)                          # fastest, no DB
-order = build(:order, :confirmed)                      # in-memory
-order = create(:order, :confirmed, :with_order_items)  # hits DB
+# Use
+build_stubbed(:order)                          # no DB
+build(:order, :confirmed)                      # in-memory
+create(:order, :confirmed, :with_order_items)  # hits DB
 ```
 
 ### shoulda-matchers
 
 ```ruby
 # spec/support/shoulda_matchers.rb
-Shoulda::Matchers.configure do |config|
-  config.integrate do |with|
-    with.test_framework :rspec
-    with.library :rails
-  end
+Shoulda::Matchers.configure do |c|
+  c.integrate { |w| w.test_framework :rspec; w.library :rails }
 end
 ```
 
 ### Test Database Isolation
 
-Prefer Rails' built-in transactional fixtures over the `database_cleaner` gem. System specs share the connection between the test thread and the Capybara server thread, so a single transaction works for JS-driven tests too:
+Prefer Rails transactional fixtures over `database_cleaner`. System specs share the connection between test thread and Capybara server thread, so one transaction works:
 
 ```ruby
-# spec/rails_helper.rb
-RSpec.configure do |config|
-  config.use_transactional_fixtures = true
-end
+RSpec.configure { |c| c.use_transactional_fixtures = true }
 ```
 
-Only reach for `database_cleaner-active_record` with the `:truncation` strategy if you have legitimate cross-connection state (e.g., a separate analytics DB written to inside the test) - and document why. Adding it preemptively trades speed for nothing on a modern Rails app.
+Reach for `database_cleaner-active_record` with `:truncation` only for legitimate cross-connection state (separate analytics DB).
 
-### Sidekiq Testing
-
-Bad - testing job execution without idempotency check:
+### Sidekiq
 
 ```ruby
-it "processes the order" do
-  Sidekiq::Testing.inline! do
-    described_class.perform_async(order.id)
-  end
-end
-```
-
-Good - testing both enqueue and execution with idempotency:
-
-```ruby
-# spec/support/sidekiq.rb
 require "sidekiq/testing"
-Sidekiq::Testing.fake! # default - jobs pushed to array
+Sidekiq::Testing.fake!  # default - jobs pushed to array
 
-# spec/jobs/shipment_notification_job_spec.rb
 RSpec.describe ShipmentNotificationJob, type: :job do
   let(:order) { create(:order, :processing) }
 
-  it "enqueues the job" do
-    expect {
-      described_class.perform_async(order.id)
-    }.to change(described_class.jobs, :size).by(1)
-  end
-
-  it "sends shipment notification email" do
-    expect {
-      described_class.new.perform(order.id)
-    }.to change { ActionMailer::Base.deliveries.count }.by(1)
+  it "enqueues" do
+    expect { described_class.perform_async(order.id) }
+      .to change(described_class.jobs, :size).by(1)
   end
 
   it "is idempotent - skips already-shipped orders" do
-    shipped_order = create(:order, :shipped)
-    expect {
-      described_class.new.perform(shipped_order.id)
-    }.not_to change { ActionMailer::Base.deliveries.count }
+    shipped = create(:order, :shipped)
+    expect { described_class.new.perform(shipped.id) }
+      .not_to change { ActionMailer::Base.deliveries.count }
   end
 end
 ```
@@ -397,38 +239,33 @@ end
 
 > See `rails-rake-task-patterns` for the task design rules these specs verify.
 
-Rake tasks are thin shells over services - the service spec owns behavioral coverage; the rake spec only proves wiring (ENV parsing, argument forwarding, exit behavior, prod confirmation gate).
-
-Setup: `Rails.application.load_tasks` once per suite, `task.reenable` after each example. Use `climate_control` to scope ENV per example.
+Tasks are thin shells over services - service spec owns behavioral coverage; rake spec verifies wiring (ENV, args, exit, prod gate). `Rails.application.load_tasks` once per suite; `task.reenable` after each example. `climate_control` for per-example ENV.
 
 ```ruby
-# spec/tasks/orders_rake_spec.rb
 RSpec.describe "orders:fulfill_pending" do
   before(:all) { Rails.application.load_tasks }
   let(:task) { Rake::Task["orders:fulfill_pending"] }
   after { task.reenable }
 
-  it "forwards DRY_RUN and BATCH_SIZE from ENV to the service" do
+  it "forwards DRY_RUN and BATCH_SIZE to the service" do
     expect(FulfillPendingOrders).to receive(:call)
       .with(dry_run: true, batch_size: 250)
-      .and_return(Result.success(processed: 0, skipped: 0))
+      .and_return(Result.success(processed: 0))
     ClimateControl.modify(DRY_RUN: "1", BATCH_SIZE: "250") { task.invoke }
   end
 
-  it "propagates service failures so cron sees a non-zero exit" do
+  it "propagates service failures so cron sees non-zero exit" do
     allow(FulfillPendingOrders).to receive(:call).and_raise(StandardError, "boom")
     expect { task.invoke }.to raise_error(StandardError, "boom")
   end
 end
 ```
 
-For tasks with a production confirmation gate, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` (which is what `abort` raises) when `CONFIRM` is unset.
+For production-gate tasks, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset (which is what `abort` raises).
 
-Notes: `invoke` runs prerequisites (so `:environment` loads); `execute` skips them. `reenable` is per-task - reenable each chained task separately.
+`invoke` runs prerequisites; `execute` skips them. `reenable` is per-task.
 
-### Test Helpers - `auth_headers` and `json_response`
-
-Request specs above reference `auth_headers(user)` and `json_response`. Define these once in `spec/support/request_helpers.rb` so every request spec uses the same setup:
+### Request Helpers
 
 ```ruby
 # spec/support/request_helpers.rb
@@ -438,29 +275,21 @@ module RequestHelpers
     { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
   end
 
-  def json_response
-    JSON.parse(response.body)
-  end
+  def json_response = JSON.parse(response.body)
 end
 
-RSpec.configure do |config|
-  config.include RequestHelpers, type: :request
-end
+RSpec.configure { |c| c.include RequestHelpers, type: :request }
 ```
 
-Adapt `auth_headers` to the project's auth strategy (Devise session, JWT, API key in header). The point is one helper, one canonical shape.
+Adapt `auth_headers` to the project's auth strategy. One helper, one canonical shape.
 
 ### Time Helpers
 
-Use Rails' built-in time helpers (no `timecop` gem needed). They auto-reset after each example when `ActiveSupport::Testing::TimeHelpers` is included:
+Built-in `ActiveSupport::Testing::TimeHelpers` auto-resets after each example. No `timecop` gem needed.
 
 ```ruby
-# spec/rails_helper.rb
-RSpec.configure do |config|
-  config.include ActiveSupport::Testing::TimeHelpers
-end
+RSpec.configure { |c| c.include ActiveSupport::Testing::TimeHelpers }
 
-# Usage
 it "expires after 7 days" do
   token = create(:reset_token)
   travel 8.days
@@ -475,53 +304,40 @@ it "stamps fulfilled_at" do
 end
 ```
 
-`travel`, `travel_to`, `travel_back`, and `freeze_time` cover all common time-test cases. Avoid `Time.now = ...` style stubs - they leak between examples.
-
-### N+1 Assertions in Specs
-
-Catch N+1 regressions at test time, not in production logs. Two approaches:
+### N+1 Assertions
 
 ```ruby
-# Bullet (raises in dev/test on detected N+1)
-# spec/rails_helper.rb
-config.before(:each) do
-  Bullet.enable = true
-  Bullet.raise = true
-  Bullet.start_request
-end
-config.after(:each) { Bullet.end_request }
+# Bullet: raise in dev/test on detected N+1
+config.before(:each) { Bullet.enable = true; Bullet.raise = true; Bullet.start_request }
+config.after(:each)  { Bullet.end_request }
 
-# Assert exact query count for a hot endpoint
+# Pin a query count
 require "active_record/query_recorder"
-
 it "loads index in 2 queries regardless of order count" do
   create_list(:order, 10, :with_order_items, user: user)
-  queries = ActiveRecord::QueryRecorder.new do
-    get "/api/v1/orders", headers: auth_headers(user)
-  end
-  expect(queries.count).to be <= 4 # one per: count, orders, items, products
+  queries = ActiveRecord::QueryRecorder.new { get "/api/v1/orders", headers: auth_headers(user) }
+  expect(queries.count).to be <= 4
 end
 ```
 
-Pin the query count; raising it requires an explicit decision in code review.
+Pinning the count means raising it requires an explicit decision in review.
 
 ### VCR / WebMock
 
 ```ruby
-# spec/support/vcr.rb
-VCR.configure do |config|
-  config.cassette_library_dir = "spec/cassettes"
-  config.hook_into :webmock
-  config.configure_rspec_metadata!
-  config.filter_sensitive_data("<API_KEY>") { ENV["API_KEY"] }
+VCR.configure do |c|
+  c.cassette_library_dir = "spec/cassettes"
+  c.hook_into :webmock
+  c.configure_rspec_metadata!
+  c.filter_sensitive_data("<API_KEY>") { ENV["API_KEY"] }
 end
 
-# Usage
-it "fetches data from API", vcr: { cassette_name: "api/fetch_data" } do
-  result = ExternalApi.fetch_data
-  expect(result).to be_present
+it "fetches data", vcr: { cassette_name: "api/fetch_data" } do
+  expect(ExternalApi.fetch_data).to be_present
 end
 ```
+
+Use one or the other per spec - cassettes + stubs interact confusingly. Default: WebMock for client unit specs, VCR for service/request specs that exercise the integration.
 
 ### Shared Examples
 
@@ -532,40 +348,31 @@ RSpec.shared_examples "a paginated endpoint" do
   end
 end
 
-# Usage
 it_behaves_like "a paginated endpoint"
 ```
 
-### let vs let!
+### `let` vs `let!`
 
-```ruby
-# let - lazy evaluated (only when referenced)
-let(:user) { create(:user) }
-
-# let! - eager evaluated (runs before each example)
-# Use when the record must exist even if not referenced in the test
-let!(:admin) { create(:user, :admin) }
-```
+`let` is lazy (evaluates on first reference). `let!` is eager (before each example). Use `let!` when the record must exist even if not referenced in the test.
 
 ## Output Format
 
-When generating tests, document coverage:
-
 ```
-Test Type: {Model | Service | Policy | Request | Job | System}
+Test Type: {Model | Service | Policy | Request | Job | System | Rake}
 File: spec/{type}/{path}_spec.rb
-Contexts: {list of context blocks - e.g., "happy path, not found, forbidden, validation failure"}
-Factories: {factory name with traits used}
+Contexts: {happy path, not found, forbidden, validation failure, ...}
+Factories: {name with traits}
 Assertions: {count} examples
 ```
 
 ## Avoid
 
-- Fixtures - use FactoryBot instead (more flexible, explicit)
-- Testing private methods - test through the public interface
-- `sleep` in tests - use `have_enqueued_job` or `Sidekiq::Testing`
-- Mystery guests - make test data explicit, not hidden in shared setup
-- Excessive mocking - mock boundaries (external APIs), not internal code
-- Controller specs - deprecated, use request specs (full stack, more realistic)
-- Missing policy specs - authorization bugs are among the most dangerous
-- Factories without traits for status fields - forces inline overrides that obscure test intent
+- Fixtures - use FactoryBot
+- Testing private methods
+- `sleep` in tests - use `have_enqueued_job` / `Sidekiq::Testing`
+- Mystery guests - explicit test data, not hidden in shared setup
+- Mocking internal code - mock boundaries only
+- Controller specs - use request specs
+- Missing policy specs (authorization bugs are among the most dangerous)
+- Factories without traits for status fields - inline overrides obscure intent
+- `Time.now =` stubs - leak between examples; use `travel` / `freeze_time`
