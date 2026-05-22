@@ -9,150 +9,124 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Python Security Review
 
-## Purpose
-
-Python-aware security review that names FastAPI `Depends`-based auth, OAuth2 / JWT (`python-jose`, `authlib`, `pyjwt`), Pydantic v2 validation, Django auth / DRF permission classes, ORM parameterization, password hashing (`passlib[bcrypt]`, `argon2-cffi`), and async context isolation idioms directly instead of routing through the generic backend security adapter. Produces findings with attack scenarios and concrete Python-specific remediations.
-
-This workflow is the stack-specific delegate of `task-code-review-security` for Python. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-security`. Names FastAPI `Depends`-based auth, OAuth2 / JWT (`python-jose`, `pyjwt`, `authlib`), Pydantic v2 validation, Django auth / DRF permission classes, ORM parameterization, and password hashing (`passlib[bcrypt]`, `argon2-cffi`) directly.
 
 ## When to Use
 
-- Reviewing a FastAPI or Django PR for security regressions
-- Pre-deployment hardening pass on auth, authz, file upload, payment, or PII-handling code
-- Periodic strong-validation and permission-class drift sweep across endpoints
-- Auditing an OAuth2 / JWT flow, a new DRF permission, or a new FastAPI security dependency
+- FastAPI or Django PR security regression review
+- Pre-deploy hardening pass on auth, authz, file upload, payment, or PII paths
+- Periodic validation / permission-class drift sweep
+- Auditing OAuth2 / JWT flow, new DRF permission, or new FastAPI security dependency
 
-**Not for:**
+**Not for:** performance (`task-python-review-perf`), general review (`task-python-review`), incident triage (`/task-oncall-start`).
 
-- Performance review (use `task-code-review-perf` or `task-python-review-perf`)
-- General code review (use `task-code-review` or `task-python-review`)
-- Production incident triage (use `/task-oncall-start`)
-
-**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+**Depth.** Always full. Security has cliff-edged consequences (auth bypass, RCE); scope by file, not by depth.
 
 ## Severity Rubric
 
-Use these definitions to keep severity consistent across runs - do not invent your own scale.
-
-| Severity     | Definition                                                                                                                                                                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path, secrets / signing keys exposed in source. Must fix before deploy; blocks merge.                                                                   |
-| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata or internal services, mass assignment of privilege-bearing fields, missing authorization on user-data endpoints. Must fix before merge.                                     |
-| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS when a reverse proxy enforces origin), missing field-level constraints, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile. Should fix this PR or the next one. |
-| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                       |
+| Severity     | Definition                                                                                                                                            |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauth RCE, auth bypass, mass exfiltration, working SQLi, secrets / signing keys in source, `pickle.loads` / `eval` on untrusted input. Blocks merge. |
+| **High**     | Authenticated priv-esc, IDOR on sensitive data, SSRF to metadata / internal, mass assignment of privilege fields, missing authz on user-data.         |
+| **Medium**   | Hardening gap with mitigating control elsewhere, missing field constraints, weak rate limit on non-critical endpoint, debug exposure on non-prod.     |
+| **Low**      | Defense-in-depth, dependency advisory below actively-exploited threshold, hardening without concrete current attack.                                  |
 
 ## Invocation
 
 Mirrors `task-code-review-security`:
 
-| Invocation                              | Meaning                                                                                               |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-python-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-python-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-python-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                              | Meaning                                                |
+| --------------------------------------- | ------------------------------------------------------ |
+| `/task-python-review-security`          | Current branch vs base; fails fast on trunk            |
+| `/task-python-review-security <branch>` | `<branch>` vs its base (3-dot)                         |
+| `/task-python-review-security pr-<N>`   | PR head in local branch `pr-<N>` (user fetches first)  |
 
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-security`, Step 2 is skipped and pre-read artifacts are reused.
 
 ## Workflow
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-python-review` (parent already detected Python), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Python. If invoked as a delegate (parent already detected), accept pre-confirmed stack. If not Python, stop and route to `/task-code-review-security`.
 
-Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for the Summary block. Each step that follows branches on this signal where the idiom differs.
+Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed`. Steps branch on this where idioms differ.
 
 ### Step 2 - Resolve the Diff Under Review
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check` with the user's argument. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip entirely as a subagent when parent passes the handle.
 
-If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+If `review-precondition-check` fails fast, surface verbatim and stop. Never run state-changing git from this workflow.
 
 ### Step 3 - Read the Security Surface
 
-Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
+Open files that actually wire security so findings cite real lines:
 
-**FastAPI surface:**
+- **FastAPI**: every `Depends(get_current_user)` / `OAuth2PasswordBearer` / `HTTPBearer` and its users; changed routers / endpoints (security deps, response models, body schemas); Pydantic v2 schemas with `Field(...)` and `@field_validator` / `@model_validator`; `app/core/security.py` / `auth.py`, JWT signing config; `pyproject.toml` for `python-jose`, `pyjwt`, `authlib`, `passlib`, `argon2-cffi`; CORS, trusted hosts, HTTPS-redirect middleware; `.env.example` / settings for `SECRET_KEY`, JWT algorithm, allowed hosts.
+- **Django**: `settings.py` (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `SECURE_*`, `CSRF_COOKIE_*`, `SESSION_COOKIE_*`, `AUTH_PASSWORD_VALIDATORS`); changed `views.py` / `viewsets.py` (`permission_classes`, `authentication_classes`); changed serializers (`read_only_fields`, `write_only_fields`, validators); URL conf, admin config; `requirements.txt` for `djangorestframework`, `djangorestframework-simplejwt`, `django-allauth`, `django-axes`.
 
-- Every `Depends(get_current_user)` / `OAuth2PasswordBearer` / `HTTPBearer` definition and the modules that use them
-- Every changed router / endpoint - look for `Depends(...)` security dependencies, response models, request body schemas
-- Every Pydantic v2 schema with `Field(...)` constraints and `@field_validator` / `@model_validator`
-- `app/core/security.py` / `app/core/auth.py` / token signing config; `pyproject.toml` for `python-jose`, `pyjwt`, `authlib`, `passlib`, `argon2-cffi`
-- Middleware config - CORS, trusted hosts, HTTPS redirect
-- `.env.example` / settings module for SECRET_KEY, JWT algorithm, allowed hosts
-
-**Django surface:**
-
-- `settings.py` - `SECRET_KEY` source, `DEBUG`, `ALLOWED_HOSTS`, `SECURE_*` flags, `CSRF_COOKIE_*`, `SESSION_COOKIE_*`, `AUTH_PASSWORD_VALIDATORS`
-- Every changed `views.py` / `viewsets.py` - `permission_classes`, `authentication_classes`, custom permission classes
-- Every changed serializer - `read_only_fields`, `write_only_fields`, custom validators
-- URL conf for new endpoints; admin config
-- `pyproject.toml` / `requirements.txt` for `django-rest-framework`, `djangorestframework-simplejwt`, `django-allauth`, `django-axes`
-
-When the diff removes a permission class or relaxes `permission_classes`, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
+When the diff removes a permission class or relaxes `permission_classes`, `git log -p` prior revision to confirm what was protected.
 
 ### Step 4 - OWASP Triage (Python Lens)
 
-This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff (e.g., `Broken Access Control: yes`, `Injection: yes`, `SSRF: yes`, `Insecure Design: no`). Steps 5-9 then produce the actual findings; do **not** repeat them here.
+Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findings go in Steps 5-9; do not duplicate here.
 
-The triage output funnels which downstream steps must run carefully versus which can be fast-passed. If a category shows no signal, explicitly state `No signal in diff` for that category in the Summary.
-
-| Risk                          | Python-specific check                                                                                                                                                                                      |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Broken Access Control         | Every endpoint declares authorization explicitly. FastAPI: `Depends(require_role("admin"))` or `Depends(get_current_user)` chained. Django: `permission_classes = [IsAuthenticated, ...]` (never empty).   |
-| Injection                     | SQLAlchemy uses `select(...).where(Model.col == value)` parameterized; no string concat. Django ORM uses `.filter(col=value)`. Raw SQL via `text(":param")` / `cursor.execute(sql, params)`.               |
-| Cryptographic Failures        | `passlib[bcrypt]` or `argon2-cffi` for passwords. Django auto-uses PBKDF2 / Argon2 via `PASSWORD_HASHERS`. Never `hashlib.md5` / `hashlib.sha1` for auth.                                                  |
-| Security Misconfiguration     | `DEBUG=False` in prod; `ALLOWED_HOSTS` explicit; `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`. FastAPI: `TrustedHostMiddleware`, `HTTPSRedirectMiddleware`. |
-| SSRF                          | `httpx.AsyncClient` / `requests.get` validate hostnames against an allowlist before request; no user-controlled URL passed unvalidated.                                                                    |
-| XSS                           | Jinja2 / Django templates auto-escape - `|safe` / `mark_safe` on user input flagged. FastAPI JSON responses set `Content-Type: application/json`.                                                          |
-| Insecure Design (A04)         | Default-deny: FastAPI dependency raises 401 unless authenticated; Django `DEFAULT_PERMISSION_CLASSES = ["rest_framework.permissions.IsAuthenticated"]`.                                                    |
-| Vulnerable Components (A06)   | `pip-audit`, `safety check`, or `uv pip audit` clean; Dependabot / Renovate active. No pinned-but-stale package with known CVE.                                                                            |
-| Data Integrity Failures (A08) | `pickle.loads` / `yaml.load` (without `SafeLoader`) on untrusted input flagged. JSON dumps / `orjson` is safe. `eval` / `exec` on input is a critical finding.                                             |
-| Logging & Monitoring (A09)    | Logger does not log `password`, `token`, `secret`, `authorization`. Pydantic schemas use `Field(..., repr=False)` for sensitive fields. Sentry `before_send` strips PII. Auth events logged.               |
+| Risk                          | Python-specific check                                                                                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broken Access Control         | Every endpoint declares authz: FastAPI `Depends(require_role("admin"))` / `Depends(get_current_user)` chained; Django `permission_classes = [IsAuthenticated, ...]` (never empty).                          |
+| Injection                     | SQLAlchemy `select(...).where(Model.col == value)` parameterized; Django ORM `.filter(col=value)`; raw via `text(":param")` / `cursor.execute(sql, params)`. No string concat.                              |
+| Cryptographic Failures        | `passlib[bcrypt]` (rounds >=12) or `argon2-cffi`; Django auto via `PASSWORD_HASHERS`. Never `hashlib.md5` / `sha1` for auth.                                                                                |
+| Security Misconfiguration     | `DEBUG=False` in prod; `ALLOWED_HOSTS` explicit; `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`. FastAPI: `TrustedHostMiddleware`, `HTTPSRedirectMiddleware`.   |
+| SSRF                          | `httpx.AsyncClient` / `requests.get` validate hostnames against allowlist; reject RFC1918, link-local, metadata pre-request.                                                                                |
+| XSS                           | Jinja2 / Django templates auto-escape - `|safe` / `mark_safe` on user input flagged. FastAPI JSON sets correct content type.                                                                                |
+| Insecure Design               | Default-deny: FastAPI dep raises 401 unless authenticated; Django `DEFAULT_PERMISSION_CLASSES = ["rest_framework.permissions.IsAuthenticated"]`.                                                            |
+| Vulnerable Components         | `pip-audit` / `safety check` / `uv pip audit` clean; Dependabot / Renovate active.                                                                                                                          |
+| Data Integrity Failures       | `pickle.loads` / `yaml.load` (without `SafeLoader`) on untrusted = critical RCE. `eval` / `exec` on input = critical.                                                                                       |
+| Logging & Monitoring          | Logger never logs `password` / `token` / `secret` / `authorization`. Pydantic `Field(..., repr=False)` on sensitive fields. Sentry `before_send` strips PII.                                                |
 
 ### Step 5 - Authentication
 
 **FastAPI:**
 
-- [ ] **JWT signing**: HS256 secret in env / Vault, never committed to repo; or RS256 with key pair (preferred for cross-service). `python-jose` or `pyjwt` - confirm version not vulnerable to known `alg=none` / key-confusion CVEs
-- [ ] **`alg: none`** rejected: decoder declares `algorithms=["HS256"]` (or `["RS256"]`) explicitly; never `algorithms=None` or unspecified
-- [ ] **JWT issuer / audience** validated (`options={"verify_aud": True, "verify_iss": True}`); not just signature
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; refresh tokens revocable via DB / Redis denylist
-- [ ] **Password hashing**: `passlib[bcrypt]` `CryptContext(schemes=["bcrypt"])`, or `argon2-cffi` direct. Cost factor reviewed (bcrypt rounds ≥ 12)
-- [ ] **`OAuth2PasswordBearer`** wired correctly; `tokenUrl` matches the issuer endpoint; `auto_error=True` so missing tokens 401 rather than silently allowing
-- [ ] **Brute-force protection**: rate limiting on `/login`, `/token`, `/password-reset` via `slowapi` or upstream LB
-- [ ] **No `print(token)` / `log.info(token)`** that leaks the JWT to logs
+- [ ] **JWT signing**: HS256 secret in env / Vault, or RS256 key pair (preferred cross-service); `python-jose` / `pyjwt` version not vulnerable to `alg=none` / key-confusion CVEs
+- [ ] **`alg: none` rejected**: decoder declares `algorithms=["HS256"]` (or `["RS256"]`) explicitly; never `algorithms=None` or unspecified
+- [ ] **`issuer` / `audience` verified** (`options={"verify_aud": True, "verify_iss": True}`), not just signature
+- [ ] **Access token lifetime** short (5-15 min); refresh rotation with revocable DB / Redis denylist
+- [ ] **Password hashing**: `passlib[bcrypt]` `CryptContext(schemes=["bcrypt"])` (rounds >=12) or `argon2-cffi`
+- [ ] **`OAuth2PasswordBearer`** `tokenUrl` matches issuer endpoint; `auto_error=True` so missing token 401s
+- [ ] **Brute-force protection**: rate limit on `/login`, `/token`, `/password-reset` via `slowapi` or upstream LB
+- [ ] **No JWT in logs** (`print(token)` / `log.info(token)`)
 
 **Django:**
 
-- [ ] **Password hashing**: `PASSWORD_HASHERS` ordered with `Argon2PasswordHasher` first (preferred) or `PBKDF2PasswordHasher` (default acceptable)
-- [ ] **`AUTH_PASSWORD_VALIDATORS`** include length + common-password + similarity validators
-- [ ] **JWT (`djangorestframework-simplejwt`)**: `SIGNING_KEY` from env / Vault; `ROTATE_REFRESH_TOKENS=True`; `BLACKLIST_AFTER_ROTATION=True`; `ALGORITHM="HS256"` or `"RS256"` explicit
-- [ ] **Session cookies**: `SESSION_COOKIE_SECURE=True`, `SESSION_COOKIE_HTTPONLY=True`, `SESSION_COOKIE_SAMESITE="Lax"` (or `"Strict"` for sensitive apps)
-- [ ] **`django-axes` or equivalent**: brute-force lockout configured; not silently disabled in tests bleeding into prod settings
-- [ ] **Password reset tokens**: `default_token_generator` (Django built-in, time-limited) - not a custom generator unless reviewed
+- [ ] **`PASSWORD_HASHERS`** ordered with `Argon2PasswordHasher` first (preferred) or `PBKDF2PasswordHasher`
+- [ ] **`AUTH_PASSWORD_VALIDATORS`** include length + common-password + similarity
+- [ ] **`djangorestframework-simplejwt`**: `SIGNING_KEY` from env / Vault; `ROTATE_REFRESH_TOKENS=True`; `BLACKLIST_AFTER_ROTATION=True`; `ALGORITHM` explicit
+- [ ] **Session cookies**: `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_HTTPONLY`, `SESSION_COOKIE_SAMESITE="Lax"` (or `"Strict"`)
+- [ ] **`django-axes`** brute-force lockout configured; not disabled in test settings bleeding into prod
+- [ ] **Password reset**: `default_token_generator` (time-limited) - custom generators flagged unless reviewed
 
 ### Step 6 - Authorization
 
 **FastAPI:**
 
-- [ ] **Authorization drift sweep**: every new endpoint added in the diff has a security dependency (`Depends(get_current_user)` or `Depends(require_role(...))`)
+- [ ] **Authz drift sweep**: every new endpoint has a security dependency (`Depends(get_current_user)` or `Depends(require_role(...))`)
 - [ ] **Role / scope checks** centralized in a dependency, not inline `if user.role != "admin": raise HTTPException(403)` scattered in handlers
-- [ ] **IDOR**: lookups scope through the principal (`session.scalar(select(Order).where(Order.id == id, Order.owner_id == user.id))`) rather than `get_or_404(id)` then a separate ownership check
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenant_id` at the repository layer (not just at the router); SQLAlchemy `with_loader_criteria` for global filters
-- [ ] **CORS**: `CORSMiddleware` `allow_origins` explicit (not `["*"]` for credentialed requests); `allow_methods` and `allow_headers` minimal
-- [ ] **CSRF**: not required for stateless JWT-bearer APIs; required for cookie-session apps - confirm via auth model
+- [ ] **IDOR**: scope lookups through principal (`session.scalar(select(Order).where(Order.id == id, Order.owner_id == user.id))`) rather than `get_or_404(id)` + separate ownership check
+- [ ] **Tenant isolation**: scope by `tenant_id` at repository layer (SQLAlchemy `with_loader_criteria` for global filters), not just router
+- [ ] **CORS**: `CORSMiddleware` `allow_origins` allowlist (never `["*"]` for credentialed); minimal methods / headers
+- [ ] **CSRF**: not required for stateless JWT-bearer; required for cookie-session - confirm via auth model
 
 **Django / DRF:**
 
 - [ ] **`permission_classes`** declared on every ViewSet / view; `DEFAULT_PERMISSION_CLASSES` defaults to `IsAuthenticated`
-- [ ] **Object-level permissions** via `has_object_permission` for detail / update / delete endpoints - prevents IDOR on `/orders/<id>/`
-- [ ] **`get_queryset()`** scopes by `request.user` for user-owned resources; never returns `.all()` unfiltered for non-admin users
-- [ ] **`@permission_classes([])` or `permission_classes = []`** flagged - explicit empty list is "anyone can access"
-- [ ] **`@action` decorators** declare their own `permission_classes` if they differ from the ViewSet's
+- [ ] **Object-level permissions** via `has_object_permission` for detail / update / delete - prevents IDOR on `/orders/<id>/`
+- [ ] **`get_queryset()`** scopes by `request.user` for owned resources; never `.all()` unfiltered for non-admin
+- [ ] **`permission_classes = []`** flagged - explicit empty list is "anyone can access"
+- [ ] **`@action` decorators** declare their own `permission_classes` if they differ from ViewSet's
 - [ ] **Django admin**: superuser-only by default; sensitive models check `has_change_permission` / `has_delete_permission`
 - [ ] **CSRF**: `CsrfViewMiddleware` enabled (default); `@csrf_exempt` flagged with rationale; DRF `SessionAuthentication` enforces CSRF, `TokenAuthentication` / JWT does not (by design)
 
@@ -160,99 +134,57 @@ The triage output funnels which downstream steps must run carefully versus which
 
 **FastAPI / Pydantic v2:**
 
-- [ ] **Every `@router.post` / `.put` / `.patch`** has a Pydantic v2 schema as the request body type - never `dict` / `Any` / raw `Request.json()` without validation
+- [ ] **`model_config = ConfigDict(extra="forbid")`** on input schemas - without it, unknown fields are silently dropped and exploitation is masked
+- [ ] **Every `@router.post` / `.put` / `.patch`** has a Pydantic schema as body type - never `dict` / `Any` / raw `Request.json()`
 - [ ] **Field constraints**: `Field(min_length=..., max_length=..., gt=..., regex=...)` on every user-supplied field
-- [ ] **`@field_validator`** for cross-field or business rules (e.g., "end date after start date")
-- [ ] **No privilege-bearing fields in user-facing input schemas**: `role`, `is_admin`, `owner_id`, `user_id`, `tenant_id`, `is_active`, `verified` - server-set only. If present in `OrderCreate`, reject and require admin-only path with a separate schema
-- [ ] **`model_config = ConfigDict(extra="forbid")`** on input schemas - rejects unknown fields rather than silently dropping them; without this, an attacker submitting unknown fields gets 200 OK and the field is ignored, masking exploitation attempts
-- [ ] **`response_model`** declared - filters output fields and prevents accidental leakage of `password_hash`, `internal_notes`, etc.
+- [ ] **`@field_validator`** for cross-field rules
+- [ ] **No privilege fields in input schemas**: `role`, `is_admin`, `owner_id`, `user_id`, `tenant_id`, `is_active`, `verified` - server-set only; admin path uses a separate schema
+- [ ] **`response_model`** declared - filters output, prevents leaking `password_hash`, `internal_notes`
 
 **Django / DRF:**
 
-- [ ] **`fields`** declared explicitly on every `ModelSerializer`; `fields = "__all__"` flagged - leaks every column including audit / internal fields
-- [ ] **`read_only_fields`** include server-controlled fields (`id`, `created_at`, `updated_at`, `owner`, `status`)
-- [ ] **`write_only_fields`** include sensitive fields that go in but never come out (`password`)
-- [ ] **No `instance.__dict__.update(request.data)`** patterns - bypasses serializer validation entirely
-- [ ] **`SerializerMethodField`** used for computed read-only fields, not as a mass-assignment workaround
+- [ ] **`fields` declared explicitly** on every `ModelSerializer`; `fields = "__all__"` flagged - leaks audit / internal columns
+- [ ] **`read_only_fields`** cover server-controlled fields (`id`, `created_at`, `updated_at`, `owner`, `status`)
+- [ ] **`write_only_fields`** cover sensitive write-only fields (`password`)
+- [ ] **No `instance.__dict__.update(request.data)`** - bypasses serializer validation entirely
+- [ ] **`SerializerMethodField`** for computed read-only fields, not as a mass-assignment workaround
 
 **Both:**
 
-- [ ] **File uploads**:
-  - File type validated by content (`python-magic`, `puremagic`), not just `content_type` header (client-controlled) or extension
-  - Per-file size limit enforced (FastAPI: middleware or manual `UploadFile.read()` with size check; Django: `DATA_UPLOAD_MAX_MEMORY_SIZE`, `FILE_UPLOAD_MAX_MEMORY_SIZE`)
-  - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized via `pathlib.Path` and base-directory check (`(base / name).resolve().is_relative_to(base.resolve())`) before write
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: `Path(base) / Path(user_input)` followed by `.resolve()` and base-directory check; never `os.path.join(base, user_input)` without normalization
-- [ ] **Process execution**: `subprocess.run([...])` with arg list (not `shell=True` and not `subprocess.run(f"... {user_input} ...", shell=True)`); strict allowlist of allowed binaries
+- [ ] **File uploads**: type validated by content (`python-magic` / `puremagic` magic bytes), not `content_type` header or extension; per-file size limit (FastAPI middleware or `UploadFile.read()` size check; Django `DATA_UPLOAD_MAX_MEMORY_SIZE` / `FILE_UPLOAD_MAX_MEMORY_SIZE`); stored outside webroot with `Content-Disposition: attachment`; filename sanitized via `(base / name).resolve().is_relative_to(base.resolve())`; virus scan or accepted-risk documented
+- [ ] **Path traversal**: `Path(base) / Path(user_input)` then `.resolve()` + base-directory check; never `os.path.join(base, user_input)` without normalization
+- [ ] **Process exec**: `subprocess.run([...])` arg list, never `shell=True` with user input; allowlist binaries
 
 ### Step 8 - Common Python Vulnerability Patterns
 
-- [ ] **`pickle.loads` / `yaml.load(...)` without `Loader=SafeLoader`** on untrusted input - critical RCE vector
-- [ ] **`eval` / `exec`** on user input - any occurrence is a critical finding regardless of "controlled" framing
-- [ ] **`requests.get(verify=False)`** / `httpx.AsyncClient(verify=False)` flagged unless behind a documented test fixture
-- [ ] **Open redirect**: `RedirectResponse(url=user_input)` / `HttpResponseRedirect(user_input)` validated against an allowlist or relative-path check
-- [ ] **SQL injection via dynamic ORDER BY**: `select(...).order_by(text(user_field))` - validate `user_field` against an allowlist; for Django, `Order.objects.order_by(user_input)` similarly
-- [ ] **Server-side template injection**: Jinja2 `Template(user_input).render(...)` is a critical RCE vector; templates must come from disk, not request bodies
-- [ ] **`SECRET_KEY` / JWT signing key** sourced from env / Vault, never committed; rotated when leaked
-- [ ] **Debug toolbar / Django debug**: `DEBUG=True` flagged in any non-dev settings file; debug toolbar dependency flagged in `requirements.txt` for prod builds
-- [ ] **Swagger UI / `/docs`**: gated behind auth in prod, or disabled (`docs_url=None` for FastAPI; DRF `SchemaView` permission)
-- [ ] **SSRF depth**: when a user-controlled value flows into an outbound URL or hostname, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). `urllib.parse` quirks: backslash, unicode normalization, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks.
-- [ ] **Celery serializer**: `task_serializer` / `accept_content` set to `["json"]` only - never `pickle`. A worker accepting `pickle` from any source that can publish to the broker is a remote code execution by design.
-- [ ] **ReDoS via user-supplied regex**: `Field(pattern=...)` / DRF `RegexValidator(...)` constructed from user input or config-driven patterns can hang the event loop on adversarial inputs. Compile patterns once at startup; never accept patterns from request bodies; bound matches with `re.match` plus a length cap, not unbounded `re.search`.
-- [ ] **HTTP request smuggling / desync** (`gunicorn -k uvicorn` behind nginx / ALB): confirm reverse proxy and worker agree on `Transfer-Encoding` / `Content-Length` handling; flag when a new ingress path or middleware changes header forwarding without a corresponding proxy-side update.
-- [ ] **Cryptographic randomness**: any token, reset code, session ID, password-reset PIN, or signed payload nonce uses `secrets` module (`secrets.token_urlsafe(32)`, `secrets.choice(...)`, `secrets.token_hex(...)`) - **never** `random.randint` / `random.choice` / `uuid.uuid1` (predictable from MAC + timestamp). `random` is seeded predictably and can be brute-forced once a few outputs are observed. `uuid.uuid4` is acceptable for non-security-critical IDs but `secrets.token_urlsafe` is preferred for security-critical paths.
-- [ ] **Trusted proxy / forwarded-header safety**: when the app reads `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Proto`, or `Host` for audit logging, rate limiting, fraud signals, or origin checks, the value must come from a trusted proxy chain - not from the raw header. FastAPI / uvicorn: `--forwarded-allow-ips=<LB_IP_RANGE>` and read `request.client.host` after `ProxyHeadersMiddleware` parses it; Django: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` only when behind a trusted LB, and use `django-ipware` with explicit `proxy_count` / `proxy_trusted_ips`. Reading the header naively (`request.headers.get("X-Real-IP")`) on a non-proxied or misconfigured deployment lets any client spoof the source IP and bypass rate limits / poison audit logs.
+- [ ] **`pickle.loads` / `yaml.load` without `SafeLoader`** on untrusted input - critical RCE
+- [ ] **`eval` / `exec` on user input** - critical regardless of "controlled" framing
+- [ ] **`requests.get(verify=False)` / `httpx.AsyncClient(verify=False)`** flagged unless documented test fixture
+- [ ] **Open redirect**: `RedirectResponse(url=user_input)` / `HttpResponseRedirect(user_input)` validated against allowlist or relative-path check
+- [ ] **SQL injection via dynamic ORDER BY**: `order_by(text(user_field))` / `Order.objects.order_by(user_input)` - allowlist `user_field`
+- [ ] **SSTI**: `Jinja2.Template(user_input).render(...)` = critical RCE; templates from disk only
+- [ ] **`SECRET_KEY` / JWT signing key** from env / Vault, never committed; rotated on leak
+- [ ] **Debug exposure**: `DEBUG=True` flagged in any non-dev settings; debug toolbar dep flagged in prod builds
+- [ ] **Swagger / `/docs`**: gated behind auth in prod, or disabled (FastAPI `docs_url=None`; DRF `SchemaView` permission)
+- [ ] **SSRF depth**: allowlist rejects (a) cloud metadata `169.254.169.254` + IPv6 `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918 (`10/8`, `172.16/12`, `192.168/16`), (d) link-local `169.254/16`. Re-resolve host at request time (DNS rebinding bypasses string-only allowlists). Watch `urllib.parse` quirks: backslash, unicode, `::ffff:127.0.0.1`
+- [ ] **Celery serializer**: `task_serializer` / `accept_content` set to `["json"]` only - never `pickle`. A worker accepting `pickle` from any source that can publish to the broker is RCE by design
+- [ ] **ReDoS**: `Field(pattern=...)` / DRF `RegexValidator(...)` built from user / config input hangs the event loop. Compile patterns once at startup; never accept patterns from request bodies; bound with `re.match` + length cap
+- [ ] **HTTP smuggling / desync** (`gunicorn -k uvicorn` behind nginx / ALB): confirm proxy and worker agree on `Transfer-Encoding` / `Content-Length`; flag new ingress paths or middleware that change header forwarding without proxy-side update
+- [ ] **Cryptographic randomness**: tokens, reset codes, session IDs, nonces use `secrets` (`secrets.token_urlsafe(32)`, `secrets.choice`, `secrets.token_hex`) - **never** `random.*` (predictable seed, brute-forceable) or `uuid.uuid1` (leaks MAC + timestamp). `uuid.uuid4` OK for non-security IDs
+- [ ] **Trusted proxy headers**: when reading `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto` / `Host` for audit, rate limiting, fraud, or origin checks, value must come from a trusted proxy chain. FastAPI / uvicorn: `--forwarded-allow-ips=<LB_RANGE>` then `request.client.host` after `ProxyHeadersMiddleware`. Django: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` only behind a trusted LB; `django-ipware` with explicit `proxy_count` / `proxy_trusted_ips`. Naive header reads let any client spoof source IP and poison logs / bypass rate limits
 
 ### Step 9 - Data Protection
 
-- [ ] **PII / sensitive fields encrypted** at rest (`cryptography` Fernet, `django-fernet-fields`, or DB-native column encryption)
-- [ ] **Logging filter** masks sensitive keys (`password`, `token`, `credit_card`, `ssn`, `api_key`); Pydantic `Field(repr=False)` and Django serializer `write_only_fields` reinforce
-- [ ] **No sensitive data in URLs** (use POST body, headers, or signed tokens) - URLs hit logs, browser history, referer headers
-- [ ] **TLS enforcement**: HTTPS-only at LB; HSTS via `SECURE_HSTS_SECONDS` / FastAPI middleware
-- [ ] **Database backups** encrypted; access controlled
-- [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager), never `settings.py` / `config.py` literals committed; `.env` gitignored
-
+- [ ] **PII encrypted at rest** (`cryptography` Fernet, `django-fernet-fields`, or DB-native column encryption)
+- [ ] **Logging filter** masks sensitive keys (`password`, `token`, `credit_card`, `ssn`, `api_key`); Pydantic `Field(repr=False)` and DRF `write_only_fields` reinforce
+- [ ] **No sensitive data in URLs** (use POST body, headers, signed tokens) - URLs hit logs, history, referer
+- [ ] **TLS**: HTTPS-only at LB; HSTS via `SECURE_HSTS_SECONDS` / FastAPI middleware
+- [ ] **DB backups encrypted**; access controlled
+- [ ] **Secrets** from Vault / AWS SM / GCP SM; never `settings.py` / `config.py` literals; `.env` gitignored
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Rules
-
-- Always validate at system boundaries (FastAPI request body, Celery task args, external API responses, message payloads)
-- Never disable CSRF or permission classes to silence a failing test - fix the test
-- Never widen `permission_classes` (e.g., from `[IsAdminUser]` to `[]`) without an explicit security review note
-- Log security events (login failure, permission denied, validation failure) without sensitive data
-- Follow principle of least privilege - default-deny via `IsAuthenticated` / `Depends(get_current_user)`
-
-## Self-Check
-
-**Verifiable from the diff (must check):**
-
-- [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Security surface (auth dependencies / settings, changed routers / views, schemas / serializers, middleware, dependencies) read directly before applying checklists; prior revision consulted when permission classes or security dependencies were removed
-- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] **Authorization drift sweep**: every new endpoint in the diff has a matching security dependency or `permission_classes`
-- [ ] Pydantic v2 / DRF serializer validation reviewed; mass-assignment fields and `extra="forbid"` / `read_only_fields` confirmed for changed schemas
-- [ ] File upload, path traversal, and process-execution checks run if the diff touches uploads / file paths / `subprocess`
-- [ ] `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL via `text(...)` / `cursor.execute`, SSL-verify-False, dynamic ORDER BY checked when the diff touches them
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
-- [ ] Every finding includes an attack scenario, "regression risk" rationale (for test-coverage gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
-
-**Requires repo / infra access (check if visible, otherwise note as "could not verify from diff alone - flag for separate audit"):**
-
-- [ ] Authentication step run for the auth mechanism in use (FastAPI OAuth2 / JWT or Django session / DRF JWT) - applies when the auth module is in scope
-- [ ] CSRF, CORS, rate limiting, debug-toolbar / `/docs` exposure verified - applies when middleware / settings are in scope
-- [ ] Password hashing config reviewed (bcrypt rounds ≥ 12, Argon2 preferred) - skip if `CryptContext` config not in diff
-- [ ] Sentry `before_send` strips PII - skip if Sentry init module not in diff
-- [ ] `pip-audit` / `safety check` clean - run separately; this workflow does not execute tools
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled review to file and print the confirmation line.
 
 ## Output Format
 
@@ -265,11 +197,9 @@ Write the fully assembled review output to the report file before ending the ses
 **Authorization:** FastAPI Depends-based | DRF permission_classes | Custom
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
-[2-3 sentence assessment of the overall security posture, calling out any Python-specific risks like missing `permission_classes`, `extra="forbid"` absent on input schemas, `pickle.loads` on untrusted input, or exposed `/docs` in prod.]
+[2-3 sentence assessment calling out Python-specific risks: missing `permission_classes`, absent `extra="forbid"`, `pickle.loads` on untrusted input, exposed `/docs` in prod.]
 
 ## OWASP Triage
-
-_The Step 4 verdicts. One row per category, `yes` (signal present, see Findings) or `no signal in diff`._
 
 | Category                  | Verdict                 |
 | ------------------------- | ----------------------- |
@@ -288,51 +218,61 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 ### Critical
 
-- **Location:** [file:line, or comma-separated list for multi-site findings: `schemas/order.py:12-19, routers/orders.py:54`]
-- **Issue:** [vulnerability described in Python terms - e.g., "OrderCreate schema lacks `extra='forbid'`; client can submit `{\"owner_id\": 999}` and override the server-assigned owner via mass assignment"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough - e.g., "Attacker POSTs `{\"items\": [...], \"owner_id\": 1}` and reassigns the order to user 1"; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings like missing CORS / TrustedHost. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
-- **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies, e.g., "High - authenticated privilege escalation"]
-- **Fix:** [specific Python remediation with code example - `model_config = ConfigDict(extra='forbid')`, `read_only_fields`, `Depends(require_role)`, etc.]
+- **Location:** [file:line]
+- **Issue:** [vulnerability in Python terms - e.g., "OrderCreate schema lacks `extra='forbid'`; client submits `{\"owner_id\": 999}` and overrides server-assigned owner via mass assignment"]
+- **Attack scenario:** [pick one and label: (a) concrete exploit walkthrough; (b) "Regression risk: ..." for test / monitoring gaps; (c) "Topology-dependent: ..." for infra-flavored. Do NOT invent exploits when the realistic threat is regression or topology.]
+- **Severity rationale:** [tier] per rubric - [which clause applies]
+- **Fix:** [specific Python remediation with code - `ConfigDict(extra='forbid')`, `read_only_fields`, `Depends(require_role)`, etc.]
 
-### High
+### High / Medium / Low
 
-[Same structure]
-
-### Medium
-
-[Same structure]
-
-### Low
-
-[Same structure]
-
-_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
+[Same structure. Omit sections with no findings. If all omitted, state "No security issues found."]
 
 ## Recommendations
 
-[Prioritized hardening that is not a specific finding - e.g., "Add slowapi rate limit on /token", "Migrate from python-jose to pyjwt (more actively maintained)", "Move SECRET_KEY from settings.py literal to env var"]
+[Prioritized hardening not tied to a specific finding - e.g., "Add slowapi rate limit on /token", "Migrate from python-jose to pyjwt", "Move SECRET_KEY to Vault"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Critical > High > Medium > Low.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Add `model_config = ConfigDict(extra='forbid')` to OrderCreate; remove `owner_id` from accepted fields"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `pip-audit` and upgrade flagged packages - spawn dependency-review subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Critical] file:line - [action]
+2. **[Delegate]** [High] [scope: dependencies] - [action]
+3. **[Implement]** [Medium] file:line - [action]
 
-_Omit this section if no security issues were found._
+_Omit if no security issues found._
 ```
+
+## Self-Check
+
+**Verifiable from diff:**
+
+- [ ] Step 1: Python confirmed; `Framework: FastAPI | Django | mixed` recorded
+- [ ] Step 2: `review-precondition-check` ran (or handle received); `base_ref` / `head_ref` / `current_branch` / `head_matches_current` captured; diff + log read once and reused; user approval obtained when `head_matches_current` was false (skipped as subagent)
+- [ ] Step 3: security surface read directly; prior revision consulted when permission classes / security deps were removed
+- [ ] Step 4: OWASP triage produced one verdict per category (`yes` / `no signal in diff`); not duplicated as findings
+- [ ] Steps 5-6: authz drift sweep covered every new endpoint
+- [ ] Step 7: Pydantic / DRF validation reviewed; mass-assignment fields, `extra="forbid"` / `read_only_fields` confirmed
+- [ ] Step 8: `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL via `text(...)` / `cursor.execute`, `verify=False`, dynamic ORDER BY, SSRF, Celery serializer, `secrets` randomness, trusted-proxy headers checked when touched
+- [ ] Severity rubric applied consistently (not invented)
+- [ ] Every finding has attack scenario, regression-risk, or topology-dependent framing - never "input not validated" alone
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low (omit if no findings)
+
+**Requires repo / infra access (note "could not verify from diff alone - flag for separate audit" if not visible):**
+
+- [ ] Step 5: auth mechanism in use reviewed (FastAPI OAuth2 / JWT, Django session, DRF JWT) - applies when auth module in scope
+- [ ] Steps 6-8: CORS, rate limiting, debug toolbar / `/docs` exposure, password hashing config (bcrypt rounds >=12), Sentry `before_send` - applies when middleware / settings in scope
+- [ ] `pip-audit` / `safety check` - run separately; this workflow does not execute tools
+- [ ] Step 10: review report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting vulnerabilities without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because the input schema accepts unknown fields")
-- Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
-- Recommending generic security advice when a Python idiom applies (say "add `permission_classes = [IsAuthenticated]`", not "add an authorization check")
-- Suggesting `@csrf_exempt` as a fix for a failing form submission - validate the test sends a CSRF token instead
-- Disabling permission classes to silence a missing-auth warning - add the missing class
-- Conflating security review with general code quality or performance review - delegate those to their workflows
-- Recommending `algorithms=None` / unspecified algorithms for JWT decode - explicit allowlist is the only safe form
-- Recommending `pickle` / `yaml.load` / `eval` / `exec` as acceptable on any input not under full server control
-- Approving `verify=False` on TLS clients outside test fixtures
+- Running state-changing git from this workflow (user runs fetches / checkouts)
+- Reporting vulnerabilities without an attack scenario - "input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because `extra='forbid'` is missing"
+- Skipping clean OWASP categories - explicitly state `no signal in diff`
+- Generic advice when a Python idiom applies (say "add `permission_classes = [IsAuthenticated]`", not "add an auth check")
+- Suggesting `@csrf_exempt` / disabling `permission_classes` to silence a failing test - fix the test
+- Conflating with general code review or perf - delegate to those workflows
+- Recommending `algorithms=None` / unspecified for JWT decode - explicit allowlist only
+- Approving `pickle` / `yaml.load` / `eval` / `exec` / `verify=False` outside fully trusted server input or test fixtures
 - Approving `DEBUG=True` or open `/docs` in any non-dev settings module

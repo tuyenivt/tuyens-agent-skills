@@ -16,7 +16,7 @@ user-invocable: false
 
 ## Rules
 
-- Every finding cites the constraint that makes the code redundant: FK name, `null=False` field, unique index, model field validator, DRF serializer rule, type annotation, or framework guarantee.
+- Every finding cites the constraint that makes the code redundant: FK name, `null=False` field, unique index, model field validator, DRF serializer rule, type annotation, or framework guarantee. No citation, no finding.
 - Severity:
   - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
   - **`[High]`** when a measurable cost is present: extra SELECT in a hot path, bare `except` defeating DRF's exception handler, single-impl `ABC` forcing two-file refactors, or a `post_save` signal hiding async dispatch / external side effects from the call site. Cite the cost in the `Cost:` field.
@@ -27,26 +27,17 @@ user-invocable: false
 
 ### Category 1: Redundant validation vs Django ORM / DB constraints
 
-The Django validation stack: **type annotation → DRF serializer field (`required`, `max_length`, `validators=[...]`) → Django model field constraints (`null=False`, `validators=[...]`) → DB schema**. DRF returns 400 before the view body runs. `ModelSerializer` infers `required=True` from `null=False`, and runs model-field validators during `is_valid()`. Restating them is dead code.
+The Django validation stack: **type annotation -> DRF serializer field (`required`, `max_length`, `validators=[...]`) -> Django model field constraints (`null=False`, `validators=[...]`) -> DB schema**. DRF returns 400 before the view body runs. `ModelSerializer` infers `required=True` from `null=False`, and runs model-field validators during `is_valid()`. Restating them is dead code.
 
-#### Serializer `required=True` / `validate_<field>` duplicating model rules
+#### Serializer `validate_<field>` re-running inferred model rules
 
 ```python
-# Bad - ModelSerializer infers required=True from null=False; validate_customer re-checks it.
-# validate_quantity re-runs MinValueValidator(1) that the model field already applies.
-class OrderItem(models.Model):
-    quantity = models.IntegerField(validators=[MinValueValidator(1)])
-
+# Bad - validate_quantity re-runs MinValueValidator(1) that ModelSerializer already applies
 class OrderItemSerializer(serializers.ModelSerializer):
-    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), required=True)
-
     class Meta:
-        model = OrderItem
+        model = OrderItem  # quantity = IntegerField(validators=[MinValueValidator(1)])
         fields = ["customer", "quantity"]
 
-    def validate_customer(self, value):
-        if value is None: raise serializers.ValidationError("customer required")
-        return value
     def validate_quantity(self, value):
         if value < 1: raise serializers.ValidationError("quantity must be >= 1")
         return value
@@ -114,7 +105,7 @@ if order.status:
     process(order.status)
 ```
 
-Truthiness checks paper over the absence question. Prefer `is None` for nullable, drop the check for non-nullable types.
+Prefer `is None` for nullable, drop the check for non-nullable types.
 
 #### `bare except` / `except Exception` defeating DRF's exception handler
 

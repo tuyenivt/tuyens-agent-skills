@@ -9,288 +9,239 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
+> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Python Code Review
 
-## Purpose
-
-Python-aware staff-level code review umbrella. Replaces the generic Phase A-E flow with Python-specific correctness, architecture, AI-quality, and maintainability checks (sync-in-async mixing, blocking I/O in the event loop, fat routers / views, ORM leak in API responses, Pydantic v2 mass assignment via `extra="allow"`, missing `permission_classes`, anemic services hiding behavior in helpers, Django callback-via-signal abuse). Coordinates Python-specific perf / security / observability subagents in parallel for extra scopes.
-
-This workflow is the stack-specific delegate of `task-code-review` for Python. The core workflow's contract (depth levels, scope auto-escalation, low-risk short-circuit, output format) is preserved so callers see a stable shape. **Runs standalone** with full PR/branch resolution - the core dispatcher is optional, not required.
+Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
 
 ## When to Use
 
-- Reviewing a FastAPI or Django PR before merge
-- Post-AI-generation quality gate on a Python change set
-- Architecture drift detection in a Python codebase
-- Pre-merge risk assessment on a Python branch
+- Pre-merge review on a FastAPI or Django PR
+- Post-AI-generation quality gate
+- Architecture drift detection
+- Pre-merge risk assessment
 
 **Not for:**
-
-- Pre-implementation feature design (use `task-python-implement`)
-- Active production incident triage (use `/task-oncall-start`)
-- Single-error debugging (use `task-python-debug`)
-- Architecture/design review of a new system (use `task-design-architecture`)
-- Single-scope reviews when only one concern matters - delegate directly to `task-python-review-perf`, `task-python-review-security`, or `task-python-review-observability`
+- Pre-implementation design (`task-python-implement`)
+- Production incident (`/task-oncall-start`)
+- Single-error debug (`task-python-debug`)
+- New-system architecture (`task-design-architecture`)
+- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability`
 
 ## Depth Levels
 
-Mirrors `task-code-review`:
+| Depth | When | Runs |
+|-------|------|------|
+| `quick` | Time-constrained risk snapshot | Risk snapshot + top 3 findings (Phase A + B summary) |
+| `standard` | Default | Phases A-E |
+| `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
 
-| Depth      | When to Use                                                               | What Runs                                                    |
-| ---------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `quick`    | "Is this safe to merge?" - fast risk snapshot for time-constrained review | Risk snapshot + top 3 findings only (Phases A and B summary) |
-| `standard` | Default - full Python staff-level review                                  | Phases A-E                                                   |
-| `deep`     | Architectural PRs, post-incident change review, or Principal sign-off     | Phases A-E + historical pattern matching + cross-PR context  |
-
-Default: `standard`.
-
-**Auto-promote to `deep`:** After Phase A computes blast radius, if `Blast Radius` is `Wide` or `Critical` and the user did not explicitly pass `quick`, promote depth from `standard` to `deep` automatically. Surface this in Summary as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** After Phase A, if `Blast Radius` is Wide or Critical and the user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
-| Scope           | What runs                                                                   |
-| --------------- | --------------------------------------------------------------------------- |
-| Core            | Phases A-E only (Python-flavored)                                           |
-| + Perf          | Core + parallel subagent: `task-python-review-perf`                         |
-| + Security      | Core + parallel subagent: `task-python-review-security`                     |
-| + Observability | Core + parallel subagent: `task-python-review-observability`                |
-| Full            | Core + Performance + Security + Observability (3 parallel Python subagents) |
+| Scope | What runs |
+|-------|-----------|
+| Core | Phases A-E (Python-flavored) |
+| + Perf | Core + `task-python-review-perf` subagent |
+| + Security | Core + `task-python-review-security` subagent |
+| + Observability | Core + `task-python-review-observability` subagent |
+| Full | Core + all three subagents in parallel |
 
-Default: **Core with auto-escalation** (same signal rules as `task-code-review`). Pass `core-only` to suppress.
+Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
-**Scope auto-escalation signals (Python-tuned):**
+**Auto-escalation signals (Python-tuned):**
 
-- File uploads (`UploadFile`, Django `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input → auto-add **+Security**
-- New Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths → auto-add **+Perf**
-- New service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, change to logging config / `LOGGING` dict / `structlog` setup, new Prometheus metric registration, new `@app.on_event` / lifespan handler, new Django signal → auto-add **+Observability**
-- Two or more signal categories present → promote to **Full**
+- **+Security:** file uploads (`UploadFile`, `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input
+- **+Perf:** new Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths
+- **+Observability:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
+- **2+ categories → Full**
 
 ## Invocation
 
-The slash command accepts an optional argument identifying the diff to review:
+| Form | Meaning |
+|------|---------|
+| `/task-python-review` | Current branch vs base; fails fast on trunk |
+| `/task-python-review <branch>` | `<branch>` vs base (3-dot diff) |
+| `/task-python-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
-| Invocation                     | Meaning                                                                                                                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/task-python-review`          | Review current branch vs its base - fails fast if on a trunk branch (`main`/`master`/`develop`); commit or switch to a feature branch first                                           |
-| `/task-python-review <branch>` | Review `<branch>` vs its base (3-dot diff) - cross-review a teammate's branch checked out locally, or self-review a named branch from any session                                     |
-| `/task-python-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` - run `git fetch origin pull/<N>/head:pr-<N>` first (user runs it; see `review-precondition-check` for GitLab/Bitbucket variants) |
+Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-python-review pr-50273 --base release/2026.05 +security deep`.
 
-**No checkout required.** Stay on your current branch; the workflow reads git history via ref-qualified diffs and never modifies your working tree.
-
-**Explicit base override.** When the PR was opened against a non-trunk base branch, pass `--base <branch>` so the diff is computed against the true base.
-
-Examples:
-
-- `/task-python-review pr-123 --base release/2026.05` - PR opened against release branch
-- `/task-python-review feature/x --base develop` - branch off `develop` rather than `main`
-
-Scope and depth flags compose: `/task-python-review pr-50273 --base release/2026.05 +security deep`.
+**No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-review` (parent already detected Python), accept the pre-detected stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-review` instead.
+Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
 
-Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed`. Each Phase B / C / D / E checklist below branches on this signal where the idiom differs.
+### Step 2 - Confirm Stack and Detect Framework
 
-### Step 2 - Resolve the Diff Under Review
+Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not Python, stop and recommend `/task-code-review`.
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). Forward `--base <branch>` if the user passed it.
+Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for branching in later phases.
 
-If the precondition check stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+### Step 3 - Resolve the Diff
 
-Once approved, read the diff and commit log directly using the returned refs:
+Use skill: `review-precondition-check`. Forward `--base` if passed. If it fails fast, surface verbatim and stop.
 
-- Diff: `git diff <base_ref>...<head_ref>`
-- Files changed: `git diff --name-status <base_ref>...<head_ref>`
-- Commit log: `git log --oneline <base_ref>..<head_ref>`
+Once approved, read once and reuse:
 
-All subsequent phases operate on this read-once diff and log; do not re-derive them.
+- `git diff <base>...<head>`
+- `git diff --name-status <base>...<head>`
+- `git log --oneline <base>..<head>`
 
-**Skip this entire step** when invoked as a subagent of `task-code-review` and the parent passed the precondition handle plus pre-read diff and commit log. Reuse the parent's artifacts.
+**Skip entirely** when invoked as a subagent and the parent passed the handle plus pre-read artifacts.
 
-### Step 3 - Evaluate Scope Auto-Escalation
+### Step 4 - Evaluate Scope Auto-Escalation
 
-Scan the file list and diff content for the auto-escalation signals listed under **Scope** above. Make this explicit because the default of "skip if user did not pass `+security` etc." silently misses the cases where the change itself signals the need.
+Scan the file list and diff for the signals listed under **Scope**. Log each fire as `signal: <category> -> <file:line>`. Then:
 
-For each signal that fires, log a one-liner: `signal: <category> -> <file:line>`. Then decide:
+- Zero signals or `core-only` → stay Core
+- One signal category → add matching extra scope
+- 2+ categories → promote to Full
+- User passed an explicit scope → respect it; still log signals so the Summary documents why
 
-- Zero signals or user passed `core-only` -> stay on Core
-- One signal category -> add the matching extra scope
-- Two or more signal categories -> promote to Full
-- User passed an explicit scope -> respect it (do not downgrade), but still record signals so the Summary documents why the chosen scope was correct
+Surface the decision in Summary; if escalated, append `auto-escalated from Core; signals: <list>`.
 
-Surface the decision in the Summary's `Scope:` field. If escalated, append `auto-escalated from Core; signals: <list>`. If the user passed a scope and signals contradicted it, surface a one-line note so reviewers see what was deliberately deferred.
+### Phase A - PR Risk Snapshot
 
-### Phase A - PR Risk Snapshot (run first)
+- Use skill: `review-pr-risk` for cross-cutting risk signals
+- Use skill: `review-blast-radius` for failure propagation scope
 
-- Use skill: `review-pr-risk` to evaluate cross-cutting risk signals
-- Use skill: `review-blast-radius` to assess failure propagation scope
-- Output risk level and blast radius before proceeding to findings
+Output risk level and blast radius before any findings.
 
-**Low-risk short-circuit:** If Phase A yields Risk Level: Low and Blast Radius: Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and produce a streamlined output with Phase B findings only.
+**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and produce a streamlined output with Phase B only.
 
-### Step 3.5 - Re-evaluate Depth After Phase A
+### Step 4.5 - Re-evaluate Depth After Phase A
 
-If `Blast Radius` (from Phase A) is `Wide` or `Critical` and the user did not explicitly pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in the Summary. Do this **before** launching Phases B-E so deep-only behaviors (historical pattern matching, cross-PR context, anemic-domain assessment) are in scope for the rest of the review.
-
-This step is the inflection point where the workflow chooses how far Phases B-E reach. Keeping it as an explicit numbered step (rather than burying it in Depth Levels prose) prevents the depth promotion from getting lost between Phase A's output and Phase B's checklists.
+If Blast Radius is Wide / Critical and user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
 ### Phase B - Python Correctness and Safety
 
-Logical correctness, error handling completeness, edge cases affecting state integrity, backward compatibility, transaction boundary correctness - through a Python lens.
+Apply atomic skills. Each owns the canonical patterns; this phase flags deviations and surfaces what they did not see:
 
-**Test coverage finding:** If the PR adds or modifies logic without corresponding pytest coverage, raise this as an explicit finding. At minimum a [Suggestion]; escalate to [High] when the change is in a critical path - any of: authentication (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money or billing flows, data-integrity writes (multi-table transactions, state machines), Celery tasks that mutate data, migrations that change column semantics. Do not bury this finding in Key Takeaways - a separate, named entry in Findings.
+- Use skill: `python-sqlalchemy-patterns` (SQLAlchemy) or `python-django-patterns` (Django ORM) - transactions, eager loading, post-commit dispatch
+- Use skill: `python-async-patterns` for any new or modified `async def` / event-loop code
+- Use skill: `python-celery-patterns` if diff touches Celery tasks or `@shared_task`
+- Use skill: `python-migration-safety` if diff touches `migrations/versions/` or `<app>/migrations/`. Also use skill: `ops-backward-compatibility` for client/in-flight impact
 
-**Python-specific correctness checks (both frameworks):**
+**Additional Python-specific checks the atomics don't own:**
 
-Canonical patterns for async, ORM, Celery, and Pydantic/DRF live in the atomic skills cited below. This list is the **review-scoped scan** - what the reviewer must verify is present in the diff:
-
-- [ ] **Type hints on public functions** - return types and parameters typed; mypy / pyright not silently disabled mid-file
-- [ ] **`async def` discipline + `await` everywhere** (FastAPI): no blocking I/O on the event loop, no missing `await` returning a coroutine object - see `python-async-patterns` for the catalog
-- [ ] **Pydantic v2 (FastAPI)**: input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user-supplied fields; `from_attributes=True` on response models built from ORM rows
-- [ ] **DRF serializer (Django)**: `fields` declared explicitly (never `"__all__"` for user-facing serializers); `read_only_fields` include server-controlled fields; `write_only_fields` for sensitive inputs
-- [ ] **Authorization on every endpoint**: explicit security dependency (FastAPI `Depends(get_current_user)` or stronger) or `permission_classes` (Django); empty / missing is a finding
-- [ ] **Authentication vs authorization** are distinct. For per-owner / per-tenant data, confirm the repository filters by `user.id` / `tenant_id`, or that the service raises 404 on missing ownership. `Depends(get_current_user)` with no object-level scoping is an IDOR finding
-- [ ] **SSRF / outbound URL safety**: user-controlled values into outbound URLs go through an allowlist. Presence/absence here; depth (metadata blocks, DNS rebinding) → `task-python-review-security`
-- [ ] **Edge middleware presence (FastAPI)**: `CORSMiddleware`, `TrustedHostMiddleware`, HTTPS redirect on public-facing endpoints. Allowlist correctness → `task-python-review-security`
-- [ ] **New ORM column with predicate use**: any new `Mapped[...]` / model field also used in `.where(...)` / `.filter(...)` / `.order_by(...)` has an index migration in the same PR, or an explicit "indexed later" note
-- [ ] **No ORM entities returned from endpoints**: Pydantic / DRF response models always; never raw `Mapped[...]` or `model_to_dict`
-- [ ] **Transaction boundaries + post-commit Celery dispatch**: writes inside explicit transaction; `task.delay(...)` after `session.commit()` (FastAPI) or via `transaction.on_commit(...)` (Django) - see `python-celery-patterns`
-- [ ] **Idempotency on state-mutating writes** (`POST`/`PUT`/`PATCH` that create or charge): `Idempotency-Key` header or business-key dedupe via DB unique constraint. HTTP idempotency is endpoint-level, separate from worker-side task idempotency
-- [ ] **Response model excludes server-internal fields**: compare response schema fields against ORM columns explicitly (`internal_notes`, `audit_log`, `is_test`, `password_hash`, `mfa_secret`, `last_login_ip` never leak)
-- [ ] **Error handling**: framework exception handler covers validation / not-found / permission / integrity with consistent shape; no blanket `except Exception:` swallowing root causes
-- [ ] **Migration PRs**: see the Migration PRs subsection below
-- [ ] **Bulk operations**: partial-failure handling defined; idempotency for retryable bulk; batch sizes set
-
-**Migration PRs (any change under `migrations/versions/` or `<app>/migrations/`):**
-
-- [ ] Two-phase deploys for column rename / drop (add new → backfill → cut over → remove old)
-- [ ] `NOT NULL` on existing columns added via two-step (add nullable → backfill → set NOT NULL via separate migration)
-- [ ] Indexes on large tables use `CREATE INDEX CONCURRENTLY` (PostgreSQL); Alembic via `op.execute(...)` with `transaction_per_migration=True`; Django via `RunSQL` with `atomic = False`
-- [ ] **`SET lock_timeout`** before DDL on large tables to fail fast
-- [ ] Foreign keys added with validation deferred (or as a separate validate step)
-- [ ] Data migrations isolated from DDL migrations; long-running data backfills not in the same Alembic / Django migration as the schema change; backfills via keyset pagination, never `WHERE col IS NULL LIMIT N`
-- [ ] Rollback path documented or verified
-- Use skill: `ops-backward-compatibility` to assess client/session/in-flight-request impact
-- Use skill: `python-migration-safety` for canonical safe-migration patterns
-
-**Concurrency safety:**
-
-- [ ] No mutable global state in modules; if state is required, it is module-level constant or guarded (`threading.Lock` for sync, `asyncio.Lock` for async)
-- [ ] Race-prone updates (counters, balance changes, state transitions) use database-level locking (`SELECT ... FOR UPDATE`, `select_for_update()`, optimistic version field, or Postgres advisory lock)
-- [ ] Cache writes thread-safe / async-safe; cache keys deterministic; no race window between cache miss and cache fill on hot keys (use single-flight via `asyncio.Lock` per key or Redis `SET NX EX`)
-- [ ] No sharing of `httpx.AsyncClient` / `requests.Session` across event loops or threads in unsafe ways
-
-Use skill: `python-sqlalchemy-patterns` for canonical SQLAlchemy correctness patterns.
-Use skill: `python-django-patterns` for canonical Django ORM patterns.
-Use skill: `python-async-patterns` for any new or modified `async def` / event-loop code.
-Use skill: `python-celery-patterns` for any new Celery task or dispatch path.
+- **Test coverage finding (named, not buried).** PR adds logic without pytest coverage? At minimum `[Suggestion]`; escalate to `[High]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. Surface as a dedicated finding.
+- **Type hints on public functions.** Return types and parameters typed; mypy / pyright not silently disabled mid-file.
+- **`async def` discipline + `await` everywhere (FastAPI).** No blocking I/O on the event loop, no missing `await` returning a coroutine object. Catalog in `python-async-patterns`.
+- **Pydantic v2 (FastAPI).** Input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user inputs; `from_attributes=True` on response models built from ORM rows. `extra="allow"` on user input is a mass-assignment surface.
+- **DRF serializer (Django).** `fields` declared explicitly (never `"__all__"` user-facing); `read_only_fields` for server-controlled fields; `write_only_fields` for sensitive inputs.
+- **Authorization + IDOR.** Authn (`Depends(get_current_user)` / `permission_classes`) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where(...id == user.id)`, `tenant_id` injected by middleware.
+- **Response model field hygiene.** Compare the Pydantic / DRF response model against ORM columns. Flag `password_hash` / `mfa_secret` / `internal_notes` / `audit_log` / `is_test` / `last_login_ip` on the wire. Returning a `Mapped[...]` row or `model_to_dict` directly is `[High]` regardless of current fields - a new sensitive column silently leaks later.
+- **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via DB unique constraint. Distinct from worker-side task idempotency.
+- **Transaction boundaries + post-commit Celery dispatch.** Writes inside explicit transaction; `task.delay(...)` after `session.commit()` (FastAPI) or via `transaction.on_commit(...)` (Django).
+- **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, `select_for_update()`, advisory lock) or optimistic version field, not module globals.
+- **HTTP client sharing.** `httpx.AsyncClient` / `requests.Session` shared at module level. Per-request instantiation breaks connection reuse and event-loop discipline.
+- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `CORSMiddleware`, `TrustedHostMiddleware`, HTTPS redirect confirmed when app construction changes. Depth in security subagent.
+- **New ORM column with predicate use.** Any new `Mapped[...]` / model field referenced in `.where(...)` / `.filter(...)` / `.order_by(...)` has an index migration in the same PR, or an explicit "indexed later" note.
+- **Error handling.** Framework exception handler covers validation / not-found / permission / integrity with consistent shape; no blanket `except Exception:` swallowing root causes.
 
 ### Phase C - Python Architecture Guardrails
 
-Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, bypassing abstractions, boundary erosion.
+Use skill: `architecture-guardrail` for layer violations and coupling.
 
-**Python-specific architecture checks:**
+**Python-specific:**
 
-- [ ] **Layering (FastAPI)**: router → service → repository → model. No business logic in routers; no `httpx` calls in repositories; no Pydantic schema construction in repositories. Repositories return ORM rows or DTOs; mapping to response schemas happens at the service or router boundary, not in the repository
-- [ ] **Layering (Django)**: view / ViewSet → service → manager / queryset → model. No business logic in views beyond orchestration; no direct ORM in templates; service layer for cross-model orchestration
-- [ ] **Service-layer discipline**: any router / view method with > 10 lines of orchestration is extracted to a service module; services expose intention-revealing names (`fulfill_order(order_id)` not `process_order_step_2`); cross-aggregate orchestration lives in a service, not in Django signals or SQLAlchemy event listeners
-- [ ] **Anemic domain antipattern (deep depth only)**: when reviewing in `deep` mode and historical pattern matching shows business rules accumulating in services while ORM models stay as pure `Mapped[...]` data containers (SQLAlchemy) or pure data containers (Django), flag for refactor via `task-python-refactor`. Do **not** raise on a single PR's evidence alone - one PR adding a service method is not "anemic accumulation."
-- [ ] **Dependency injection style (FastAPI)**: `Depends` used consistently; constructor injection for services where possible; no module-level singletons created on import that hold mutable state
-- [ ] **Settings discipline**: typed settings via `pydantic-settings` `BaseSettings` (FastAPI) or `django-environ` (Django); profile-separated config (`Settings(env_file=...)`); no hardcoded values that should be env vars
-- [ ] **Module / package boundaries**: feature-package layout (`app/orders/{router,service,repository,schema}.py`) preferred over layer-package layout (`app/routers/`, `app/services/`, `app/repositories/`); cross-feature imports go through public service interfaces, not direct repository imports
-- [ ] **Multi-tenant isolation**: tenant scoping enforced at the repository / queryset layer (`with_loader_criteria` / `Manager` override), not at the router / view layer alone
-- [ ] **Read replica / multi-database**: when the app uses Django routing or SQLAlchemy `bind` per query, queries declare their target explicitly; no surprise cross-database joins
-- [ ] **Signal / event discipline (Django)**: signals (`post_save`, `pre_delete`) used for genuinely cross-cutting concerns (audit, search index sync) - not as a hidden control-flow mechanism dispatching emails / Celery tasks. SQLAlchemy event listeners similarly. Move business logic to explicit service calls
+- **Layering (FastAPI):** router → service → repository → model. No business logic in routers; no `httpx` in repositories; Pydantic mapping at the service / router boundary, not in repositories
+- **Layering (Django):** view / ViewSet → service → manager / queryset → model. No business logic in views beyond orchestration; service layer for cross-model orchestration
+- **Service-layer discipline:** router / view methods > 10 lines of orchestration extracted to a service; intention-revealing names (`fulfill_order` not `process_order_step_2`); cross-aggregate orchestration in services, not in Django signals or SQLAlchemy event listeners
+- **Dependency injection (FastAPI):** `Depends` used consistently; constructor injection for services; no module-level singletons holding mutable state created on import
+- **Settings discipline:** typed settings via `pydantic-settings` `BaseSettings` (FastAPI) or `django-environ` (Django); no hardcoded values that should be env vars
+- **Feature-package layout** (`app/orders/{router,service,repository,schema}.py`) preferred over layer-package; cross-feature imports go through public service interfaces, not direct repository imports
+- **Multi-tenant isolation** enforced at the repository / queryset layer (`with_loader_criteria` / `Manager` override), not at routers / views alone
+- **Signal / event discipline:** Django `post_save` / `pre_delete` and SQLAlchemy event listeners reserved for genuinely cross-cutting concerns (audit, search-index) - not as hidden control flow dispatching emails / Celery tasks
+- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for `task-python-refactor`. Do not raise on a single PR's evidence alone
 
-**Multi-service PRs (when change spans 2+ services or this Python app + a separate service):**
+**Multi-service PRs:**
 
-- API contract compatibility checked (`schemathesis`, Pact, or OpenAPI diff)
+- API contract compatibility (OpenAPI diff, `schemathesis`, Pact)
 - Deployment order documented or independent
-- Use skill: `ops-backward-compatibility` for any changed inter-service contract
+- Use skill: `ops-backward-compatibility`
 
-### Phase D - AI-Generated Code Quality Control
+### Phase D - AI-Generated Code Quality
 
-Use skill: `complexity-review` to detect verbosity, over-engineering, and simplification opportunities.
-Then load **one** of the framework-specific necessity skills based on Step 2's detection:
+- Use skill: `complexity-review` for verbosity, over-engineering, simplification
+- Load **one** framework-specific necessity skill from Step 2's detection:
+  - **FastAPI:** Use skill: `python-fastapi-overengineering-review`
+  - **Django:** Use skill: `python-django-overengineering-review`
 
-- **FastAPI:** Use skill: `python-fastapi-overengineering-review`
-- **Django:** Use skill: `python-django-overengineering-review`
+**Additional Python AI smells the atomics don't own:**
 
-Each finding cites the redundancy source (FK / `null=False` / `Mapped[T]` non-Optional / Pydantic or DRF rule / framework guarantee).
+- Test verbosity (`@pytest.fixture` setup > 30 lines for one assertion; full deep-equal when a few field assertions would do)
+- Async misapplication (`async def` on functions doing no I/O; sync helpers blocking inside `async def` paths)
+- Comment cruft (docstrings on private helpers restating the signature; auto-generated TODOs left in)
+- `# type: ignore[...]` proliferation in non-test code to silence a real type bug
 
-**Additional Python AI smells not covered by the above:**
+### Phase E - Maintainability and Clarity
 
-- [ ] **Test verbosity**: `@pytest.fixture` setup blocks > 30 lines for a single assertion; `mocker.patch` chains that could be a unit test on a smaller surface; `assert response.json() == {...full dict...}` when a few key field assertions would suffice
-- [ ] **Async misapplication**: `async def` on functions that do no I/O ("just in case we go async") - the runtime cost without the benefit. Conversely, sync helpers inside `async def` paths that block the loop
-- [ ] **Comment cruft**: comments restating function names; `# end of function foo` markers; docstrings on private helpers that just repeat the signature; auto-generated TODOs left in
-- [ ] **`# type: ignore` proliferation**: legitimate uses are rare; `# type: ignore[attr-defined]` to bypass a real bug is a finding
+Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth belongs to `task-python-review-observability`).
 
-### Phase E - Python Maintainability and Clarity
+**Python-specific:**
 
-Naming that obscures intent, mixed responsibilities, large unreviewable chunks, hardcoded values that should be config or constants.
+- **Naming:** services describe their operation (`order_fulfillment.py` over `order_helper.py`); schemas named after role (`OrderCreateRequest`, `OrderResponse`); no `Util` / `Manager` / `Helper` modules; `_private` prefix for module-private helpers
+- **Magic numbers / strings:** extracted to module-level constants or `BaseSettings`; `timedelta(minutes=...)` over `60_000`
+- **Hardcoded URLs / credentials:** env / Vault / settings, not inline
+- **Function length:** > 30 lines extracted; > 60 lines flagged unless clearly orchestrating
+- **Duplicated query logic:** same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager or repository method
+- **Logging hygiene:** surface `print(...)` in prod paths, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong levels as `[Suggestion]` (depth in observability subagent)
 
-**Python-specific maintainability checks:**
+### Step 5 - Delegate Extra Scopes in Parallel
 
-- [ ] **Naming conventions**: services describe their operation (`order_fulfillment.py` over `order_helper.py`); schemas / serializers named after their role (`OrderCreateRequest`, `OrderResponse`); no `Util` / `Manager` / `Helper` modules accumulating unrelated functions; `_private` prefix for module-private helpers
-- [ ] **Magic numbers / strings**: extracted to module-level constants or `BaseSettings` keys; date/time constants use `timedelta(minutes=...)` not `60_000`
-- [ ] **Hardcoded URLs / credentials**: in env vars, Vault, or settings - never inline in code
-- [ ] **Function length**: functions > 30 lines reviewed for extraction; functions > 60 lines flagged unless they are a clearly orchestrating service function calling intention-revealing private helpers
-- [ ] **Duplicated query logic**: same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager method or repository method
-- [ ] **Logging hygiene**: surface obvious offenders as Core findings at `[Suggestion]` - `print(...)` in production code path, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong log levels. The observability subagent owns depth (sampling, structured-field schemas, OTel correlation IDs, multi-process Prometheus); do not duplicate that audit here. If observability is not in scope this run, still surface the obvious offenders so they are not lost.
+If scope is **Core only**, skip.
 
-Use skill: `backend-coding-standards` for cross-language naming and structure conventions.
-Use skill: `ops-observability` for cross-cutting logging/metrics presence (the `task-python-review-observability` subagent owns the depth review).
+For each extra scope, spawn an independent subagent **in parallel** with the main thread:
 
-### Step 4 - Delegate Extra Scopes in Parallel (if scope includes)
+| Scope | Subagents |
+|-------|-----------|
+| + Perf | `task-python-review-perf` |
+| + Security | `task-python-review-security` |
+| + Observability | `task-python-review-observability` |
+| Full | All three in parallel |
 
-If scope is **Core only**, skip this step.
+**Subagent prompt contract** - each must include:
 
-For any selected extra scope, spawn an independent subagent **in parallel** with the main thread (which continues running Phases A-E for Core). Subagents run concurrently with each other and with Core, not sequentially.
+- The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff and commit log (no re-running git)
+- The depth level
+- Pre-confirmed stack (Python) + framework (FastAPI / Django / mixed)
+- Instruction to return findings in its own Output Format
 
-| Scope                | Subagents spawned                                                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Core + Perf          | 1 subagent running `task-python-review-perf`                                                                                 |
-| Core + Security      | 1 subagent running `task-python-review-security`                                                                             |
-| Core + Observability | 1 subagent running `task-python-review-observability`                                                                        |
-| Full                 | 3 subagents running `task-python-review-perf`, `task-python-review-security`, `task-python-review-observability` in parallel |
+**Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
 
-**Subagent prompt contract.** Each subagent prompt must include:
-
-- The resolved review target from Step 2 (`base_ref`, `head_ref`) plus the already-read diff and commit log, so the subagent does not re-run `review-precondition-check` and does not re-issue `git diff`
-- The depth level (`quick` | `standard` | `deep`)
-- The pre-confirmed stack (Python) and detected framework (FastAPI / Django / mixed) so the subagent skips its own `stack-detect` and framework branching
-- Instruction to return findings using its own skill's Output Format
-
-**Failure isolation.** If a subagent fails or times out, continue with the remaining results. Note the missing scope in the synthesized output rather than blocking the whole review.
-
-### Step 5 - Synthesize (only if Step 4 ran)
+### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
-- **Deduplicate cross-cutting findings.** The same issue may surface in multiple scopes (e.g., a synchronous `requests.get` inside an `async def` can be flagged by both Core/Phase B and Perf). Keep one entry, citing all scopes that raised it.
-- **Severity wins.** When the same finding has different labels across scopes, use the highest severity (`Blocker` > `High` > `Suggestion` > `Question`).
-- **Preserve `file:line` citations** from the originating subagent.
-- **Order findings by severity, not by scope.** Produce one merged Findings list.
-- **Note missing scopes.** If any subagent failed, add `Scope incomplete: <scope> review did not complete` under Summary.
-- **Merge Next Steps.** Combine Core Next Steps with each subagent's Next Steps into one prioritized list under `## Next Steps`. Preserve `[Implement]` / `[Delegate]` tags; deduplicate items mapping to the same fix; re-sort by severity (Blocker/Critical > High > Medium/Suggestion > Low).
+- **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
+- **Highest severity wins** (`Blocker` > `High` > `Suggestion` > `Question`)
+- **Preserve `file:line` citations**
+- **Order by severity**, not by scope
+- **Note missing scopes** in Summary as `Scope incomplete: <scope>`
+- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by severity
+
+### Step 7 - Write Report
+
+Use skill: `review-report-writer` with `report_type: review`. Write before ending; print the confirmation line.
 
 ## Feedback Labels
 
-| Label        | Meaning                                     | Required |
-| ------------ | ------------------------------------------- | -------- |
-| [Blocker]    | Must fix before merge - correctness or risk | Yes      |
-| [High]       | Should fix - significant impact or smell    | Strong   |
-| [Suggestion] | Would improve - non-blocking                | No       |
-| [Question]   | Need clarity from author                    | Clarify  |
+| Label | Meaning | Required |
+|-------|---------|----------|
+| [Blocker] | Must fix before merge - correctness / risk | Yes |
+| [High] | Should fix - significant impact | Strong |
+| [Suggestion] | Would improve - non-blocking | No |
+| [Question] | Need clarity from author | Clarify |
 
-No `[Nitpick]` or `[Praise]` labels.
+No `[Nitpick]` or `[Praise]`.
 
 ## Output Format
 
@@ -309,31 +260,28 @@ No `[Nitpick]` or `[Praise]` labels.
 
 ### [Blocker] file:line
 
-- Issue: [what is wrong - name the Python idiom: blocking `requests.get` in `async def`, missing `permission_classes`, ORM model returned from endpoint, Celery `.delay()` inside transaction, `extra="allow"` on input schema, etc.]
-- Impact: [user-visible or operational consequence]
-- System Risk: [why this is a system-level concern, not just a local bug]
-- Fix: [concrete Python change with code example]
+- Issue: [name the Python idiom: blocking `requests.get` in `async def`, missing `permission_classes`, ORM model returned from endpoint, Celery `.delay()` inside transaction, `extra="allow"` on input schema, etc.]
+- Impact: [user-visible or operational]
+- System Risk: [why this is system-level, not just a local bug]
+- Fix: [concrete Python change with code]
 
 ### [High] file:line
-
-- Issue:
-- Impact:
-- Fix:
+- Issue: ...
+- Impact: ...
+- Fix: ...
 
 ### [Suggestion] file:line
-
-- Improvement:
+- Improvement: ...
 
 ### [Question] file:line
+- Question: [what is ambiguous]
+- Why it matters: [what the right next step depends on]
 
-- Question: [what is ambiguous in the change]
-- Why it matters: [what the right next step depends on - author intent, business rule, deployment topology, etc.]
-
-_Use [Question] when the change is genuinely ambiguous and the right action depends on author intent. Do NOT use it as a softer Blocker._
+_Use [Question] for genuine ambiguity, not as a softer Blocker._
 
 ## Architecture Notes
 
-_Summary commentary on systemic patterns. **Do not restate individual findings here.** If a pattern is severe enough to be a finding, keep it in Findings and reference it by file:line from these notes. Use this section for cross-cutting observations the per-file findings cannot carry on their own._
+_Cross-cutting commentary. Do not restate individual findings; reference them by file:line._
 
 - Boundary impact:
 - Coupling change:
@@ -341,86 +289,68 @@ _Summary commentary on systemic patterns. **Do not restate individual findings h
 
 ## Maintainability Notes
 
-_Same rule as Architecture Notes - summary commentary, not duplicated findings._
+_Same rule as Architecture Notes._
 
 - Over-engineering detected:
 - Simplification opportunities:
 
 ## Key Takeaways
 
-- 2-4 concise bullets summarizing systemic impact and what to address before merge.
+2-4 bullets on systemic impact and what to address before merge.
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
 
-1. **[Implement]** [Blocker] file:line - [one-line action, e.g., "Replace `requests.get(url)` with `await client.get(url)` in OrderService.fetch_inventory; client is the module-level `httpx.AsyncClient` singleton"]
+1. **[Implement]** [Blocker] file:line - [one-line action]
 2. **[Delegate]** [High] [scope: cross-service] - [one-line action]
-3. **[Implement]** [Suggestion] file:line - [one-line action]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
 
-**Omit empty sections.** If there are no Blockers, do not include a Blocker heading.
+**Omit empty sections.** No Blocker heading if there are none.
 
 ## Rules
 
-- Review the whole change as a system impact, not file-by-file in isolation
-- Lead with risk assessment before line-level findings
+- Review whole-change system impact, not file-by-file
+- Lead with risk; line-level findings follow
 - Apply Python conventions, not generic backend conventions
 - Provide actionable feedback with Python code examples
-- Never comment on trivial formatting or style where no project standard exists
-- Default to Core scope; auto-escalate on signals; honor `core-only` flag
-- Delegate perf / security / observability depth to the appropriate Python subagent rather than duplicating the check here
+- Default Core; auto-escalate; honor `core-only`
+- Delegate perf / security / observability depth to subagents
 
-
-### Step 6 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] Stack confirmed as Python (or accepted from parent dispatcher); framework detected and recorded
-- [ ] `review-precondition-check` ran (or its handle was received from a parent dispatcher); `base_ref` / `base_source` / `head_ref` / `current_branch` / `head_matches_current` captured. If user passed `--base`, `base_source: explicit-override` recorded
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all phases (and shared with subagents) - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran
-- [ ] Scope auto-escalation evaluated in Step 3; promotion (or `core-only` suppression) recorded in Summary along with the firing signals
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; promotion recorded in Summary
-- [ ] Risk level and blast radius stated before any line-level findings
-- [ ] Phase B - `async def` discipline + `await` everywhere checked
-- [ ] Phase B - Pydantic v2 input/output rules (`extra="forbid"`, `response_model`) / DRF serializer rules (`fields` explicit, `read_only_fields`) checked
-- [ ] Phase B - authentication AND authorization both checked (object-level scoping, not just `Depends(get_current_user)`)
-- [ ] Phase B - SSRF / outbound URL safety + edge middleware presence checked
-- [ ] Phase B - ORM-in-API leakage (no `Mapped[...]` returned, no `model_to_dict` to client) checked
-- [ ] Phase B - transaction boundaries + post-commit Celery dispatch checked
-- [ ] Phase B - new ORM column with predicate use checked for index migration
-- [ ] Phase B - migration safety (concurrent index, lock_timeout, expand-contract, keyset backfill) checked when migrations changed
-- [ ] Phase C Python architecture checks applied: layering, anemic domain, settings discipline, signal / event listener discipline, package boundaries, multi-tenant
-- [ ] Phase D applied via `complexity-review` + the framework-matching necessity skill (`python-fastapi-overengineering-review` for FastAPI, `python-django-overengineering-review` for Django); Python-specific AI smells covered: test verbosity, async misapplication, comment cruft, `# type: ignore` proliferation
-- [ ] Phase E Python maintainability checks applied: naming, magic numbers, function length, parameterized structured logging
-- [ ] Missing tests raised as an explicit named finding (not buried in Key Takeaways)
-- [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Every finding has a label, location (file:line), and actionable Python fix
-- [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] For non-Core scopes, Python-specific subagents (`task-python-review-perf`, `-security`, `-observability`) ran in parallel and received the pre-resolved diff/log handle plus framework detection
-- [ ] Subagent findings merged into the single Output Format with deduplication and highest-severity-wins; raw subagent reports not appended
-- [ ] Any failed/missing subagent scope noted under Summary as `Scope incomplete: <scope>`
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Blocker > High > Suggestion (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] `behavioral-principles` loaded (or accepted from parent)
+- [ ] Stack confirmed as Python; framework recorded (FastAPI / Django / mixed)
+- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused
+- [ ] Scope auto-escalation evaluated; promotion (or `core-only`) recorded
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`
+- [ ] Risk level + blast radius stated before any finding
+- [ ] Phase B: applied atomic skills; checked test coverage, async discipline, Pydantic/DRF rules, authorization, response model hygiene, Idempotency-Key, race safety
+- [ ] Phase B migration safety delegated to `python-migration-safety` when migrations changed
+- [ ] Phase C: layering, DI, settings discipline, signal/listener discipline, package boundaries, multi-tenant
+- [ ] Phase D: `complexity-review` + the framework-matching necessity skill applied; Python AI smells covered
+- [ ] Phase E: naming, magic numbers, function length, logging hygiene
+- [ ] Missing tests raised as a named finding (not buried)
+- [ ] Every Blocker states a system risk
+- [ ] Every finding has label + `file:line` + actionable Python fix
+- [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
+- [ ] Extra scopes ran in parallel with the pre-resolved diff/log handle + framework detection
+- [ ] Subagent findings merged into one severity-ordered Findings list; no raw reports appended
+- [ ] Failed/missing subagent scope noted as `Scope incomplete: <scope>`
+- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by severity
+- [ ] Review report written via `review-report-writer`; confirmation line printed
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
+- `git fetch` / `git checkout` from this workflow - user runs these
 - Reviewing without reading the full diff and commit log first
-- Applying generic backend conventions when a Python idiom exists (say "extract to a service module", not "extract to a helper class")
-- Nitpicking style where no project standard exists; no `[Nitpick]` or `[Praise]` labels
-- Providing vague feedback without a concrete Python fix ("this could be better")
-- Blocking on personal preference rather than correctness, risk, or maintainability
-- Running perf / security / observability sub-workflows when user passed `core-only`
-- Treating auto-escalation signals as advisory; the default is to promote and let the user opt out via `core-only`
-- Duplicating perf / security / observability depth checks here when the dedicated Python subagent owns them - flag and delegate
-- Running multiple extra scopes sequentially when they could spawn in parallel
-- Appending raw subagent reports section-by-section instead of merging into one severity-ordered Findings list
-- Recommending `requests` / `urllib3` synchronous calls in `async def` paths, `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas as acceptable patterns - all are anti-patterns
+- Generic backend conventions when a Python idiom exists ("extract to a service module", not "extract to a helper class")
+- Vague feedback ("this could be better")
+- Blocking on personal preference
+- Running extra scopes when `core-only` was passed
+- Duplicating perf / security / observability depth here when the dedicated subagent owns them
+- Sequential extra scopes that could parallelize
+- Appending raw subagent reports instead of merging
+- Recommending `requests` / `urllib3` synchronous calls in `async def` paths, `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas as acceptable patterns

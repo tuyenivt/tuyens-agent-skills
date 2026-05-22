@@ -1,39 +1,48 @@
 ---
 name: python-celery-patterns
-description: "Celery task patterns: idempotent design, retry with backoff, queue routing, canvas (chain/group/chord), acks_late, FastAPI/Django integration."
+description: "Celery task patterns: idempotent design, retry/backoff/jitter, acks_late, queue routing, canvas (chain/group/chord), soft_time_limit, JSON serializer."
 metadata:
   category: backend
   tags: [python, celery, background-tasks, queue, retry, idempotency]
 user-invocable: false
 ---
 
-## 1. TASK DESIGN
+# Celery Patterns
 
-- Tasks must be idempotent (safe to retry)
-- Pass IDs and simple types, NEVER pass ORM objects or complex state
-- Keep tasks small and focused - one responsibility
-- bind=True for access to self (self.retry, self.request.id)
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Offloading work > 200ms or touching external services (email, webhooks, files)
+- Scheduled / periodic jobs (Beat)
+- Rate-limited external API integrations
+- Fan-out / pipeline workflows via canvas (chain, group, chord)
+
+## Rules
+
+- Tasks are **idempotent**: check state before acting, safe to retry
+- Pass IDs and primitives as task args - never ORM objects or sessions
+- Dispatch `.delay()` / `.apply_async()` **after** the DB transaction commits, never inside it
+- Always set `soft_time_limit` and `time_limit` (hard kill) - no unbounded tasks
+- Retries use exponential `retry_backoff` + `retry_jitter`; pair `acks_late=True` with an idempotency guard
+- Serializer is JSON (`task_serializer="json"`) - never pickle
+- Route by queue; start workers with `-Q` per queue
+- Canvas pipelines register `link_error` - failures otherwise propagate silently
+
+## Patterns
+
+### Task Design
 
 ```python
-from app.core.celery import celery_app
-
 @celery_app.task(bind=True, max_retries=3)
 def process_order(self, order_id: int) -> None:
-    """Process a single order. Idempotent - safe to retry."""
-    order = OrderRepository.get_by_id(order_id)  # sync DB call in Celery worker
-    if order is None:
-        return  # already processed or deleted
-    if order.status == "processed":
-        return  # idempotent check
+    order = OrderRepository.get_by_id(order_id)
+    if order is None or order.status == "processed":
+        return  # idempotent guard
     OrderService.process(order)
 ```
 
-## 2. RETRY STRATEGY
-
-- autoretry_for=(TransientError,) with max_retries=3
-- Exponential backoff: retry_backoff=True, retry_backoff_max=600
-- retry_jitter=True to prevent thundering herd
-- Dead letter queue for permanently failed tasks
+### Retry with Backoff
 
 ```python
 @celery_app.task(
@@ -43,242 +52,128 @@ def process_order(self, order_id: int) -> None:
     retry_backoff=True,
     retry_backoff_max=600,
     retry_jitter=True,
+    soft_time_limit=120,
+    time_limit=150,
 )
 def send_notification(self, order_id: int) -> None:
-    order = get_order(order_id)
-    notify_customer(order)
+    notify_customer(get_order(order_id))
 ```
 
+Manual retry when control over `countdown` is needed: `raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))`.
+
+### Acks_late + Idempotency
+
+Default `acks_early` loses messages on worker crash. Use `acks_late` only when the task is idempotent:
+
+| Setting                | Ack Timing      | Guarantee      | Use When               |
+| ---------------------- | --------------- | -------------- | ---------------------- |
+| `acks_early` (default) | Before execute  | At-most-once   | Non-idempotent         |
+| `acks_late=True`       | After execute   | At-least-once  | Idempotent + critical  |
+
 ```python
-# Manual retry with custom logic
-@celery_app.task(bind=True, max_retries=5)
-def charge_payment(self, order_id: int) -> None:
-    try:
-        result = payment_gateway.charge(order_id)
-    except PaymentGatewayUnavailable as exc:
-        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+@celery_app.task(bind=True, acks_late=True, reject_on_worker_lost=True, max_retries=3)
+def process_payment(self, order_id: int) -> None:
+    if payment_already_processed(order_id):
+        return
+    charge_payment(order_id)
 ```
 
-## 3. QUEUE ROUTING
-
-- Default queue for standard tasks
-- High-priority queue for time-sensitive tasks
-- task_routes configuration in celery config
-- -Q flag on workers to consume specific queues
+### Queue Routing
 
 ```python
-# celery config
 task_routes = {
     "app.tasks.send_notification": {"queue": "notifications"},
-    "app.tasks.process_payment": {"queue": "payments"},
-    "app.tasks.generate_report": {"queue": "reports"},
+    "app.tasks.process_payment":   {"queue": "payments"},
 }
-
-# Start workers per queue
-# celery -A app worker -Q notifications -c 4
 # celery -A app worker -Q payments -c 2
-# celery -A app worker -Q reports -c 1
 ```
 
-## 4. TASK COMPOSITION
-
-- chain() for sequential: chain(fetch.s(url), parse.s(), store.s())
-- group() for parallel: group(process.s(item) for item in items)
-- chord() for fan-out/fan-in: chord(group, callback)
-- Use sparingly - complex chains are hard to debug
+### Canvas (chain / group / chord)
 
 ```python
 from celery import chain, group, chord
 
-# Sequential pipeline
-pipeline = chain(
-    validate_order.s(order_id),
-    charge_payment.s(),
-    send_confirmation.s(),
-)
-pipeline.apply_async()
-
-# Parallel processing
-batch = group(process_item.s(item_id) for item_id in item_ids)
-batch.apply_async()
-
-# Fan-out then aggregate
-workflow = chord(
-    group(fetch_price.s(symbol) for symbol in symbols),
-    aggregate_prices.s(),
-)
-workflow.apply_async()
-```
-
-## 5. TASK TIMEOUTS AND RATE LIMITING
-
-Always set time limits on tasks to prevent hung workers. Use `rate_limit` for external API calls.
-
-```python
-@celery_app.task(
-    bind=True,
-    soft_time_limit=120,    # raises SoftTimeLimitExceeded after 2 min (can catch and clean up)
-    time_limit=150,          # hard kill after 2.5 min (last resort)
-    rate_limit="10/m",       # max 10 executions per minute per worker (for external APIs)
-    max_retries=3,
-    retry_backoff=True,
-)
-def call_payment_gateway(self, order_id: int) -> None:
-    try:
-        charge_payment(order_id)
-    except SoftTimeLimitExceeded:
-        logger.error(f"Payment task timed out for order {order_id}")
-        mark_payment_as_timed_out(order_id)
-```
-
-For fire-and-forget tasks that don't need results stored:
-
-```python
-@celery_app.task(ignore_result=True)
-def send_notification(order_id: int) -> None:
-    ...
-```
-
-## 6. CANVAS ERROR HANDLING
-
-Chain and chord errors propagate silently by default. Use `link_error` to catch failures:
-
-```python
-from celery import chain
-
-pipeline = chain(
-    validate_order.s(order_id),
-    charge_payment.s(),
-    send_confirmation.s(),
-)
+pipeline = chain(validate_order.s(order_id), charge_payment.s(), send_confirmation.s())
 pipeline.apply_async(link_error=handle_pipeline_error.s())
 
-@celery_app.task
-def handle_pipeline_error(request, exc, traceback):
-    logger.error(f"Pipeline failed for task {request.id}: {exc}")
-    # Mark order as failed, notify ops, etc.
+batch = group(process_item.s(i) for i in item_ids).apply_async()
+
+workflow = chord(
+    group(fetch_price.s(s) for s in symbols),
+    aggregate_prices.s(),
+).apply_async()
 ```
 
-## 7. INTEGRATION
+`handle_pipeline_error(request, exc, traceback)` logs and marks failure. Guard chord callbacks against empty group headers (callback fires with `[]`).
 
-- FastAPI: initialize celery app in core/celery.py, import in lifespan
-- Django: celery.py in project config, `autodiscover_tasks()`
-- Both: shared config from environment variables
-- Beat scheduler for periodic tasks
+### Rate Limiting & Fire-and-Forget
+
+`rate_limit="10/m"` for external APIs (per-worker). `ignore_result=True` when no result is consumed - skips backend writes.
+
+### Integration
 
 ```python
-# FastAPI: app/core/celery.py
-from celery import Celery
-from app.core.config import settings
-
-celery_app = Celery(
-    "app",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
-)
+# FastAPI: app/core/celery.py (Django mirrors: config_from_object + autodiscover_tasks)
+celery_app = Celery("app", broker=settings.CELERY_BROKER_URL, backend=settings.CELERY_RESULT_BACKEND)
 celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
+    task_serializer="json", accept_content=["json"], result_serializer="json",
+    timezone="UTC", enable_utc=True,
 )
 celery_app.autodiscover_tasks(["app.tasks"])
 ```
 
-```python
-# Django: config/celery.py
-import os
-from celery import Celery
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
-app = Celery("project")
-app.config_from_object("django.conf:settings", namespace="CELERY")
-app.autodiscover_tasks()
-```
+Beat schedule uses `crontab` or `timedelta` - never raw floats:
 
 ```python
-# Periodic tasks (Beat) - use crontab or timedelta, not raw floats
-from celery.schedules import crontab
-from datetime import timedelta
-
 celery_app.conf.beat_schedule = {
-    "cleanup-expired-orders": {
-        "task": "app.tasks.cleanup_expired_orders",
-        "schedule": timedelta(hours=1),
-    },
-    "daily-report": {
-        "task": "app.tasks.generate_daily_report",
-        "schedule": crontab(hour=8, minute=0),
-    },
+    "daily-report": {"task": "app.tasks.generate_daily_report", "schedule": crontab(hour=8, minute=0)},
 }
 ```
 
-## 8. MONITORING
+### Observability
 
-- Flower: `celery -A app flower --port=5555` for web dashboard
-- Prometheus exporter: `celery-exporter` for metrics scraping
-- Alert on: queue length > threshold, task failure rate, worker count drop
-- Structured logging with task context:
+Bind task context to structured logs; expose Flower (`celery -A app flower`) and `celery-exporter` for Prometheus. Alert on queue depth, failure rate, worker count drop.
 
 ```python
-import structlog
-
-@celery_app.task(bind=True)
-def process_order(self, order_id: int) -> None:
-    log = structlog.get_logger().bind(
-        task_id=self.request.id,
-        task_name=self.name,
-        order_id=order_id,
-        retry=self.request.retries,
-    )
-    log.info("processing_order_started")
-    ...
-    log.info("processing_order_completed")
+log = structlog.get_logger().bind(task_id=self.request.id, task_name=self.name, retry=self.request.retries)
 ```
 
-## 9. ACKS_LATE vs ACKS_EARLY (Delivery Guarantees)
+### Edge Cases
 
-By default, Celery uses `acks_early` (task acknowledged before execution). This risks message loss if the worker crashes mid-task. Use `acks_late=True` for at-least-once delivery:
+- **Renaming tasks**: keep old import path as alias - `@celery_app.task(name="old.module.task_name")` - or in-flight messages raise `NotRegistered`
+- **Redis broker + `acks_late`**: set `visibility_timeout` higher than longest task duration, else mid-flight tasks get re-delivered
+- **Prefork pool**: each worker process needs its own DB connections - initialize in `worker_process_init`, never share pools across forks
+- **Post-commit dispatch**: in SQLAlchemy use `event.listen(session, "after_commit", ...)`; in Django use `transaction.on_commit(lambda: task.delay(id))`
 
-| Setting                | Acknowledged              | Risk                             | Use When                                    |
-| ---------------------- | ------------------------- | -------------------------------- | ------------------------------------------- |
-| `acks_early` (default) | Before execution starts   | Message lost on worker crash     | Task is not idempotent, prefer at-most-once |
-| `acks_late=True`       | After execution completes | Task re-executed on worker crash | Task is idempotent, prefer at-least-once    |
+## Output Format
 
-```python
-@celery_app.task(
-    bind=True,
-    acks_late=True,            # re-queue on worker crash
-    reject_on_worker_lost=True, # return to queue if worker dies mid-task
-    max_retries=3,
-    retry_backoff=True,
-)
-def process_payment(self, order_id: int) -> None:
-    """Idempotent payment processor - safe to retry with acks_late."""
-    if payment_already_processed(order_id):
-        return  # idempotency guard prevents double charge
-    charge_payment(order_id)
+```
+## Celery Design
+
+### Tasks
+| Task | Queue | Idempotent | Retries | Backoff | acks_late | Time Limit |
+|------|-------|------------|---------|---------|-----------|------------|
+
+### Queues & Workers
+| Queue | Worker -Q | Concurrency | Purpose |
+|-------|-----------|-------------|---------|
+
+### Canvas Pipelines
+| Pipeline | Shape | link_error | Purpose |
+|----------|-------|------------|---------|
+
+### Beat Schedule
+| Task | Schedule | Purpose |
+|------|----------|---------|
 ```
 
-Always pair `acks_late=True` with an idempotency guard in the task body.
+## Avoid
 
-## 10. EDGE CASES
-
-- **Task name changes after deployment**: Celery identifies tasks by their import path. Renaming or moving a task module while messages are in the queue causes `NotRegistered` errors. Keep old task names as aliases during transition: `@celery_app.task(name="old.module.task_name")`.
-- **`acks_late` with `visibility_timeout`**: When using Redis as broker with `acks_late=True`, tasks that exceed `visibility_timeout` (default 1 hour) are re-delivered to another worker while still running. Set `visibility_timeout` higher than your longest expected task duration.
-- **Chord callback with empty group**: A chord with an empty group header calls the callback immediately with an empty list. Guard against this in the callback.
-- **Database connections in workers**: Celery workers fork by default (`prefork` pool). Each worker process needs its own DB connection - do not share a connection pool across forked processes. Use `worker_process_init` signal to initialize per-process connections.
-
-## 11. ANTI-PATTERNS
-
-- ❌ Passing ORM objects as task arguments (use IDs - objects aren't JSON-serializable)
-- ❌ Tasks longer than 30 minutes without chunking
-- ❌ No `soft_time_limit` / `time_limit` (hung tasks hold workers indefinitely)
-- ❌ No retry strategy (all tasks should handle transient failures)
-- ❌ Celery worker running on same process as web server
-- ❌ `acks_late=True` without idempotency guard (causes double processing on retry)
-- ❌ Dispatching `.delay()` inside a DB transaction (worker fires before commit - may read stale data or missing rows)
-- ❌ Sharing DB sessions between web process and Celery worker (separate session factories)
-- ❌ Using pickle serializer (`task_serializer="pickle"`) - security risk, use JSON
-- ❌ Chains/chords without `link_error` (failures propagate silently)
+- ORM objects, sessions, or large payloads as task args - pass IDs only
+- `.delay()` inside an open DB transaction - worker fires before commit
+- Missing `soft_time_limit` / `time_limit` - hung tasks pin workers
+- `acks_late=True` without an idempotency guard - double processing on retry
+- `task_serializer="pickle"` - RCE risk
+- Canvas without `link_error` - silent failures
+- Sharing DB sessions between web process and worker, or across forked workers
+- Celery worker co-located with the web server process

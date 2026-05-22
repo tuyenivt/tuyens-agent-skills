@@ -9,186 +9,120 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `# Satisfies: AC<N>` mapping or test-name suffix), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
+> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble`. Generate one test per acceptance criterion (tag `# Satisfies: AC<N>`), cover every NFR per `plan.md`, refuse out-of-scope tests. Never edit spec artifacts; surface gaps as proposed amendments.
 
 # Python Test
 
-## Purpose
-
-Python-aware test strategy and scaffolding using pytest idioms, `pytest-asyncio` (FastAPI), DRF `APIClient` (Django), Testcontainers PostgreSQL, factory_boy / model_bakery / Polyfactory for test data, `respx` / `httpx_mock` for HTTP stubs, and Celery `task_always_eager` / pytest fixtures for task tests. Replaces the generic backend test patterns with Python-specific guidance.
-
-This workflow is the stack-specific delegate of `task-code-test` for Python. The core workflow's contract (output shape, prioritization rules) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-test` for Python. Preserves the parent contract (output shape, prioritization). Canonical wiring (pytest fixtures, `httpx.ASGITransport`, DRF `APIClient`, factory_boy, Testcontainers, `respx`, Celery test modes) lives in `python-testing-patterns` - this workflow composes, does not restate.
 
 ## When to Use
 
-- Designing a test strategy for a new FastAPI or Django service / module
-- Assessing test coverage gaps across unit / integration / endpoint / Celery layers
-- Scaffolding tests for under-covered endpoints, services, repositories, or auth code
-- Reviewing test pyramid balance for a Python app
-- Adding boundary tests (validation, authorization, edge cases) to existing happy-path tests
+- New FastAPI / Django service or module needs a test strategy
+- Coverage gaps across unit / integration / endpoint / Celery layers
+- Scaffolding tests for under-covered endpoints, repositories, or auth code
+- Boundary tests (validation, authorization, edge cases) for existing happy-path tests
 
-**Not for:**
-
-- Test failure debugging (use `task-python-debug`)
-- General code review (use `task-code-review` / `task-python-review`)
-- Production incident postmortems (use `/task-oncall-postmortem`)
+**Not for:** test failure debugging (`task-python-debug`), code review (`task-python-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-test` (parent already detected Python), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect` to confirm Python. If invoked from `task-code-test`, accept the parent's stack. If not Python, stop and direct to `/task-code-test`.
 
-Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for the output. Each section that follows branches on this signal where the test idiom differs.
+Detect: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for output - downstream steps branch on this.
 
-### Step 2 - Read the Code Under Test and Existing Tests
+### Step 2 - Read Code and Existing Tests
 
-Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
+Ground output in real conventions. For each target, read the module top-to-bottom: public surface, request / response types, security dependencies / `permission_classes`, transaction boundaries, external collaborators.
 
-- For each target named by the user, read the module top-to-bottom: public functions / classes, request / response types, security dependencies / `permission_classes`, transaction boundaries, external collaborators
-- Glob `tests/**/*.py` and read at least: one existing endpoint test, one existing service / repository test, one existing Celery task test (if applicable), `conftest.py` files - learn the project's package layout, factory framework (`factory_boy` vs `model_bakery` vs `polyfactory`), HTTP-stub library (`respx` vs `httpx_mock` vs `pytest-httpx`), authentication helpers
-- Read `pyproject.toml` / `pytest.ini` / `setup.cfg` for `[tool.pytest]` config, `asyncio_mode`, markers, coverage config
-- Read `conftest.py` at repo root and per-package level for shared fixtures (`db_session`, `client`, `current_user`, factory autouse)
-- For Django: read `settings.py` `TEST_RUNNER`, `DATABASES`, test settings module; for FastAPI: read `app/core/config.py` test profile and any `TestContainersConfig` / `IntegrationTestBase` helper
+Glob `tests/**/*.py`. Read at least one endpoint test, one service / repository test, one Celery task test (if applicable), and `conftest.py` files. Note: factory framework (`factory_boy` / `model_bakery` / `polyfactory`), HTTP-stub library (`respx` / `httpx_mock` / `responses`), auth helpers. Read `pyproject.toml` / `pytest.ini` for `[tool.pytest]` config, `asyncio_mode`, markers.
 
-If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
+For FastAPI: read `app/core/config.py` test profile and any Testcontainers / `IntegrationTestBase` helper. For Django: read `settings.py` `TEST_RUNNER`, test settings module, `DATABASES`.
+
+If no existing tests, say so and propose conventions explicitly in the strategy doc.
 
 ### Step 3 - Python Test Pyramid
 
-The Python test pyramid maps to test types:
-
-| Layer       | Tooling                                                          | What belongs here                                                                         |
+| Layer       | Tooling                                                          | Belongs here                                                                              |
 | ----------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Unit        | Plain pytest + Mock / pytest-mock                                | Service business logic, Pydantic validators, mappers, pure functions, calculation rules   |
-| Integration | pytest + Testcontainers PostgreSQL + real ORM session            | Repository queries, ORM constraints, DB-level invariants                                  |
+| Unit        | pytest + Mock / pytest-mock                                      | Service logic, Pydantic validators, mappers, pure functions, calculation rules            |
+| Integration | pytest + Testcontainers PostgreSQL + real ORM session            | Repository queries, ORM constraints, DB invariants                                        |
 | Endpoint    | httpx `ASGITransport` (FastAPI) or DRF `APIClient` (Django)      | Routing, request / response binding, validation, auth dependencies / `permission_classes` |
-| Task        | pytest + Celery `task_always_eager` or fixture-based worker      | Celery task happy path, retry logic, idempotency                                          |
-| E2E         | pytest + Testcontainers + real Celery worker / Redis             | Critical user journeys only - signup, checkout, payment                                   |
-| Contract    | `schemathesis` (FastAPI) / DRF `OpenAPIRenderer` consumer-driven | API contract validation against OpenAPI schema                                            |
+| Task        | pytest + Celery `task_always_eager` or `pytest-celery` worker    | Celery task happy path, retry, idempotency                                                |
+| E2E         | pytest + Testcontainers + real Celery worker / Redis             | Critical journeys only (auth flow, checkout, transactional commit + dispatch)             |
+| Contract    | `schemathesis` (FastAPI) / DRF OpenAPI consumer-driven           | API contract vs OpenAPI schema                                                            |
 
-**Many** unit tests, **some** endpoint / integration tests, **few** full E2E tests.
+Many unit, some endpoint / integration, few E2E.
 
 ### Step 4 - Apply Python Test Patterns
 
-Canonical patterns (pytest fixtures, `pytest-asyncio` config, `httpx.ASGITransport`, DRF `APIClient`, factory_boy, Testcontainers PostgreSQL, `respx`/`responses`, Celery test modes) live in `python-testing-patterns`. Load it for the actual scaffolds. This step records the **strategy-side rules** that apply across all layers:
+Use skill: `python-testing-patterns` for wiring and code shapes. Per-type strategy rules:
 
-- **Test type matches the surface.** Unit = pytest + mocks, no app context. Endpoint = `httpx.ASGITransport` (FastAPI) or `APIClient` (Django). Integration = Testcontainers PostgreSQL, never SQLite for Postgres apps. Celery = `task_always_eager` for fast tests + `pytest-celery` for at-least-once semantics on `acks_late=True` tasks.
-- **One test per `(method, path/url, principal-state, outcome)` triple** for endpoints; one test per outcome (success / validation / auth-denial / external failure / edge) for unit and service tests.
-- **Auth tested separately from happy path.** Every protected endpoint gets explicit anonymous → 401 and wrong-role → 403 cases; per-owner / per-tenant resources get an IDOR (404 for other-user's resource) case.
-- **Idempotency for Celery tasks asserts the side-effect call count, not the final state.** Two deliveries, one external charge - a test that only checks final state hides non-idempotent code that converges by accident.
-- **HTTP stub library is picked per project and kept consistent.** A codebase mixing `respx` + `responses` + `pytest-httpx` for the same call surface is a refactor target.
+- **Unit**: one test per outcome (success / validation / external fail / edge). No app context or DB - if it needs the app + DB, it is misclassified. `respx` / `httpx_mock` for HTTP; `mocker.patch.object(spec=True)` to catch typo'd method names.
+- **Endpoint**: one test per `(method, path, principal-state, outcome)` - happy + 401 + 403 + 4xx-validation. FastAPI: `httpx.ASGITransport` with `app.dependency_overrides` for `get_db` / `get_current_user`. Django: `APIClient` with `force_authenticate` or `client.login`. Per-owner / per-tenant resources get an IDOR (404 for other-user's resource) case.
+- **Repository / ORM integration**: Testcontainers PostgreSQL only - never SQLite (JSONB, partial indexes, `ON CONFLICT`, array types diverge). Per-test transactional rollback (SAVEPOINT). Assert PostgreSQL semantics and constraint errors.
+- **Pydantic / DRF schemas**: instantiate via constructor or `Schema(**data)` for direct validation; cover unknown-key rejection (`model_config = ConfigDict(extra="forbid")` / DRF serializer `extra_kwargs`), missing required, type mismatch. Faster than full endpoint test.
+- **Celery**: `task_always_eager=True` for fast tests; `pytest-celery` real broker when behavior depends on `acks_late=True` / `max_retries` / visibility timeout. Always cover: idempotency (invoke twice, side effect once), retry (fail-fail-success), DLQ. Post-commit dispatched tasks (`transaction.on_commit`): assert they fire after parent commit, not before.
+- **E2E**: full-stack flows only (auth, commit + Celery dispatch, scheduled billing). Avoid for what endpoint tests cover.
 
-E2E / full-context tests are reserved for journeys that genuinely need the broker + Redis + Postgres stack (auth flow, commit + Celery dispatch, scheduled jobs). Anything an endpoint test can cover stays at the endpoint layer.
+### Step 5 - Test Boundaries
 
-### Step 5 - Test Boundaries (Python-Specific)
+| Layer       | Test it                                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------- |
+| Unit        | Service logic, mappers, Pydantic / DRF validators, custom `has_permission` / `has_object_permission` |
+| Endpoint    | Every endpoint: happy + 401 + 403 + 4xx; pagination / filtering; custom exception handlers           |
+| Integration | Non-trivial repository queries, ORM constraints (unique / check / FK), migration smoke on clean DB   |
+| Task        | Celery tasks with retry / idempotency / external side effects; chains / groups; post-commit dispatch |
 
-**What deserves a unit test:**
-
-- Service logic, mappers, Pydantic validators, DRF serializer validators, custom permission classes (the `has_permission` / `has_object_permission` logic in isolation)
-- Domain rules, calculation, state-machine transitions
-- Framework-independent helpers / utilities
-
-**What deserves an endpoint test:**
-
-- Every endpoint: happy path + 401 + 403 + 4xx validation
-- Pagination contract (`limit` / `offset` or cursor)
-- Filtering / sorting / search query params
-- Custom error handlers (`@app.exception_handler` / DRF `EXCEPTION_HANDLER`)
-
-**What deserves an integration / Testcontainers test:**
-
-- Every repository method with a non-trivial query (filter on multiple columns, eager-load, aggregate)
-- ORM constraints (unique, check, FK ON DELETE behavior)
-- Migration smoke test: apply all migrations on a clean Testcontainers DB; useful when migrations are squashed
-
-**What deserves a Celery test:**
-
-- Every task with retry logic, idempotency requirements, or external side effects
-- Tasks chained / grouped / chorded - assert the workflow completes and aggregates correctly
-- Tasks dispatched via `transaction.on_commit` / post-commit dispatch - assert they fire after the parent commits, not before
-
-**What does NOT need a test:**
-
-- Framework-provided behavior: FastAPI route resolution, Django URL routing, default Pydantic / DRF validation rule engines (test that you wired things correctly via endpoint tests, not that the framework works)
-- Generated boilerplate: dataclasses with no logic, `@property` getters with one return statement
-- Trivial delegation: `service.get(id) -> repository.get(id)` with no logic
+**Skip:** framework internals (FastAPI route resolution, Django URL routing, Pydantic / DRF engines), dataclasses with no logic, trivial delegation (`service.get -> repo.get`).
 
 ### Step 6 - Test Data and Fixtures
 
-- Prefer factory frameworks (`factory_boy`, `model_bakery`, or `polyfactory`) over hand-rolled `dict(...)` literals; configure factories per project convention (factory_boy session-scoped factory, model_bakery for Django)
-- For repository tests with Testcontainers, use factories to insert; isolate per-test data inside the test
-- Pydantic v2: instantiate directly via constructor with positional / keyword args - factories only for nested / repeated cases
-- **Avoid `expire_on_commit` flips** in tests - fix the fixture isolation instead
-- Test data must be minimal and focused - 100-row `IntStream`-equivalent setups signal the test belongs at integration / load-test layer
+Factories over `dict(...)` literals (`factory_boy`, `model_bakery`, `polyfactory`). Configure per project: factory_boy session-scoped factory, model_bakery for Django. Pydantic v2: construct directly via keyword args; factories only for nested / repeated cases. Avoid `expire_on_commit` flips in tests - fix fixture isolation instead. 100-row setups signal the test belongs at integration / load-test layer.
 
 ### Step 7 - Prioritization (when coverage is low)
 
-If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing endpoints get full coverage.
+Run before scaffolding when coverage is below ~50%. Alphabetic or by-file order leaves auth holes while plumbing gets full coverage.
 
-When starting from low test coverage, prioritize by Python-specific risk:
-
-**Priority 1 - Authorization and authentication:**
-
-- Endpoint test per protected endpoint asserting 401 anonymous + 403 wrong-role
-- OAuth2 / JWT flow tests covering issuer, audience, signature, expiry validation (FastAPI)
-- DRF `permission_classes` tested at the endpoint level; custom permission classes unit-tested
-
-**Priority 2 - Data integrity:**
-
-- Repository / ORM integration tests for every non-trivial query
-- Service tests for write operations (one happy path + one rollback per write)
-- Celery task idempotency for any task with side effects
-
-**Priority 3 - Business-critical flows:**
-
-- Revenue paths (checkout, billing, subscription state transitions)
-- State-machine transitions (Pydantic / Django enum / `TextChoices`)
-- Scheduled jobs touching billing or notifications
-
-**Priority 4 - High-churn code:**
-
-- Files with frequent recent commits (`git log --since="3 months ago"`)
-- Files with bug-fix history (`git log --grep="fix"`)
-
-**Priority 5 - Plumbing:**
-
-- Pass-through endpoints, simple CRUD - lower risk, can wait
+1. **P1 - AuthN/Z**: 401 anonymous + 403 wrong-role per protected endpoint; JWT / OAuth2 issuer / audience / signature / expiry (FastAPI); DRF `permission_classes` at endpoint + unit for custom classes.
+2. **P2 - Data integrity**: integration tests for non-trivial queries; write paths with rollback; Celery idempotency for side-effect tasks.
+3. **P3 - Business-critical**: revenue paths, state-machine transitions (Pydantic / `TextChoices`), scheduled billing / notification jobs.
+4. **P4 - High-churn**: files with frequent recent commits (`git log --since="3 months ago"`) or bug-fix history.
+5. **P5 - Plumbing**: pass-through endpoints, simple CRUD.
 
 ### Step 8 - Test Infrastructure Hygiene
 
-- [ ] Testcontainers reused across tests via session-scoped fixture and `testcontainers.reuse=True` in `~/.testcontainers.properties` for local fast cycles
-- [ ] `pytest-asyncio` `asyncio_mode = "auto"` so individual tests do not need `@pytest.mark.asyncio` decorators
-- [ ] Test profile / settings overrides only what differs from prod - never silently disables auth / CSRF
-- [ ] pytest parallelism (`pytest-xdist`) enabled where safe (`-n auto`); per-test isolation for stateful tests
-- [ ] Mock strict-spec mode: `pytest-mock` `mocker.patch.object(spec=True)` to catch typo'd method names
-- [ ] HTTP stubs via `respx` (httpx) / `pytest-httpx` / `responses` (requests); never real network calls
-- [ ] `pytest --durations=10` reviewed; long-running fixtures flagged for refactoring
-- [ ] Coverage tool (coverage.py / `pytest-cov`) wired to CI with per-package thresholds; coverage exclusions documented
+- [ ] Testcontainers reused via session-scoped fixture + `testcontainers.reuse=True` in `~/.testcontainers.properties`
+- [ ] `pytest-asyncio` `asyncio_mode = "auto"` - no per-test `@pytest.mark.asyncio`
+- [ ] Test profile only overrides what differs from prod - never silently disables auth / CSRF / `ValidationPipe`
+- [ ] `pytest-xdist` enabled where safe (`-n auto`); stateful tests serialized
+- [ ] HTTP stubs via `respx` / `pytest-httpx` / `responses` - one library per project, no real network
+- [ ] `pytest --durations=10` reviewed; long fixtures flagged
+- [ ] `pytest-cov` wired to CI with per-package thresholds; exclusions documented
 
-## Python Review Checklist
+## Review Checklist (existing tests)
 
-Quick-reference checklist for reviewing existing Python tests:
-
-- [ ] Test type matches what is being tested (endpoint -> ASGI / APIClient, repository -> Testcontainers, service -> unit + mocks)
-- [ ] Every endpoint has at least happy + 401 + 403 + validation-error
-- [ ] Every non-trivial repository query has an integration test against Testcontainers (not SQLite)
-- [ ] Every `permission_classes` / security dependency has a passing-and-denied test
-- [ ] Test data created via factories, not raw dict literals
-- [ ] No `verify(repository).save(any())`-style mocks when an integration test could assert real DB state
-- [ ] No full-stack E2E tests for what an endpoint test could cover
-- [ ] No `CELERY_TASK_ALWAYS_EAGER` masking a missing real-broker test for at-least-once semantics
+- [ ] Test type matches subject (endpoint -> ASGI / APIClient, repository -> Testcontainers, service -> unit)
+- [ ] Every endpoint: happy + 401 + 403 + validation
+- [ ] Non-trivial repository queries integration-tested against Testcontainers, not SQLite
+- [ ] Every `permission_classes` / security dependency has passing-and-denied tests
+- [ ] Test data via factories, not raw dict literals
+- [ ] No internal `mocker.patch(...session.commit)` mocks where Testcontainers could assert real DB state
+- [ ] No E2E covering what an endpoint test could
+- [ ] No `CELERY_TASK_ALWAYS_EAGER` masking a missing real-broker test for `acks_late=True` tasks
 
 ## Output Format
 
-**Which output to produce:**
+**Which deliverable:**
 
-- User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
-- User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
-- User asks "test strategy", "test plan", or coverage is below 50% with no scaffolds requested -> Strategy Doc (optionally include Coverage Assessment)
-- User asks for **two or more deliverables in the same invocation** ("review coverage AND scaffold tests", "what's missing and write the tests") -> produce them in this order, separated by a horizontal rule (`---`): Coverage Assessment, then Strategy Doc (if requested), then Test Scaffolds. Do not silently drop one.
-- If unclear, produce Strategy Doc as the default.
+- "what tests are missing?" / "review coverage" -> Coverage Assessment
+- "write tests for X" / "scaffold tests" -> Test Scaffolds
+- "test strategy" / "test plan" / coverage < 50% with no scaffolds requested -> Strategy Doc
+- Multiple deliverables in one invocation -> produce all, separated by `---`, in order: Coverage Assessment, Strategy Doc, Test Scaffolds
+- Unclear -> Strategy Doc as default
 
 **Coverage Assessment:**
 
@@ -200,98 +134,81 @@ Quick-reference checklist for reviewing existing Python tests:
 **Test framework:** pytest, pytest-asyncio, factory_boy / model_bakery, Testcontainers
 **Coverage gaps:**
 
-- **Unit tests:** [services / validators / mappers without test coverage]
-- **Endpoint tests:** [endpoints without tests; endpoints missing 401/403/validation paths]
-- **Integration tests:** [repositories with non-trivial queries without tests; tests running on SQLite for a Postgres app]
-- **Auth tests:** [endpoints without authorization tests; missing JWT / OAuth2 flow tests]
-- **Celery tests:** [tasks without tests; tasks without idempotency / retry tests]
-- **Contract tests:** [OpenAPI / Pact contracts without verification]
+- **Unit:** [services / validators / mappers without coverage]
+- **Endpoint:** [endpoints missing 401/403/validation paths]
+- **Integration:** [non-trivial queries without tests; SQLite for a Postgres app]
+- **Auth:** [endpoints without authorization tests; missing JWT / OAuth2 flow tests]
+- **Celery:** [tasks without tests; tasks without idempotency / retry]
+- **Contract:** [OpenAPI / Pact contracts without verification]
 
 **Recommended pyramid balance:**
 
-- Unit (services, validators, helpers): [count target]
-- Endpoint + integration (ASGI / APIClient + Testcontainers): [count target]
-- E2E (full stack with broker / Redis): [count target - keep small]
+- Unit: [count target]
+- Endpoint + integration: [count target]
+- E2E: [count target - keep small]
 
-**Prioritization** _(include when current coverage is below ~50% or the assessment surfaces > 5 gaps)_
+**Prioritization** _(when coverage < ~50% or > 5 gaps)_
 
-Apply the Step 7 risk bands. Order follow-up work as:
-
-1. **P1 - Authorization & authentication:** [list specific endpoints / flows missing 401/403/ownership tests]
-2. **P2 - Data integrity:** [repositories with non-trivial queries / write paths without rollback tests / Celery tasks with unguarded side effects]
-3. **P3 - Business-critical flows:** [revenue, state machines, scheduled jobs touching billing or notifications]
-4. **P4 - High-churn code:** [files with frequent recent commits or bug-fix history]
-5. **P5 - Plumbing:** [pass-through endpoints / simple CRUD - lowest risk]
+Apply Step 7 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing.
 ```
 
-**Test Scaffolds** (when generating boilerplate):
+**Test Scaffolds:** ready-to-run pytest files using project conventions. Each scaffold must include the right test type, factories (not dict literals), endpoint coverage = happy + 401 + 403 + validation, repository tests on Testcontainers PostgreSQL, Celery tests with idempotency + retry (real-broker variant for `acks_late=True`), `app.dependency_overrides` in `conftest.py` not invented per-test.
 
-Produce ready-to-run pytest test files using project conventions. Each scaffold must include:
-
-- The right test type (endpoint / integration / unit / Celery)
-- Factories for test data instead of raw dict literals
-- For endpoint tests: happy path + 401 + 403 + validation-error
-- For repository tests: Testcontainers PostgreSQL; assertions against PostgreSQL semantics
-- For auth tests: anonymous + wrong-role + correct-role cases
-- For Celery tests: idempotency + retry + max-retries cases when applicable
-- Inline comments explaining non-obvious setup (e.g., why `app.dependency_overrides` is required)
-
-**Strategy Doc** (when designing a test strategy):
+**Strategy Doc:**
 
 ```markdown
 ## Python Test Strategy
 
-**Objective:** [what this strategy achieves]
+**Objective:** [what this achieves]
 **Pyramid balance:** Unit {x}% / Endpoint + Integration {y}% / E2E {z}%
 **Tooling:** pytest, pytest-asyncio (FastAPI) / pytest-django (Django), factory_boy / model_bakery, Testcontainers PostgreSQL, respx / responses, pytest-celery
-**Database isolation:** Testcontainers PostgreSQL + per-test transactional rollback (savepoint)
+**Database isolation:** Testcontainers PostgreSQL + per-test SAVEPOINT rollback
 **Concurrency:** [pytest-xdist config]
 **Gaps to close (prioritized):**
 
-1. [Highest risk gap - typically authorization or repository correctness]
+1. [Highest risk - usually authorization or repository correctness]
 2. [...]
 ```
 
 ## Self-Check
 
-**Always (any deliverable):**
+**Always:**
 
-- [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests + `conftest.py` files read directly so output matches project conventions (Step 2)
-- [ ] `python-testing-patterns` consulted for canonical Python test patterns
-- [ ] Auth testing approach explicit (FastAPI: dependency override or token fixture; Django: `force_authenticate` / `client.login`)
-- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
+- [ ] Stack confirmed Python; Framework (FastAPI / Django / mixed) recorded (Step 1)
+- [ ] Code under test + sample existing tests + `conftest.py` read directly (Step 2)
+- [ ] `python-testing-patterns` consulted for canonical wiring (Step 4)
+- [ ] Auth approach explicit (FastAPI: dependency override or token fixture; Django: `force_authenticate` / `client.login`)
+- [ ] Spec-aware mode honored when `--spec` passed (one test per AC, NFR coverage, no out-of-scope)
 
-**Strategy Doc / Coverage Assessment only:**
+**Strategy Doc / Coverage Assessment:**
 
-- [ ] Test pyramid mapped to Python idioms (unit -> pytest + mock; endpoint -> ASGI / APIClient; integration -> Testcontainers; Celery -> task_always_eager / pytest-celery)
-- [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers
-- [ ] Prioritization by risk applied when coverage is low - P1 authorization, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing
-- [ ] Testcontainers used for repository and full-context tests; SQLite flagged as a smell for production-Postgres apps
+- [ ] Pyramid mapped to Python idioms (Step 3) - no duplicated assertions across layers
+- [ ] Risk prioritization applied when coverage is low (Step 7)
+- [ ] Testcontainers required for repository tests; SQLite flagged on Postgres apps
 
-**Test Scaffolds only:**
+**Test Scaffolds:**
 
-- [ ] Test data created via factories, not raw dict literals; factory_boy session binding shown explicitly when applicable
-- [ ] Endpoint scaffolds include happy path + 401 + 403 + validation-error; IDOR test for any per-owner / per-tenant resource
-- [ ] Repository scaffolds run against Testcontainers PostgreSQL with per-test SAVEPOINT rollback - never SQLite for Postgres apps
-- [ ] Celery scaffolds include idempotency + retry; real-broker (`pytest-celery`) variant present for tasks declared `acks_late=True`
-- [ ] `app.dependency_overrides` for `get_db` / `get_current_user` shown in conftest, not invented per-test
-- [ ] Pydantic schema unit tests scaffolded for any non-trivial validator or `model_config = ConfigDict(extra="forbid")` contract
+- [ ] Factories over dict literals; factory_boy session binding shown when applicable (Step 6)
+- [ ] Endpoint scaffolds: happy + 401 + 403 + validation; IDOR for per-owner / per-tenant resources
+- [ ] Repository scaffolds on Testcontainers PostgreSQL with per-test SAVEPOINT rollback - never SQLite
+- [ ] Celery scaffolds include idempotency + retry; real-broker (`pytest-celery`) variant for `acks_late=True`
+- [ ] `app.dependency_overrides` for `get_db` / `get_current_user` shown in `conftest.py`, not invented per-test
+- [ ] Pydantic schema unit tests for non-trivial validators or `model_config = ConfigDict(extra="forbid")` contracts
 
-**Review-existing-tests mode only:**
+**Review-existing-tests mode:**
 
-- [ ] Review checklist items addressed for every test file in scope
+- [ ] Review Checklist items addressed for every test file in scope
 
 ## Avoid
 
-- Scaffolding tests without first reading existing tests + `conftest.py` - the result imports the wrong factory, uses the wrong HTTP-stub library, or duplicates the integration-test base fixture
-- Chasing a coverage number instead of prioritizing by risk - 100% line coverage with no auth tests misses the bigger threat
-- Full E2E tests (`pytest-docker` + real broker) for what an endpoint test could cover - context cost compounds across the suite
-- SQLite / in-memory DB in repository tests for apps that use PostgreSQL features (JSONB, partial indexes, `ON CONFLICT`, array types) - tests pass, prod fails
-- Writing endpoint tests with `requests.get(...)` against a real running server when `ASGITransport` / `APIClient` is faster and more deterministic
-- Duplicating factories per test class - share via `tests/factories.py` and / or `conftest.py`
-- Using `mocker.patch("app.repositories.order.session.commit")`-style internal mocks when a Testcontainers integration test could assert real DB state
-- Skipping CSRF tokens on Django form tests by setting `CsrfViewMiddleware` to a no-op - the test is now incorrect for the prod config
-- Skipping Pydantic validator tests because the endpoint has an integration test - validators are unit-tested separately so they can be reused
-- Testing framework internals (e.g., that `Depends` resolves, that DRF routers route) - test your wiring, not the framework
-- `CELERY_TASK_ALWAYS_EAGER = True` as a substitute for a real-broker test on tasks with `acks_late=True` - eager skips the broker and masks at-least-once semantics
+- Scaffolding without first reading existing tests + `conftest.py` - imports the wrong factory, duplicates the integration base fixture
+- Chasing a coverage number instead of prioritizing by risk - 100% lines with no auth tests misses the bigger threat
+- E2E for what an endpoint test could cover - context cost compounds
+- SQLite / in-memory DB for Postgres-feature apps (JSONB, partial indexes, `ON CONFLICT`, arrays)
+- `requests.get(...)` against a real running server when `ASGITransport` / `APIClient` is faster and deterministic
+- Per-test-class factory duplication - share via `tests/factories.py` / `conftest.py`
+- `mocker.patch("...session.commit")` internal mocks where Testcontainers could assert real DB state
+- Disabling `CsrfViewMiddleware` in Django form tests - test no longer reflects prod config
+- Skipping Pydantic validator unit tests because the endpoint has integration - validators are unit-tested for reuse
+- Testing framework internals (that `Depends` resolves, that DRF routers route)
+- `CELERY_TASK_ALWAYS_EAGER = True` as a substitute for a real-broker test on `acks_late=True` tasks - masks at-least-once semantics

@@ -9,242 +9,185 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Python Performance Review
 
-## Purpose
-
-Python-aware performance review that names SQLAlchemy 2.0+ async session, Django ORM `select_related` / `prefetch_related`, asyncio event-loop discipline, FastAPI dependency / Pydantic v2 serialization, Celery task design, and Alembic / Django migration safety idioms directly instead of routing through the generic backend adapter. Produces findings with measured or estimated impact (latency, throughput, query count, GIL contention) and concrete fixes using Python 3.11+ patterns.
-
-This workflow is the stack-specific delegate of `task-code-review-perf` for Python. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Python-aware performance review naming SQLAlchemy 2.0+ async session, Django ORM `select_related` / `prefetch_related`, asyncio event-loop discipline, FastAPI / Pydantic v2 serialization, Celery task design, and Alembic / Django migration safety. Findings have measured or estimated impact (latency, throughput, query count, event-loop contention) and concrete Python 3.11+ fixes.
 
 ## When to Use
 
-- Reviewing a FastAPI or Django PR or branch for performance regressions
-- Investigating a slow endpoint, Celery task, or scheduled job
-- Pre-merge perf pass on changes touching ORM queries, async boundaries, Celery dispatch, or event-loop-blocking calls
-- Quarterly N+1 / pool-sizing / async-correctness sweep against APM-flagged endpoints
+- FastAPI or Django PR / branch perf regression review
+- Slow endpoint / Celery task / scheduled job investigation
+- Pre-merge perf pass on ORM queries, async boundaries, Celery dispatch, event-loop-blocking calls
+- Quarterly N+1 / pool-sizing / async-correctness sweep against APM data
 
 **Not for:**
-
-- General Python code review (use `task-code-review` or `task-python-review`)
-- Security review (use `task-code-review-security` or `task-python-review-security`)
-- Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-python-implement`)
+- General Python review (`task-python-review`)
+- Security review (`task-python-review-security`)
+- Production incident (`/task-oncall-start`)
+- Pre-implementation design (`task-python-implement`)
 
 ## Depth Levels
 
-| Depth      | When to Use                                               | What Runs                                   |
-| ---------- | --------------------------------------------------------- | ------------------------------------------- |
-| `quick`    | Single endpoint or repository ("is this query ok?")       | Steps 4 + 5 only; ORM hotspots + migrations |
-| `standard` | Default - full Python perf review                         | All steps                                   |
-| `deep`     | Profiling-driven review with py-spy / Scalene / OTel data | All steps + capacity guidance and load plan |
-
-Default: `standard`.
+| Depth | When | Runs |
+|-------|------|------|
+| `quick` | Single endpoint / repository | Steps 4 + 5 only |
+| `standard` | Default | All steps |
+| `deep` | Profiling-driven with py-spy / Scalene / OTel | All + capacity guidance + load plan |
 
 ## Invocation
 
-Mirrors `task-code-review-perf`:
+| Form | Meaning |
+|------|---------|
+| `/task-python-review-perf` | Current branch vs base; fails fast on trunk |
+| `/task-python-review-perf <branch>` | `<branch>` vs base (3-dot) |
+| `/task-python-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` |
 
-| Invocation                          | Meaning                                                                                               |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-python-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-python-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-python-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as subagent of `task-code-review-perf` / `task-python-review`, Step 2 is skipped and pre-read diff is reused.
 
 ## Workflow
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-python-review` (parent already detected Python), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Python, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Python 3.11+.
+Use skill: `stack-detect`. Accept pre-confirmed stack from parent. Then:
 
-Then detect the web framework:
+- `main.py` + `fastapi` import / `pyproject.toml` `fastapi` dep -> **FastAPI**
+- `manage.py` + `settings.py` / `pyproject.toml` `django` dep -> **Django**
+- Both -> ask which surface this PR targets; do not guess
 
-- `main.py` + `fastapi` import / `pyproject.toml` `fastapi` dep → **FastAPI**
-- `manage.py` + `settings.py` / `pyproject.toml` `django` dep → **Django**
-- Both present → ask the user which surface this PR targets; do not guess
+If detected stack is not Python, stop and route to `/task-code-review-perf`. Record `Framework: FastAPI | Django | mixed` for the Summary.
 
-The framework decision drives which checklists in Step 4 apply. Record `Framework: FastAPI | Django | mixed` for the Summary block.
+### Step 2 - Resolve the Diff
 
-### Step 2 - Resolve the Diff Under Review
+Use skill: `review-precondition-check`. Read diff and log once via `git diff <base>...<head>` and `git log <base>..<head>`; reuse. Skip entirely as subagent with handle + pre-read.
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
-
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+If `review-precondition-check` fails fast (dirty tree, trunk branch, missing PR ref, denied head-vs-current confirmation), surface verbatim and stop. Never run state-changing git.
 
 ### Step 3 - Read the Performance Surface
 
-Before applying the checklists, open the files that govern query and concurrency behavior so impact estimates ground in real code:
+Cite real `file:line` per finding. Open:
 
-**FastAPI surface:**
+**FastAPI:** every changed SQLAlchemy `Mapped[...]` model (`relationship()` `lazy=`, `cascade=`), repository / data-access modules (`select(...)`, `.options(selectinload/joinedload)`, `session.execute`), routers (`async def`, `Depends(get_db)`, `response_model`), Pydantic v2 schemas with non-trivial validators, `core/config.py` / `.env` for `pool_size` / `max_overflow` / `pool_pre_ping` / `pool_recycle`, Alembic migrations under `migrations/versions/`, Celery modules + `celery.py`.
 
-- Every changed SQLAlchemy `Mapped[...]` model (associations, `relationship()` `lazy=` strategy, `cascade=`)
-- Every changed repository / data-access module (`select(...)` calls, `.options(selectinload/joinedload)`, `session.execute` patterns)
-- Every changed router / endpoint (`async def`, `Depends(get_db)`, response_model usage)
-- Every changed Pydantic v2 schema with non-trivial validators or large `model_validator` logic
-- `app/core/config.py` / `settings.py` / `.env` for `pool_size`, `max_overflow`, `pool_pre_ping`, `pool_recycle`
-- Alembic migrations under `migrations/versions/`
-- Celery task modules; `celery.py` for broker / backend / `task_routes` config
+**Django:** every changed model (`Meta.indexes`, `db_index`, `related_name`, `on_delete`), QuerySet / manager methods (`select_related`, `prefetch_related`, `only`, `defer`, `annotate`), ViewSets / views (`get_queryset`, pagination, filter backends), serializers (`SerializerMethodField`, nested), `settings.py` for `CONN_MAX_AGE` / `CONN_HEALTH_CHECKS` / cache / Celery, migrations under `<app>/migrations/`, Celery modules.
 
-**Django surface:**
+If the diff is small but ripples into unchanged code (new endpoint calling an existing N+1 repository), read the unchanged file - the regression lives there.
 
-- Every changed Django model (`Meta.indexes`, `db_index=True`, `related_name`, `on_delete`)
-- Every changed `QuerySet` / manager method - `select_related`, `prefetch_related`, `only`, `defer`, `annotate`
-- Every changed ViewSet / view - `get_queryset` overrides, pagination, filter backends
-- Every changed serializer - `SerializerMethodField`, nested serializers (N+1 risk via Django ORM)
-- `settings.py` / `settings/base.py` for `DATABASES['default']['CONN_MAX_AGE']`, `CONN_HEALTH_CHECKS`, cache, Celery
-- Migrations under `<app>/migrations/`
-- Celery task modules
+### Step 4 - ORM Hotspots (SQLAlchemy or Django ORM)
 
-For each finding produced later, cite a real `file:line`. If the diff is small but ripples through code that is not in the diff (a new endpoint calling an existing repository whose query does an N+1), read the unchanged file too - the regression lives there even though the line count attributes it to the new caller.
+Canonical patterns: Use skill: `python-sqlalchemy-patterns` (FastAPI) or `python-django-patterns` (Django). This step flags deviations - skip the irrelevant subsection on monoglot projects.
 
-### Step 4 - ORM Hotspots (FastAPI / SQLAlchemy or Django ORM)
+**FastAPI / SQLAlchemy:**
 
-> If `Framework: FastAPI` was recorded in Step 1, **skip the Django subsection entirely** below. Likewise skip the FastAPI subsection on Django-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
-
-Canonical ORM patterns live in the atomic skills - load `python-sqlalchemy-patterns` (FastAPI) or `python-django-patterns` (Django) for the full pattern set (N+1 prevention, eager-loading strategy, `MissingGreenlet`, bulk operations, pool sizing, `select_related`/`prefetch_related`, `iterator()`, `select_for_update`). This step is the **review-scoped scan**: what the reviewer must verify is *present* in the diff, not a re-statement of what the patterns *are*.
-
-**If FastAPI / SQLAlchemy:**
-
-- [ ] Every traversed `relationship()` is eager-loaded via `selectinload` (collections) or `joinedload` (single-valued FK); `joinedload` on a collection chains `.unique()`
-- [ ] Pydantic response models with `from_attributes=True` only touch preloaded relationships - fix on repository/service, not schema
+- [ ] Traversed `relationship()` eager-loaded via `selectinload` (collections) or `joinedload` (single-valued FK); `joinedload` on collection chains `.unique()`
+- [ ] Pydantic `from_attributes=True` response models touch only preloaded relationships - fix on repository, not schema
 - [ ] No `MissingGreenlet` risk: relationship access stays inside `async with session.begin()` / `Depends(get_db)` lifespan
 - [ ] Existence checks use `await session.scalar(select(exists().where(...)))` not a discarded object load
-- [ ] Unbounded reads use `stream_scalars` / `yield_per` + `StreamingResponse`; list endpoints paginated (keyset preferred over `COUNT(*)` per page on large tables)
-- [ ] Bulk ops batch via `session.execute(insert/update, [...])` not per-row loops
-- [ ] Filter/sort/group columns referenced in the diff have a backing index migration in the same PR
-- [ ] `expire_on_commit=False` on `async_sessionmaker`; pool sizing (`pool_size`, `max_overflow`, `pool_pre_ping`, `pool_recycle`) documented if pool config is in the diff
+- [ ] Unbounded reads use `stream_scalars` / `yield_per` + `StreamingResponse`; lists paginated (keyset over `COUNT(*)`-per-page on large tables)
+- [ ] Bulk ops via `session.execute(insert/update, [...])`, not per-row loops
+- [ ] `expire_on_commit=False` on `async_sessionmaker`; pool sizing documented if config in diff
 
-**If Django / Django ORM:**
+**Django ORM:**
 
-- [ ] FK / M2M / reverse-relation traversals preloaded via `select_related` / `prefetch_related`; nested via `prefetch_related("items__product")` or `Prefetch(...)`
+- [ ] FK / M2M / reverse traversals preloaded via `select_related` / `prefetch_related`; nested via `prefetch_related("items__product")` or `Prefetch(...)`
 - [ ] `SerializerMethodField` / nested serializers backed by `prefetch_related` in `get_queryset()`
-- [ ] Large-row columns excluded via `only()` / `defer()`; `values()` / `values_list()` when model instantiation isn't needed
+- [ ] Large-row columns excluded via `only()` / `defer()`; `values()` / `values_list()` when model instantiation unneeded
 - [ ] `exists()` over `count() > 0`; `iterator(chunk_size=...)` for large result sets
 - [ ] `bulk_create` / `bulk_update` with explicit `batch_size`; reviewer aware these skip `save()` signals
 - [ ] `select_for_update(nowait=... | skip_locked=...)` scoped inside a transaction for concurrent-update safety
-- [ ] Filter/sort columns referenced in the diff have `Meta.indexes` / `db_index=True` / migration index
-- [ ] `CONN_MAX_AGE` and `CONN_HEALTH_CHECKS` configured if connection settings are in the diff
+- [ ] `CONN_MAX_AGE` and `CONN_HEALTH_CHECKS` set if connection config in diff
 
 ### Step 5 - Indexes and Migrations
 
-Use skill: `python-migration-safety` for safe-migration checks on any change in `migrations/versions/` (Alembic) or `<app>/migrations/` (Django).
+Use skill: `python-migration-safety` for changes in `migrations/versions/` (Alembic) or `<app>/migrations/` (Django).
 
-- [ ] Every column referenced in `where` / `order_by` / `group_by` is backed by an index
-- [ ] Composite indexes match the leftmost-prefix pattern of the queries
-- [ ] Foreign keys have indexes (PostgreSQL does not auto-index FKs)
-- [ ] Indexes on large tables use `CREATE INDEX CONCURRENTLY` (PostgreSQL) - Alembic via `op.execute(...)` with `transaction_per_migration=True`; Django via `RunSQL` with `atomic = False`
-- [ ] **`SET lock_timeout = '2s'`** before DDL on large tables to fail fast instead of blocking
-- [ ] Unique constraints enforced at the database level, not just `unique=True` on a non-managed column
-- [ ] Partial indexes used for boolean/enum filters that select a small subset
-- [ ] No DDL on hot tables in a single migration (expand-then-contract: add column nullable, backfill, switch reads, drop old column in a later release)
-- [ ] **Backfill via keyset pagination** (`WHERE id > :last_id ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N` (re-scans the same rows on every iteration)
-- [ ] Data migrations isolated from DDL migrations - separate Alembic revision or Django `RunPython` migration
+- [ ] Every column in `where` / `order_by` / `group_by` backed by an index
+- [ ] Composite indexes match leftmost-prefix
+- [ ] FK columns indexed (PostgreSQL does not auto-index FKs)
+- [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY` (Alembic: `op.execute(...)` + `transaction_per_migration=True`; Django: `RunSQL` with `atomic = False`)
+- [ ] `SET lock_timeout = '2s'` before DDL on large tables - fail fast vs block
+- [ ] Unique constraints enforced at the DB level, not just `unique=True` on a non-managed column
+- [ ] Partial indexes for boolean/enum filters selecting a small subset
+- [ ] No DDL on hot tables in a single migration (expand-then-contract: add nullable, backfill, switch reads, drop in later release)
+- [ ] Backfill via keyset pagination (`WHERE id > :last_id ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N` (re-scans same rows)
+- [ ] Data migrations isolated from DDL (separate Alembic revision or Django `RunPython`)
 
-**Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot in `WHERE` / `ORDER BY` / `GROUP BY` even if no query in the diff currently references it - someone is adding the index for a reason, and the migration is the load-bearing artifact. Validate the index is actually needed (column shape, expected selectivity), then assess migration safety. Conversely, when the diff _adds a column_ the application also queries on, flag the missing index proactively rather than waiting for a separate migration PR.
+**Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot - validate the index is needed (selectivity, shape), then assess safety. When the diff _adds a column_ also queried on, flag the missing index proactively.
 
-**Migration impact template.** Before approving any migration step on a hot table, state the impact: _"DDL on a 50M-row table without `CONCURRENTLY` blocks all writes for the duration of the index build (typically 5-30 min on Postgres at this scale). Acquires `ACCESS EXCLUSIVE`; every other transaction queues."_ If the row count is unknown, ask, or note "row count not in diff - confirm before deploy."
+**Migration impact template.** State the impact before approving DDL on a hot table: _"DDL on a 50M-row table without `CONCURRENTLY` blocks writes for 5-30 min on Postgres at this scale. Acquires `ACCESS EXCLUSIVE`; every other transaction queues."_ If row count is unknown, ask, or note "row count not in diff - confirm before deploy."
 
 ### Step 6 - Async Correctness and Event Loop (FastAPI)
 
-_Skip if Django sync app. Skipped at `quick` depth otherwise - see Depth Levels above._
+_Skip on Django sync app. Skipped at `quick` otherwise._
 
-Canonical asyncio patterns live in `python-async-patterns` (blocking-I/O catalog, `gather`/`TaskGroup`, `Semaphore`, `asyncio.timeout`, `run_in_executor` escape hatch). This step is the **review-scoped scan** for changes touching `async def`, `await`, `asyncio.gather`, `TaskGroup`:
+Canonical patterns: Use skill: `python-async-patterns`. Apply the review-scoped scan:
 
-- [ ] No blocking I/O in `async def`: `time.sleep`, `requests.get`, sync DB drivers, sync file I/O on large files - all flagged
+**Impact heuristic.** A blocking call inside `async def` stalls _every request in flight on this uvicorn worker_. Phrase impact as "tail-latency contagion across all endpoints on this worker," not "this request is slow." A synchronous external dependency (even via `httpx.AsyncClient`) inherits its tail: your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget) for non-blocking-business; strict timeouts plus fallback for blocking-business.
+
+- [ ] No blocking I/O in `async def`: `time.sleep`, `requests.get`, sync DB drivers, sync file I/O on large files
 - [ ] No CPU-heavy work on the event loop (hashing, image processing, large parsing) - move to `run_in_executor` or Celery
 - [ ] Fan-out uses `asyncio.gather` / `TaskGroup` (3.11+); never sequential awaits in a loop for independent calls
 - [ ] Every external call wrapped in `asyncio.timeout(...)` with an explicit budget
 - [ ] Fan-out over collections bounded by `asyncio.Semaphore(N)` - unbounded `gather` over a large list exhausts connections
 - [ ] No sync ORM (`Session`, `session.query`) inside `async def` - use `AsyncSession`
-- [ ] `Depends(get_db)` yield-dependency commits/rolls back; no orphan transactions
-- [ ] `httpx.AsyncClient` reused as a module-level / app-state singleton with explicit `Timeout` and connection limits - never per-request
-- [ ] SQLAlchemy `pool_size + max_overflow` ≤ DB `max_connections / N_workers` if pool config is in the diff
-
-> **Impact heuristic - blast radius of an event-loop block.** A blocking call inside `async def` does not just slow the calling request - it stalls _every other request currently in flight on this uvicorn worker_. Phrase the impact as "tail-latency contagion across all endpoints on this worker," not "this request is slow."
-
-> **Synchronous external dependency on the request path.** Even when the call uses `httpx.AsyncClient` correctly, your p99 = max(your work, upstream p99). Recommend async patterns (decision cache, circuit breaker, fire-and-forget) when the call is non-blocking-business; recommend strict timeouts plus fallback values when blocking-business.
+- [ ] `Depends(get_db)` yield-dependency commits / rolls back; no orphan transactions
+- [ ] `httpx.AsyncClient` as a module / app-state singleton with explicit `Timeout` and connection limits - never per-request
+- [ ] `pool_size + max_overflow` <= DB `max_connections / N_workers` if pool config in diff
 
 ### Step 7 - Pydantic / Serialization (FastAPI)
 
-_Skipped at `quick` depth unless the diff touches schemas with non-trivial validators._
+_Skipped at `quick` unless the diff touches schemas with non-trivial validators._
 
-- [ ] **`response_model`** declared on every endpoint that returns structured data - FastAPI uses it to filter fields and generate the OpenAPI schema; absent, it falls back to `dict` and skips validation
-- [ ] **Pydantic v2 (`pydantic>=2`)** - v1 patterns (`class Config:` with snake_case keys, `parse_obj`, `dict()`) flagged for migration to `model_config = ConfigDict(...)`, `model_validate`, `model_dump`
-- [ ] **`from_attributes=True`** in `model_config` for response models built from ORM rows
-- [ ] **Heavy `@field_validator` / `@model_validator` not on every request**: validation cost compounds at high QPS - move expensive checks to service layer
-- [ ] **`response_model_exclude_unset=True`** when partial responses are expected - reduces payload size
-- [ ] **Reuse Pydantic models across endpoints** rather than redefining identical shapes per route - first construction is the slow path
-- [ ] **`orjson` / `ujson`** as the response renderer (`default_response_class=ORJSONResponse`) for endpoints with large JSON payloads
+- [ ] `response_model` declared on every endpoint returning structured data - absent, FastAPI falls back to `dict` and skips validation / field filtering
+- [ ] Pydantic v2 (`pydantic>=2`) - v1 patterns (`class Config:`, `parse_obj`, `dict()`) flagged for migration to `model_config = ConfigDict(...)`, `model_validate`, `model_dump`
+- [ ] `from_attributes=True` in `model_config` for response models built from ORM rows
+- [ ] Heavy `@field_validator` / `@model_validator` not on every request - move expensive checks to service layer
+- [ ] `response_model_exclude_unset=True` when partial responses expected
+- [ ] Reuse Pydantic models across endpoints rather than redefining identical shapes per route
+- [ ] `orjson` / `ujson` renderer (`default_response_class=ORJSONResponse`) for large JSON payloads
 
 ### Step 8 - Caching and Response Performance
 
-_Skipped at `quick` depth unless the diff touches caching primitives._
+_Skipped at `quick` unless the diff touches caching primitives._
 
-- [ ] **Per-request memoization**: `functools.lru_cache` on pure functions; `request.state` cache for values used by multiple dependencies
-- [ ] **Process-level cache**: `cachetools.TTLCache` or `aiocache` for in-process; Redis (`redis-py` async or `aioredis`) for shared / multi-instance
-- [ ] **Cache stampede protection**: hot keys with expensive regeneration use single-flight (`asyncio.Lock` per key) or a Redis `SET NX EX` lock
-- [ ] **Cache invalidation explicit** - no caches that never expire and never invalidate; document staleness budget
-- [ ] **Django view cache / template fragment cache** scoped to keys that include the user / tenant when content varies
-- [ ] **HTTP caching** (`Cache-Control`, `ETag`, `Last-Modified`) on read-heavy GET endpoints
-- [ ] **Response compression** middleware (`GZipMiddleware` for FastAPI; `GZipMiddleware` for Django) for JSON responses > 2KB
+- [ ] Per-request memoization: `functools.lru_cache` on pure functions; `request.state` cache for values used by multiple dependencies
+- [ ] Process-level: `cachetools.TTLCache` / `aiocache` in-process; Redis (`redis-py` async) for shared / multi-instance
+- [ ] Stampede protection: hot keys with expensive regen use single-flight (`asyncio.Lock` per key) or Redis `SET NX EX`
+- [ ] Invalidation explicit - document staleness budget; no never-expiring caches
+- [ ] Django view / template fragment cache scoped to keys including user / tenant when content varies
+- [ ] HTTP caching (`Cache-Control`, `ETag`, `Last-Modified`) on read-heavy GETs
+- [ ] Response compression (`GZipMiddleware`) for JSON > 2KB
 
 ### Step 9 - Celery / Background Work
 
-_Skipped at `quick` depth unless the diff touches Celery._
+_Skipped at `quick` unless the diff touches Celery._
 
-Canonical task patterns live in `python-celery-patterns` (idempotency, `acks_late` semantics, retry/backoff/jitter, queue routing, canvas, time limits). This step is the **review-scoped scan**:
+Canonical patterns: Use skill: `python-celery-patterns`. Apply the review-scoped scan:
 
 - [ ] Tasks idempotent; pass IDs not ORM objects
-- [ ] Critical tasks set `acks_late=True` + `task_reject_on_worker_lost=True`; non-critical may default
+- [ ] Critical tasks set `acks_late=True` + `task_reject_on_worker_lost=True`
 - [ ] Retry config declared (`autoretry_for`, `max_retries`, `retry_backoff`, `retry_jitter`); DLQ path for poison messages
 - [ ] Queue routing isolates time-sensitive work; workers started with `-Q`
-- [ ] `.delay()` dispatched AFTER commit (FastAPI: after `session.commit()`; Django: `transaction.on_commit(...)`)
-- [ ] Long tasks split (target sub-30s median); chord/chain for longer workflows
+- [ ] `.delay()` AFTER commit (FastAPI: after `session.commit()`; Django: `transaction.on_commit(...)`) - never inside a transaction
+- [ ] Long tasks split (target sub-30s median); chord / chain for longer workflows
 - [ ] `soft_time_limit` / `time_limit` set on tasks that can hang on external I/O
 - [ ] Result backend used only when result is consumed
 
 ### Step 10 - Observability for Perf (delegation hand-off)
 
-_Skipped at `quick` depth._
+_Skipped at `quick`._
 
-This step is intentionally narrow - depth on observability belongs to `task-python-review-observability`. From a perf perspective, confirm only:
+Depth on observability belongs to `task-python-review-observability`. Confirm only:
 
-- [ ] Slow paths reachable from this PR have **some** instrumentation (OTel span or `prometheus_client` histogram); if not, raise as a Low/Recommendation finding and delegate to `task-python-review-observability` for a proper instrumentation pass rather than dictating the design here.
-- [ ] SQLAlchemy `echo=False` in prod and `django-debug-toolbar` disabled in prod - if visible in the diff. If neither is in the diff, skip.
+- [ ] Slow paths from this PR have **some** instrumentation (OTel span or `prometheus_client` histogram); if not, raise as Low / Recommendation and delegate
+- [ ] SQLAlchemy `echo=False` in prod and `django-debug-toolbar` disabled in prod (only if in diff)
 
-Anything beyond presence/absence (sampling rates, span attributes, correlation IDs, multi-process Prometheus) → `task-python-review-observability` owns it. Note the gap, do not duplicate the audit here.
-
+Beyond presence/absence -> `task-python-review-observability` owns it.
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded before any framework-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Performance surface read directly (models, repositories / managers, routers / views, schemas / serializers, settings, migrations, Celery tasks)
-- [ ] `python-sqlalchemy-patterns` consulted for FastAPI / SQLAlchemy projects; N+1, multi-level N+1, `MissingGreenlet` risk, `joinedload` `.unique()`, projection use checked
-- [ ] `python-django-patterns` consulted for Django projects; `select_related` / `prefetch_related`, `only` / `defer`, `exists`, `bulk_*`, `iterator` checked
-- [ ] `python-migration-safety` consulted for any migration change; `lock_timeout`, concurrent index, keyset-pagination backfill, expand-contract verified
-- [ ] `python-async-patterns` consulted for any `async def` / event-loop change; blocking-call audit, `gather` / `TaskGroup` / `Semaphore` use, `asyncio.timeout` wrapping
-- [ ] `python-celery-patterns` consulted for any Celery change; idempotency, `acks_late`, retry policy, post-commit dispatch verified
-- [ ] Connection pool sizing validated against worker / framework concurrency model **if pool config is in the diff**; otherwise note as Low / Recommendation and skip rather than fail the check
-- [ ] Caching strategy assessed (in-process vs Redis, single-flight, invalidation explicit)
-- [ ] Pydantic v2 / DRF serializer cost assessed when applicable
-- [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and load-test plan
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-perf`. Write before ending; print confirmation.
 
 ## Output Format
 
@@ -261,44 +204,57 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the Python idiom: N+1 via lazy `relationship()` access, missing index, sync `requests.get` in async endpoint, Celery `.delay()` inside transaction, `joinedload` on collection without `.unique()`, etc.]
-- **Impact:** [estimated effect - e.g., "N+1 in OrderRouter.list adds ~200 queries per request at 100 orders" or measured "p95 800ms -> 120ms after fix"]
-- **Fix:** [specific Python change with code example - `selectinload`, `prefetch_related`, `httpx.AsyncClient`, `transaction.on_commit`, etc.]
+- **Issue:** [Python idiom: N+1 via lazy `relationship()` access, missing index, sync `requests.get` in async endpoint, Celery `.delay()` inside transaction, `joinedload` on collection without `.unique()`, etc.]
+- **Impact:** [estimated: "N+1 in OrderRouter.list adds ~200 queries per request at 100 orders" / measured: "p95 800ms -> 120ms after fix"]
+- **Fix:** [specific Python change with code: `selectinload`, `prefetch_related`, `httpx.AsyncClient`, `transaction.on_commit`, etc.]
 
 ### Medium Impact
-
 [Same structure]
 
 ### Low Impact / Quick Wins
-
 [Same structure]
 
 _Omit sections with no findings._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Switch list endpoint to keyset pagination", "Add Redis cache for product catalog reads", "Move PDF generation to Celery"]
+[Structural improvements not tied to a finding - e.g., "Switch list endpoint to keyset pagination", "Add Redis cache for product catalog reads", "Move PDF generation to Celery"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, schema migration, or load-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Each item tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
 
 1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `.options(selectinload(Order.items).selectinload(OrderItem.product))` to OrderRepository.list"]
-2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at) - spawn DB migration subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at)"]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
+
+## Self-Check
+
+- [ ] Stack confirmed as Python; framework (FastAPI / Django / mixed) recorded
+- [ ] `review-precondition-check` ran (or handle received); diff / log read once and reused
+- [ ] Performance surface read directly (models, repositories / managers, routers / views, schemas / serializers, settings, migrations, Celery)
+- [ ] `python-sqlalchemy-patterns` / `python-django-patterns` consulted per framework; N+1, multi-level, projection, `MissingGreenlet` checked
+- [ ] `python-migration-safety` consulted on migration changes; `lock_timeout`, concurrent index, keyset backfill, expand-contract verified
+- [ ] `python-async-patterns` consulted on `async def` / event-loop changes; blocking-call audit, `gather` / `TaskGroup` / `Semaphore`, `asyncio.timeout` wrapping
+- [ ] `python-celery-patterns` consulted on any Celery change; idempotency, `acks_late`, retry, post-commit dispatch verified
+- [ ] Pool sizing validated against worker / framework concurrency **if pool config in diff**; otherwise Low / Recommendation
+- [ ] Caching assessed (in-process vs Redis, single-flight, invalidation) when caching primitives in diff
+- [ ] Pydantic v2 / DRF serializer cost assessed when applicable
+- [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
+- [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered High > Medium > Low
+- [ ] Review report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting issues without naming the Python idiom ("this is slow" vs "N+1 from lazy `relationship()`; add `selectinload` on the repository call")
-- Recommending generic backend advice when a Python pattern applies (say "use `selectinload`", not "use eager loading")
-- Suggesting `lazy="joined"` on collections to fix N+1 - it causes row duplication; use `selectinload` for collections, `joinedload` only for single-valued FK / OneToOne
-- Suggesting caching without an invalidation strategy
-- Conflating performance review with general code review or security review - delegate those to their workflows
-- Treating Celery retries as a substitute for idempotency - retries with non-idempotent tasks cause double-charging / double-emailing
-- Recommending `requests` / `urllib3` synchronous calls in `async def` paths - they block the event loop and stall every other in-flight request
-- Recommending `time.sleep` in `async def` - same blocking problem
-- Reporting "missing index" without confirming the column actually appears in a `where` / `order_by` / `group_by` in the diff
+- `git fetch` / `git checkout` from this workflow - user runs these
+- Reporting issues without naming the Python idiom ("this is slow" vs "N+1 from lazy `relationship()`; add `selectinload`")
+- Generic backend advice when a Python pattern applies (say "use `selectinload`", not "use eager loading")
+- Suggesting `lazy="joined"` on collections to fix N+1 - causes row duplication; use `selectinload` for collections, `joinedload` only for single-valued FK / OneToOne
+- Suggesting caching without invalidation strategy
+- Conflating perf with general or security review
+- Treating Celery retries as a substitute for idempotency
+- Recommending `requests` / `urllib3` / `time.sleep` in `async def` paths - they block the event loop and stall every in-flight request
+- Reporting "missing index" without confirming the column appears in `where` / `order_by` / `group_by`

@@ -7,52 +7,61 @@ metadata:
 user-invocable: false
 ---
 
-## 1. PYTEST FUNDAMENTALS
+# Testing Patterns
 
-- Fixtures over setup/teardown: `@pytest.fixture` with scope (function, module, session)
-- `parametrize` for table-driven style testing
-- `conftest.py` for shared fixtures (DB session, test client, factories)
-- Markers: `@pytest.mark.slow`, `@pytest.mark.integration`
+> Load `Use skill: stack-detect` first to determine the project stack.
+
+## When to Use
+
+- Writing unit tests for services, repositories, utilities
+- Writing integration/e2e tests for FastAPI or Django endpoints
+- Setting up test infrastructure (DB, async fixtures, factories, mocks)
+- Reviewing test code for coverage gaps or anti-patterns
+
+## Rules
+
+- Plain pytest functions; no `unittest.TestCase` classes
+- Real PostgreSQL via Testcontainers for integration; never SQLite
+- Each test independent: rollback per test, clear `dependency_overrides`
+- Patch at the import path of the consumer, not the source module
+- `pytest-asyncio` `asyncio_mode = "auto"`; no per-test `@pytest.mark.asyncio`
+- Test names state behavior: `test_create_order_returns_201_when_valid`
+- `scope="session"` only for read-only setup (engine, container); never for mutated DB rows
+
+## Patterns
+
+### Fixtures and Parametrize
 
 ```python
-@pytest.fixture
-def order_data():
-    return {"total": "99.99", "items": [{"product": "Widget", "quantity": 2}]}
-
 @pytest.mark.parametrize("status,expected_count", [
-    ("pending", 3),
-    ("completed", 1),
-    ("cancelled", 0),
+    ("pending", 3), ("completed", 1), ("cancelled", 0),
 ])
 def test_list_orders_by_status(status, expected_count):
     ...
 ```
 
-### Test Organization
+Shared fixtures live in `conftest.py` (root and `integration/`). Markers: `slow`, `integration`.
+
+### Test Layout
 
 ```
 tests/
-  conftest.py              # shared fixtures: db session, client, factories
-  unit/
-    test_order_service.py  # service logic, mocked dependencies
-    test_order_schemas.py  # Pydantic validation edge cases
+  conftest.py              # shared: db session, client, factories
+  unit/                    # mocked dependencies
   integration/
-    conftest.py            # Testcontainers PostgreSQL, real DB fixtures
-    test_orders_api.py     # full endpoint tests with real DB
-    test_order_tasks.py    # Celery task tests
+    conftest.py            # Testcontainers PostgreSQL, real DB
 ```
 
-## 2. FASTAPI ASYNC TESTING
+### FastAPI Async Testing
 
-Configure `pytest-asyncio` mode to avoid decorating every test:
+`pyproject.toml`:
 
 ```ini
-# pyproject.toml
 [tool.pytest-asyncio]
 asyncio_mode = "auto"
 ```
 
-Use `httpx.ASGITransport` (httpx 0.27+) to mount the FastAPI app:
+Mount the app via `httpx.ASGITransport` (httpx 0.27+):
 
 ```python
 from httpx import ASGITransport, AsyncClient
@@ -63,23 +72,15 @@ async def client(app: FastAPI):
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-async def test_create_order(client: AsyncClient):
-    response = await client.post("/api/v1/orders", json={
-        "total": "49.99",
-        "items": [{"product": "Widget", "quantity": 1}],
-    })
+async def test_create_order_returns_201(client: AsyncClient):
+    response = await client.post("/api/v1/orders", json={"total": "49.99", "items": [...]})
     assert response.status_code == 201
-    data = response.json()
-    assert data["status"] == "pending"
+    assert response.json()["status"] == "pending"
 ```
 
-### Async SQLAlchemy Session Fixture
-
-Wire a real async session into FastAPI dependency overrides:
+### Async SQLAlchemy Session with Rollback
 
 ```python
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
 @pytest.fixture(scope="session")
 def async_engine(postgres_url):
     return create_async_engine(postgres_url)
@@ -92,21 +93,18 @@ async def db_session(async_engine):
     async with async_session() as session:
         async with session.begin():
             yield session
-            await session.rollback()  # rollback per test for isolation
+            await session.rollback()  # isolation per test
 
 @pytest.fixture
 def app_with_db(app: FastAPI, db_session: AsyncSession):
     app.dependency_overrides[get_db] = lambda: db_session
     yield app
-    app.dependency_overrides.clear()
+    app.dependency_overrides.clear()  # leftover overrides leak between tests
 ```
 
-## 3. DJANGO TESTING
+### Django Testing
 
-- APIClient for DRF endpoint tests
-- `@pytest.mark.django_db` for database access
-- pytest-django fixtures: `client`, `admin_client`, `django_user_model`
-- `TransactionTestCase` only when testing transaction behavior
+DRF `APIClient` with `force_authenticate`; `@pytest.mark.django_db` for DB access. `TransactionTestCase` only for transaction-behavior tests.
 
 ```python
 from rest_framework.test import APIClient
@@ -119,18 +117,13 @@ def api_client(user):
 
 @pytest.mark.django_db
 def test_create_order(api_client):
-    response = api_client.post("/api/orders/", {
-        "total": "49.99",
-        "items": [{"product": "Widget", "quantity": 1}],
-    }, format="json")
+    response = api_client.post("/api/orders/", {"total": "49.99", "items": [...]}, format="json")
     assert response.status_code == 201
 ```
 
-## 4. DATABASE TESTING
+### Database Testing
 
-- Testcontainers (testcontainers-python) for real PostgreSQL
-- Transaction rollback per test for isolation
-- factory_boy for test data (like FactoryBot for Python)
+factory_boy with `SQLAlchemyModelFactory`; use `SubFactory` for related models, `LazyAttribute`/`post_generation` to break cycles:
 
 ```python
 import factory
@@ -143,19 +136,11 @@ class OrderFactory(SQLAlchemyModelFactory):
 
     total = factory.Faker("pydecimal", left_digits=4, right_digits=2, positive=True)
     status = "pending"
-
-class OrderItemFactory(SQLAlchemyModelFactory):
-    class Meta:
-        model = OrderItem
-        sqlalchemy_session_persistence = "commit"
-
-    order = factory.SubFactory(OrderFactory)
-    product_name = factory.Faker("word")
-    quantity = factory.Faker("random_int", min=1, max=10)
 ```
 
+Testcontainers for real PostgreSQL:
+
 ```python
-# Testcontainers for real PostgreSQL
 from testcontainers.postgres import PostgresContainer
 
 @pytest.fixture(scope="session")
@@ -168,16 +153,14 @@ def postgres_url(postgres):
     return postgres.get_connection_url().replace("psycopg2", "asyncpg")
 ```
 
-## 5. CELERY TESTING
+For shared session-scoped DB, use `SAVEPOINT` rollback per test, not `DROP/CREATE`.
 
-- `task.apply()` for synchronous execution in tests
-- Mock `.delay()` to verify task dispatch without running workers
-- Test task logic separately from Celery machinery
-- Use `CELERY_TASK_ALWAYS_EAGER=True` for integration tests (but beware: this skips serialization)
+### Celery Testing
+
+Test task logic via `.apply()` (synchronous); mock `.delay()` to verify dispatch:
 
 ```python
 def test_send_notification_task(db_session, order):
-    # Test task logic directly (synchronous)
     result = send_notification.apply(args=[order.id])
     assert result.successful()
 
@@ -187,15 +170,13 @@ def test_order_triggers_notification(mocker):
     mock_delay.assert_called_once_with(1)
 ```
 
-## 6. MOCKING
+`CELERY_TASK_ALWAYS_EAGER=True` skips serialization; pair with at least one real-broker test to catch pickle/JSON bugs.
 
-- `unittest.mock.patch` / pytest-mock `mocker` fixture
-- Mock external APIs: `respx` for httpx (FastAPI), `responses` for requests (Django)
-- Prefer dependency injection over patching where possible
-- Patch at the import path, not the source path
+### Mocking
+
+`respx` for httpx (FastAPI), `responses` for requests (Django), `pytest-mock` `mocker` for general patching. Prefer DI over patching.
 
 ```python
-# respx for httpx mocking (FastAPI)
 import respx
 
 async def test_external_api_call():
@@ -203,23 +184,16 @@ async def test_external_api_call():
         respx.get("https://api.example.com/data").respond(json={"key": "value"})
         result = await fetch_external_data()
         assert result["key"] == "value"
-
-# pytest-mock mocker fixture
-def test_service_calls_repo(mocker):
-    mock_repo = mocker.AsyncMock(spec=OrderRepository)
-    mock_repo.get_by_id.return_value = OrderFactory.build()
-    service = OrderService(mock_repo)
-    ...
 ```
 
-## 7. CI AND COVERAGE
+### CI and Coverage
 
 ```ini
 # pyproject.toml
 [tool.pytest.ini_options]
 addopts = "--cov=app --cov-branch --cov-report=term-missing --cov-fail-under=80"
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "slow: marks tests as slow",
     "integration: requires external services",
 ]
 
@@ -227,22 +201,34 @@ markers = [
 omit = ["tests/*", "migrations/*"]
 ```
 
-For parallel execution: `pytest -n auto` (pytest-xdist).
+Parallel: `pytest -n auto` (pytest-xdist). Async session-scoped fixtures need `pytest-asyncio` 0.21+ with a session-scoped event loop fixture.
 
-## 8. EDGE CASES
+## Output Format
 
-- **Async fixture scoping**: `scope="session"` async fixtures require `pytest-asyncio` 0.21+ and a session-scoped event loop. If tests hang or fail with event loop errors, check that the event loop fixture scope matches.
-- **Dependency override cleanup**: Always call `app.dependency_overrides.clear()` in fixture teardown - leftover overrides leak between tests.
-- **Factory circular references**: When two factories reference each other via `SubFactory`, use `LazyAttribute` or `post_generation` to break the cycle.
-- **Transaction isolation with Testcontainers**: If tests share a session-scoped database, use `SAVEPOINT` rollback per test (not `DROP/CREATE` tables) for speed.
+```
+## Test Plan
 
-## 9. ANTI-PATTERNS
+### Unit Tests
+| Test | Module | Mocks | Assertions |
+|------|--------|-------|------------|
 
-- ❌ `unittest.TestCase` classes (use plain functions with pytest)
-- ❌ SQLite for integration tests (use Testcontainers PostgreSQL)
-- ❌ Mocking everything (test real DB interactions for integration tests)
-- ❌ `time.sleep` in async tests (use `asyncio.wait_for` or `pytest-timeout`)
-- ❌ Patching at the source module instead of the import path
-- ❌ `CELERY_TASK_ALWAYS_EAGER` without also testing with real serialization (masks pickle/JSON bugs)
-- ❌ Shared mutable state between tests (global variables, module-scoped fixtures that mutate)
-- ❌ `scope="session"` on fixtures that mutate DB state (breaks test isolation)
+### Integration Tests
+| Test | Endpoint/Task | DB/Broker | Assertions |
+|------|---------------|-----------|------------|
+
+### Coverage Targets
+- Service layer: {count} unit tests
+- API layer: {count} integration tests
+- Task layer: {count} Celery tests
+```
+
+## Avoid
+
+- `unittest.TestCase` classes (use plain pytest functions)
+- SQLite for integration tests
+- Mocking everything in integration tests (defeats the purpose)
+- `time.sleep` in async tests (use `asyncio.wait_for` / `pytest-timeout`)
+- Patching at the source module path instead of the consumer's import path
+- `CELERY_TASK_ALWAYS_EAGER` as the only Celery test strategy
+- Shared mutable state across tests (module globals, session-scoped mutated fixtures)
+- Leftover `dependency_overrides` (always `clear()` in teardown)
