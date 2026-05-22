@@ -9,145 +9,104 @@ user-invocable: false
 
 # Node Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-onboard` when the detected stack is Node.js / TypeScript.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when the stack is Node.js / TypeScript.
 
 ## When to Use
 
-- A workflow needs Node-specific orientation: package manager, framework, TS config, build pipeline, ORM, module system.
-- Project has `package.json`.
+Workflow needs Node-specific orientation: package manager, framework, TS config, build, ORM, module system. Project has `package.json`.
 
 ## Rules
 
-- Identify package manager first: `package-lock.json` (npm), `yarn.lock` (Yarn), `pnpm-lock.yaml` (pnpm), `bun.lockb` (Bun). Each has different command set.
-- Identify framework: NestJS (`nest-cli.json`, `@nestjs/*` deps), Express (`express` dep, plain layout), Fastify, Koa, plain Node.
-- Identify Node version (`.nvmrc`, `package.json` `engines.node`, `volta` config). Node 20 LTS or 22 LTS standard.
-- Identify module system: `package.json` `"type": "module"` -> ESM, default -> CommonJS.
-- Identify ORM: TypeORM (`ormconfig.json` or `data-source.ts`), Prisma (`prisma/schema.prisma`), Sequelize (`sequelize-cli`), Mongoose (Mongo), Drizzle.
+- Detect package manager from lockfile - command set differs.
+- Detect framework: NestJS (`nest-cli.json`, `@nestjs/*`), Express (`express` dep), Fastify, Koa, plain Node.
+- Detect Node version (`.nvmrc`, `engines.node`, `volta`); module system (`"type": "module"` -> ESM, else CJS).
+- Detect ORM: Prisma (`schema.prisma`), TypeORM (`data-source.ts`), Sequelize, Drizzle, Mongoose.
 
 ## Patterns
 
-### Package Manager Inventory
+### Package Manager
 
-| File                | Manager | Lockfile             | Common commands                                |
-| ------------------- | ------- | -------------------- | ---------------------------------------------- |
-| `package-lock.json` | npm     | `package-lock.json`  | `npm install`, `npm run`, `npx`                |
-| `yarn.lock`         | Yarn    | `yarn.lock`          | `yarn install`, `yarn run`, `yarn dlx`         |
-| `pnpm-lock.yaml`    | pnpm    | `pnpm-lock.yaml`     | `pnpm install`, `pnpm run`, `pnpm dlx`         |
-| `bun.lockb`         | Bun     | `bun.lockb`          | `bun install`, `bun run`                       |
+| Lockfile            | Manager | Commands                          |
+| ------------------- | ------- | --------------------------------- |
+| `package-lock.json` | npm     | `npm install`, `npm run`, `npx`   |
+| `yarn.lock`         | Yarn    | `yarn install`, `yarn dlx`        |
+| `pnpm-lock.yaml`    | pnpm    | `pnpm install`, `pnpm dlx`        |
+| `bun.lockb`         | Bun     | `bun install`, `bun run`          |
 
-### Bootstrap Path
+### Bootstrap
 
-1. Node toolchain: confirm version from `.nvmrc` or `engines.node`. Use `nvm`/`fnm`/`volta`.
-2. Install: `<manager> install`.
-3. Local services: `compose.yml` for DB/Redis; check `.env.example` for required env vars.
-4. Migrations:
-   - **Prisma:** `npx prisma migrate dev`.
-   - **TypeORM:** `npm run typeorm:migration:run` (script-defined).
-   - **Sequelize:** `npx sequelize-cli db:migrate`.
-   - **Drizzle:** `npx drizzle-kit migrate`.
-5. Run:
-   - **NestJS:** `npm run start:dev` (Nest CLI).
-   - **Express + ts-node-dev:** `npm run dev`.
-   - **tsx-based:** `npm run dev` (often `tsx watch src/index.ts`).
-   - **Bun:** `bun run dev`.
-6. Verify: default port from `.env` / config; `/health` if implemented; `/api` swagger if NestJS Swagger.
+1. Node version: `.nvmrc` / `engines.node` via `nvm` / `fnm` / `volta`.
+2. Install via detected manager.
+3. Local services: `compose.yml` for DB/Redis; env from `.env.example`.
+4. Migrations: Prisma `npx prisma migrate dev` | TypeORM `npm run typeorm:migration:run` | Sequelize `npx sequelize-cli db:migrate` | Drizzle `npx drizzle-kit migrate`.
+5. Run: NestJS `npm run start:dev` | Express `npm run dev` (often `tsx watch`) | Bun `bun run dev`.
+6. Verify: `/health` if implemented; `/api` Swagger if NestJS.
 
-### Key File Inventory
+### Key Files
 
-**NestJS:**
+**NestJS**
 
-| Location                  | Purpose                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `nest-cli.json`           | NestJS CLI config; source dir, plugins                                           |
-| `src/main.ts`             | `bootstrap()` function; `NestFactory.create(AppModule)`                          |
-| `src/app.module.ts`       | Root module; imports feature modules                                              |
-| `src/<feature>/`          | Feature modules (controller, service, dto, entity)                                |
-| `src/<feature>/*.controller.ts` | HTTP routes, decorators                                                     |
-| `src/<feature>/*.service.ts`    | Business logic                                                              |
-| `src/<feature>/dto/`      | Validation DTOs (class-validator decorators)                                      |
-| `tsconfig.json` + `tsconfig.build.json` | TypeScript config                                                       |
-| `test/`                   | E2E tests (Jest by default)                                                       |
+| Location                  | Purpose                          |
+| ------------------------- | -------------------------------- |
+| `nest-cli.json`           | CLI config                       |
+| `src/main.ts`             | `NestFactory.create(AppModule)`  |
+| `src/app.module.ts`       | Root module                      |
+| `src/<feature>/`          | Feature modules (ctrl/svc/dto)   |
+| `tsconfig.json`           | TS config                        |
+| `test/`                   | E2E tests                        |
 
-**Express:**
+**Express**
 
-| Location                  | Purpose                                                                |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `src/index.ts` or `app.ts` | Express app setup                                                     |
-| `src/routes/`             | Route handlers                                                         |
-| `src/middleware/`         | Custom middleware                                                       |
-| `src/services/` or `src/controllers/` | Business logic separation (varies by team)                  |
+| Location                              | Purpose            |
+| ------------------------------------- | ------------------ |
+| `src/index.ts` or `app.ts`            | App setup          |
+| `src/routes/`                         | Route handlers     |
+| `src/middleware/`                     | Custom middleware  |
+| `src/services/` or `src/controllers/` | Business logic     |
 
-### Package Layout Convention
+### Package Layout
 
-Check which the project uses before describing the architecture:
-
-- **Feature-package** (NestJS default via `nest g resource`, common in modern Node projects): `src/orders/{orders.controller.ts, orders.service.ts, orders.module.ts, dto/, entities/}` keeps an entire feature in one directory; cross-feature imports go through the feature's `*.module.ts` exports. Easier to extract a feature later. Matches NestJS CLI defaults
-- **Layer-package** (Express convention, dominant in tutorials and many older codebases): `src/controllers/`, `src/services/`, `src/repositories/`, `src/routes/`, `src/middleware/` group files by stereotype. Every Order-related concern lives in a different directory. Common when starting from `express-generator` or layer-first tutorials
-- **Mixed** (common in growing Express codebases migrating to feature-package, or NestJS codebases with leftover `src/common/` / `src/shared/` utility piles): `src/orders/` (feature-package) sits next to a legacy `src/services/orderService.ts` (layer-package). When you find both, the project is mid-migration - new code goes in the feature-package side, edits to legacy code stay in place until a planned refactor. Confirm direction with the team before adding files; `nest g resource <name>` will default to feature-package locations and may need manual relocation if the team has settled on a custom layout
+- **Feature-package** (NestJS default): `src/orders/{controller,service,module,dto,entities}` - cross-feature imports via the feature's module exports.
+- **Layer-package** (Express convention): `src/controllers/`, `src/services/`, `src/repositories/`, `src/routes/`, `src/middleware/`.
+- **Mixed**: feature-package next to legacy layer dirs - project mid-migration. New code goes in feature side; confirm direction before adding files.
 
 ### Conventions
 
-- **TypeScript first** in modern Node projects; check `tsconfig.json` for strict mode.
-- **Linter:** ESLint (`.eslintrc.*`) - check rules; common configs: `@nestjs/eslint-config`, `airbnb`, `standard`.
-- **Formatter:** Prettier (`.prettierrc`).
-- **Logging:** `pino` (modern), `winston`, or NestJS Logger built-in.
-- **Validation:** `class-validator` + `class-transformer` (NestJS), `zod`, `joi`.
-- **Testing:** Jest (NestJS default), Vitest (faster, modern), Mocha (older).
-- **Process manager (prod):** PM2, systemd, or container runtime; not the developer's concern at onboarding.
+- **Lint:** ESLint (`.eslintrc.*`); **Format:** Prettier.
+- **Validation:** `class-validator` (NestJS), `zod` (Express).
+- **Logging:** `pino`, `winston`, or NestJS Logger.
+- **Testing:** Jest (NestJS default), Vitest.
 
-### Risk Hotspots Specific to Node
+### Risk Hotspots
 
-- **Blocking I/O / CPU on the event loop** (`readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse`, sync DB drivers, missing `await` causing unhandled rejections): see `node-typescript-patterns` and `task-node-review-perf`.
-- **N+1 + ORM client lifetime** (Prisma client per-request instead of singleton, TypeORM `eager: true` cartesian, missing `relations`/`include`): see `node-prisma-patterns` / `node-typeorm-patterns`.
-- **BullMQ dispatch inside DB transaction**, jobs taking ORM entities in payloads: see `node-bullmq-patterns`.
-- **Mass assignment / prototype pollution / missing `ValidationPipe whitelist` / Zod `.strict()`**: see `task-node-review-security`.
-- **Migration safety on hot tables** (concurrent index, lock_timeout, expand-then-contract, `synchronize: true` in prod): see `node-migration-safety`.
-- **Node quirks** to flag on first read: NestJS singleton injecting request-scoped (captive dependency), Express middleware-order bugs, mixed ESM/CJS (`__dirname` undefined under ESM), `as any` escape hatches, `forwardRef` overuse masking circular dependencies.
+- **Event-loop blocking** (`readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse`, missing `await`): see `node-typescript-patterns`, `task-node-review-perf`.
+- **N+1 / ORM client lifetime** (per-request Prisma client, TypeORM `eager: true`, missing `include`/`relations`): see `node-prisma-patterns` / `node-typeorm-patterns`.
+- **BullMQ in transaction**, entities in payloads: see `node-bullmq-patterns`.
+- **Mass assignment / prototype pollution**, missing `ValidationPipe whitelist` / Zod `.strict()`: see `task-node-review-security`.
+- **Migration safety**: `synchronize: true` in prod, missing CONCURRENTLY on hot tables: see `node-migration-safety`.
+- **Node quirks**: NestJS singleton -> request-scoped (captive dependency), Express middleware order, ESM `__dirname` undefined, `as any` escape hatches, `forwardRef` overuse.
 
 ### First-PR Safe Zones
 
-- New NestJS feature module (controller, service, DTO) following existing pattern.
-- New Express route in an existing route file.
-- New unit test next to an existing service.
-- New env var in `.env.example` with safe default.
+Safe: new NestJS feature module, new Express route in existing file, unit test next to a service, env var in `.env.example`.
 
-Riskier:
-
-- `app.module.ts` / `main.ts` - boot flow; bug = won't start.
-- Database migrations - irreversible without explicit rollback.
-- Auth guard / passport strategy.
-- Logging/interceptor configuration.
-
-### Ecosystem Currency
-
-- Node 20 LTS standard; 22 LTS rolling out.
-- TypeScript 5.4+ standard; ESM increasingly common.
-- NestJS 10+; Express 4 (5 in beta - many breaking changes).
-- Prisma 5+ replacing TypeORM in many new projects.
-- pnpm gaining ground over npm/yarn for monorepos.
-- ts-node largely replaced by tsx (esbuild-based) for dev.
+Riskier: `app.module.ts` / `main.ts` (boot flow), migrations, auth guards, logging/interceptor config.
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** package manager, Node version, framework + version, TypeScript version + strict mode, ORM, module system (CJS/ESM).
-
-**Local Bootstrap:** install command, env file, run command, default port, health-check path.
-
-**Architecture Map:** module/feature directory layout, main.ts/index.ts, ORM entity/schema location, middleware pipeline.
-
-**Conventions:** TS strict mode, ESLint config, validation library, logging library, test framework.
-
-**Risk Hotspots:** sync I/O in async, unhandled rejection, NestJS scope mismatch, ESM/CJS boundary, Prisma client lifetime, TypeORM forward refs.
-
-**First-PR Safe Zones:** scoped to observed structure.
+- **Stack and Tooling**: package manager, Node version, framework + version, TS + strict mode, ORM, ESM/CJS.
+- **Local Bootstrap**: install, env file, run, port, health-check.
+- **Architecture Map**: module/feature layout, entry point, ORM entity/schema location, middleware pipeline.
+- **Conventions**: TS strict mode, ESLint config, validation lib, logger, test framework.
+- **Risk Hotspots**: sync I/O, unhandled rejection, NestJS scope mismatch, ESM/CJS boundary, ORM client lifetime.
+- **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid
 
-- Recommending npm commands when the project uses pnpm or Yarn
-- Treating CommonJS and ESM as interchangeable
-- Glossing over NestJS provider scopes - they matter
-- Listing dependencies without the framework context (Express vs Nest = different mental model)
-- Ignoring `engines.node` mismatches with installed Node
-- Recommending TypeORM patterns on a Prisma project
+- npm commands when the project uses pnpm/Yarn/Bun
+- Treating CJS and ESM as interchangeable
+- Glossing over NestJS provider scopes
+- TypeORM patterns on a Prisma project (or vice versa)
+- Ignoring `engines.node` mismatches

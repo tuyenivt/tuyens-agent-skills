@@ -15,112 +15,89 @@ user-invocable: true
 
 ## When to Use
 
-- Debugging stack traces, runtime errors, build failures, or test failures in NestJS or Express applications
-- Diagnosing TypeScript compilation errors, Prisma/TypeORM query errors, or DI resolution failures
-- Investigating BullMQ job failures, unhandled rejections, or middleware ordering issues
+- Stack traces, runtime errors, build failures, or test failures in NestJS / Express
+- TypeScript compile errors, Prisma / TypeORM query errors, DI resolution failures
+- BullMQ job failures, unhandled rejections, middleware ordering issues
 
-Not for adding new features (use `task-node-implement`) or production incident triage with blast radius assessment (use `/task-oncall-start`).
-
-## Edge Cases
-
-- **No stack trace provided**: User describes behavior ("it crashes sometimes") without a trace. Ask for: (1) the exact error message or unexpected output, (2) which endpoint or command triggers it, (3) recent code changes. If they can reproduce, ask them to capture the full stack trace
-- **Multiple errors in output**: Identify the root error (usually the first one) - later errors are often cascading failures from the same root cause
-- **Intermittent errors**: If the error happens only on some requests, suspect: missing `await` on async operations, connection pool exhaustion, race conditions, or Prisma transaction timeouts under load. Ask about request volume and whether it correlates with load
-- **Production-only errors**: Error doesn't reproduce locally. Check for: environment differences (connection pool size, timeouts, NODE_ENV), missing error handlers, or load-dependent issues (pool exhaustion, event loop blocking)
-- **Third-party library error**: Stack trace originates in a dependency, not application code. Identify the application frame that called into the library and check the inputs passed
+Not for new features (use `task-node-implement`) or production incident triage (use `/task-oncall-start`).
 
 ## Workflow
 
 ### STEP 1 - INTAKE
 
-Ask for: full stack trace or error output, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip node_modules frames) and read that file.
+Ask for: full stack trace, source file at the first application frame (skip `node_modules`), and expected behavior. For vague reports ("doesn't work"), ask which endpoint/command, expected vs actual, reproducibility, frequency.
 
-If the user provides only a partial error message or vague description ("it doesn't work"), ask clarifying questions: which command/endpoint was run, what the expected vs actual behavior is, whether the error is reproducible, and how frequently it occurs.
+**Common intake gaps:**
 
-**If "no error, just wrong behavior":** When the user reports "the value I sent in the body is null in the DB" or "the field I added to the request gets ignored" with no exception, reframe as a boundary-loss question: at which layer does the value disappear? Trace the path: `req.body` -> `ValidationPipe({ whitelist: true })` (NestJS silently strips unknown fields when `forbidNonWhitelisted: false`) / Zod `.strict()` vs default-strip behavior -> DTO field declaration (is the field even on the DTO?) -> `class-transformer` `@Transform` / `@Type` mutation -> service whitelist (`prisma.x.create({ data: { onlyTheseFields } })` vs `data: dto`) -> Prisma `@map`/`@@map` column-name mismatch / TypeORM `@Column({ name })` -> DB column. Same shape for BullMQ jobs: dispatch site -> `afterCommit` hook -> Redis serialization (class instances lose methods after JSON round-trip) -> processor `handle()` -> side effect. The bug is almost always at one of these boundaries, not in the controller body. Identify which boundary lost the value before reading any code.
+- **No trace, just behavior**: ask for exact error/output, triggering endpoint, recent changes.
+- **Multiple errors**: the first is usually root; later ones cascade.
+- **Intermittent**: suspect missing `await`, pool exhaustion, race conditions, transaction timeouts. Correlate with load.
+- **Production-only**: diff env (pool size, timeouts, `NODE_ENV`), missing handlers, event loop blocking.
+- **Third-party frame**: find the application frame that called in; inspect inputs passed.
+
+**"No error, just wrong behavior"** (e.g., "field I sent is null in DB"): reframe as boundary loss. Trace the path and identify which boundary dropped the value before reading code:
+
+`req.body` -> ValidationPipe (`whitelist: true` silently strips) / Zod `.strict()` -> DTO field declared? -> `class-transformer` `@Transform`/`@Type` mutation -> service whitelist (`data: { onlyTheseFields }` vs `data: dto`) -> Prisma `@map`/`@@map` or TypeORM `@Column({ name })` mismatch -> DB column.
+
+Same shape for BullMQ: dispatch -> `afterCommit` -> Redis JSON serialization (class instances lose methods) -> processor `handle()` -> side effect.
 
 ### STEP 2 - CLASSIFY
 
-Match the error to one of these categories, then load the relevant atomic skill:
+Match the error, then load the listed atomic skill:
 
-**NestJS DI / Module Errors**
-
-- `Nest can't resolve dependencies of X` -> Missing `@Injectable()`, provider not in module `providers[]`, or circular dependency. Use skill: `node-nestjs-patterns`.
-- `Circular dependency detected` -> Use `forwardRef()` as workaround, but prefer extracting shared logic to a third service.
-- `Cannot read properties of undefined (reading 'method')` in a service -> provider not injected, missing `@Injectable()` or module import.
-
-**Prisma Errors** (Use skill: `node-prisma-patterns`)
-
-- `PrismaClientKnownRequestError (P2002)` -> Unique constraint violation. Duplicate value on unique field. Check which field's unique constraint is being violated and whether the caller should handle conflicts (upsert or 409).
-- `PrismaClientKnownRequestError (P2025)` -> Record not found. ID does not exist or was deleted. Check if the query uses `findUniqueOrThrow` vs `findUnique`.
-- `PrismaClientKnownRequestError (P2003)` -> Foreign key constraint failed. Referenced record doesn't exist.
-- Interactive transaction timeout -> Default is 5 seconds. For long-running transactions, set `timeout` in `$transaction` options.
-
-**TypeORM Errors** (Use skill: `node-typeorm-patterns`)
-
-- `QueryFailedError` -> Check migration state, column types, and whether migrations are current.
-- `EntityNotFoundError` -> Record not found with `findOneOrFail`.
-- QueryRunner connection leak -> Missing `release()` in `finally` block.
-
-**TypeScript Compilation Errors**
-
-- `TS2322` / `TS2345` -> Type mismatch in assignment or argument. Use skill: `node-typescript-patterns`.
-- `Cannot find module` -> Wrong import path or missing install; run `bun install`.
-- `TS2339` -> Property does not exist on type. Check type definition and narrowing.
-
-**Runtime / Async Errors**
-
-- `TypeError: Cannot read properties of undefined` -> Null access. Trace variable origin, check optional chaining, verify async data loading.
-- `ERR_UNHANDLED_REJECTION` -> Missing `await` or `.catch()` on async call. Use skill: `node-express-patterns` (Express) for async handler wrapper.
-- `UnauthorizedException` (NestJS) -> Token missing/expired, guard misconfigured.
-- `BadRequestException` (NestJS) -> DTO validation failed, check `class-validator` decorators.
-
-**BullMQ Job Errors** (Use skill: `node-bullmq-patterns`)
-
-- Job stuck in failed state -> Check retry/backoff config, examine `failedReason` on the job.
-- Worker not processing -> Redis connectivity (`ioredis` with `maxRetriesPerRequest: null`), worker not registered, missing processor.
-- Job data missing or undefined -> Passing entity instead of ID, check job data shape. BullMQ serializes via JSON - class instances lose methods.
-- Duplicate recurring jobs on restart -> Missing `jobId` on repeatable jobs.
-
-**Express-specific Errors** (Use skill: `node-express-patterns`)
-
-- Error handler not catching errors -> Error middleware has fewer than 4 parameters (Express uses arity detection).
-- Middleware ordering issues -> `helmet` -> `cors` -> auth -> validation -> handler -> error handler.
+| Category | Signal | Likely cause | Skill |
+|---|---|---|---|
+| NestJS DI | `Nest can't resolve dependencies of X` | Missing `@Injectable()`, provider not in `providers[]`, circular dep | `node-nestjs-patterns` |
+| NestJS DI | `Circular dependency detected` | Use `forwardRef()` as workaround; prefer extracting shared logic | `node-nestjs-patterns` |
+| NestJS DI | `Cannot read properties of undefined (reading 'method')` in service | Provider not injected; missing `@Injectable()` or module import | `node-nestjs-patterns` |
+| Prisma | `P2002` | Unique constraint violation; consider upsert or 409 | `node-prisma-patterns` |
+| Prisma | `P2025` | Record not found; `findUniqueOrThrow` vs `findUnique` | `node-prisma-patterns` |
+| Prisma | `P2003` | FK constraint; referenced record missing | `node-prisma-patterns` |
+| Prisma | Interactive tx timeout | Default 5s; set `timeout` in `$transaction` options | `node-prisma-patterns` |
+| TypeORM | `QueryFailedError` | Migration drift, column types | `node-typeorm-patterns` |
+| TypeORM | `EntityNotFoundError` | `findOneOrFail` with no match | `node-typeorm-patterns` |
+| TypeORM | QueryRunner leak | Missing `release()` in `finally` | `node-typeorm-patterns` |
+| TS compile | `TS2322` / `TS2345` | Type mismatch (assignment / argument) | `node-typescript-patterns` |
+| TS compile | `Cannot find module` | Wrong import path or missing install (`bun install`) | `node-typescript-patterns` |
+| TS compile | `TS2339` | Property not on type; check narrowing | `node-typescript-patterns` |
+| Runtime | `TypeError: Cannot read properties of undefined` | Null access; trace origin, optional chaining, async loading | - |
+| Runtime | `ERR_UNHANDLED_REJECTION` | Missing `await` / `.catch()`; Express needs async wrapper | `node-express-patterns` |
+| NestJS | `UnauthorizedException` | Token missing/expired, guard misconfigured | `node-nestjs-patterns` |
+| NestJS | `BadRequestException` | DTO validation; check `class-validator` decorators | `node-nestjs-patterns` |
+| BullMQ | Job stuck failed | Retry/backoff config, inspect `failedReason` | `node-bullmq-patterns` |
+| BullMQ | Worker idle | Redis connectivity (`maxRetriesPerRequest: null`), processor not registered | `node-bullmq-patterns` |
+| BullMQ | Job data missing | Passed entity instead of ID; JSON serialization drops methods | `node-bullmq-patterns` |
+| BullMQ | Duplicate recurring jobs | Missing `jobId` on repeatable jobs | `node-bullmq-patterns` |
+| Express | Error handler not firing | Error middleware needs 4 params (arity detection) | `node-express-patterns` |
+| Express | Middleware order | `helmet` -> `cors` -> auth -> validation -> handler -> error handler | `node-express-patterns` |
 
 ### STEP 3 - LOCATE
 
-1. Read the stack trace top-to-bottom; find the first application-code frame (skip `node_modules`)
-2. Open that source file and read the failing function
-3. Trace the data path: where does the problematic value originate? Follow it through DI injection, async call chains, or middleware pipeline
-4. For Prisma errors: check the query that triggered the error - which model and operation?
-5. For DI errors: trace the dependency chain from the failing provider through module imports
-6. For BullMQ: check both the enqueue site and the worker processor
+Read trace top-to-bottom, open the first application frame, and follow the data: DI chain for DI errors, query model/operation for Prisma, enqueue + processor for BullMQ.
 
 ### STEP 4 - ROOT CAUSE
 
-Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
+Explain **why**, not just what. State confidence: **HIGH** (reproduced or obvious), **MEDIUM** (pattern match), **LOW** (multiple candidates).
 
 ```
-ROOT CAUSE: [HIGH/MEDIUM/LOW confidence]
-The P2002 unique constraint error occurs because OrdersService.createOrder at
-orders.service.ts:45 creates a customer record with an email that already exists.
-The service does not check for existing customers before creating - when the same
-customer places a second order, Prisma attempts to INSERT a duplicate email value.
+ROOT CAUSE: [HIGH] P2002 at orders.service.ts:45 - createOrder inserts a
+customer with an email that already exists; no pre-check, so the second
+order from the same customer hits the unique index.
 ```
 
 ### STEP 5 - FIX
 
-Provide before/after code. Fix must be minimal and address root cause, not symptoms.
+Provide before/after code. Minimal, addresses root cause not symptom.
 
 ### STEP 6 - PREVENTION
 
-Add a guard so this class of error cannot recur:
+Add one guard so this class cannot recur:
 
-- **Test** that exercises the exact code path (including the error condition)
-- **Stricter TypeScript type** that makes the bug impossible at compile time
-- **Lint rule** or `class-validator` decorator that catches invalid input earlier
-- For BullMQ issues: add idempotency check and verify retry config in a test
-- For Prisma unique constraint: consider upsert pattern or explicit conflict handling
+- Test exercising the exact path (incl. error condition)
+- Stricter TS type making the bug impossible at compile time
+- Lint rule or `class-validator` decorator catching invalid input earlier
+- BullMQ: idempotency check + retry config asserted in test
+- Prisma unique constraint: upsert or explicit conflict handling
 
 ## Output Format
 
@@ -148,20 +125,17 @@ Add a guard so this class of error cannot recur:
 
 ## Self-Check
 
-- [ ] Error classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line; confidence level stated
-- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom
-- [ ] Framework constraints respected (NestJS DI, decorator patterns, Express middleware order)
-- [ ] Prevention step included (Jest test, TypeScript type, or lint rule)
-- [ ] For BullMQ errors: idempotency and retry strategy addressed
-- [ ] For circular deps: structure resolved, not just `forwardRef` workaround
+- [ ] STEP 1: intake complete; trace, source file, expected behavior captured
+- [ ] STEP 2: error classified against the table before reading code
+- [ ] STEP 3: located in the first application frame, not a `node_modules` frame
+- [ ] STEP 4: root cause references file:line; confidence stated
+- [ ] STEP 5: minimal before/after fix; addresses root cause
+- [ ] STEP 6: prevention guard added (test, type, lint, or idempotency)
 
 ## Avoid
 
-- Proposing a fix before classifying the error (skipping STEP 2 leads to symptom-level fixes)
-- Adding try/catch to suppress errors instead of fixing the root cause
-- Using `@ts-ignore` or `as any` to silence TypeScript errors
-- Adding null checks everywhere as band-aids instead of fixing the data source
-- Using `forwardRef()` for circular deps without considering service extraction
-- Recommending `synchronize: true` or `prisma db push` to "fix" migration issues
-- Swallowing BullMQ job errors (the job should fail and retry, not silently succeed)
+- Proposing a fix before classifying (symptom-level fixes)
+- `try/catch`, `@ts-ignore`, `as any`, or scattered null checks as band-aids
+- `forwardRef()` for circular deps without considering service extraction
+- `synchronize: true` or `prisma db push` to "fix" migration drift
+- Swallowing BullMQ errors so jobs silently succeed instead of failing/retrying

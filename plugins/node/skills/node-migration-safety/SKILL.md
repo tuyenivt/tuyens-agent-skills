@@ -13,119 +13,62 @@ user-invocable: false
 
 ## When to Use
 
-- Creating or reviewing database migrations in Prisma or TypeORM projects
-- Planning schema changes that must be deployed with zero downtime
-- Determining safe deploy ordering for DDL changes during rolling deployments
+- Creating or reviewing Prisma/TypeORM migrations
+- Planning zero-downtime schema changes under rolling deploys
 - Adding enums, indexes, or constraints to existing tables
 
 ## Rules
 
-- Every generated migration must be reviewed before applying
-- Never use `prisma db push` or `synchronize: true` in production
-- Data migrations must be separate from schema migrations
-- All column additions start as nullable; add NOT NULL only after backfill completes
+- Review every generated migration before applying
+- Never use `prisma db push` or `synchronize: true` against production (no history, can drop data)
+- Separate data migrations from schema migrations
+- Add columns nullable, backfill, then add NOT NULL
+- Create indexes on large tables with `CONCURRENTLY`
+- Never rename columns in a single deploy - use expand-contract
 
 ## Patterns
 
-### Prisma Migrations (NestJS)
+### Prisma vs TypeORM Commands
 
-- `prisma migrate dev` - development (creates + applies)
-- `prisma migrate deploy` - production (applies only, no generation)
-- Review every generated migration in `prisma/migrations/`
-- Custom SQL in `migration.sql` for: CONCURRENTLY indexes, partial indexes, data backfill
-- Rollback: Prisma has no built-in down migration - plan forward-only migrations that are backward-compatible, or use manual SQL down scripts
-- `prisma migrate reset` - for test environments only
-- CI: run `prisma migrate deploy` in pipeline
+| Action            | Prisma                     | TypeORM                       |
+| ----------------- | -------------------------- | ----------------------------- |
+| Generate from diff| `prisma migrate dev`       | `typeorm migration:generate`  |
+| Custom SQL        | edit `migration.sql`       | `typeorm migration:create`    |
+| Apply (prod/CI)   | `prisma migrate deploy`    | `typeorm migration:run`       |
+| Revert            | forward-only (manual down) | `typeorm migration:revert`    |
+| Reset (test only) | `prisma migrate reset`     | drop schema + re-run          |
 
-### TypeORM Migrations (Express)
+Prisma has no built-in down migration: write each migration forward-only and backward-compatible with the previously deployed code.
 
-- `typeorm migration:generate` - generates from entity diff
-- `typeorm migration:create` - creates empty migration for custom SQL
-- `typeorm migration:run` - applies pending
-- `typeorm migration:revert` - reverts last applied
-- Always review generated migrations
-- `synchronize: true` - NEVER in production
+### Zero-Downtime Deploy Order
 
-### Zero-Downtime DDL Rules
+| Change Type    | Correct Order                                     | Wrong Order                                       |
+| -------------- | ------------------------------------------------- | ------------------------------------------------- |
+| Add column     | Migration first, then code                        | Code first (references missing column)            |
+| Drop column    | Code first (remove refs), then migration          | Migration first (app reads dropped column)        |
+| Rename column  | Expand-contract over multiple deploys             | Rename + code in one deploy                       |
+| Add index      | Migration first (additive)                        | n/a                                               |
+| Add enum value | Migration first, then code using new value        | Code first (writes unknown value)                 |
 
-- Add columns nullable first, backfill, then add NOT NULL constraint
-- Create indexes CONCURRENTLY (avoids table locks on large tables)
-- Never rename columns directly - use expand-contract pattern
-- Separate data migrations from schema migrations
-- Test: migrate up then migrate down (TypeORM) or verify backward compatibility (Prisma)
+### Enum Management (PostgreSQL)
 
-### Deploy Order Safety
-
-The order of code deployment relative to migration execution determines whether a rolling deploy is safe:
-
-| Change Type    | Correct Order                                     | Wrong Order                                                    |
-| -------------- | ------------------------------------------------- | -------------------------------------------------------------- |
-| Add column     | Migration first, then code                        | Code first (code references non-existent column)               |
-| Drop column    | Code first (remove references), then migration    | Migration first (app breaks reading dropped column)            |
-| Rename column  | Expand-contract required (never in single deploy) | Rename + code in same deploy (rolling deploy partially broken) |
-| Add index      | Migration first (additive, safe)                  | No ordering risk                                               |
-| Add enum value | Migration first, then code that uses new value    | Code first (writes unknown enum value)                         |
-
-For Prisma (no built-in rollback), plan each migration as forward-only and backward-compatible with the previous deployed code version:
-
-```bash
-# Deploy sequence for DROP COLUMN:
-# 1. Deploy code that no longer reads/writes the column
-# 2. Verify no references in production logs
-# 3. Run: prisma migrate deploy (drops column)
-```
-
-### Enum Management
-
-Adding a new value to a Prisma enum generates an `ALTER TYPE` statement. This is safe for PostgreSQL but requires attention:
-
-```prisma
-// Adding CANCELLED to an existing OrderStatus enum
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  SHIPPED
-  DELIVERED
-  CANCELLED  // new value
-}
-```
-
-Generated migration adds the enum value:
-
-```sql
-ALTER TYPE "OrderStatus" ADD VALUE 'CANCELLED';
-```
-
-This is a non-reversible operation in PostgreSQL - you cannot remove an enum value. Plan enum values carefully.
-
-For TypeORM, enum values are stored in `@Column({ type: 'enum', enum: OrderStatus })`. Adding a value requires a migration:
-
-```sql
-ALTER TYPE "order_status_enum" ADD VALUE 'CANCELLED';
-```
+Adding a value generates `ALTER TYPE "OrderStatus" ADD VALUE 'CANCELLED'` (same for Prisma and TypeORM). Safe and additive. Removal is **not supported** - to drop a value, create a new type, migrate the column, drop the old type.
 
 ### Index Strategy
 
-Add indexes on:
-
-- Foreign key columns (e.g., `customerId` on orders table)
-- Frequently filtered columns (e.g., `status`, `createdAt`)
-- Unique constraint columns (e.g., `idempotencyKey`)
-- Composite indexes for common query patterns (e.g., `[customerId, status]`)
-
-For large tables, create indexes CONCURRENTLY:
+Index foreign keys, frequently filtered columns (`status`, `createdAt`), unique constraint columns, and composite patterns (`[customerId, status]`). For large tables, use custom SQL:
 
 ```sql
--- In Prisma custom migration SQL:
 CREATE INDEX CONCURRENTLY idx_orders_customer_status ON "Order" ("customerId", "status");
 ```
 
-## Edge Cases
+`CONCURRENTLY` must run outside a transaction - in Prisma, place in a standalone `migration.sql` with no other statements.
 
-- **Migration already applied partially (crash mid-migration)**: Prisma marks failed migrations in `_prisma_migrations` table - fix the SQL and run `prisma migrate resolve`. TypeORM: check which statements succeeded and manually complete or revert.
-- **Multiple developers creating migrations simultaneously**: Merge conflicts in migration files. Prisma: may need `prisma migrate resolve` after merge. TypeORM: ensure migration timestamps do not conflict.
-- **Large table migrations**: Adding a column or index on a large table can lock it. Use `CONCURRENTLY` for indexes; for column changes, consider batched backfill in a separate migration.
-- **Enum value removal**: PostgreSQL does not support removing enum values. To "remove" a value, create a new enum type without it, migrate the column, and drop the old type - this requires a multi-step migration.
+### Edge Cases
+
+- **Failed mid-migration**: Prisma marks failed entries in `_prisma_migrations`; fix SQL, run `prisma migrate resolve`. TypeORM: inspect, manually complete or revert.
+- **Concurrent migrations from multiple devs**: resolve timestamp/filename conflicts before merge; Prisma may need `migrate resolve`.
+- **Large-table column changes**: batched backfill in a separate migration; avoid table rewrites.
 
 ## Output Format
 
@@ -151,10 +94,8 @@ CREATE INDEX CONCURRENTLY idx_orders_customer_status ON "Order" ("customerId", "
 
 ## Avoid
 
-- `prisma db push` in production (no migration history, can lose data)
-- `synchronize: true` in production (TypeORM auto-syncs schema without migration history - can drop columns)
-- Generated migrations without review
+- Applying generated migrations without review
 - Data manipulation inside schema migrations
-- Destructive migration (DROP COLUMN) before code is updated to remove the reference
-- Adding NOT NULL columns without a default or backfill (fails on existing rows)
+- `DROP COLUMN` before code stops referencing it
+- Adding `NOT NULL` columns without default or backfill
 - Removing enum values without the multi-step type migration

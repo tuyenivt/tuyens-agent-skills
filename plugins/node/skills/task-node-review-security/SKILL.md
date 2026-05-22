@@ -9,248 +9,183 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Node.js Security Review
 
-## Purpose
-
-Node.js-aware security review that names NestJS `@UseGuards`, Passport strategies, JWT (`jsonwebtoken`, `jose`), `ValidationPipe` + `class-validator` / Zod, Express middleware-based auth, ORM parameterization, password hashing (`bcrypt`, `argon2`), and Node-specific risks (prototype pollution, ReDoS, deserialization) directly instead of routing through the generic backend security adapter. Produces findings with attack scenarios and concrete Node-specific remediations.
-
-This workflow is the stack-specific delegate of `task-code-review-security` for Node.js. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-security`. Names NestJS Guards / Passport / `@nestjs/jwt`, `ValidationPipe` + class-validator / Zod, Express middleware auth, ORM parameterization, and Node-specific risks (prototype pollution, ReDoS, deserialization, RCE via `vm`/`eval`) directly.
 
 ## When to Use
 
-- Reviewing a NestJS or Express PR for security regressions
-- Pre-deployment hardening pass on auth, authz, file upload, payment, or PII-handling code
-- Periodic strong-validation and guard drift sweep across endpoints
-- Auditing a JWT flow, a new NestJS guard, or new Passport strategy
+- NestJS or Express PR security regression review
+- Pre-deploy hardening pass on auth, authz, file upload, payment, or PII paths
+- Periodic guard / validation drift sweep
+- Auditing JWT flow, new guard, or new Passport strategy
 
-**Not for:**
+**Not for:** performance (`task-node-review-perf`), general review (`task-node-review`), incident triage (`/task-oncall-start`).
 
-- Performance review (use `task-code-review-perf` or `task-node-review-perf`)
-- General code review (use `task-code-review` or `task-node-review`)
-- Production incident triage (use `/task-oncall-start`)
-
-**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+**Depth.** Always full. Security has cliff-edged consequences (auth bypass, RCE); scope by file, not by depth.
 
 ## Severity Rubric
 
-Use these definitions to keep severity consistent across runs - do not invent your own scale.
-
-| Severity     | Definition                                                                                                                                                                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path, secrets / signing keys exposed in source, prototype pollution reaching a privileged code path. Must fix before deploy; blocks merge.              |
-| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata or internal services, mass assignment of privilege-bearing fields, missing authorization on user-data endpoints. Must fix before merge.                                     |
-| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS when a reverse proxy enforces origin), missing field-level constraints, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile. Should fix this PR or the next one. |
-| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                       |
+| Severity     | Definition                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauth RCE, auth bypass, mass exfiltration, working SQLi, secrets/signing keys in source, prototype pollution reaching privileged path. Blocks merge.   |
+| **High**     | Authenticated priv-esc, IDOR on sensitive data, SSRF to metadata/internal, mass assignment of privilege fields, missing authz on user-data endpoints.   |
+| **Medium**   | Hardening gap with mitigating control elsewhere, missing field constraints, weak rate limit on non-critical endpoint, debug exposure on non-prod.       |
+| **Low**      | Defense-in-depth, dependency advisory below actively-exploited threshold, hardening without concrete current attack.                                    |
 
 ## Invocation
 
 Mirrors `task-code-review-security`:
 
-| Invocation                            | Meaning                                                                                               |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-node-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-node-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-node-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                            | Meaning                                                                       |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| `/task-node-review-security`          | Current branch vs base; fails fast on trunk                                   |
+| `/task-node-review-security <branch>` | `<branch>` vs its base (3-dot)                                                |
+| `/task-node-review-security pr-<N>`   | PR head in local branch `pr-<N>` (user fetches first)                         |
 
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-security`, Step 2 is skipped and pre-read artifacts are reused.
 
 ## Workflow
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-node-review` (parent already detected Node), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Node, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate (parent already detected), accept pre-confirmed stack. If not Node, stop and route to `/task-code-review-security`.
 
-Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` in deps without NestJS). Record `Framework: NestJS | Express | mixed` for the Summary block. Each step that follows branches on this signal where the idiom differs.
+Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express. Record `Framework: NestJS | Express | mixed`. Steps branch on this where idioms differ.
 
 ### Step 2 - Resolve the Diff Under Review
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check` with the user's argument. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip entirely as a subagent when parent passes the handle.
 
-If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+If `review-precondition-check` fails fast, surface verbatim and stop. Never run state-changing git from this workflow.
 
 ### Step 3 - Read the Security Surface
 
-Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
+Open files that actually wire security so findings cite real lines:
 
-**NestJS surface:**
+- **Guards / middleware**: every `@UseGuards(...)` and impl (`AuthGuard('jwt')`, custom `RolesGuard`); Express auth middleware (`requireAuth`, `passport.authenticate`)
+- **Strategies / config**: `jwt.strategy.ts`, `local.strategy.ts`, `auth.module.ts`; Express `app.ts` / `server.ts` for `helmet`, `cors`, `express-rate-limit`, body-parser limits
+- **Validation**: DTOs with class-validator decorators, Zod schemas; `ValidationPipe` global config in `app.module.ts`
+- **Changed routes**: controllers / routers, `@Roles`, `@Public()`, body DTO types
+- **Dependencies**: `@nestjs/jwt`, `passport-jwt`, `bcrypt`/`argon2`, `helmet`, `express-rate-limit`, `csurf` (deprecated - flag), `jsonwebtoken`/`jose`
+- **Secrets**: `.env.example`, config module for `JWT_SECRET`, `JWT_ALGORITHM`, allowed origins
 
-- Every `@UseGuards(...)` decorator and the guard implementations (`AuthGuard('jwt')`, custom `RolesGuard`, `PoliciesGuard`)
-- Every changed controller / route handler - look for `@UseGuards`, `@Roles`, `@Public()` decorators, request DTO types
-- Every DTO with `class-validator` decorators (`@IsString()`, `@MinLength()`, `@Matches()`) and `class-transformer` `@Transform`
-- `auth.module.ts`, `jwt.strategy.ts`, `local.strategy.ts`, Passport strategy implementations
-- `app.module.ts` for `ValidationPipe` global config, `helmet` middleware, CORS
-- `package.json` for `@nestjs/jwt`, `@nestjs/passport`, `passport-jwt`, `bcrypt` / `argon2`, `helmet`, `@nestjs/throttler`
-- `.env.example` / config module for `JWT_SECRET`, `JWT_ALGORITHM`, allowed origins
-
-**Express surface:**
-
-- Every changed router / route file - look for auth middleware (`requireAuth`, `passport.authenticate`), validation middleware
-- Every changed Zod schema or class-validator DTO with constraints
-- `app.ts` / `server.ts` for `helmet`, `cors`, `express-rate-limit`, body-parser limits
-- `package.json` for `helmet`, `cors`, `express-rate-limit`, `jsonwebtoken` / `jose`, `bcrypt` / `argon2`, `csurf` (deprecated - flag if present), `express-validator`
-- `.env.example` / config for `JWT_SECRET`, allowed hosts, cookie config
-
-When the diff removes a guard or relaxes auth middleware, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
+When the diff removes a guard or relaxes auth, `git log -p` prior revision to confirm what was protected.
 
 ### Step 4 - OWASP Triage (Node Lens)
 
-This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff (e.g., `Broken Access Control: yes`, `Injection: yes`, `SSRF: yes`, `Insecure Design: no`). Steps 5-9 then produce the actual findings; do **not** repeat them here.
+Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findings go in Steps 5-9; do not duplicate here.
 
-The triage output funnels which downstream steps must run carefully versus which can be fast-passed. If a category shows no signal, explicitly state `No signal in diff` for that category in the Summary.
-
-| Risk                          | Node-specific check                                                                                                                                                                                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Broken Access Control         | Every endpoint declares authorization explicitly. NestJS: `@UseGuards(AuthGuard('jwt'), RolesGuard)` + `@Roles(...)`. Express: route-level `requireAuth` + `requireRole(...)` middleware. Empty / missing is a finding.                                      |
-| Injection                     | Prisma uses parameterized queries by default; raw via `prisma.$queryRaw`...${val}...`` is parameterized, but `prisma.$queryRawUnsafe(string)`is not. TypeORM`repository.query(sql, params)`parameterized;`createQueryBuilder`parameters via`:name`.          |
-| Cryptographic Failures        | `bcrypt` (cost ≥ 10) or `argon2` for passwords. Never `crypto.createHash('md5')` / `'sha1'` for auth. JWT signing key from env, not hardcoded.                                                                                                               |
-| Security Misconfiguration     | `helmet()` middleware applied; CORS origin allowlist (not `*` for credentialed); `NODE_ENV=production` in prod; debug routes / Swagger gated or disabled in prod.                                                                                            |
-| SSRF                          | `fetch` / `axios.get` / `node-fetch` with user-controlled URL validates hostname against allowlist; rejects RFC1918, link-local, cloud metadata before request.                                                                                              |
-| XSS                           | NestJS auto-escapes JSON responses; if rendering HTML, templating engine auto-escapes (Handlebars, EJS with `<%-` flagged); React server-rendering sanitizes by default. Express raw HTML responses inspected.                                               |
-| Insecure Design (A04)         | Default-deny: NestJS `APP_GUARD` global guard requiring auth unless `@Public()`; Express equivalent: top-level `requireAuth` mounted before route registration.                                                                                              |
-| Vulnerable Components (A06)   | `bun audit` / `npm audit` / `pnpm audit` clean for High/Critical; Renovate / Dependabot active. No pinned-but-stale package with known CVE.                                                                                                                  |
-| Data Integrity Failures (A08) | `JSON.parse` on untrusted input bounded by body size; `eval` / `new Function(string)` flagged - any occurrence is a critical finding. `vm2` / `vm` modules with user input are RCE vectors. Prototype pollution: `Object.assign(target, userInput)` flagged. |
-| Logging & Monitoring (A09)    | Logger does not log `password`, `token`, `authorization`, `cookie`. `class-transformer` `@Exclude()` for sensitive response fields. Auth events logged. Sentry `beforeSend` strips PII.                                                                      |
+| Risk                          | Node-specific check                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broken Access Control         | Every endpoint declares authz: `@UseGuards(AuthGuard('jwt'), RolesGuard)` + `@Roles(...)` or route-level `requireAuth` + `requireRole`. Empty = finding.  |
+| Injection                     | Prisma raw via tagged template `$queryRaw` parameterized; `$queryRawUnsafe(string)` not. TypeORM `repository.query(sql, params)` or QB `:name` params.    |
+| Cryptographic Failures        | `bcrypt` (cost >=10) or `argon2`. Never `md5`/`sha1` for auth. JWT signing key from env, not hardcoded.                                                   |
+| Security Misconfiguration     | `helmet()` applied; CORS origin allowlist (not `*` for credentialed); Swagger gated/disabled in prod.                                                     |
+| SSRF                          | `fetch`/`axios` with user-controlled URL validates host against allowlist; rejects RFC1918, link-local, metadata pre-request.                             |
+| XSS                           | NestJS auto-escapes JSON; Handlebars/EJS `<%-` flagged; Express raw HTML inspected.                                                                       |
+| Insecure Design               | Default-deny: NestJS `APP_GUARD` global; Express top-level `requireAuth` before route registration.                                                       |
+| Vulnerable Components         | `npm/pnpm/bun audit` clean for High/Critical; Renovate/Dependabot active.                                                                                 |
+| Data Integrity Failures       | `eval` / `new Function` / `vm2` flagged - any occurrence critical. `Object.assign(target, userInput)` = prototype pollution.                              |
+| Logging & Monitoring          | Logger never logs `password`/`token`/`authorization`/`cookie`. `@Exclude()` on sensitive fields. Sentry `beforeSend` strips PII.                          |
 
 ### Step 5 - Authentication
 
 **Both frameworks:**
 
-- [ ] **Password hashing**: `bcrypt(password, ≥10)` or `argon2.hash(password)` (preferred for new code); flag `crypto.createHash('sha256')` / `'md5'` / homebrew hashing
-- [ ] **Brute-force protection**: rate limit on `/auth/login` / `/refresh` / `/reset-password` - NestJS `@nestjs/throttler` stricter than global; Express `express-rate-limit` per IP, or `rate-limiter-flexible` + Redis for multi-instance
-- [ ] **Password reset tokens**: time-limited, single-use, hashed before storing - never the raw token in DB
-- [ ] **No JWT in logs**: `console.log(token)` / `logger.log(token)` flagged
+- [ ] **Password hashing**: `bcrypt` cost >=10 or `argon2`; flag `crypto.createHash('sha256'/'md5')` or homebrew
+- [ ] **Brute-force protection**: rate limit on `/auth/login`, `/refresh`, `/reset-password` (NestJS `@nestjs/throttler`; Express `express-rate-limit` or `rate-limiter-flexible` + Redis for multi-instance)
+- [ ] **Password reset tokens**: time-limited, single-use, hashed before storage
+- [ ] **No JWT in logs**
 
 **NestJS:**
 
-- [ ] **JWT signing**: HS256 secret in env / Vault, never committed; RS256 key pair preferred cross-service; `@nestjs/jwt` `JwtModule.register` uses `secretOrKeyProvider` for rotation
-- [ ] **`alg: none` rejected**: `passport-jwt` `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly - never absent / undefined
-- [ ] **JWT issuer / audience validated**: `issuer`, `audience` fields verified in `JwtStrategy` options - not just signature
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation with revocable denylist (DB / Redis, track `jti` or refresh-token UUID)
-- [ ] **`AuthGuard('jwt')` wired correctly**: `JwtStrategy` exists, `tokenUrl` matches issuer, missing-token returns 401
+- [ ] **JWT signing**: HS256 secret in env/Vault; RS256 key pair preferred cross-service; `JwtModule.register` uses `secretOrKeyProvider` for rotation
+- [ ] **`alg: none` rejected**: `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly
+- [ ] **`issuer` / `audience`** verified in `JwtStrategy` options, not just signature
+- [ ] **Access token lifetime** short (5-15 min); refresh rotation with revocable denylist (track `jti` in DB/Redis)
+- [ ] **`AuthGuard('jwt')` wired correctly**: missing-token returns 401
 
 **Express:**
 
-- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - the `algorithms` allowlist is **mandatory**; without it `jsonwebtoken` accepts `alg: none` for some token shapes. `jose.jwtVerify(token, key, { algorithms, issuer, audience })` is stricter by default - prefer over `jsonwebtoken`
-- [ ] **Session cookies (when used)**: `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'|'strict'`, signed via `cookie-parser` secret
+- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - allowlist **mandatory**; without it some token shapes accept `alg: none`. Prefer `jose.jwtVerify(token, key, { algorithms, issuer, audience })` (stricter defaults)
+- [ ] **Session cookies**: `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'|'strict'`, signed
 
 ### Step 6 - Authorization
 
 **NestJS:**
 
-- [ ] **Authorization drift sweep**: every new endpoint added in the diff has a guard (`@UseGuards(AuthGuard('jwt'))` or stronger) - or the global `APP_GUARD` covers it and `@Public()` is not present
-- [ ] **Role / permission checks** centralized in a guard (`RolesGuard`, `PoliciesGuard`) using `Reflector.getAllAndOverride` to read `@Roles(...)` metadata - not inline `if (user.role !== 'admin') throw new ForbiddenException()` scattered in handlers
-- [ ] **IDOR**: lookups scope through the principal (`prisma.order.findFirst({ where: { id, ownerId: user.sub } })`) rather than `findUnique({ id })` then a separate ownership check
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenantId` at the repository / service layer (Prisma middleware or interceptor injecting `tenantId` into every query); not just at the controller
-- [ ] **CORS**: `app.enableCors({ origin: [...] })` allowlist (not `'*'` for credentialed requests); methods and headers minimal
-- [ ] **CSRF**: not required for stateless JWT-bearer APIs; required for cookie-session apps - confirm via auth model. `csurf` is deprecated (npm) - flag if present and recommend `csrf-csrf` or session-anti-CSRF token
+- [ ] **Authz drift sweep**: every new endpoint has a guard (`@UseGuards(AuthGuard('jwt'))` or stronger), or global `APP_GUARD` covers it and `@Public()` is absent
+- [ ] **Role/permission checks** centralized in `RolesGuard`/`PoliciesGuard` via `Reflector.getAllAndOverride` reading `@Roles(...)` metadata - not inline `if (user.role !== 'admin')` scattered in handlers
+- [ ] **IDOR**: scope lookups through principal (`findFirst({ where: { id, ownerId: user.sub } })`) rather than `findUnique({ id })` + separate ownership check
+- [ ] **Tenant isolation**: scope by `tenantId` at repository/service (Prisma middleware or interceptor), not just controller
+- [ ] **CORS**: `enableCors({ origin: [...] })` allowlist (never `'*'` for credentialed)
+- [ ] **CSRF**: not required for stateless JWT-bearer; required for cookie-session. `csurf` deprecated - recommend `csrf-csrf`
 
 **Express:**
 
-- [ ] **Authorization middleware** declared per route or per router (`router.use(requireAuth)`); `requireRole(...)` for role-gated routes
-- [ ] **Object-level authorization**: per-object checks live in the data layer or a dedicated authorize step - never `req.user.id === resource.ownerId` only at the controller surface (race conditions and easy to miss on new endpoints)
-- [ ] **Default-deny**: top-level `app.use(requireAuth)` mounted before public routes are registered (or `requireAuth` opts in via per-router mounting); flagged endpoints with no auth middleware on them
-- [ ] **CSRF**: same rules as NestJS; for cookie-session apps, use `csrf-csrf` or similar; `csurf` is deprecated
+- [ ] **Authz middleware** per route or router (`router.use(requireAuth)`, `requireRole(...)`)
+- [ ] **Object-level authz** in data layer or dedicated authorize step - never controller-surface-only
+- [ ] **Default-deny**: top-level `app.use(requireAuth)` mounted before public routes; flag endpoints without auth
+- [ ] **CSRF**: same as NestJS
 
 ### Step 7 - Input Validation and Mass Assignment
 
-**NestJS / class-validator + class-transformer:**
+**NestJS (class-validator + class-transformer):**
 
-- [ ] **`ValidationPipe` global config**: `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` - `whitelist` strips unknown fields, `forbidNonWhitelisted` 400s on unknown fields, `transform` runs `class-transformer` so DTO types are real instances
-- [ ] **Every `@Post` / `@Put` / `@Patch` controller method** declares a DTO class as the body parameter type - never `@Body() body: any` or unstructured `Record<string, unknown>`
-- [ ] **Field constraints**: `@IsString()`, `@IsEmail()`, `@MinLength()`, `@MaxLength()`, `@Matches(/regex/)`, `@IsInt()`, `@Min()`, `@Max()` on every user-supplied field
-- [ ] **No privilege-bearing fields in user-facing input DTOs**: `role`, `isAdmin`, `ownerId`, `userId`, `tenantId`, `isActive`, `verified` - server-set only. If present in `CreateOrderDto`, reject and require admin-only path with a separate DTO
-- [ ] **`@Exclude()` on response models** strips internal fields (`passwordHash`, `internalNotes`); `ClassSerializerInterceptor` enforces it
-- [ ] **`@Transform` on `id` / numeric fields** in path params: NestJS path params are strings by default - `@Param('id', ParseIntPipe)` or `@Transform` converts and validates
+- [ ] **`ValidationPipe` global**: `new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` - strips unknown, 400s on unknown, instantiates DTOs
+- [ ] **Every `@Post`/`@Put`/`@Patch`** declares a DTO class - never `@Body() body: any` or `Record<string, unknown>`
+- [ ] **Field constraints**: `@IsString`, `@IsEmail`, `@MinLength`, `@MaxLength`, `@Matches`, `@IsInt`, `@Min`, `@Max` on every user-supplied field
+- [ ] **No privilege fields in input DTOs**: `role`, `isAdmin`, `ownerId`, `userId`, `tenantId`, `verified` - server-set only; admin path uses separate DTO
+- [ ] **`@Exclude()` on response models** for `passwordHash` etc.; `ClassSerializerInterceptor` enforces
+- [ ] **`ParseIntPipe`/`@Transform`** on numeric path params (default string)
 
-**Express / Zod or class-validator:**
+**Express (Zod or class-validator):**
 
-- [ ] **Zod schemas for body, query, params**: `z.object({ ... })` with `.strict()` (rejects unknown fields - the Zod equivalent of `extra: 'forbid'`); validation middleware runs `schema.parse(req.body)` and 400s on failure
-- [ ] **No `req.body` direct passthrough**: `await prisma.user.create({ data: req.body })` is mass-assignment - whitelist explicitly: `data: { name: parsed.name, email: parsed.email }`
-- [ ] **`zod.strict()` (or `.passthrough()` documented)**: by default Zod silently strips unknown keys; for security-sensitive endpoints, prefer `.strict()` so unknown fields raise
-- [ ] **express-validator** alternative: chain `.isString().isLength({...}).trim()` on every field; `validationResult(req).isEmpty()` checked at the top of every handler
+- [ ] **Zod schemas** for body/query/params with `.strict()` (rejects unknown); validation middleware 400s on failure
+- [ ] **No `req.body` passthrough**: `prisma.user.create({ data: req.body })` is mass-assignment - whitelist: `data: { name: parsed.name, email: parsed.email }`
+- [ ] **`.strict()` (or documented `.passthrough()`)**: Zod silently strips unknown by default; prefer `.strict()` for security-sensitive
+- [ ] **express-validator** alternative: `validationResult(req).isEmpty()` checked at top of every handler
 
 **Both:**
 
-- [ ] **File uploads**:
-  - File type validated by content (`file-type` package, magic-byte detection), not just `mimetype` header (client-controlled) or extension
-  - Per-file size limit enforced (`multer({ limits: { fileSize: 5 * 1024 * 1024 } })` + `app.use(express.json({ limit: '100kb' }))`)
-  - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized via `path.resolve(base, name).startsWith(base)` check before write; reject directory traversal
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: `path.resolve(baseDir, userInput)` followed by `startsWith(baseDir)` check; never `path.join(baseDir, userInput)` without normalization
-- [ ] **Process execution**: `child_process.execFile([...args])` with arg array (not `exec(string)` and not `exec(`... ${userInput} ...`)`); strict allowlist of allowed binaries; never `shell: true` with user input
+- [ ] **File uploads**: type by content (`file-type` magic bytes), not `mimetype` header; per-file size limit (`multer({ limits: { fileSize: ... } })`); stored outside webroot, `Content-Disposition: attachment` on serve; filename sanitized (`path.resolve(base, name).startsWith(base)`); virus scan or accepted-risk documented
+- [ ] **Path traversal**: `path.resolve(baseDir, userInput)` + `startsWith(baseDir)` check; never `path.join` without normalization
+- [ ] **Process exec**: `child_process.execFile([...args])` arg array, never `exec(string)` or `exec(\`... ${userInput} ...\`)`; allowlist binaries; never `shell: true` with user input
 
 ### Step 8 - Common Node.js Vulnerability Patterns
 
-- [ ] **Prototype pollution**: `Object.assign(target, JSON.parse(userInput))`, `_.merge(...)` on user input, `Object.assign({}, defaults, req.query)` are prototype-pollution vectors. Use `Object.create(null)` for trusted-prototype maps; `lodash.merge` is unsafe - use `lodash.mergeWith` with a sanitizer or switch to `defu` / Object spread
-- [ ] **`eval` / `new Function(string)` / `vm.runInNewContext(string)`** on user input - any occurrence is a critical finding regardless of "controlled" framing. `vm2` is deprecated (CVEs) - flag if present
-- [ ] **`JSON.parse` on untrusted bounded** by body-parser limit (`express.json({ limit: '100kb' })` or NestJS platform default); unbounded parsing is a DoS surface
-- [ ] **`require(userInput)` / dynamic `import(userInput)`** - arbitrary module loading is RCE
-- [ ] **`fs.writeFile(userInput, content)` / `fs.unlink(userInput)`** without path-base check - file system tampering
-- [ ] **HTTP client with `verify: false` / `rejectUnauthorized: false`**: `https.request({ rejectUnauthorized: false })` flagged unless behind a documented test fixture; `axios.create({ httpsAgent: new https.Agent({ rejectUnauthorized: false }) })` similarly
-- [ ] **Open redirect**: `res.redirect(userInput)` validated against an allowlist or relative-path-only check (`url.startsWith('/') && !url.startsWith('//')`)
-- [ ] **SQL injection via raw query**: `prisma.$queryRawUnsafe(`SELECT ... ${userInput}`)` - flagged as critical; `repository.query(`... ${userInput}`)` (TypeORM) similarly. Use tagged template (`prisma.$queryRaw`...${val}...``) or `:param` placeholders
-- [ ] **Server-side template injection**: rendering Handlebars / EJS / Nunjucks with user-controlled template strings is RCE; templates must come from disk
-- [ ] **`JWT_SECRET` / signing key** sourced from env / Vault, never committed; rotated when leaked
-- [ ] **Debug exposure**: NestJS Swagger UI (`SwaggerModule.setup`) gated behind auth in prod, or skipped (`if (process.env.NODE_ENV !== 'production') SwaggerModule.setup(...)`); Express `debug` namespace patterns reviewed
-- [ ] **SSRF depth**: when a user-controlled value flows into an outbound URL or hostname, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). `URL` constructor quirks: backslash, unicode normalization, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks.
-- [ ] **BullMQ job payload**: jobs serialize to JSON in Redis; worker `JSON.parse(payload)` on input from any source that can publish to the queue is implicit trust. If the queue is reachable from untrusted inputs (webhook → queue), validate with Zod / class-validator inside the processor before acting on payload fields
-- [ ] **ReDoS via user-supplied regex**: `@Matches(new RegExp(userInput))` / `z.string().regex(new RegExp(userInput))` constructed from user input or config-driven patterns can hang the event loop on adversarial inputs. Compile patterns once at module load; never accept patterns from request bodies; consider `safe-regex` to detect catastrophic-backtracking patterns at review time
-- [ ] **HTTP request smuggling / desync** (Node behind nginx / ALB): Node 18+ HTTP parser is stricter; flag custom HTTP/1.1 parsing or proxy / forwarder middleware that re-emits headers without validation
-- [ ] **Webhook signature verification**: Stripe / GitHub / Slack webhooks - signature verified via `crypto.timingSafeEqual` (not `===` - timing attack). `bodyParser.raw` used to access raw bytes (signed payload), not parsed JSON
+- [ ] **Prototype pollution**: `Object.assign(target, JSON.parse(userInput))`, `_.merge` on user input, `Object.assign({}, defaults, req.query)`. Use `Object.create(null)` for trusted maps; switch off `lodash.merge` or sanitize keys
+- [ ] **`eval` / `new Function(string)` / `vm.runInNewContext`** on user input - critical regardless of "controlled" framing. `vm2` deprecated (CVEs)
+- [ ] **`JSON.parse` bounded** by body-parser limit (`express.json({ limit: '100kb' })`); unbounded = DoS
+- [ ] **`require(userInput)` / dynamic `import(userInput)`** = RCE
+- [ ] **`fs.writeFile`/`fs.unlink` with user input** without path-base check = FS tampering
+- [ ] **`rejectUnauthorized: false`** on TLS clients flagged unless documented test fixture
+- [ ] **Open redirect**: `res.redirect(userInput)` validated (`url.startsWith('/') && !url.startsWith('//')` or allowlist)
+- [ ] **Raw SQL injection**: `$queryRawUnsafe(\`...${userInput}\`)` (Prisma) or `repository.query(\`...${userInput}\`)` (TypeORM) = critical. Use tagged template or `:param`
+- [ ] **SSTI**: rendering Handlebars/EJS/Nunjucks with user-controlled template strings = RCE; templates from disk only
+- [ ] **`JWT_SECRET`** from env/Vault, never committed; rotated on leak
+- [ ] **Debug exposure**: NestJS Swagger gated behind auth in prod or skipped (`if (NODE_ENV !== 'production')`)
+- [ ] **SSRF depth**: allowlist rejects (a) cloud metadata `169.254.169.254` + IPv6 `fd00:ec2::254`, (b) localhost/`127.0.0.0/8`/`::1`, (c) RFC1918 (`10/8`, `172.16/12`, `192.168/16`), (d) link-local `169.254/16`. Re-resolve host at request time (DNS rebinding). Watch `URL` quirks: backslash, unicode, `::ffff:127.0.0.1`
+- [ ] **BullMQ payloads**: validate with Zod/class-validator inside processor when queue is reachable from untrusted input
+- [ ] **ReDoS**: `@Matches(new RegExp(userInput))` / `z.string().regex(new RegExp(userInput))` from user/config hangs event loop. Compile patterns at module load; consider `safe-regex` at review
+- [ ] **HTTP request smuggling/desync**: flag custom HTTP/1.1 parsing or proxy middleware that re-emits headers without validation
+- [ ] **Webhook signature**: `crypto.timingSafeEqual` (not `===`); `bodyParser.raw` for signed payload
 
 ### Step 9 - Data Protection
 
-- [ ] **PII / sensitive fields encrypted** at rest (`crypto.subtle` AES-GCM, AWS KMS / GCP KMS for key management, or DB-native column encryption)
-- [ ] **Logging filter** masks sensitive keys (`password`, `token`, `creditCard`, `ssn`, `apiKey`); `pino` `redact: ['password', 'token']` or `winston` custom format strips them; `class-transformer` `@Exclude()` reinforces
-- [ ] **No sensitive data in URLs** (use POST body, headers, or signed tokens) - URLs hit logs, browser history, referer headers
-- [ ] **TLS enforcement**: HTTPS-only at LB; HSTS via `helmet.hsts({ maxAge: 31536000 })`
-- [ ] **Database backups** encrypted; access controlled
-- [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `process.env.JWT_SECRET` accessed via typed config service (`@nestjs/config` `ConfigService`) so missing-at-startup fails fast
-
+- [ ] **PII encrypted at rest**: KMS/AES-GCM or DB column encryption
+- [ ] **Logging filter**: `pino` `redact: ['password', 'token', ...]` or `winston` custom format; `@Exclude()` reinforces
+- [ ] **No sensitive data in URLs** (use POST body / headers / signed tokens)
+- [ ] **TLS**: HTTPS-only at LB; HSTS via `helmet.hsts({ maxAge: 31536000 })`
+- [ ] **DB backups encrypted**; access controlled
+- [ ] **Secrets**: from Vault/AWS SM/GCP SM/Doppler; `.env` gitignored; access via typed `ConfigService` so missing-at-startup fails fast
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Rules
-
-- Always validate at system boundaries (NestJS body / query / params, Express body, BullMQ job payloads, external API responses, webhook payloads)
-- Never disable guards or validation pipes to silence a failing test - fix the test
-- Never widen authorization (e.g., `@Public()` on a previously-protected route, removing `requireAuth` middleware) without an explicit security review note
-- Log security events (login failure, permission denied, validation failure) without sensitive data
-- Follow principle of least privilege - default-deny via global guard / top-level middleware
-
-## Self-Check
-
-**Verifiable from the diff (must check):**
-
-- [ ] Stack confirmed as Node.js / TypeScript; framework (NestJS / Express / mixed) recorded before any framework-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Security surface (auth strategies / guards / middleware, settings, changed routers / controllers, DTOs / schemas) read directly before applying checklists; prior revision consulted when guards or auth middleware were removed
-- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] **Authorization drift sweep**: every new endpoint in the diff has a matching guard or auth middleware
-- [ ] DTO / Zod validation reviewed; mass-assignment fields, `@Exclude()` / `whitelist` / `.strict()` confirmed for changed schemas
-- [ ] File upload, path traversal, and process-execution checks run if the diff touches uploads / file paths / `child_process`
-- [ ] Prototype pollution, `eval` / `new Function`, raw SQL, dynamic `require` / `import`, `rejectUnauthorized: false`, open redirect checked when the diff touches them
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
-- [ ] Every finding includes an attack scenario, "regression risk" rationale (for test-coverage gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
-
-**Requires repo / infra access (check if visible, otherwise note as "could not verify from diff alone - flag for separate audit"):**
-
-- [ ] Authentication step run for the auth mechanism in use (NestJS JWT / Passport or Express session / `jose`) - applies when the auth module is in scope
-- [ ] CORS, rate limiting, helmet, debug exposure verified - applies when middleware / config are in scope
-- [ ] Password hashing config reviewed (bcrypt cost ≥ 10, argon2 preferred) - skip if hashing config not in diff
-- [ ] Sentry `beforeSend` strips PII - skip if Sentry init module not in diff
-- [ ] `bun audit` / `npm audit` clean - run separately; this workflow does not execute tools
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled review to file and print the confirmation line.
 
 ## Output Format
 
@@ -263,11 +198,9 @@ Write the fully assembled review output to the report file before ending the ses
 **Authorization:** NestJS Guards | Express middleware | Custom
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
-[2-3 sentence assessment of the overall security posture, calling out any Node-specific risks like missing `whitelist: true` on `ValidationPipe`, prototype pollution from `Object.assign(target, req.body)`, exposed Swagger in prod, or `csurf` deprecated dependency.]
+[2-3 sentence assessment calling out Node-specific risks: missing `whitelist: true`, prototype pollution from `Object.assign(target, req.body)`, exposed Swagger in prod, `csurf` dep.]
 
 ## OWASP Triage
-
-_The Step 4 verdicts. One row per category, `yes` (signal present, see Findings) or `no signal in diff`._
 
 | Category                  | Verdict                 |
 | ------------------------- | ----------------------- |
@@ -286,53 +219,65 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 ### Critical
 
-- **Location:** [file:line, or comma-separated list for multi-site findings]
-- **Issue:** [vulnerability described in Node terms - e.g., "CreateOrderDto lacks `whitelist: true` enforcement; client can submit `{ ownerId: 999 }` and override the server-assigned owner via mass assignment because `ValidationPipe` config in app.module.ts is missing `forbidNonWhitelisted`"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
-- **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
-- **Fix:** [specific Node remediation with code example - `ValidationPipe` config, `@Exclude()`, `@UseGuards(AuthGuard('jwt'))`, etc.]
+- **Location:** [file:line]
+- **Issue:** [vulnerability in Node terms - e.g., "CreateOrderDto lacks `whitelist: true`; client submits `{ ownerId: 999 }` and overrides server-assigned owner via mass assignment"]
+- **Attack scenario:** [pick one and label: (a) concrete exploit walkthrough; (b) "Regression risk: ..." for test/monitoring gaps; (c) "Topology-dependent: ..." for infra-flavored. Do NOT invent exploits when the realistic threat is regression or topology.]
+- **Severity rationale:** [tier] per rubric - [which clause applies]
+- **Fix:** [specific Node remediation with code - `ValidationPipe` config, `@Exclude()`, `@UseGuards(AuthGuard('jwt'))`, etc.]
 
-### High
+### High / Medium / Low
 
-[Same structure]
-
-### Medium
-
-[Same structure]
-
-### Low
-
-[Same structure]
-
-_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
+[Same structure. Omit sections with no findings. If all omitted, state "No security issues found."]
 
 ## Recommendations
 
-[Prioritized hardening that is not a specific finding - e.g., "Add `@nestjs/throttler` rate limit on /auth/login", "Migrate from jsonwebtoken to jose (stricter defaults)", "Move JWT_SECRET from .env literal to Vault"]
+[Prioritized hardening not tied to a specific finding - e.g., "Add `@nestjs/throttler` on /auth/login", "Migrate from jsonwebtoken to jose", "Move JWT_SECRET to Vault"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Critical > High > Medium > Low.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Add `forbidNonWhitelisted: true, whitelist: true` to ValidationPipe in app.module.ts; remove `ownerId` from CreateOrderDto"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `bun audit` / `npm audit` and upgrade flagged packages - spawn dependency-review subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Critical] file:line - [action]
+2. **[Delegate]** [High] [scope: dependencies] - [action]
+3. **[Implement]** [Medium] file:line - [action]
 
-_Omit this section if no security issues were found._
+_Omit if no security issues found._
 ```
+
+## Self-Check
+
+**Verifiable from diff:**
+
+- [ ] Step 1: Node/TS confirmed; `Framework: NestJS | Express | mixed` recorded
+- [ ] Step 2: `review-precondition-check` ran (or handle received); `base_ref`/`head_ref`/`current_branch`/`head_matches_current` captured; diff + log read once and reused; user approval obtained when `head_matches_current` was false (skipped as subagent)
+- [ ] Step 3: security surface read directly; prior revision consulted when guards/auth middleware were removed
+- [ ] Step 4: OWASP triage produced one verdict per category (`yes` / `no signal in diff`); not duplicated as findings
+- [ ] Steps 5-6: authz drift sweep covered every new endpoint
+- [ ] Step 7: DTO/Zod validation reviewed; mass-assignment fields, `@Exclude()`/`whitelist`/`.strict()` confirmed
+- [ ] Step 8: file upload, path traversal, exec, prototype pollution, `eval`, raw SQL, dynamic require, `rejectUnauthorized: false`, open redirect checked when touched
+- [ ] Severity rubric applied consistently (not invented)
+- [ ] Every finding has attack scenario, regression-risk, or topology-dependent framing - never "input not validated" alone
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Critical > High > Medium > Low (omit if no findings)
+
+**Requires repo/infra access (note "could not verify from diff alone - flag for separate audit" if not visible):**
+
+- [ ] Step 5: auth mechanism in use reviewed (JWT/Passport/session/jose) - applies when auth module in scope
+- [ ] Steps 6-8: CORS, rate limiting, helmet, debug exposure, password hashing config, Sentry `beforeSend` - applies when middleware/config in scope
+- [ ] `npm/pnpm/bun audit` - run separately; this workflow does not execute tools
+- [ ] Step 10: review report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting vulnerabilities without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because `ValidationPipe` is missing `whitelist: true`")
-- Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
-- Recommending generic security advice when a Node idiom applies (say "add `@UseGuards(AuthGuard('jwt'))`", not "add an authorization check")
-- Suggesting `csurf` as a CSRF fix - it is deprecated; recommend `csrf-csrf` or session-anti-CSRF token
-- Suggesting `@Public()` decorator as a fix for a failing auth-required test - validate the test sends a token instead
-- Disabling guards / `ValidationPipe` to silence a failing test - fix the test
-- Conflating security review with general code quality or performance review - delegate those to their workflows
-- Recommending `algorithms: undefined` / unspecified for `jsonwebtoken.verify` - explicit allowlist is the only safe form
-- Recommending `eval` / `new Function` / `vm` modules / `vm2` as acceptable on any input not under full server control
-- Approving `rejectUnauthorized: false` on TLS clients outside test fixtures
-- Approving exposed Swagger UI / `/api-docs` in any non-dev profile
-- Recommending `lodash.merge(target, req.body)` for "merging defaults" - prototype pollution vector; use `Object.create(null)` or sanitize keys
+- Running state-changing git from this workflow (user runs fetches/checkouts)
+- Reporting vulnerabilities without an attack scenario - "input not validated" vs "attacker submits `{role:'admin'}` and gains admin via mass assignment because `whitelist: true` is missing"
+- Skipping clean OWASP categories - explicitly state `no signal in diff`
+- Generic advice when a Node idiom applies (say "add `@UseGuards(AuthGuard('jwt'))`", not "add an auth check")
+- Suggesting `csurf` (deprecated) - recommend `csrf-csrf` or session-anti-CSRF
+- Suggesting `@Public()` or removing `requireAuth` as a fix for a failing auth-required test - fix the test
+- Disabling guards / `ValidationPipe` to silence failing tests
+- Conflating with general code review or perf - delegate to those workflows
+- Recommending `algorithms: undefined` for `jsonwebtoken.verify` - explicit allowlist only
+- Approving `eval` / `new Function` / `vm`/`vm2` on input not under full server control
+- Approving `rejectUnauthorized: false` outside test fixtures
+- Approving Swagger UI / `/api-docs` exposed in any non-dev profile
+- Recommending `lodash.merge(target, req.body)` - prototype pollution vector

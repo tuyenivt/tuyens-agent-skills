@@ -13,49 +13,41 @@ user-invocable: false
 
 ## When to Use
 
-- Offloading work that takes > 200ms or touches external services (email, webhooks, file processing)
-- Scheduled or recurring tasks (cron-style jobs)
-- Rate-limited integrations with external APIs
-- Fan-out processing: one event triggers multiple independent jobs
+- Offloading work > 200ms or touching external services (email, webhooks, files)
+- Scheduled / recurring jobs (cron-style)
+- Rate-limited external API integrations
+- Fan-out: one event triggers multiple independent jobs
 
 ## Rules
 
-- Jobs must be **idempotent** - check state before acting, safe to retry
-- Pass IDs and primitive values as job data - never pass ORM entities or large objects
-- Every queue must have a **dead-letter** strategy (`removeOnFail` or a failed job handler)
+- Jobs are **idempotent**: check state before acting, safe to retry
+- Pass IDs and primitives as job data, never ORM entities or large objects
+- Enqueue **after** the DB transaction commits, never inside it
+- Every queue has a dead-letter strategy (`removeOnFail` count or failed handler)
 - Use `attempts` + exponential `backoff` for transient failures
-- Workers must handle `SIGTERM` gracefully - close the worker before process exit
-- Enqueue jobs AFTER the database transaction commits - never inside it
+- Workers close on `SIGTERM` before process exit
+- Set a stable `jobId` on repeatable jobs to prevent duplicates on restart
 
 ## Patterns
 
-### Queue and Worker Setup (NestJS)
+### Queue + Enqueue (NestJS)
 
 ```typescript
-// queues/order.queue.ts
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 
 export const ORDER_QUEUE = "order-processing";
+// Module: BullModule.registerQueue({ name: ORDER_QUEUE })
 
-// Module registration
-BullModule.registerQueue({ name: ORDER_QUEUE });
-
-// Inject and enqueue
 @Injectable()
 export class OrderService {
-  constructor(@InjectQueue(ORDER_QUEUE) private orderQueue: Queue) {}
+  constructor(@InjectQueue(ORDER_QUEUE) private queue: Queue) {}
 
   async placeOrder(dto: CreateOrderDto): Promise<Order> {
-    const order = await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.create({ data: Order.from(dto) });
-      await tx.orderItem.createMany({
-        data: dto.items.map((i) => ({ orderId: order.id, ...i })),
-      });
-      return order;
-    });
-    // Enqueue AFTER transaction commits - critical for data consistency
-    await this.orderQueue.add(
+    const order = await this.prisma.$transaction((tx) =>
+      tx.order.create({ data: Order.from(dto) }),
+    );
+    await this.queue.add(
       "process-order",
       { orderId: order.id },
       {
@@ -73,164 +65,90 @@ export class OrderService {
 ### Worker (NestJS Processor)
 
 ```typescript
-import { Processor, WorkerHost } from "@nestjs/bullmq";
-import { Job } from "bullmq";
-
 @Processor(ORDER_QUEUE)
 export class OrderProcessor extends WorkerHost {
   async process(job: Job<{ orderId: string }>): Promise<void> {
-    const { orderId } = job.data;
-
-    // Idempotency check - safe to retry
-    const order = await this.orderRepo.findById(orderId);
-    if (!order || order.status === "PROCESSED") return;
-
-    await this.fulfillmentService.process(orderId);
+    const order = await this.orderRepo.findById(job.data.orderId);
+    if (!order || order.status === "PROCESSED") return; // idempotent
+    await this.fulfillmentService.process(order.id);
   }
 }
 ```
 
-### Multiple Job Types in One Queue
+### Multiple Job Types
 
-Route different job types through a single queue with a switch on job name:
+Route by `job.name` through one queue:
 
 ```typescript
-@Processor(ORDER_QUEUE)
-export class OrderProcessor extends WorkerHost {
-  async process(job: Job): Promise<void> {
-    switch (job.name) {
-      case "send-confirmation-email":
-        await this.emailService.sendOrderConfirmation(job.data.orderId);
-        break;
-      case "charge-payment":
-        await this.paymentService.charge(job.data.paymentId);
-        break;
-      case "update-inventory":
-        await this.inventoryService.decrement(job.data.items);
-        break;
-      default:
-        throw new Error(`Unknown job type: ${job.name}`);
-    }
+async process(job: Job): Promise<void> {
+  switch (job.name) {
+    case "send-confirmation-email": return this.email.send(job.data.orderId);
+    case "charge-payment":          return this.payment.charge(job.data.paymentId);
+    default: throw new Error(`Unknown job type: ${job.name}`);
   }
 }
 ```
 
-### Queue Routing by Priority
+### Priority via Separate Queues
 
 ```typescript
-// Separate queues per priority
 export const QUEUES = {
   CRITICAL: "critical", // payments, auth callbacks
-  DEFAULT: "default", // standard business logic
-  LOW: "bulk", // reports, analytics, cleanup
+  DEFAULT: "default",
+  LOW: "bulk", // reports, analytics
 };
-
-// Enqueue to specific queue
-await this.criticalQueue.add(
-  "charge-payment",
-  { paymentId },
-  {
-    priority: 1, // lower number = higher priority within a queue
-    attempts: 5,
-    backoff: { type: "exponential", delay: 1000 },
-  },
-);
+await this.criticalQueue.add("charge-payment", { paymentId }, {
+  priority: 1, attempts: 5, backoff: { type: "exponential", delay: 1000 },
+});
 ```
 
-### Scheduled / Recurring Jobs
+### Scheduled / Recurring
 
 ```typescript
-// Register once at startup
-await this.reportQueue.add(
-  "daily-cleanup",
-  {},
-  {
-    repeat: { pattern: "0 2 * * *" }, // cron: every day at 02:00
-    jobId: "daily-cleanup-singleton", // prevents duplicates on restart
-  },
-);
+await this.reportQueue.add("daily-cleanup", {}, {
+  repeat: { pattern: "0 2 * * *" },
+  jobId: "daily-cleanup-singleton",
+});
 ```
 
-### Fan-Out Pattern
-
-One event triggers multiple independent jobs. Enqueue all jobs after the transaction commits:
+### Fan-Out
 
 ```typescript
-async confirmOrder(orderId: string): Promise<void> {
-  await this.prisma.order.update({
-    where: { id: orderId },
-    data: { status: 'CONFIRMED' },
-  });
-
-  // Fan-out: independent jobs that can run in parallel
-  await Promise.all([
-    this.orderQueue.add('send-confirmation-email', { orderId }),
-    this.orderQueue.add('update-inventory', { orderId }),
-    this.paymentQueue.add('charge-payment', { orderId }),
-  ]);
-}
+await Promise.all([
+  this.orderQueue.add("send-confirmation-email", { orderId }),
+  this.orderQueue.add("update-inventory", { orderId }),
+  this.paymentQueue.add("charge-payment", { orderId }),
+]);
 ```
 
 ### Graceful Shutdown
 
 ```typescript
-// main.ts / app bootstrap
-const worker = new Worker(ORDER_QUEUE, processor, { connection });
-
 process.on("SIGTERM", async () => {
-  await worker.close(); // finish in-progress job, stop accepting new ones
+  await worker.close(); // finish in-flight, stop accepting new
   process.exit(0);
 });
 ```
 
-### Plain Express Setup
+### Plain Express
+
+Same primitives without NestJS DI:
 
 ```typescript
-import { Worker, Queue } from "bullmq";
-import { redis } from "./config/redis";
-
+import { Queue, Worker } from "bullmq";
 export const orderQueue = new Queue("orders", { connection: redis });
-
-const worker = new Worker(
-  "orders",
-  async (job) => {
-    switch (job.name) {
-      case "process-order":
-        await processOrder(job.data.orderId);
-        break;
-      case "send-email":
-        await sendEmail(job.data.orderId);
-        break;
-    }
-  },
-  {
-    connection: redis,
-    concurrency: 5,
-  },
-);
-
-worker.on("failed", (job, err) => {
-  logger.error({ jobId: job?.id, err }, "Job failed");
-});
+const worker = new Worker("orders", handler, { connection: redis, concurrency: 5 });
+worker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "failed"));
 ```
 
-### Testing BullMQ Jobs
+### Testing
 
-Mock the queue in unit tests to prevent real job processing:
+Mock the queue token and assert enqueue args:
 
 ```typescript
-// Unit test - verify job enqueued with correct data
 const mockQueue = { add: jest.fn() };
-const module = await Test.createTestingModule({
-  providers: [
-    OrderService,
-    { provide: getQueueToken(ORDER_QUEUE), useValue: mockQueue },
-  ],
-}).compile();
-
-const service = module.get<OrderService>(OrderService);
+// providers: [{ provide: getQueueToken(ORDER_QUEUE), useValue: mockQueue }]
 await service.placeOrder(dto);
-
 expect(mockQueue.add).toHaveBeenCalledWith(
   "process-order",
   { orderId: expect.any(String) },
@@ -238,20 +156,18 @@ expect(mockQueue.add).toHaveBeenCalledWith(
 );
 ```
 
-### Stack-Specific Guidance
+### Stack Notes
 
-- **NestJS**: Use `@nestjs/bullmq` - `@Processor` + `WorkerHost` integrates with NestJS DI; register queues in `BullModule.registerQueue`
-- **Express**: Use `bullmq` directly - create `Queue` and `Worker` instances; wire into app lifecycle for graceful shutdown
-- **Redis**: BullMQ requires Redis 6.2+; use `ioredis` connection with `maxRetriesPerRequest: null` (required by BullMQ)
-- **Monitoring**: Use Bull Board (`@bull-board/express` or `@bull-board/nestjs`) for a web UI; expose `/queues` behind admin auth only
+- **NestJS**: `@nestjs/bullmq` - `@Processor` + `WorkerHost` for DI; register via `BullModule.registerQueue`
+- **Express**: `bullmq` directly; wire `worker.close()` into app shutdown
+- **Redis**: 6.2+; `ioredis` connection needs `maxRetriesPerRequest: null`
+- **Monitoring**: Bull Board (`@bull-board/express` or `/nestjs`) behind admin auth
 
 ## Edge Cases
 
-- **Job enqueued inside a transaction that rolls back**: The job fires but the database row it references does not exist. Always enqueue after the transaction commits.
-- **Duplicate recurring jobs on restart**: Without a stable `jobId`, each app restart creates a new recurring job. Always set `jobId` on repeatable jobs to prevent duplicates.
-- **Redis connection lost mid-processing**: BullMQ workers auto-reconnect, but in-progress jobs may be marked as stalled and retried. Ensure idempotency handles this - check state before acting.
-- **Job data too large**: Redis is not designed for large payloads. If job data exceeds ~50KB, store the payload in S3/object storage and pass only the reference key as job data.
-- **Worker concurrency vs pool size**: If `concurrency` is set higher than the database connection pool size, workers will block waiting for connections. Match concurrency to available pool connections.
+- **Stalled jobs after Redis reconnect**: workers auto-reconnect; in-flight jobs may retry - idempotency check handles it
+- **Large payloads**: > ~50KB belongs in S3; pass only the key as job data
+- **Concurrency vs DB pool**: `concurrency` higher than pool size blocks workers on connections - match them
 
 ## Output Format
 
@@ -272,15 +188,14 @@ expect(mockQueue.add).toHaveBeenCalledWith(
 
 ### Job Data Contracts
 | Job Type | Data Fields | Types |
-|----------|------------|-------|
+|----------|-------------|-------|
 ```
 
 ## Avoid
 
-- Passing Prisma/TypeORM entities as job data - serialize only IDs and primitives
-- Jobs > 5 minutes without chunking into smaller units
-- Missing `attempts` configuration - all jobs should handle transient failures
-- `removeOnFail: true` if you need failure visibility - keep some failed jobs for debugging
-- Not calling `worker.close()` on shutdown - in-progress jobs get abandoned and requeued, causing duplicate processing
-- Enqueuing jobs inside `$transaction` or `dataSource.transaction` (job races the commit)
-- Setting worker `concurrency` higher than database connection pool size
+- Passing ORM entities as job data - serialize IDs and primitives only
+- Jobs > 5 min without chunking
+- Missing `attempts` - all jobs should handle transient failures
+- `removeOnFail: true` when failure visibility is needed
+- Skipping `worker.close()` on shutdown - causes duplicate processing
+- Worker `concurrency` > DB connection pool size

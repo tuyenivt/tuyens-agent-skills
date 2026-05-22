@@ -11,42 +11,35 @@ user-invocable: false
 
 ## When to Use
 
-- Reviewing a NestJS diff that adds `class-validator` decorators, defensive `null` guards, service interfaces, module splits, or new abstractions
+- Reviewing a NestJS diff adding `class-validator` decorators, defensive `null` guards, service interfaces, module splits, or new abstractions
 - Catching code that is correct, performant, and safe - but does not need to exist
 
 ## Rules
 
-- Every finding cites the constraint making the code redundant: FK name, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, `class-validator` decorator on the DTO, `ValidationPipe` whitelist setting, or framework guarantee.
+- Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, DTO decorator, `ValidationPipe` whitelist, or framework guarantee.
 - Severity:
-  - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present. Cite the cost in the `Cost:` field. Triggers:
-    - Extra SELECT in a hot path
-    - Broad `catch (e)` defeating the global exception filter
-    - Single-impl service interface forcing two-file refactors
-    - `Scope.REQUEST` on a stateless provider (per-request allocation + scope propagation)
+  - **`[Suggestion]`** default. Cite the constraint, recommend the edit.
+  - **`[High]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider.
   - **`[Question]`** when justification is plausible but not visible in the diff.
-- A redundancy with **visible** justification is not a finding. See `Avoid` for the canonical exceptions.
+- A redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns
 
 ### Category 1: Redundant validation vs Prisma/TypeORM / DB / TS strict-null
 
-Validation stack: **TS strict-null type -> class-validator on the DTO -> ORM column constraint -> DB schema**. `ValidationPipe` with `whitelist: true` enforces the DTO at the controller boundary (returns 400). DB is authoritative.
+Stack: TS strict-null -> class-validator DTO -> ORM column -> DB. `ValidationPipe({ whitelist: true })` enforces the DTO at the controller boundary; DB is authoritative.
 
 #### `@IsNotEmpty()` / `@IsString()` on a non-optional string field
 
 ```ts
-// Bad - TS strict-null requires the field; ValidationPipe rejects missing/undefined via the type
+// Bad - type + ValidationPipe already reject missing/undefined
 export class CreateOrderDto {
-  @IsNotEmpty()
-  @IsUUID()
-  customerId!: string;
+  @IsNotEmpty() @IsUUID() customerId!: string;
 }
 
 // Good - keep only constraints that go beyond the type
 export class CreateOrderDto {
-  @IsUUID()
-  customerId!: string;
+  @IsUUID() customerId!: string;
 }
 ```
 
@@ -54,15 +47,14 @@ export class CreateOrderDto {
 
 ```ts
 // Bad - ValidationPipe rejected missing/empty before this method ran
-@Post()
 async create(@Body() dto: CreateOrderDto) {
   if (!dto.customerId) throw new BadRequestException('customerId required');
 }
 ```
 
-#### Manual unique-check before `prisma.create`
+#### Manual unique-check before insert
 
-`[High]` - races and adds a query per write; the unique index decides anyway.
+`[High]` - races and adds a SELECT per write; the unique index decides anyway.
 
 ```ts
 // Bad
@@ -70,7 +62,7 @@ const existing = await this.prisma.user.findUnique({ where: { email: dto.email }
 if (existing) throw new ConflictException('email taken');
 await this.prisma.user.create({ data: dto });
 
-// Good - let the unique index decide; translate P2002
+// Good - let the index decide; translate the driver error
 try { return await this.prisma.user.create({ data: dto }); }
 catch (e) {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -80,11 +72,11 @@ catch (e) {
 }
 ```
 
-TypeORM equivalent: catch `QueryFailedError` with `driverError.code === '23505'` (Postgres) or `'ER_DUP_ENTRY'` (MySQL).
+TypeORM: catch `QueryFailedError` with `driverError.code === '23505'` (Postgres) or `'ER_DUP_ENTRY'` (MySQL).
 
 ### Category 2: Defensive code for impossible states
 
-`ValidationPipe`, TS strict-null, NestJS Guards, and `findUniqueOrThrow` provide guarantees. Re-checking them is dead code; broad `catch (e)` can defeat the global exception filter.
+`ValidationPipe`, TS strict-null, Guards, and `findUniqueOrThrow` provide guarantees. Re-checking them is dead code.
 
 #### `if (!entity)` after `findUniqueOrThrow` / `findOneOrFail`
 
@@ -94,25 +86,24 @@ const order = await this.prisma.order.findUniqueOrThrow({ where: { id } });
 if (!order) throw new NotFoundException();
 ```
 
-Pick one: use the `orThrow` variant and let it raise, or use `findUnique` and handle null.
+Pick one: the `orThrow` variant, or `findUnique` with null-handling.
 
 #### Null guard on a constructor-injected provider
 
 ```ts
-// Bad - DI guarantees non-null on @Injectable() deps declared without @Optional()
+// Bad - DI guarantees non-null without @Optional()
 constructor(private readonly prisma: PrismaService) {
-  if (!prisma) throw new Error('prisma missing');   // never fires
+  if (!prisma) throw new Error('prisma missing');
 }
 ```
 
-`@Optional()` providers are the legitimate nullable-injection case.
+Justified when: `@Optional()` is present.
 
 #### `if (!req.user)` after `@UseGuards(JwtAuthGuard)`
 
 ```ts
 // Bad - the guard halted unauthenticated requests upstream
 @UseGuards(JwtAuthGuard)
-@Get()
 async list(@Req() req: AuthenticatedRequest) {
   if (!req.user) throw new UnauthorizedException();
 }
@@ -120,14 +111,14 @@ async list(@Req() req: AuthenticatedRequest) {
 
 #### Blanket `catch (e)` defeating the global exception filter
 
-`[High]`. NestJS's default filter maps `HttpException` subclasses to typed responses; a controller-level `try/catch` that converts everything to a generic 500 erases that mapping.
+`[High]` - the default filter maps `HttpException` subclasses to typed responses; converting everything to generic 500 erases that mapping.
 
 ```ts
 // Bad
 try { return await this.service.fulfill(id); }
 catch (e) { return { error: 'something went wrong' }; }
 
-// Good - name the failures the call can raise; let the rest reach the filter
+// Good - name the failures; let the rest reach the filter
 try { return await this.service.fulfill(id); }
 catch (e) {
   if (e instanceof InsufficientStockError) throw new ConflictException(e.message);
@@ -138,7 +129,7 @@ catch (e) {
 
 #### `try { ... } catch (e) { throw e }` no-op rethrow
 
-Delete it. Wrap with `throw new Error('wrap', { cause: e })` only when the wrapping adds context.
+Delete it. Wrap only when `throw new Error('...', { cause: e })` adds context.
 
 ### Category 3: Premature abstraction
 
@@ -148,20 +139,13 @@ Delete it. Wrap with `throw new Error('wrap', { cause: e })` only when the wrapp
 
 ```ts
 // Bad
-export interface OrderService { fulfill(orderId: string): Promise<OrderResponse>; }
-
-@Injectable()
-export class OrderServiceImpl implements OrderService { /* ... */ }
-
-@Module({
-  providers: [{ provide: 'OrderService', useClass: OrderServiceImpl }],
-  exports: ['OrderService'],
-})
+export interface OrderService { fulfill(id: string): Promise<OrderResponse>; }
+@Injectable() export class OrderServiceImpl implements OrderService { /* ... */ }
+@Module({ providers: [{ provide: 'OrderService', useClass: OrderServiceImpl }],
+  exports: ['OrderService'] })
 
 // Good - inject the class directly
-@Injectable()
-export class OrderService { /* ... */ }
-
+@Injectable() export class OrderService { /* ... */ }
 @Module({ providers: [OrderService], exports: [OrderService] })
 ```
 
@@ -169,26 +153,19 @@ Justified when: a second implementer exists, or the module uses `useClass` / `us
 
 #### `BaseService<T>` / `BaseRepository<T>` for one or two children
 
-```ts
-// Bad - generic template-method scaffold for two services
-@Injectable()
-export abstract class BaseService<T, ID> { /* ... */ }
-```
-
 Inline until 3+ services share genuine cross-cutting behavior.
 
 #### `Scope.REQUEST` on a stateless provider
 
-`[High]`. Request scope creates a fresh instance per HTTP request and propagates the scope to every provider that injects it transitively.
+`[High]` - allocates per request and propagates the scope to every transitive injector.
 
 ```ts
-// Bad - no per-request state, but pays per-request allocation
+// Bad - no per-request state
 @Injectable({ scope: Scope.REQUEST })
 export class OrderService { /* stateless */ }
 
 // Good - default singleton
-@Injectable()
-export class OrderService { /* ... */ }
+@Injectable() export class OrderService { /* ... */ }
 ```
 
 Justified when: per-request state (multi-tenant context, per-request transaction).
@@ -196,7 +173,7 @@ Justified when: per-request state (multi-tenant context, per-request transaction
 #### Custom `Result<T, E>` where exceptions or `T | null` suffice
 
 ```ts
-// Bad - hand-rolled Result wraps a one-line read
+// Bad
 async findOrder(id: string): Promise<Result<Order, 'not_found'>> { /* ... */ }
 
 // Good - absence is already in the type system
@@ -205,22 +182,21 @@ async findOrder(id: string): Promise<Order | null> {
 }
 ```
 
-Keep `Result<T, E>` only when callers branch on multiple distinct failure modes carrying data beyond a literal.
+Justified when: callers branch on multiple distinct failure modes carrying data beyond a literal.
 
 #### AutoMapper-style mapper between identical shapes
 
 ```ts
-// Bad - a mapper class for a 1:1 transformation
-@Injectable()
-export class OrderMapper { toResponse(o: Order): OrderResponseDto { /* trivial */ } }
+// Bad - mapper class for a 1:1 transformation
+@Injectable() export class OrderMapper { toResponse(o: Order): OrderResponseDto { /* trivial */ } }
 
-// Good - inline mapping, or a plain function exported from the DTO file
+// Good - plain function
 const toResponse = (o: Order): OrderResponseDto => ({ id: o.id, total: o.total });
 ```
 
 #### Speculative `ConfigService` keys
 
-Flag config keys validated in the Zod/Joi schema but never read via `ConfigService.get(...)`. Confirm zero read sites with a repo-wide grep before flagging.
+Flag config keys declared in the Zod/Joi schema but never read via `ConfigService.get(...)`. Confirm zero read sites by repo-wide grep before flagging.
 
 ## Output Format
 
@@ -241,10 +217,8 @@ For each of the three categories with no findings, state `No <category> findings
 
 ## Avoid
 
-- Flagging class-validator decorators on `@Body()` DTOs - `ValidationPipe` owns user-facing error messages
-- Flagging `@IsString()` / `@IsUUID()` / `@Min()` / `@Length()` constraints - those go beyond the type
-- Flagging `@Optional()` providers - that's the legitimate nullable-injection case
-- Flagging `Scope.REQUEST` on providers that hold per-request state (multi-tenant context, transactional unit-of-work)
-- Flagging single-impl interfaces before checking for `useClass` / `useFactory` substitution or a planned second implementer
-- Recommending removal of `cause:` chain wrapping - that pattern preserves the stack and is correct
-- Confusing "duplicated" with "defense in depth" when multiple write paths exist (HTTP + BullMQ consumer + cron)
+- Flagging `@IsString()` / `@IsUUID()` / `@Min()` / `@Length()` - those go beyond the type
+- Flagging class-validator decorators that own user-facing 400 error messages
+- Flagging `@Optional()` providers, `Scope.REQUEST` on per-request state, or single-impl interfaces tied to `useClass` / `useFactory` substitution
+- Recommending removal of `cause:` chain wrapping - that preserves the stack
+- Confusing "duplicated" with "defense in depth" when multiple write paths exist (HTTP + BullMQ + cron)
