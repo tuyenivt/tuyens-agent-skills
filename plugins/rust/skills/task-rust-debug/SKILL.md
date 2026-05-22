@@ -1,6 +1,6 @@
 ---
 name: task-rust-debug
-description: Diagnose and fix Rust errors: panic backtraces, compiler errors, borrow checker, async/await issues, sqlx failures.
+description: Debug Rust errors: panic backtraces, borrow checker, async/Send, deadlocks, sqlx failures, silent serde field drops from traces or symptoms.
 agent: rust-architect
 metadata:
   category: backend
@@ -9,144 +9,149 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
-## STEP 1 - INTAKE
+# Debug Rust Error
 
-Ask for: full backtrace or compiler error, the source file where the error originates, and what the user expected to happen. If a backtrace is provided, identify the first application-code frame (skip standard library and crate frames) and read that file. For compiler errors, read the file and line referenced in the error.
+## When to Use
 
-If the user provides only a partial error (e.g., just an error message without a backtrace), ask for the full output of `RUST_BACKTRACE=1 cargo run` or `cargo test`. If the user describes unexpected behavior without an error, ask them to add `tracing` or `dbg!()` output to narrow the scope before proceeding.
+- Panics, `unwrap`/`expect` failures, index-out-of-bounds
+- Borrow checker, lifetime, or move errors blocking compilation
+- Async issues: `future is not Send`, nested runtimes, deadlocks across `.await`
+- sqlx failures: pool timeout, `no rows`, connection refused
+- Silent field loss across serde / sqlx / job-payload boundaries (compiles, runs, drops data)
+- Background task failures (`JoinError`, consumer reprocess loops)
 
-**If "no error, just wrong behavior" (silent field loss / dropped data):** the bug is almost always a serde/sqlx boundary that compiled cleanly but dropped a field. Trace the data path end-to-end, suspecting these Rust-specific surfaces:
+Not for: new features (`task-rust-implement`), general review (`task-rust-review`), perf tuning (`task-rust-review-perf`).
 
-- **`#[serde(rename = "...")]` / `#[serde(rename_all = "camelCase")]` mismatch** between the request struct and the actual JSON payload - missing fields deserialize to `Default::default()` (often `None` or `""`) without error. Reproduce by logging `serde_json::to_string(&req)` immediately after `Json(req): Json<RequestDto>` extraction.
-- **Missing `#[serde(deny_unknown_fields)]`** - extra/typo'd fields in the payload are silently ignored. Add it to the DTO temporarily to surface the mismatch.
-- **`#[serde(default)]` or `Option<T>`** swallowing a missing required field; check whether the validator (`validator` crate `#[validate(...)]`) actually fires on `None`.
-- **DTO -> domain mapping (`From`/`TryFrom`/manual)** that drops a field - particularly when the domain struct adds a field but the `impl From<Dto>` was not updated. Search for `..Default::default()` in mapping code.
-- **sqlx column-name mismatch:** `#[sqlx(rename = "user_tier")]` or `query_as!` macro fails at compile time, but `query_as::<_, T>(...)` (runtime) silently returns the field's default if the SELECT list omits the column. Check the SELECT list against the struct fields.
-- **`#[sqlx(skip)]` or `#[sqlx(default)]`** on a struct field - the column is never read into that field even when present.
-- **Background-job payload boundary:** `serde_json::to_vec(&payload)` at enqueue site -> bytes -> `serde_json::from_slice::<Payload>(&bytes)` in worker. A field renamed on one side but not the other deserializes to default. Same for `bincode`/`rmp_serde` (MessagePack) where field order or version drift silently corrupts.
-- **`#[serde(skip_serializing_if = "Option::is_none")]`** on the producer side combined with a non-`Option` field on the consumer side - the consumer gets `Default::default()` instead of erroring.
+## Workflow
 
-Ask the user to add `tracing::debug!(?req, "decoded request")` at the handler entry and `tracing::debug!(?domain, "mapped to domain")` after the DTO mapping; the field that goes missing between those two log lines is the culprit.
+### STEP 1 - INTAKE
 
-## STEP 2 - CLASSIFY
+Ask for the full backtrace (or `cargo` error output) and the source file at the first application frame. For partial input ("it panics sometimes"): request `RUST_BACKTRACE=1`, command run, expected vs actual, frequency (every call / intermittent / under load only).
 
-Match the error to one of these categories, then load the relevant atomic skill:
+**For "no error, just wrong data"** (a field deserializes empty, a row's column comes back default, a background-job payload arrives stripped): no backtrace to classify. Reframe as **which boundary lost the field**, then ask the user to log `?value` with `tracing::debug!` immediately before and after each boundary. Suspect boundaries:
 
-### Panic / Unwrap Errors
+- `Json(req): Json<Dto>` extraction - serde `rename`/`rename_all` mismatch, missing `deny_unknown_fields`, `#[serde(default)]` swallowing a required field
+- `From<Dto> for Domain` mapping - `..Default::default()` hiding a forgotten field
+- `query_as::<_, T>(...)` runtime macro - column omitted from `SELECT` returns `Default::default()` (compile-time `query_as!` would have caught it)
+- `#[sqlx(skip)]` / `#[sqlx(default)]` on a struct field
+- Job payload round-trip: `serde_json::to_vec` on enqueue, `from_slice` in worker - renamed field on one side only
 
-- `called Option::unwrap() on a None value` or `called Result::unwrap() on an Err value` -> trace the source value. The backtrace shows where `.unwrap()` was called; the fix is to use `?` or pattern matching instead. Use skill: `rust-error-handling`.
-- `index out of bounds` -> check collection length before indexing, use `.get()` for safe access.
+### STEP 2 - CLASSIFY
 
-### Borrow Checker / Lifetime Errors
+Match one category, then load the listed atomic skill.
 
-- `cannot borrow X as mutable because it is also borrowed as immutable` -> restructure to avoid overlapping borrows. Common fix: clone the value, use `RefCell`/`Mutex`, or restructure the code to drop the immutable borrow first.
-- `X does not live long enough` -> the value is dropped before the reference. Fix: extend the lifetime by moving ownership, using `Arc`, or restructuring the scope.
-- `cannot move out of X because it is borrowed` -> the value is borrowed and you're trying to move it. Fix: clone, or restructure to use the value after the borrow ends.
+**Panic / unwrap**
+- `unwrap() on a None`/`Err` -> trace the source value; replace with `?` or pattern match. Use skill: `rust-error-handling`.
+- `index out of bounds` -> length check or `.get()`.
 
-### Async / Tokio Errors
+**Borrow checker / lifetime**
+- `cannot borrow as mutable...also borrowed as immutable` -> drop the immutable borrow first, split the data, or use interior mutability.
+- `does not live long enough` -> extend ownership (`Arc`, move) or restructure scope.
+- `cannot move...because borrowed` -> clone, or use the value after the borrow.
 
-- `Cannot start a runtime from within a runtime` -> nested Tokio runtime. Never create a second runtime; use `tokio::task::spawn_blocking` for sync code. Use skill: `rust-async-patterns`.
-- `future is not Send` -> the future holds a non-Send type (e.g., `Rc`, `MutexGuard` across `.await`). Fix: drop the guard before `.await`, or use `Arc` instead of `Rc`.
-- Deadlock / task never completes -> holding `std::sync::MutexGuard` across `.await`. Use `tokio::sync::Mutex` if the lock must span awaits. Use skill: `rust-concurrency`.
+**Async / Tokio**
+- `future is not Send` -> a non-Send type (`Rc`, `std::sync::MutexGuard`, `RefCell`) held across `.await`. Drop the guard before await, or switch to `Arc` / `tokio::sync::Mutex`. Use skill: `rust-concurrency`.
+- Deadlock / task never completes -> `std::sync::MutexGuard` held across `.await`. **The Send warning and the deadlock are the same bug** - both surface here. Use skill: `rust-concurrency`.
+- `Cannot start a runtime from within a runtime` -> use `tokio::task::spawn_blocking`, not a nested runtime. Use skill: `rust-async-patterns`.
 
 ```rust
-// BEFORE (deadlock - std Mutex held across .await)
-let guard = std_mutex.lock().unwrap();
-some_async_op().await; // other tasks blocked from acquiring the lock
+// Bad: std Mutex held across .await -> not Send + deadlocks under load
+let cfg = std_mutex.lock().unwrap();
+fetch(&cfg).await?;
 
-// AFTER (tokio Mutex - safe across .await)
-let guard = tokio_mutex.lock().await;
-some_async_op().await;
+// Good: clone out, drop guard before await
+let cfg = { std_mutex.lock().unwrap().clone() };
+fetch(&cfg).await?;
 ```
 
-### Type / Trait Errors
+**Type / trait**
+- `trait bound X not satisfied` -> derive or implement (`Serialize`, `FromRow`, `Clone`, `Send`/`Sync`).
+- `mismatched types` -> usually `Result<T, E>` where `E` doesn't match; align with `From`/`?` or `map_err`.
 
-- `the trait bound X is not satisfied` -> check which trait is needed and implement or derive it. Common: `Serialize`, `Deserialize`, `FromRow`, `Clone`, `Send`, `Sync`.
-- `mismatched types` -> check function signatures and return types. Common with `Result<T, E>` where `E` doesn't match.
-- `the trait X is not implemented for Y` -> use `#[derive(...)]` or implement the trait manually.
+**sqlx / database**
+- `connection refused` -> DB down or wrong DSN. Use skill: `rust-db-access`.
+- `pool timed out` -> raise `max_connections` only after ruling out connection leaks (unawaited transactions, missing drops).
+- `no rows returned by a query that expected to return at least one row` -> use `fetch_optional`, handle `None`.
 
-### sqlx / Database Errors
+**Build / compile**
+- `unresolved import` -> wrong path, missing `pub`, or missing dep in `Cargo.toml`.
 
-- `error returned from database: connection refused` -> DB not running or wrong connection string. Use skill: `rust-db-access`.
-- `pool timed out while waiting for an open connection` -> `max_connections` too low or connection leak. Check pool config and ensure connections are returned promptly.
-- `no rows returned by a query that expected to return at least one row` -> `fetch_one` on empty result. Use `fetch_optional` and handle `None`.
+**Background jobs**
+- `JoinError` -> spawned task panicked; root cause is inside the task, not at the join site. Use skill: `rust-async-patterns`.
+- Kafka/AMQP consumer reprocess loop -> handler returns error on poison message. Use skill: `rust-messaging-patterns`.
 
-### Build / Compilation Errors
+### STEP 3 - LOCATE
 
-- `unresolved import` -> wrong module path, missing `pub`, or missing dependency in `Cargo.toml`.
-- `unused variable` / `unused import` -> clean up or prefix with `_`.
+1. Read backtrace top-to-bottom; first application frame (skip std/crate frames).
+2. Open that file; read the failing function.
+3. Trace the problematic value upstream through parameters, trait impls, spawn sites.
+4. Borrow errors: identify the two conflicting uses.
+5. Async errors: scan every `.await` in the function for guards or non-Send types in scope.
 
-### Background Job Errors
+### STEP 4 - ROOT CAUSE
 
-- Tokio task panic (`JoinError`) -> the spawned task panicked. Check the task's code for `.unwrap()` or index out of bounds. Use skill: `rust-async-patterns` (task spawning section).
-- Kafka/AMQP consumer lag -> consumer group offset issue, handler error causing reprocess loop. Use skill: `rust-messaging-patterns`.
-
-## STEP 3 - LOCATE
-
-1. Read the backtrace top-to-bottom; find the first application-code frame (not crate or std library)
-2. Open that source file and read the failing function
-3. Trace the data path: where does the problematic value originate? Follow it upstream through function parameters, trait implementations, or async task spawns
-4. For borrow checker errors: identify the two conflicting uses of the value and which one should be restructured
-5. For async errors: check whether any lock guards or non-Send types are held across `.await` points
-
-## STEP 4 - ROOT CAUSE
-
-Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
+Explain **why**, not just what. State confidence: **HIGH** (reproduced or obvious), **MEDIUM** (pattern match), **LOW** (multiple candidates).
 
 ```
-ROOT CAUSE: [HIGH/MEDIUM/LOW confidence]
-The future is not Send because a std::sync::MutexGuard is held across the
-.await at src/services/cache.rs:34. The guard is acquired at line 32 and
-not dropped until after the async database call completes at line 36.
+ROOT CAUSE: [HIGH] src/handlers/billing.rs:147 holds `std::sync::MutexGuard`
+from line 144 across `sqlx::query(...).fetch_one(&pool).await`. The future
+is not Send under tokio's multi-thread runtime, and under load contending
+tasks block waiting for the guard - the visible symptom is the unwrap()
+panic on a downstream `Option` that times out.
 ```
 
-## STEP 5 - FIX
+### STEP 5 - FIX
 
-Provide before/after code. Fix must be minimal and address root cause, not symptoms. Use skill: `rust-error-handling` to ensure error patterns are preserved.
+Before/after code. Minimal, root-cause-targeted. Preserve error-handling conventions per `rust-error-handling`.
 
-## STEP 6 - PREVENTION
+### STEP 6 - PREVENTION
 
-Add a guard so this class of error cannot recur:
+Add one guard so this class cannot recur:
 
-- **Test** that exercises the exact code path
-- **`cargo clippy`** for common lint issues
-- **Type system** (e.g., newtype wrappers, `#[must_use]` on Result-returning functions)
-- For async bugs: check for `MutexGuard` held across `.await` (clippy `await_holding_lock`)
-- For borrow checker issues: explain the ownership model to help the user avoid similar patterns
+- Test exercising the exact path (load test for concurrency bugs)
+- `cargo clippy -- -W clippy::await_holding_lock` in CI for std-Mutex-across-await
+- `#[must_use]` on Result-returning APIs; newtype wrappers for invariants
+- Repository integration test (e.g. `sqlx::test`) for runtime `query_as` field drops
 
-## Avoid
+## Edge Cases
 
-- Do not add `.unwrap()` to "fix" a type mismatch - propagate the error with `?`
-- Do not use `unsafe` to bypass borrow checker errors - restructure the code
-- Do not nest Tokio runtimes to fix "cannot start a runtime" - use `spawn_blocking`
-- Do not use `Rc`/`RefCell` in async code to fix Send errors - use `Arc`/`Mutex`
-- Do not add `#[allow(unused)]` to suppress warnings without understanding why
-- Do not add `clone()` everywhere to fix borrow errors without understanding the performance implications
+- **No backtrace**: request `RUST_BACKTRACE=full cargo run`; for prod, check tracing/sentry breadcrumbs.
+- **Intermittent / under-load only**: suspect Send/lock contention, pool exhaustion, or a race on an `Arc<Mutex>`.
+- **Compiles in dev, fails in release**: `unsafe` UB exposed by optimizer, or a `debug_assert!` masking the issue.
+- **Cascading panics**: focus on the **first** frame; later panics are often `JoinError` wrappers.
 
 ## Output Format
 
 ```
 ## Error Classification
-[Category]: [specific error type]
+[Category]: [specific type]
 
 ## Root Cause (confidence: HIGH/MEDIUM/LOW)
-[Why the error occurs, referencing specific file:line]
+[Why, citing file:line]
 
 ## Fix
-[Before/after code blocks]
+[Before/after code]
 
 ## Prevention
-[Test, clippy lint, or type system change to prevent recurrence]
+[Test, clippy lint, type-system guard]
 ```
 
 ## Self-Check
 
-- [ ] Error classified before any code is read or fix proposed
-- [ ] Root cause references the specific source file and line; confidence level stated
-- [ ] Concrete before/after fix provided; fix is minimal and addresses root cause, not symptom
-- [ ] Rust idioms preserved - errors use `?` and thiserror/anyhow, no unnecessary `.unwrap()`
-- [ ] Prevention step included (test, `cargo clippy`, or MIRI guidance)
-- [ ] For async bugs, cancellation safety and `.await` holding addressed
-- [ ] For borrow checker issues, ownership model explained clearly
+- [ ] STEP 1: full backtrace requested; silent-data-loss path checked if no error
+- [ ] STEP 2: classified before reading code or proposing fix
+- [ ] STEP 3: first application frame identified; data path traced upstream
+- [ ] STEP 4: root cause cites file:line; confidence stated
+- [ ] STEP 5: before/after fix is minimal and root-cause-targeted
+- [ ] STEP 6: prevention guard added (test, clippy, type system)
+
+## Avoid
+
+- `.unwrap()` added to silence a type or `Option` error; propagate with `?`
+- `unsafe` to bypass the borrow checker; restructure ownership instead
+- Nesting Tokio runtimes; use `spawn_blocking` for sync work
+- `Rc`/`RefCell` in async code; use `Arc`/`tokio::sync::Mutex`
+- `clone()` scattered to silence borrow errors without naming the cost
+- `#[allow(unused)]` to bury warnings whose cause is unknown

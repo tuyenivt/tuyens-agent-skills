@@ -1,209 +1,181 @@
 ---
 name: rust-concurrency
-description: "Rust concurrency primitives: Arc/Mutex, RwLock, mpsc/oneshot channels, Send+Sync, rayon CPU parallelism, atomics, deadlock prevention."
+description: "Rust concurrency: Arc/Mutex/RwLock, mpsc/oneshot/broadcast channels, atomics, Send+Sync, deadlock prevention, lock-free shared state."
 metadata:
   category: backend
-  tags: [rust, concurrency, mutex, channels, rayon, send-sync]
+  tags: [rust, concurrency, mutex, channels, atomics, send-sync]
 user-invocable: false
 ---
 
 # Rust Concurrency
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. For runtime-level concerns (spawn, select!, cancellation) use `rust-async-patterns`; this skill covers shared-state primitives.
 
 ## When to Use
 
-- Designing shared state patterns for concurrent access
-- Reviewing code for data races, deadlocks, or Send+Sync violations
-- Choosing between Mutex, RwLock, channels, and atomics
-- Implementing CPU-bound parallelism with rayon
+- Choosing between Mutex, RwLock, atomics, channels, or lock-free structures
+- Reviewing shared state for data races, deadlocks, or Send/Sync errors
+- Fan-out/fan-in messaging (mpsc, broadcast, oneshot)
+- Designing read-heavy or hot-path state with minimal contention
 
 ## Rules
 
-- The compiler enforces thread safety via `Send` and `Sync` - trust the borrow checker
-- Use `Arc<Mutex<T>>` for shared mutable state across tasks - never raw pointers
-- Prefer `tokio::sync::Mutex` over `std::sync::Mutex` when the lock spans `.await` points
-- Use channels for ownership transfer between tasks - not shared state
-- Use `rayon` for CPU-bound data parallelism - not Tokio (Tokio is for I/O concurrency)
-- Minimize critical section size - lock, mutate, unlock immediately
+- Use `tokio::sync::*` when the guard or send can cross `.await`; otherwise `std::sync::*` is faster and fine.
+- `Arc<T>` for shared ownership across tasks; `Rc`/`RefCell` are single-thread only.
+- Lock the smallest data the smallest time: copy/clone out, drop the guard, then compute.
+- Acquire multiple locks in a single global order; never hold lock A while awaiting lock B without that order.
+- Pick channel by topology: `oneshot` (1:1 reply), `mpsc` (many producers, one consumer), `broadcast` (one producer, many consumers, each gets every message), `watch` (single latest value).
+- Bound every channel; unbounded variants only with an explicit upstream backpressure source.
+- Atomics for counters/flags only; reach for `Mutex`/`RwLock` once invariants span multiple fields.
 
 ## Patterns
 
-### Arc<Mutex<T>> for Shared State
+### Primitive selection
+
+| Need                                  | Use                                |
+| ------------------------------------- | ---------------------------------- |
+| Shared mutable state, mixed R/W       | `Arc<Mutex<T>>` (tokio if `.await`)|
+| Read-heavy, infrequent writes         | `Arc<RwLock<T>>` or `ArcSwap<T>`   |
+| Single counter / flag                 | `AtomicU64` / `AtomicBool`         |
+| Latest-value broadcast (config, ticks)| `tokio::sync::watch`               |
+| Pub/sub to N subscribers              | `tokio::sync::broadcast`           |
+| Pipeline / work queue                 | `tokio::sync::mpsc` (bounded)      |
+| Request/reply                         | `oneshot`                          |
+| Concurrent map without manual locks   | `dashmap::DashMap`                 |
+
+### Lock scope: extract, drop, compute
 
 ```rust
-use std::sync::Arc;
-use tokio::sync::Mutex;
+// Bad: lock held across await and across heavy work
+let mut cache = state.cache.lock().await;
+let result = expensive(&*cache).await; // every other task blocked
+cache.insert(key, result);
 
-#[derive(Clone)]
-struct AppState {
-    cache: Arc<Mutex<HashMap<String, String>>>,
-}
-
-async fn get_cached(state: &AppState, key: &str) -> Option<String> {
-    let cache = state.cache.lock().await;
-    cache.get(key).cloned()
-}
-
-async fn set_cached(state: &AppState, key: String, value: String) {
-    let mut cache = state.cache.lock().await;
-    cache.insert(key, value);
-}
+// Good: clone out, drop guard, compute, re-lock briefly
+let input = state.cache.lock().await.get(&key).cloned();
+let result = expensive(&input).await;
+state.cache.lock().await.insert(key, result);
 ```
 
-### RwLock for Read-Heavy Workloads
+### RwLock for read-heavy state
 
 ```rust
-use tokio::sync::RwLock;
-
-struct ConfigStore {
-    config: Arc<RwLock<Config>>,
-}
+// Use when reads >> writes and the protected value is non-trivial to clone.
+// For "read latest snapshot" prefer watch / ArcSwap (no read lock at all).
+pub struct ConfigStore { inner: Arc<RwLock<Config>> }
 
 impl ConfigStore {
-    async fn get(&self) -> Config {
-        self.config.read().await.clone() // many readers, no blocking
-    }
-
-    async fn update(&self, new_config: Config) {
-        let mut config = self.config.write().await; // exclusive access
-        *config = new_config;
-    }
+    pub async fn snapshot(&self) -> Config { self.inner.read().await.clone() }
+    pub async fn replace(&self, c: Config) { *self.inner.write().await = c; }
 }
 ```
 
-### Channels for Ownership Transfer
+### Channels: mpsc / oneshot / broadcast
 
 ```rust
-use tokio::sync::mpsc;
+// mpsc: bounded pipeline, drop on full = backpressure
+let (tx, mut rx) = tokio::sync::mpsc::channel::<Job>(100);
 
-async fn run_pipeline(pool: PgPool) -> anyhow::Result<()> {
-    let (tx, mut rx) = mpsc::channel::<Job>(100); // bounded channel
+// oneshot: actor reply
+struct Cmd { data: String, reply: tokio::sync::oneshot::Sender<Result<String, AppError>> }
 
-    // Producer
-    let producer = tokio::spawn(async move {
-        for job in fetch_jobs().await {
-            tx.send(job).await.unwrap();
+// broadcast: each subscriber sees every message; slow subscribers get RecvError::Lagged
+let (btx, _) = tokio::sync::broadcast::channel::<Event>(256);
+let mut sub = btx.subscribe();
+tokio::spawn(async move {
+    loop {
+        match sub.recv().await {
+            Ok(ev) => handle(ev).await,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(skipped = n, "subscriber lagged");
+            }
+            Err(_) => break, // sender dropped
         }
-        // tx is dropped here, signaling completion
-    });
-
-    // Consumer
-    while let Some(job) = rx.recv().await {
-        process(job).await?;
     }
-
-    producer.await?;
-    Ok(())
-}
+});
 ```
 
-### oneshot for Request-Response
+### Atomics: ordering choice
 
 ```rust
-use tokio::sync::oneshot;
+use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 
-struct Command {
-    data: String,
-    reply: oneshot::Sender<Result<String, AppError>>,
-}
+// Relaxed: independent counters/metrics
+metrics.requests.fetch_add(1, Ordering::Relaxed);
 
-async fn actor(mut rx: mpsc::Receiver<Command>) {
-    while let Some(cmd) = rx.recv().await {
-        let result = handle_command(&cmd.data).await;
-        let _ = cmd.reply.send(result);
-    }
-}
+// Acquire/Release: flag publishes data written before it
+data.write(payload);
+ready.store(true, Ordering::Release);
+// reader side
+if ready.load(Ordering::Acquire) { read(data); }
+
+// SeqCst: only when total order across multiple atomics matters
 ```
 
-### Atomics for Simple Counters
+### Lock-free read path with ArcSwap
 
 ```rust
-use std::sync::atomic::{AtomicU64, Ordering};
+// Read-mostly config without a read lock on the hot path.
+use arc_swap::ArcSwap;
+static CONFIG: ArcSwap<Config> = ArcSwap::from_pointee(Config::default());
 
-struct Metrics {
-    request_count: AtomicU64,
-}
-
-impl Metrics {
-    fn increment_requests(&self) {
-        self.request_count.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn get_request_count(&self) -> u64 {
-        self.request_count.load(Ordering::Relaxed)
-    }
-}
+fn current() -> Arc<Config> { CONFIG.load_full() } // wait-free
+fn reload(new: Config) { CONFIG.store(Arc::new(new)); }
 ```
 
-### rayon for CPU-Bound Parallelism
+### Deadlock prevention: global lock order
 
 ```rust
-use rayon::prelude::*;
+// Bad: tasks acquire (a, b) and (b, a) -> cycle
+async fn t1(a: &Mutex<A>, b: &Mutex<B>) { let _a = a.lock().await; let _b = b.lock().await; }
+async fn t2(a: &Mutex<A>, b: &Mutex<B>) { let _b = b.lock().await; let _a = a.lock().await; }
 
-// Use spawn_blocking to run rayon on Tokio
-async fn process_batch(items: Vec<Item>) -> Vec<Result<Output, AppError>> {
-    tokio::task::spawn_blocking(move || {
-        items.par_iter()
-            .map(|item| transform(item))
-            .collect()
-    })
-    .await
-    .unwrap()
+// Good: every site locks in the same order (e.g., by address or by name)
+async fn with_pair(a: &Mutex<A>, b: &Mutex<B>) {
+    let (first, second) = if (a as *const _) < (b as *const _) { (a, b) } else { (b, a) };
+    let _g1 = first.lock().await;
+    let _g2 = second.lock().await;
 }
 ```
 
-### Send + Sync Constraints
+### Send + Sync error triage
 
 ```rust
-// Send: safe to transfer ownership between threads
-// Sync: safe to share references between threads (&T is Send)
-
-// Arc<T> is Send + Sync when T is Send + Sync
-// Mutex<T> is Send + Sync when T is Send
-// Rc<T> is NOT Send - use Arc instead
-// RefCell<T> is NOT Sync - use Mutex instead
-
-// Common fix for "not Send" errors:
-// Replace Rc with Arc
-// Replace RefCell with Mutex or RwLock
-// Use Arc<Mutex<T>> for shared mutable state across tasks
+// "future is not Send" -> something non-Send is held across .await.
+// Fix by either dropping it before the await, or swapping the type:
+//   Rc<T>          -> Arc<T>
+//   RefCell<T>     -> Mutex<T> / RwLock<T>
+//   *const T       -> wrap in a Send newtype only if you can prove the invariant
+{
+    let guard = std_mutex.lock().unwrap();
+    let v = guard.clone();
+    drop(guard);                 // released before await
+    remote_call(v).await;
+}
 ```
 
-## Anti-Patterns
+## Output Format
 
-```rust
-// Bad: std::sync::Mutex across .await (can deadlock)
-let guard = std_mutex.lock().unwrap();
-some_async_op().await; // other tasks can't acquire the lock
-drop(guard);
+When reviewing shared-state code, emit:
 
-// Bad: holding lock longer than necessary
-let mut data = state.cache.lock().await;
-let result = expensive_computation(&data).await; // lock held during computation
-data.insert(key, result);
-
-// Good: lock, clone/extract, unlock, then compute
-let input = {
-    let data = state.cache.lock().await;
-    data.get(key).cloned()
-};
-let result = expensive_computation(&input).await;
-state.cache.lock().await.insert(key, result);
-
-// Bad: Rc in async code (not Send)
-let shared = Rc::new(RefCell::new(vec![]));
-tokio::spawn(async move { shared.borrow_mut().push(1) }); // compile error: Rc is not Send
-
-// Bad: unbounded channel (memory leak under backpressure)
-let (tx, rx) = mpsc::unbounded_channel();
 ```
+Primitive: {Mutex | RwLock | Atomic | mpsc | oneshot | broadcast | watch | ArcSwap | DashMap}
+Async-Safe: {Yes | No | N/A}   # tokio::sync vs std::sync vs lock-free
+Issue: {DataRace | Deadlock | LockAcrossAwait | SendSyncViolation | UnboundedChannel | OverbroadCriticalSection | WrongOrdering | None}
+Severity: {Blocker | High | Medium | Low}
+Location: <file:line or symbol>
+Evidence: <one-line quote or trace>
+Fix: <one-line action; reference Pattern name>
+```
+
+One block per finding. Omit no field; use `None` / `N/A` when not applicable.
 
 ## Avoid
 
-- `std::sync::Mutex` across `.await` points - use `tokio::sync::Mutex`
-- Holding locks longer than necessary - minimize critical sections
-- `Rc`/`RefCell` in async or multi-threaded code - use `Arc`/`Mutex`
-- Unbounded channels without backpressure strategy
-- Using Tokio for CPU-bound work - use `rayon` via `spawn_blocking`
-- Ignoring `Send + Sync` compiler errors by using `unsafe` - fix the data type instead
+- `std::sync::Mutex`/`RwLock` guards crossing `.await`
+- Locking around await-ing work; lock around state mutation only
+- `Rc`/`RefCell` in any code reachable from `tokio::spawn` or a thread
+- Unbounded channels without an upstream rate limit
+- `Ordering::SeqCst` by default; choose Relaxed/Acquire/Release deliberately
+- Multiple-lock sites without a documented global order
+- `unsafe impl Send`/`Sync` to silence the compiler instead of fixing the type

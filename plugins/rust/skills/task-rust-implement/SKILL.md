@@ -1,6 +1,6 @@
 ---
 name: task-rust-implement
-description: Implement multi-layer Rust / Axum feature end-to-end: migrations, models, repositories, services, handlers, DTOs, tests.
+description: Implement multi-layer Rust / Axum / sqlx feature end-to-end: migrations, models, repositories, services, handlers, DTOs, tests.
 agent: rust-architect
 metadata:
   category: backend
@@ -9,123 +9,94 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
+## When to Use
 
-## Rules
+Building a new feature in a Rust/Axum/sqlx service that spans migration, repository, service, handler, DTO, and tests. Not for single-file edits, refactors without new behavior, or non-web crates (CLI, embedded).
 
-- No business logic in handlers - handlers extract params, call services, map responses
-- Constructor injection via function parameters - services take `Arc<dyn Trait>` dependencies
-- Errors use `thiserror` for domain types, `?` operator for propagation - no `.unwrap()` in production paths
-- Repository trait defined in the service module (consumer defines its dependency)
-- Transactions for multi-step mutations - `pool.begin()` / `tx.commit()`
-- Event/job dispatch timing: emit domain events or enqueue background jobs AFTER the transaction commits, never inside it
-- Each step must complete and be reviewed before proceeding to the next
-- Present the design to the user for approval before generating code
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 2 and follow its mode contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts from this workflow.
 
-## Implementation
+## Workflow
 
-STEP 1 - GATHER: Ask the user these questions before writing any code:
+**Step 1 - Behavioral principles.** Use skill: `behavioral-principles`.
 
-1. What is the feature? (brief description, primary use case)
-2. What are the main entities? (fields, relationships, constraints)
-3. Are there external integrations? (third-party APIs, message brokers)
-4. Are background jobs or async events needed? (notifications, syncing)
-5. Does the feature need authentication/authorization?
-6. Are there status transitions? (e.g., order: pending -> confirmed -> shipped)
-7. Concurrency needs? (shared state, parallel processing, rate limiting)
+**Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm Rust + Axum + sqlx; halt and ask if mismatched.
 
-If the user provides only a brief description without answering all questions, infer reasonable defaults and present them for confirmation. If the user provides a ticket or spec, extract the answers from it.
+**Step 3 - Gather.** Ask: feature scope, entities (fields, relations, constraints), external integrations, background jobs/events, auth needs, status transitions, concurrency. Infer reasonable defaults from a brief or ticket and present for confirmation.
 
-STEP 2 - DESIGN: Use skill: `rust-web-patterns` for API/handler design. Use skill: `rust-db-access` for data layer design. Propose the implementation layers and present for user approval before generating code.
-
-Present a file tree showing what will be generated:
+**Step 4 - Design.** Use skill: `rust-web-patterns` (API surface). Use skill: `rust-db-access` (data layer). Present a file tree and request approval before any code:
 
 ```
-src/
-  models/order.rs               # sqlx FromRow struct
-  repositories/order.rs         # Repository trait + impl
-  services/order.rs             # Business logic
-  handlers/order.rs             # Axum handlers
-  dto/order.rs                  # Request/response types (serde)
-  errors.rs                     # AppError with thiserror
-  router.rs                     # Route registration
-migrations/
-  YYYYMMDDHHMMSS_create_orders.up.sql
-  YYYYMMDDHHMMSS_create_orders.down.sql
-tests/
-  integration/order_test.rs     # Integration tests (testcontainers)
+src/{models,repositories,services,handlers,dto}/<entity>.rs
+src/{errors,router}.rs
+migrations/YYYYMMDDHHMMSS_create_<entity>.{up,down}.sql
+tests/integration/<entity>_test.rs
 ```
 
-STEP 3 - DATABASE: Use skill: `rust-migration-safety`. Generate up/down SQL migration files. Include indexes on foreign keys and frequently-filtered columns. Use `CREATE INDEX CONCURRENTLY` for large tables.
+**Step 5 - Migration.** Use skill: `rust-migration-safety`. Generate up/down SQL with indexes on FKs and filtered columns; `CREATE INDEX CONCURRENTLY` for large tables.
 
-STEP 4 - DATA LAYER: Use skill: `rust-db-access`. Generate repository trait (in service module) and implementation with `sqlx::query_as!` for compile-time checked queries. Configure connection pool with `PgPoolOptions`.
+**Step 6 - Data layer.** Use skill: `rust-db-access`. Repository trait in the service module; impl with `sqlx::query_as!` (compile-time checked); pool via `PgPoolOptions`.
 
-STEP 5 - SERVICE: Use skill: `rust-error-handling`. Generate service with constructor injection via `Arc<dyn Trait>`. Map errors at layer boundaries with `thiserror`.
+**Step 7 - Service.** Use skill: `rust-error-handling`. Constructor injection via `Arc<dyn Trait>`; `thiserror` domain types; `?` propagation; transactions via `pool.begin()`/`tx.commit()` for multi-step mutations. Add when applicable:
 
-- If async concurrency needed: Use skill: `rust-async-patterns`
-- If shared mutable state needed: Use skill: `rust-concurrency`
-- If background jobs or events needed: Use skill: `rust-messaging-patterns`. Dispatch after transaction commit, not inside it.
+- Async concurrency: Use skill: `rust-async-patterns`
+- Shared mutable state: Use skill: `rust-concurrency`
+- Jobs/events: Use skill: `rust-messaging-patterns`. Dispatch AFTER `tx.commit()`, never inside the transaction.
 
-STEP 6 - HTTP LAYER: Use skill: `rust-web-patterns`. Axum handlers with extractors (`Path`, `Query`, `Json`), consistent response envelope, pagination on list endpoints. Implement `IntoResponse` for `AppError` to map domain errors to HTTP status codes:
+**Step 8 - HTTP layer.** Use skill: `rust-web-patterns`. Axum extractors (`Path`, `Query`, `Json`); response envelope; pagination on list endpoints. Implement `IntoResponse` for `AppError`:
 
-| Domain Error         | HTTP Status |
-| -------------------- | ----------- |
-| Validation failure   | 400         |
-| Not found            | 404         |
-| Conflict (duplicate) | 409         |
-| Unauthorized         | 401         |
-| External timeout     | 503         |
+| Domain Error       | HTTP |
+| ------------------ | ---- |
+| Validation         | 400  |
+| Unauthorized       | 401  |
+| Not found          | 404  |
+| Conflict           | 409  |
+| External timeout   | 503  |
 
-STEP 7 - TESTS: Use skill: `rust-testing-patterns`. Unit tests with `mockall` + `#[tokio::test]`. Integration tests with `testcontainers`. Handler tests with `tower::ServiceExt::oneshot`. Cover: happy path, validation errors, not-found, conflict.
+**Step 9 - Tests.** Use skill: `rust-testing-patterns`. Service unit tests with `mockall` + `#[tokio::test]`; handler tests with `tower::ServiceExt::oneshot`; integration tests with `testcontainers`. Cover happy path, validation, not-found, conflict.
 
-STEP 8 - VALIDATE: Run `cargo build`, `cargo test`, `cargo clippy -- -D warnings`. Fix any failures before presenting output.
+**Step 10 - Validate.** Run `cargo build`, `cargo test`, `cargo clippy -- -D warnings`. Fix failures before reporting.
 
-## Output
+## Output Format
 
 ```markdown
 ## Files Generated
 
-[grouped file list by layer: models, repositories, services, handlers, dto, errors, tests, migrations]
+[grouped by layer: migrations, models, repositories, services, handlers, dto, errors, tests]
 
 ## Endpoints
 
-| Method | Path               | Request                   | Response                               | Status |
-| ------ | ------------------ | ------------------------- | -------------------------------------- | ------ |
-| POST   | /api/v1/orders     | CreateOrderRequest (Json) | Json<OrderResponse>                    | 201    |
-| GET    | /api/v1/orders     | PaginationQuery (Query)   | Json<PaginatedResponse<OrderResponse>> | 200    |
-| GET    | /api/v1/orders/:id | Path<i64>                 | Json<OrderResponse>                    | 200    |
-| PATCH  | /api/v1/orders/:id | UpdateOrderRequest (Json) | Json<OrderResponse>                    | 200    |
-| DELETE | /api/v1/orders/:id | Path<i64>                 | StatusCode::NO_CONTENT                 | 204    |
+| Method | Path | Request | Response | Status |
+| ------ | ---- | ------- | -------- | ------ |
+| ...    | ...  | ...     | ...      | ...    |
 
 ## Tests
 
-- Unit tests: {count} (service layer, mockall)
-- Handler tests: {count} (axum oneshot)
-- Integration tests: {count} (testcontainers)
+- Unit: {count} (service, mockall)
+- Handler: {count} (axum oneshot)
+- Integration: {count} (testcontainers)
 
 ## Migration
 
-[migration file names and what they create: tables, indexes, constraints]
+[file names; tables, indexes, constraints created]
 ```
-
-## Avoid
-
-- Business logic in Axum handlers (delegate to service layer)
-- `.unwrap()` or `.expect()` in production code paths (use `?` and `thiserror`)
-- Dispatching background jobs inside a DB transaction (worker races the commit)
-- Blocking the Tokio runtime with sync I/O (use `spawn_blocking`)
-- Returning raw sqlx models from endpoints (use response DTOs with serde)
-- Skipping pagination on list endpoints
-- Generating code before user approves the design
 
 ## Self-Check
 
-- [ ] Requirements gathered and design approved before code generation
-- [ ] All layers generated: migration, model, repository, service, handler, routes, tests
-- [ ] Constructor injection via `Arc<dyn Trait>`; errors use `thiserror` and `?` operator
-- [ ] No unbounded spawns; repository trait defined in service module
-- [ ] Background jobs dispatched after transaction commit, not inside it
-- [ ] `cargo build`, `cargo test`, and `cargo clippy` all pass
-- [ ] Migration includes indexes; list endpoints paginated; output template filled
+- [ ] Step 1-2: behavioral principles loaded; stack confirmed Rust/Axum/sqlx
+- [ ] Step 3-4: requirements gathered; design and file tree approved before code
+- [ ] Step 5: migration has up/down and indexes on FKs/filtered columns
+- [ ] Step 6: repository trait in service module; `query_as!` compile-time checked
+- [ ] Step 7: `Arc<dyn Trait>` injection; `thiserror` + `?`; jobs/events dispatched after `tx.commit()`
+- [ ] Step 8: handlers thin; `IntoResponse` maps domain errors to HTTP; list endpoints paginated
+- [ ] Step 9: unit + handler + integration tests cover happy/validation/not-found/conflict
+- [ ] Step 10: `cargo build`, `cargo test`, `cargo clippy -- -D warnings` pass
+
+## Avoid
+
+- Business logic in handlers - delegate to services
+- `.unwrap()`/`.expect()` in production paths - use `?` + `thiserror`
+- Dispatching jobs/events inside a DB transaction - worker races commit
+- Blocking the Tokio runtime with sync I/O - use `spawn_blocking`
+- Returning raw sqlx models from endpoints - map to response DTOs
+- Unpaginated list endpoints
+- Generating code before design approval

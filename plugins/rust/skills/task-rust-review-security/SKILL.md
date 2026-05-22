@@ -9,229 +9,142 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Rust Security Review
 
-## Purpose
-
-Rust-aware security review that names Axum auth middleware (`axum::middleware::from_fn`, `tower_http::auth::RequireAuthorizationLayer`), JWT libraries (`jsonwebtoken`, `josekit`), `validator` crate input validation, sqlx parameterization (compile-time-checked vs runtime), password hashing (`argon2`, `bcrypt`), Rust-specific risks (`std::process::Command` injection, path traversal via `std::path::Path::join` without canonicalization + base check, mass assignment via `serde_json::from_value::<DomainModel>(req.body)`, `unsafe` blocks, deserialization attacks via `bincode` / `rmp-serde`, `tokio::process::Command`), and Rust dependency hygiene (`cargo audit`, `cargo deny`) directly instead of routing through the generic backend security adapter. Produces findings with attack scenarios and concrete Rust-specific remediations.
-
-This workflow is the stack-specific delegate of `task-code-review-security` for Rust. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-security` for Rust / Axum. Preserves the parent's invocation, diff-resolution, and output contract so callers see a stable shape.
 
 ## When to Use
 
 - Reviewing a Rust/Axum PR for security regressions
-- Pre-deployment hardening pass on auth, authz, file upload, payment, or PII-handling code
-- Periodic strong-validation and middleware drift sweep across endpoints
-- Auditing a JWT flow, a new Axum auth middleware, or new `unsafe` / crypto usage
+- Pre-deployment hardening pass on auth, authz, upload, payment, or PII paths
+- Auditing a JWT flow, new Axum auth middleware, new `unsafe`, or new crypto usage
 
-**Not for:**
+**Not for:** performance (`task-rust-review-perf`), general review (`task-rust-review`), incidents (`/task-oncall-start`).
 
-- Performance review (use `task-code-review-perf` or `task-rust-review-perf`)
-- General code review (use `task-code-review` or `task-rust-review`)
-- Production incident triage (use `/task-oncall-start`)
-
-**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+**No depth knob.** Security regressions have cliff-edge consequences (auth bypass, RCE). Scope by file, not by depth.
 
 ## Severity Rubric
 
-Use these definitions to keep severity consistent across runs - do not invent your own scale.
+| Severity     | Definition                                                                                                                                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauthenticated RCE, auth bypass, mass data exfiltration, working SQLi (`sqlx::query(&format!(...))`), shell-out with user input, secrets committed, `alg: none` accepted, `unsafe` with attacker-controlled UB. Blocks merge.   |
+| **High**     | Authenticated privilege escalation, IDOR on sensitive data, SSRF reaching metadata / internal services, mass assignment via `serde_json::from_value::<Domain>`, missing auth middleware on user-data route, path traversal.      |
+| **Medium**   | Hardening gap with mitigating control elsewhere, missing `validator` derives, weak rate limit on non-critical endpoint, debug exposure on non-prod profile, `cargo audit` advisory not yet exploited.                            |
+| **Low**      | Defense-in-depth, advisory below actively-exploited threshold, hardening without a concrete current attack scenario.                                                                                                             |
 
-| Severity     | Definition                                                                                                                                                                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path (`sqlx::query(&format!("... {user_input}"))`), `Command::new("sh").arg("-c").arg(user_input)`, secrets / signing keys committed in source, JWT `alg: none` accepted, `unsafe` block with attacker-controlled inputs producing UB. Must fix before deploy; blocks merge. |
-| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata or internal services, mass assignment via `serde_json::from_value::<User>(req.body)` granting admin, missing auth middleware on user-data endpoint, path traversal via `Path::join` without canonicalization + base check. Must fix before merge. |
-| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS allowlist when a reverse proxy enforces origin), missing field-level `validator` derives, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile (`tokio-console` exposed), `cargo audit` advisory not yet exploited. Should fix this PR or the next one.  |
-| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold (`cargo audit` info-level), hardening recommendations without a concrete current attack scenario.                                                                            |
-
-**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
-
-- Missing auth middleware on a user-data endpoint (High, alone) + mass assignment via `serde_json::from_value::<User>(req.body)` (High, alone) on the *same handler* = **Critical** unauthenticated admin override (anyone on the internet can `POST /admin/users/:id` with `{"role": "admin"}`).
-- Missing ownership check (High, alone) + `FromRow` struct returned via `Json(...)` exposing `password_hash` (medium, alone) on the *same handler* = **Critical** account takeover (any authenticated user reads any other user's password hash).
-- SSRF (High, alone) + reachable from an unauthenticated endpoint (High, alone) = **Critical** unauth SSRF.
-
-The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
-
-**Same-handler co-location.** Combining findings requires confirming both land on the *same code path* (same handler function, or same router group with shared middleware). When the diff doesn't make co-location obvious - e.g., the IDOR is in `get_order` but the `FromRow` leak appears on a different handler in the same module - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same handler; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+**Combined-finding rule.** When two findings *compose* on the same handler into a worse threat than either alone, file as one finding at the elevated severity citing each component (e.g., missing auth + mass assignment on same route = Critical unauthenticated admin override). If either is independently exploitable, file separately. When co-location is unclear from the diff, file separately and add `Note: Combined-finding rule applies if both land on the same handler; verify before merge` to the lower-severity entry.
 
 ## Invocation
 
 Mirrors `task-code-review-security`:
 
-| Invocation                            | Meaning                                                                                               |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-rust-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-rust-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-rust-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                            | Meaning                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------ |
+| `/task-rust-review-security`          | Review current branch vs its base; fails fast on trunk                   |
+| `/task-rust-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                               |
+| `/task-rust-review-security pr-<N>`   | Review PR head fetched into local branch `pr-<N>` (user runs the fetch)  |
 
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-security`, Step 3 is skipped and pre-read diff/log are reused.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Load Behavioral Principles
 
-Use skill: `stack-detect` to confirm Rust / Axum. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-rust-review` (parent already detected Rust), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Rust, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `behavioral-principles`. Governs every subsequent step. Skip re-load when invoked as a subagent.
 
-Detect data access (sqlx / diesel / mixed), JWT library (`jsonwebtoken`, `josekit`, `frank_jwt`), and password hashing (`argon2` preferred, `bcrypt` acceptable). Record `Data Access`, `JWT Library`, `Password Hash` for the Summary block.
+### Step 2 - Confirm Stack
 
-### Step 2 - Resolve the Diff Under Review
+Use skill: `stack-detect`. Accept the pre-confirmed stack when invoked as a delegate of `task-code-review-security` or subagent of `task-rust-review`. If not Rust, stop and redirect to `/task-code-review-security`.
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
+Record for the Summary block: `Data Access` (sqlx / diesel / mixed), `JWT Library` (`jsonwebtoken` / `josekit` / none), `Password Hash` (`argon2` / `bcrypt` / none).
 
-If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+### Step 3 - Resolve the Diff Under Review
 
-### Step 3 - Read the Security Surface
+Use skill: `review-precondition-check` with the user's argument (default: current branch). On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip entirely when the parent passed pre-read artifacts. If precondition fails, surface the message verbatim and stop. Never run state-changing git.
 
-Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
+### Step 4 - Read the Security Surface
 
-- `src/main.rs` and the router setup file - confirm middleware order (`TraceLayer` → `RequestId` → `CompressionLayer` → `CorsLayer` → auth middleware → rate-limit → handler) and which router groups apply auth via `.route_layer(...)`
-- `src/middleware/auth.rs` (or equivalent) - JWT validation logic, claim extraction (`Validation::new(Algorithm::RS256)`, `decode::<Claims>(...)`), error responses
-- CORS setup (typically `tower_http::cors::CorsLayer`) for origin allowlist
-- Rate limiter (typically `tower_governor` or custom `tower::Layer`) for auth-endpoint rate limits
-- Every changed handler - look for auth middleware applied at sub-router level (`Router::new().route(...).route_layer(middleware::from_fn(auth))`), ownership checks in handler/service body, request DTO type, `validator` derives
-- Every changed DTO with `#[derive(Validate)]` and `#[validate(...)]` field annotations
-- Every changed query for parameterization (`sqlx::query!("... WHERE id = $1", id)` parameterized; `sqlx::query(&format!("..."))` is not)
-- Every changed file under `migrations/` for schema-level security: new tables / columns holding PII or auth state (sensitive-column inventory drift), missing `NOT NULL` on identity / tenant columns, missing FK constraints on tenant scoping columns, `GRANT` / `REVOKE` statements widening role privileges, audit-column additions that imply new sensitive fields the response DTO may now leak. Migration content is part of the security surface, not just schema-evolution
-- Config struct for `JWT_SECRET`, allowed origins, env var loading
-- `Cargo.toml` / `Cargo.lock` for dependency versions; recent CVE-affected crates
-- `.env.example` for documented env vars (without real values)
-- `deny.toml` (if `cargo deny` is configured) for advisory / license / source policies
+Open the files that actually wire security before applying checklists, so findings cite real lines:
 
-When the diff removes a middleware or relaxes auth, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
+- Router + middleware order (`TraceLayer` -> `RequestId` -> `CorsLayer` -> auth -> rate-limit -> handler) and which sub-routers apply auth via `.route_layer(...)`
+- Auth middleware (`src/middleware/auth.rs` or equivalent): JWT validation, claim extraction, error responses
+- CORS (`tower_http::cors::CorsLayer`) and rate limiter (`tower_governor` or custom layer) for auth endpoints
+- Every changed handler: auth at sub-router level, ownership checks, request DTO type, `validator` derives
+- Every changed query: parameterization (`$1` vs `format!`)
+- Every changed `migrations/` file: PII/auth columns, FK constraints on tenant scoping, `GRANT`/`REVOKE`, response-DTO leakage of new sensitive columns
+- Config struct, `Cargo.toml` / `Cargo.lock`, `.env.example`, `deny.toml`
 
-### Step 4 - OWASP Triage (Rust Lens)
+When the diff removes middleware or relaxes auth, `git log -p` the prior revision to confirm what was protected before.
 
-Use skill: `rust-security-patterns` for canonical Rust security patterns (auth middleware, JWT validation, validator derives, Argon2 / bcrypt config, CORS, secrets management, `cargo-audit`).
+### Step 5 - OWASP Triage
 
-This step is a **triage pass**, not a separate findings list. Mark each OWASP category `yes` (signal present in diff) or `no signal in diff`; Steps 5-9 produce the actual findings. The triage funnels which downstream steps run carefully vs fast-pass.
+Use skill: `rust-security-patterns` for canonical Rust security rules (JWT, sqlx, validator, Argon2 / bcrypt, CORS, secrets, `unsafe`, `cargo audit`). Steps 6-7 produce the actual findings; this step is a one-row-per-category verdict that funnels which downstream checks run carefully.
 
-| Risk                          | Rust-specific signal in diff                                                                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Broken Access Control         | Protected route added/changed without `.route_layer(middleware::from_fn(auth))` on the sub-router; missing ownership check in service/handler                                                       |
-| Injection                     | `sqlx::query(&format!(...))` / `query_as(&format!(...))`; `Command::new("sh").arg("-c").arg(input)` / equivalent on `tokio::process::Command`                                                       |
-| Cryptographic Failures        | Hardcoded JWT key; `md5` / `sha1` for auth; `rand::thread_rng` for tokens/nonces; `bcrypt::hash` cost < 10                                                                                          |
-| Security Misconfiguration     | Missing security headers (HSTS / X-Frame-Options); CORS `AllowOrigin::any()` with credentials; `tracing` filter at `debug` in prod; `tokio-console` exposed in prod                                 |
-| SSRF                          | `reqwest::get(user_url)` without hostname allowlist (no RFC1918 / link-local / cloud-metadata rejection)                                                                                            |
-| XSS                           | `Html(format!("<div>{user}</div>"))` or template engine with auto-escape disabled (`askama` is compile-time-checked - flag if codebase swaps to runtime templates)                                  |
-| Insecure Design (A04)         | New routes default-allow rather than default-deny via authed router with explicit public whitelist                                                                                                  |
-| Vulnerable Components (A06)   | `Cargo.lock` change with stale RUSTSEC advisory; `cargo audit` / `cargo deny check advisories` not in CI                                                                                            |
-| Data Integrity Failures (A08) | `serde_json::from_value::<DomainModel>(req.body)` (mass assignment); `bincode` / `rmp-serde` / `ciborium` deserialization on untrusted input; `#[serde(untagged)]` on untrusted enums; `unsafe` use |
-| Logging & Monitoring (A09)    | `tracing` logs `password` / `token` / `authorization` / `cookie`; missing auth-event logging; Sentry without PII-stripping `before_send`                                                            |
+| Risk                          | Rust signal in diff                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Broken Access Control         | New route without `.route_layer(middleware::from_fn(auth))`; missing ownership check                                                       |
+| Injection                     | `sqlx::query(&format!(...))`; `Command::new("sh").arg("-c")` with user input                                                              |
+| Cryptographic Failures        | Hardcoded JWT key; `md5`/`sha1` for auth; `rand::thread_rng` for tokens; `bcrypt` cost < 10                                                |
+| Security Misconfiguration     | Missing HSTS / X-Frame-Options; `AllowOrigin::any()` with credentials; `tracing` at `debug` in prod; `tokio-console` exposed              |
+| SSRF                          | `reqwest::get(user_url)` without RFC1918 / link-local / metadata-IP allowlist                                                              |
+| XSS                           | `Html(format!("<div>{user}</div>"))`; runtime template with auto-escape disabled                                                          |
+| Insecure Design (A04)         | Routes default-allow instead of default-deny via authed router + explicit public whitelist                                                 |
+| Vulnerable Components (A06)   | `Cargo.lock` change with stale RUSTSEC advisory; `cargo audit` not in CI                                                                  |
+| Data Integrity Failures (A08) | `serde_json::from_value::<Domain>(req.body)`; `bincode`/`rmp-serde`/`ciborium` on untrusted input; `#[serde(untagged)]`; `unsafe`         |
+| Logging & Monitoring (A09)    | `tracing` logs `password`/`token`/`cookie`; missing auth-event logging; Sentry without PII-stripping `before_send`                         |
 
-### Step 5 - Authentication
+Mark each category `yes` or `no signal in diff`. Do not duplicate as standalone findings.
 
-- [ ] **JWT signing**: HS256 secret in env / Vault, never committed. RS256 / ES256 with key pair preferred for cross-service. `jsonwebtoken` crate is standard; `josekit` is the strict-by-default alternative
-- [ ] **`alg: none` rejected**: `Validation::new(Algorithm::RS256)` (or whatever the expected algorithm is) - never `Validation::default()` accepting any algorithm. `algorithms` field of `Validation` must be a single-element vec naming the expected algorithm
-- [ ] **JWT issuer / audience validated**: `validation.set_issuer(&["expected-iss"])`, `validation.set_audience(&["expected-aud"])`; `validate_exp`, `validate_iss`, `validate_aud` all `true`
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; refresh tokens revocable via DB / Redis denylist (track `jti` claim or refresh-token UUID)
-- [ ] **Password hashing**: `argon2::Argon2::default().hash_password(...)` (preferred for new code) or `bcrypt::hash(pw, 12)` (cost ≥ 10). Never `sha2::Sha256::digest` / `md5::compute` for passwords. `subtle::ConstantTimeEq` for hash comparison
-- [ ] **Axum auth middleware wired correctly**: middleware extracts token from `Authorization: Bearer <token>` (`headers.get(AUTHORIZATION)`), validates, attaches claims via `Request::extensions_mut().insert(claims)`, returns `StatusCode::UNAUTHORIZED` with no body details on failure
-- [ ] **Brute-force protection**: rate limiter on `/auth/login`, `/auth/refresh`, `/auth/reset-password` via `tower_governor` or custom `tower::Layer`; configured stricter than global rate limit
-- [ ] **No `tracing::info!(?token)` / `tracing::debug!(token = %t)`** that leaks the JWT to logs
-- [ ] **Session cookies (when used instead of bearer JWT)**: `Secure` in prod, `HttpOnly`, `SameSite=Lax`; signed via `tower_cookies::Key` (HMAC) or `axum_extra::extract::cookie::SignedCookieJar`
+### Step 6 - Diff-Specific Checks
 
-### Step 6 - Authorization
+Apply these against changed files. The canonical pattern for each rule lives in `rust-security-patterns`; this step is the diff-traceable shortlist.
 
-- [ ] **Authorization drift sweep**: every new endpoint added in the diff has auth middleware applied at the router level OR explicitly public (whitelisted in a `public` sub-router). No bare `.route("/orders", get(handler))` outside a `.route_layer(...)` boundary
-- [ ] **Role / permission checks** centralized in middleware (`require_role(Role::Admin)`) using claims read from `Request::extensions().get::<Claims>()`, not inline `if claims.role != "admin" { return Err(...) }` scattered in handlers (easy to miss on new endpoints)
-- [ ] **IDOR**: lookups scope through the principal (`sqlx::query_as!(Order, "SELECT * FROM orders WHERE id = $1 AND user_id = $2", order_id, claims.sub)`) rather than `... WHERE id = $1` then a separate ownership check. Better: every domain query takes `user_id` / `tenant_id` in its repository signature
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenant_id` at the repository layer (every query includes the WHERE clause), not at the handler layer alone
-- [ ] **CORS**: `CorsLayer::new().allow_origin(["https://app.example.com".parse()?])` allowlist (not `AllowOrigin::any()` for credentialed requests); methods and headers minimal
-- [ ] **CSRF**: not required for stateless JWT-bearer APIs; required for cookie-session apps - confirm via auth model. `axum_csrf` middleware for cookie-session
+**Authn / authz**
+- [ ] JWT: `Validation::new(Algorithm::RS256)` (never `Validation::default()`); `set_issuer`, `set_audience` set; secret from env / Vault
+- [ ] Axum auth middleware extracts `Authorization: Bearer`, attaches claims via `extensions_mut()`, returns 401 with no body details
+- [ ] Authorization drift: every new endpoint has `.route_layer(...)` OR is in an explicit public sub-router
+- [ ] IDOR: lookups scope through the principal in the WHERE clause (`WHERE id = $1 AND user_id = $2`), not a separate post-fetch check
+- [ ] Tenant isolation enforced at the repository layer, not handler layer alone
+- [ ] Password hashing: `argon2` (or `bcrypt` cost >= 10); `subtle::ConstantTimeEq` for hash compare; hashing wrapped in `spawn_blocking`
+- [ ] Brute-force protection: stricter rate limit on `/auth/*` than global
+- [ ] CORS: explicit origin allowlist (not `AllowOrigin::any()` with credentials); CSRF only required for cookie sessions
 
-### Step 7 - Input Validation and Mass Assignment
+**Input validation / mass assignment**
+- [ ] Every request body is a typed DTO with `#[derive(Deserialize, Validate)]` + `req.validate()?`; no bare `Json<Value>` / `Json<HashMap>`
+- [ ] No privilege fields (`role`, `is_admin`, `owner_id`, `tenant_id`, `verified`) on user-facing input DTOs - server-set only
+- [ ] No client-controlled identity / cache-key fields (`id`, fields used to key `moka::Cache` / `HashMap`) on input DTOs - cache poisoning shape
+- [ ] No `serde_json::from_value::<Domain>(req.body)` into domain model - require request DTO + explicit field copy
+- [ ] Response is a DTO (`UserResponse::from(u)`), not a raw `FromRow` struct - prevents `password_hash` / `mfa_secret` leak as fields are added
+- [ ] `Path<Uuid>` / `Query<TypedFilters>` for path / query; never raw `Path<String>`
+- [ ] File uploads: type via `infer::get(&bytes)`, size capped via `RequestBodyLimitLayer`, save path canonicalized and `starts_with(&base)` checked
+- [ ] Path traversal: `base.join(input).canonicalize()?.starts_with(&base)` before any FS access; `Path::join` alone does not block `../`
+- [ ] Process exec: arg-by-arg (`Command::new("convert").arg(input)`); never `sh -c` / `bash -c` / `cmd /c` with user input
 
-- [ ] **`Json(req): Json<CreateOrderRequest>` extractor with `#[derive(Deserialize, Validate)]`** on the DTO; handler entry calls `req.validate()?` (or use a wrapper extractor `ValidatedJson<T>` that calls `.validate()` automatically). Bare `Json<Value>` with no schema means anything-goes input
-- [ ] **`#[validate(...)]` field tags on every DTO field**: `#[validate(length(min = 1, max = 255))]`, `#[validate(email)]`, `#[validate(range(min = 1))]` via the `validator` crate. Missing tags means anything-goes input
-- [ ] **No `Json<Value>` / `Json<HashMap<String, Value>>` body**: extract a typed struct - never read fields by string key from a `serde_json::Value`
-- [ ] **No privilege-bearing fields in user-facing input DTOs**: `role`, `is_admin`, `owner_id`, `user_id`, `tenant_id`, `is_active`, `verified` - server-set only. If present in `CreateOrderRequest`, reject and require an admin-only path with a separate DTO
-- [ ] **No identity / cache-key fields in user-facing input DTOs**: `id`, `created_at`, `updated_at`, and any field used as a key in an in-process cache (`HashMap<id, T>`, `moka::Cache<id, T>`) - if the client controls the id and the server also caches by id, the client can write arbitrary entries into the cache and read other users' data on the next lookup. This is the cache-poisoning shape; treat it as a mass-assignment finding even when the field looks innocuous
-- [ ] **No `serde_json::from_value::<User>(req.body)` / `serde_json::from_slice::<User>(body)` directly into a domain model**: this is mass-assignment. Define a request DTO, validate it, then map to the domain model with explicit field assignment
-- [ ] **Response DTOs (not row structs) returned from handlers**: `OrderResponse::from(order)` maps explicitly, dropping internal fields (`password_hash`, `internal_audit_log`, `is_test`)
-- [ ] **`Path((id,)): Path<(Uuid,)>` for path params**: validates and converts in one call; raw `Path<String>` returns a string with no validation
-- [ ] **`Query(filters): Query<ListFilters>`** with `Validate`-derived struct for query strings
-- [ ] **UUID path params parsed as `Uuid`**: never trust the raw string format
-- [ ] **File uploads (`axum::extract::Multipart`)**:
-  - File type validated by content (`infer::get(&bytes)`), not just `Content-Type` header (client-controlled) or extension
-  - Per-file size limit enforced (`RequestBodyLimitLayer::new(5 * 1024 * 1024)`); per-field limit via `field.bytes_with_limit(...)`; total request body limit at the Tower layer
-  - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized via `Path::file_name()` AND the resulting save path canonicalized (`std::fs::canonicalize`) and checked: `saved_path.starts_with(&base_dir)`. Never `base.join(user_input)` without normalization
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: `let candidate = base.join(user_input); let canonical = std::fs::canonicalize(&candidate)?; if !canonical.starts_with(&base) { reject }` - reject otherwise. `Path::join` alone does NOT prevent `../` traversal
-- [ ] **Process execution**: `Command::new("convert").arg(user_input).arg("/tmp/out")` is safe (arg-by-arg); `Command::new("sh").arg("-c").arg(format!("convert {user_input}"))` is RCE. Strict allowlist of allowed binaries; same rule for `tokio::process::Command`
+**Common Rust vulnerability patterns**
+- [ ] SQL: `sqlx::query!("... WHERE id = $1", id)` or `query(...).bind(id)`; never `format!` into the SQL string itself. `LIKE` with `format!("%{}%", input)` bound to `$1` is fine
+- [ ] Runtime templates from user input (`tera::Tera::one_off(user_template, ...)`) is SSTI; templates from disk / constants only. `askama` is compile-time-checked - flag swaps to runtime engines
+- [ ] Untrusted deserialization: `bincode`, `rmp_serde`, `ciborium` have format-specific gadget surfaces; prefer `serde_json` for untrusted bytes. `#[serde(untagged)]` on untrusted enums - prefer `#[serde(tag = "type")]`
+- [ ] Every `unsafe { ... }` in the diff has a `// SAFETY:` comment justifying invariants
+- [ ] `reqwest::Client::builder().danger_accept_invalid_certs(true)` only behind a documented test fixture
+- [ ] Open redirect: `Redirect::to(&input)` validated against allowlist or `target.starts_with('/') && !target.starts_with("//")`
+- [ ] CSPRNG: `rand::rngs::OsRng` / `getrandom` for tokens, nonces, secrets; never `rand::thread_rng`
+- [ ] HMAC / signature compare via `subtle::ConstantTimeEq`; never `==` on `&[u8]`
+- [ ] Webhook signatures (Stripe / GitHub / Slack): raw `bytes::Bytes` body before JSON parse; constant-time verify
+- [ ] SSRF allowlist rejects (a) `169.254.169.254` and IPv6 equivalent, (b) `127.0.0.0/8` / `::1`, (c) RFC1918, (d) link-local `169.254.0.0/16`; resolve host **after** parse and re-check at request time (DNS rebinding)
+- [ ] Background-task payload re-validated by the consumer when the queue is reachable from untrusted input
+- [ ] `tracing` floor `info` in prod (never `debug`/`trace`); `tokio-console` / `console_subscriber` gated behind a feature flag; `RUST_BACKTRACE=full` not in error responses
+- [ ] `cargo audit` / `cargo deny check advisories` in CI; High/Critical RUSTSEC advisories addressed
 
-### Step 8 - Common Rust Vulnerability Patterns
+**Data protection**
+- [ ] PII encrypted at rest (`aes-gcm` / `chacha20poly1305` with proper nonce, or KMS / DB-native encryption)
+- [ ] `tracing` redacts `password` / `token` / `credit_card` / `ssn` / `api_key` (custom `Layer`, or custom `Debug` / `valuable::Valuable`)
+- [ ] No sensitive data in URLs (hits logs, history, referer)
+- [ ] HTTPS enforced at LB; HSTS via `tower_http::set_header`
+- [ ] Secrets from env / Vault loaded once at startup via typed config (`figment` / `config` / `envy`); never `.env` committed
 
-- [ ] **SQL injection via raw query**: `sqlx::query(&format!("UPDATE ... WHERE id={user_input}"))` - flagged as critical; `sqlx::query_as(&format!("..."))` is the same. Use `sqlx::query!("... WHERE id = $1", id)` (compile-time-checked) or `sqlx::query("... WHERE id = $1").bind(id)` (runtime parameterized). Even `sqlx::query!("... WHERE name LIKE $1", format!("%{}%", input))` is fine - the `$1` is parameterized; the smell is unparameterized interpolation **into the SQL string itself**
-- [ ] **Command injection**: `Command::new("sh").arg("-c").arg(format!("convert {user_input} /tmp/out"))` - any concatenation of user input into a shell-interpreted string is RCE; use `Command::new("convert").arg(user_input).arg("/tmp/out")` (arg-by-arg, no shell). Same for `tokio::process::Command`
-- [ ] **`std::process::Command` with `shell: true` equivalent**: invoking `bash -c` / `sh -c` / `cmd /c` with user input - same RCE
-- [ ] **Templates with user-supplied template source**: `tera::Tera::one_off(user_template, ...)` is SSTI / RCE-adjacent; templates must come from disk or a trusted constant. `askama` is compile-time-checked so this risk is structural-impossible there - flag if the codebase swaps to runtime templates
-- [ ] **Deserialization of untrusted formats**: `bincode::deserialize::<T>(bytes)`, `rmp_serde::from_slice::<T>(bytes)`, `ciborium::de::from_reader::<T, _>(reader)` on untrusted input - format-specific gadget surfaces exist; treat as risky unless `T` is a small fixed shape and bounds are enforced. `serde_json` is the canonical untrusted-input deserializer
-- [ ] **`#[serde(untagged)]` on untrusted enums**: serde tries each variant in order; misclassification is possible if variants overlap. Prefer `#[serde(tag = "type")]` (internally tagged) for untrusted input
-- [ ] **`unsafe` package usage**: every `unsafe { ... }` block in the diff must have a `// SAFETY:` comment justifying the invariants. Audit for memory-safety violations; legitimate uses exist (FFI, `bytes` re-interpretation) but most are smells
-- [ ] **HTTP client with `danger_accept_invalid_certs(true)`**: `reqwest::Client::builder().danger_accept_invalid_certs(true)` flagged unless behind a documented test fixture
-- [ ] **Open redirect**: `Redirect::to(&user_input)` validated against an allowlist or relative-path-only check (`target.starts_with('/') && !target.starts_with("//")`)
-- [ ] **`rand::rngs::OsRng` (NOT `rand::thread_rng` for security-sensitive randomness)**: `OsRng` is OS-backed CSPRNG; `thread_rng` is fast but not designed for adversarial settings. For tokens / nonces / secrets use `OsRng` or `getrandom`
-- [ ] **`subtle::ConstantTimeEq` for HMAC / signature comparison**: `==` on `&[u8]` (via `PartialEq`) is timing-attack vulnerable. Stripe / GitHub / Slack webhook signature verification must use constant-time compare from the `subtle` crate
-- [ ] **`JWT_SECRET` / signing key** sourced from env / Vault, never committed; rotated when leaked
-- [ ] **Debug exposure**: `tracing` filter set to a sensible floor in prod (`info` minimum; `debug` / `trace` leaks request bodies); `RUST_BACKTRACE=full` not exposed in error responses; `tokio-console` / `console_subscriber` not enabled in prod build (gate via `#[cfg(feature = "console")]`)
-- [ ] **SSRF depth**: when a user-controlled value flows into an outbound URL or hostname, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). `url::Url::parse` quirks: backslash, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks
-- [ ] **Background-task payload trust boundary**: tasks serialize to bytes in the queue; consumer `serde_json::from_slice(payload)` on input from any source that can publish to the queue is implicit trust. If the queue is reachable from untrusted inputs (webhook → background task), validate inside the handler before acting on payload fields
-- [ ] **HTTP request smuggling / desync** (Rust behind nginx / ALB): hyper's parser is strict by default; flag custom HTTP/1.1 parsing or proxy / forwarder middleware that re-emits headers without validation
-- [ ] **Webhook signature verification**: Stripe / GitHub / Slack webhooks - signature verified via `subtle::ConstantTimeEq` (not `==`, not `eq` on slices). Read raw body via `bytes::Bytes` extractor before any JSON parsing (parsing consumes the body)
-- [ ] **`cargo audit` integration**: project runs `cargo audit` (or `cargo deny check advisories`) in CI for known RUSTSEC advisories; flag unaddressed High/Critical findings
+### Step 7 - Write Report
 
-### Step 9 - Data Protection
-
-- [ ] **PII / sensitive fields encrypted** at rest (`aes-gcm` / `chacha20poly1305` crates with proper nonce management, AWS KMS / GCP KMS for key management, or DB-native column encryption)
-- [ ] **No `FromRow` struct returned from handler responses**: `Json(user)` where `user: User` (a sqlx `FromRow` struct) leaks every column the struct defines - `password_hash`, `recovery_token`, `mfa_secret`, soft-delete columns, internal audit fields, and any sensitive column added later. Handlers map to a response DTO (`UserResponse::from(u)`) that names exactly the public fields. This is both a Step 7 concern (mass-assignment shape on the way in) and a Step 9 concern (data leak on the way out) - check both directions
-- [ ] **`tracing` redaction**: structured logger never logs `password`, `token`, `credit_card`, `ssn`, `api_key`. A custom `tracing_subscriber::Layer` that drops sensitive fields, OR types implement custom `Debug` / `valuable::Valuable` to override formatting
-- [ ] **No sensitive data in URLs** (use POST body, headers, or signed tokens) - URLs hit logs, browser history, referer headers
-- [ ] **TLS enforcement**: HTTPS-only at LB; HSTS via `tower_http::set_header::SetResponseHeaderLayer`
-- [ ] **Database backups** encrypted; access controlled
-- [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `std::env::var("JWT_SECRET")` accessed via typed config struct loaded once at startup so missing-at-startup fails fast (`figment` / `config` / `envy`)
-
-
-### Step 10 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-security`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Rules
-
-- Always validate at system boundaries (Axum extractors `Json` / `Query` / `Path` / `Form`, background-task payloads, Kafka message values, external API responses, webhook payloads)
-- Never disable middleware to silence a failing test - fix the test
-- Never widen authorization (e.g., moving an endpoint out of an authed sub-router, removing auth middleware from a route) without an explicit security review note
-- Log security events (login failure, permission denied, validation failure) without sensitive data
-- Follow principle of least privilege - default-deny via authed router with explicit public whitelist
-
-## Self-Check
-
-**Verifiable from the diff (must check):**
-
-- [ ] Stack confirmed as Rust / Axum; data-access mix, JWT library, password hash library recorded before any specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent)
-- [ ] Security surface (router setup / middleware order, auth middleware, settings, changed routers / handlers, DTOs) read directly before applying checklists; prior revision consulted when middleware was removed
-- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] **Authorization drift sweep**: every new endpoint in the diff has matching auth middleware OR is explicitly public-listed
-- [ ] DTO validation reviewed; mass-assignment fields, `validator` derives, separate request vs response DTOs confirmed for changed schemas
-- [ ] File upload, path traversal, and process-execution checks run if the diff touches uploads / file paths / `std::process::Command` / `tokio::process::Command`
-- [ ] SQL parameterization, command injection, runtime-template SSTI, `bincode` / `rmp-serde` deserialization, `unsafe`, `danger_accept_invalid_certs`, open redirect checked when the diff touches them
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
-- [ ] Every finding includes an attack scenario, "regression risk" rationale (for test-coverage gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
-
-**Requires repo / infra access (check if visible, otherwise note as "could not verify from diff alone - flag for separate audit"):**
-
-- [ ] Authentication step run for the auth mechanism in use (JWT via `jsonwebtoken` / `josekit`) - applies when the auth module is in scope
-- [ ] CORS, rate limiting, secure-header middleware, debug exposure verified - applies when middleware / config are in scope
-- [ ] Password hashing config reviewed (argon2 preferred, bcrypt cost ≥ 10) - skip if hashing config not in diff
-- [ ] Sentry `before_send` strips PII - skip if Sentry init not in diff
-- [ ] `cargo audit` / `cargo deny check advisories` clean - run separately; this workflow does not execute tools
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file; print the confirmation line.
 
 ## Output Format
 
@@ -246,11 +159,9 @@ Write the fully assembled review output to the report file before ending the ses
 **Authorization:** router-level middleware + ownership checks | inline checks | none
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
-[2-3 sentence assessment of the overall security posture, calling out any Rust-specific risks like missing auth middleware on a sub-router, mass assignment via `serde_json::from_value::<User>`, raw SQL via `format!`, exposed `tokio-console` in prod, `danger_accept_invalid_certs(true)` in HTTP client, or `unsafe` block without SAFETY comment.]
+[2-3 sentence assessment calling out Rust-specific risks: missing auth middleware on sub-router, mass assignment via `serde_json::from_value::<Domain>`, raw SQL via `format!`, exposed `tokio-console`, `danger_accept_invalid_certs(true)`, `unsafe` without SAFETY comment.]
 
 ## OWASP Triage
-
-_The Step 4 verdicts. One row per category, `yes` (signal present, see Findings) or `no signal in diff`._
 
 | Category                  | Verdict                 |
 | ------------------------- | ----------------------- |
@@ -269,56 +180,55 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 ### Critical
 
-- **Location:** [file:line, or comma-separated list for multi-site findings]
-- **Issue:** [vulnerability described in Rust terms - e.g., "OrderHandler::update accepts the request body directly into a domain model via `serde_json::from_value::<Order>(req.body)?`; client can submit `{ \"user_id\": 999 }` and override the server-assigned owner via mass assignment because there is no separate request DTO with explicit fields"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
-- **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
-- **Fix:** [specific Rust remediation with code example - separate request DTO + explicit field copy, `WHERE id = $1 AND user_id = $2`, auth middleware via `.route_layer(...)`, etc.]
+- **Location:** [file:line, or comma-separated for multi-site]
+- **Issue:** [vulnerability in Rust terms - e.g., "OrderHandler::update calls `serde_json::from_value::<Order>(req.body)?`; client can submit `{ \"user_id\": 999 }` and override the owner via mass assignment - no request DTO with explicit fields"]
+- **Attack scenario:** [pick one and label: (a) concrete exploit walkthrough; (b) "Regression risk: next refactor silently removes one of these protections"; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto". Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Severity rationale:** [tier] per rubric - [which clause applies]
+- **Fix:** [Rust remediation with code - separate request DTO + explicit field copy, `WHERE id = $1 AND user_id = $2`, `.route_layer(...)`, etc.]
 
-### High
+### High / Medium / Low
 
-[Same structure]
-
-### Medium
-
-[Same structure]
-
-### Low
-
-[Same structure]
-
-_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
+[Same structure. Omit sections with no findings. If all sections empty, state "No security issues found."]
 
 ## Recommendations
 
-[Prioritized hardening that is not a specific finding - e.g., "Add `tower_governor` rate limit on /auth/login", "Migrate from `bcrypt` to `argon2` for new password hashes", "Move JWT_SECRET from .env literal to Vault", "Add `cargo deny check advisories` to CI", "Configure `deny.toml` to enforce license policy"]
+[Prioritized hardening that is not a specific finding - e.g., "Add `tower_governor` rate limit on /auth/login", "Migrate `bcrypt` to `argon2` for new hashes", "Move JWT_SECRET to Vault", "Add `cargo deny check advisories` to CI".]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dependency upgrade, or threat-model exercise). Order: Critical > High > Medium > Low.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Replace `serde_json::from_value::<Order>(req.body)?` with a typed `UpdateOrderRequest` DTO + explicit field copy in OrderHandler::update"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `cargo audit` and upgrade flagged crates - spawn dependency-review subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Critical] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `cargo audit` and upgrade flagged crates"]
 
-_Omit this section if no security issues were found._
+_Omit if no security issues found._
 ```
+
+## Self-Check
+
+Aligns 1:1 with the Workflow steps above.
+
+- [ ] **Step 1**: `behavioral-principles` loaded (or accepted as pre-loaded from a parent workflow)
+- [ ] **Step 2**: Stack confirmed Rust / Axum; `Data Access`, `JWT Library`, `Password Hash` recorded before any specific check applied
+- [ ] **Step 3**: `review-precondition-check` ran (or handle received from parent); `base_ref` / `head_ref` / `head_matches_current` captured; diff and log read once and reused; on `head_matches_current=false`, explicit user approval obtained before review (skipped when subagent)
+- [ ] **Step 4**: Security surface (router / middleware order, auth module, CORS, rate limiter, changed handlers / DTOs / queries / migrations, config, `Cargo.lock`, `deny.toml`) read directly; prior revision consulted when middleware was removed
+- [ ] **Step 5**: OWASP triage produced one verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
+- [ ] **Step 6**: Diff-specific checks applied for authn/authz, input validation / mass assignment, common Rust vulnerability patterns, data protection; severity rubric applied consistently; every finding has an attack scenario, regression-risk, or topology-dependent label
+- [ ] **Step 7**: Report written to file via `review-report-writer`; confirmation line printed
+
+**Requires repo / infra access (note as "could not verify from diff alone - flag for separate audit" when not visible):**
+
+- [ ] CORS, rate limiting, secure-header middleware, debug exposure verified - applies when middleware / config are in scope
+- [ ] Password hashing config reviewed (argon2 preferred, bcrypt cost >= 10) - skip if hashing config not in diff
+- [ ] Sentry `before_send` strips PII - skip if Sentry init not in diff
+- [ ] `cargo audit` / `cargo deny check advisories` clean - run separately; this workflow does not execute tools
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting vulnerabilities without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because handler deserializes directly into `User` model")
-- Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
-- Recommending generic security advice when a Rust idiom applies (say "apply auth middleware via `.route_layer(middleware::from_fn(auth))` on the sub-router", not "add an authorization check")
-- Suggesting `tracing` filter at `debug` / `trace` left as default in prod - leaks request bodies in logs; flag if prod uses default
-- Suggesting `format!`-built SQL as acceptable - parameterize via `$1` / `query!` macro
-- Suggesting `danger_accept_invalid_certs(true)` outside test fixtures
-- Suggesting `rand::thread_rng` for tokens / nonces / secrets - use `OsRng` / `getrandom`
-- Suggesting `==` on byte slices for HMAC / signature comparison - use `subtle::ConstantTimeEq`
-- Suggesting `Json<Value>` over typed `Json<T>` extractors with `Validate` derives - bare Value is anything-goes
-- Suggesting `serde_json::from_value::<DomainModel>(req.body)` as acceptable - mass-assignment vector
+- Running `git fetch` / `git checkout` or any state-changing git command - the user runs these so they can protect uncommitted work
+- Reporting vulnerabilities without an attack scenario, regression-risk, or topology label
+- Skipping OWASP categories that look clean - explicitly state "no signal in diff"
+- Generic security advice when a Rust idiom applies (say "apply auth via `.route_layer(middleware::from_fn(auth))`", not "add an authorization check")
+- Approving any of: `format!`-built SQL; `Json<Value>` over typed `Json<T>` with `Validate`; `serde_json::from_value::<Domain>(req.body)`; `unsafe` without `// SAFETY:` comment; `bincode`/`rmp-serde`/`ciborium` on untrusted input; `danger_accept_invalid_certs(true)` outside test fixtures; `rand::thread_rng` for security tokens; `==` on byte slices for HMAC; `tracing` at `debug`/`trace` in prod; exposed `tokio-console` in prod
 - Disabling middleware to silence a failing test - fix the test
-- Conflating security review with general code quality or performance review - delegate those to their workflows
-- Approving exposed `tokio-console` / `console_subscriber` in prod build
-- Approving `bincode` / `rmp-serde` / `ciborium` deserialization on untrusted input without bounded structural guarantees
-- Approving `unsafe` blocks without `// SAFETY:` comments justifying the invariants
+- Conflating with general code review or performance review - delegate to their workflows

@@ -1,9 +1,9 @@
 ---
 name: rust-overengineering-review
-description: Rust necessity review - validator-crate vs sqlx/DB/type system, single-impl traits, Box<dyn Trait> hot path, Arc<Mutex<T>> on immutable data.
+description: Rust necessity review - validator vs sqlx/types, single-impl traits, Box<dyn> hot path, Arc<Mutex<T>> on read-only data, owned params, dead async.
 metadata:
   category: backend
-  tags: [rust, axum, sqlx, code-review, redundancy, overengineering, necessity]
+  tags: [rust, axum, sqlx, code-review, overengineering, necessity]
 user-invocable: false
 ---
 
@@ -11,184 +11,152 @@ user-invocable: false
 
 ## When to Use
 
-- Reviewing a Rust diff that adds `validator` derives, defensive guards, traits, `Box<dyn Trait>` parameters, or new abstractions
-- Catching code that is correct, performant, and safe - but does not need to exist
+- Reviewing a Rust diff that adds validator derives, defensive guards, traits, `Box<dyn>`, generics, `async`, or new abstractions.
+- Catching code that is correct, performant, and safe but does not need to exist.
 
-**Scope note.** Rust's type system, `Option<T>` / `Result<T, E>`, exhaustive matching, and the borrow checker eliminate most categories this skill family targets elsewhere. Empty sections are honest. If a finding could be a clippy lint, check `cargo clippy --all-targets -- -D warnings` first.
+Rust's type system, `Option`/`Result`, exhaustive `match`, and the borrow checker already eliminate many categories this skill targets elsewhere. Empty sections are correct. Skip anything `cargo clippy --all-targets -- -D warnings` would catch.
 
 ## Rules
 
-- Every finding cites the constraint making the code redundant: FK name, sqlx column constraint, validator-crate rule, type-system guarantee, exhaustive `match`, or compile-time contract.
+- Every finding cites the constraint making the code redundant: validator rule, sqlx column type, unique index, type system, exhaustive `match`, framework guarantee, or repo-wide grep.
 - Severity:
-  - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present. Cite the cost in the `Cost:` field. Triggers:
-    - Extra SELECT in a hot path
-    - `Box<dyn Trait>` on a single-callsite hot path (dynamic dispatch with one concrete type)
-    - `Arc<Mutex<T>>` on data that never mutates
-    - `.clone()` on a hot-loop value where a `&str` would suffice
-  - **`[Question]`** when justification is plausible but not visible in the diff.
-- A redundancy with **visible** justification is not a finding. See `Avoid` for the canonical exceptions.
+  - `[High]` requires a `Cost:` field. Triggers: extra query in a hot path, dynamic dispatch on a single-callsite hot path, wrong lock shape on read-only data, hot-loop allocation.
+  - `[Question]` when justification is plausible but not visible in the diff.
+  - `[Suggestion]` otherwise.
+- A redundancy with visible justification (mock derive, second impl, public API, hot-path benchmark) is not a finding.
 
 ## Patterns
 
 ### Category 1: Redundant validation vs sqlx / DB / type system
 
-Validation stack: **type system (`String` vs `Option<String>`) -> validator-crate `#[validate]` -> sqlx column type -> DB schema**. Axum extractors + `validator::Validate` return 400 before the handler runs. sqlx's compile-time-checked queries surface column nullability at compile time.
+Stack: type system -> `validator::Validate` -> sqlx column type -> DB schema. Axum + `ValidatedJson` returns 400 before the handler runs.
 
-#### `#[validate(required)]` on a non-Optional field
-
-```rust
-// Bad - the type is String (not Option<String>); serde rejects missing/null at deserialization
-#[derive(Deserialize, Validate)]
-struct CreateOrderRequest {
-    #[validate(required)] customer_id: String,         // dead - String cannot be None
-    #[validate(range(min = 1))] total_cents: i64,
-}
-```
-
-`#[validate(required)]` is appropriate on `Option<T>` fields where the business rule disallows null.
-
-#### Manual length / null guard after validator-checked input
+`#[validate(required)]` on a non-`Option` field:
 
 ```rust
-// Bad - validator::Validate rejected the request before this handler ran
-async fn create_order(ValidatedJson(req): ValidatedJson<CreateOrderRequest>) -> ... {
-    if req.customer_id.is_empty() {                    // #[validate(length(min = 1))] already rejected
-        return Err(AppError::Validation("customer_id required".into()));
-    }
-}
+// Bad - String cannot be None; serde rejects missing/null
+#[validate(required)] customer_id: String,
 ```
 
-#### Manual unique-check before `INSERT`
+Manual guard after `ValidatedJson`:
 
-`[High]` - races and adds a query per write; the unique index decides anyway.
+```rust
+// Bad - validator already rejected empty/missing
+if req.customer_id.is_empty() { return Err(AppError::Validation(...)); }
+```
+
+Manual unique-check before `INSERT` - `[High]`, races and adds a query per write:
 
 ```rust
 // Bad
 let existing = sqlx::query!("SELECT id FROM users WHERE email = $1", req.email)
-    .fetch_optional(&state.db).await?;
-if existing.is_some() { return Err(AppError::Conflict("email taken".into())); }
-sqlx::query!("INSERT INTO users (email) VALUES ($1)", req.email).execute(&state.db).await?;
+    .fetch_optional(&db).await?;
+if existing.is_some() { return Err(AppError::Conflict(...)); }
+sqlx::query!("INSERT INTO users (email) VALUES ($1)", req.email).execute(&db).await?;
 
-// Good - let the unique index decide; translate at the catch site
-sqlx::query!("INSERT INTO users (email) VALUES ($1)", req.email).execute(&state.db).await
+// Good - let the unique index decide
+sqlx::query!("INSERT INTO users (email) VALUES ($1)", req.email).execute(&db).await
     .map_err(|e| match e {
-        sqlx::Error::Database(de) if de.code().as_deref() == Some("23505") => AppError::Conflict("email taken".into()),
+        sqlx::Error::Database(de) if de.code().as_deref() == Some("23505") => AppError::Conflict(...),
         other => other.into(),
     })?;
 ```
 
 ### Category 2: Defensive code for impossible states
 
-The compiler enforces exhaustive matching, non-null references, and `Result` propagation. Most defensive patterns are caught by the type system or clippy. The remaining cases are interpretive - the compiler can't tell whether you're guarding a real possibility or one already enforced.
-
-#### `match` / `if let` arm for a proven-unreachable variant that swallows context
+Catch-all that swallows error context:
 
 ```rust
-// Bad - the catch-all loses useful error context
-match sqlx::query!("...").execute(&state.db).await {
-    Ok(_) => Ok(()),
-    Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23505") => Err(AppError::Conflict(...)),
-    Err(_) => Err(AppError::Internal("unknown".into())),   // loses the original error
-}
+// Bad - .map_err(|_| ...) drops the source
+.map_err(|_| AppError::Internal("db".into()))
 
-// Good - propagate the real error
-sqlx::query!("...").execute(&state.db).await.map_err(|e| match e {
-    sqlx::Error::Database(de) if de.code().as_deref() == Some("23505") => AppError::Conflict(...),
-    other => other.into(),
-})?;
+// Good
+.map_err(AppError::from)
 ```
 
-#### `Result<T, E>` where `E` is never constructed
+`Result<T, E>` where `E` is never constructed:
 
 ```rust
-// Bad - this function only ever returns Ok; the Result wrapper is dead
-fn order_total(order: &Order) -> Result<i64, AppError> {
-    Ok(order.line_items.iter().map(|i| i.price_cents * i.qty).sum())
+// Bad - only ever returns Ok
+fn total(items: &[LineItem]) -> Result<i64, AppError> {
+    Ok(items.iter().map(|i| i.price_cents * i.qty).sum())
 }
 ```
 
-Justified when the function may grow a fallible branch in the same PR or when a trait signature requires `Result`.
+Justified when a trait signature requires `Result` or a fallible branch lands in the same PR.
 
-#### `.unwrap_or_default()` on a value that is already `T`, not `Option<T>`
+`.unwrap_or_default()` on non-`Option`:
 
 ```rust
-// Bad - .ok_or(...)? unwrapped to Order; chaining .unwrap_or_default() on a non-Option field is dead
-let order: Order = state.db.find(id).await?.ok_or(AppError::NotFound)?;
-let total: i64 = order.total.unwrap_or_default();  // order.total is i64, not Option<i64>
+// Bad - order.total is i64, not Option<i64>
+let total: i64 = order.total.unwrap_or_default();
 ```
+
+Sentinel errors faked to signal business state (`return Err(sqlx::Error::RowNotFound)` on a conflict) - flag and recommend a typed error variant.
 
 ### Category 3: Premature abstraction
 
-#### Single-impl trait declared at the implementation
-
-`[High]` when the trait is declared in the same module as its only `impl` and no `#[cfg(test)] mockall` derive exists. Like Go's "accept interfaces, return structs" - the trait belongs to the **consumer**.
+Single-impl trait declared next to its only impl - `[High]` when no `mockall` mock exists and the trait is module-private:
 
 ```rust
-// Bad - trait + only impl in the same module; no mock; no second implementer
-mod repository {
-    #[async_trait] pub trait OrderRepository {
-        async fn find(&self, id: i64) -> Result<Order, sqlx::Error>;
-    }
-    pub struct PgOrderRepository { pool: PgPool }
-    #[async_trait] impl OrderRepository for PgOrderRepository { /* ... */ }
-}
+// Bad - trait + only impl in the same module, no mock, no second impl
+pub trait OrderRepository { async fn find(&self, id: i64) -> ...; }
+pub struct PgOrderRepository { pool: PgPool }
+impl OrderRepository for PgOrderRepository { /* ... */ }
 
-// Good - export the struct; the consumer declares a trait it needs
-mod service {
-    #[async_trait] pub trait OrderRepo {
-        async fn find(&self, id: i64) -> Result<Order, sqlx::Error>;
-    }
-    pub struct OrderService<R: OrderRepo> { repo: R }
-}
+// Good - export the struct; consumer declares the trait it needs
+pub struct OrderService<R: OrderRepo> { repo: R }
 ```
 
-Justified when (a) `mockall` generates a mock for tests, (b) two or more concrete impls exist, or (c) the trait is a documented public API.
+Justified when (a) `#[cfg(test)] mockall` derives a mock, (b) two or more concrete impls exist, or (c) the trait is a documented public API.
 
-#### `Box<dyn Trait>` on a single-callsite hot path
-
-`[High]` - dynamic dispatch where the caller has one concrete type.
+`Box<dyn Trait>` on a single-callsite hot path - `[High]`, dynamic dispatch with one concrete caller:
 
 ```rust
 // Bad
-async fn handle(svc: Box<dyn OrderService>) -> Result<OrderResponse, AppError> { svc.fulfill(...).await }
+async fn handle(svc: Box<dyn OrderService>) -> ... { svc.fulfill().await }
 
-// Good - generic / static dispatch
-async fn handle<S: OrderService>(svc: S) -> Result<OrderResponse, AppError> { svc.fulfill(...).await }
+// Good - static dispatch
+async fn handle<S: OrderService>(svc: S) -> ... { svc.fulfill().await }
 ```
 
-Justified when callers store heterogeneous impls (`Vec<Box<dyn Trait>>`), pass across an object-safe FFI boundary, or the cost is negligible on a cold path.
+Justified for heterogeneous collections (`Vec<Box<dyn Trait>>`) or object-safe FFI boundaries.
 
-#### `Arc<Mutex<T>>` on data that never mutates
+`Arc<Mutex<T>>` on read-only data - `[High]`. Applies to config, handles, repos cloned once at startup:
 
 ```rust
-// Bad - Config set at startup and only read
+// Bad - never mutates; lock serializes readers
 let config: Arc<Mutex<Config>> = Arc::new(Mutex::new(Config::load()?));
+let repo: Arc<Mutex<Box<dyn OrderRepository>>> = ...;
 
 // Good
 let config: Arc<Config> = Arc::new(Config::load()?);
+let repo: Arc<PgOrderRepository> = ...;
 ```
 
-`RwLock<T>` for read-heavy, occasionally-mutated state. `Mutex<T>` only when writes are frequent enough that the read-write split adds overhead.
+`RwLock<T>` only when reads dominate and writes still happen. `Mutex<T>` only for frequent writes.
 
-#### `.clone()` on a hot-loop value where `&str` would do
+Owned parameters where a borrow suffices - flag both the call site and the signature:
 
 ```rust
-// Bad - one allocation per iteration
-for item in &items { process(item.name.clone()); }   // process takes &str
+// Bad - hot-loop clone and a signature forcing it
+for tag in &tags { audit(tag.clone()); }
+fn audit(tag: String) { ... }
 
 // Good
-for item in &items { process(&item.name); }
+for tag in &tags { audit(tag); }
+fn audit(tag: &str) { ... }
 ```
 
-#### Speculative `cfg(feature)` flags
+Same shape for `Vec<T>` -> `&[T]`, `String` -> `&str`, `Box<T>` -> `&T`. `[High]` on hot loops; `[Suggestion]` otherwise.
 
-```rust
-// Bad - feature-gated functions; no Cargo.toml consumer enables them
-#[cfg(feature = "audit")] fn audit(order: &Order) { /* ... */ }
-```
+Gratuitous `async` - an `async fn` with no `.await` in the body inflates `Future` size and forces every caller to `.await`. Remove `async` or call the underlying future directly.
 
-Confirm with a repo-wide grep before flagging.
+Excessive generics - a type parameter used at one call site with one concrete type, no trait bound that varies, no `mockall::predicate` usage. Replace `fn run<S: AsRef<str>>(s: S)` with `fn run(s: &str)` when callers all pass `&str`.
+
+Unused parameters - functions with `_`-prefixed or `#[allow(unused)]` parameters that no caller supplies meaningfully. Flag as `[Suggestion]` if not tied to a trait signature.
+
+Speculative `cfg(feature)` flags - feature-gated code with no consumer enabling the feature. Confirm with a repo-wide grep before flagging.
 
 ## Output Format
 
@@ -198,23 +166,20 @@ Findings contribute to the consuming workflow's unified output. One block per fi
 ### [Suggestion | High | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
-- Code: {one-line citation, e.g., `#[validate(required)]` on non-Optional `customer_id: String`}
-- Redundant because: {FK name | sqlx column constraint | unique index | type system | validator-crate rule | exhaustive match | framework guarantee}
-- Cost: {extra SELECT per save | dynamic dispatch on hot path | hot-loop allocation | wrong lock shape} _(required for `[High]`; omit otherwise)_
+- Code: {one-line citation}
+- Redundant because: {validator rule | sqlx column type | unique index | type system | exhaustive match | framework guarantee | no consumer of feature}
+- Cost: {extra query | dynamic dispatch on hot path | lock on read-only data | hot-loop allocation | wrong async shape}
 - Recommendation: {concrete edit}
-- Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
+- Justified when: {one-line note when a legitimate reason might apply, else omit}
 ```
 
-For each of the three categories with no findings, state `No <category> findings.` so the consuming workflow knows the check ran. Empty sections are common and correct for Rust.
+`Cost:` is required for `[High]` and omitted otherwise. For each of the three categories with no findings, state `No <category> findings.` so the consuming workflow sees the check ran.
 
 ## Avoid
 
-- Padding findings to match other stacks - the type system genuinely eliminates most categories
-- Flagging `validator::Validate` derives on request DTOs - that layer owns user-facing 400 responses
-- Flagging traits declared at the consumer - that's idiomatic Rust. Only flag traits declared at the implementation side
-- Flagging `Box<dyn Trait>` when callers store heterogeneous impls or pass it across an object-safe FFI boundary
-- Flagging `Arc<Mutex<T>>` on data that genuinely mutates from multiple tasks
-- Flagging `.clone()` on `String` / `Vec<T>` outside hot paths - reserve `[High]` for genuine hot paths
-- Recommending the removal of clippy lints (`#[allow(...)]` with a `// reason:` is the legitimate suppression pattern)
-- Confusing "duplicated" with "defense in depth across layers" when multiple write paths exist
-- Flagging anything `cargo clippy --all-targets -- -D warnings` would already catch
+- Padding to match other stacks. The type system genuinely eliminates most categories.
+- Flagging `validator::Validate` derives on request DTOs - that layer owns 400 responses.
+- Flagging traits declared at the consumer (idiomatic Rust); only flag traits declared at the impl side.
+- Flagging `.clone()` outside hot paths or `Arc<Mutex<T>>` on data that mutates from multiple tasks.
+- Recommending removal of `#[allow(...)]` lints that carry a `// reason:` comment.
+- Reporting anything `cargo clippy --all-targets -- -D warnings` would already catch.

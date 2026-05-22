@@ -1,6 +1,6 @@
 ---
 name: rust-error-handling
-description: "Rust error handling: thiserror domain errors, anyhow apps, ? propagation, layer-boundary mapping (repo/service/handler), Axum IntoResponse."
+description: "Rust error handling: thiserror for libraries, anyhow for apps, ? and From conversions, panic policy, Option vs Result, boundary mapping."
 metadata:
   category: backend
   tags: [rust, error-handling, thiserror, anyhow, result]
@@ -13,179 +13,143 @@ user-invocable: false
 
 ## When to Use
 
-- Designing error types for a new crate or service module
-- Reviewing error handling in a code review
-- Debugging unexpected error behavior (swallowed errors, lost context)
-- Implementing centralized error handling in an Axum HTTP service
+- Designing error types for a new crate, module, or service boundary
+- Reviewing error handling, panic usage, or `Result`/`Option` choices
+- Diagnosing swallowed errors, lost context, or duplicated logs
+- Wiring errors to HTTP responses or other transport layers
 
 ## Rules
 
-- Never use `.unwrap()` or `.expect()` in production paths - use `?` operator for propagation
-- Use `thiserror` for library/domain error types - derives `std::error::Error` with zero boilerplate
-- Use `anyhow` for application-level error handling - provides context chaining
-- Map errors at each boundary: repo errors -> service errors -> HTTP status codes
-- Log OR return an error at each layer - never both (log-and-return duplicates noise)
-- Panic only for programmer bugs (invariant violations at startup) - never for business logic
-- Use `Result<T, E>` everywhere - never sentinel values or error codes
+- Libraries define a `thiserror` enum; binaries/apps return `anyhow::Result`. A library never returns `anyhow::Error` to its callers.
+- Propagate with `?`; convert with `#[from]` or `map_err`. No `Box<dyn Error>` unless erasing across plugin boundaries.
+- `.unwrap()`/`.expect()` only on statically-proven invariants (e.g., compiled regex, `OnceLock` post-init). `expect("…")` with a reason, never `unwrap()`.
+- `panic!`/`unreachable!`/`todo!` are for programmer bugs, not runtime conditions. Missing rows, bad input, and I/O failures return `Err`.
+- Log OR return, not both. The outermost layer that decides the response logs; inner layers propagate.
+- Add context (`.context(...)` or a typed variant) at every boundary crossing where the source error alone would be ambiguous.
+- Use `Option` for "absence is normal" (lookup miss as a value); use `Result` when absence is a caller-visible error.
 
 ## Patterns
 
-### thiserror for Domain Errors
+### Library: typed errors with thiserror
 
-Use for library and domain errors where callers need to match on variants:
+Variants are caller-matchable outcomes. Carry source errors with `#[from]`, not strings.
 
 ```rust
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum AppError {
-    #[error("resource not found: {0}")]
-    NotFound(String),
-
-    #[error("validation failed: {0}")]
-    Validation(String),
-
-    #[error("unauthorized")]
-    Unauthorized,
-
-    #[error("database error")]
-    Database(#[from] sqlx::Error),
-
-    #[error("unexpected error")]
-    Internal(#[from] anyhow::Error),
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("user {0} not found")]
+    UserNotFound(i64),
+    #[error("invalid email: {0}")]
+    InvalidEmail(String),
+    #[error(transparent)]
+    Db(#[from] sqlx::Error),
 }
 ```
 
-### anyhow for Application Code
+Flatten vs nest: add a new variant when callers branch on it; reuse an existing one when they would not.
 
-Use for top-level application code where you don't need callers to match variants:
+### Application: anyhow with context
 
 ```rust
 use anyhow::{Context, Result};
 
-fn load_config(path: &str) -> Result<Config> {
-    let content = std::fs::read_to_string(path)
-        .context("failed to read config file")?;
-    let config: Config = toml::from_str(&content)
-        .context("failed to parse config")?;
-    Ok(config)
+fn load_config(path: &Path) -> Result<Config> {
+    let raw = fs::read_to_string(path).with_context(|| format!("reading {path:?}"))?;
+    toml::from_str(&raw).with_context(|| format!("parsing {path:?}"))
 }
 ```
 
-### Error Propagation with ?
+Use `with_context` (closure) when the message allocates; `context` for static strings.
 
-Always add context when propagating errors up the call stack:
+### Conversions: `?`, `From`, `map_err`
 
 ```rust
-// Bad - caller has no context where the error originated
-async fn get_user(pool: &PgPool, id: i64) -> Result<User, sqlx::Error> {
-    sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", id)
-        .fetch_one(pool)
-        .await
+// Bad: raw source error leaks; caller cannot tell "not found" from other DB failures.
+async fn find(id: i64) -> Result<User, sqlx::Error> {
+    sqlx::query_as!(User, "...", id).fetch_one(&pool).await
 }
 
-// Good - each layer adds its context
-async fn get_user(pool: &PgPool, id: i64) -> Result<User, AppError> {
-    sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", id)
-        .fetch_one(pool)
-        .await
+// Good: map RowNotFound to a typed variant, let other DB errors flow via #[from].
+async fn find(id: i64) -> Result<User, DomainError> {
+    sqlx::query_as!(User, "...", id).fetch_one(&pool).await
         .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound(format!("user {id}")),
-            _ => AppError::Database(e),
+            sqlx::Error::RowNotFound => DomainError::UserNotFound(id),
+            other => other.into(),
         })
 }
 ```
 
-### Error Chain: Repo -> Service -> Handler
-
-Map errors at each layer boundary rather than leaking implementation details:
+### Option vs Result at boundaries
 
 ```rust
-// Repository layer: returns data access errors
-impl UserRepository {
-    async fn find_by_id(&self, id: i64) -> Result<User, AppError> {
-        sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)?
-            .ok_or_else(|| AppError::NotFound(format!("user {id}")))
-    }
-}
+// Repo: absence is a value -> Option
+async fn find(&self, id: i64) -> Result<Option<User>, DomainError> { ... }
 
-// Service layer: maps to business errors
-impl UserService {
-    async fn get_user(&self, id: i64) -> Result<UserDto, AppError> {
-        let user = self.repo.find_by_id(id).await?;
-        Ok(user.into())
-    }
-}
-
-// Handler layer: maps to HTTP responses
-async fn get_user(
-    State(svc): State<Arc<UserService>>,
-    Path(id): Path<i64>,
-) -> Result<Json<UserDto>, AppError> {
-    let user = svc.get_user(id).await?;
-    Ok(Json(user))
+// Service: absence is a caller-visible error -> Result
+async fn get(&self, id: i64) -> Result<User, DomainError> {
+    self.repo.find(id).await?.ok_or(DomainError::UserNotFound(id))
 }
 ```
 
-### Axum Error Response Mapping
+### Panic policy
 
 ```rust
-use axum::response::{IntoResponse, Response};
-use axum::http::StatusCode;
+// Bad
+let user = repo.find(id).await.unwrap();          // runtime failure
+if name.is_empty() { panic!("empty name"); }       // business condition
 
-impl IntoResponse for AppError {
+// Good
+static RE: OnceLock<Regex> = OnceLock::new();
+RE.get_or_init(|| Regex::new(r"^\w+$").expect("static regex compiles"));
+```
+
+`unreachable!` is allowed only after exhaustive matches the compiler cannot prove; prefer refactoring the type to remove it.
+
+### Transport boundary (Axum example)
+
+The library returns `DomainError`. The binary implements `IntoResponse` once, logs internal causes, and returns sanitized bodies. Detailed handler wiring lives in `rust-axum-handler`.
+
+```rust
+impl IntoResponse for DomainError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
-            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".into()),
-            AppError::Database(e) => {
-                tracing::error!("database error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".into())
+        match self {
+            DomainError::UserNotFound(_)  => (StatusCode::NOT_FOUND, self.to_string()),
+            DomainError::InvalidEmail(_)  => (StatusCode::BAD_REQUEST, self.to_string()),
+            DomainError::Db(e) => {
+                tracing::error!(error = ?e, "db failure");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
             }
-            AppError::Internal(e) => {
-                tracing::error!("internal error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".into())
-            }
-        };
-
-        (status, axum::Json(serde_json::json!({"error": message}))).into_response()
+        }.into_response()
     }
 }
 ```
 
-## Anti-Patterns
+## Output Format
 
-```rust
-// Bad: unwrap in production code
-let user = get_user(id).await.unwrap();
+When this skill is invoked for review, emit:
 
-// Bad: log AND return (double-reporting)
-if let Err(e) = do_something().await {
-    tracing::error!("failed: {e}");
-    return Err(e); // already logged, will be logged again upstream
-}
-
-// Bad: string matching on errors
-if err.to_string().contains("not found") { ... }
-
-// Bad: panic for expected business conditions
-if user.is_none() {
-    panic!("user not found");
-}
-
-// Bad: returning generic errors without context
-Err(anyhow::anyhow!("failed"))
 ```
+Findings:
+- <file>:<line> | Severity: {Blocker | Major | Minor} | Category: {Panic | Conversion | Context | Boundary | Option/Result | Crate-Choice} | <one-line issue>
+  Fix: <minimal change>
+
+Error-Type Inventory:
+- Crate: <name> | Kind: {Library | Binary} | Error: {thiserror::<Type> | anyhow::Error | Other:<name>} | Verdict: {OK | Wrong-Kind | Missing}
+
+Boundary Map:
+- <from-layer> -> <to-layer>: {Direct | map_err | From/? | IntoResponse} | Verdict: {OK | Leaks-Source | Missing-Context}
+
+Summary: <counts by severity>
+```
+
+If no Rust sources are present, emit `Findings: none (no Rust crates detected)` and stop.
 
 ## Avoid
 
-- `.unwrap()` or `.expect()` in fallible production paths
-- Using `panic!` for flow control or expected conditions
-- String matching on error messages
-- Logging and returning at the same layer
-- Leaking database or internal error details to HTTP clients
-- Using `Box<dyn Error>` when `thiserror` or `anyhow` would be clearer
+- `anyhow::Error` in a library's public API
+- `.unwrap()`/`.expect()` on runtime-fallible operations
+- `panic!`/`unreachable!`/`todo!` for expected conditions or unfinished features in shipped code
+- String-matching `err.to_string()` instead of matching variants
+- Logging at every layer (duplicate noise); logging only inside `Display`/`Debug` impls
+- `Box<dyn Error>` as a substitute for designing a typed error
+- Leaking source error text (DB messages, file paths) into HTTP response bodies

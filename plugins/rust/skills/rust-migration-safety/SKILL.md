@@ -1,6 +1,6 @@
 ---
 name: rust-migration-safety
-description: "Safe PostgreSQL migrations with sqlx-cli: reversible up/down, zero-downtime DDL (expand-contract, CONCURRENTLY), embedded migrations, CI validation."
+description: "Review sqlx PostgreSQL migrations for lock risk, backfill safety, and rollback coverage. Expand-contract, CONCURRENTLY, NOT VALID, batched DML."
 metadata:
   category: backend
   tags: [rust, sqlx, postgresql, migrations, ddl, zero-downtime]
@@ -13,186 +13,130 @@ user-invocable: false
 
 ## When to Use
 
-- Setting up database migrations for a new Rust service
-- Reviewing a migration for production safety (locking risks, rollback coverage)
-- Debugging a failed migration or a schema drift issue
-- Embedding migrations in the Rust binary for automated startup sequencing
+- Reviewing a sqlx migration for production safety before merge
+- Designing a multi-step schema change against a large or live table
+- Investigating a stalled migration holding `ACCESS EXCLUSIVE` on a hot table
 
 ## Rules
 
-- Use `sqlx-cli` for migration management - compile-time checked and versioned
-- Every migration should be reversible when possible (up + down in separate files, or `IF EXISTS` guards)
-- Never mix DDL (schema changes) and DML (data changes) in the same file - they have different rollback characteristics
-- Zero-downtime DDL: add before delete, never rename in place
-- Test migrations in CI before production
+- One concern per file. Never mix DDL and DML, never combine an unsafe step with a safe one.
+- Every destructive or backfill migration ships with a `.down.sql` that compensates without data loss.
+- Operations against tables larger than ~1M rows must use the non-blocking variant (`CONCURRENTLY`, `NOT VALID`, batched updates).
+- Use sqlx reversible migrations (`sqlx migrate add -r`). Add `-- sqlx:no-transaction` to migrations that contain `CONCURRENTLY` or `ALTER TYPE ... ADD VALUE` (cannot run inside a transaction).
+- Expand-contract for any rename or type change. Never rename or retype in place.
 
-## File Naming
+## Lock Reference
 
-```
-migrations/
-  20240101000000_create_users.up.sql
-  20240101000000_create_users.down.sql
-  20240102000000_add_email_index.up.sql
-  20240102000000_add_email_index.down.sql
-  20240103000000_add_orders_table.up.sql
-  20240103000000_add_orders_table.down.sql
-```
+PostgreSQL DDL acquires these locks. Anything `ACCESS EXCLUSIVE` blocks readers and writers on a hot table.
 
-Format: `{timestamp}_{description}.{direction}.sql`
+| Statement                                      | Lock              | Safe at scale?              |
+| ---------------------------------------------- | ----------------- | --------------------------- |
+| `ADD COLUMN` (nullable, no default)            | ACCESS EXCLUSIVE  | Yes (metadata-only, fast)   |
+| `ADD COLUMN ... DEFAULT <const>` (PG 11+)      | ACCESS EXCLUSIVE  | Yes (metadata-only)         |
+| `ADD COLUMN ... DEFAULT <volatile>`            | ACCESS EXCLUSIVE  | No (rewrites table)         |
+| `ADD COLUMN ... NOT NULL` on existing data     | ACCESS EXCLUSIVE  | No (full scan)              |
+| `ALTER COLUMN ... SET NOT NULL`                | ACCESS EXCLUSIVE  | No (full scan)              |
+| `ADD CONSTRAINT FK` (default, validates)       | ACCESS EXCLUSIVE  | No (scans both tables)      |
+| `ADD CONSTRAINT ... NOT VALID`                 | ACCESS EXCLUSIVE  | Yes (no scan, brief lock)   |
+| `VALIDATE CONSTRAINT`                          | SHARE UPDATE EXCL | Yes (concurrent reads/writes) |
+| `CREATE INDEX`                                 | SHARE             | No (blocks writes)          |
+| `CREATE INDEX CONCURRENTLY`                    | SHARE UPDATE EXCL | Yes                         |
+| `DROP COLUMN`                                  | ACCESS EXCLUSIVE  | Yes (metadata-only)         |
+| `ALTER TABLE ... RENAME COLUMN`                | ACCESS EXCLUSIVE  | Breaks deployed app code    |
 
-- Timestamp: `YYYYMMDDHHMMSS` format, monotonically increasing
-- Description: snake_case, describes what the migration does
-- Direction: `up` (apply) or `down` (revert)
+## Patterns
 
-## Zero-Downtime DDL Patterns
+### NOT NULL column on a large table
 
-### Adding a Column (safe)
+Bad - one migration, table-rewriting scan, blocks writes for minutes:
 
 ```sql
--- up: adding a nullable column is safe - no table lock, no data rewrite
-ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+ALTER TABLE events ADD COLUMN tenant_id BIGINT NOT NULL REFERENCES tenants(id);
+```
+
+Good - four migrations, each step non-blocking:
+
+```sql
+-- N_add_events_tenant_id.up.sql: nullable column, fast metadata change
+ALTER TABLE events ADD COLUMN tenant_id BIGINT;
+
+-- N+1_backfill_events_tenant_id.up.sql: batched DML, no DDL
+-- Run from a job or psql, not via sqlx, if the table is very large.
+UPDATE events SET tenant_id = $default_id
+WHERE id BETWEEN $lo AND $hi AND tenant_id IS NULL;
+
+-- N+2_events_tenant_id_not_null.up.sql: CHECK NOT VALID then VALIDATE
+ALTER TABLE events ADD CONSTRAINT events_tenant_id_not_null
+  CHECK (tenant_id IS NOT NULL) NOT VALID;
+ALTER TABLE events VALIDATE CONSTRAINT events_tenant_id_not_null;
+-- Optional once validated: promote to column NOT NULL (still scans; skip for very large tables)
+-- ALTER TABLE events ALTER COLUMN tenant_id SET NOT NULL;
+
+-- N+3_events_tenant_fk.up.sql: FK without table scan
+ALTER TABLE events ADD CONSTRAINT events_tenant_fk
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) NOT VALID;
+ALTER TABLE events VALIDATE CONSTRAINT events_tenant_fk;
+```
+
+### Index on a large table
+
+```sql
+-- up: must be the only statement; requires no-transaction marker
+-- sqlx:no-transaction
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_tenant ON events(tenant_id);
 
 -- down:
-ALTER TABLE users DROP COLUMN IF EXISTS phone;
+-- sqlx:no-transaction
+DROP INDEX CONCURRENTLY IF EXISTS idx_events_tenant;
 ```
 
-### Adding a NOT NULL Column (multi-step)
+`CREATE INDEX CONCURRENTLY` can leave an `INVALID` index on failure. The `down` must drop it so re-running the up succeeds.
+
+### Rename via expand-contract
 
 ```sql
--- Step 1: add nullable (migration N)
-ALTER TABLE users ADD COLUMN phone VARCHAR(20);
-
--- Step 2: backfill in a separate DML migration (migration N+1)
-UPDATE users SET phone = '' WHERE phone IS NULL;
-
--- Step 3: add constraint (migration N+2)
-ALTER TABLE users ALTER COLUMN phone SET NOT NULL;
+-- N: add new column        N+1: dual-write deploy
+-- N+2: backfill (batched)  N+3: read-from-new deploy
+-- N+4: drop old column
 ```
 
-### Adding an Index (use CONCURRENTLY)
+In-place `RENAME COLUMN` breaks every running instance of the app that still references the old name.
 
-```sql
--- up: CONCURRENTLY builds without locking writes
--- sqlx does not wrap in transaction by default for .up.sql, so CONCURRENTLY works
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users(email);
+### Backfill at scale
 
--- down:
-DROP INDEX CONCURRENTLY IF EXISTS idx_users_email;
+- Do not run a single `UPDATE` over a 10M+ row table inside a migration - it holds row locks and bloats WAL.
+- Batch by primary key range (`WHERE id BETWEEN $lo AND $hi`), commit per batch, sleep between batches.
+- For tenant-tagged backfills, prefer running the backfill from a one-off job or `psql` script and keeping the sqlx migration limited to schema metadata.
+
+### Down migrations
+
+- DDL: emit the inverse (`DROP COLUMN`, `DROP INDEX`, `DROP CONSTRAINT`) with `IF EXISTS`.
+- Backfill DML: a true inverse usually does not exist. Document the irreversibility in a header comment and ship an empty `.down.sql` rather than destructive SQL that loses data.
+
+## Output Format
+
+```
+Migration Review: <file or migration id>
+
+Blocking Risk: {None | Low | High | Critical}
+Findings:
+  - <Severity>: <issue> (<statement>) - <fix>
+    Severity: {Critical | High | Medium | Low}
+Rewrite Plan:
+  - <ordered list of replacement migrations, one concern each>
+Rollback Coverage: {Complete | Partial | Missing | N/A}
+  Down: <what the .down.sql must contain, or "irreversible: <reason>">
+CI Check: {sqlx migrate run && revert && run passes | will fail because <reason>}
 ```
 
-### Renaming a Column (expand-contract, never in-place rename)
-
-```sql
--- Step 1: add new column (migration N)
-ALTER TABLE users ADD COLUMN full_name VARCHAR(255);
-
--- Step 2: deploy app code that writes to both old and new columns
-
--- Step 3: backfill new column from old (migration N+1)
-UPDATE users SET full_name = name WHERE full_name IS NULL;
-
--- Step 4: deploy app code that reads from new column only
-
--- Step 5: drop old column (migration N+2)
-ALTER TABLE users DROP COLUMN name;
-```
-
-## sqlx-cli Usage
-
-### CLI Commands
-
-```bash
-# Install sqlx-cli
-cargo install sqlx-cli --no-default-features --features postgres
-
-# Create a new migration
-sqlx migrate add create_users
-
-# Apply all pending migrations
-sqlx migrate run --database-url "$DATABASE_URL"
-
-# Revert the last migration
-sqlx migrate revert --database-url "$DATABASE_URL"
-
-# Check migration status
-sqlx migrate info --database-url "$DATABASE_URL"
-```
-
-### Embedded Migrations in Rust Binary
-
-```rust
-use sqlx::migrate::Migrator;
-use sqlx::PgPool;
-
-static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
-
-async fn run_migrations(pool: &PgPool) -> anyhow::Result<()> {
-    MIGRATOR.run(pool).await?;
-    Ok(())
-}
-```
-
-### Application Startup Sequencing
-
-Run migrations before starting the HTTP server, not concurrently:
-
-```rust
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let pool = PgPoolOptions::new()
-        .max_connections(25)
-        .connect(&std::env::var("DATABASE_URL")?)
-        .await?;
-
-    // 1. Run migrations first
-    run_migrations(&pool).await?;
-
-    // 2. Start application only after migrations succeed
-    let app = build_router(pool);
-    serve(app).await
-}
-```
-
-## CI Validation
-
-Test migrations in CI to catch errors before they reach production:
-
-```bash
-# Apply all migrations up
-sqlx migrate run --database-url "$TEST_DB_URL"
-
-# Revert one step
-sqlx migrate revert --database-url "$TEST_DB_URL"
-
-# Re-apply to verify idempotency
-sqlx migrate run --database-url "$TEST_DB_URL"
-```
-
-This catches: syntax errors, missing down migrations, and migrations that fail on re-apply.
-
-**Failed migration recovery:** If a migration fails partway through (e.g., syntax error after first statement), the database may be in a partially-applied state. Check `sqlx migrate info` to identify the failed migration, manually inspect the database schema, apply the corrective SQL, then mark the migration as applied or revert it. Always use `IF EXISTS`/`IF NOT EXISTS` guards in migration SQL to make re-runs safe.
-
-## Anti-Patterns
-
-```sql
--- Bad: down migration that destroys data without backup step
-ALTER TABLE users DROP COLUMN user_type;
-
--- Bad: mixing DDL and DML (different rollback behavior)
-ALTER TABLE users ADD COLUMN score INT DEFAULT 0;
-UPDATE users SET score = 100 WHERE role = 'admin';
-
--- Bad: in-place rename (breaks running app instances)
-ALTER TABLE users RENAME COLUMN name TO full_name;
-
--- Bad: adding NOT NULL without a default or backfill step
-ALTER TABLE users ADD COLUMN phone VARCHAR(20) NOT NULL;
-```
+Severity guide: `Critical` = blocks production writes; `High` = full-table scan under ACCESS EXCLUSIVE; `Medium` = unsafe rollback; `Low` = style or idempotency.
 
 ## Avoid
 
-- In-place column renames without expand-contract
-- `DROP COLUMN` or `DROP TABLE` without data backup or compensating migration
-- Mixing DDL and DML in the same migration file
-- `CREATE INDEX` without `CONCURRENTLY` on large tables in production
-- Skipping down migrations - they are required for safe rollbacks
+- `ALTER TABLE ... ADD COLUMN ... NOT NULL` on a table with existing rows
+- `ADD CONSTRAINT FOREIGN KEY` without `NOT VALID` on a large table
+- `CREATE INDEX` without `CONCURRENTLY` on tables > ~1M rows
+- Combining `CONCURRENTLY` with any other statement in the same file, or omitting `-- sqlx:no-transaction`
+- Single-statement backfills over very large tables inside a sqlx migration
+- `RENAME COLUMN` or `ALTER COLUMN TYPE` in place on a deployed table
+- Destructive `down.sql` that silently loses backfilled data

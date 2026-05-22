@@ -1,6 +1,6 @@
 ---
 name: rust-testing-patterns
-description: "Rust testing patterns: mockall unit tests, tokio::test async, testcontainers integration, tower oneshot handlers, proptest property tests."
+description: "Rust testing: #[tokio::test], mockall traits, testcontainers Postgres, tower oneshot handlers, proptest, fixture isolation."
 metadata:
   category: backend
   tags: [rust, testing, mockall, testcontainers, proptest, tokio]
@@ -13,24 +13,22 @@ user-invocable: false
 
 ## When to Use
 
-- Designing a test strategy for a new Rust service
-- Writing unit tests for handlers, services, or domain logic
-- Writing integration tests against a real PostgreSQL database
-- Reviewing test quality - coverage gaps, brittle tests, or slow suites
+- Designing a test strategy for a Rust async service
+- Reviewing unit, integration, handler, or property tests
+- Diagnosing flaky, slow, or brittle test suites
 
 ## Rules
 
-- Use `#[tokio::test]` for all async tests - never block on futures in sync test functions
-- Mock via traits defined in the consumer module - use `mockall` for auto-generated mocks
-- Use `testcontainers` for integration tests that need a real database
-- Test public behavior, not private implementation - if you're testing a private function, the module design may need rethinking
-- Keep unit tests fast - isolate from I/O with trait-based mocks
-- Use `cargo test -- --test-threads=1` only when tests have shared state; prefer parallel by default
-- If Docker is unavailable (CI without Docker, WSL limitations), skip testcontainers tests with `#[ignore]` and document the requirement - do not remove integration tests entirely
+- Async tests use `#[tokio::test]` - never construct a runtime inside `#[test]`
+- Mock at trait boundaries declared in the consumer module; use `mockall::automock` - do not mock concrete structs
+- Integration tests use `testcontainers` with a fresh container per test (or per-test schema); guard Docker-required tests with `#[ignore]` when Docker is absent
+- Test public API only - if a test needs a `pub(crate)` item, the boundary is wrong
+- No `tokio::time::sleep` for synchronization - use channels, `Notify`, or `tokio::time::pause` + `advance`
+- Tests run in parallel by default; serialize only with `serial_test::serial`, never `--test-threads=1` globally
 
 ## Patterns
 
-### Unit Tests (inline module)
+### Unit Test (inline)
 
 ```rust
 #[cfg(test)]
@@ -38,223 +36,109 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_validate_email_valid() {
-        assert!(validate_email("user@example.com").is_ok());
-    }
-
-    #[test]
-    fn test_validate_email_missing_at() {
+    fn rejects_email_missing_at() {
         assert!(validate_email("userexample.com").is_err());
     }
-
-    #[test]
-    fn test_validate_email_empty() {
-        assert!(validate_email("").is_err());
-    }
 }
 ```
 
-### Async Tests with tokio::test
+### Async Test with mockall
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_create_user_success() {
-        let mut mock_repo = MockUserRepository::new();
-        mock_repo
-            .expect_save()
-            .returning(|user| Ok(User { id: 1, ..user }));
-
-        let svc = UserService::new(Arc::new(mock_repo));
-        let result = svc.create(NewUser { name: "Alice".into(), email: "alice@test.com".into() }).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_get_user_not_found() {
-        let mut mock_repo = MockUserRepository::new();
-        mock_repo
-            .expect_find_by_id()
-            .returning(|_| Err(AppError::NotFound("user".into())));
-
-        let svc = UserService::new(Arc::new(mock_repo));
-        let result = svc.get_user(999).await;
-        assert!(matches!(result, Err(AppError::NotFound(_))));
-    }
-}
-```
-
-### Trait Mocking with mockall
-
-```rust
-use mockall::automock;
-
-#[automock]
-#[async_trait]
-pub trait UserRepository: Send + Sync {
-    async fn find_by_id(&self, id: i64) -> Result<User, AppError>;
-    async fn save(&self, user: NewUser) -> Result<User, AppError>;
-    async fn list(&self, limit: i64, offset: i64) -> Result<Vec<User>, AppError>;
-}
-```
-
-### Handler Tests with axum::test
-
-```rust
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
-
-#[tokio::test]
-async fn test_get_user_handler_found() {
-    let mut mock_svc = MockUserService::new();
-    mock_svc
-        .expect_get_user()
-        .with(eq(123))
-        .returning(|_| Ok(UserDto { id: 123, name: "Alice".into() }));
-
-    let app = build_router(AppState::with_user_service(Arc::new(mock_svc)));
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/users/123")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
+#[mockall::automock]
+#[async_trait::async_trait]
+pub trait UserRepo: Send + Sync {
+    async fn find(&self, id: i64) -> Result<User, AppError>;
 }
 
 #[tokio::test]
-async fn test_get_user_handler_not_found() {
-    let mut mock_svc = MockUserService::new();
-    mock_svc
-        .expect_get_user()
-        .returning(|_| Err(AppError::NotFound("user".into())));
-
-    let app = build_router(AppState::with_user_service(Arc::new(mock_svc)));
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/users/999")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+async fn returns_not_found() {
+    let mut repo = MockUserRepo::new();
+    repo.expect_find().returning(|_| Err(AppError::NotFound("user".into())));
+    let svc = UserService::new(Arc::new(repo));
+    assert!(matches!(svc.get(1).await, Err(AppError::NotFound(_))));
 }
 ```
 
-### Integration Tests with testcontainers
+### Handler Test via `tower::ServiceExt::oneshot`
 
 ```rust
-// tests/integration/user_repo.rs
-use testcontainers::runners::AsyncRunner;
-use testcontainers_modules::postgres::Postgres;
-
 #[tokio::test]
-async fn test_user_repo_create_and_find() {
-    let container = Postgres::default().start().await.unwrap();
-    let pool = setup_test_pool(&container).await;
-    run_migrations(&pool).await;
+async fn get_user_returns_200() {
+    let mut svc = MockUserService::new();
+    svc.expect_get().with(eq(1)).returning(|_| Ok(dto(1)));
+    let app = build_router(AppState::with(Arc::new(svc)));
+    let req = Request::builder().uri("/users/1").body(Body::empty()).unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+```
+
+### Integration Test with testcontainers (per-test container)
+
+```rust
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn save_and_find_roundtrip() {
+    let pg = Postgres::default().start().await.unwrap();
+    let pool = connect(&pg).await;
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
     let repo = UserRepository::new(pool);
-
-    let user = repo.save(NewUser {
-        name: "Alice".into(),
-        email: "alice@test.com".into(),
-    }).await.unwrap();
-
-    assert!(user.id > 0);
-
-    let found = repo.find_by_id(user.id).await.unwrap();
-    assert_eq!(found.name, "Alice");
-}
-
-async fn setup_test_pool(container: &ContainerAsync<Postgres>) -> PgPool {
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
-    let url = format!("postgres://postgres:postgres@localhost:{port}/postgres");
-    PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&url)
-        .await
-        .unwrap()
+    let saved = repo.save(new_user()).await.unwrap();
+    assert_eq!(repo.find(saved.id).await.unwrap().name, saved.name);
 }
 ```
 
-### Property-Based Testing with proptest
+Per-test containers give isolation at the cost of startup time. For larger suites, share a container but give each test a unique schema (`CREATE SCHEMA test_<uuid>`), never a shared static pool with shared tables.
+
+### Async Synchronization without `sleep`
 
 ```rust
-use proptest::prelude::*;
+// Bad: flaky wait
+start_job().await;
+tokio::time::sleep(Duration::from_secs(1)).await;
+assert!(job_done());
 
+// Good: signal completion
+let (tx, rx) = tokio::sync::oneshot::channel();
+start_job_with_signal(tx).await;
+rx.await.unwrap();
+assert!(job_done());
+```
+
+### Property Test with proptest
+
+```rust
 proptest! {
     #[test]
-    fn test_validate_email_never_panics(email in "\\PC{1,100}") {
-        let _ = validate_email(&email); // should never panic, may return Err
-    }
-
-    #[test]
-    fn test_pagination_offset_non_negative(page in 1i64..1000, size in 1i64..100) {
-        let offset = (page - 1) * size;
-        prop_assert!(offset >= 0);
+    fn validate_email_never_panics(s in "\\PC{0,100}") {
+        let _ = validate_email(&s);
     }
 }
 ```
 
-### Benchmarks with criterion
+## Output Format
 
-```rust
-// benches/hash_benchmark.rs
-use criterion::{criterion_group, criterion_main, Criterion};
+When reviewing a test suite, emit one finding per issue:
 
-fn bench_hash_password(c: &mut Criterion) {
-    c.bench_function("hash_password", |b| {
-        b.iter(|| hash_password("supersecretpassword"))
-    });
-}
-
-criterion_group!(benches, bench_hash_password);
-criterion_main!(benches);
+```
+Finding: <one-line summary>
+Category: {AsyncRuntime | Mocking | Isolation | Synchronization | Boundary | Coverage | Flakiness}
+Severity: {Critical | Major | Minor}
+Location: <path>:<line>
+Evidence: <code excerpt or pattern reference>
+Fix: <pattern name from this skill> - <one-line corrective action>
 ```
 
-## Anti-Patterns
-
-```rust
-// Bad: blocking on async in sync test
-#[test]
-fn test_something() {
-    let result = tokio::runtime::Runtime::new().unwrap()
-        .block_on(async_function()); // use #[tokio::test] instead
-}
-
-// Bad: testing private functions directly
-#[test]
-fn test_internal_parse_token() { ... } // test through public API instead
-
-// Bad: hardcoded sleep for async assertions
-#[tokio::test]
-async fn test_background_job() {
-    start_job().await;
-    tokio::time::sleep(Duration::from_secs(1)).await; // flaky
-    assert!(job_completed()); // use channels or notification instead
-}
-
-// Bad: mocking concrete types instead of traits
-```
+When no issues found in a category, omit it. If Docker is unavailable, mark testcontainers findings `Severity: Major` with `Fix: gate with #[ignore]` rather than dropping integration coverage.
 
 ## Avoid
 
-- `tokio::time::sleep` in tests for synchronization - use channels or notification primitives
-- Testing private functions - restructure or test through the public API
-- Creating a new Tokio runtime in sync tests - use `#[tokio::test]`
-- Mocking concrete types - define traits at service boundaries
-- Shared mutable state between tests without isolation
+- Constructing `tokio::runtime::Runtime` inside `#[test]` - use `#[tokio::test]`
+- Mocking concrete struct types - extract a trait at the consumer boundary
+- Testing `pub(crate)` or private functions directly - test through the public API
+- `tokio::time::sleep` for awaiting async work - use channels, `Notify`, or virtual time
+- `Once`/`OnceCell` for a shared DB pool across tests - state leaks, ordering bugs
+- `--test-threads=1` to mask data races - fix the shared state or use `serial_test::serial` per-test
+- Asserting on log output or error message strings - assert on typed error variants

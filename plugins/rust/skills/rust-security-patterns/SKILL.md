@@ -1,9 +1,9 @@
 ---
 name: rust-security-patterns
-description: "Rust / Axum security patterns: JWT (RS256) auth middleware, validator input, Argon2 hashing, path traversal, CORS, secrets, cargo-audit."
+description: "Rust/Axum security review: authn/authz, JWT (RS256), validator input, SQL injection, Argon2, path traversal, secrets, unsafe, cargo-audit."
 metadata:
   category: backend
-  tags: [rust, security, jwt, authentication, validation, cors, cargo-audit]
+  tags: [rust, security, jwt, authorization, validation, secrets, unsafe, cargo-audit]
 user-invocable: false
 ---
 
@@ -13,219 +13,190 @@ user-invocable: false
 
 ## When to Use
 
-- Implementing authentication and authorization in Axum services
-- Reviewing code for OWASP Top 10 vulnerabilities
-- Setting up input validation and sanitization
-- Configuring secrets management and dependency scanning
+- Reviewing Rust web service code for OWASP-class vulnerabilities
+- Implementing authn/authz, input validation, secret handling, or crypto
+- Auditing `unsafe` blocks and dependency CVEs
+
+For sqlx query mechanics see `rust-db-access`. For middleware wiring and `AppError` see `rust-web-patterns`. This skill covers the security-specific decisions only.
 
 ## Rules
 
-- Validate all input at the handler boundary - never trust user input
-- Use parameterized queries exclusively - never string interpolation in SQL
-- JWT validation must check `exp`, `iss`, `aud` claims - use asymmetric keys (RS256/ES256) in production
-- Never expose internal error details or stack traces in API responses
-- Secrets from environment variables or config files - never hardcoded
-- Run `cargo audit` in CI for known CVEs
-- If the project uses API keys or session cookies instead of JWT, skip the JWT middleware section but still apply input validation, SQL injection prevention, and secrets management
+- Validate every request DTO at the handler boundary via `validator::Validate`.
+- Parameterize all SQL (`$1`, `$2`) -- never `format!` user input into queries.
+- JWT: asymmetric (RS256/ES256) in production; validate `exp`, `iss`, `aud`.
+- Authorize after authenticating -- claim presence is not permission.
+- Hash passwords with Argon2 inside `spawn_blocking`; never on the async runtime.
+- Load secrets from env/secret manager; never commit, never log, never return in errors.
+- Justify every `unsafe` block with a `// SAFETY:` comment stating the invariant.
+- Run `cargo audit --deny warnings` in CI.
 
 ## Patterns
 
-### JWT Authentication Middleware
+### Input validation (bad/good)
 
 ```rust
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Claims {
-    pub sub: String,
-    pub exp: usize,
-    pub iss: String,
+// BAD: trusts JSON shape
+async fn create(Json(req): Json<CreateUserRequest>) -> Result<_, AppError> {
+    svc.create(req).await // no .validate() call
 }
+// GOOD
+req.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+```
 
-async fn auth_middleware(
-    State(state): State<AppState>,
-    mut req: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let token = req.headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or(AppError::Unauthorized)?;
+Constrain fields with `#[validate(length, email, range, regex)]` on the DTO. Reject unknown fields with `#[serde(deny_unknown_fields)]` for strict APIs.
 
-    let mut validation = Validation::new(Algorithm::RS256);
-    validation.set_issuer(&[&state.jwt_issuer]);
-    validation.set_audience(&[&state.jwt_audience]);
+### SQL injection (bad/good)
 
-    let token_data = decode::<Claims>(token, &state.decoding_key, &validation)
-        .map_err(|_| AppError::Unauthorized)?;
+```rust
+// BAD
+let q = format!("SELECT * FROM users WHERE email = '{email}'");
+sqlx::query(&q).fetch_all(pool).await?;
+// GOOD
+sqlx::query_as!(User, "SELECT * FROM users WHERE email = $1", email)
+    .fetch_one(pool).await?;
+```
 
-    req.extensions_mut().insert(token_data.claims);
-    Ok(next.run(req).await)
+`LIKE` patterns: bind `format!("%{}%", escape(input))` -- still parameterized.
+
+### JWT validation
+
+```rust
+let mut v = Validation::new(Algorithm::RS256);
+v.set_issuer(&[&state.jwt_issuer]);
+v.set_audience(&[&state.jwt_audience]);
+let data = decode::<Claims>(token, &state.decoding_key, &v)
+    .map_err(|_| AppError::Unauthorized)?;
+req.extensions_mut().insert(data.claims);
+```
+
+`Validation::new(_)` already enforces `exp`. Reject HS256 in production; key rotation is impossible without redeploy and a leaked secret signs valid tokens.
+
+### Authorization (separate from authn)
+
+```rust
+// BAD: authenticated == authorized
+async fn delete_user(claims: Claims, Path(id): Path<i64>) -> Result<_, AppError> {
+    svc.delete(id).await // any logged-in user deletes anyone
+}
+// GOOD: explicit check against resource owner or role
+if claims.sub != id.to_string() && !claims.roles.contains(&"admin".into()) {
+    return Err(AppError::Forbidden);
 }
 ```
 
-### Input Validation
+Enforce at the service layer too -- handlers can be bypassed by internal callers.
+
+### Password hashing
 
 ```rust
-use validator::Validate;
-
-#[derive(Debug, Deserialize, Validate)]
-pub struct CreateUserRequest {
-    #[validate(length(min = 2, max = 100, message = "name must be 2-100 characters"))]
-    pub name: String,
-    #[validate(email(message = "invalid email format"))]
-    pub email: String,
-    #[validate(length(min = 8, max = 128, message = "password must be 8-128 characters"))]
-    pub password: String,
-}
-
-async fn create_user(
-    State(svc): State<Arc<UserService>>,
-    Json(req): Json<CreateUserRequest>,
-) -> Result<(StatusCode, Json<UserDto>), AppError> {
-    req.validate().map_err(|e| AppError::Validation(e.to_string()))?;
-    // proceed with validated input
-}
+tokio::task::spawn_blocking(move || {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default().hash_password(pw.as_bytes(), &salt)
+        .map(|h| h.to_string())
+}).await?
 ```
 
-### Password Hashing
+Argon2 on the async runtime stalls the executor under load. Same rule applies to `verify_password`.
+
+### Path traversal
 
 ```rust
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::SaltString;
-use argon2::password_hash::rand_core::OsRng;
-
-async fn hash_password(password: String) -> Result<String, AppError> {
-    tokio::task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
-        argon2
-            .hash_password(password.as_bytes(), &salt)
-            .map(|h| h.to_string())
-            .map_err(|e| AppError::Internal(e.into()))
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.into()))?
+// BAD
+tokio::fs::read(format!("./uploads/{filename}")).await? // "../../etc/passwd"
+// GOOD
+let base = Path::new("./uploads").canonicalize()?;
+let target = base.join(&filename).canonicalize()
+    .map_err(|_| AppError::BadRequest("invalid path".into()))?;
+if !target.starts_with(&base) {
+    return Err(AppError::Forbidden);
 }
-
-async fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    let hash = hash.to_owned();
-    let password = password.to_owned();
-    tokio::task::spawn_blocking(move || {
-        let parsed = PasswordHash::new(&hash)
-            .map_err(|e| AppError::Internal(e.into()))?;
-        Ok(Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok())
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.into()))?
-}
+tokio::fs::read(&target).await?
 ```
 
-### CORS Configuration
+Canonicalize the *joined* path so symlinks and `..` resolve before the prefix check. `PathBuf::starts_with` is component-wise, not string prefix.
+
+### Secrets
 
 ```rust
-use tower_http::cors::{CorsLayer, Any};
-
-// Development
-let cors = CorsLayer::permissive();
-
-// Production - explicit origins
-let cors = CorsLayer::new()
-    .allow_origin(["https://app.example.com".parse().unwrap()])
-    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-    .allow_headers([AUTHORIZATION, CONTENT_TYPE])
-    .max_age(Duration::from_secs(3600));
-```
-
-### Secrets Management
-
-```rust
-// Load from environment - never hardcode
-let database_url = std::env::var("DATABASE_URL")
-    .expect("DATABASE_URL must be set");
+// BAD: hardcoded, or panics late
+const JWT_SECRET: &str = "dev-secret-123";
+// GOOD: fail fast at startup, never log
 let jwt_secret = std::env::var("JWT_SECRET")
-    .expect("JWT_SECRET must be set");
-
-// Use dotenvy for local development only
-#[cfg(debug_assertions)]
-dotenvy::dotenv().ok();
+    .map_err(|_| anyhow!("JWT_SECRET required"))?;
 ```
 
-### Path Traversal Prevention
+Wrap sensitive values in `secrecy::Secret<String>` to redact from `Debug`/logs. `dotenvy::dotenv().ok()` only under `#[cfg(debug_assertions)]`.
 
-Never construct file paths directly from user input. A path like `../../../etc/passwd` can escape the intended directory:
+### CORS
 
 ```rust
-use std::path::{Path, PathBuf};
-
-// BAD: direct path construction from user input - path traversal vulnerability
-async fn download_file(
-    Path(filename): Path<String>,
-) -> Result<Vec<u8>, AppError> {
-    let path = format!("./uploads/{filename}"); // traversal: "../../../etc/passwd"
-    Ok(tokio::fs::read(path).await?)
-}
-
-// GOOD: canonicalize and verify the resolved path stays within the allowed directory
-async fn download_file(
-    Path(filename): Path<String>,
-) -> Result<Vec<u8>, AppError> {
-    let uploads_dir = Path::new("./uploads").canonicalize()
-        .map_err(|_| AppError::Internal("uploads dir not found".into()))?;
-
-    let requested = uploads_dir.join(&filename).canonicalize()
-        .map_err(|_| AppError::BadRequest("invalid file path".into()))?;
-
-    // Verify the resolved path starts with the uploads directory
-    if !requested.starts_with(&uploads_dir) {
-        return Err(AppError::Forbidden("path traversal detected".into()));
-    }
-
-    Ok(tokio::fs::read(&requested).await
-        .map_err(|_| AppError::NotFound("file not found".into()))?)
-}
+// BAD: in production
+CorsLayer::permissive()
+// GOOD
+CorsLayer::new()
+    .allow_origin(["https://app.example.com".parse().unwrap()])
+    .allow_methods([Method::GET, Method::POST])
+    .allow_headers([AUTHORIZATION, CONTENT_TYPE])
 ```
 
-Key rules:
-- `canonicalize()` resolves `..`, symlinks, and relative segments to an absolute path
-- Always call `canonicalize()` on the **joined** path (after appending user input), not before
-- `starts_with()` on `PathBuf` checks path components, not string prefix - safe against `uploads_evil/` bypasses
-- Reject the request if `canonicalize()` fails (file doesn't exist or invalid path)
+`allow_credentials(true)` + wildcard origin is rejected by browsers; combining them is a code smell.
 
-### Dependency Auditing
+### Unsafe blocks
 
-```bash
-# Install cargo-audit
-cargo install cargo-audit
-
-# Check for known vulnerabilities
-cargo audit
-
-# In CI pipeline
-cargo audit --deny warnings
+```rust
+// BAD
+unsafe { std::slice::from_raw_parts(ptr, len) }
+// GOOD
+// SAFETY: ptr is non-null, aligned for T, points to `len` initialized
+// elements valid for the lifetime of `buf`, and is not mutated concurrently.
+unsafe { std::slice::from_raw_parts(ptr, len) }
 ```
 
-## Security Checklist
+Prefer safe alternatives (`bytes::Bytes`, `&[T]`). If `unsafe` is unavoidable, isolate it in a small module with a safe wrapper and a property test.
 
-- [ ] All protected routes behind auth middleware
-- [ ] JWT validation includes `exp`, `iss`, `aud` - RS256 or ES256 in production
-- [ ] No raw SQL string interpolation - sqlx with `$1` parameterized queries
-- [ ] Input validation with `validator` crate on all request DTOs
-- [ ] CORS configured explicitly - no `permissive()` in production
-- [ ] Secrets loaded from environment - no hardcoded credentials in source
-- [ ] API error responses contain no stack traces or internal details
-- [ ] `cargo audit` passing with no high-severity vulnerabilities
-- [ ] Rate limiting applied to auth endpoints (tower::limit or governor)
-- [ ] Password hashing uses Argon2 via `spawn_blocking` (not on async thread)
+### Error responses
+
+```rust
+// BAD: leaks internals
+Err(format!("db error: {e:?}"))
+// GOOD: log full chain server-side, return generic message
+tracing::error!("db error: {e:?}");
+Err(AppError::Internal)
+```
+
+### Dependency audit
+
+`cargo audit --deny warnings` in CI. Pin a `rust-toolchain.toml`. Review `cargo deny` for license + duplicate-dep gates if the project uses it.
+
+## Output Format
+
+Produce a security review with this structure:
+
+```
+Severity: {Critical | High | Medium | Low | Info}
+Category: {Authn | Authz | Injection | Crypto | Secrets | Unsafe | Deps | Other}
+Location: <file>:<line>
+Finding: <one-sentence description of the vulnerability>
+Evidence: <code snippet or specific call>
+Fix: <minimal change, with the pattern name from this skill>
+```
+
+End with a coverage line:
+
+```
+Coverage: validation=<ok|gap>, authn=<ok|gap>, authz=<ok|gap>, sql=<ok|gap>,
+          crypto=<ok|gap>, secrets=<ok|gap>, unsafe=<ok|n/a>, deps=<ok|gap>
+```
+
+Mark `gap` when the category was not addressed by the code under review.
 
 ## Avoid
 
-- Hardcoded secrets in source code
-- String interpolation in SQL queries
-- Exposing internal error details to clients
-- `CorsLayer::permissive()` in production
-- Symmetric JWT keys (HS256) in production - use RS256/ES256
-- Password hashing on the async runtime (blocks the executor)
-- Skipping `cargo audit` in CI
-- Constructing file paths from user input without `canonicalize()` + `starts_with()` prefix check (path traversal)
+- HS256 JWT, missing `iss`/`aud` checks, or trusting `alg` from the token header.
+- Authenticated-equals-authorized handlers.
+- `format!` into SQL, including `ORDER BY` and `LIMIT` clauses.
+- `CorsLayer::permissive()` in production.
+- Argon2 (or any CPU-bound hash) on the async runtime.
+- Hardcoded secrets, secrets in `Debug` output, secrets in error responses.
+- `unsafe` without a `// SAFETY:` invariant comment.
+- Skipping `cargo audit` in CI; ignoring advisories without a documented waiver.

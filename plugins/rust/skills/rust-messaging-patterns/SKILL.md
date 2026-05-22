@@ -1,258 +1,196 @@
 ---
 name: rust-messaging-patterns
-description: "Rust async messaging and background jobs: Tokio queues, Kafka (rdkafka), AMQP (lapin), JoinSet worker pools, transactional outbox, idempotency."
+description: "Review Rust messaging code: Kafka (rdkafka), AMQP (lapin), NATS consumers/producers, retries, idempotency, DLQ, transactional outbox."
 metadata:
   category: backend
-  tags: [rust, kafka, amqp, messaging, background-jobs, async, tokio, idempotency]
+  tags: [rust, kafka, amqp, nats, messaging, idempotency, outbox]
 user-invocable: false
 ---
 
 # Rust Messaging Patterns
 
 > Load `Use skill: stack-detect` first to determine the project stack.
+> Tokio runtime, cancellation, JoinSet, channel selection: defer to `rust-async-patterns`. This skill covers messaging-specific concerns only.
 
 ## When to Use
 
-- Offloading work that takes > 200ms or touches external services (email, webhooks, file processing)
-- Kafka event consumption in a Rust service
-- AMQP (RabbitMQ) message processing
-- In-process background task queues with Tokio
+- Reviewing Kafka, AMQP, or NATS consumer/producer code in a Rust service
+- Designing retry, idempotency, or dead-letter handling for message processing
+- Publishing events alongside a database write (outbox)
 
 ## Rules
 
-- Handlers must be **idempotent** - tasks can be retried; check state before acting
-- Pass IDs and primitive values as task payloads - never pass complex structs with internal state
-- Configure **max retries** and a **dead-letter** strategy for every task type
-- Workers must respect `CancellationToken` for graceful shutdown
-- Use bounded channels for backpressure - never unbounded queues
+- Disable broker auto-commit/auto-ack. Ack only after the handler succeeds.
+- Handlers must be idempotent: dedupe on a stable message key before side effects.
+- Every consumer has a bounded retry policy and a DLQ (or explicit drop) on exhaustion.
+- Payloads carry IDs and primitives, not internal structs or DB models.
+- Publish-after-DB-commit is a dual write. Use the transactional outbox.
+- Transient vs. permanent errors are classified; only transient errors retry.
 
 ## Patterns
 
-### Tokio-Based Task Queue
+### Kafka Consumer (rdkafka): manual commit + classified errors
 
 ```rust
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
+let consumer: StreamConsumer = ClientConfig::new()
+    .set("bootstrap.servers", brokers)
+    .set("group.id", group_id)
+    .set("enable.auto.commit", "false")     // manual commit
+    .set("auto.offset.reset", "earliest")
+    .create()?;
+consumer.subscribe(&[topic])?;
 
-#[derive(Debug)]
-struct Task {
-    id: String,
-    payload: serde_json::Value,
-}
-
-async fn run_worker(
-    token: CancellationToken,
-    mut rx: mpsc::Receiver<Task>,
-    pool: PgPool,
-) {
-    loop {
-        tokio::select! {
-            _ = token.cancelled() => {
-                tracing::info!("worker shutting down gracefully");
-                return;
-            }
-            Some(task) = rx.recv() => {
-                if let Err(e) = handle_task(&pool, &task).await {
-                    tracing::error!(task_id = %task.id, "task failed: {e}");
-                    // TODO: retry logic or DLQ
-                }
-            }
-        }
-    }
-}
-
-async fn handle_task(pool: &PgPool, task: &Task) -> anyhow::Result<()> {
-    // Idempotency check
-    let already_processed = sqlx::query_scalar!(
-        "SELECT EXISTS(SELECT 1 FROM processed_tasks WHERE task_id = $1)",
-        &task.id
-    )
-    .fetch_one(pool)
-    .await?
-    .unwrap_or(false);
-
-    if already_processed {
-        return Ok(()); // already done
-    }
-
-    // Process task...
-    process(&task.payload).await?;
-
-    // Mark as processed
-    sqlx::query!("INSERT INTO processed_tasks (task_id) VALUES ($1)", &task.id)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-```
-
-### Kafka Consumer (rdkafka)
-
-```rust
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::config::ClientConfig;
-use rdkafka::Message;
-
-async fn run_kafka_consumer(
-    brokers: &str,
-    topic: &str,
-    group_id: &str,
-    token: CancellationToken,
-    handler: impl Fn(&[u8]) -> anyhow::Result<()> + Send + Sync,
-) -> anyhow::Result<()> {
-    let consumer: StreamConsumer = ClientConfig::new()
-        .set("bootstrap.servers", brokers)
-        .set("group.id", group_id)
-        .set("enable.auto.commit", "false")
-        .set("auto.offset.reset", "earliest")
-        .create()?;
-
-    consumer.subscribe(&[topic])?;
-
-    loop {
-        tokio::select! {
-            _ = token.cancelled() => {
-                tracing::info!("kafka consumer shutting down");
-                return Ok(());
-            }
-            message = consumer.recv() => {
-                match message {
-                    Ok(msg) => {
-                        if let Some(payload) = msg.payload() {
-                            if let Err(e) = handler(payload) {
-                                tracing::error!("message handler failed: {e}");
-                                // Decide: DLQ, skip, or stop consumer
-                            }
-                        }
-                        consumer.commit_message(&msg, rdkafka::consumer::CommitMode::Async)?;
-                    }
-                    Err(e) => {
-                        tracing::error!("kafka recv error: {e}");
-                    }
-                }
-            }
+while let Ok(msg) = consumer.recv().await {
+    match handler(msg.payload().unwrap_or_default()).await {
+        Ok(()) => consumer.commit_message(&msg, CommitMode::Async)?,
+        Err(MsgError::Transient(_)) => { /* no commit -> rebalance redelivers */ }
+        Err(MsgError::Permanent(e)) => {
+            dlq.produce(msg.key(), msg.payload(), &e.to_string()).await?;
+            consumer.commit_message(&msg, CommitMode::Async)?;  // advance past poison
         }
     }
 }
 ```
 
-### Worker Pool with JoinSet
+Permanent errors (deserialization, validation) must commit and route to DLQ, else
+the partition stalls. Transient errors (DB down, 5xx) leave the offset uncommitted.
+
+### AMQP Consumer (lapin): ack/nack semantics
 
 ```rust
-use tokio::task::JoinSet;
+let mut consumer = channel.basic_consume(queue, tag, opts, FieldTable::default()).await?;
+while let Some(delivery) = consumer.next().await {
+    let delivery = delivery?;
+    match handler(&delivery.data).await {
+        Ok(()) => delivery.ack(BasicAckOptions::default()).await?,
+        Err(MsgError::Transient(_)) => delivery
+            .nack(BasicNackOptions { requeue: true, multiple: false })
+            .await?,
+        Err(MsgError::Permanent(_)) => delivery
+            .nack(BasicNackOptions { requeue: false, multiple: false })  // -> DLX
+            .await?,
+    }
+}
+```
 
-async fn run_worker_pool(
-    mut rx: mpsc::Receiver<Job>,
-    concurrency: usize,
-    token: CancellationToken,
-) -> anyhow::Result<()> {
-    let mut set = JoinSet::new();
+Bind the queue to a dead-letter exchange (`x-dead-letter-exchange`) so
+`requeue: false` lands in DLQ rather than vanishing.
 
-    loop {
-        // Wait for capacity
-        while set.len() >= concurrency {
-            if let Some(result) = set.join_next().await {
-                if let Err(e) = result {
-                    tracing::error!("worker task panicked: {e}");
-                }
-            }
-        }
+### NATS JetStream: explicit ack with redelivery cap
 
-        tokio::select! {
-            _ = token.cancelled() => {
-                // Drain remaining tasks
-                while let Some(result) = set.join_next().await {
-                    let _ = result;
-                }
-                return Ok(());
-            }
-            Some(job) = rx.recv() => {
-                set.spawn(async move {
-                    if let Err(e) = job.execute().await {
-                        tracing::error!(job_id = %job.id, "job failed: {e}");
-                    }
-                });
-            }
+```rust
+let mut sub = js.pull_subscribe(subject, "workers").await?;
+let batch = sub.fetch().max_messages(32).expires(Duration::from_secs(5)).messages().await?;
+tokio::pin!(batch);
+while let Some(msg) = batch.next().await {
+    let msg = msg?;
+    if msg.info()?.delivered > MAX_REDELIVERIES {
+        publish_dlq(&js, &msg).await?;
+        msg.ack().await?;
+        continue;
+    }
+    match handler(&msg.payload).await {
+        Ok(()) => msg.ack().await?,
+        Err(_) => msg.ack_with(AckKind::Nak(Some(backoff(msg.info()?.delivered)))).await?,
+    }
+}
+```
+
+JetStream tracks delivery count; gate DLQ on it rather than a local counter.
+
+### Idempotency: dedupe before side effects
+
+```rust
+// Bad: side effect first, dedupe attempt later (double-send on retry)
+send_email(&user).await?;
+sqlx::query!("INSERT INTO processed (msg_id) VALUES ($1)", msg_id).execute(pool).await?;
+
+// Good: claim the message_id atomically; ON CONFLICT skips replays
+let claimed = sqlx::query_scalar!(
+    "INSERT INTO processed (msg_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING msg_id",
+    msg_id
+).fetch_optional(pool).await?;
+if claimed.is_some() { send_email(&user).await?; }
+```
+
+Use the broker-supplied message ID or a producer-set idempotency key. Never hash payload bytes (replays with timestamps differ).
+
+### Retry with exponential backoff + jitter
+
+```rust
+use rand::Rng;
+let mut delay = Duration::from_millis(100);
+for attempt in 0..MAX_RETRIES {
+    match call().await {
+        Ok(v) => return Ok(v),
+        Err(e) if !e.is_transient() => return Err(e),
+        Err(_) if attempt + 1 == MAX_RETRIES => break,
+        Err(_) => {
+            let jitter = rand::thread_rng().gen_range(0..delay.as_millis() as u64);
+            tokio::time::sleep(delay + Duration::from_millis(jitter)).await;
+            delay = (delay * 2).min(Duration::from_secs(30));
         }
     }
 }
 ```
 
-### Transactional Outbox Pattern (reliable publishing)
+Bound retries by attempt count and cap delay. In-process retry only for fast transients; otherwise let the broker redeliver.
 
-Publishing to Kafka or AMQP inside a database transaction is a dual-write anti-pattern. The DB commit and broker publish are not atomic - a failure between them causes event loss or phantom events.
-
-**Bad - dual-write:**
+### Transactional Outbox: atomic DB + event publication
 
 ```rust
-async fn place_order(pool: &PgPool, kafka: &KafkaProducer, req: OrderRequest) -> anyhow::Result<Order> {
-    let mut tx = pool.begin().await?;
-    let order = insert_order(&mut *tx, &req).await?;
-    tx.commit().await?; // DB committed
+// Bad: dual write - DB commits, broker publish fails -> phantom state
+let order = insert_order(pool, &req).await?;
+kafka.produce("order.created", &payload).await?;
 
-    // PROBLEM: if this fails, DB is committed but event is never published
-    kafka.produce("order.created", &serde_json::to_vec(&order)?).await?;
-    Ok(order)
-}
+// Good: outbox row writes in the same transaction as the business state
+let mut tx = pool.begin().await?;
+let order = insert_order(&mut *tx, &req).await?;
+sqlx::query!(
+    "INSERT INTO outbox (aggregate_id, event_type, payload) VALUES ($1, $2, $3)",
+    order.id, "order.created", serde_json::to_value(&order)?,
+).execute(&mut *tx).await?;
+tx.commit().await?;
+
+// Relay polls outbox, publishes, marks sent. Publish is idempotent on outbox.id.
 ```
 
-**Good - transactional outbox:**
+Relay must use `SELECT ... FOR UPDATE SKIP LOCKED` to allow horizontal scaling.
 
-```rust
-// Step 1: Insert order AND outbox record in the same DB transaction
-async fn place_order(pool: &PgPool, req: OrderRequest) -> anyhow::Result<Order> {
-    let mut tx = pool.begin().await?;
-    let order = insert_order(&mut *tx, &req).await?;
+### Producer Idempotence
 
-    // Outbox record commits atomically with the order
-    sqlx::query!(
-        "INSERT INTO outbox_events (aggregate_id, event_type, payload) VALUES ($1, $2, $3)",
-        order.id,
-        "order.created",
-        serde_json::to_value(&order)?,
-    )
-    .execute(&mut *tx)
-    .await?;
+- Kafka: set `enable.idempotence=true` + `acks=all` on the producer config.
+- AMQP: use publisher confirms (`channel.confirm_select`) and retry on nack.
+- NATS JetStream: set `Nats-Msg-Id` header for server-side dedupe.
 
-    tx.commit().await?;
-    Ok(order)
-}
+## Output Format
 
-// Step 2: Relay worker - polls outbox, publishes to Kafka, marks sent
-async fn run_outbox_relay(pool: &PgPool, kafka: &KafkaProducer, token: CancellationToken) {
-    let mut interval = tokio::time::interval(Duration::from_secs(5));
-    loop {
-        tokio::select! {
-            _ = token.cancelled() => return,
-            _ = interval.tick() => {
-                let events = sqlx::query!("SELECT * FROM outbox_events WHERE published_at IS NULL LIMIT 100")
-                    .fetch_all(pool).await.unwrap_or_default();
+Workflows parse this contract.
 
-                for ev in events {
-                    if kafka.produce(&ev.event_type, &ev.payload.to_string().into_bytes()).await.is_ok() {
-                        let _ = sqlx::query!(
-                            "UPDATE outbox_events SET published_at = NOW() WHERE id = $1", ev.id
-                        ).execute(pool).await;
-                    }
-                }
-            }
-        }
-    }
-}
+```
+Findings:
+  - [Severity: {Blocker|High|Medium|Low}] [Category: {Idempotency|DLQ|Retry|Outbox|Ack|Producer|Schema}]
+    File: <path>:<line>
+    Issue: <one-line description>
+    Fix: <prescribed change, referencing a Pattern by name>
+
+Risk Summary:
+  Message Loss Risk: {None|Low|Medium|High}
+  Duplicate Processing Risk: {None|Low|Medium|High}
+  Poison Pill Risk: {None|Low|Medium|High}
+
+Stack Detected: {Kafka(rdkafka) | AMQP(lapin) | NATS | Unknown}
+Notes: <unresolved questions, partial info, or "n/a">
 ```
 
-## Stack-Specific Guidance
-
-- **rdkafka**: Rust binding to librdkafka - high performance, production-grade Kafka client; disable auto-commit and commit after successful processing
-- **lapin**: AMQP client for RabbitMQ - async, tokio-native; use `basic_ack` after processing, `basic_nack` with requeue for transient failures
-- **Graceful shutdown**: Use `CancellationToken` - cancel on SIGTERM, workers drain in-progress tasks before stopping
-- **Scheduled tasks**: Use `tokio-cron-scheduler` for cron-style periodic tasks instead of raw `tokio::time::interval`
+If the broker library is unknown, emit `Stack Detected: Unknown` and review against generic Rules only.
 
 ## Avoid
 
-- Passing large structs or DB models as task payloads - serialize only IDs and primitives
-- Tasks without a timeout - always set timeouts on spawned work
-- Ignoring send errors on channels - log or handle failures explicitly
-- Unbounded channels for fan-out - use bounded channels with backpressure
-- Auto-committing Kafka offsets before processing - commit only after successful handler execution
+- Auto-commit / auto-ack enabled while a handler can fail.
+- Publishing inside a DB transaction (broker call is not transactional).
+- Dedup table inserted after the side effect rather than before.
+- Retrying permanent errors (validation, deserialization) - they will never succeed.
+- DLQ without a key/headers carrying the original failure reason.
+- Reusing the same consumer group ID across environments (prod consumes staging offsets).
+- Payloads embedding entire DB rows or timestamps used for dedup hashing.
