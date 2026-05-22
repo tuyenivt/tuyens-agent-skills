@@ -1,6 +1,6 @@
 ---
 name: task-react-review-perf
-description: React / Next.js performance review: Core Web Vitals, bundle, hydration, re-render storms, TanStack Query, Suspense, RSC boundaries, ISR/revalidate.
+description: "React / Next.js perf review: Core Web Vitals, bundle, hydration, render churn, RSC boundaries, TanStack Query, Suspense, ISR."
 agent: react-performance-engineer
 metadata:
   category: frontend
@@ -9,236 +9,187 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # React Performance Review
 
-## Purpose
-
-React-aware performance review that names Core Web Vitals (LCP, INP, CLS), bundle splitting via `next/dynamic` / `React.lazy`, Server vs Client Component boundaries, RSC streaming via Suspense, TanStack Query cache keys / `staleTime` / `gcTime`, `useMemo` / `useCallback` discipline, hydration cost, `next/image` and `next/font` directly instead of routing through the generic frontend adapter. Produces findings with measured or estimated impact (LCP delta, bundle delta, render count, hydration time) and concrete fixes using TypeScript-strict React idioms.
-
-This workflow is the stack-specific delegate of `task-code-review-perf` for React. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-perf` for React / Next.js / Vite. Preserves the parent contract (invocation, diff resolution, output shape).
 
 ## When to Use
 
-- Reviewing a Next.js or Vite + React PR or branch for performance regressions
-- Investigating a slow page, route, or component (high INP, slow LCP, jank during interaction)
-- Pre-merge perf pass on changes touching the bundle (new dependency, new route, new client component), data fetching, or rendering boundaries
-- Quarterly Core Web Vitals / bundle-size sweep against RUM-flagged routes
+- Reviewing a Next.js or Vite + React PR / branch for perf regressions
+- Investigating a slow page or interaction (high INP, slow LCP, scroll jank, hydration cost)
+- Pre-merge pass on changes touching bundle, data fetching, or rendering boundaries
+- Quarterly Core Web Vitals / bundle sweep against RUM-flagged routes
 
 **Not for:**
 
-- General React code review (use `task-code-review` or `task-react-review`)
-- Security review (use `task-code-review-security` or `task-react-review-security`)
-- Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-react-implement`)
+- General review (`task-react-review`)
+- Security review (`task-react-review-security`)
+- Production incident (`/task-oncall-start`)
+- Pre-implementation design (`task-react-implement`)
+
+## Severity Rubric
+
+Steady-state user impact, not "how scary the code looks".
+
+| Severity   | Definition                                                                                                                                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **High**   | LCP / INP regression visible to every cold visitor: heavy lib in initial bundle (>50KB gzip, no split), `"use client"` at layout root pulling the tree client-side, hero `<img>` blocking LCP, missing virtualization on 1k+ rows, sync work on input (>200ms INP), hydration mismatch, `force-dynamic` on cacheable route. |
+| **Medium** | Degraded p95 / wasted re-renders: context value rebuilt every render with many consumers, identity-unstable props on `React.memo` child, barrel imports defeating tree-shake, `staleTime: 0` on hot query, CSS-in-JS added to a Tailwind project, missing `next/image`. |
+| **Low**    | Allocation / churn quick wins: inline style objects on hot rows, `useMemo` on primitives, `console.log` in render, missing `next/font`, missing `loading="lazy"` below-the-fold. |
+
+Tiebreaker: "would RUM flag this on a typical mobile cold visit?" yes -> High; "drag next quarter's perf budget?" yes -> Medium.
 
 ## Depth Levels
 
-| Depth      | When to Use                                                        | What Runs                                                                |
-| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `quick`    | Single component or route ("is this re-rendering ok?")             | Steps 4 + 5 only; render hotspots + bundle deltas                        |
-| `standard` | Default - full React perf review                                   | All steps                                                                |
-| `deep`     | RUM-driven review with Core Web Vitals data, profiling, or budgets | All steps + capacity guidance, route budget plan, perf-test instructions |
-
-Default: `standard`.
+| Depth      | When                                                          | Runs                                       |
+| ---------- | ------------------------------------------------------------- | ------------------------------------------ |
+| `quick`    | Single component or route                                     | Steps 4 + 5 only (renders + bundle)        |
+| `standard` | Default - full React perf review                              | Steps 1-9                                  |
+| `deep`     | RUM-driven (Core Web Vitals data / profiling / route budgets) | All steps + capacity guidance + budget plan |
 
 ## Invocation
 
 Mirrors `task-code-review-perf`:
 
-| Invocation                         | Meaning                                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-react-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-react-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-react-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                         | Meaning                                                              |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `/task-react-review-perf`          | Review current branch vs its base; fails fast on trunk               |
+| `/task-react-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                           |
+| `/task-react-review-perf pr-<N>`   | Review PR head in local branch `pr-<N>` (user runs the fetch first)  |
 
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-perf` or `task-react-review`, the parent passes the precondition handle plus already-read diff/log; skip Steps 1-3 re-detection.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to confirm React. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-react-review` (parent already detected React), accept the pre-confirmed stack and skip re-detection. If the detected stack is not React, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes React 19+ and TypeScript strict mode.
+Use skill: `behavioral-principles`. Governs every step that follows.
 
-Then detect the framework:
+### Step 2 - Confirm Stack and Detect Framework
 
-- `next.config.{js,ts,mjs}` present / `next` in `package.json` deps → **Next.js App Router** (assume App Router unless `pages/` directory present without `app/` - then Pages Router)
-- `vite.config.{js,ts}` present / `vite` in deps without `next` → **Vite + React Router**
-- Both present → ask the user which surface this PR targets; do not guess
+Use skill: `stack-detect`. If parent already detected React, accept the handoff. If not React, stop and route to `/task-code-review-perf`. This workflow assumes React 18+ (RSC) or 19 (`use()`, `useOptimistic`, `useFormStatus`).
 
-The framework decision drives which checklists in Steps 4-7 apply. Record `Framework: Next.js (App Router) | Next.js (Pages Router) | Vite + React Router` for the Summary block. Also record `React: <version>` (RSC requires 18+; React 19 unlocks `useOptimistic`, `useFormStatus`, the `use()` hook for Suspense data, and Server Action improvements).
+Record for the Summary block:
 
-### Step 2 - Resolve the Diff Under Review
+- `Framework:` Next.js (App Router) | Next.js (Pages Router) | Vite + React Router
+- `Data Layer:` Server Components + `fetch` | TanStack Query | mixed
+- `Styling:` Tailwind | CSS Modules | CSS-in-JS (`styled-components` / `emotion`)
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
+Heuristics: `next.config.*` -> Next.js (App Router unless `pages/` without `app/`); `vite.config.*` without `next` -> Vite; both present -> ask the user.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+### Step 3 - Resolve Diff and Read Surface
 
-### Step 3 - Read the Performance Surface
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once; reuse. Skip entirely if parent passed the handle.
 
-Before applying the checklists, open the files that govern rendering, hydration, bundle, and data fetching so impact estimates ground in real code:
+Open the files that govern rendering, bundle, and data fetching so impact estimates ground in real code:
 
-**Next.js App Router surface:**
+- **Next.js App Router:** changed `app/**/{page,layout,loading,error}.tsx` and `route.ts` (note `"use client"`), Server Action sites (`"use server"`), `next.config.*` (`images`, `experimental`), `package.json` deps, Suspense boundaries
+- **Vite + React Router:** changed components (all client), `vite.config.*` chunks, `src/router.tsx` lazy routes / Suspense, `QueryClient` config
+- Both: TanStack Query call sites, list components (rows + virtualization), image / font usage
 
-- Every changed `app/**/page.tsx`, `app/**/layout.tsx`, `app/**/loading.tsx`, `app/**/error.tsx`, `app/**/route.ts` - note Server vs Client (`"use client"`) directive at the top
-- Every changed component file - check for `"use client"`; trace the Client Component subtree (every import down from a Client Component is also Client)
-- `next.config.{js,ts,mjs}` - `images`, `experimental`, `serverExternalPackages`, `webpack` overrides, `reactStrictMode`, output mode (`standalone` / `export`)
-- Server Actions (functions marked `"use server"`) and their callers - note `revalidatePath` / `revalidateTag` calls
-- Data fetching: `fetch` calls in Server Components (note `cache` / `next.revalidate` / `next.tags` options), TanStack Query usage in Client Components, `unstable_cache` wrappers
-- `app/**/*.tsx` Suspense boundaries (`<Suspense fallback={...}>`) and streaming intent
-- `package.json` for new dependencies - flag any client-side dependency > 50KB minified+gzipped
-
-**Vite + React Router surface:**
-
-- Every changed component file - all components run client-side; no Server Component boundary to track
-- `vite.config.{js,ts}` - plugins, `build.rollupOptions`, manual chunks, code-split config
-- `src/router.tsx` / `src/main.tsx` - route definitions, `lazy()` route loaders, `<Suspense>` boundaries
-- TanStack Query setup (`QueryClient` config, default `staleTime` / `gcTime`)
-- `package.json` for new client dependencies
-
-For each finding produced later, cite a real `file:line`. If the diff is small but ripples through code that is not in the diff (a new Client Component imports a heavy library that becomes part of every page that uses it), read the unchanged file too - the regression lives there.
+If a small diff ripples through unchanged code (new caller of a heavy library, new Client Component importing a barrel), read the unchanged file too. Cite real `file:line` in every finding.
 
 ### Step 4 - Render and Re-Render Hotspots
 
-Canonical hook / component-shape discipline lives in `react-hooks-patterns` and `react-component-patterns`. This step is a review-scoped scan for the diff:
+Use skill: `react-hooks-patterns`. Use skill: `react-component-patterns`. Workflow-specific verifications:
 
-- [ ] **`"use client"` placement (Next.js)**: directive at the leaf of the tree, not the root - a layout-level `"use client"` pulls all descendants client-side and defeats RSC. Also flag unnecessary `"use client"` (no hooks / events / browser APIs)
-- [ ] **Identity instability in props**: `<Child config={{...}} onClick={() => ...} items={[...]}>` triggers re-render of memoized children every parent render. Lift to module scope, `useMemo`, or `useCallback` when the child is `React.memo`-wrapped. `React.memo` is a no-op when props are unstable
-- [ ] **`useMemo` / `useCallback` on cheap values**: memoizing primitives costs more than recomputation. Only memo when value is a stable ref for `React.memo` children, computation is >1ms, or it gates an expensive `useEffect` dependency
-- [ ] **Context value rebuilt every render**: `<Provider value={{ a, b }}>` re-renders every consumer. Memoize via `useMemo` or split into state vs dispatch contexts - see `react-state-patterns`
-- [ ] **`useEffect` misuse**: derived state (`useEffect(() => setX(a + b))` → compute during render); event handling (`useEffect(() => { if (clicked) ... })` → call from handler); missing cleanup for subscriptions / intervals / observers
-- [ ] **List keys**: missing `key` or `key={index}` on a reorderable / filterable list breaks reconciliation
-- [ ] **Inline style objects in hot paths**: `style={{ color: 'red' }}` allocates per render. Prefer Tailwind / CSS Modules / cva (constant class strings)
-- [ ] **Heavy sync work in render** (parsing, sorting, filtering large arrays, JSON serialization): move to `useMemo` with real deps or precompute outside the component
-- [ ] **`useState` initializer not lazy when expensive**: `useState(expensiveCompute())` runs every render - use `useState(() => expensiveCompute())`
-- [ ] **Inline anonymous components inside parent body**: `function Row({...}) {...}` declared in render makes `React.memo(Row)` a no-op, destroys inner `useState` between renders, and breaks reconciliation. Move to module / sibling scope
-- [ ] **List virtualization absent**: simple rows × 1000+ or complex rows × 100+ without `@tanstack/react-virtual` / `react-window`
+- `"use client"` at the leaf, not the layout root - root placement pulls the whole subtree client-side and defeats RSC
+- Identity-stable props on `React.memo` children: inline `{...}`, `[...]`, `() => ...` makes `memo` a no-op
+- Context value memoized; high-fan-out contexts split into state + dispatch (`react-state-patterns`)
+- No `useEffect` for derived state (compute in render) or event handling (call from handler)
+- List `key` is a stable id, not `index`, for reorderable / filterable lists
+- Virtualize when simple rows > 1000 or complex rows > 100 (`@tanstack/react-virtual`, `react-window`)
+- Heavy sync work in render moved to `useMemo` with real deps, or precomputed; `useState` initializer lazy when expensive
+- Components defined at module scope, not inside parent render body
+- `useMemo` / `useCallback` only when the value gates `React.memo` / `useEffect` deps or computation >1ms - not on primitives
+
+```tsx
+// BAD: inline objects + memo no-op + Row redeclared every render
+function List({ items }) {
+  function Row({ item }) { return <div>{item.name}</div>; }
+  return items.map(i => <Row key={i.id} item={i} config={{ dense: true }} />);
+}
+
+// GOOD: stable identity, Row hoisted, memo effective
+const Row = memo(({ item, config }) => <div>{item.name}</div>);
+const ROW_CONFIG = { dense: true };
+function List({ items }) {
+  return items.map(i => <Row key={i.id} item={i} config={ROW_CONFIG} />);
+}
+```
 
 ### Step 5 - Bundle Size and Code Splitting
 
-Use skill: `react-component-patterns` for split boundaries; use skill: `react-nextjs-patterns` for Next.js-specific dynamic imports.
+Use skill: `react-component-patterns`. Use skill: `react-nextjs-patterns` (Next.js).
 
-- [ ] **New dependencies measured**: any new entry in `dependencies` (not `devDependencies`) gets a size note. Use `bundle-phobia` mentally / `pnpm why <pkg>` for transitive cost. Flag anything > 50KB minified+gzipped that is not lazy-loaded
-- [ ] **Heavy libraries pulled into the client bundle eagerly**: charting (`recharts`, `chart.js`, `apexcharts`), rich text (`tiptap`, `slate`, `quill`), date pickers (`react-datepicker` w/ moment), `moment` (use `date-fns` / `dayjs` / native `Intl`), `lodash` (use `lodash-es` and tree-shake; better, native or `radash`)
-- [ ] **`next/dynamic` for route-level heavy components**: `const Editor = dynamic(() => import('./Editor'), { ssr: false, loading: () => <Skeleton /> })` for any component used on a single route, gated by user interaction, or only rendered conditionally
-- [ ] **`React.lazy` + `Suspense` for Vite**: `const Editor = lazy(() => import('./Editor'))` wrapped in `<Suspense fallback={...}>`; route-level lazy via React Router `lazy:` route option
-- [ ] **Barrel-file imports defeating tree-shake**: `import { X } from '@/components'` where `@/components/index.ts` re-exports 50 things drags the whole barrel in if not configured for tree-shaking. Prefer direct path imports (`@/components/X`) on the hot path
-- [ ] **Polyfills / shims duplicated**: `core-js`, regenerator-runtime, `whatwg-fetch` duplicated across deps; check `package.json` `browserslist` is sane
-- [ ] **CSS-in-JS runtime cost**: `styled-components` / `emotion` add runtime cost for styles + an extra render pass on hydration; flag as a Medium finding when added to a project that was Tailwind / CSS Modules. Tailwind / CSS Modules are zero-runtime; cva is build-time class concat
-- [ ] **Tree-shake friendly imports**: `import isEqual from 'lodash/isEqual'` (or `lodash-es`); never `import _ from 'lodash'`. `import { format } from 'date-fns'` not `import * as df from 'date-fns'`. Named imports also matter for large libs like `recharts`, `framer-motion`, `@radix-ui/*` - `import * as recharts from 'recharts'` pulls every chart variant even if the diff uses one
-- [ ] **Charting / rich-editor / map libraries dynamically imported**: `recharts`, `chart.js`, `apexcharts`, `tiptap`, `slate`, `quill`, `mapbox-gl`, `leaflet` rarely belong in the initial bundle - they belong below the fold or behind interaction. Wrap with `next/dynamic(() => import('./ReportChart'), { ssr: false })` (Next.js) or `lazy()` + `<Suspense>` (Vite). Flag eager imports as a Medium even when the page genuinely uses the chart - the LCP impact is the same
+- Every new `dependencies` entry sized; flag >50KB gzip not lazy-loaded
+- Charting (`recharts`, `chart.js`), rich text (`tiptap`, `slate`, `quill`), maps (`mapbox-gl`, `leaflet`), date pickers behind `next/dynamic({ ssr: false })` (Next) or `lazy()` + `<Suspense>` (Vite) - even when the page uses the chart, the LCP impact is the same
+- Tree-shake-friendly imports: `import { format } from 'date-fns'`, `import isEqual from 'lodash/isEqual'`, never `import * as X from 'recharts'`
+- Barrel `index.ts` imports on the hot path replaced with direct paths
+- `moment` -> `date-fns` / `dayjs` / `Intl`; CSS-in-JS flagged when added to a zero-runtime project
 
-> **Impact heuristic - bundle blast radius.** A 50KB gzip dependency on the home route adds ~50KB transferred on every cold visit (every visitor, every device). On 3G that is ~1.3s longer download; on cable ~50ms; the worst case dominates LCP for budget-constrained users. Phrase the impact as "+<N>KB on every cold visitor of every route that imports this," not "the bundle got bigger."
+Impact phrasing: "+<N>KB gzip on every cold visit to <route>", not "the bundle got bigger".
 
 ### Step 6 - Data Fetching and Caching
 
-Canonical fetching / caching idioms live in `react-data-fetching`. Review-scoped scan:
+Use skill: `react-data-fetching`. Workflow-specific verifications:
 
-**Next.js (Server Components + `fetch`):**
+**Next.js Server Components:**
 
-- [ ] **`fetch` cache options explicit**: every Server Component `fetch(url, { cache, next: { revalidate, tags } })` declares intent (Next 15+ defaults to `no-store`); non-fetch IO (ORM / Redis) wrapped in `unstable_cache(fn, key, {...})` else it hits DB every render
-- [ ] **Revalidation granularity**: `revalidateTag('orders')` after mutation, not full-route `revalidatePath`
-- [ ] **Parallelism**: independent fetches via `Promise.all` (not sequential `await`); N+1 fan-out (`Promise.all(items.map(...))`) recommend a batched endpoint - pure parallelism doesn't save the DB
-- [ ] **Suspense streaming**: long fetches inside `<Suspense fallback>` so the rest streams. **LCP element must not sit behind Suspense fallback** - that defers the LCP itself; render eagerly with `<Image priority>`
-- [ ] **`use(promise)` (React 19)** for deep consumers instead of waterfalling `await` chains
-- [ ] **No client-side `useEffect` fetch when a Server Component parent could fetch** and pass props down (request waterfall: server render → hydrate → client fetch)
+- Every `fetch(url, { cache, next: { revalidate, tags } })` declares intent (Next 15+ default is `no-store`); non-fetch IO wrapped in `unstable_cache`
+- Independent fetches via `Promise.all`; N+1 `Promise.all(items.map(...))` flagged - recommend a batched endpoint
+- LCP element rendered eagerly, not behind `<Suspense fallback>`
+- `revalidateTag` over full-route `revalidatePath`
+- No `useEffect`-fetch in a Client Component when a Server Component parent could fetch and pass props
 
-**TanStack Query (both frameworks):**
+**TanStack Query:**
 
-- [ ] **`staleTime` / `gcTime` not set** - default `staleTime: 0` refetches on every mount
-- [ ] **Query keys**: stable structured arrays (`['orders', { ownerId, status }]`); never JSON-stringified
-- [ ] **Mutation invalidation explicit** via `useMutation({ onSuccess: () => queryClient.invalidateQueries(...) })`; React 19 `useOptimistic` / `onMutate` for high-latency mutations
-- [ ] **Parallel via `useQueries`** for fan-out; `prefetchQuery` on hover / focus for likely-next routes
-- [ ] **No `fetch()` in render body** - re-fires every render
+- `staleTime` / `gcTime` set; query keys are stable structured arrays, not JSON strings
+- Mutation invalidation explicit (`onSuccess: () => queryClient.invalidateQueries(...)`); `useOptimistic` for high-latency mutations
+- `useQueries` for parallel fan-out; `prefetchQuery` on hover for likely-next routes
 
-### Step 7 - Core Web Vitals and Page Load
+### Step 7 - Core Web Vitals
 
 _Skipped at `quick` depth unless the diff touches a route, layout, or assets._
 
-**LCP (Largest Contentful Paint):**
+**LCP:**
 
-- [ ] **`next/image` for all images**: `<Image src={...} alt={...} priority={isHero} />` - automatic responsive sizing, modern format conversion (AVIF/WebP), lazy-load by default. Flag raw `<img>` for hero / above-the-fold images. `priority` on the LCP image marks it for high-priority preload
-- [ ] **Vite equivalent**: `vite-imagetools` or manual `<img loading="lazy" srcset="..." sizes="...">` with explicit width / height. Hero image should not be lazy
-- [ ] **`width` / `height` attributes** on every image (prevents CLS even when async-decoded); `next/image` enforces this
-- [ ] **Hero image not deferred**: above-the-fold image must not be inside a Client Component that lazy-mounts, gated by Suspense for slow data, or set to `loading="lazy"`
-- [ ] **`next/font` for fonts**: `import { Inter } from 'next/font/google'` self-hosts and preloads; flag `<link href="https://fonts.googleapis.com/...">` in `<head>` for new code (extra DNS lookup + render-blocking CSS)
-- [ ] **`font-display: swap`**: webfonts use swap (default in `next/font`); flag `font-display: block` for above-the-fold text
+- `next/image` with `priority` on the hero; raw `<img>` for above-the-fold flagged; Vite uses `vite-imagetools` or explicit `srcset`/`sizes`/`width`/`height`
+- `next/font` for fonts; flag `<link href="fonts.googleapis.com">` (DNS lookup + render-blocking CSS)
+- Hero not gated by Suspense, lazy mount, or `loading="lazy"`
 
-**INP (Interaction to Next Paint):**
+**INP:**
 
-- [ ] **No long synchronous tasks on user input**: form submit handler doing 50ms of synchronous work blocks paint. Defer via `startTransition` (React 18+) for state updates that can be interrupted
-- [ ] **`useTransition` for expensive state updates**: `const [isPending, startTransition] = useTransition(); startTransition(() => setFilters(next))` lets React keep the previous UI responsive
-- [ ] **`useDeferredValue` for filtering / search**: render a stale UI on the new input value until the heavy re-render finishes
-- [ ] **No long-running effects on click**: heavy computation in a click handler should be moved to a worker (`comlink` / native `Worker`), a network request, or `requestIdleCallback`
+- `useTransition` for expensive state updates triggered by input; `useDeferredValue` for filter / search re-renders
+- Heavy click handlers offloaded to a worker, network request, or `requestIdleCallback`
 
-**CLS (Cumulative Layout Shift):**
+**CLS:**
 
-- [ ] **Reserved space for async content**: skeletons / placeholders with the same dimensions as the final content (`h-64 w-full` for an image slot, fixed-height containers for ads / embeds)
-- [ ] **No layout thrash from late-loading fonts**: `next/font` solves; for raw fonts use `font-display: swap` + `size-adjust` / `ascent-override` font metrics overrides
-- [ ] **Late-injecting elements at the top of the page**: A/B test snippets, banners, cookie modals that push content down trigger CLS - reserve space or load below the fold
+- Reserved dimensions on async slots (skeleton with same `h-`/`w-`); `font-display: swap` (default in `next/font`)
+- A/B / banner / modal scripts don't push content; load below the fold or reserve space
 
-### Step 8 - Hydration and Streaming (Next.js)
+### Step 8 - Hydration, Streaming, ISR (Next.js)
 
-_Skipped on Vite + React Router projects (no SSR / hydration)._
+_Skipped on Vite-only projects._
 
-- [ ] **No hydration mismatch sources**: `Date.now()` / `Math.random()` / `new Date().toString()` rendered server-side without `suppressHydrationWarning` (use only for timestamps, not as a fix-all); access to `window` / `document` / `localStorage` in render body of a Server Component or unguarded Client Component
-- [ ] **`useEffect` for browser-only APIs**: `window.matchMedia`, `localStorage`, `IntersectionObserver` accessed inside `useEffect` (or guarded by `typeof window !== 'undefined'`), never in render
-- [ ] **Streaming via `<Suspense>`**: long-running data fetches isolated in their own `<Suspense fallback>` so the route shell streams first; not gating the whole page on the slowest query
-- [ ] **Loading UI per route segment**: `app/**/loading.tsx` defined for routes with non-trivial data fetching - the file becomes the implicit Suspense fallback
-- [ ] **No `dynamic = 'force-dynamic'` unless required**: opting a route out of static generation makes every request render server-side; only use when the data is genuinely per-request and not cacheable
+- No hydration mismatch sources in render: `Date.now()`, `Math.random()`, `window` / `localStorage` access; browser APIs go inside `useEffect`
+- Slow data isolated in `<Suspense fallback>` so the route shell streams first; `loading.tsx` per segment with non-trivial fetches
+- ISR / SSG / SSR chosen deliberately: cached `fetch` (default) for stable content, `next.revalidate: N` for periodic refresh, `cache: 'no-store'` / `force-dynamic` only when truly per-request
+- `runtime = 'edge'` for low-TTFB handlers without Node APIs; middleware kept thin (no uncached DB / HTTP)
 
-### Step 9 - Caching, ISR, and Edge
+### Step 9 - Observability Hand-off and Report
 
-_Skipped at `quick` depth and on Vite projects._
+_Observability check skipped at `quick` depth._
 
-- [ ] **ISR vs SSG vs SSR chosen deliberately**: static (default in App Router with cached `fetch`) for content that changes occasionally; ISR via `next.revalidate: N` for periodic refresh; SSR (`cache: 'no-store'` or `dynamic = 'force-dynamic'`) only when truly per-request
-- [ ] **Edge runtime when appropriate**: `export const runtime = 'edge'` for Route Handlers / Middleware that need low TTFB globally and do not need Node APIs (no `fs`, no native modules); Node runtime for everything else
-- [ ] **`revalidateTag` over `revalidatePath`** for fine-grained invalidation; avoids invalidating an entire route's cache when only one entity changed
-- [ ] **Middleware kept thin**: `middleware.ts` runs on every matched request; heavy work in middleware blocks every navigation. Avoid DB / external HTTP in middleware unless cached aggressively
+Confirm presence only (depth belongs to `task-react-review-observability`):
 
-### Step 10 - Observability for Perf (delegation hand-off)
+- `web-vitals` reporter wired, RUM SDK active, or Sentry browser SDK with performance enabled on the changed routes
+- `instrumentation.ts` exporting OTel (Next.js) when server work is non-trivial
+- No `console.log` left in render path of a hot route (if visible in diff)
 
-_Skipped at `quick` depth._
+Gaps -> Low / Recommendation with `[Delegate] -> task-react-review-observability`.
 
-This step is intentionally narrow - depth on observability belongs to `task-react-review-observability`. From a perf perspective, confirm only:
-
-- [ ] Critical user journeys reachable from this PR have **some** instrumentation (`web-vitals` reporter wired, RUM SDK active, Sentry browser SDK with performance enabled, or Next.js `instrumentation.ts` exporting OTel); if not, raise as a Low/Recommendation finding and delegate to `task-react-review-observability` rather than dictating the design here
-- [ ] No `console.log` left in render path of a hot route - if visible in the diff. If neither is in the diff, skip
-
-Anything beyond presence/absence (sample rates, attribution, route segmentation) → `task-react-review-observability` owns it. Note the gap, do not duplicate the audit here.
-
-
-### Step 11 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack confirmed as React; framework (Next.js App Router / Pages Router / Vite) and React version recorded before any framework-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Performance surface read directly (changed components, layouts, route handlers, config, data-fetching modules)
-- [ ] `react-hooks-patterns` and `react-component-patterns` consulted for render hotspots
-- [ ] `"use client"` boundary placement audited (Next.js); leaf-level placement preferred
-- [ ] Bundle deltas assessed for any new `dependencies` entry; tree-shake-friendly imports verified
-- [ ] `react-data-fetching` consulted for cache options, query keys, mutation invalidation
-- [ ] N+1 fan-out (`Promise.all(items.map(...))`) flagged when present; batched-query alternative recommended
-- [ ] Inline anonymous components in render bodies flagged as identity-instability hazards
-- [ ] Tree-shake hostile imports (`import * as X from 'recharts' / 'date-fns' / 'lodash'`) flagged
-- [ ] Heavy chart / editor / map libraries gated by `next/dynamic` or `React.lazy`; eager imports flagged
-- [ ] Core Web Vitals (LCP image / fonts / CLS reservations / INP `useTransition`) checked when route or asset code changed
-- [ ] LCP element verified not deferred behind `<Suspense fallback>`
-- [ ] Hydration / streaming checks applied for Next.js; Vite section skipped on Vite-only projects
-- [ ] ISR / SSG / SSR / Edge runtime decisions reviewed for changed routes (Next.js)
-- [ ] Every finding states impact - measured (`LCP: 2.8s -> 1.4s`) when RUM data exists, estimated otherwise (`+45KB gzip on every cold visit to /dashboard`) - never just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and budget plan
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Then use skill: `review-report-writer` with `report_type: review-perf`. Write the report to file; print the confirmation line.
 
 ## Output Format
 
@@ -247,6 +198,8 @@ Write the fully assembled review output to the report file before ending the ses
 
 **Stack Detected:** React <version> / TypeScript <version>
 **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
+**Data Layer:** Server Components + `fetch` | TanStack Query | mixed
+**Styling:** Tailwind | CSS Modules | CSS-in-JS
 **Scope:** Frontend (React)
 **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
@@ -255,9 +208,9 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the React idiom: `"use client"` at root of layout pulls 800KB into bundle, missing `next/image` on hero, context value rebuilt every render, `useEffect` for derived state, etc.]
-- **Impact:** [estimated effect - e.g., "+120KB gzip on every cold visit to /dashboard" or measured "LCP 2.8s -> 1.4s after fix"]
-- **Fix:** [specific React change with code example - leaf `"use client"`, `next/dynamic`, `useMemo` context value, etc.]
+- **Issue:** [name the React idiom: `"use client"` at layout root, hero `<img>` blocking LCP, missing virtualization on 1k+ rows, context value rebuilt every render, `recharts` eager-imported, hydration mismatch from `Date.now()`, etc.]
+- **Impact:** [measured (`LCP 2.8s -> 1.4s`) or estimated (`+120KB gzip on every cold visit to /dashboard`, `~40 re-renders per scroll frame`)]
+- **Fix:** [specific React change with code - leaf `"use client"`, `next/dynamic({ ssr: false })`, `useMemo` context value, `@tanstack/react-virtual`, etc.]
 
 ### Medium Impact
 
@@ -267,34 +220,49 @@ Write the fully assembled review output to the report file before ending the ses
 
 [Same structure]
 
-_Omit sections with no findings._
+_Omit empty sections._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Adopt route-level `next/dynamic` for editor pages", "Split filters context into state + dispatch contexts", "Add bundle budget to CI"]
+[Structural items not tied to a single finding - route-level `next/dynamic` for editor pages, split filters context into state + dispatch, add bundle budget to CI, adopt `react-virtual` across list views.]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, build config change, or perf-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Move `\"use client\"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx"]
-2. **[Delegate]** [High] [scope: build] - [one-line action, e.g., "Add bundle budget for /dashboard route - spawn build-config subagent"]
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: build] - [one-line action]
 3. **[Implement]** [Medium] file:line - [one-line action]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
+
+## Self-Check
+
+- [ ] Step 1 - `behavioral-principles` loaded
+- [ ] Step 2 - stack confirmed React; `Framework`, `Data Layer`, `Styling` recorded
+- [ ] Step 3 - `review-precondition-check` ran or parent handle accepted; diff + log read once; performance surface opened (changed routes, components, config, data-fetching sites)
+- [ ] Step 4 - `react-hooks-patterns` + `react-component-patterns` consulted; `"use client"` placement, identity-stable props, context memo, list keys / virtualization, inline-component hazard audited
+- [ ] Step 5 - bundle deltas sized per new dep; tree-shake-hostile imports flagged; heavy libs gated by `next/dynamic` / `React.lazy`
+- [ ] Step 6 - `react-data-fetching` consulted; `fetch` cache intent, Server-vs-Client fetch placement, TanStack `staleTime` / keys / invalidation audited
+- [ ] Step 7 - LCP image / fonts, INP `useTransition` / `useDeferredValue`, CLS reservations checked when routes or assets changed (skipped at `quick`)
+- [ ] Step 8 - hydration sources, Suspense streaming, ISR / SSG / SSR / runtime decisions reviewed (Next.js only; skipped on Vite)
+- [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
+- [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
+- [ ] Depth honored: `quick` ran only Steps 4-5; `standard` ran 1-9; `deep` adds capacity + budget plan
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit when no actionable findings)
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting issues without naming the React idiom ("this is slow" vs "context value rebuilt every render; wrap with `useMemo` or split into two contexts")
-- Recommending generic frontend advice when a React pattern applies (say "use `next/dynamic`", not "lazy load")
-- Suggesting `useMemo` / `useCallback` everywhere as a default - they cost more than they save on cheap values; only use when measurable
-- Suggesting `React.memo` without checking that the props are stable - it is a no-op when the parent passes new objects/arrays/functions
-- Recommending CSS-in-JS for "developer experience" when zero-runtime alternatives (Tailwind / CSS Modules / cva) match the project's conventions
-- Approving `"use client"` at the root of a layout that has no client-only need - it pulls the whole tree into the client bundle and defeats RSC
-- Approving `dynamic = 'force-dynamic'` on a route without a per-request reason - it disables every cache layer
-- Approving raw `<img>` for hero / above-the-fold images on Next.js - `next/image` with `priority` is the right tool
-- Conflating perf review with general code review or security review - delegate those to their workflows
-- Treating high re-render counts as inherently bad - React is fast; only investigate when a profile or interaction lag implicates re-renders
-- Recommending `useEffect(() => fetch(...), [])` in a Client Component when a parent Server Component (Next.js) could fetch and pass props down
+- State-changing git (`fetch`, `checkout`, `reset`) - the user runs these to protect uncommitted work
+- "This is slow" without naming the React idiom (`"use client"` at root, context value churn, eager chart import, missing virtualization)
+- Generic frontend advice when a React pattern applies ("use `next/dynamic`", not "lazy load")
+- `useMemo` / `useCallback` / `React.memo` as defaults - no-op when props are unstable, costlier than the recompute on primitives
+- Approving `"use client"` at the root of a layout with no client-only need
+- Approving `dynamic = 'force-dynamic'` on a cacheable route
+- Approving raw `<img>` for hero / above-the-fold on Next.js (`next/image` + `priority`)
+- Approving CSS-in-JS in a Tailwind / CSS Modules project for "DX" reasons
+- Treating high re-render counts as inherently bad - investigate only when a profile or interaction lag implicates them
+- `useEffect(() => fetch(...), [])` in a Client Component when a Server Component parent could fetch
+- Conflating perf with general / security review - delegate
+- **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): report the perf half once with `[Delegate] -> task-react-review-security` in Next Steps. Do not enumerate parallel security concerns

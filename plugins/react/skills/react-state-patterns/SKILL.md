@@ -1,6 +1,6 @@
 ---
 name: react-state-patterns
-description: React 19 state management: useState/useReducer, Zustand, Redux Toolkit, Jotai, context pitfalls, library selection.
+description: "Review React 19 state: pick useState/useReducer/Context/Zustand/Redux Toolkit/Jotai/URL, server state in TanStack Query, context re-render pitfalls."
 metadata:
   category: frontend
   tags: [react, state, zustand, redux-toolkit, jotai, context, useReducer]
@@ -9,263 +9,166 @@ user-invocable: false
 
 # React State Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. For server-cache concerns (TanStack Query / SWR) defer to `react-data-fetching` if present.
 
 ## When to Use
 
-- Choosing a state management approach for a React feature
-- Deciding between local state, context, and external stores
-- Selecting a state library (Zustand, Redux Toolkit, Jotai)
-- Reviewing existing state management for performance or correctness issues
-- Migrating from one state management approach to another
+- Choosing a mechanism for a new piece of state, or auditing an existing slice
+- Splitting a mega-context or mega-store that re-renders too widely
+- Migrating between useState, Context, Zustand, Redux Toolkit, or Jotai
 
 ## Rules
 
-- Start with the simplest state mechanism - upgrade only when proven necessary (useState > useReducer > Zustand > Redux Toolkit)
-- Context is for low-frequency values (theme, auth, locale) - never for high-frequency updates (form fields, mouse position, animations)
-- Server state belongs in TanStack Query / SWR - not in Zustand or Redux
-- Every Zustand store must have a clear domain boundary - one store per domain, not one store for the entire app
-- Derived state must be computed via selectors - never stored separately
-- State updates must be immutable - no direct mutation even when the library allows it
+- Climb the ladder only when forced: useState -> useReducer -> Context -> Zustand/Jotai -> Redux Toolkit.
+- Server data lives in TanStack Query / SWR. Never mirror it into Zustand, Redux, or Context.
+- Context carries low-frequency values (theme, auth identity, locale). Never form fields, mouse, or animation state.
+- One store per domain boundary. Cart, auth, and notifications are separate stores.
+- Derived values are selectors, not stored fields. State updates go through the library's setter; no direct mutation outside Immer-backed reducers.
+- State that should survive refresh, share, or back-button belongs in the URL, not memory.
 
 ## Patterns
 
-### State Mechanism Selection
+### Mechanism Selection
 
-| Mechanism      | When to Use                                         | Example                            |
-| -------------- | --------------------------------------------------- | ---------------------------------- |
-| useState       | Simple, component-local state                       | Toggle, input value, local flag    |
-| useReducer     | Complex local state with multiple related updates   | Multi-field form, state machine    |
-| Context        | Low-frequency global values                         | Theme, auth user, locale           |
-| Zustand        | Shared client state across components               | Shopping cart, UI preferences      |
-| Redux Toolkit  | Enterprise apps needing middleware, devtools, sagas | Large team, complex workflows      |
-| Jotai          | Fine-grained atomic state                           | Independent pieces of shared state |
-| URL state      | State that should survive refresh/share             | Filters, sort, pagination, search  |
-| TanStack Query | Server state (API data)                             | User profile, product list         |
+| Mechanism      | Use for                                              | Example                            |
+| -------------- | ---------------------------------------------------- | ---------------------------------- |
+| useState       | Independent component-local values                   | Toggle, single input               |
+| useReducer     | Related local fields with coupled transitions        | Multi-field form, state machine    |
+| Context        | Low-frequency, app-wide identity values              | Theme, auth user, locale           |
+| Zustand        | Shared client state across unrelated components      | Cart, toast queue, UI prefs        |
+| Jotai          | Many independent atoms read by different consumers   | Per-row selection in a large grid  |
+| Redux Toolkit  | Large team needing middleware, time-travel, sagas    | Complex workflows, audited apps    |
+| URL            | Shareable, bookmarkable, back-button-safe state      | Filters, sort, page, search query  |
+| TanStack Query | Server data (fetch, cache, revalidate)               | User profile, product list         |
 
-### useState and useReducer
-
-**useState** for independent state values:
+### useReducer for coupled fields
 
 ```tsx
-const [isOpen, setIsOpen] = useState(false);
-const [search, setSearch] = useState("");
-```
+type Action =
+  | { type: "setCategory"; value: string }
+  | { type: "setSort"; value: string }
+  | { type: "reset" };
 
-**useReducer** for related state with complex transitions:
-
-```tsx
-interface FilterState {
-  category: string;
-  priceRange: [number, number];
-  sortBy: string;
-  page: number;
-}
-
-type FilterAction =
-  | { type: "SET_CATEGORY"; category: string }
-  | { type: "SET_PRICE_RANGE"; range: [number, number] }
-  | { type: "SET_SORT"; sortBy: string }
-  | { type: "RESET" };
-
-function filterReducer(state: FilterState, action: FilterAction): FilterState {
-  switch (action.type) {
-    case "SET_CATEGORY":
-      return { ...state, category: action.category, page: 1 }; // reset page on filter change
-    case "SET_PRICE_RANGE":
-      return { ...state, priceRange: action.range, page: 1 };
-    case "SET_SORT":
-      return { ...state, sortBy: action.sortBy };
-    case "RESET":
-      return initialState;
+function reducer(s: Filters, a: Action): Filters {
+  switch (a.type) {
+    case "setCategory": return { ...s, category: a.value, page: 1 }; // coupling: filter resets page
+    case "setSort":     return { ...s, sort: a.value };
+    case "reset":       return initial;
   }
 }
 ```
 
-### Zustand (Primary Recommendation)
+Reach for `useReducer` when one input must move several fields atomically; otherwise stay on `useState`.
+
+### Zustand store with selector subscription
 
 ```tsx
 import { create } from "zustand";
-import { devtools, persist } from "zustand/middleware";
 
-interface CartStore {
+type CartStore = {
   items: CartItem[];
-  addItem: (item: CartItem) => void;
-  removeItem: (id: string) => void;
-  clearCart: () => void;
+  add: (i: CartItem) => void;
+  remove: (id: string) => void;
   total: () => number;
-}
+};
 
-const useCartStore = create<CartStore>()(
-  devtools(
-    persist(
-      (set, get) => ({
-        items: [],
-        addItem: (item) =>
-          set(
-            (state) => ({ items: [...state.items, item] }),
-            false,
-            "cart/addItem", // action name for devtools
-          ),
-        removeItem: (id) =>
-          set(
-            (state) => ({ items: state.items.filter((i) => i.id !== id) }),
-            false,
-            "cart/removeItem",
-          ),
-        clearCart: () => set({ items: [] }, false, "cart/clear"),
-        total: () =>
-          get().items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0,
-          ),
-      }),
-      { name: "cart-storage" }, // localStorage key
-    ),
-    { name: "CartStore" }, // devtools label
-  ),
-);
+export const useCart = create<CartStore>((set, get) => ({
+  items: [],
+  add: (i) => set((s) => ({ items: [...s.items, i] })),
+  remove: (id) => set((s) => ({ items: s.items.filter((x) => x.id !== id) })),
+  total: () => get().items.reduce((n, i) => n + i.price * i.quantity, 0),
+}));
 
-// Usage with selectors (prevents unnecessary re-renders)
-function CartCount() {
-  const count = useCartStore((state) => state.items.length);
-  return <span>{count}</span>;
-}
-
-function CartTotal() {
-  const total = useCartStore((state) => state.total());
-  return <span>${total.toFixed(2)}</span>;
-}
+// Subscribe to the slice you read, not the whole store.
+const count = useCart((s) => s.items.length);
 ```
 
-### Redux Toolkit (Enterprise)
+Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store.
+
+### Context re-render pitfall
 
 ```tsx
-import { createSlice, configureStore } from "@reduxjs/toolkit";
+// Bad - every keystroke re-renders every consumer of FormContext.
+const FormContext = createContext<{ values: Record<string,string>; set: (k:string,v:string)=>void }>(...);
 
-const cartSlice = createSlice({
-  name: "cart",
-  initialState: { items: [] as CartItem[] },
-  reducers: {
-    addItem: (state, action: PayloadAction<CartItem>) => {
-      state.items.push(action.payload); // Immer handles immutability
-    },
-    removeItem: (state, action: PayloadAction<string>) => {
-      state.items = state.items.filter((i) => i.id !== action.payload);
-    },
-  },
-});
-
-const store = configureStore({
-  reducer: { cart: cartSlice.reducer },
-});
-
-// Typed hooks
-type RootState = ReturnType<typeof store.getState>;
-type AppDispatch = typeof store.dispatch;
-
-const useAppSelector = useSelector.withTypes<RootState>();
-const useAppDispatch = useDispatch.withTypes<AppDispatch>();
+// Good - form values in useReducer / React Hook Form / Zustand; Context holds only stable identity.
+const AuthContext = createContext<{ user: User; logout: () => void }>(...);
 ```
 
-### Context Pitfalls
+Splitting one Context into a value-Context and a setter-Context only helps if setters are stable; for high-frequency updates, switch mechanism.
 
-**Bad** - Context for high-frequency updates:
-
-```tsx
-const FormContext = createContext<{
-  values: Record<string, string>;
-  onChange: (field: string, value: string) => void;
-}>({ values: {}, onChange: () => {} });
-
-// Every keystroke re-renders ALL consumers of FormContext
-```
-
-**Good** - Context for low-frequency values only:
+### URL state (Next.js App Router)
 
 ```tsx
-// Theme changes rarely - context is appropriate
-const ThemeContext = createContext<{
-  theme: "light" | "dark";
-  toggle: () => void;
-}>({
-  theme: "light",
-  toggle: () => {},
-});
-
-// For form values, use React Hook Form, Zustand, or local state
-```
-
-### URL State
-
-Sync state with URL for shareable, bookmarkable UI:
-
-```tsx
-// Next.js - useSearchParams
 "use client";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 
-function ProductFilters() {
-  const searchParams = useSearchParams();
+function useFilters() {
+  const params = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
-
-  function setFilter(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set(key, value);
-    params.set("page", "1"); // reset page on filter change
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
-  const category = searchParams.get("category") || "all";
-  const sort = searchParams.get("sort") || "name";
-  // render filters...
+  const path = usePathname();
+  return (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    next.set("page", "1"); // filter change resets page
+    router.push(`${path}?${next}`);
+  };
 }
 ```
 
-## Output Format
+Read filters directly from `searchParams` per render - that *is* the source of truth.
 
-Consuming workflow skills depend on this structure.
+### Redux Toolkit (when justified)
+
+```tsx
+const cart = createSlice({
+  name: "cart",
+  initialState: { items: [] as CartItem[] },
+  reducers: {
+    add: (s, a: PayloadAction<CartItem>) => { s.items.push(a.payload); }, // Immer
+    remove: (s, a: PayloadAction<string>) => { s.items = s.items.filter(i => i.id !== a.payload); },
+  },
+});
+```
+
+Use only when the project already needs middleware (sagas, RTK Query already in tree, undo/redo, cross-cutting logging). For a greenfield slice, Zustand is shorter and cheaper.
+
+## Output Format
 
 ```
 ## React State Architecture
 
-**Stack:** {detected framework}
-**State library:** {Zustand | Redux Toolkit | Jotai | Context only}
+Stack: {framework}
+Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
 
 ### State Map
 
-| State          | Category   | Owner             | Mechanism               |
-| -------------- | ---------- | ----------------- | ----------------------- |
-| {state name}   | Local UI   | {component}       | useState                |
-| {state name}   | Shared UI  | {store/context}   | Zustand                 |
-| {state name}   | Server     | -                 | TanStack Query          |
-| {state name}   | URL        | -                 | useSearchParams         |
+| Slice           | Category   | Owner            | Mechanism        | Rationale            |
+| --------------- | ---------- | ---------------- | ---------------- | -------------------- |
+| {slice name}    | {Local UI | Shared UI | Server | URL | Identity} | {component/store} | {mechanism}    | {1-line why}         |
 
 ### Stores
 
-| Store          | Domain         | Persisted | Middleware    |
-| -------------- | -------------- | --------- | ------------- |
-| {storeName}    | {domain}       | {Yes|No}  | {devtools, persist} |
+| Store        | Domain    | Persisted | Middleware           |
+| ------------ | --------- | --------- | -------------------- |
+| {name}       | {domain}  | {Yes|No}  | {devtools, persist}  |
 
-### Recommendations
+### Findings
 
-- {recommendation with rationale}
-
-### Issues Found
-
-- [Severity: High | Medium | Low] {description}
-  - Problem: {what is wrong}
-  - Fix: {concrete correction}
+- Severity: {Critical | High | Medium | Low}
+  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate}
+  Location: {file/component or "design"}
+  Fix: {one-line action}
 ```
+
+If the project has no React sources, emit `Findings: none (no React detected)` and stop.
 
 ## Avoid
 
-- Using Redux for simple apps that only need useState + Context (unnecessary complexity)
-- Putting server state (API data) in Zustand or Redux (use TanStack Query)
-- Using Context for high-frequency updates (every consumer re-renders on every change)
-- Creating one mega-store for the entire application (couples unrelated domains)
-- Storing derived values instead of computing them with selectors
-- Direct state mutation without the library's update mechanism
-- Using Redux without Redux Toolkit (too much boilerplate)
-- Prop drilling through more than 2 levels when a store or context would be cleaner
+- Server data in Zustand/Redux/Context - use TanStack Query / SWR.
+- Context for inputs, mouse, scroll, drag, animation - re-renders every consumer.
+- One mega-store/mega-context coupling unrelated domains.
+- Storing derived values (totals, filtered lists) instead of computing in a selector.
+- Reaching for Redux when useState + one Zustand store would do.
+- Mirroring URL state into memory - the URL is the source.
+- Prop drilling past 2 levels when a store or scoped context fits.

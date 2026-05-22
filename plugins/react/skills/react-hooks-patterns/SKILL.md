@@ -1,6 +1,6 @@
 ---
 name: react-hooks-patterns
-description: React 19 hooks: custom hooks, hook rules, useEffect discipline, cleanup, refs, context, use, useOptimistic, useActionState.
+description: "Review React 19 hooks: rules of hooks, useEffect discipline, stale closures, cleanup, custom hooks, refs, context, use/useOptimistic/useActionState."
 metadata:
   category: frontend
   tags: [react, hooks, useEffect, custom-hooks, react-19, refs, context]
@@ -9,312 +9,190 @@ user-invocable: false
 
 # React Hooks Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack and React version.
 
 ## When to Use
 
-- Designing custom hooks for reusable logic
-- Reviewing hook usage for correctness (rules of hooks, dependency arrays)
-- Fixing useEffect issues (missing deps, infinite loops, missing cleanup)
-- Adopting React 19 hooks (use, useOptimistic, useActionState, useFormStatus)
-- Managing refs, context, and side effects
+- Designing or reviewing custom hooks
+- Diagnosing stale closures, missing deps, infinite loops, missing cleanup
+- Choosing between useEffect, useMemo, useCallback, useRef, and render-time computation
+- Adopting React 19 hooks (`use`, `useOptimistic`, `useActionState`, `useFormStatus`)
 
 ## Rules
 
-- Hooks must only be called at the top level - never inside conditions, loops, or nested functions
-- Custom hooks must start with `use` and encapsulate exactly one concern
-- useEffect is for synchronization with external systems - not for data fetching, not for derived state
-- Every useEffect that subscribes, connects, or adds listeners must return a cleanup function
-- Dependency arrays must be exhaustive - never suppress the ESLint rule with `// eslint-disable`
-- Prefer useCallback only when passing callbacks to memoized children; do not memoize everything by default
-- useMemo is for expensive computations proven by profiling - not for simple derivations
+- Hooks run only at the top level of a component or another hook -- never inside conditions, loops, nested functions, or after early returns.
+- Custom hooks start with `use` and own exactly one concern.
+- `useEffect` synchronizes with external systems. It is not for data fetching, derived state, or event-driven state transitions.
+- Every subscription, listener, timer, or connection started in an effect returns a cleanup. Every in-flight fetch is cancellable (`AbortController`).
+- Dependency arrays are exhaustive. Never suppress `react-hooks/exhaustive-deps`; fix the closure instead (move value into deps, into a ref, or out of the effect).
+- `useMemo`/`useCallback` require a measured reason: referential identity for a memoized child, or a profiled expensive computation. Default is no memoization.
+- `useRef` for values that must persist without triggering re-render; `useState` when a change must re-render.
 
 ## Patterns
 
-### useEffect Discipline
-
-**Bad** - useEffect for data fetching:
+### useEffect is for external synchronization
 
 ```tsx
-const [users, setUsers] = useState<User[]>([]);
-const [loading, setLoading] = useState(true);
-
+// Bad - data fetching in useEffect: no cancellation, race on fast nav, no caching.
 useEffect(() => {
-  fetch("/api/users")
-    .then((r) => r.json())
-    .then((data) => {
-      setUsers(data);
-      setLoading(false);
-    });
-}, []);
-```
+  fetch(`/api/users/${id}`).then(r => r.json()).then(setUser);
+}, [id]);
 
-Problem: No error handling, no caching, no request cancellation, no deduplication, race conditions on fast navigation.
+// Good - server cache library handles cancellation, dedupe, errors.
+const { data: user } = useQuery({ queryKey: ["user", id], queryFn: () => fetchUser(id) });
 
-**Good** - Data fetching with TanStack Query:
-
-```tsx
-const {
-  data: users,
-  isLoading,
-  error,
-} = useQuery({
-  queryKey: ["users"],
-  queryFn: fetchUsers,
-});
-```
-
-**Bad** - useEffect for derived state:
-
-```tsx
-const [items, setItems] = useState<Item[]>([]);
-const [total, setTotal] = useState(0);
-
+// Good - effect when you actually sync with an external system.
 useEffect(() => {
-  setTotal(items.reduce((sum, item) => sum + item.price, 0));
-}, [items]);
-```
-
-Problem: Extra render cycle, state duplication, can drift out of sync.
-
-**Good** - Compute during render:
-
-```tsx
-const [items, setItems] = useState<Item[]>([]);
-const total = items.reduce((sum, item) => sum + item.price, 0);
-// Or for expensive computations:
-const total = useMemo(
-  () => items.reduce((sum, item) => sum + item.price, 0),
-  [items],
-);
-```
-
-**Good** - useEffect for external system synchronization:
-
-```tsx
-useEffect(() => {
-  const connection = createWebSocket(roomId);
-  connection.connect();
-  return () => connection.disconnect(); // cleanup on unmount or roomId change
+  const conn = createWebSocket(roomId);
+  conn.connect();
+  return () => conn.disconnect();
 }, [roomId]);
 ```
 
-### Custom Hook Design
-
-Each custom hook should encapsulate one concern and return a clear API:
-
-**Bad** - Kitchen sink hook:
+If no server-cache library is available, still cancel on cleanup:
 
 ```tsx
-function useUser(userId: string) {
-  const [user, setUser] = useState(null);
-  const [posts, setPosts] = useState([]);
-  const [theme, setTheme] = useState("light");
-  const [notifications, setNotifications] = useState([]);
-  // fetches user, posts, theme, and notifications...
-}
-```
-
-**Good** - Single concern:
-
-```tsx
-function useUser(userId: string) {
-  return useQuery({
-    queryKey: ["user", userId],
-    queryFn: () => fetchUser(userId),
-  });
-}
-
-function useUserPosts(userId: string) {
-  return useQuery({
-    queryKey: ["user", userId, "posts"],
-    queryFn: () => fetchUserPosts(userId),
-    enabled: !!userId,
-  });
-}
-```
-
-### Cleanup Patterns
-
-```tsx
-// Event listener cleanup
 useEffect(() => {
-  const handler = (e: KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  };
+  const ctrl = new AbortController();
+  fetch(`/api/users/${id}`, { signal: ctrl.signal })
+    .then(r => r.json()).then(setUser)
+    .catch(e => { if (e.name !== "AbortError") setError(e); });
+  return () => ctrl.abort();
+}, [id]);
+```
+
+### Derived state is computed during render
+
+```tsx
+// Bad - extra render, drift risk.
+const [total, setTotal] = useState(0);
+useEffect(() => { setTotal(items.reduce((s, i) => s + i.price, 0)); }, [items]);
+
+// Good - derive directly; wrap in useMemo only if profiled expensive.
+const total = items.reduce((s, i) => s + i.price, 0);
+```
+
+### Stale closures: deps, ref, or functional update
+
+```tsx
+// Bad - count is captured once; interval always increments from the initial 0.
+useEffect(() => {
+  const id = setInterval(() => setCount(count + 1), 1000);
+  return () => clearInterval(id);
+}, []); // missing `count`; adding it resets the interval every tick.
+
+// Good - functional update reads latest state without depending on it.
+useEffect(() => {
+  const id = setInterval(() => setCount(c => c + 1), 1000);
+  return () => clearInterval(id);
+}, []);
+
+// Good - ref for values the effect must read but should not re-subscribe on.
+const onMessageRef = useRef(onMessage);
+useEffect(() => { onMessageRef.current = onMessage; });
+useEffect(() => {
+  const conn = createWebSocket(roomId);
+  conn.on("message", (m) => onMessageRef.current(m));
+  return () => conn.close();
+}, [roomId]);
+```
+
+### Custom hook = one concern, clear return shape
+
+```tsx
+// Bad - kitchen sink: fetches user, posts, theme, notifications in one hook.
+function useUser(id: string) { /* multiple unrelated states and effects */ }
+
+// Good - one hook per concern, composable at the call site.
+function useUser(id: string)      { return useQuery({ queryKey: ["user", id], queryFn: () => fetchUser(id) }); }
+function useUserPosts(id: string) { return useQuery({ queryKey: ["user", id, "posts"], queryFn: () => fetchUserPosts(id), enabled: !!id }); }
+```
+
+### Cleanup is mandatory for any external acquisition
+
+```tsx
+useEffect(() => {
+  const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
   document.addEventListener("keydown", handler);
   return () => document.removeEventListener("keydown", handler);
 }, [onClose]);
-
-// AbortController for fetch
-useEffect(() => {
-  const controller = new AbortController();
-  fetchData(controller.signal).then(setData);
-  return () => controller.abort();
-}, [fetchData]);
-
-// Timer cleanup
-useEffect(() => {
-  const id = setInterval(() => setCount((c) => c + 1), 1000);
-  return () => clearInterval(id);
-}, []);
 ```
 
-### React 19 Hooks
+Same shape for `setInterval`/`setTimeout`, subscriptions, observers, `AbortController`.
 
-**`use` hook** - Read promises and context in render:
+### React 19 hooks
 
 ```tsx
-// Read a promise (replaces useEffect + useState for simple cases)
+// `use` - read a promise or context in render; may be called conditionally (unlike useContext).
 function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
-  const user = use(userPromise); // suspends until resolved
+  const user = use(userPromise); // suspends
   return <div>{user.name}</div>;
 }
 
-// Read context conditionally (unlike useContext, can be called in conditions)
-function AdminPanel({ isAdmin }: { isAdmin: boolean }) {
-  if (!isAdmin) return <p>Access denied</p>;
-  const theme = use(ThemeContext); // OK - use() can be conditional
-  return <div className={theme.panel}>Admin content</div>;
-}
+// `useOptimistic` - show the update immediately; reconcile when the server confirms.
+const [optimisticTodos, addOptimistic] = useOptimistic(
+  todos,
+  (state, t: Todo) => [...state, t],
+);
+
+// `useActionState` - form action with pending + returned state (replaces useFormState).
+const [state, formAction, isPending] = useActionState(submitAction, { error: null });
 ```
 
-**`useOptimistic` hook** - Optimistic UI updates:
+### Refs
 
 ```tsx
-function TodoList({ todos }: { todos: Todo[] }) {
-  const [optimisticTodos, addOptimistic] = useOptimistic(
-    todos,
-    (state, newTodo: Todo) => [...state, newTodo],
-  );
-
-  async function addTodo(formData: FormData) {
-    const newTodo = {
-      id: crypto.randomUUID(),
-      title: formData.get("title") as string,
-    };
-    addOptimistic(newTodo); // immediately show in UI
-    await createTodo(newTodo); // server request
-  }
-
-  return (
-    <ul>
-      {optimisticTodos.map((todo) => (
-        <li key={todo.id}>{todo.title}</li>
-      ))}
-    </ul>
-  );
-}
-```
-
-**`useActionState` hook** - Form action state (replaces useFormState):
-
-```tsx
-async function submitAction(
-  prevState: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const result = await createUser(formData);
-  if (result.error) return { error: result.error };
-  return { success: true };
-}
-
-function SignupForm() {
-  const [state, formAction, isPending] = useActionState(submitAction, {
-    error: null,
-  });
-
-  return (
-    <form action={formAction}>
-      <input name="email" type="email" />
-      {state.error && <p role="alert">{state.error}</p>}
-      <button disabled={isPending}>
-        {isPending ? "Submitting..." : "Sign Up"}
-      </button>
-    </form>
-  );
-}
-```
-
-### Ref Patterns
-
-```tsx
-// DOM element ref
 const inputRef = useRef<HTMLInputElement>(null);
-useEffect(() => {
-  inputRef.current?.focus();
+useEffect(() => { inputRef.current?.focus(); }, []);
+
+// Callback ref when you need to measure or react to mount of a dynamic node.
+const measuredRef = useCallback((node: HTMLDivElement | null) => {
+  if (node) setHeight(node.getBoundingClientRect().height);
 }, []);
-
-// Mutable value ref (not triggering re-render)
-const renderCount = useRef(0);
-renderCount.current += 1;
-
-// Callback ref for dynamic elements
-function MeasuredComponent() {
-  const [height, setHeight] = useState(0);
-  const measuredRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) setHeight(node.getBoundingClientRect().height);
-  }, []);
-  return <div ref={measuredRef}>Content</div>;
-}
 ```
 
-### Context Usage
+### Context: typed, narrow, split by update frequency
 
 ```tsx
-// Create typed context with null check
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within <AuthProvider>");
-  return context;
+const AuthContext = createContext<AuthValue | null>(null);
+export function useAuth() {
+  const v = useContext(AuthContext);
+  if (!v) throw new Error("useAuth must be used within <AuthProvider>");
+  return v;
 }
 
-// Split context to prevent unnecessary re-renders
-// Bad: one context for everything
-const AppContext = createContext({ theme: "light", user: null, locale: "en" });
-
-// Good: separate contexts for separate concerns
-const ThemeContext = createContext<Theme>("light");
-const UserContext = createContext<User | null>(null);
-const LocaleContext = createContext<string>("en");
+// Split contexts so a theme change does not re-render auth consumers.
+const ThemeContext  = createContext<Theme>("light");
+const UserContext   = createContext<User | null>(null);
 ```
+
+For values that change every keystroke (form fields, cursor), use local state or a state library -- not context.
 
 ## Output Format
 
-Consuming workflow skills depend on this structure.
+When reviewing hook code, emit one block per finding:
 
 ```
-## Hooks Assessment
-
-**Stack:** {detected framework}
-**React version:** {detected version}
-
-### Custom Hooks
-
-| Hook          | Concern           | Dependencies         | Cleanup Required |
-| ------------- | ----------------- | -------------------- | ---------------- |
-| {hookName}    | {what it manages} | {external deps}      | {Yes | No}       |
-
-### Issues Found
-
-- [Severity: High | Medium | Low] {description of hook issue}
-  - Problem: {what is wrong}
-  - Fix: {concrete correction}
-
-### No Issues Found
-
-{State explicitly if hook usage is correct - do not omit this section silently}
+- Location: <file>:<line> (<hook or component>)
+  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | UnboundedMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
+  Severity: {Critical | High | Medium | Low}
+  Evidence: <quoted snippet or symbol>
+  Fix: <one-line action; reference a Pattern by name>
 ```
+
+Severity guide:
+- **Critical**: hook called conditionally; memory leak from missing cleanup on long-lived component; race condition setting state after unmount.
+- **High**: stale closure producing wrong values; uncancelled fetch on unmount; effect-driven infinite loop.
+- **Medium**: derived state in effect; useEffect for fetching when a query library is available; suppressed exhaustive-deps.
+- **Low**: unnecessary useMemo/useCallback; overbroad context.
+
+If no issues, emit a single line: `No hook issues found in <scope>.`
 
 ## Avoid
 
-- Calling hooks conditionally or inside loops (breaks hook ordering)
-- Using useEffect for data fetching (use TanStack Query, SWR, or Server Components)
-- Using useEffect to compute derived state (compute during render instead)
-- Suppressing the exhaustive-deps ESLint rule instead of fixing the dependency
-- Creating custom hooks that manage multiple unrelated concerns
-- Using useRef to store values that should trigger re-renders (use useState)
-- Wrapping every callback in useCallback without evidence of performance need
-- Using Context for high-frequency updates (theme/auth OK; form field values not OK)
+- Suppressing `react-hooks/exhaustive-deps` instead of restructuring the closure (deps, ref, or functional update).
+- `useEffect` for data fetching, derived state, or chaining state updates.
+- Fire-and-forget async work in effects -- always cancel via `AbortController` or a cleanup flag.
+- Storing render-relevant state in `useRef` (it will not trigger re-render) or render-irrelevant state in `useState` (causes wasted renders).
+- Wrapping every callback/value in `useCallback`/`useMemo` without a memoized consumer or a profiled hotspot.
+- One context object holding unrelated, differently-updating values -- split by update frequency.

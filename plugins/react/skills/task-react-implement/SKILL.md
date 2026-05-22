@@ -1,138 +1,101 @@
 ---
 name: task-react-implement
-description: Implement React 19 / Next.js / Vite feature end-to-end: component tree, state, API, routing, styling, a11y, tests.
+description: Implement React 19 / Next.js / Vite feature end-to-end - components, state, data, routing, forms, a11y, tests.
 metadata:
   category: frontend
-  tags: [react, typescript, nextjs, vite, feature, implementation, workflow, components, hooks, testing]
+  tags: [react, typescript, nextjs, vite, feature, implementation, workflow]
   type: workflow
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
-
-# Implement React Feature
-
 ## When to Use
 
-- Implementing a new React feature end-to-end (components, state, data fetching, routing, tests)
-- Scaffolding a complete page or feature module with production-ready patterns
-- Adding a new user-facing flow with API integration and form handling
-- Any daily frontend coding task that requires coordinated generation of multiple React layers
+Building a new React feature spanning components, state, data fetching, routing, and tests. Not for single-component edits, bug fixes (use `task-react-debug`), or refactors without new behavior.
 
-**Not for**: Single-component changes, bug fixes (use `task-react-debug`), or refactoring without new functionality.
-
-**Edge cases**:
-
-- **Partial input**: If the user provides only a feature name without details, ask for components needed, data requirements, user interactions, and routing before proceeding to design.
-- **No API**: If the feature is purely UI (e.g., static page, settings toggle), skip data fetching and API integration steps; generate only components, state, styling, and tests.
-- **Existing components**: If the user references components that already exist, read them and extend or compose with them rather than creating duplicates.
-- **Vite project**: If stack-detect identifies Vite instead of Next.js, skip Server Components and Server Actions; use client-side routing (React Router) and client-side data fetching patterns.
-- **No forms**: If the feature has no form inputs, skip the form handling step entirely.
-
-## Rules
-
-- TypeScript strict mode - no `any` types, no type assertions without justification
-- Function components only - no class components
-- Named exports for components; default exports only for route pages (Next.js convention)
-- Server Components by default in Next.js App Router - add `"use client"` only when the component needs hooks, event handlers, or browser APIs
-- Custom hooks must start with `use` and encapsulate a single concern
-- Props must be typed with interfaces (not inline types) for components with more than 2 props
-- Colocate tests with components (`ComponentName.test.tsx` next to `ComponentName.tsx`)
-- Each step must complete and be reviewed before proceeding to the next
-- Present the design to the user for approval before generating code
-- Run typecheck and lint after all files are generated
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 2 and follow its mode contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts from this workflow.
 
 ## Workflow
 
-STEP 1 - DETECT: Use skill: `stack-detect` to determine framework (Next.js App Router vs Vite + React Router), TypeScript config, styling approach, state management library, and test framework.
+**Step 1 - Behavioral principles.** Use skill: `behavioral-principles`.
 
-STEP 2 - GATHER: Requirements - feature name, user stories, components needed, data sources (API endpoints), user interactions, routing needs, form inputs, accessibility requirements.
+**Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm React + (Next.js App Router | Vite + React Router); identify styling, state lib, test framework. Halt and ask if mismatched. Vite branch: skip Server Components / Server Actions, use client routing and client fetching.
 
-STEP 3 - DESIGN: Use skill: `react-component-patterns` + `react-routing-patterns`. Propose component tree with responsibility breakdown (Server vs Client Components if Next.js), file structure, and routing. Present for user approval before generating code.
+**Step 3 - Gather.** Ask: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
 
-STEP 4 - STATE: Use skill: `react-state-patterns` + `frontend-state-management`. Identify state categories (local, shared, global, server, URL, form) and assign ownership to components or stores.
+**Step 4 - Design.** Use skill: `react-component-patterns` + `react-routing-patterns`. Propose component tree with Server/Client boundaries (Next.js), file layout, routes. Request approval before code:
 
-STEP 5 - DATA: Use skill: `react-data-fetching` + `frontend-api-integration`. Define data fetching strategy - query keys, cache invalidation, loading/error states, optimistic updates if needed.
+```
+app/<feature>/(page.tsx | layout.tsx)            # Next.js route
+components/<feature>/<Component>.tsx + .test.tsx
+hooks/use<Hook>.ts + .test.ts
+lib/<feature>/queries.ts | actions.ts
+types.ts
+```
 
-STEP 6 - COMPONENTS: Use skill: `react-hooks-patterns` + `react-styling-patterns`. If Next.js: Use skill: `react-nextjs-patterns`. Generate components with proper hook usage, styling, and Server/Client Component boundaries.
+**Step 5 - State.** Use skill: `react-state-patterns` + `frontend-state-management`. Categorize: local | shared | global | server | URL | form. Assign owner. Filters and pagination belong in URL state; server data in TanStack Query; no server state in Zustand/Redux.
 
-STEP 7 - FORMS: Use skill: `frontend-form-handling` (if feature has forms). Implement form validation, error display, submission handling, and dirty tracking.
+**Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 
-STEP 8 - A11Y: Use skill: `frontend-accessibility`. Audit generated components for WCAG 2.1 AA compliance - semantic HTML, keyboard navigation, ARIA attributes, focus management.
+**Step 7 - Components.** Use skill: `react-hooks-patterns` + `react-styling-patterns`. Next.js: Use skill: `react-nextjs-patterns`. Generate with named exports (default only for route pages), typed props interfaces (>2 props), `"use client"` only where required.
 
-STEP 9 - TESTS: Use skill: `react-testing-patterns` + `frontend-testing-patterns`. Generate component tests (React Testing Library), hook tests, integration tests (MSW), and identify critical paths for e2e.
+**Step 8 - Forms.** Use skill: `frontend-form-handling` (skip if no forms). Validation, error display, submission protection, dirty tracking.
 
-STEP 10 - VALIDATE: Run `npx tsc --noEmit` + lint + test. Present file list, component tree, and test count.
+**Step 9 - A11y.** Use skill: `frontend-accessibility`. Audit to WCAG 2.1 AA: semantic HTML, keyboard nav, ARIA, focus management.
 
-## Self-Check
+**Step 10 - Tests.** Use skill: `react-testing-patterns` + `frontend-testing-patterns`. Component tests (RTL), hook tests, integration with MSW. Assert behavior, not internals. List e2e candidates.
 
-- [ ] Stack detected and framework identified (STEP 1)
-- [ ] Requirements gathered - components, data sources, interactions, routing documented (STEP 2)
-- [ ] Component tree designed with Server/Client boundaries and approved by user (STEP 3)
-- [ ] State management categorized and assigned - no duplicated state, server state separated (STEP 4)
-- [ ] Data fetching uses TanStack Query or framework-appropriate library with loading/error/empty states (STEP 5)
-- [ ] Components use proper hooks, styling approach, and TypeScript types (STEP 6)
-- [ ] Forms have validation, error display, submission protection, and dirty tracking if applicable (STEP 7)
-- [ ] Accessibility audit passed - semantic HTML, keyboard accessible, ARIA attributes correct (STEP 8)
-- [ ] Tests cover components, hooks, integration with MSW, and critical user flows (STEP 9)
-- [ ] TypeScript compiles with no errors; lint passes; tests pass (STEP 10)
+**Step 11 - Validate.** Run `npx tsc --noEmit`, lint, test. Fix failures before reporting.
 
 ## Output Format
 
-Present a checklist of generated files:
-
 ```markdown
-## Generated Files
+## Files Generated
 
-### Components
-
-- [ ] `{path}/{ComponentName}.tsx`
-- [ ] `{path}/{ComponentName}.test.tsx`
-
-### Hooks (if custom hooks created)
-
-- [ ] `{path}/use{HookName}.ts`
-- [ ] `{path}/use{HookName}.test.ts`
-
-### Types
-
-- [ ] `{path}/types.ts`
-
-### API / Data
-
-- [ ] `{path}/{queryName}.ts` (query functions)
+[grouped: routes, components, hooks, lib (queries/actions), types, tests]
 
 ## Component Tree
 
-{ComponentName} (Server | Client)
-├── {ChildA} (Server | Client)
-│ └── {ChildB} (Client)
-└── {ChildC} (Client)
+<Root> (Server | Client)
+├── <ChildA> (Server | Client)
+└── <ChildB> (Client)
 
 ## State Map
 
-| State        | Category   | Owner       | Mechanism                             |
-| ------------ | ---------- | ----------- | ------------------------------------- |
-| {state name} | {category} | {component} | {useState / Zustand / TanStack Query} |
+| State | Category | Owner | Mechanism |
+| ----- | -------- | ----- | --------- |
+| ...   | local/shared/global/server/URL/form | ... | useState / Zustand / TanStack Query / searchParams / RHF |
+
+## Endpoints / Queries
+
+| Method | Path | Query Key | Loading | Error | Empty |
+| ------ | ---- | --------- | ------- | ----- | ----- |
 
 ## Tests
 
-- Component tests: {count}
-- Hook tests: {count}
-- Integration tests: {count}
-- E2E candidates: {list of critical paths}
+- Component: {count} (RTL)
+- Hook: {count}
+- Integration: {count} (MSW)
+- E2E candidates: {list}
 ```
+
+## Self-Check
+
+- [ ] Step 1-2: behavioral principles loaded; stack confirmed (Next.js or Vite branch chosen)
+- [ ] Step 3-4: requirements gathered; component tree and file layout approved before code
+- [ ] Step 5: state categorized; URL state for filters/pagination; no server state in client stores
+- [ ] Step 6: queries have keys, cache invalidation, and loading/error/empty states
+- [ ] Step 7: TS strict, function components, `"use client"` only where needed, typed props interfaces
+- [ ] Step 8: forms have validation, error display, submit protection, dirty tracking (if applicable)
+- [ ] Step 9: WCAG 2.1 AA - semantic HTML, keyboard, ARIA, focus
+- [ ] Step 10: tests assert behavior (RTL + MSW); critical paths flagged for e2e
+- [ ] Step 11: `tsc --noEmit`, lint, tests pass
 
 ## Avoid
 
-- Using `any` type or suppressing TypeScript errors
-- Class components or legacy patterns (componentDidMount, etc.)
-- Putting `"use client"` on every component in a Next.js project
-- Fetching data in useEffect without a data-fetching library
-- Storing server state in Zustand/Redux (use TanStack Query)
-- Inline styles instead of the project's styling approach
-- Skipping loading, error, or empty states on data-fetching components
-- Tests that assert implementation details (internal state, method calls)
-- Generating code before the design is approved
+- `any` or suppressed TS errors; class components
+- `"use client"` blanket-applied across a Next.js tree
+- Fetching in `useEffect` without a data library
+- Server state in Zustand/Redux - use TanStack Query
+- Missing loading/error/empty states on data-fetching components
+- Tests asserting internal state or method calls
+- Generating code before design approval

@@ -1,6 +1,6 @@
 ---
 name: react-code-explain
-description: React 19 / Next.js / Vite code explanation signals: hooks rules, render lifecycle, RSC vs Client, Suspense, streaming, actions, use().
+description: Explain React components: server vs client boundary, hook triggers, effect deps/cleanup, render identity, context scope, custom-hook composition.
 metadata:
   category: frontend
   tags: [explanation, code-understanding, react, nextjs, hooks]
@@ -13,164 +13,147 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs React-specific signals: hooks rules, render cycles, effect dependencies, server vs client component boundaries (Next.js App Router), Suspense, React 19 actions and `use()`.
-- Target uses JSX, hooks (`useState`, `useEffect`, `useMemo`, `useCallback`, `useContext`, etc.), or React 19 features (`use`, `useActionState`, `useFormStatus`).
+- A workflow needs per-component React signals: server vs client boundary, hook order/triggers, effect deps and cleanup, referential identity through render, context subscription scope, custom-hook composition, React 19 (`use`, actions).
+- Target is a `.tsx`/`.jsx` component, hook, or route file.
+
+Not for codebase orientation (use `react-onboard-map`) or framework tutorials.
 
 ## Rules
 
-- Identify whether the file is a **Server Component** (default in Next.js App Router) or a **Client Component** (`'use client'` directive). They have different capabilities and interaction models.
-- For each hook, name what triggers it: every render, mount only, on dependency change. Effect dependencies are the most common bug source.
-- For event handlers and callbacks, identify whether they capture stale state via closure - this is the closure-over-state issue.
-- For data fetching, identify whether it is server-side (Server Component, `getServerSideProps`, route handler) or client-side (`useEffect`, `useQuery`, `use(promise)`).
-- Surface React 19 vs 18 differences when relevant - `use()` for Promise/Context, `useActionState`, automatic batching.
+- Classify the file first: **Server Component** (App Router default), **Client Component** (`'use client'`), Route Handler, or plain hook module. Capabilities follow from this.
+- For each hook call, name what triggers it: every render, mount-only (`[]`), on dep change (`[x]`), or commit-time vs render-time.
+- For every `useEffect`/`useCallback`/`useMemo`, verify the dep array against values read inside. Missing dep => stale closure. Object/function dep => fires every render.
+- Flag any value that changes identity each render and is passed to a memoized child, context `value`, or hook dep array.
+- For data fetching, locate the boundary: server fetch in RSC, route handler, or client hook (`useQuery`/`useSWR`/`useEffect`/`use(promise)`).
 
 ## Patterns
 
-### Server vs Client Components (Next.js App Router)
+### Component classification
 
-| Component type     | Default in App Router  | Can use                                                                                       | Cannot use                                                                                   |
-| ------------------ | ---------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Server Component   | Yes                    | `async`/`await`, direct DB/API calls, `cookies()`, `headers()`, `redirect()`, `notFound()`    | `useState`, `useEffect`, browser APIs, event handlers, refs                                  |
-| Client Component   | Marked with `'use client'` at top of file | All hooks, event handlers, browser APIs, state                                | Direct DB calls, secrets - the bundle ships to the browser                                   |
+| Marker                                | Kind             | Can use                                              | Cannot use                              |
+| ------------------------------------- | ---------------- | ---------------------------------------------------- | --------------------------------------- |
+| No directive in `app/`                | Server Component | `async`, DB/secrets, `cookies()`, `headers()`        | hooks, state, browser APIs, handlers    |
+| `'use client'` at top                 | Client Component | hooks, handlers, browser APIs                        | DB/secrets (ships to browser)           |
+| `app/api/*/route.ts`                  | Route Handler    | `Request` -> `Response`, server-only                 | JSX rendering                           |
+| Hook module (`useX.ts`)               | Custom hook      | composes other hooks                                 | JSX as return                           |
 
-- Importing a Client Component into a Server Component: works; renders on the client.
-- Importing a Server Component into a Client Component: **does not work directly**; pass it as a `children` prop instead.
-- The `'use client'` boundary marks the **start** of the client tree; everything imported from a client file is also client.
+`'use client'` is a **boundary marker**: every module imported transitively from a client file is client. Server Components can only be passed into Client Components as `children`, not imported.
 
-### Hooks Rules
+### Hook trigger taxonomy
 
-1. Only call hooks at the top level of a component or another hook.
-2. Do not call hooks inside conditions, loops, or after early returns.
-3. Hook order must be stable across renders - violating this causes "Rendered more hooks than during the previous render".
+| Hook                         | Fires when                                       | Identity stable across renders? |
+| ---------------------------- | ------------------------------------------------ | ------------------------------- |
+| `useState` setter            | called                                           | yes (same fn ref)               |
+| `useEffect(fn, deps)`        | after commit; deps changed (or every render if omitted) | n/a                      |
+| `useLayoutEffect`            | after DOM mutation, before paint                 | n/a                             |
+| `useMemo(fn, deps)`          | render; recomputes on dep change                 | only if deps stable             |
+| `useCallback(fn, deps)`      | render; new fn on dep change                     | only if deps stable             |
+| `useRef(init)`               | mount only for `init`                            | yes (same object ref)           |
+| `useContext(Ctx)`            | when provider's `value` ref changes              | n/a                             |
+| `use(promise)` (R19)         | suspends until resolved                          | n/a                             |
 
-The linter enforces these via `react-hooks/rules-of-hooks`; check `eslint-plugin-react-hooks` is configured.
+Hooks must run in the same order every render. Conditional/loop/post-return calls violate Rules of Hooks and crash on the next render with a different shape.
 
-### Render Cycle and Re-renders
+### Effect deps - the bug surface
 
-A component re-renders when:
+- **Missing dep**: closure captures the value at the render the effect ran; reading state inside an effect with `[]` reads initial state forever.
+- **Object/function dep**: `useEffect(..., [{ id }])` or `[onChange]` from a non-memoized parent fires every render.
+- **Race**: async fetch in effect must guard with `AbortController` or an `ignore` flag; otherwise late responses overwrite newer state.
+- **Strict Mode dev**: effects mount->unmount->mount; missing cleanup surfaces here.
+- **Effect-as-derived-state smell**: setting state inside an effect from props/state means it should be `useMemo` or computed inline.
 
-- Its state (`useState`) changes.
-- Its parent re-renders (props change or parent's parent re-rendered) - **even if the props themselves did not change**.
-- A context it subscribes to changes.
+Bad: `useEffect(() => { fetch(url).then(setData); }, [url]);` - no abort; stale `url` overwrites new.
+Good: `useEffect(() => { const c = new AbortController(); fetch(url, { signal: c.signal }).then(setData); return () => c.abort(); }, [url]);`
 
-Common causes of unintended re-renders:
+### Referential identity and re-renders
 
-- **Inline objects/arrays/functions in JSX:** `<Child config={{ foo: 1 }} />` creates a new object on every render; if `Child` is memoized, memoization breaks because `config` is a new reference.
-- **Inline event handlers:** `<Child onClick={() => setX(x + 1)} />` - new function each render. Wrap in `useCallback` if the child is memoized.
-- **Context value recreated:** `<Ctx.Provider value={{ user, logout }}>` - new object each render rerenders all consumers. Memoize the value.
+A component re-renders when its state changes, its parent re-renders, or a subscribed context's `value` ref changes - **props equality is not checked unless wrapped in `memo`**.
 
-### useState
+Identity hazards:
 
-- `setState(value)` schedules a re-render. State updates are batched in event handlers and effects (and async paths in React 18+).
-- `setState(prev => prev + 1)`: functional update; uses the most recent value, avoiding stale closures.
-- `setState` does not merge objects (unlike class `this.setState`); use the spread operator: `setState({ ...prev, name: x })`.
-- Updating state during render (outside `useEffect` or event handler) without conditions causes an infinite loop.
+- Inline `{...}` / `[...]` / `() => ...` in JSX: new ref each render, breaks `memo` and triggers dep arrays.
+- Context provider `value={{ user, logout }}`: new object each render rerenders every consumer. Wrap in `useMemo`.
+- Functions from props that aren't `useCallback`-wrapped by the parent.
 
-### useEffect
+Bad: `<Ctx.Provider value={{ user, setUser }}>` rerenders all consumers on every parent render.
+Good: `const value = useMemo(() => ({ user, setUser }), [user]); <Ctx.Provider value={value}>`.
 
-- Runs **after** render commits. Default: every render. With `[]` dependency: once on mount + cleanup on unmount. With `[x]`: when `x` changes.
-- The cleanup function runs **before** the next effect run AND on unmount.
-- Strict Mode in development: effects run twice (mount + unmount + mount) to surface bugs from missing cleanup.
-- Stale closure: an effect captures values at the moment it ran; reading `state` inside an effect with `[]` deps reads the initial state forever.
-- Race conditions: an effect that fetches data must guard against the response arriving after the component unmounted or the parameter changed - typically with an AbortController or a flag.
-- Common smells: effect that runs on every render (forgot deps), effect that should be derived state (could be computed from props/state without effect), effect for syncing two states (could be one).
+`useMemo`/`useCallback` are optimizations, not defaults. Apply when the value crosses a `memo` boundary, feeds a dep array, or computation is expensive.
 
-### useMemo and useCallback
+### Custom hooks
 
-- `useMemo(() => compute(x), [x])`: caches the computation across renders.
-- `useCallback(fn, [x])`: same as `useMemo(() => fn, [x])`.
-- These are **optimizations**, not semantic changes. Adding them everywhere harms more than helps.
-- Use when: result is expensive to compute, OR the value is passed as a prop to a memoized child, OR it is in a dependency array of another hook.
+- A function whose name starts with `use` and calls hooks. Hook order applies across the composition.
+- Returns plain values, tuples, or objects - **fresh on every render unless the hook itself memoizes**.
+- The component re-renders when any `useState`/`useReducer`/`useSyncExternalStore` inside the custom hook updates.
+- Calling the same custom hook in two components creates two independent state instances (no sharing without context/store).
 
-### useRef
+### Context scope
 
-- `useRef(initial)`: returns `{ current: initial }`. Mutating `.current` does not re-render.
-- Used for: DOM refs (`<input ref={ref} />`), holding mutable values across renders without causing re-render, holding the latest version of a callback for use in stable handlers.
+- `useContext(Ctx)` subscribes to the **nearest** `<Ctx.Provider>` above. No provider => default value from `createContext(default)`.
+- All consumers rerender on `value` identity change, regardless of which field they read. Split providers (state vs dispatch) or use `use-context-selector` to narrow.
+- `use(Ctx)` (R19) is the same subscription, callable conditionally.
 
-### useContext
+### React 19 deltas
 
-- `useContext(MyCtx)`: subscribes to the nearest `<MyCtx.Provider>`.
-- Every consumer re-renders when the provider's `value` changes (referentially).
-- Splitting context (separate providers for state vs dispatch) reduces re-render scope. The `use-context-selector` library narrows further.
+- `use(promise)`: unwraps in render, suspends to nearest `<Suspense>`.
+- `useActionState(action, init)`: form action result + pending state.
+- `useFormStatus()`: pending state of the enclosing `<form>`.
+- Server Actions (`'use server'`): callable from Client Components, receive `FormData` or args.
+- `<form action={fn}>`: triggers action on submit; works with `useActionState`.
 
-### React 19 Specifics
+### Data fetching boundary
 
-- `use(promise)`: unwraps a Promise inside a component; suspends the component until resolved (works inside Suspense boundaries).
-- `use(context)`: alternative to `useContext`; can be called conditionally.
-- `useActionState(action, initialState)`: pairs with `<form action={...}>` for form submission state.
-- `useFormStatus()`: reads the parent form's pending state.
-- Server Actions (`'use server'`): functions that run on the server, can be called from client components, integrate with forms.
-- Automatic batching: state updates in promises, timeouts, and native event handlers are batched.
-
-### Suspense and Error Boundaries
-
-- `<Suspense fallback={...}>`: shows fallback while children "throw" Promises (legacy: `lazy(() => import(...))`; new: `use(promise)`).
-- Error Boundaries (class components with `componentDidCatch` or `react-error-boundary`): catch errors from children. Function components cannot be error boundaries directly.
-- Suspense boundary catches the **nearest** suspending component; nest carefully to control fallback granularity.
-
-### Data Fetching Libraries
-
-- **TanStack Query (React Query):** `useQuery({ queryKey, queryFn })` for server state. Cache, refetch, retries, suspense mode.
-- **SWR:** `useSWR(key, fetcher)`; similar API to React Query, smaller surface.
-- **Apollo / urql:** GraphQL clients with their own cache and hooks.
-- **Built-in `fetch` in Server Components:** Next.js extends `fetch` with caching (`{ cache: 'no-store' }`, `{ next: { revalidate: 60 } }`).
-
-### Forms
-
-- Controlled: input value comes from state, change handler updates state. Standard React pattern.
-- Uncontrolled: refs read on submit. Faster, less code, harder to derive UI from.
-- React Hook Form, Formik, Zod for schema validation.
-- React 19 `<form action={serverAction}>`: form submission triggers Server Action with `FormData`.
-
-### Next.js Specifics
-
-- App Router (`app/` directory): Server Components by default, file-based routing, layouts, loading states (`loading.tsx`), error boundaries (`error.tsx`).
-- Pages Router (`pages/` directory): older; `getServerSideProps`, `getStaticProps`, `getStaticPaths`.
-- Route Handlers (`app/api/*/route.ts`): replace `pages/api/*`. Export named functions per HTTP method.
-- Middleware (`middleware.ts`): runs on the edge before route handlers; for auth, redirects, header manipulation.
-- Caching: Next.js aggressively caches; understand `cache()`, `unstable_cache`, `revalidatePath`, `revalidateTag`.
+| Where                              | Mechanism                                           |
+| ---------------------------------- | --------------------------------------------------- |
+| Server Component                   | top-level `await fetch(...)` with Next cache opts   |
+| Route Handler                      | `Request` -> `Response`                             |
+| Client, declarative                | `useQuery`/`useSWR` (cache, retry, refetch)         |
+| Client, imperative                 | `useEffect` + fetch (manual race/abort handling)    |
+| Client, suspending                 | `use(promise)` inside `<Suspense>`                  |
 
 ## Output Format
 
-This atomic produces signals consumed by `task-code-explain`. Inject the following:
+This atomic emits signals consumed by `task-code-explain`. Produce exactly four blocks with the field enums below.
 
-**Into "Flow Context":**
+```
+Flow Context:
+- Kind: {Server Component | Client Component | Route Handler | Custom Hook | Plain module}
+- Boundary: {none | 'use client' at top | imports client-only X}
+- Hooks: <name(deps) -> trigger; ...>
+- Custom hooks: {none | <list and what each owns>}
+- Context: {none | reads <Ctx>; provides <Ctx>}
+- Data fetching: {none | RSC fetch | route handler | useQuery/useSWR | useEffect+fetch | use(promise)}
+- React 19 features: {none | use() | useActionState | useFormStatus | server action}
 
-- Server Component vs Client Component
-- For Next.js App Router: which segment (page, layout, loading, error, route handler) the file represents
-- Hooks used and what triggers them
-- Suspense / Error Boundary tree if relevant
-- Data fetching layer (server fetch, React Query, SWR, etc.)
+Non-Obvious Behavior:
+- <stale closures / missing deps>
+- <identity hazards: inline objects, unstable context value, props to memo>
+- <effect race / missing AbortController>
+- <Strict Mode double-invoke implications>
+- <hook order violations (conditional, post-return)>
+- <Server <-> Client import direction issues>
 
-**Into "Non-Obvious Behavior":**
+Key Invariants:
+- <hook call order stable across renders>
+- <which values must stay referentially stable and why>
+- <server-only vs client-only capabilities for this kind>
+- <Suspense/Error boundary nesting if relevant>
 
-- Stale closures in `useEffect` with insufficient deps
-- Inline objects/functions causing memoization breakage
-- Effect race conditions on async state updates after unmount
-- Strict Mode double-invoking effects in dev
-- Importing Server Components into Client Components (forbidden direct)
-- Suspense boundary granularity catching unexpected components
+Change Impact Preview:
+- <adding 'use client': bundle ships; remove server-only imports>
+- <changing deps [] -> [x]: cleanup/setup cadence shifts>
+- <splitting context value: which consumers stop rerendering>
+- <wrapping child in memo: which props now need stable identity>
+- <moving fetch from client effect to RSC: loading/error UX changes>
+```
 
-**Into "Key Invariants":**
-
-- Hooks must be called at the top level, in the same order every render
-- Server Components cannot use state, effects, or browser APIs
-- `'use client'` marks the start of the client tree; everything below is client
-- `useEffect` runs after commit, not during render
-
-**Into "Change Impact Preview":**
-
-- Removing a hook dependency: stale values inside the hook
-- Adding state to a parent: every render of the parent triggers child renders unless memoized
-- Adding `'use client'` to a previously-Server Component: bundle ships to the browser; remove any server-only imports
-- Changing `useEffect` deps `[]` to `[x]`: cleanup/setup pattern changes drastically
-- Memoizing a child without memoizing its props: memoization is silently broken
+If a block has no findings, emit `- (none)`. Omit React 19 features if the project is on R18; do not fabricate.
 
 ## Avoid
 
-- Recommending `useMemo`/`useCallback` everywhere - they are optimizations, not best practice
-- Treating Server Components as just "components that fetch data" - they cannot use any client features
-- Skipping `'use client'` boundary when explaining a component's capabilities
-- Confusing controlled and uncontrolled inputs - they have different mental models
-- Listing every hook without naming what triggers each
-- Saying "React 18 and 19 are the same" - hooks like `use()`, `useActionState`, and Server Actions are React 19+
+- Recommending `useMemo`/`useCallback` blanket-wide; name the specific consumer that needs the stable ref.
+- Treating Server Components as "components that fetch" - they cannot use any client feature.
+- Listing hooks without naming each one's trigger.
+- Conflating `'use client'` with "this file runs only on client" - it runs on both; the directive marks the boundary.
+- Calling out effect deps without distinguishing missing-dep (stale) from unstable-dep (thrash).
+- Drifting into ecosystem tutorials (data libs, form libs) instead of explaining the target file.

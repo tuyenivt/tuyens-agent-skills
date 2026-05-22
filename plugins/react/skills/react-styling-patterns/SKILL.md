@@ -1,6 +1,6 @@
 ---
 name: react-styling-patterns
-description: React styling: Tailwind CSS, CSS Modules, styled-components, responsive design, design tokens, dark mode, component library integration.
+description: "React styling: Tailwind, CSS Modules, styled-components, cva variants, design tokens, dark mode, responsive, RSC compatibility."
 metadata:
   category: frontend
   tags: [react, styling, tailwind, css-modules, styled-components, responsive, dark-mode]
@@ -13,296 +13,183 @@ user-invocable: false
 
 ## When to Use
 
-- Choosing a styling approach for a React project
-- Implementing responsive design, dark mode, or design tokens
-- Reviewing styling patterns for consistency and maintainability
-- Integrating component libraries (Radix, Headless UI, shadcn/ui)
+- Choosing a styling approach for a React/Next.js project
+- Implementing responsive design, dark mode, or shared design tokens
+- Reviewing component styling for consistency, RSC compatibility, accessibility
+- Integrating headless component libraries (Radix, Headless UI, shadcn/ui)
 
 ## Rules
 
-- Use the project's established styling approach - do not mix paradigms without good reason
-- Tailwind CSS is the primary recommendation for new projects
-- Responsive design must be mobile-first (min-width breakpoints)
-- Dark mode must use CSS custom properties or Tailwind's `dark:` variant - not conditional class logic in every component
-- Component variants must use a systematic approach (cva, cn utility) - not string concatenation
-- Never use inline styles for anything except truly dynamic values (computed positions, animations)
-- Styling must not break accessibility (sufficient contrast, visible focus indicators)
+- Pick one primary approach per project. Mixing paradigms (Tailwind + styled-components in the same tree) is a code smell unless boundaries are documented.
+- Conditional/variant classes go through `cn`/`clsx` + `cva`. No string concatenation, no ternary chains in JSX.
+- Mobile-first responsive: base styles target mobile, breakpoint prefixes (`md:`, `lg:`) add larger-screen rules.
+- Dark mode toggles a single root signal (Tailwind `dark:` class or CSS-vars on `.dark`). Components never branch on a theme prop.
+- Design tokens live in one source: Tailwind `theme.extend` or CSS custom properties. Hex literals in components are a violation.
+- Runtime CSS-in-JS (styled-components, emotion) requires `"use client"` and an SSR registry in Next.js App Router. Default to zero-runtime (Tailwind, CSS Modules, Vanilla Extract) for RSC.
+- Inline `style={}` only for values JS must compute (drag positions, measured sizes). Static styling uses classes.
+- Preserve focus rings and contrast. `outline-none` without a replacement `focus-visible:ring-*` is a defect.
 
 ## Patterns
 
-### Styling Approach Selection
+### Approach Selection
 
-| Approach          | When to Use                                     | Server Components | Tree Shaking |
-| ----------------- | ----------------------------------------------- | ----------------- | ------------ |
-| Tailwind CSS      | New projects, rapid development, design systems | Yes               | Yes          |
-| CSS Modules       | Scoped styles, minimal tooling, team preference | Yes               | Yes          |
-| styled-components | Existing codebase, dynamic styling              | No (Client only)  | Partial      |
-| Vanilla Extract   | Type-safe CSS, zero-runtime                     | Yes               | Yes          |
+| Approach          | Runtime | RSC-safe | Best fit                                     |
+| ----------------- | ------- | -------- | -------------------------------------------- |
+| Tailwind CSS      | none    | yes      | New projects, design systems, RSC-heavy apps |
+| CSS Modules       | none    | yes      | Scoped styles, minimal tooling               |
+| Vanilla Extract   | none    | yes      | Type-safe tokens, zero-runtime CSS-in-TS     |
+| styled-components | runtime | no       | Legacy SPAs with heavy dynamic theming       |
 
-### Tailwind CSS Patterns
-
-**Class name management with cn utility:**
+### `cn` + `cva` for Variants
 
 ```tsx
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-// Usage: merge base + conditional + override classes
-function Button({ variant, className, ...props }: ButtonProps) {
-  return (
-    <button
-      className={cn(
-        "rounded-lg px-4 py-2 font-medium transition-colors",
-        variant === "primary" && "bg-blue-600 text-white hover:bg-blue-700",
-        variant === "secondary" &&
-          "bg-gray-100 text-gray-900 hover:bg-gray-200",
-        className, // allow overrides from parent
-      )}
-      {...props}
-    />
-  );
-}
-```
-
-**Component variants with cva:**
-
-```tsx
 import { cva, type VariantProps } from "class-variance-authority";
 
-const buttonVariants = cva(
-  "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2",
+export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
+
+const button = cva(
+  "inline-flex items-center rounded-lg font-medium transition-colors focus-visible:ring-2",
   {
     variants: {
       variant: {
         primary: "bg-blue-600 text-white hover:bg-blue-700",
         secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
         destructive: "bg-red-600 text-white hover:bg-red-700",
-        ghost: "hover:bg-gray-100",
       },
-      size: {
-        sm: "h-8 px-3 text-sm",
-        md: "h-10 px-4 text-sm",
-        lg: "h-12 px-6 text-base",
-      },
+      size: { sm: "h-8 px-3 text-sm", md: "h-10 px-4", lg: "h-12 px-6" },
     },
-    defaultVariants: {
-      variant: "primary",
-      size: "md",
-    },
+    defaultVariants: { variant: "primary", size: "md" },
   },
 );
 
-interface ButtonProps
-  extends
-    React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof button>;
 
-function Button({ variant, size, className, ...props }: ButtonProps) {
-  return (
-    <button
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
-    />
-  );
+export function Button({ variant, size, className, ...props }: ButtonProps) {
+  return <button className={cn(button({ variant, size }), className)} {...props} />;
 }
 ```
 
-### Responsive Design
+`twMerge` resolves Tailwind conflicts so parent `className` can override; without it `px-4 px-6` keeps both.
 
-Mobile-first with Tailwind breakpoints:
+### Responsive (mobile-first)
 
 ```tsx
-// Mobile-first: base styles are mobile, breakpoints add larger screen styles
-<div
-  className="
-  flex flex-col gap-4          // mobile: stack vertically
-  md:flex-row md:gap-6         // tablet: side by side
-  lg:gap-8                     // desktop: more spacing
-"
->
-  <aside
-    className="
-    w-full                     // mobile: full width
-    md:w-64 md:shrink-0        // tablet+: fixed sidebar
-  "
-  >
-    <Sidebar />
-  </aside>
-  <main className="flex-1 min-w-0">{children}</main>
-</div>
+// Bad - desktop styles as base, mobile overrides
+<div className="flex-row gap-6 max-md:flex-col max-md:gap-4" />
+
+// Good - mobile base, breakpoints add larger-screen rules
+<div className="flex flex-col gap-4 md:flex-row md:gap-6 lg:gap-8" />
 ```
 
 ### Dark Mode
 
-**Tailwind dark mode (class strategy):**
-
 ```tsx
 // tailwind.config.ts
-export default {
-  darkMode: "class", // toggle via class on <html>
-  // ...
-};
+export default { darkMode: "class" };
 
-// Component: use dark: variant
-function Card({ children }: { children: ReactNode }) {
+// Component - no theme prop, no branching
+function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+    <div className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">
       {children}
     </div>
   );
 }
-
-// Theme toggle
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
-
-  return (
-    <button onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}>
-      {theme === "light" ? <MoonIcon /> : <SunIcon />}
-    </button>
-  );
-}
 ```
+
+Toggle by setting `class="dark"` on `<html>` once (e.g., `next-themes`). Avoid `useState`-driven theme branches per component.
+
+### Design Tokens
+
+Two valid sources -- pick one:
+
+```ts
+// Option A: Tailwind theme (preferred when Tailwind is the styling layer)
+// tailwind.config.ts
+theme: { extend: { colors: { brand: { 500: "#2563eb", 600: "#1d4ed8" } } } }
+// Use: className="bg-brand-500"
+```
+
+```css
+/* Option B: CSS custom properties (preferred when sharing tokens across apps,
+   or when CSS Modules / styled-components is the styling layer) */
+:root        { --color-brand: #2563eb; --color-surface: #ffffff; }
+.dark        { --color-brand: #3b82f6; --color-surface: #111827; }
+```
+
+If both are needed (shared tokens across a Tailwind app and a non-Tailwind marketing site), define CSS vars as the source of truth and reference them from `tailwind.config.ts` (`colors: { brand: "var(--color-brand)" }`).
 
 ### CSS Modules
 
 ```tsx
 // Button.module.css
-.button {
-  border-radius: 0.5rem;
-  padding: 0.5rem 1rem;
-  font-weight: 500;
-}
-
-.primary {
-  background-color: var(--color-primary);
-  color: white;
-}
-
-.secondary {
-  background-color: var(--color-gray-100);
-  color: var(--color-gray-900);
-}
+.button { border-radius: var(--radius-md); padding: 0.5rem 1rem; }
+.primary { background: var(--color-brand); color: #fff; }
 
 // Button.tsx
-import styles from "./Button.module.css"
+import styles from "./Button.module.css";
+import { cn } from "@/lib/cn";
 
-function Button({ variant = "primary", className, ...props }: ButtonProps) {
-  return (
-    <button
-      className={`${styles.button} ${styles[variant]} ${className || ""}`}
-      {...props}
-    />
-  )
+export function Button({ variant = "primary", className, ...props }: ButtonProps) {
+  return <button className={cn(styles.button, styles[variant], className)} {...props} />;
 }
 ```
 
-### Design Tokens
-
-Centralize design values as CSS custom properties:
-
-```css
-/* globals.css */
-:root {
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-surface: #ffffff;
-  --color-text: #111827;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
-}
-
-.dark {
-  --color-primary: #3b82f6;
-  --color-primary-hover: #60a5fa;
-  --color-surface: #111827;
-  --color-text: #f9fafb;
-}
-```
-
-### Component Library Integration (shadcn/ui)
+### styled-components in Next.js App Router
 
 ```tsx
-// shadcn/ui components are copied into your project (not a dependency)
-// Customize via CSS variables and cn utility
+// Bad - styled-components in an RSC; ships runtime to clients silently or FOUC.
+// app/page.tsx (no "use client")
+const Box = styled.div`color: red;`;
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-
-function LoginForm() {
-  return (
-    <Card className="w-96">
-      <CardHeader>
-        <CardTitle>Sign In</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4">
-          <Input type="email" placeholder="Email" />
-          <Input type="password" placeholder="Password" />
-          <Button className="w-full">Sign In</Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
+// Good - mark client + register on the server for SSR.
+"use client";
+import styled from "styled-components";
+const Box = styled.div`color: red;`;
+// Plus: app/registry.tsx implementing useServerInsertedHTML + ServerStyleSheet.
 ```
 
-## Output Format
+For new App Router code, prefer Tailwind or CSS Modules over CSS-in-JS.
 
-Consuming workflow skills depend on this structure.
+## Output Format
 
 ```
 ## Styling Architecture
 
-**Stack:** {detected framework}
-**Styling approach:** {Tailwind CSS | CSS Modules | styled-components}
-**Component library:** {shadcn/ui | Radix | Headless UI | None}
+Stack: {detected framework}
+Primary approach: {Tailwind | CSS Modules | Vanilla Extract | styled-components}
+Component library: {shadcn/ui | Radix | Headless UI | None}
+Token source: {Tailwind config | CSS variables | hybrid}
+Dark mode: {class strategy | media query | none}
 
-### Design Tokens
+## Component Variants
 
-| Token Category | Source                           |
-| -------------- | -------------------------------- |
-| Colors         | {CSS vars | Tailwind config}     |
-| Spacing        | {Tailwind default | custom}      |
-| Typography     | {font families and scale}        |
-| Dark mode      | {class strategy | media query}   |
+| Component | Variants                        | Mechanism |
+| --------- | ------------------------------- | --------- |
+| Button    | primary, secondary, destructive | cva + cn  |
 
-### Component Variants
+## Findings
 
-| Component | Variants                           | Approach        |
-| --------- | ---------------------------------- | --------------- |
-| Button    | primary, secondary, destructive    | cva + cn        |
-| Card      | default, outlined                  | cn              |
+- [Severity: High | Medium | Low] <one-line issue>
+  Location: <file>:<line>
+  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | RSC-Incompat | A11y-Focus | Inline-Style | Important-Override}
+  Fix: <minimal correction>
 
-### Recommendations
+## Recommendations
 
-- {recommendation with rationale}
-
-### Issues Found
-
-- [Severity: High | Medium | Low] {description}
-  - Problem: {what is wrong}
-  - Fix: {concrete correction}
+- <change with rationale>
 ```
 
 ## Avoid
 
-- Mixing multiple styling paradigms in the same project without clear boundaries
-- Inline styles for static values (use classes or CSS variables)
-- String concatenation for conditional classes (use cn/clsx utility)
-- Desktop-first responsive design (mobile-first is the standard)
-- Hardcoded color values instead of design tokens or Tailwind classes
-- styled-components in Server Components (requires `"use client"`, adds runtime JS)
-- Using `!important` to override styles (indicates specificity issues - fix the cascade)
-- Creating custom CSS when the component library already provides the component
+- Inline `style={}` for static values, or hex literals where a token exists
+- String concatenation / ternary chains for class composition (use `cn` + `cva`)
+- Desktop-first responsive (`max-md:` as the primary direction)
+- Per-component theme props or `useState`-driven dark mode branches
+- styled-components or emotion in Server Components without `"use client"` + SSR registry
+- `!important` to win specificity battles (fix the cascade or the variant order)
+- `outline-none` without a `focus-visible` replacement
+- Reimplementing primitives the headless library already ships (Dialog, Menu, Tooltip)

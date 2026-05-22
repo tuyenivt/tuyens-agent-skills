@@ -1,6 +1,6 @@
 ---
 name: react-onboard-map
-description: Map React 19 / Next.js / Vite codebase for onboarding: framework, TypeScript, routing, state, data fetching, styling, component library.
+description: "Map React onboarding signals: Next.js App/Pages or Vite, React 18/19, TS strict, state, data fetching, styling, component library."
 metadata:
   category: frontend
   tags: [onboarding, codebase-map, react, nextjs, vite]
@@ -9,151 +9,107 @@ user-invocable: false
 
 # React Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-onboard` when the detected stack is React.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when the stack is React.
 
 ## When to Use
 
-- A workflow needs React-specific orientation: package manager, build framework, routing, state, styling, component library, data fetching.
-- Project has `package.json` with `react` dep.
+Workflow needs React-specific orientation: build framework, routing, state, data fetching, styling, component library, server/client boundary. Project has `package.json` with `react`.
 
 ## Rules
 
-- Identify build framework first: Next.js (`next` dep + `next.config.*`) - App Router (`app/`) vs Pages Router (`pages/`); Vite (`vite.config.*`); CRA (legacy); Remix; React Router + custom build.
-- Identify package manager (npm/yarn/pnpm/bun) - same as Node onboarding.
-- Identify React version: 18 (mature, hooks era) vs 19 (use(), Server Actions, Actions).
-- Identify state management: built-in (`useState`+`useContext`), Zustand, Redux Toolkit, Jotai, Recoil, MobX, or none.
-- Identify data fetching: TanStack Query, SWR, Apollo, urql, RTK Query, native fetch in Server Components.
+- Detect build framework first - Next.js (`next.config.*`) App Router (`app/`) vs Pages Router (`pages/`); Vite (`vite.config.*`); Remix; CRA (legacy). Routing and mental model diverge.
+- Detect React version - 18 vs 19 (`use()`, Server Actions). Server Components only in Next App Router today.
+- Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`).
+- Detect state layer - `useState`+`useContext`, Zustand, Redux Toolkit, Jotai, Recoil, MobX, or none.
+- Detect data fetching - TanStack Query, SWR, Apollo, urql, RTK Query, or native fetch in Server Components.
 
 ## Patterns
 
-### Build Framework Inventory
+### Build Inventory
 
-| File                  | What it tells you                                                              |
-| --------------------- | ------------------------------------------------------------------------------ |
-| `next.config.js` / `.ts` / `.mjs` | Next.js project; check for App Router (`app/`) vs Pages (`pages/`) |
-| `vite.config.js` / `.ts` | Vite project; check `plugins` for `@vitejs/plugin-react` or `-swc`           |
-| `tsconfig.json`       | TypeScript config; `strict` mode setting matters                                |
-| `tailwind.config.*`   | Tailwind CSS                                                                    |
-| `postcss.config.*`    | PostCSS pipeline                                                                |
-| `.env.local`, `.env.development` | Env vars (Next.js convention `NEXT_PUBLIC_*` for client)            |
-| `eslint.config.*` / `.eslintrc.*` | ESLint config                                                       |
-| `.prettierrc.*`       | Formatter config                                                                |
-| `playwright.config.*` / `cypress.config.*` | E2E test framework                                          |
-| `vitest.config.*`     | Vitest unit/component tests                                                     |
+| File                              | What it tells you                                          |
+| --------------------------------- | ---------------------------------------------------------- |
+| `next.config.*`                   | Next.js; App Router (`app/`) vs Pages Router (`pages/`)    |
+| `vite.config.*`                   | Vite; check `@vitejs/plugin-react` vs `-swc`               |
+| `tsconfig.json`                   | TS config; `strict: true` matters                          |
+| `tailwind.config.*` / `postcss.config.*` | Tailwind / PostCSS pipeline                          |
+| `.env.local`, `.env.example`      | Env vars; Next public prefix `NEXT_PUBLIC_*`               |
+| `eslint.config.*` / `.prettierrc.*` | Lint/format config                                       |
+| `vitest.config.*`                 | Vitest unit/component tests                                |
+| `playwright.config.*` / `cypress.config.*` | E2E framework                                     |
 
-### Bootstrap Path
+### Bootstrap
 
-1. Node toolchain: confirm `engines.node` in `package.json`.
-2. Install: `<manager> install`.
-3. Env: `cp .env.example .env.local` (Next.js) or `.env` (Vite); fill required vars.
-4. Run:
-   - **Next.js:** `npm run dev` (defaults to port 3000); App Router shows `loading.tsx` on initial load.
-   - **Vite:** `npm run dev` (port 5173); fast HMR.
-5. Verify: open browser; for Next.js, check `/api/*` route handlers; for SPA, hit the entry route.
+1. Install: `<manager> install` (manager from lockfile; `engines.node` in `package.json`).
+2. Env: `cp .env.example .env.local` (Next) or `.env` (Vite); fill required keys.
+3. Run: `npm run dev` - Next defaults to `:3000`, Vite to `:5173`.
+4. Verify: open entry route; Next App Router shows `loading.tsx` boundaries; check `/api/*` or `app/*/route.ts` if API exists.
 
-### Key File Inventory
+### Key Files
 
-**Next.js App Router:**
+**Next.js App Router**
 
-| Location                  | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `app/layout.tsx`          | Root layout (Server Component); HTML shell                                |
-| `app/page.tsx`            | Root page                                                                  |
-| `app/<segment>/page.tsx`  | Page for the route segment                                                 |
-| `app/<segment>/layout.tsx` | Nested layout                                                              |
-| `app/<segment>/loading.tsx` | Suspense fallback                                                        |
-| `app/<segment>/error.tsx` | Error boundary (Client Component)                                          |
-| `app/<segment>/route.ts`  | API route handler (replaces `pages/api`)                                   |
-| `app/<segment>/[id]/page.tsx` | Dynamic segment                                                       |
-| `middleware.ts`           | Edge middleware (auth, redirects, headers)                                 |
-| `next.config.*`           | Build config; `images`, `redirects`, `experimental` flags                   |
+| Location                        | Purpose                                          |
+| ------------------------------- | ------------------------------------------------ |
+| `app/layout.tsx`                | Root layout (Server Component); HTML shell       |
+| `app/<seg>/page.tsx`            | Route page (`[id]` for dynamic)                  |
+| `app/<seg>/layout.tsx`          | Nested layout                                    |
+| `app/<seg>/loading.tsx` / `error.tsx` | Suspense fallback / error boundary         |
+| `app/<seg>/route.ts`            | API route handler                                |
+| `middleware.ts`                 | Edge middleware (auth, redirects, headers)       |
 
-**Next.js Pages Router (legacy):**
+**Next.js Pages Router (legacy):** `pages/_app.tsx` root, `pages/_document.tsx` shell, `pages/<route>.tsx`, `pages/api/<route>.ts`.
 
-| Location                  | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `pages/_app.tsx`          | Root component                                                            |
-| `pages/_document.tsx`     | HTML shell                                                                 |
-| `pages/index.tsx`         | Home page                                                                  |
-| `pages/<route>.tsx`       | Route                                                                      |
-| `pages/api/<route>.ts`    | API route                                                                  |
+**Vite SPA**
 
-**Vite SPA:**
-
-| Location                  | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `index.html`              | Entry HTML                                                                 |
-| `src/main.tsx` or `src/index.tsx` | Render entry; mounts to `#root`                                  |
-| `src/App.tsx`             | Root component                                                             |
-| `src/routes/` or `src/pages/` | If using React Router or TanStack Router                              |
-| `src/components/`         | Reusable components                                                        |
-| `src/hooks/`              | Custom hooks                                                               |
-| `src/lib/` or `src/utils/` | Utilities                                                                  |
-| `src/api/` or `src/services/` | HTTP clients                                                          |
+| Location                                | Purpose                                  |
+| --------------------------------------- | ---------------------------------------- |
+| `index.html` + `src/main.tsx`           | HTML entry + mount to `#root`            |
+| `src/App.tsx`                           | Root component                           |
+| `src/routes/` or `src/pages/`           | React Router / TanStack Router files     |
+| `src/components/`, `src/hooks/`, `src/lib/` | UI, hooks, utilities                 |
+| `src/api/` or `src/services/`           | HTTP clients                             |
 
 ### Conventions
 
-- **TypeScript** with strict mode; check `tsconfig.json` `strict: true`.
-- **Component library:** check `package.json` for `@radix-ui/*`, `@mui/*`, `@chakra-ui/*`, `shadcn/ui` (look in `components/ui/`), `tailwindcss`, `headlessui`.
-- **Styling:** Tailwind (`tailwind.config.*`), CSS Modules (`*.module.css`), styled-components, emotion, CSS-in-JS, vanilla CSS.
-- **Forms:** React Hook Form + zod schema, Formik, plain controlled inputs.
-- **Data fetching:** TanStack Query (`@tanstack/react-query`), SWR, native fetch in Server Components.
-- **Auth:** NextAuth.js / Auth.js (Next), Clerk, Auth0, Supabase Auth, custom JWT.
-- **Tests:** Vitest + React Testing Library + jsdom for unit/component; Playwright/Cypress for E2E.
+- **TS strict** from `tsconfig.json`; non-strict is a finding.
+- **Component library:** check `package.json` for `@radix-ui/*`, `shadcn/ui` (look in `components/ui/`), `@mui/*`, `@chakra-ui/*`, `headlessui`.
+- **Styling:** Tailwind, CSS Modules, styled-components, emotion, vanilla CSS.
+- **Forms:** React Hook Form + zod, Formik, controlled inputs.
+- **Auth:** NextAuth/Auth.js, Clerk, Auth0, Supabase Auth, custom JWT.
+- **Tests:** Vitest + React Testing Library + jsdom; Playwright/Cypress for E2E.
 
-### Risk Hotspots Specific to React
+### Risk Hotspots
 
-- **`useEffect` misuse** (stale closures from missing deps, derived state, event handling, missing AbortController in async effects, missing cleanup): see `react-hooks-patterns`, `task-react-review`.
-- **Identity instability** (inline `{...}` / `[...]` / `() => ...` in JSX breaking memoization): see `react-component-patterns`, `task-react-review-perf`.
-- **`"use client"` boundary** (creep, root-of-layout placement, importing server-only into Client Component): see `react-nextjs-patterns`, `task-react-review`.
-- **Next.js fetch caching** (default behavior, `cache: 'no-store'` / `next: { revalidate }` / `unstable_cache`): see `react-data-fetching`, `task-react-review-perf`.
-- **Server → Client ORM-row leak** (full Prisma rows as props serialize sensitive fields into HTML), **`dangerouslySetInnerHTML` XSS**, **`NEXT_PUBLIC_*` secret leak**, **Server Action without Zod / auth**: see `task-react-review-security`.
-- **Hydration mismatch** (timestamps / random IDs / browser-only APIs in render body); **unbounded re-renders** (setState in render without condition): see `task-react-review`.
+- **`useEffect` misuse** - stale closures, derived state, missing AbortController, missing cleanup: see `react-hooks-patterns`.
+- **Identity instability** - inline `{}`/`[]`/`() => ...` in JSX breaking memoization: see `react-component-patterns`.
+- **`"use client"` creep** - boundary placed too high; importing server-only into Client Components: see `react-nextjs-patterns`.
+- **Next fetch caching** - default behavior, `cache: 'no-store'`, `next: { revalidate }`, `unstable_cache`: see `react-data-fetching`.
+- **Hydration mismatch** - timestamps, random IDs, browser-only APIs in render body.
+- **Server → Client leaks** - full ORM rows as props, `dangerouslySetInnerHTML` XSS, `NEXT_PUBLIC_*` secret leak, Server Action without auth/Zod: see `task-react-review-security`.
 
 ### First-PR Safe Zones
 
-- New page in existing routing convention.
-- New component in existing component library structure.
-- New hook in `src/hooks/`.
-- New env var in `.env.example` with safe default.
+Safe: new page in existing routing convention, new component in existing library structure, new hook in `src/hooks/`, new env var in `.env.example`.
 
-Riskier:
-
-- Root layout / `_app.tsx` - affects every page.
-- Middleware - runs on every request.
-- Auth flow / providers.
-- `next.config.*` changes - rebuild required.
-
-### Ecosystem Currency
-
-- React 19 GA; React 18 still common.
-- Next.js 14/15 - App Router stable, Pages Router deprecated for new apps.
-- Vite 5/6 with React SWC plugin standard.
-- TanStack Query 5; SWR 2.
-- Tailwind 3 standard; Tailwind 4 in beta.
-- Server Components in Next.js App Router only (not standard React 19 SSR yet).
+Riskier: root layout / `_app.tsx`, `middleware.ts`, auth provider, `next.config.*` (rebuild required).
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** package manager, build framework (Next App/Pages, Vite, Remix), React version, TS strict, state management, data fetching, styling, component library.
-
-**Local Bootstrap:** install command, env file, run command, default port, key routes to hit first.
-
-**Architecture Map:** routing convention (file-based vs config), component library location, hooks/utilities directory, server/client boundary if Next App Router.
-
-**Conventions:** TS strict, styling approach, data fetching, form handling, auth provider, test framework.
-
-**Risk Hotspots:** stale closures, inline JSX objects, server/client import boundary, hydration mismatch, Next fetch caching, NEXT_PUBLIC env var rules.
-
-**First-PR Safe Zones:** scoped to observed structure.
+- **Stack and Tooling**: package manager, build framework (Next App/Pages, Vite, Remix), React version, TS strict, state management, data fetching, styling, component library.
+- **Local Bootstrap**: install command, env file, run command, default port, entry route.
+- **Architecture Map**: routing convention (file-based vs config), components/hooks/utilities layout, server/client boundary if Next App Router, API location (`app/*/route.ts`, `pages/api`, or external).
+- **Conventions**: TS strict, styling, data fetching, form handling, auth provider, test framework.
+- **Risk Hotspots**: stale closures, inline JSX identity, `"use client"` boundary, Next fetch caching, hydration mismatch, `NEXT_PUBLIC_*` rules.
+- **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid
 
-- Treating Pages Router and App Router as interchangeable - they have different mental models
-- Listing every component library dep - focus on the one(s) the project commits to
-- Recommending CRA patterns - it is deprecated; new projects use Next or Vite
-- Glossing over `'use client'` boundaries when describing Next App Router structure
+- Treating Pages Router and App Router as interchangeable - different mental models
+- Listing every UI dep - call out the one the project commits to
+- Recommending CRA patterns - deprecated; use Next or Vite
+- Glossing over `"use client"` boundaries when describing App Router
 - Skipping hydration mismatch as a risk class
 - Recommending Apollo on a TanStack Query project (or vice versa) without justification

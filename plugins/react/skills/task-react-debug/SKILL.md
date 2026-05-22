@@ -1,160 +1,156 @@
 ---
 name: task-react-debug
-description: Debug React 19 / Next.js / Vite errors: hydration mismatches, hook violations, render loops, RSC errors, build and runtime failures.
+description: Debug React 19 / Next.js / Vite: hydration mismatches, hook violations, render loops, RSC boundary errors, stale data, build failures.
 metadata:
   category: frontend
-  tags: [react, debug, hydration, hooks, nextjs, error, troubleshooting]
+  tags: [react, debug, hydration, hooks, nextjs, troubleshooting]
   type: workflow
 user-invocable: true
 ---
-
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
 # Debug - React Debugging Workflow
 
 ## When to Use
 
-- React error or warning you need help understanding
-- Hydration mismatch in Next.js or SSR setup
-- Hook rule violation (called conditionally, wrong order, missing dependency)
-- Infinite render loop or excessive re-renders
+- React error / warning, hydration mismatch, hook violation, infinite render
 - Server Component / Client Component boundary error
-- Build or TypeScript compilation error
-- Test failure you can't figure out
-- Behavior that doesn't match expectations (no error, but wrong result)
+- RSC or Server Action runs but UI shows stale data
+- Build, TypeScript, or test failure tied to React/Next
+- "No error, wrong result" - data flickers, missing, stale, or unequal across renders
 
-**Not for**: Production incident response with containment and blast radius assessment - use `/task-oncall-start` instead.
-
-**Approach**: Classify before fixing. Understand the error, trace through the codebase, explain why (not just what), and apply the smallest correct change aligned with project patterns.
-
-**Edge cases**:
-
-- **Vague description, no error message**: Ask for the exact console output, the component where it occurs, and steps to reproduce before classifying.
-- **Multiple errors**: Identify the root error (usually the first in the console) and focus on that. Mention secondary errors only if they are independent.
-- **No source code available**: If the error points to framework internals only, explain the framework behavior and ask the user for the application code that triggered it.
-- **Intermittent/non-deterministic bug**: Note that the issue may be race-condition or timing-related; ask for reproduction steps and whether it occurs in development, production, or both.
-
-## Inputs
-
-| Input                           | Required | Description                              |
-| ------------------------------- | -------- | ---------------------------------------- |
-| Error message or console output | Yes      | The primary failure signal               |
-| Relevant source file            | No       | Component or hook where the error occurs |
-| Steps to reproduce              | No       | What triggers the error                  |
-| Expected vs actual behavior     | No       | For logic bugs without exceptions        |
-| Browser / Node version          | No       | For environment-specific issues          |
-
-## Rules
-
-- Always classify the error before reading code
-- Show the exact code change needed - no vague suggestions
-- Explain WHY the error happened, not just how to fix it
-- Prefer minimal fixes over refactors - fix the bug, don't redesign
-- If confidence is LOW, say so and state what additional info would help
-- Do not suggest unrelated improvements or style changes
-- Reference atomic skills only when the fix involves a pattern they cover
+Not for: production incident triage (`/task-oncall-start`), perf tuning (`task-react-review-perf`), new feature work (`task-react-implement`).
 
 ## Workflow
 
-STEP 1 - INTAKE: Accept one or more of: React error message, Next.js build/runtime error, browser console output, TypeScript compilation error, test failure output, or description of unexpected behavior. If the input is ambiguous, ask one clarifying question before proceeding.
+### STEP 1 - BEHAVIORAL PRINCIPLES
 
-STEP 2 - CLASSIFY: Identify the error category to guide investigation:
+Use skill: `behavioral-principles`. These rules govern every step below.
 
-**Hydration error** → Server/client HTML mismatch:
+### STEP 2 - STACK DETECT
 
-| Error Pattern                     | Likely Cause                         | Load Skill                            |
-| --------------------------------- | ------------------------------------ | ------------------------------------- |
-| "Hydration failed"                | Server/client render difference      | Use skill: `react-nextjs-patterns`    |
-| "Text content does not match"     | Dynamic value (date, random, window) | Use skill: `react-nextjs-patterns`    |
-| "Expected server HTML to contain" | Conditional render using browser API | Use skill: `react-component-patterns` |
+Use skill: `stack-detect`. Confirm React major, Next.js vs Vite vs CRA, router (App vs Pages), data layer (RSC + Server Actions, TanStack Query, SWR, Redux). Output drives which atomic skill loads in STEP 4.
 
-**Hook error** → Hook rules violation:
+### STEP 3 - INTAKE
 
-| Error Pattern                                     | Likely Cause                              | Load Skill                        |
-| ------------------------------------------------- | ----------------------------------------- | --------------------------------- |
-| "Rendered more hooks than during previous render" | Conditional hook call                     | Use skill: `react-hooks-patterns` |
-| "Invalid hook call"                               | Hook outside component/hook               | Use skill: `react-hooks-patterns` |
-| "Maximum update depth exceeded"                   | Infinite render loop (setState in render) | Use skill: `react-hooks-patterns` |
-| Missing dependency warning                        | useEffect dependency array incomplete     | Use skill: `react-hooks-patterns` |
+Accept one of: error message, console output, build/test failure, or a "wrong result, no error" report. For partial input, ask once for the missing piece:
 
-**Server Component error** → RSC boundary violation:
+- Error path: exact console text, file:line, repro steps, dev vs prod
+- No-error path: expected vs observed value, which boundary it crosses (server fetch -> Client prop, action -> revalidate, query cache -> render), frequency (every nav / intermittent / under load)
 
-| Error Pattern                                   | Likely Cause                            | Load Skill                            |
-| ----------------------------------------------- | --------------------------------------- | ------------------------------------- |
-| "useState/useEffect in Server Component"        | Missing `"use client"` directive        | Use skill: `react-nextjs-patterns`    |
-| "Event handlers cannot be passed to Client"     | onClick in Server Component             | Use skill: `react-component-patterns` |
-| "Functions cannot be passed directly to Client" | Non-serializable prop crossing boundary | Use skill: `react-nextjs-patterns`    |
+### STEP 4 - CLASSIFY
 
-**Build / TypeScript error** → compilation or bundling issue
+Match one row; load the listed skill. Stop at the first match.
 
-**Runtime error** → JavaScript exception during render or event handling
+**Hydration** (server/client HTML differs)
 
-**Test failure** → assertion mismatch, async timing, mock setup
+| Symptom | Cause | Skill |
+|---|---|---|
+| "Hydration failed" / "Text content does not match" | Dynamic value (date, random, `window`) read during render | `react-nextjs-patterns` |
+| "Expected server HTML to contain" | Browser-only API gated by `typeof window` | `react-component-patterns` |
+| Same HTML, but state re-renders post-hydration | `useState(() => readLocalStorage())` returns different value on server | `react-nextjs-patterns` |
 
-**Performance issue** → slow renders, memory leak, bundle size → Use skill: `frontend-performance`
+**Hook rules**
 
-**No-error / wrong-behavior intake.** When the user reports "no exception, but the value is wrong / missing / stale," the bug almost always lives at a boundary where data crosses a closure, hydration, or serialization seam. There is no stack trace to follow - work the seams. React-flavored surfaces:
+| Symptom | Cause | Skill |
+|---|---|---|
+| "Rendered more hooks than during previous render" | Conditional hook call | `react-hooks-patterns` |
+| "Invalid hook call" | Hook outside component / hook | `react-hooks-patterns` |
+| "Maximum update depth exceeded" | `setState` in render, or effect that always re-runs | `react-hooks-patterns` |
+| Missing-dependency warning | `useEffect` deps incomplete | `react-hooks-patterns` |
 
-| Surface                                       | Symptom                                                                                                        | Diagnostic                                                                                                                                |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Stale closure in `useEffect([])`              | Effect reads a state value that never updates - logs the initial value forever                                  | Either add the value to deps, OR use `useRef` to read latest, OR rewrite as event handler. ESLint `react-hooks/exhaustive-deps` warns; check for disable comments |
-| `useEffect` for derived state                 | Value flickers between renders; child sees stale derived state for one frame                                    | Compute during render: `const x = a + b`. Delete the `useState`+`useEffect` pair                                                          |
-| `setState(value)` vs `setState(prev => ...)`  | Two consecutive `setCount(count + 1)` calls only increment by 1 (not 2) under batching                         | Use functional form `setCount(prev => prev + 1)` whenever the next value depends on the current value                                     |
-| RSC → Client prop drop                        | Client component reads `props.user.email` as `undefined`; server fetched a row but the field never crosses    | Check Prisma `select` / `omit` matches the prop interface; check serialization (`Date`, `Map`, class instances don't survive the boundary) |
-| Server Action success but stale UI            | Action returns `{ ok: true }`, DB updated, but the page still shows old data                                   | Missing `revalidatePath('/dashboard')` / `revalidateTag('orders')` in the action; OR TanStack Query cache not invalidated via `queryClient.invalidateQueries({ queryKey: ['orders'] })` in `onSuccess` |
-| `useOptimistic` rollback eaten                | Action fails, but the optimistic UI never reverts; user sees fake success                                       | Confirm component still mounted when action rejects; if it unmounts mid-flight, the rollback runs against a torn-down state. Use a parent-level optimistic state, or guard the rollback |
-| `useFormStatus` reads wrong form              | `useFormStatus()` returns `{ pending: false }` even while the form is submitting                                | Hook must be called from a child component **inside** `<form>`, never on the form itself. Verify `<SubmitButton />` is rendered inside the form, not as a sibling |
-| `next/navigation` `useSearchParams` stale     | `useSearchParams()` returns a value that's one navigation behind                                                | Suspense boundary missing - `useSearchParams()` opts the route into dynamic rendering and requires a `<Suspense>` wrapper for stable behavior on streaming pages |
-| TanStack Query key collision                  | Different components fetch different data but get each other's results                                         | Inspect `queryKey` arrays for unstable references (`['orders', filters]` where `filters` is a new object literal each render) - the key compares by value but inline objects break memoization upstream. Stabilize via `useMemo` or pass primitive fields |
-| `<form action={action}>` extra fields stripped | User submits a field but the action never sees it                                                              | If using `zod-form-data` `.strict()`, extra fields parse OK but get stripped; if validation is loose, unexpected fields silently drop. Add the field to the schema or to the form's input list |
-| Hydration agrees but state diverges           | Server and client render the same HTML, but `useState(() => readLocalStorage())` returns `undefined` on server, then real value on client - causing a re-render after hydration | Move the read into `useEffect`: `useState(undefined)` + `useEffect(() => setX(readLocalStorage()))`. OR use Next.js dynamic import with `{ ssr: false }`. OR `suppressHydrationWarning` on the specific node (last resort)              |
-| Context value rebuilt every render            | Consumers re-render on every parent render even when the context "didn't change"                                | `<Provider value={{ a, b }}>` - the object literal is new every render. Wrap with `useMemo(() => ({ a, b }), [a, b])`, OR split into separate providers (state vs dispatch)                                                              |
-| `React.memo` no-op                            | Memoized child still re-renders when parent renders                                                             | Parent passes new object/array/function each render; `React.memo` shallow-compares props and sees a new ref. Stabilize the prop via `useMemo`/`useCallback`, OR pass primitives only                                                     |
+**RSC / Server Component boundary**
 
-Recommended diagnostic instrumentation for these cases: add `console.log` (or React DevTools Profiler) at each boundary the data crosses - server fetch result, props going into Client Component, state after `setState`, action return value, query cache after invalidation - and compare expected vs observed shape. The bug is almost always a missing `revalidate*`, a stale closure, a new object identity in a memo dep, or a serialization boundary that drops a field. Pair with a round-trip test (Playwright for the Server Action / RSC path; RTL for the closure / memo path) so the regression is caught next time.
+| Symptom | Cause | Skill |
+|---|---|---|
+| "useState/useEffect in Server Component" | Missing `"use client"` | `react-nextjs-patterns` |
+| "Event handlers cannot be passed to Client" | `onClick` defined in Server Component | `react-component-patterns` |
+| "Functions cannot be passed directly to Client" | Non-serializable prop crossing boundary | `react-nextjs-patterns` |
 
-STEP 3 - LOCATE: Read the error to identify the source file and component name. Open the file and surrounding context (~50 lines above and below). Trace the component tree: page -> layout -> parent component -> failing component. Identify which layer the bug is in (Component | Hook | State | Data Fetching | Routing | Build).
+**Stale data / wrong result, no error** - the bug lives at a data boundary. Walk the seams:
 
-STEP 4 - ROOT CAUSE: Explain WHY this error occurred, not just what happened. Reference the specific code that causes the issue. If it's a pattern violation (not just a one-off bug), name the pattern. Rate confidence: HIGH (certain, evidence is clear), MEDIUM (likely, but alternative causes exist), or LOW (need more info to confirm).
+| Symptom | Likely cause | Skill |
+|---|---|---|
+| Server Action succeeds, UI shows old data | Missing `revalidatePath` / `revalidateTag`; or TanStack `queryClient.invalidateQueries` not called in `onSuccess` | `react-data-fetching` |
+| Dashboard stale after route back-nav | Next.js Router Cache serving stale RSC payload; need `revalidatePath` on mutation or `router.refresh()` | `react-data-fetching` |
+| Client component reads `undefined` for a server-fetched field | Prisma `select` / serialization drops the field (`Date`, `Map`, class instances don't cross RSC boundary) | `react-nextjs-patterns` |
+| Two components fetch same data, get each other's | TanStack `queryKey` instability - inline object literal each render | `react-data-fetching` |
+| Effect logs initial state forever | Stale closure in `useEffect([])`; deps incomplete or eslint-disable suppressed | `react-hooks-patterns` |
+| `setCount(count+1)` twice only increments once | Use functional `setCount(prev => prev + 1)` | `react-hooks-patterns` |
+| Memoized child still re-renders | Parent passes new object/array/function ref; `React.memo` shallow-compares | `react-hooks-patterns` |
+| Context consumers re-render every parent render | `<Provider value={{a,b}}>` new ref each render; wrap in `useMemo` | `react-state-patterns` |
 
-STEP 5 - FIX: Show the exact code change needed (before / after). If multiple fixes are possible, rank by: (1) Correctness, (2) Minimal change surface, (3) Alignment with project patterns. Explain any trade-offs between alternatives.
+**Build / type / test**
 
-STEP 6 - PREVENT: Suggest a test that would have caught this bug. If it's a pattern violation, reference the relevant atomic skill. If the same bug could exist elsewhere, identify other occurrences (grep for similar patterns).
+| Symptom | Where to look |
+|---|---|
+| TS / build error | Compilation output's first error; later errors usually cascade |
+| Test failure | Async timing, mock setup, RTL query type (`getBy` vs `findBy`) - Use skill: `react-testing-patterns` |
+| Performance / slow render | Use skill: `frontend-performance` |
+
+### STEP 5 - LOCATE
+
+Open the failing file plus ~50 lines of context. Trace upstream: page -> layout -> parent -> failing component, OR fetch -> serialization -> Client prop -> render. Name the layer: Component | Hook | State | Data Fetching | Routing | Build.
+
+For stale-data: instrument each boundary the value crosses (server fetch result, Client prop, state after `setState`, action return, query cache after invalidation) with `console.log` or React DevTools Profiler. Compare expected vs observed shape.
+
+### STEP 6 - ROOT CAUSE
+
+Explain **why**, citing `file:line`. State confidence:
+
+- **HIGH** - reproduced or evidence is direct
+- **MEDIUM** - strong pattern match, alternative causes exist
+- **LOW** - need more info; list what
+
+### STEP 7 - FIX
+
+Before/after diff, smallest change that resolves the root cause. Rank alternatives by (1) correctness, (2) change surface, (3) alignment with existing patterns.
+
+### STEP 8 - PREVENT
+
+One guard:
+
+- Test that exercises the exact path (Playwright for RSC / Server Action round-trip; RTL for closure / memo / effect dep)
+- ESLint rule re-enabled if it was disabled (`react-hooks/exhaustive-deps`)
+- `grep` for the same anti-pattern elsewhere; list occurrences
+
+Skip if fix is trivial (typo, missing import).
 
 ## Output Format
 
-Present the analysis in this structure:
+```
+## Classification
+[Hydration | Hook | RSC | Stale data | Build | Runtime | Test]: [specific row]
+Layer: [Component | Hook | State | Data Fetching | Routing | Build]
 
-**Bug Analysis** - error type, confidence (HIGH/MEDIUM/LOW), layer (Component/Hook/State/Data Fetching/Routing/Build)
+## Root Cause (confidence: HIGH | MEDIUM | LOW)
+[Why, citing file:line]
 
-**Root Cause** - explanation of why this happened, referencing specific code
+## Fix
+[Before/after diff]
 
-**Fix** - before/after code diff showing the exact change, with explanation
+## Prevention
+[Test, lint, or grep result - omit if trivial]
+```
 
-**Prevention** (omit if fix is trivial) - test that would catch this bug, pattern reference, other occurrences found via grep
-
-### Output Constraints
-
-- Keep the analysis focused - one bug, one fix
-- Omit Prevention section if the fix is trivial (e.g., typo, missing import)
-- If confidence is LOW, add a **Needs Clarification** section listing what info would help
-- No code style commentary unrelated to the bug
-- No suggestions for unrelated improvements
+If confidence is LOW, add `## Needs Clarification` listing the missing input.
 
 ## Self-Check
 
-- [ ] Error input accepted and clarified if ambiguous (STEP 1)
-- [ ] Error classified into category before any code is read or fix proposed (STEP 2)
-- [ ] Source file and component located; layer identified (STEP 3)
-- [ ] Root cause explains WHY with specific code reference; confidence level stated (STEP 4)
-- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom (STEP 5)
-- [ ] Test suggested that would catch this bug; other occurrences identified if pattern is widespread (STEP 6)
+- [ ] STEP 1: behavioral-principles loaded
+- [ ] STEP 2: stack-detect loaded; React major, framework, router, data layer identified
+- [ ] STEP 3: full error or wrong-result spec captured; one clarifying question max if partial
+- [ ] STEP 4: classified into one row before reading code; correct atomic skill loaded
+- [ ] STEP 5: failing file located; layer named; for stale-data, boundaries instrumented
+- [ ] STEP 6: root cause cites file:line; confidence stated
+- [ ] STEP 7: before/after fix is minimal and targets root cause
+- [ ] STEP 8: prevention guard added, or skipped with reason
 
 ## Avoid
 
-- Generic debugging advice ("add console.log", "clear cache")
-- Fixing symptoms instead of root causes
-- Suggesting refactors when a targeted fix suffices
-- Analysis without reading the actual source code
-- Proposing fixes that introduce new anti-patterns (adding `any`, suppressing ESLint, using `useEffect` for fetching)
-- Mixing incident response concerns into developer debugging
+- Reading code before classifying
+- Generic advice ("add console.log", "clear cache") without naming the boundary
+- Fixing a symptom (`router.refresh()` everywhere) instead of the missing `revalidate*`
+- Refactor when a targeted fix suffices
+- `any`, `eslint-disable`, `suppressHydrationWarning` to silence the error
+- `useEffect` for derived state or data fetching - compute during render / use a query lib
+- Mixing incident-response (containment, blast radius) into developer debugging

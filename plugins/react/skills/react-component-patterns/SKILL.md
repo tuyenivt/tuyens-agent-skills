@@ -1,6 +1,6 @@
 ---
 name: react-component-patterns
-description: React 19 component design: composition, compound components, render props, RSC vs Client, error boundaries, TypeScript patterns.
+description: "React 19 component design: composition, compound components, Server vs Client boundaries, error boundaries, polymorphic and prop-typing patterns."
 metadata:
   category: frontend
   tags: [react, components, composition, server-components, error-boundaries, typescript]
@@ -9,303 +9,169 @@ user-invocable: false
 
 # React Component Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. For Next.js-specific routing, Server Actions, caching, and metadata defer to `react-nextjs-patterns`; this skill covers component shape and boundaries.
 
 ## When to Use
 
-- Designing component architecture for a new feature
-- Choosing between composition patterns (compound, render props, HOC)
-- Deciding Server Component vs Client Component boundaries (Next.js)
-- Adding error boundaries for graceful failure handling
-- Reviewing component design for reusability and correctness
+- Designing component trees for a new feature or reviewing one for reusability
+- Choosing a composition pattern (children/slots, compound, polymorphic)
+- Drawing Server vs Client boundaries in Next.js App Router
+- Placing error boundaries and typing component props
 
 ## Rules
 
-- Function components only - no class components (except error boundaries until React 19 `onCaughtError`)
-- Named exports for reusable components; default exports only for route pages (Next.js)
-- Props typed with interfaces for components with more than 2 props; inline for simple components
-- Server Components by default in Next.js - add `"use client"` only when needed (hooks, event handlers, browser APIs)
-- Composition over configuration - prefer children and slots over prop-heavy components
-- Single responsibility - each component does one thing; split when responsibilities diverge
-- Never pass functions or non-serializable values from Server to Client Components
+- Function components only. Class components only for error boundaries (until `onCaughtError` is adopted everywhere).
+- Server Components are the default in Next.js. Add `"use client"` only for hooks, event handlers, or browser APIs - and push it as deep in the tree as possible.
+- Never pass functions or non-serializable values from a Server Component to a Client Component. Pass data; let the Client own its handlers.
+- Compose with `children` and slots before adding more props. New feature => new slot, not a new boolean prop.
+- One responsibility per component; split when state or props diverge.
+- Named exports for reusable components; default export only for route files (`page.tsx`, `layout.tsx`).
+- Props typed inline for <=2 fields; named `interface` once props grow or repeat across call sites.
+- Prop-drilling beyond two levels is a smell - reach for composition, context, or a state library.
 
 ## Patterns
 
-### Server vs Client Components (Next.js App Router)
+### Server vs Client boundary (Next.js)
 
-| Concern                           | Server Component | Client Component           |
-| --------------------------------- | ---------------- | -------------------------- |
-| Data fetching                     | Yes (async)      | Via hooks (TanStack Query) |
-| Access backend resources          | Yes (direct)     | No (via API)               |
-| Sensitive data (tokens, keys)     | Yes              | No                         |
-| Event handlers (onClick, etc.)    | No               | Yes                        |
-| useState, useEffect, hooks        | No               | Yes                        |
-| Browser APIs (window, document)   | No               | Yes                        |
-| Large dependencies (charts, etc.) | No (use Client)  | Yes (code-split)           |
-
-**Bad** - Everything as Client Component:
+| Capability                  | Server | Client |
+| --------------------------- | :----: | :----: |
+| `async` body, direct DB/API |   Y    |   N    |
+| Secrets, server-only deps   |   Y    |   N    |
+| `useState`/`useEffect`/hooks|   N    |   Y    |
+| Event handlers, browser API |   N    |   Y    |
 
 ```tsx
-"use client"; // unnecessary - this component has no interactivity
-export default function UserProfile({ userId }: { userId: string }) {
+// Bad - "use client" forces the whole subtree client, ships JS for static content.
+"use client";
+export default function Page({ id }: { id: string }) {
   const [user, setUser] = useState(null);
-  useEffect(() => {
-    fetchUser(userId).then(setUser);
-  }, [userId]);
-  if (!user) return <Spinner />;
-  return <div>{user.name}</div>;
+  useEffect(() => { fetchUser(id).then(setUser); }, [id]);
+  return user ? <Profile user={user} onEdit={openEditor} /> : <Spinner />;
+}
+
+// Good - Server fetches data; only the interactive leaf is client.
+export default async function Page({ id }: { id: string }) {
+  const user = await getUser(id);
+  return <Profile user={user} />;       // Profile renders <EditButton/> as the "use client" leaf
 }
 ```
 
-Problem: Ships unnecessary JavaScript, loses SSR benefits, adds loading state complexity.
+Vite or other client-only stacks: skip this boundary entirely. Set `Component model: Client-only` in the output and use client-side fetching (TanStack Query).
 
-**Good** - Server Component with async data fetching:
-
-```tsx
-// No "use client" - this is a Server Component
-export default async function UserProfile({ userId }: { userId: string }) {
-  const user = await getUser(userId); // direct backend access
-  return <div>{user.name}</div>;
-}
-```
-
-**Vite / Client-only projects**: When stack-detect identifies Vite (no Next.js), all components are Client Components. Skip Server/Client boundary decisions. Use client-side data fetching (TanStack Query) and client-side routing (React Router). The output format `Component model` field should be `Client-only`.
-
-### Composition Pattern
-
-**Bad** - Prop-heavy configuration:
+### Composition over configuration
 
 ```tsx
-<Card
-  title="Order #123"
-  subtitle="Pending"
-  icon={<ShoppingCart />}
-  actions={[{ label: "View", onClick: handleView }]}
-  footer="Last updated 2h ago"
-  variant="outlined"
-/>
-```
+// Bad - every feature adds a prop; impossible to extend.
+<Card title="Order" subtitle="Pending" icon={<Cart/>} actions={[...]} footer="2h ago" />
 
-Problem: Every new feature adds another prop; component becomes unwieldy.
-
-**Good** - Compound component with composition:
-
-```tsx
-<Card variant="outlined">
-  <Card.Header>
-    <Card.Icon>
-      <ShoppingCart />
-    </Card.Icon>
-    <Card.Title>Order #123</Card.Title>
-    <Card.Subtitle>Pending</Card.Subtitle>
-  </Card.Header>
-  <Card.Body>{/* flexible content */}</Card.Body>
-  <Card.Footer>
-    <Card.Action onClick={handleView}>View</Card.Action>
-  </Card.Footer>
+// Good - slots; new features compose without changing Card's API.
+<Card>
+  <Card.Header icon={<Cart/>}><Card.Title>Order</Card.Title></Card.Header>
+  <Card.Body>{...}</Card.Body>
+  <Card.Footer><Button onClick={onView}>View</Button></Card.Footer>
 </Card>
 ```
 
-### Compound Components
+### Compound components (shared implicit state)
 
-Use React Context to share implicit state between compound component parts:
+Bind parts via context; expose them as static members. Throw if used outside the parent.
 
 ```tsx
-interface TabsContextValue {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+const TabsCtx = createContext<{ active: string; setActive: (v: string) => void } | null>(null);
+const useTabs = () => useContext(TabsCtx) ?? (() => { throw new Error("Tabs.* outside <Tabs>"); })();
+
+function Tabs({ defaultTab, children }: { defaultTab: string; children: ReactNode }) {
+  const [active, setActive] = useState(defaultTab);
+  return <TabsCtx value={{ active, setActive }}>{children}</TabsCtx>;
 }
-
-const TabsContext = createContext<TabsContextValue | null>(null);
-
-function useTabsContext() {
-  const context = useContext(TabsContext);
-  if (!context) throw new Error("Tab components must be used within <Tabs>");
-  return context;
-}
-
-function Tabs({
-  defaultTab,
-  children,
-}: {
-  defaultTab: string;
-  children: ReactNode;
-}) {
-  const [activeTab, setActiveTab] = useState(defaultTab);
-  return (
-    <TabsContext value={{ activeTab, setActiveTab }}>{children}</TabsContext>
-  );
-}
-
-function TabList({ children }: { children: ReactNode }) {
-  return <div role="tablist">{children}</div>;
-}
-
-function Tab({ value, children }: { value: string; children: ReactNode }) {
-  const { activeTab, setActiveTab } = useTabsContext();
-  return (
-    <button
-      role="tab"
-      aria-selected={activeTab === value}
-      onClick={() => setActiveTab(value)}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TabPanel({ value, children }: { value: string; children: ReactNode }) {
-  const { activeTab } = useTabsContext();
-  if (activeTab !== value) return null;
-  return <div role="tabpanel">{children}</div>;
-}
-
-Tabs.TabList = TabList;
-Tabs.Tab = Tab;
-Tabs.TabPanel = TabPanel;
+Tabs.Tab = ({ value, children }: { value: string; children: ReactNode }) => {
+  const { active, setActive } = useTabs();
+  return <button role="tab" aria-selected={active === value} onClick={() => setActive(value)}>{children}</button>;
+};
+Tabs.Panel = ({ value, children }: { value: string; children: ReactNode }) => {
+  const { active } = useTabs();
+  return active === value ? <div role="tabpanel">{children}</div> : null;
+};
 ```
 
-### Error Boundaries
+### Error boundaries
 
-Wrap component subtrees to catch rendering errors gracefully:
+One per feature region (page section, widget), not per component. Class form is still required for render-phase errors.
 
 ```tsx
-// React 19: use the built-in error boundary pattern via onCaughtError
-// For class-based error boundary (still needed for render-phase errors):
-class ErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
-  { hasError: boolean }
-> {
+class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Component error:", error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.hasError) return this.props.fallback;
-    return this.props.children;
-  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: Error, info: ErrorInfo) { reportError(err, info.componentStack); }
+  render() { return this.state.hasError ? this.props.fallback : this.props.children; }
 }
-
-// Usage: wrap feature boundaries, not individual components
-<ErrorBoundary fallback={<ErrorFallback />}>
-  <Dashboard />
-</ErrorBoundary>;
 ```
 
-Place error boundaries at feature boundaries (page sections, widget areas), not around every component.
-
-### Props Interface Patterns
+### Prop typing
 
 ```tsx
-// Simple component - inline props are fine
-function Badge({
-  label,
-  color,
-}: {
-  label: string;
-  color: "green" | "red" | "yellow";
-}) {
-  return <span className={`badge-${color}`}>{label}</span>;
-}
+// <=2 props or one-off: inline.
+function Badge({ label, color }: { label: string; color: "green" | "red" | "yellow" }) { ... }
 
-// Complex component - use interface
+// >2 props, optional fields, or reused shape: named interface with readonly arrays.
 interface DataTableProps {
   data: readonly Row[];
   columns: readonly Column[];
-  onSort?: (column: string, direction: "asc" | "desc") => void;
-  onRowClick?: (row: Row) => void;
-  emptyMessage?: string;
+  onSort?: (col: string, dir: "asc" | "desc") => void;
   isLoading?: boolean;
-}
-
-function DataTable({
-  data,
-  columns,
-  onSort,
-  onRowClick,
-  emptyMessage,
-  isLoading,
-}: DataTableProps) {
-  // ...
 }
 ```
 
-### Polymorphic Components
+### Polymorphic `as` prop
 
-Use the `as` prop pattern for components that need to render as different elements:
+Use only when a single component must render as different elements (Button-as-link, Text-as-h1). Otherwise it adds generics noise for no gain.
 
 ```tsx
-interface ButtonProps<T extends ElementType = "button"> {
-  as?: T
-  variant: "primary" | "secondary"
-  children: ReactNode
+type Poly<T extends ElementType, P> = P & { as?: T } & Omit<ComponentPropsWithoutRef<T>, keyof P | "as">;
+
+function Button<T extends ElementType = "button">(
+  { as, variant, children, ...rest }: Poly<T, { variant: "primary" | "secondary"; children: ReactNode }>
+) {
+  const Tag = as ?? "button";
+  return <Tag className={`btn-${variant}`} {...rest}>{children}</Tag>;
 }
-
-type PolymorphicProps<T extends ElementType> = ButtonProps<T> &
-  Omit<ComponentPropsWithoutRef<T>, keyof ButtonProps>
-
-function Button<T extends ElementType = "button">({
-  as,
-  variant,
-  children,
-  ...props
-}: PolymorphicProps<T>) {
-  const Component = as || "button"
-  return <Component className={`btn-${variant}`} {...props}>{children}</Component>
-}
-
-// Usage:
-<Button variant="primary" onClick={handleClick}>Click</Button>
-<Button as="a" variant="secondary" href="/about">About</Button>
 ```
 
 ## Output Format
 
-Consuming workflow skills depend on this structure.
-
 ```
 ## Component Design
 
-**Stack:** {detected framework}
-**Component model:** {Server Components + Client | Client-only}
+**Stack:** {Next.js App Router | Next.js Pages | Vite | Other}
+**Component model:** {Server + Client | Client-only}
 
 ### Component Tree
 
-{ComponentName} (Server | Client) - {responsibility}
-  ├── {ChildA} (Server | Client) - {responsibility}
-  └── {ChildB} (Client) - {responsibility}
+{Root} ({Server | Client}) - {responsibility}
+  |- {Child} ({Server | Client}) - {responsibility}
 
-### Component Specifications
+### Specifications
 
-| Component      | Type   | Props                  | State          | Pattern            |
-| -------------- | ------ | ---------------------- | -------------- | ------------------ |
-| {name}         | Server | {key props}            | None           | Async data fetch   |
-| {name}         | Client | {key props}            | {state fields} | Compound / Simple  |
+| Component | Type | Props (key) | State | Pattern |
+| --------- | ---- | ----------- | ----- | ------- |
+| {name}    | {Server|Client} | {...} | {none|fields} | {Slot|Compound|Polymorphic|Simple} |
 
-### Recommendations
+### Findings
 
-- {recommendation with rationale}
-
-### Issues Found
-
-- [Severity: High | Medium | Low] {description}
-  - Problem: {what is wrong}
-  - Fix: {concrete correction}
+- [Severity: {High | Medium | Low}] {one-line issue}
+  Problem: {what is wrong}
+  Fix: {concrete correction; reference Pattern name}
 ```
+
+One Findings block per issue. Omit no field.
 
 ## Avoid
 
-- Class components for new code (except error boundaries)
-- `"use client"` on components that don't need interactivity
-- Prop drilling through more than 2 levels (use composition, context, or state library)
-- God components that handle multiple unrelated concerns
-- Passing functions from Server to Client Components (non-serializable)
-- Default exports for non-route components (makes refactoring harder)
-- Inline prop types on complex components (use named interfaces)
-- Deeply nested ternaries in JSX (extract to named components or early returns)
+- `"use client"` at the page or layout root when only a leaf needs it
+- Passing functions, class instances, or Dates without serialization across the Server/Client boundary
+- Prop-heavy "god" components that grow a new prop per feature instead of a new slot
+- Prop drilling through 3+ levels - lift the composition or introduce context
+- Default exports for non-route components - breaks rename refactors and tooling
+- Class components for new code outside error boundaries
+- Deeply nested ternaries in JSX - extract a named component or return early
+- Polymorphic `as` generics on components that always render the same tag

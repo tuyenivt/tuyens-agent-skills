@@ -1,6 +1,6 @@
 ---
 name: task-react-review-observability
-description: React / Next.js observability review: web-vitals, Sentry, OpenTelemetry browser SDK, instrumentation.ts tracing, structured logs, RUM correlation.
+description: React / Next.js observability review - web-vitals, Sentry, OpenTelemetry browser + instrumentation.ts, RUM, structured logs, PII.
 agent: react-tech-lead
 metadata:
   category: frontend
@@ -9,253 +9,179 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
-# React Observability Review
-
-## Purpose
-
-React-aware observability review that names `web-vitals` (`onLCP`, `onINP`, `onCLS`, `onTTFB`, `onFCP`), Sentry browser SDK + React error boundaries (`Sentry.ErrorBoundary`, `Sentry.withErrorBoundary`, `BrowserTracing` integration), OpenTelemetry web SDK (`@opentelemetry/sdk-trace-web` + `@opentelemetry/auto-instrumentations-web`), Next.js `instrumentation.ts` for server-side OTel, structured client logging, and RUM correlation directly instead of routing through the generic frontend adapter. Focuses on whether React production behavior is visible, diagnosable, and alertable - at the _library and SDK_ level. Infra-level concerns (Datadog dashboards, Sentry org settings, log forwarder config) stay out of scope.
-
-This workflow is the stack-specific delegate of `task-code-review-observability` for React. The core workflow's contract (depth levels, output format) is preserved.
+Stack-specific delegate of `task-code-review-observability` for React. Library/SDK-level only - infra config (Datadog dashboards, Sentry org settings, log forwarders, alert rules) is out of scope.
 
 ## When to Use
 
-- Reviewing a Next.js or Vite + React PR for observability regressions or new instrumentation gaps
-- Pre-release observability check for a new React app or major feature
-- Post-incident review when client-side diagnosis was slow or evidence was missing
-- Adopting OpenTelemetry / Sentry / `web-vitals` in a React app
-- Auditing error boundary placement and crash reporting paths
+- React PR observability review or regression check (Next.js App/Pages Router, Vite + React Router)
+- Pre-release or post-incident audit of client-side instrumentation
+- Adopting `web-vitals` / Sentry / OpenTelemetry / RUM in a React app
+- Auditing error-boundary placement and crash-reporting paths
 
-**Not for:**
+**Not for:** general review (`task-react-review`), perf (`task-react-review-perf`), active incidents (`/task-oncall-start`), infra dashboards/alerts.
 
-- General React code review (use `task-react-review`)
-- React performance issues with a known bottleneck (use `task-react-review-perf`)
-- Active production incident investigation (use `/task-oncall-start`)
-- Infra-level observability (Datadog dashboards, Grafana panels, alert rules) - those are not in source code
+## Depth
 
-## Depth Levels
-
-| Depth      | When to Use                                            | What Runs                                          |
-| ---------- | ------------------------------------------------------ | -------------------------------------------------- |
-| `quick`    | Single component or route                              | Logging + error boundary + web-vitals check only   |
-| `standard` | Default - full React observability review              | All steps                                          |
-| `deep`     | Pre-release of a critical app, or post-incident review | All steps + SLI/SLO suggestions per critical route |
-
-Default: `standard`.
-
-## Invocation
-
-Mirrors `task-code-review-observability`:
-
-| Invocation                                  | Meaning                                                                                               |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-react-review-observability`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-react-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-react-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review-observability` or `task-react-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 2 below is skipped.
+| Depth      | When                                          | What Runs                              |
+| ---------- | --------------------------------------------- | -------------------------------------- |
+| `quick`    | Single component or route                     | Steps 1-6, 12                          |
+| `standard` | Default                                       | All steps except 11                    |
+| `deep`     | Pre-release of critical app, post-incident    | All steps including SLI/SLO (Step 11)  |
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to confirm React. If invoked as a subagent of a React-aware parent, accept the pre-confirmed stack. If not React, stop and tell the user to invoke `/task-code-review-observability` instead.
+Use skill: `behavioral-principles`.
 
-Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Record `Framework: ...`. Each step branches on this signal where the instrumentation surface differs.
+### Step 2 - Stack Detect
 
-### Step 2 - Resolve the Diff Under Review
+Use skill: `stack-detect`. Confirm React. Record framework: Next.js App Router | Next.js Pages Router | Vite + React Router. If not React, stop and redirect to `/task-code-review-observability`.
 
-Use skill: `review-precondition-check` with the user's argument. On approval, read diff + commit log once and reuse. Skip entirely if running as a subagent and the parent passed the handle.
+### Step 3 - Resolve Diff
 
-If the precondition check stops with a fail-fast message, surface it verbatim and stop. Do not run any state-changing git command.
+Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip if a parent workflow passed the handle plus pre-read artifacts.
 
-### Step 3 - Read the Instrumentation Surface
+### Step 4 - Surface Map
 
-**The most important output of this step is a one-line answer per surface (web-vitals / error tracker / OTel browser / OTel server (Next.js) / structured logging) of the form `wired | partial | absent`.** A missing wire is itself the finding, not a precondition for review. If the surface is `absent`, Steps 4-9 shift mode from "audit existing wiring" to "scaffold from zero at the changed call sites" - and findings consolidate one-per-surface (see grouping rule below).
+Read instrumentation wiring in the framework-appropriate files below, plus every changed file calling `Sentry.*`, `useReportWebVitals`, OTel APIs, or a logger. Produce one verdict per surface: `wired | partial | absent` with file:line evidence. A missing wire is the finding, not a precondition.
 
-**Grouping rule.** When a whole surface is `absent` (no `web-vitals`, no Sentry SDK init, no OTel browser SDK), produce a **single High-Impact finding for that surface** listing all the missing pieces grouped by the file/symbol they should land in. Per-callsite findings only apply when the surface exists and a specific callsite misuses it.
+| Framework            | Files to open                                                                                                                                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Next.js App Router   | `instrumentation.ts`, `app/global-error.tsx`, `app/**/error.tsx`, `app/layout.tsx`, `sentry.{client,server,edge}.config.ts`, `next.config.{js,ts,mjs}`, `middleware.ts`, `package.json`                          |
+| Next.js Pages Router | `pages/_app.tsx`, `pages/_document.tsx`, `pages/api/*`, `sentry.{client,server}.config.ts`, `next.config.js`, `package.json`                                                                                    |
+| Vite + React Router  | `src/main.tsx`, `src/router.tsx`, `src/components/ErrorBoundary.tsx`, `vite.config.{js,ts}`, `package.json`                                                                                                     |
 
-Then open the files that actually configure observability so findings cite real lines:
+| Surface                 | Look for                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Web Vitals              | `import { onLCP, onINP, onCLS } from 'web-vitals'` + transport; `useReportWebVitals` (Next.js)                    |
+| Error tracker + boundary| `@sentry/nextjs` or `@sentry/react` `init`; `app/global-error.tsx` + `app/**/error.tsx`; `errorElement` (Vite)    |
+| OpenTelemetry (browser) | `WebTracerProvider`, `@opentelemetry/sdk-trace-web`, `@opentelemetry/auto-instrumentations-web`, OTLP exporter    |
+| OpenTelemetry (server)  | `instrumentation.ts` registering `@vercel/otel` or `NodeSDK` (Next.js only; `n/a` for Vite)                       |
+| Structured logging      | Logger module posting to RUM/Sentry; absence shown by `console.log`/`console.error` in prod paths                 |
+| RUM                     | Datadog RUM / Vercel Analytics / Cloudflare Web Analytics / custom SDK init at app entry                          |
 
-**Next.js (App Router):**
+**Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file/symbol - not one finding per sub-check.
 
-- `instrumentation.ts` (Next.js convention; runs once per process lifecycle for both Node and Edge runtimes when `experimental.instrumentationHook` is enabled in older versions; on by default in Next 15+)
-- `app/global-error.tsx` (root error boundary), `app/**/error.tsx` (per-route error boundaries)
-- `app/layout.tsx` and any provider component setting up `Sentry.ErrorBoundary` / RUM SDK / web-vitals reporter
-- `next.config.{js,ts,mjs}` - Sentry webpack plugin (source map upload), OTel exporter env vars
-- `package.json` - confirm `@sentry/nextjs`, `web-vitals`, `@opentelemetry/sdk-trace-web` (browser), `@opentelemetry/sdk-node` (Next.js server) presence
-- `app/**/page.tsx` and `app/**/route.ts` for any direct logger / tracer usage
-- `middleware.ts` for tracing context propagation
+**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 at every depth; skip the per-step diff-touch gate.
 
-**Next.js (Pages Router):**
+### Step 5 - Web Vitals
 
-- `pages/_app.tsx` (RUM init, error boundary, web-vitals reporter), `pages/_document.tsx` (script tags for any non-SDK RUM)
-- `pages/api/*` route handlers - Sentry server-side, OTel
-- `next.config.js` Sentry plugin
+- [ ] `web-vitals` v4+ in `package.json` (v2.x exports `getFID` - stale)
+- [ ] All four core metrics reported: LCP, INP, CLS, TTFB (FCP optional); INP must replace FID
+- [ ] Wiring: `useReportWebVitals` in a Client Component imported into `app/layout.tsx` (App Router); `pages/_app.tsx` `reportWebVitals` (Pages); after `createRoot` (Vite)
+- [ ] Transport is real: `navigator.sendBeacon` or `fetch` with `keepalive: true` to RUM/analytics endpoint; `console.log` reporter is dev-only
+- [ ] Each metric carries route/pathname for per-route segmentation
+- [ ] Sample at the reporter, not at metric collection (`onLCP` itself must not be gated)
+- [ ] `web-vitals/attribution` build recommended when LCP/INP/CLS values exist but root causes are opaque
 
-**Vite + React Router:**
+### Step 6 - Error Tracker + Error Boundaries
 
-- `src/main.tsx` - Sentry browser SDK init, OTel browser SDK init, `web-vitals` reporter wiring
-- `src/router.tsx` / route definitions - error elements (`errorElement` per route)
-- `src/components/ErrorBoundary.tsx` (or wherever error boundaries live)
-- `vite.config.{js,ts}` - Sentry plugin (source map upload)
-- `package.json` for SDK presence
+- [ ] Sentry SDK initialized in dedicated config (`sentry.{client,server,edge}.config.ts` for Next.js; `src/main.tsx` for Vite) - not in a component body
+- [ ] DSN from env (`NEXT_PUBLIC_SENTRY_DSN` is acceptable - DSN is a public token); `release` and `environment` from build metadata
+- [ ] `tracesSampleRate`, `replaysSessionSampleRate`, `replaysOnErrorSampleRate` set per env; not `1.0` in prod for high-traffic apps
+- [ ] PII scrubbing: `sendDefaultPii: false`; `beforeSend` strips sensitive keys; `Replay` uses `mask`/`block` selectors on PII inputs
+- [ ] `ignoreErrors` entries each commented (ResizeObserver loop, browser-extension noise, navigation network errors)
+- [ ] Error boundary tree:
+  - Next.js App Router: `app/global-error.tsx` (root, `"use client"`, renders `<html>`/`<body>`) **and** `app/**/error.tsx` per segment
+  - Next.js Pages Router: top-level `<ErrorBoundary>` in `_app.tsx`
+  - Vite: root `<Sentry.ErrorBoundary>` or React 19 boundary + per-route `errorElement`
+- [ ] **Boundary explicitly calls `Sentry.captureException(error)`** - Next.js `error.tsx` / `global-error.tsx` do NOT auto-report; a fallback without capture loses the diagnostic (flag High)
+- [ ] User-facing fallback with retry/reset action, not a blank screen
+- [ ] Source maps uploaded via Sentry plugin (Next.js / Vite); `productionBrowserSourceMaps: false` (or equivalent) so maps are not served publicly
+- [ ] Sentry Replay vs strict CSP: if `script-src 'self' 'nonce-XXX'` without `'unsafe-inline'`, Replay inline scripts are blocked - flag conflict
 
-For diffs touching only one of these surfaces (a new route but no Sentry change, say), still read the existing config to know whether SDKs / error boundaries / web-vitals are wired - a missing wire is the finding.
+### Step 7 - OpenTelemetry / Tracing
 
-### Step 4 - Web Vitals Reporting
+_Skip at `quick` unless diff touches OTel config or `instrumentation.ts` (or greenfield applies)._
 
-Inspect web-vitals wiring and any reporter callsite in the diff:
+**Browser:**
 
-- [ ] **`web-vitals` library installed and reporter wired**: `import { onLCP, onINP, onCLS, onTTFB, onFCP } from 'web-vitals'` with each metric posted to the analytics / RUM endpoint. Next.js: `useReportWebVitals` from `next/web-vitals` works in both routers; App Router needs a small Client Component (`<WebVitalsReporter />`) imported into `app/layout.tsx` because `useReportWebVitals` is a hook and `layout.tsx` is a Server Component by default. Vite: wire in `src/main.tsx` after `createRoot`
-- [ ] **All four core metrics reported**: LCP, INP (replaced FID in 2024), CLS, plus optional TTFB and FCP. INP must be present; missing INP signals stale config (FID-only or `web-vitals` < 4.0). Confirm `web-vitals` is at v4+ in `package.json` - v2.x exports `getFID` not `onINP`
-- [ ] **Attribution build used for slow paths**: `web-vitals/attribution` provides element-level / event-target attribution for LCP / INP / CLS - much more useful than a bare metric value. Recommend swapping `web-vitals` import for `web-vitals/attribution` if RUM data is uninformative
-- [ ] **Reporter has a transport**: metric is `fetch`'d / `navigator.sendBeacon`'d to a real endpoint (RUM / analytics); a `console.log` reporter is dev-only. Use `sendBeacon` (or `fetch` with `keepalive: true`) so the report survives page unload
-- [ ] **Sample rate applied at the reporter, not at metric collection**: collect every metric (cheap), throttle reporting (downstream cost). Do not gate `onLCP` itself behind a sample
-- [ ] **Route correlation**: every reported metric includes the current route / pathname so dashboards can segment per route
+- [ ] `WebTracerProvider` + `BatchSpanProcessor` + OTLP exporter; `@opentelemetry/auto-instrumentations-web` enables `fetch`, `xhr`, `document-load`, `user-interaction`
+- [ ] `traceparent` propagated on outbound fetch to own backend; backend host in `propagateTraceHeaderCorsUrls`; CORS allows `traceparent`
+- [ ] Sampling explicit and aggressive on client (`TraceIdRatioBasedSampler`); aligned with backend ratio
 
-### Step 5 - Error Boundaries and Error Tracking (Sentry / Honeybadger / Rollbar SDKs)
+**Server (Next.js `instrumentation.ts`):**
 
-Inspect SDK config and error boundary placement:
+- [ ] `register()` initializes `@vercel/otel` (preferred) or `NodeSDK` for `nodejs` runtime; Edge runtime support limited - document the gap
+- [ ] Raw `NodeSDK` setup includes: `BatchSpanProcessor` (not `SimpleSpanProcessor`), `SIGTERM` -> `sdk.shutdown()`, explicit fallback for `runtime = 'edge'` routes
+- [ ] Resource attributes: `service.name`, `service.version`, `deployment.environment` from build metadata
+- [ ] Sampler aware of high-volume noise (health checks, prefetches) - custom `Sampler` dropping them beats flat ratio
 
-- [ ] **Error tracker SDK installed and initialized**:
-  - Next.js: `@sentry/nextjs` configured via `sentry.client.config.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts` and the `withSentryConfig` wrapper in `next.config.js`
-  - Vite: `@sentry/react` initialized in `src/main.tsx` with `BrowserTracing`, `Replay` integrations
-- [ ] **DSN / API key from env**, not committed; `NEXT_PUBLIC_SENTRY_DSN` is acceptable here (DSN is a public token by design, but document the choice)
-- [ ] **Release / environment tags** populated from build metadata (`release: process.env.NEXT_PUBLIC_BUILD_ID`, `environment: process.env.NODE_ENV`); flag bare default values
-- [ ] **PII scrubbing on**: `sendDefaultPii: false` (default - flag explicit `true`); `beforeSend` strips known sensitive keys; `replaysSessionSampleRate` / `replaysOnErrorSampleRate` chosen deliberately (Replay records DOM and can inadvertently capture sensitive content - use `mask` / `block` selectors for inputs containing PII)
-- [ ] **Error boundary tree (Next.js App Router)**: `app/global-error.tsx` (catches errors during render, including layout); `app/**/error.tsx` per route segment (catches per-route render errors). Both must exist for full coverage; the root error boundary requires `"use client"` and renders inside `<html>` / `<body>`
-- [ ] **Error boundary (Vite)**: top-level `<ErrorBoundary>` (Sentry's `Sentry.ErrorBoundary` or React 19+ built-in) at root; per-route via React Router `errorElement`
-- [ ] **Error boundary surfaces user-facing fallback**: not just a blank screen - "Something went wrong, please refresh" with a retry action. Reset key for navigation-driven recovery
-- [ ] **Error boundary captures explicitly to Sentry**: Next.js `app/**/error.tsx` and `app/global-error.tsx` do NOT auto-report to Sentry - the boundary's body must call `Sentry.captureException(error)` (or `useEffect(() => Sentry.captureException(error), [error])` in the function component). A boundary that renders a fallback but does not capture loses the diagnostic; flag as High
-- [ ] **Sample rate explicit**: `tracesSampleRate`, `profilesSampleRate`, `replaysSessionSampleRate` per env; not `1.0` in prod for tracing on a high-traffic app (cost + sampling-induced noise). Prefer a `tracesSampler` callback when a few high-volume routes (`/api/health`, `/api/ping`) need lower sample than the default
-- [ ] **Sentry Replay vs. CSP `nonce`**: Sentry Session Replay injects inline scripts at runtime. A strict CSP (`script-src 'self' 'nonce-XXX'`) without `'unsafe-inline'` blocks Replay. When the diff adds Replay to a project with strict CSP (or vice versa), flag the conflict and recommend either adopting Sentry's CSP-compatible setup or scoping Replay to non-CSP routes
-- [ ] **`Sentry.captureMessage` / `captureException` payloads do not include PII**: `extra: { user: session.user }` ships email, phone, address, and any other session-attached field to Sentry. Project the captured user to `{ id }` (or `{ id, role }`) before passing through `extra` / `setContext`. The `Sentry.setUser` flow is the right channel for identification - `extra` should only carry diagnostic detail not already on `setUser`
-- [ ] **Ignored errors documented**: `ignoreErrors: [...]` lists noise classes (browser extension errors, ResizeObserver loop limit, network errors during navigation); each entry has a comment justifying
-- [ ] **Source maps uploaded**: build pipeline uploads source maps to Sentry (Next.js Sentry plugin / Vite Sentry plugin) so stack traces are deobfuscated; absent means production stack traces are unreadable
-- [ ] **Source maps NOT served publicly**: `productionBrowserSourceMaps: false` (Next.js default); Vite default is to embed source maps only on `--sourcemap`. Public source maps are an information disclosure risk
+### Step 8 - Structured Client Logging
 
-### Step 6 - OpenTelemetry / Tracing
+_Skip at `quick` unless diff modifies logging utilities or adds `console.*` in prod paths (or greenfield applies)._
 
-_Skipped at `quick` depth unless the diff touches OTel config or `instrumentation.ts`._
+- [ ] No `console.log` / `console.error` in prod paths - routes to `Sentry.captureMessage` / `captureException` or a structured logger that hits RUM
+- [ ] No log calls in render bodies (fires every render)
+- [ ] Sensitive-field hygiene: payloads exclude `password`, `token`, `authorization`, `Cookie`, raw responses with PII; `beforeBreadcrumb` strips known keys
+- [ ] Business actions (signup, checkout step, payment) emit structured RUM events - not page views alone
 
-**Browser-side (`@opentelemetry/sdk-trace-web` + `@opentelemetry/auto-instrumentations-web`):**
+### Step 9 - Identity, Session, Trace Correlation
 
-- [ ] **Browser SDK initialized**: `WebTracerProvider` registered with `BatchSpanProcessor` + OTLP exporter; auto-instrumentations enabled for `fetch`, `xhr`, `document-load`, user-interaction
-- [ ] **`traceparent` propagation**: outbound `fetch` calls to your own backend include `traceparent` header so backend spans link to the originating browser request. Cross-origin: backend must be in `propagateTraceHeaderCorsUrls` allowlist; CORS must allow `traceparent`
-- [ ] **Sampling**: browser-side OTel must sample aggressively (not 100%) - cost on the client side is cheap, but downstream backend sampling alignment matters
+_Skip at `quick` unless diff touches auth, RUM SDK init, or Sentry context wiring (or greenfield applies)._
 
-**Server-side (Next.js `instrumentation.ts`):**
+- [ ] `Sentry.setUser({ id })` after auth; `Sentry.setUser(null)` on logout; `email` only with consent
+- [ ] `Sentry.setTag` for low-cardinality dimensions (tenant, role, flag); no PII or unbounded values (no `userId` as tag)
+- [ ] `Sentry.setContext` for build version, sanitized route/query
+- [ ] **`extra` / `setContext` payloads project user to `{ id }` (or `{ id, role }`)** - never pass `session.user` whole
+- [ ] Same `userId` / `sessionId` / `traceId` flow into RUM, Sentry, and OTel so a slow user cross-references to errors and traces
 
-- [ ] **`instrumentation.ts` registers OTel SDK**: `@opentelemetry/sdk-node` `NodeSDK` with `@vercel/otel` (the recommended wrapper) or manual `NodeSDK` setup. Initialized in `register()` for the `nodejs` runtime; for Edge runtime, OTel support is limited - document the gap. When the project chose raw `NodeSDK` over `@vercel/otel`, also confirm: (a) graceful shutdown via `sdk.shutdown()` on `SIGTERM`, (b) `BatchSpanProcessor` (not `SimpleSpanProcessor` which blocks the event loop), (c) explicit Edge-runtime fallback for routes marked `runtime = 'edge'`
-- [ ] **Auto-instrumentations**: HTTP, fetch, Prisma / pg, ioredis - same as a Node service, applied to Next.js Server Components / Route Handlers / Server Actions
-- [ ] **Sampling explicit and noise-aware**: `ParentBasedSampler(TraceIdRatioBasedSampler(0.1))` per env; not left at default. For repos where a few high-volume / low-signal routes dominate (health checks, prefetches, asset routes), prefer a custom `Sampler` that returns `RECORD_AND_SAMPLED` for business routes and `DROP` for noise - flat ratio sampling burns budget on noise
-- [ ] **Resource attributes populated**: `service.name`, `service.version`, `deployment.environment` - from build metadata / env vars
-- [ ] **Trace context propagation**: Next.js Route Handlers receive `traceparent` from upstream; Server Actions inherit context from the request that triggered them; verify auto-instrumentation does this without manual wrapping
+### Step 10 - RUM Integration
 
-### Step 7 - Structured Client Logging
+_Skip at `quick` and on apps without a chosen RUM provider (or greenfield applies)._
 
-_Skipped at `quick` depth unless the diff modifies logging utilities or routes containing `console.*` calls._
+- [ ] SDK initialized once at app entry, before any router hook fires (first navigation otherwise unrecorded)
+- [ ] SPA navigation tracked: Next.js via `usePathname`; Vite via React Router location; vendor auto-detect verified
+- [ ] Custom events for business-critical interactions (checkout step completed, plan upgraded)
+- [ ] DNT respected: `navigator.doNotTrack === '1'` short-circuits init where jurisdiction requires
+- [ ] Privacy posture documented when Session Replay / session recording is on
 
-- [ ] **No `console.log` / `console.error` in production paths**: replaced with a structured logger that posts to RUM / Sentry (`Sentry.captureMessage` for warnings, `Sentry.captureException` for errors). `console.log` skips error-tracker integration, sample rates, and PII redaction
-- [ ] **Log levels respected**: `console.error` only for actual errors caught by error boundaries; navigation / interaction events go to RUM events, not the console
-- [ ] **Sensitive-field hygiene**: log payloads do not include `password`, `token`, `authorization`, `Authorization`, `Cookie`, raw API responses with PII; `Sentry.beforeBreadcrumb` strips known sensitive keys
-- [ ] **No log spam in render paths**: a `console.log(props)` inside a render function fires on every render (cheap-but-noisy in dev, real cost in prod via RUM); flag for removal
-- [ ] **Custom events for RUM**: significant user actions (signup, checkout, payment) emit a structured RUM event so retention / funnel analytics ground in real data, not page views alone
+### Step 11 - Health and SLIs (deep only)
 
-### Step 8 - User Identity and Session Correlation
+- [ ] Critical journeys have at least one SLI (LCP < 2.5s, INP < 200ms, CLS < 0.1, or custom RUM metric)
+- [ ] SLOs documented in code (route config / module README) - not free-floating in Confluence
+- [ ] Error rate per route alerted via Sentry/RUM
+- [ ] Synthetic checks (Datadog Synthetics, Checkly) complement RUM for critical journeys
+- [ ] Bundle-size budget per route enforced in CI (`@next/bundle-analyzer`, `bundlesize`) - LCP regressions correlate with bundle growth
 
-_Skipped at `quick` depth unless the diff touches auth providers or a Sentry context wrapper._
+### Step 12 - Write Report
 
-- [ ] **`Sentry.setUser({ id, email? })`** called after auth succeeds; `Sentry.setUser(null)` on logout. `email` only when consent / privacy posture allows
-- [ ] **`Sentry.setTag` for tenant / role / feature flag**: tenant ID, user role, A/B test variant, feature flag keys exposed as tags so filters work in Sentry / RUM
-- [ ] **`Sentry.setContext` for richer per-event metadata**: build version, route, query parameters (sanitized) - structured, queryable
-- [ ] **No PII in tags**: tags are searchable strings - keep cardinality bounded (tenant ID OK, full name not OK)
-
-### Step 9 - Real User Monitoring (RUM) Integration
-
-_Skipped at `quick` depth and on apps without a chosen RUM provider._
-
-When a RUM SDK is in use (Datadog RUM, New Relic, Vercel Analytics, Cloudflare Web Analytics, Plausible, custom):
-
-- [ ] **SDK initialized once at app entry**, before any router hooks execute - missed pageviews on first navigation otherwise
-- [ ] **SPA navigation tracked**: SDK detects route changes via the framework's router (Next.js: `usePathname` from `next/navigation`; Vite: React Router's location); Vercel Analytics / Datadog RUM auto-detect when wired correctly
-- [ ] **Custom events / actions** for business-critical interactions (checkout step completed, plan upgraded) - synthetic dashboards should not rely solely on page views
-- [ ] **Privacy / DNT respected**: Do-Not-Track header / cookie banner integration; `navigator.doNotTrack === '1'` short-circuits init in privacy-sensitive jurisdictions
-- [ ] **Correlation with error tracker / OTel**: same `userId` / `sessionId` / `traceId` flow into RUM events so a slow user can be cross-referenced to their errors and traces
-
-### Step 10 - Health and SLIs (deep depth only)
-
-When invoked at `deep`, evaluate:
-
-- [ ] Critical user journeys have at least one measurable SLI (LCP < 2.5s, INP < 200ms, CLS < 0.1 - the Core Web Vitals "good" thresholds; or a custom RUM metric for a journey-specific outcome)
-- [ ] SLOs documented in code (decorator / module README, route-level config) - not a free-floating Confluence page
-- [ ] Error rate per route tracked via Sentry / RUM; spike alerts wired
-- [ ] Synthetic checks (Datadog Synthetics, Checkly) for critical journeys; these complement RUM but do not replace it
-- [ ] Build-size budgets per route enforced in CI (`@next/bundle-analyzer` thresholds, `bundlesize`); LCP regressions correlate with bundle growth
-
-
-### Step 11 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-observability`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack confirmed as React (or accepted from parent dispatcher); framework recorded
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
-- [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained (skipped when invoked as a subagent - the parent already gated)
-- [ ] Instrumentation surfaces (web-vitals reporter, error boundary tree, Sentry / OTel SDK init, structured logger, RUM SDK) read directly before applying checklists; Surface Map produced
-- [ ] Web Vitals (LCP / INP / CLS / TTFB / FCP) reporting verified; INP present (not legacy FID); `web-vitals` v4+ confirmed; attribution build recommended where slow paths exist
-- [ ] Error boundary tree assessed: `app/global-error.tsx` + per-route `error.tsx` (Next.js App Router) / route `errorElement` (Vite + React Router); Sentry SDK wired with framework integration; boundary explicitly calls `Sentry.captureException` (Next.js does not auto-capture)
-- [ ] OpenTelemetry assessed: browser SDK + auto-instrumentation, Next.js `instrumentation.ts` for server, sampling explicit and noise-aware, source maps uploaded but not served; raw `NodeSDK` setups have shutdown + BatchSpanProcessor + Edge fallback
-- [ ] Sentry Replay vs. CSP `nonce` conflict checked when both surfaces appear in the diff
-- [ ] `Sentry.captureMessage` / `captureException` `extra` / `setContext` payloads checked for PII (project user objects to `{ id }` before passing)
-- [ ] Structured client logging assessed: no `console.log` in prod paths, sensitive-field redaction, RUM events for business-critical actions
-- [ ] User identity / session correlation assessed: `Sentry.setUser` / tags / context for tenant / role / flag, no PII in high-cardinality tags
-- [ ] RUM integration assessed when a RUM SDK is in use: SPA navigation tracked, custom events for journeys, privacy / DNT respected
-- [ ] Findings name a React / web-vitals / Sentry / OTel idiom directly - not "add observability"
-- [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, Sentry org settings, log forwarder config, alert rules) explicitly deferred to ops
-- [ ] Depth honored: `quick` skipped tracing/logging-detail/identity/RUM/SLI steps unless diff signals required them; `deep` ran the SLI step
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-observability`. Write the report to file and print the confirmation line.
 
 ## Output Format
 
 ```markdown
 ## React Observability Review Summary
 
-**Stack Detected:** React <version> / TypeScript <version>
-**Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-**Web Vitals:** wired (web-vitals + RUM transport) | partial (collected but not reported) | absent
-**Error Tracker:** Sentry (@sentry/nextjs) | Sentry (@sentry/react) | Honeybadger | Rollbar | absent
-**Tracing (browser):** OpenTelemetry web SDK | absent
-**Tracing (server, Next.js):** instrumentation.ts + @vercel/otel | absent | n/a (Vite)
+**Stack:** React <version> / TypeScript <version>
+**Framework:** Next.js App Router <version> | Next.js Pages Router <version> | Vite + React Router <version>
 **RUM:** Datadog RUM | Vercel Analytics | Cloudflare Web Analytics | custom | absent
-**Overall:** Adequate | Gaps Found - [count by impact: High/Medium/Low] | Greenfield - no observability surface wired (count by impact: ...)
+**Overall:** Adequate | Gaps Found [High/Medium/Low counts] | Greenfield - 3+ surfaces absent
 
 ## Surface Map
 
-| Surface                       | Verdict                        | Evidence                                      |
-| ----------------------------- | ------------------------------ | --------------------------------------------- |
-| Web Vitals                    | wired / partial / absent       | [file:line or "no web-vitals reporter found"] |
-| Error boundaries + Sentry SDK | wired / partial / absent       | [...]                                         |
-| OpenTelemetry (browser)       | wired / partial / absent       | [...]                                         |
-| OpenTelemetry (server)        | wired / partial / absent / n/a | [...]                                         |
-| Structured logging            | wired / partial / absent       | [...]                                         |
+| Surface                  | Verdict                        | Evidence                                         |
+| ------------------------ | ------------------------------ | ------------------------------------------------ |
+| Web Vitals               | wired / partial / absent       | [file:line or "no web-vitals reporter found"]    |
+| Error tracker + boundary | wired / partial / absent       | [file:line]                                      |
+| OpenTelemetry (browser)  | wired / partial / absent       | [file:line]                                      |
+| OpenTelemetry (server)   | wired / partial / absent / n/a | [file:line; n/a for Vite]                        |
+| Structured logging       | wired / partial / absent       | [file:line]                                      |
+| RUM                      | wired / partial / absent       | [file:line]                                      |
 
-> Use **Greenfield** as the `Overall:` headline when 3+ rows are `absent` - it tells the reader the review is scaffolding, not auditing. Use the same `absent` vocabulary throughout.
+_Use `absent` consistently (not `none`/`missing`/`not wired`). Set Overall to `Greenfield` when 3+ rows are `absent`._
 
 ## Findings
 
 ### High Impact
 
 - **Location:** [file:line or config key]
-- **Issue:** [what is missing / wrong - name the React idiom: missing INP reporter (only legacy FID), no `app/global-error.tsx`, Sentry initialized in component body (re-runs every render), `useReportWebVitals` missing route correlation, OTel `traceparent` not propagated to backend, source maps served publicly, etc.]
-- **Impact:** [diagnosability / alertability / cost cost]
-- **Fix:** [specific React / SDK change with code or config example]
+- **Gap Class:** [missing-wire | misconfigured | unsafe-default | pii-leak | noise]
+- **Surface:** [Web Vitals | Error Tracker | Tracing | Logging | Identity | RUM]
+- **Issue:** [name the React/SDK idiom: missing INP reporter, no `app/global-error.tsx`, `error.tsx` without `Sentry.captureException`, `useReportWebVitals` missing route correlation, OTel `traceparent` not propagated, source maps served publicly, `extra: { user: session.user }` shipping PII]
+- **Impact:** [diagnosability | alertability | cost | privacy]
+- **Suggested Instrumentation:** [specific code/config: API call, file to add, exact SDK option]
 
 ### Medium Impact
 
@@ -265,36 +191,49 @@ Write the fully assembled review output to the report file before ending the ses
 
 [Same structure]
 
-_Omit sections with no findings. Within each impact bucket, group findings by surface (Web Vitals / Error Tracker / Tracing / Logging / RUM) when more than 2 findings share a surface; otherwise list flat. Greenfield reviews collapse a whole surface into one finding per the Step 3 grouping rule._
+_Omit empty buckets. Group by Surface within a bucket when >2 findings share one; otherwise list flat. Greenfield collapses a whole surface into one finding per the Step 4 grouping rule._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Switch to `web-vitals/attribution` build for LCP element identification", "Add `instrumentation.ts` with `@vercel/otel`", "Move Sentry init from `_app.tsx` to the dedicated `sentry.client.config.ts` Next.js convention"]
+[Structural improvements not tied to a single finding - e.g., swap `web-vitals` for `web-vitals/attribution`; move Sentry init from `_app.tsx` to `sentry.client.config.ts`; adopt `@vercel/otel` over raw `NodeSDK`]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting instrumentation, dashboard work, ops collaboration). Order: High > Medium > Low Impact.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `app/global-error.tsx` with `<Sentry.ErrorBoundary>` and a user-facing fallback"]
-2. **[Delegate]** [High] [scope: ops] - [one-line action, e.g., "Wire RUM transport endpoint to org analytics ingestion"]
-3. **[Implement]** [Medium] file:line - [one-line action]
-
-_Omit this section if there are no actionable findings._
+1. **[Implement]** [High] file:line - [action]
+2. **[Delegate]** [High] [scope: ops] - [action]
 ```
+
+## Self-Check
+
+- [ ] Step 1: behavioral principles loaded
+- [ ] Step 2: stack confirmed React; framework recorded (App Router / Pages Router / Vite)
+- [ ] Step 3: diff and commit log read once and reused (or handle accepted from parent)
+- [ ] Step 4: surface map produced with 6 verdicts and evidence; grouping/greenfield rules applied
+- [ ] Step 5: web-vitals v4+, all four core metrics with INP, real transport, route correlation, sampling at reporter
+- [ ] Step 6: Sentry init in config file, env-driven release/env, sample rates per env, PII scrub, error-boundary tree with explicit `captureException`, source maps uploaded but not public, Replay vs CSP conflict checked
+- [ ] Step 7: OTel browser SDK + traceparent propagation; Next.js `instrumentation.ts` with shutdown, BatchSpanProcessor, Edge fallback for raw `NodeSDK` (skipped per gate when applicable)
+- [ ] Step 8: no `console.*` in prod paths, no log in render, sensitive-field hygiene, RUM events for business actions (skipped per gate)
+- [ ] Step 9: `setUser({ id })`, low-cardinality tags, `extra` projects user to `{ id }`, cross-tool correlation (skipped per gate)
+- [ ] Step 10: RUM SDK init order, SPA nav tracking, custom events, DNT respected (skipped per gate)
+- [ ] Step 11: SLIs, SLOs in code, per-route error alerts, synthetics, bundle budgets (deep only)
+- [ ] Step 12: report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow
-- Reporting gaps without naming the React / SDK idiom ("add metrics" vs "register `web-vitals` `onINP` reporter and post via `sendBeacon` to RUM endpoint")
-- Recommending generic observability advice when a React SDK or Next.js convention exists (say "use `instrumentation.ts` with `@vercel/otel`", not "add server-side tracing")
-- Reviewing infra-level concerns (Datadog dashboards, Sentry org settings, log forwarder config, on-call rotation) - those are not in source code
-- Approving Sentry initialization inside a component body (re-initializes on every mount and may cause double-reporting); init goes in the dedicated config file (Next.js) or `main.tsx` (Vite)
-- Approving `console.log` as a logging strategy in production paths - flag for replacement with the structured logger / RUM event
-- Approving `web-vitals` reporter wired only to `console.log` - that is dev-only; production needs a real transport
-- Approving `replaysSessionSampleRate: 1.0` in prod for an app handling PII without `mask` / `block` configuration on Sentry Replay
-- Approving FID-only web-vitals reporting - INP replaced FID in 2024 as a Core Web Vital; missing INP signals stale config
-- Approving error boundaries that render a blank screen - the user-facing fallback must surface the error and offer recovery
-- Approving missing source-map upload to Sentry - production stack traces are then unreadable
-- Approving public source-map serving in production (`productionBrowserSourceMaps: true` without justification) - information disclosure
-- Recommending `Sentry.setUser({ email, name, ... })` when only `id` is needed - PII minimization first
-- Producing one finding per missing checkbox when an entire surface is absent - collapse into one High finding per surface per Step 3's grouping rule
+- Generic advice when a React/SDK idiom exists ("add metrics" vs "register `onINP` reporter via `useReportWebVitals` posting through `sendBeacon`")
+- Per-checkbox findings when a whole surface is absent - collapse per the Step 4 grouping rule
+- Approving Sentry init inside a component body - re-runs every mount, double-reports
+- Approving `error.tsx` / `global-error.tsx` that render a fallback without calling `Sentry.captureException` - Next.js does not auto-capture
+- Approving FID-only web-vitals reporting (INP replaced FID in 2024)
+- Approving `web-vitals` reporter wired only to `console.log`
+- Approving `replaysSessionSampleRate: 1.0` in prod without `mask`/`block` on PII inputs
+- Approving `extra: { user: session.user }` or `setContext` payloads carrying email/phone/address - project to `{ id }`
+- Approving public source-map serving in production
+- Approving missing source-map upload to Sentry - production stack traces unreadable
+- Approving `userId`/`orderId` as Sentry tags (unbounded cardinality)
+- Approving Sentry Replay on a strict CSP without addressing the inline-script conflict
+- Approving error boundaries with a blank-screen fallback
+- Infra scope (Datadog dashboards, Sentry org settings, log forwarders, alert rules) - delegate to ops review
+- State-changing git commands
