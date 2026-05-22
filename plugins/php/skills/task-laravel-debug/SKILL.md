@@ -13,20 +13,18 @@ user-invocable: true
 
 ## When to Use
 
-- Debugging Laravel application errors from stack traces or error messages
-- Classifying and resolving Eloquent, controller, queue, migration, or test failures
-- Tracing data flow issues (e.g., value sent but stored as null)
-- NOT for: production incident triage (use `/task-oncall-start`)
-- NOT for: performance profiling or slow query optimization
-- NOT for: infrastructure/deployment issues
+- Debugging Laravel errors from stack traces or messages
+- Classifying Eloquent, controller, queue, migration, or test failures
+- Tracing data-flow issues (value sent but stored as null)
+- NOT for: production incident triage (use `/task-oncall-start`), perf profiling, infra/deploy issues
 
 ## Edge Cases
 
-- **Vendor-only stack trace**: If all frames are in `vendor/`, the error originates from misconfiguration or incorrect usage of a package. Check the last application-code call that invoked the vendor method.
-- **No stack trace available**: Check `storage/logs/laravel.log` (latest entries), `failed_jobs` table for queue errors, and `php artisan schedule:list` for scheduler issues.
-- **Error only in production**: Compare `config/app.php` settings between environments. Check `APP_ENV`, `APP_DEBUG`, config caching (`php artisan config:cache`), and route caching.
-- **Intermittent errors**: Likely race condition or connection pool exhaustion. Check `DB_POOL` settings and whether the error correlates with traffic spikes.
-- **Xdebug not available**: Use `dd()`, `dump()`, `Log::debug()`, or `php artisan tinker` for interactive debugging. Install Laravel Telescope for development.
+- **Vendor-only stack trace**: error originates from misuse of a package; check the last application-code frame that invoked the vendor method.
+- **No stack trace**: check `storage/logs/laravel.log`, `failed_jobs` table, and `php artisan schedule:list`.
+- **Production-only**: diff `config/app.php`, `APP_ENV`, `APP_DEBUG`, config/route caching between envs.
+- **Intermittent**: likely race condition or connection pool exhaustion; check `DB_POOL` and traffic correlation.
+- **No Xdebug**: use `dd()`, `dump()`, `Log::debug()`, `php artisan tinker`, or Laravel Telescope in dev.
 
 ## Debugging Tools
 
@@ -41,120 +39,93 @@ user-invocable: true
 
 ## Workflow
 
-STEP 1 - INTAKE: Use skill: `stack-detect` to confirm Laravel. Ask for: full stack trace, the source file where the error originates, and what the user expected to happen. If a stack trace is provided, identify the first application-code frame (skip vendor frames) and read that file.
+STEP 1 - INTAKE: Use skill: `stack-detect` to confirm Laravel. Ask for the full stack trace, the source file, and expected behavior. Identify the first application-code frame (skip `vendor/`) and read it.
 
-**If partial input**: If the user provides only a description without a stack trace, search the codebase for the relevant file/function and ask clarifying questions. If only an error message is given (no stack trace), check `storage/logs/laravel.log` and match against the classification table below before asking for more context.
+**Partial input**: With only a description, search the codebase and ask clarifying questions. With only an error message, check `storage/logs/laravel.log` and match the classification table first.
 
-**If "no error, just wrong behavior"**: When the user reports "the value is null in the DB but I sent it" or "the email never arrives" with no exception, reframe as a boundary-loss question: at which layer does the value disappear? Trace the path: Form Request `rules()` (was it validated?) → `$request->validated()` vs `$request->all()` → `$fillable` whitelist → model `casts()` / mutators → `prepareForValidation()` → DB column. The bug is almost always at one of these boundaries, not in the controller body. Same shape for queue jobs: dispatch site → `afterCommit()` → broker → `handle()` → side effect. Identify which boundary lost the value before reading any code.
+**"No error, just wrong behavior"** (value missing in DB, email never arrives): reframe as boundary loss - at which layer does the value disappear? Trace: Form Request `rules()` -> `validated()` vs `all()` -> `$fillable` -> `casts()`/mutators -> `prepareForValidation()` -> DB column. Same shape for jobs: dispatch -> `afterCommit()` -> broker -> `handle()` -> side effect. Identify the lossy boundary before reading code.
 
 STEP 2 - CLASSIFY:
 
-Match the error to one of these categories, then load the relevant atomic skill:
+Match the error to one category, then load the relevant atomic skill. Exception classes below omit the `Illuminate\` / `Symfony\Component\HttpKernel\Exception\` prefix.
 
 ### Eloquent / Database Errors
 
-- `Illuminate\Database\QueryException` with `SQLSTATE[23000]` -> constraint violation (unique, FK, NOT NULL). Check which column from the error message. Use skill: `laravel-eloquent-patterns`.
-- `Illuminate\Database\QueryException` with `SQLSTATE[HY000]` -> connection issue, pool exhausted. Check `config/database.php` connection settings.
-- `Illuminate\Database\Eloquent\ModelNotFoundException` -> `findOrFail()` on missing record. Check route model binding or query logic.
-- `Illuminate\Database\Eloquent\MassAssignmentException` -> field not in `$fillable`. Use skill: `laravel-security-patterns`.
-- N+1 query detection (via Debugbar or `preventLazyLoading`) -> missing `with()` eager loading. Use skill: `laravel-eloquent-patterns` (section 2).
-- `Illuminate\Database\Eloquent\RelationNotFoundException` -> relationship method missing or misspelled on model.
+- `QueryException` `SQLSTATE[23000]` -> constraint violation (unique, FK, NOT NULL); column is in the message. Use skill: `laravel-eloquent-patterns`.
+- `QueryException` `SQLSTATE[HY000]` -> connection/pool issue; check `config/database.php`.
+- `ModelNotFoundException` -> `findOrFail()` on missing record; check route model binding or query.
+- `MassAssignmentException` -> field not in `$fillable`. Use skill: `laravel-security-patterns`.
+- N+1 (Debugbar or `preventLazyLoading`) -> missing `with()` eager load. Use skill: `laravel-eloquent-patterns` (section 2).
+- `RelationNotFoundException` -> relationship method missing or misspelled.
 
 ### Controller / HTTP Errors
 
-- `Illuminate\Validation\ValidationException` (422) -> form request rules rejected input. Read the `rules()` method and check the failing field. Use skill: `laravel-api-patterns`.
-- `Illuminate\Auth\Access\AuthorizationException` (403) -> policy denied access. Check the policy method and the user's state. Use skill: `laravel-security-patterns`.
-- `Symfony\Component\HttpKernel\Exception\NotFoundHttpException` (404) -> route not found or route model binding failed. Run `php artisan route:list` to verify. Use skill: `laravel-api-patterns`.
-- `Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException` (405) -> wrong HTTP method for the route. Check `routes/api.php`.
-- `Illuminate\Session\TokenMismatchException` (419) -> CSRF token mismatch. Check session driver and middleware config.
+- `ValidationException` (422) -> form request rejected input; read `rules()`. Use skill: `laravel-api-patterns`.
+- `AuthorizationException` (403) -> policy denied; check policy method and user state. Use skill: `laravel-security-patterns`.
+- `NotFoundHttpException` (404) -> route or model binding missing; run `php artisan route:list`. Use skill: `laravel-api-patterns`.
+- `MethodNotAllowedHttpException` (405) -> wrong HTTP method; check `routes/api.php`.
+- `TokenMismatchException` (419) -> CSRF mismatch; check session driver and middleware.
 
 ### Data Flow Errors (No Exception)
 
-- Value sent from form/API but stored as null -> check `$fillable` whitelist (missing field?), check `$request->validated()` vs `$request->all()`, check cast/mutator interference. Use skill: `laravel-security-patterns`.
-- Unexpected value transformation -> check `casts()` array, attribute accessor/mutator, `prepareForValidation()` in form request. Use skill: `laravel-eloquent-patterns`.
-- Related data not saving -> check relationship method exists and returns correct type, check foreign key column name matches convention. Use skill: `laravel-eloquent-patterns`.
+- Value sent but stored as null -> check `$fillable`, `validated()` vs `all()`, cast/mutator. Use skill: `laravel-security-patterns`.
+- Unexpected value transformation -> check `casts()`, accessor/mutator, `prepareForValidation()`. Use skill: `laravel-eloquent-patterns`.
+- Related data not saving -> check relationship method type and FK column convention. Use skill: `laravel-eloquent-patterns`.
 
 ### Queue / Job Errors
 
-- `MaxAttemptsExceededException` -> all retries exhausted. Check `$tries`, `$backoff`, and the original exception. Use skill: `laravel-queue-patterns`.
-- Job silently fails -> check `failed_jobs` table and `failed()` method on job class.
-- Job processes stale data -> job dispatched before DB commit. Check if `afterCommit()` is used. Use skill: `laravel-queue-patterns`.
-- `Illuminate\Queue\TimeoutExceededException` -> job exceeded `$timeout`. Check for blocking operations in `handle()`.
+- `MaxAttemptsExceededException` -> retries exhausted; check `$tries`, `$backoff`, original exception. Use skill: `laravel-queue-patterns`.
+- Silent failure -> check `failed_jobs` and the job's `failed()` method.
+- Stale data -> job dispatched before DB commit; check `afterCommit()`. Use skill: `laravel-queue-patterns`.
+- `TimeoutExceededException` -> exceeded `$timeout`; check blocking operations in `handle()`.
 
 ### Migration Errors
 
-- `SQLSTATE[42S01] Table already exists` -> migration re-run without rollback. Check migration status with `php artisan migrate:status`.
-- `SQLSTATE[42S22] Column not found` -> migration order issue or missing column. Check migration timestamp ordering.
-- Lock timeout during migration -> DDL on large table. Use skill: `laravel-migration-safety`.
+- `SQLSTATE[42S01]` table exists -> migration re-run without rollback; check `php artisan migrate:status`.
+- `SQLSTATE[42S22]` column not found -> order issue or missing column; check migration timestamps.
+- Lock timeout -> DDL on large table. Use skill: `laravel-migration-safety`.
 
 ### Artisan / Config Errors
 
-- `Target class [X] does not exist` -> missing binding in service provider or controller namespace issue. Check `app/Providers/` and route file namespaces.
-- `Call to undefined method` -> wrong method name, missing trait, or wrong class imported.
-- Config caching issues -> `env()` called outside config files. Run `php artisan config:clear`. Use skill: `laravel-security-patterns` (section 9).
+- `Target class [X] does not exist` -> missing service-provider binding or controller namespace; check `app/Providers/` and route namespaces.
+- `Call to undefined method` -> wrong method, missing trait, or wrong import.
+- Config caching -> `env()` called outside config files; run `php artisan config:clear`. Use skill: `laravel-security-patterns` (section 9).
 
 ### Test Errors
 
-- `RefreshDatabase` not applied -> missing trait on test class or `Pest.php` config. Use skill: `laravel-testing-patterns`.
-- `Mockery\Exception\InvalidCountException` -> mock expectation not met. Check `shouldReceive` count matches actual calls.
-- Database assertion failure (`assertDatabaseHas`) -> wrong table name, column name, or value format.
+- `RefreshDatabase` not applied -> missing trait on test or `Pest.php` config. Use skill: `laravel-testing-patterns`.
+- `Mockery\Exception\InvalidCountException` -> mock expectation unmet; check `shouldReceive` count.
+- `assertDatabaseHas` failure -> wrong table, column, or value format.
 
-STEP 3 - LOCATE:
+STEP 3 - LOCATE: Read stack trace top-down, find the first application-code frame, open that file, and trace the data path controller -> service -> model. Use skill: `laravel-service-patterns` for service-layer flow. For queue errors, check whether the job was dispatched inside a DB transaction.
 
-1. Read the stack trace top-to-bottom; find the first application-code frame (skip `vendor/` frames)
-2. Open that source file and read the failing function
-3. Trace the data path: where does the problematic value originate? Follow it through controller -> service -> model. Use skill: `laravel-service-patterns` for service-layer data flow.
-4. For queue errors: check if the job was dispatched inside a DB transaction
-
-STEP 4 - ROOT CAUSE:
-
-Explain **why** the error occurs, not just what it is. State confidence: **HIGH** (reproduced or obvious from code), **MEDIUM** (likely based on pattern match), **LOW** (multiple possible causes).
+STEP 4 - ROOT CAUSE: Explain **why**, not just what. State confidence: **HIGH** (reproduced/obvious), **MEDIUM** (pattern match), **LOW** (multiple possible causes).
 
 ```
-ROOT CAUSE: [HIGH/MEDIUM/LOW confidence]
-The MassAssignmentException occurs because `Order::create($request->all())`
-includes the `is_admin` field which is not in `$fillable` on the Order model
-at app/Models/Order.php:12. The controller at app/Http/Controllers/
-OrderController.php:25 should use $request->validated() instead of
-$request->all() to pass only validated fields.
+ROOT CAUSE: [HIGH] MassAssignmentException at Order.php:12 because
+Order::create($request->all()) at OrderController.php:25 passes `is_admin`
+which is not in $fillable. Use $request->validated() instead.
 ```
 
-STEP 5 - FIX:
-
-Provide before/after code. Fix must be minimal and address root cause, not symptoms.
+STEP 5 - FIX: Provide minimal before/after addressing root cause, not symptoms.
 
 ```php
-// BEFORE (mass assignment risk - passes all request data)
-public function store(StoreOrderRequest $request): OrderResource
-{
-    $order = Order::create($request->all());
-    return new OrderResource($order);
-}
+// BEFORE (mass assignment risk)
+$order = Order::create($request->all());
 
-// AFTER (only validated fields passed)
-public function store(StoreOrderRequest $request): OrderResource
-{
-    $order = Order::create($request->validated());
-    return new OrderResource($order);
-}
+// AFTER (only validated fields)
+$order = Order::create($request->validated());
 ```
 
-STEP 6 - PREVENTION:
-
-Add a guard so this class of error cannot recur:
-
-- **Pest test** that exercises the exact code path
-- **Model config** (`preventSilentlyDiscardingAttributes`, `preventLazyLoading`) in development
-- **Static analysis** rule (PHPStan, Psalm) if applicable
-- **Form Request** enforcement for all write endpoints
+STEP 6 - PREVENTION: Add one guard so this class of error cannot recur - Pest test exercising the path, model config (`preventSilentlyDiscardingAttributes`, `preventLazyLoading`) in dev, PHPStan/Psalm rule, or Form Request on the endpoint.
 
 ## Avoid
 
-- Do not add `$guarded = []` to "fix" MassAssignmentException (security vulnerability)
-- Do not use `try/catch` to silently swallow exceptions
-- Do not add `APP_DEBUG=true` in production to get better error messages
-- Do not bypass CSRF with `$except` array unless it's a webhook endpoint
-- Do not use `sync` queue driver as a "fix" for queue job failures
+- `$guarded = []` to "fix" MassAssignmentException (security hole)
+- `try/catch` that silently swallows exceptions
+- `APP_DEBUG=true` in production
+- CSRF `$except` for non-webhook routes
+- `sync` queue driver as a "fix" for queue failures
 
 ## Output Format
 
@@ -162,18 +133,14 @@ Add a guard so this class of error cannot recur:
 ## Error Classification
 Category: {Eloquent/Database | Controller/HTTP | Queue/Job | Migration | Artisan/Config | Test | Data Flow}
 Error Type: [specific exception or symptom]
-
 ## Root Cause
 Confidence: {HIGH | MEDIUM | LOW}
 File: [file:line]
-[Why the error occurs - explain the cause, not just the symptom]
-
+[Why the error occurs - cause, not symptom]
 ## Fix
 [Before/after code blocks - minimal change addressing root cause]
-
 ## Affected Files
-[List of files modified by the fix]
-
+[Files modified by the fix]
 ## Prevention
 Type: {test | model-config | static-analysis | form-request}
 [Specific guard to prevent recurrence]

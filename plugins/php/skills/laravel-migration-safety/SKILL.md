@@ -11,316 +11,180 @@ user-invocable: false
 
 ## When to Use
 
-- Adding, modifying, or removing columns on deployed MySQL databases
-- Running data backfills on large tables
-- Reviewing migrations for zero-downtime safety
-- Renaming or dropping columns/tables with running application code
-- **NOT for**: initial schema design on new projects, PostgreSQL-specific DDL, application-level query optimization
+- Adding, modifying, removing columns; renames; drops; indexes; FKs on deployed MySQL
+- Large-table backfills; reviewing migrations for zero-downtime safety
+- NOT for: greenfield schema design, PostgreSQL DDL, query optimization (use `laravel-eloquent-patterns`)
 
 ## Rules
 
-- Every migration must have a reversible `down()` method
-- Never mix DDL (schema changes) and DML (data changes) in one migration
-- Never run multi-step migration patterns in a single deployment
-- Always test migrations against real MySQL - never SQLite
-- Use `chunkById()` for all data backfills - never `WHERE col IS NULL LIMIT N`
-- Separate schema migrations from data migrations (separate migration files)
-- Artisan commands: `php artisan make:migration`, `php artisan migrate`, `php artisan migrate:rollback`
-- Review every migration before running - never trust generated code blindly
+- Every migration ships a reversible `down()`
+- One concern per migration file: schema OR data, never both
+- Multi-step patterns deploy across multiple releases, never in one
+- Test against real MySQL; SQLite hides behavior differences
+- All backfills use `chunkById()`; never `WHERE col IS NULL LIMIT N` loops
+- Review generated migrations before running; defaults are not always safe
 
 ## Patterns
 
-### Migration Strategy by Table Size
+### Strategy by table size
 
-| Scenario            | Table < 100K rows   | Table 100K-1M rows | Table > 1M rows                    |
-| ------------------- | ------------------- | ------------------ | ---------------------------------- |
-| Add nullable column | Single migration    | Single migration   | Single migration (instant)         |
-| Add NOT NULL column | Direct with default | 3-step pattern     | 3-step + pt-osc for backfill       |
-| Add index           | Standard Schema     | ALGORITHM=INPLACE  | ALGORITHM=INPLACE, LOCK=NONE       |
-| Rename column       | Expand-contract     | Expand-contract    | Expand-contract + batched backfill |
-| Drop column         | Single migration    | Single migration   | Remove code first, then drop       |
+| Operation        | < 100K rows         | 100K-1M rows         | > 1M rows                          |
+| ---------------- | ------------------- | -------------------- | ---------------------------------- |
+| Add nullable col | Single migration    | Single migration     | Single migration (instant)         |
+| Add NOT NULL col | Direct with default | 3-step pattern       | 3-step + pt-osc backfill           |
+| Add index        | Standard Schema     | `ALGORITHM=INPLACE`  | `ALGORITHM=INPLACE, LOCK=NONE`     |
+| Rename column    | Expand-contract     | Expand-contract      | Expand-contract + batched backfill |
+| Drop column      | Single migration    | Single migration     | Remove code first, then drop       |
 
-### Add Nullable Column (Safe)
+### Adding columns
 
-Adding a nullable column is metadata-only in InnoDB - fast and lock-free.
+Nullable adds are metadata-only in InnoDB (fast, lock-free). NOT NULL with a constant DEFAULT is instant on MySQL 8.0+ (`ALGORITHM=INSTANT`). Otherwise use the 3-step pattern.
 
 ```php
-// Safe - nullable column addition
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->string('tracking_number', 100)->nullable()->after('status');
-    });
-}
+// Safe - nullable add
+Schema::table('orders', fn (Blueprint $t) =>
+    $t->string('tracking_number', 100)->nullable()->after('status')
+);
 
-public function down(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->dropColumn('tracking_number');
-    });
-}
+// Safe on MySQL 8.0+ - constant default
+$t->string('tracking_number', 100)->default('PENDING');
+
+// Bad - direct NOT NULL on 5M rows locks the table
+$t->string('phone');
 ```
 
-### Add NOT NULL Column (Multi-Step)
+3-step pattern when values must be computed per row:
 
 ```php
-// Bad - direct NOT NULL addition locks the table on 5M rows
-Schema::table('users', function (Blueprint $table) {
-    $table->string('phone'); // table lock, long downtime
-});
+// Migration 1: nullable column
+$t->string('tracking_number', 100)->nullable();
 
-// Good - 3-step pattern (shown below)
+// Migration 2: backfill (separate file, separate release)
+DB::table('orders')
+    ->whereNull('tracking_number')
+    ->chunkById(1000, function ($orders) {
+        foreach ($orders as $o) {
+            DB::table('orders')->where('id', $o->id)
+                ->update(['tracking_number' => 'LEGACY-' . $o->id]);
+        }
+    });
+
+// Migration 3: enforce NOT NULL (after backfill confirmed)
+$t->string('tracking_number', 100)->nullable(false)->change();
 ```
 
-Use the 3-step pattern to avoid table locks:
+### Indexes
+
+InnoDB online DDL keeps reads/writes flowing during index creation. Use raw SQL to pin the algorithm on large tables.
 
 ```php
-// Step 1: Add nullable column (separate migration)
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->string('tracking_number', 100)->nullable();
-    });
-}
+// Small table
+$t->index('status');
 
-// Step 2: Backfill data (separate migration)
-public function up(): void
-{
-    DB::table('orders')
-        ->whereNull('tracking_number')
-        ->chunkById(1000, function ($orders) {
-            foreach ($orders as $order) {
-                DB::table('orders')
-                    ->where('id', $order->id)
-                    ->update(['tracking_number' => 'LEGACY-' . $order->id]);
-            }
-        });
-}
+// Large table - explicit online DDL
+DB::statement('ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE');
 
-// Step 3: Set NOT NULL (separate migration, after deploy confirms backfill complete)
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->string('tracking_number', 100)->nullable(false)->change();
-    });
-}
+// Composite
+$t->index(['status', 'created_at']);
 ```
 
-### NOT NULL with Default (MySQL 8.0+ Shortcut)
+### Foreign keys
 
-MySQL 8.0+ can add a NOT NULL column with a constant DEFAULT as an instant operation (metadata-only, no table rebuild):
+Add the column and backfill first; add the constraint last to avoid lock contention.
 
 ```php
-// Single migration - instant on MySQL 8.0+ with ALGORITHM=INSTANT support
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->string('tracking_number', 100)->default('PENDING');
-    });
-}
+// 1. Column only
+$t->unsignedBigInteger('product_id')->nullable();
+
+// 2. Backfill (separate migration)
+
+// 3. Constraint (separate migration)
+$t->foreign('product_id')->references('id')->on('products');
 ```
 
-If a constant default is NOT acceptable (values must be computed per row), use the 3-step pattern above.
+### Data migrations
 
-### Index Creation
-
-```php
-// Bad - standard index on large table blocks writes
-Schema::table('orders', function (Blueprint $table) {
-    $table->index('status'); // fine for small tables, blocks large ones
-});
-
-// Good - InnoDB online DDL (shown below)
-```
+Always `chunkById()` for update-safe iteration. Keep schema and data in separate files.
 
 ```php
-// Small table - standard index
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->index('status');
-    });
-}
-
-// Large table - use algorithm hint for InnoDB online DDL
-public function up(): void
-{
-    // InnoDB online DDL allows concurrent reads/writes during index creation
-    DB::statement('ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE');
-}
-
-public function down(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->dropIndex('idx_orders_status');
-    });
-}
-
-// Composite index
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->index(['status', 'created_at']);
-    });
-}
-```
-
-### Foreign Key Constraints
-
-Add foreign keys after data migration is complete to avoid lock contention.
-
-```php
-// Step 1: Add column without constraint
-public function up(): void
-{
-    Schema::table('order_items', function (Blueprint $table) {
-        $table->unsignedBigInteger('product_id')->nullable();
-    });
-}
-
-// Step 2: Backfill product_id values (separate migration)
-
-// Step 3: Add foreign key constraint (separate migration)
-public function up(): void
-{
-    Schema::table('order_items', function (Blueprint $table) {
-        $table->foreign('product_id')->references('id')->on('products');
-    });
-}
-```
-
-### Data Migrations
-
-Separate data migrations from schema migrations. Use chunked processing for large tables.
-
-```php
-// Data migration - always use chunkById for update safety
 public function up(): void
 {
     DB::table('orders')
         ->where('status', 'legacy_pending')
         ->chunkById(1000, function ($orders) {
-            $ids = $orders->pluck('id')->toArray();
             DB::table('orders')
-                ->whereIn('id', $ids)
+                ->whereIn('id', $orders->pluck('id'))
                 ->update(['status' => 'pending']);
         });
 }
 
 public function down(): void
 {
-    DB::table('orders')
-        ->where('status', 'pending')
+    DB::table('orders')->where('status', 'pending')
         ->update(['status' => 'legacy_pending']);
 }
 ```
 
-### Column Renames (Expand-Contract)
+### Renames and drops (expand-contract)
 
-```php
-// Bad - direct rename breaks running code during deploy
-Schema::table('orders', function (Blueprint $table) {
-    $table->renameColumn('customer_name', 'recipient_name');
-});
-
-// Good - expand-contract pattern (shown below)
-```
-
-Never rename a column directly - breaks running code during deploy.
+Direct renames break running code mid-deploy. Stage across releases:
 
 1. Add new column (nullable) - migration
-2. Backfill new column from old column - data migration
-3. Update app code to write to both columns, read from new - deploy
-4. Stop writing to old column - deploy
+2. Backfill from old column - data migration
+3. App writes both, reads new - deploy
+4. App stops writing old - deploy
 5. Drop old column - migration in a later release
 
 ```php
-// Step 1: Add new column
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->string('recipient_name')->nullable()->after('customer_name');
-    });
-}
+// Step 1
+$t->string('recipient_name')->nullable()->after('customer_name');
 
-// Step 2: Backfill (separate migration)
-public function up(): void
-{
-    DB::table('orders')
-        ->whereNull('recipient_name')
-        ->chunkById(1000, function ($orders) {
-            foreach ($orders as $order) {
-                DB::table('orders')
-                    ->where('id', $order->id)
-                    ->update(['recipient_name' => $order->customer_name]);
-            }
-        });
-}
+// Step 2 - backfill via chunkById (see Data migrations)
 
-// Step 5: Drop old column (later release, after code no longer references it)
-public function up(): void
-{
-    Schema::table('orders', function (Blueprint $table) {
-        $table->dropColumn('customer_name');
-    });
-}
+// Step 5 - later release, after code stops referencing customer_name
+$t->dropColumn('customer_name');
 ```
 
-### Table Drops
+Table drops follow the same shape: remove all code references first; drop in a later release.
 
-Never drop tables that running code still references. Expand-contract:
+### Large-table alterations
 
-1. Remove all code references to the table - deploy
-2. Drop the table - migration in a later release
+When `ALGORITHM=INPLACE` is insufficient (e.g., column type changes that force rebuild), use external tools:
 
-### Large Table Alterations
-
-For tables with millions of rows where standard `ALTER TABLE` is too slow or causes excessive locking:
-
-- **pt-online-schema-change** (Percona Toolkit): Creates a shadow copy, applies changes, swaps atomically
-- **gh-ost** (GitHub): Binlog-based online schema migration, no triggers
+- **pt-online-schema-change** (Percona): shadow copy + trigger-based sync + atomic swap
+- **gh-ost** (GitHub): binlog-based, no triggers
 
 ```bash
-# pt-online-schema-change example
 pt-online-schema-change --alter "ADD COLUMN tracking_number VARCHAR(100)" \
     --execute D=mydb,t=orders
 ```
 
-Use these tools only when standard InnoDB online DDL (`ALGORITHM=INPLACE`) is insufficient.
+### Enums
 
-### Enum Columns
-
-Prefer backed PHP enums with string columns over MySQL ENUM type. MySQL ENUM changes require table rebuild.
+Prefer string column + backed PHP enum. MySQL `ENUM` changes force a table rebuild.
 
 ```php
-// Bad - MySQL ENUM (altering requires table rebuild)
-$table->enum('status', ['pending', 'active', 'cancelled']);
+// Bad - altering values requires rebuild
+$t->enum('status', ['pending', 'active', 'cancelled']);
 
-// Good - string column + PHP backed enum (no DDL to add new values)
-$table->string('status', 20)->default('pending');
-
-// In model
-protected function casts(): array
-{
-    return ['status' => OrderStatus::class];
-}
+// Good - DDL-free value evolution
+$t->string('status', 20)->default('pending');
+// cast in model: 'status' => OrderStatus::class
 ```
 
-### Deploy Sequencing
+### Deploy sequencing
 
-Multi-step patterns must be deployed across multiple releases:
+Multi-step patterns span releases:
 
-1. **Release 1**: Add nullable column migration. Deploy. Existing app code ignores the new column.
-2. **Release 2**: Update app code to read/write the new column. Deploy.
-3. **Release 3**: Backfill migration + set NOT NULL. Deploy.
+1. **Release 1**: nullable column migration. Existing code ignores it.
+2. **Release 2**: app reads/writes the new column.
+3. **Release 3**: backfill + enforce NOT NULL.
 
-For column removal, reverse the order: remove code references first (Release 1), then drop the column (Release 2).
+Drops reverse the order: remove code references first, then drop.
 
-### CI Validation
+### CI validation
 
-- Run `php artisan migrate` + `php artisan migrate:rollback` + `php artisan migrate` in CI (must be clean)
-- Test migrations against a real MySQL instance (not SQLite)
-- Verify `down()` reverses `up()` cleanly
+Run `php artisan migrate && migrate:rollback && migrate` against a real MySQL instance. `down()` must reverse `up()` cleanly.
 
 ## Output Format
 
@@ -335,18 +199,17 @@ Risk Level: {Low | Medium | High | Critical}
 - Release N+1: [action]
 
 ## Rollback Plan
-[down() description for each migration]
+[down() description per migration]
 ```
 
 ## Avoid
 
 - Mixing schema and data changes in one migration
-- Missing `down()` method (irreversible migrations)
-- `ALTER COLUMN SET NOT NULL` directly on large tables (table lock)
-- Renaming columns directly (breaks running code)
-- Dropping columns referenced by running code
-- MySQL ENUM type (table rebuild on change)
-- `WHERE col IS NULL LIMIT N` backfill loops (O(n^2) - use `chunkById`)
-- Running all multi-step migrations in a single deployment
-- Testing migrations against SQLite when production is MySQL (behavior differences)
-- Foreign key addition on large tables without separate backfill step
+- Missing `down()` (irreversible migrations)
+- Direct NOT NULL or rename on large tables (table lock, broken deploys)
+- Dropping columns or tables still referenced by running code
+- MySQL `ENUM` (rebuild on value change)
+- `WHERE col IS NULL LIMIT N` backfill loops (O(n^2)) - use `chunkById`
+- Running multi-step migrations in one deployment
+- Testing on SQLite when production is MySQL
+- Adding FK constraints before backfill on large tables

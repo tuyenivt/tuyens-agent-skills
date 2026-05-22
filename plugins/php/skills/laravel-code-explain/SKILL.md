@@ -13,16 +13,16 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Laravel-specific signals: service container resolution and providers, middleware pipeline, Eloquent events/relationships/scopes, queue workers, Blade rendering, broadcasting/Echo.
-- Target is in a Laravel project (`composer.json` with `laravel/framework`, `artisan`).
+- Workflow needs Laravel-specific signals: container resolution, middleware pipeline, Eloquent events/scopes/relationships, queues, Blade, broadcasting.
+- Target is a Laravel project (`composer.json` with `laravel/framework`, `artisan`).
 
 ## Rules
 
-- Identify the layer first: controller, model, job, listener, command, middleware, service provider, or form request. Each has different lifecycle.
-- For controllers, list `__construct`-injected services and route middleware in execution order. Form requests run before the controller method - flag if validation/authorization happens there.
-- For models, identify casts (`$casts`), relationships, scopes, and events (`booted`, observers) - these alter behavior implicitly.
-- Surface Eloquent transaction scope - `DB::transaction()` and `DB::beginTransaction()` boundaries change rollback semantics for events.
-- For service providers, identify the registration phase (`register` for bindings only, `boot` for actions on resolved services).
+- Identify the layer first (controller, model, job, listener, command, middleware, provider, form request); each has a distinct lifecycle.
+- For controllers, list `__construct`-injected services and route middleware in execution order. Flag form requests - validation/authorization runs before the controller method.
+- For models, surface casts, relationships, scopes, and events (`booted`, observers) - these alter behavior implicitly.
+- Surface transaction boundaries (`DB::transaction`, `DB::beginTransaction`) - they change rollback semantics for events.
+- For providers, distinguish `register` (bindings only) from `boot` (actions on resolved services).
 
 ## Patterns
 
@@ -35,112 +35,73 @@ public/index.php -> bootstrap/app.php -> Kernel (HTTP)
   -> Route middleware (auth, throttle, custom)
   -> Form Request validation (if typehinted)
   -> Controller method
-  -> Response middleware (response stack reversed)
+  -> Response middleware (reversed)
 ```
 
-- Global middleware: `app/Http/Kernel.php` `$middleware` (Laravel 10) or `bootstrap/app.php` (Laravel 11+).
-- Route middleware groups: `web` (sessions, CSRF), `api` (throttle, no session) - assigned by route file.
-- `auth:sanctum`, `auth:web` - guard-specific authentication.
+Global middleware lives in `app/Http/Kernel.php` (Laravel 10) or `bootstrap/app.php` (11+). Route groups `web` (sessions, CSRF) and `api` (throttle, no session) are assigned per route file. `auth:sanctum` / `auth:web` select the guard.
 
 ### Service Container
 
-- `app(MyClass::class)` resolves from container; `app()->make(...)` is equivalent.
-- `app()->bind(Interface::class, Concrete::class)` - new instance every resolve.
-- `app()->singleton(Interface::class, Concrete::class)` - one instance for the request.
-- `app()->scoped(Interface::class, Concrete::class)` - one instance per request (Laravel 9+).
-- Auto-wiring: typehinted constructor parameters are resolved automatically; concrete classes work without explicit binding.
-- Service providers (`app/Providers/`) register bindings in `register()` and run boot logic in `boot()`. Order: all `register()` then all `boot()`.
+`app(X::class)` / `app()->make(X::class)` resolves. `bind` = new instance per resolve; `singleton` = one per request; `scoped` = one per request scope (9+). Auto-wiring resolves typehinted constructor params; concrete classes need no binding. Providers (`app/Providers/`) run `register()` across all providers first, then all `boot()`.
 
 ### Eloquent Models
 
-- `Model::find($id)` returns null if not found; `Model::findOrFail($id)` throws `ModelNotFoundException` (auto-mapped to 404).
-- `$casts = ['data' => 'array', 'is_active' => 'boolean']`: type coercion on attribute access. `'datetime'` cast returns `Carbon` instances.
-- Model events: `creating`, `created`, `updating`, `updated`, `saving`, `saved`, `deleting`, `deleted`, `retrieved`. Fire synchronously inside the transaction.
-- Observers (`app/Observers/`) consolidate event handlers - register in a service provider's `boot()`.
-- Mass assignment: `$fillable` allowlist or `$guarded = []` (everything fillable - dangerous).
-- `$hidden` / `$visible` controls what is serialized to JSON.
+- `find` returns null; `findOrFail` throws `ModelNotFoundException` (auto-404).
+- `$casts` coerces on access (`'array'`, `'boolean'`, `'datetime'` -> `Carbon`).
+- Events (`creating`, `created`, `updating`, `updated`, `saving`, `saved`, `deleting`, `deleted`, `retrieved`) fire synchronously inside the transaction. Observers consolidate handlers; register in a provider's `boot()`.
+- `$fillable` allowlists mass assignment; `$guarded = []` opens everything (dangerous). `$hidden` / `$visible` control JSON serialization.
 
 ### Eloquent Relationships and N+1
 
-- Relationships defined as methods returning `belongsTo`, `hasMany`, `hasOne`, `belongsToMany`, `morphTo`, etc.
-- Lazy loading: accessing `$user->posts` issues a query.
-- Eager loading: `User::with('posts')->get()` - one query per relationship via `WHERE id IN (...)`.
-- Nested: `User::with('posts.comments')->get()`.
-- `loadMissing` to add eager loads after the fact: `$users->loadMissing('posts')`.
-- N+1 detector: `Model::preventLazyLoading()` in `AppServiceProvider::boot()` (Laravel 8.43+) - throws on lazy load in non-production. Check for it.
+Relationship methods return `belongsTo` / `hasMany` / `hasOne` / `belongsToMany` / `morphTo`. Lazy access (`$user->posts`) issues a query; eager (`User::with('posts')`) issues one `WHERE id IN (...)` per relationship; nest with dots (`with('posts.comments')`); `loadMissing` adds eager loads post-fetch. `Model::preventLazyLoading()` in `AppServiceProvider::boot()` (8.43+) throws on lazy load outside production - check whether it's enabled.
 
 ### Eloquent Scopes
 
-- Local scope: method `scopeActive($query) { return $query->where('active', true); }` - called as `Model::active()`.
-- Global scope: implements `Scope`; applied to every query unless `withoutGlobalScope`.
-- Soft deletes (`use SoftDeletes`): adds a global scope filtering `deleted_at IS NULL`. `withTrashed()` to bypass.
+- Local: `scopeActive($query)` -> `Model::active()`.
+- Global: implements `Scope`, applied to every query unless `withoutGlobalScope`.
+- `SoftDeletes` adds a global scope filtering `deleted_at IS NULL`; `withTrashed()` bypasses.
 
 ### Queues and Jobs
 
-- `Job::dispatch($args)` enqueues; backend configured in `config/queue.php` (sync, database, redis, sqs, beanstalkd).
-- `dispatch(...)` (helper) enqueues; `dispatchNow` runs synchronously (deprecated in favor of `dispatchSync`).
-- Job arguments are serialized; Eloquent models use `SerializesModels` trait - re-fetched on handle.
-- Tries (`$tries`), backoff (`$backoff`), retry-after, and `failed()` method on the job.
-- Listeners with `ShouldQueue` interface: queued event listeners.
-- Sync queue in `.env` (`QUEUE_CONNECTION=sync`) runs jobs immediately - common in tests.
+- `Job::dispatch($args)` enqueues via `config/queue.php` (sync, database, redis, sqs, beanstalkd). `dispatchSync` runs inline (replaces deprecated `dispatchNow`).
+- Args serialized; models use `SerializesModels` and are re-fetched in `handle`.
+- `$tries`, `$backoff`, retry-after, `failed()` control retries. Listeners implementing `ShouldQueue` are queued.
+- `QUEUE_CONNECTION=sync` (common in tests) runs jobs immediately and can mask async assumptions.
 
 ### Validation via Form Requests
 
-- `php artisan make:request StoreUserRequest` generates a class with `authorize()` and `rules()`.
-- Typehinting in controller: `public function store(StoreUserRequest $request)` - validation runs **before** the controller method.
-- `authorize()` returning false produces 403 before validation.
-- Validation rules can be inline strings, arrays, or `Rule::*` objects.
-- After validation, `$request->validated()` returns the validated data subset.
+`php artisan make:request Foo` generates a class with `authorize()` and `rules()`. Typehinting `Foo $request` in the controller runs validation **before** the method body; `authorize()` returning false produces 403 before validation. Rules accept inline strings, arrays, or `Rule::*` objects. `$request->validated()` returns the validated subset.
 
-### Blade Templating (when present)
+### Blade Templating
 
-- `@extends('layouts.app')`, `@section('content')`, `@yield('content')` for inheritance.
-- `{{ $var }}` HTML-escapes; `{!! $var !!}` outputs raw - XSS risk if not pre-sanitized.
-- Components (Laravel 7+): `<x-alert />` resolves to `app/View/Components/Alert.php` + `resources/views/components/alert.blade.php`.
-- Loops: `@foreach`, `@forelse`. `@push` and `@stack` for view-fragment composition.
+Inheritance: `@extends`, `@section`, `@yield`. Loops: `@foreach`, `@forelse`. Composition: `@push` / `@stack`. `{{ $var }}` escapes HTML; `{!! $var !!}` is raw (XSS risk if input is unsanitized). Components (7+): `<x-alert />` -> `app/View/Components/Alert.php` + `resources/views/components/alert.blade.php`.
 
 ### Broadcasting and Events
 
-- Events (`app/Events/`) implement `ShouldBroadcast` to broadcast to a Pusher/Redis/Ably channel.
-- Listeners (`app/Listeners/`) handle events; mapped in `EventServiceProvider`.
-- Broadcasting drivers: pusher, redis, log, null - configured in `config/broadcasting.php`.
-- Frontend Echo subscribes via `Echo.private('orders.{userId}').listen('OrderShipped', ...)`.
+Events in `app/Events/` implement `ShouldBroadcast` to publish to a channel. Listeners in `app/Listeners/` map via `EventServiceProvider`. Drivers (pusher, redis, log, null) live in `config/broadcasting.php`. Frontend: `Echo.private('orders.{userId}').listen('OrderShipped', ...)`.
 
 ### Database and Transactions
 
-- `DB::transaction(fn () => ...)` - automatic rollback on exception, commit on return.
-- Manual: `DB::beginTransaction()` / `DB::commit()` / `DB::rollBack()`. Need explicit try/catch.
-- Nested transactions use savepoints; outer transaction's commit decides actual persistence.
-- Model events fire inside the transaction; `creating`/`saving` running expensive work stretches the transaction.
-- `DB::raw(...)` and `DB::statement(...)` for raw SQL - bypass query builder; user input must be parameterized via `?` and bindings.
+`DB::transaction(fn () => ...)` rolls back on exception, commits on return; manual `beginTransaction` / `commit` / `rollBack` requires explicit try/catch. Nested transactions use savepoints; the outermost commit decides persistence. Model events fire inside the transaction - expensive work in `creating`/`saving` stretches it. `DB::raw` / `DB::statement` bypass the query builder; bind user input via `?`.
 
 ### Configuration and Environment
 
-- `.env` -> `config/*.php` is one-way: env vars are read by `env()` only inside config files. Runtime code should use `config('app.name')` not `env('APP_NAME')`.
-- `php artisan config:cache` caches configs - `env()` calls outside config files **return null** after cache. Common bug.
-- Environment-specific: `.env.local`, `.env.testing`. `APP_ENV` selects.
+`env()` is valid only inside `config/*.php`; runtime code uses `config('app.name')`. `php artisan config:cache` caches configs - `env()` outside config files **returns null** afterward (common bug). `APP_ENV` selects `.env.local`, `.env.testing`, etc.
 
-### Tinker and Artisan
+### Tinker, Artisan, Auth
 
-- `php artisan tinker` REPL with full app boot.
-- Custom commands in `app/Console/Commands/`; `$signature` defines invocation.
-- Scheduler (`app/Console/Kernel.php` `schedule()`) - cron entry calls `php artisan schedule:run` every minute.
-
-### Authentication and Authorization
-
-- Guards (`config/auth.php`) define how users are authenticated (session, sanctum, JWT plugins). Default web guard uses sessions.
-- Sanctum: SPA via cookie + CSRF, or token via `Authorization: Bearer`. Different middleware paths.
-- Policies (`app/Policies/`) authorize actions on models; `authorize('update', $post)` in controller.
-- Gates (`AuthServiceProvider`) for non-model authorization.
+- `php artisan tinker`: REPL with full app boot. Custom commands in `app/Console/Commands/`; `$signature` defines invocation.
+- Scheduler (`app/Console/Kernel.php::schedule`) needs a cron entry running `php artisan schedule:run` every minute.
+- Guards (`config/auth.php`) select auth backend (session, sanctum, JWT); default `web` uses sessions. Sanctum supports SPA cookie+CSRF or `Authorization: Bearer` - different middleware paths.
+- Policies (`app/Policies/`) authorize model actions: `authorize('update', $post)`. Gates (in `AuthServiceProvider`) handle non-model authorization.
 
 ### Common Bugs to Surface
 
-- `env()` outside config files returning null after `config:cache`.
-- N+1 queries from relationship access in views/serializers.
-- Mass assignment with `$guarded = []` allowing arbitrary fields.
-- `dispatch(...)` in tests not running because queue connection is sync but the job uses chains/batches expecting an actual queue.
-- Model events not firing on `update()` query builder method (vs `save()`/`update()` on instance).
-- `QUEUE_CONNECTION=sync` in test env failing async assumptions.
+- `env()` outside config returning null after `config:cache`.
+- N+1 from relationship access in views/serializers.
+- `$guarded = []` allowing arbitrary mass-assigned fields.
+- Query-builder `update()` bypassing model events (vs instance `save`/`update`).
+- `QUEUE_CONNECTION=sync` masking chain/batch assumptions in tests.
 
 ## Output Format
 
@@ -149,40 +110,40 @@ This atomic produces signals consumed by `task-code-explain`. Inject the followi
 **Into "Flow Context":**
 
 - Layer (controller / model / job / listener / form request / provider)
-- For controllers: middleware in execution order, including form request validation/authorization
-- For models: relationships, casts, observers, global scopes
-- For jobs: queue connection, retry/backoff config
+- Controllers: middleware in execution order, including form request validation/authorization
+- Models: relationships, casts, observers, global scopes
+- Jobs: queue connection, retry/backoff config
 
 **Into "Non-Obvious Behavior":**
 
 - Form request validation/authorize running before controller
 - Model events fired inside transaction
 - Soft delete global scope filtering queries
-- `update()` on query builder bypassing model events
+- Query-builder `update()` bypassing model events
 - `env()` outside config returning null after cache
 - N+1 patterns from view loops or serializer relationship access
 - `dispatchSync` vs `dispatch` semantics in tests
 
 **Into "Key Invariants":**
 
-- Service container auto-wires typehinted constructor params
-- Service providers' `register()` runs first, then `boot()`
+- Container auto-wires typehinted constructor params
+- All providers' `register()` runs before any `boot()`
 - Model events fire synchronously inside the transaction
 - Job arguments must be serializable; models re-fetched via `SerializesModels`
 
 **Into "Change Impact Preview":**
 
-- Adding a model event listener: fires on every save/create across the codebase, including from tinker, queues, seeders
-- Renaming a route's middleware: cascades to every action on that controller
+- Adding a model event listener: fires on every save/create (tinker, queues, seeders included)
+- Renaming route middleware: cascades to every action on that controller
 - Adding a global scope: filters every query for that model unless `withoutGlobalScope`
-- Changing `$casts`: existing data interpretation changes; serialization to JSON differs
+- Changing `$casts`: existing data interpretation and JSON serialization shift
 - Removing `$fillable`: mass assignment fails silently for those fields
 
 ## Avoid
 
-- Treating Eloquent's `update()` instance method and `update()` query method as equivalent
-- Skipping `auth` and `throttle` middleware when describing route behavior
+- Conflating instance `update()` with query-builder `update()`
+- Skipping `auth` / `throttle` middleware when describing route behavior
 - Recommending `env()` in runtime code paths
-- Confusing `dispatchNow`/`dispatchSync`/`dispatch` semantics
-- Glossing over service provider `register` vs `boot` ordering
-- Listing every relationship without naming the lazy/eager state
+- Confusing `dispatchNow` / `dispatchSync` / `dispatch` semantics
+- Glossing over provider `register` vs `boot` ordering
+- Listing relationships without naming lazy/eager state

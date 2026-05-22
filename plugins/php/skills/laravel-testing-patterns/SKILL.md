@@ -11,506 +11,281 @@ user-invocable: false
 
 ## When to Use
 
-- Writing feature tests for Laravel API endpoints (HTTP assertions, database state)
-- Writing unit tests for services, actions, and business logic
-- Testing queue jobs, events, notifications, and external API calls
-- Setting up model factories with states and relationships
-- Configuring CI test pipelines with coverage
-- NOT for: browser/Dusk E2E tests, package testing, performance benchmarks
+- Feature tests for HTTP endpoints; unit tests for services, actions, jobs
+- Factories with states/relationships; facade fakes for queues, events, mail, HTTP
+- CI pipelines with coverage gates
+- NOT for: Dusk/browser E2E, package testing, performance benchmarks
 
 ## Rules
 
-- Use Pest `describe`/`it` syntax over PHPUnit class-based syntax
-- Always use `RefreshDatabase` trait for feature tests - test isolation is non-negotiable
-- Always match test database engine to production (MySQL, not SQLite)
-- Tests must be independent - no `@depends`, no shared mutable state
-- Use model factories with states - never duplicate inline data setup across tests
-- Use facade fakes (`Queue::fake()`, `Event::fake()`) only when testing dispatch - not when testing job/listener logic
-- Never leave `dd()` in test files
+- Pest `describe`/`it` over PHPUnit class-based - more concise, expressive
+- Test DB engine matches production (MySQL, not SQLite) - JSON, date, constraint behaviors diverge
+- `RefreshDatabase` trait on feature tests - test isolation is non-negotiable
+- Tests independent - no `@depends`, no shared mutable state
+- Factory states over inline data duplication
+- `Queue::fake()` / `Event::fake()` only verify dispatch; test `handle()` directly for logic
+- No `dd()` in test files
 
 ## Patterns
 
-### 1. PEST FUNDAMENTALS
+### Pest fundamentals
 
 ```php
-// Bad - PHPUnit class-based syntax (verbose, less readable)
-class OrderControllerTest extends TestCase
-{
-    use RefreshDatabase;
-
-    public function test_it_creates_an_order(): void
-    {
-        $user = User::factory()->create();
-        $response = $this->actingAs($user)->postJson('/api/orders', [...]);
-        $this->assertEquals(201, $response->getStatusCode());
-    }
-}
-
-// Good - Pest describe/it syntax (concise, expressive)
 describe('OrderController', function () {
     it('creates an order', function () {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->postJson('/api/orders', [
+        $this->actingAs($user)->postJson('/api/orders', [
             'total' => '99.99',
-            'items' => [
-                ['product_name' => 'Widget', 'quantity' => 2, 'unit_price' => '49.99'],
-            ],
+            'items' => [['product_name' => 'Widget', 'quantity' => 2, 'unit_price' => '49.99']],
             'shipping_address' => '123 Main St',
-        ]);
+        ])->assertCreated()
+          ->assertJsonPath('data.status', 'pending');
 
-        $response->assertCreated()
-            ->assertJsonPath('data.status', 'pending')
-            ->assertJsonCount(1, 'data.items');
-
-        $this->assertDatabaseHas('orders', [
-            'user_id' => $user->id,
-            'total' => '99.99',
-        ]);
+        $this->assertDatabaseHas('orders', ['user_id' => $user->id, 'total' => '99.99']);
     });
 
-    it('requires authentication', function () {
-        $this->postJson('/api/orders', [])
-            ->assertUnauthorized();
-    });
-
-    it('validates required fields', function () {
-        $user = User::factory()->create();
-
-        $this->actingAs($user)->postJson('/api/orders', [])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['total', 'items', 'shipping_address']);
-    });
+    it('requires authentication', fn() => $this->postJson('/api/orders', [])->assertUnauthorized());
 });
 ```
 
-### Pest Expectations (Fluent Assertions)
-
 ```php
-// Bad - PHPUnit-style assertions (less readable)
-$this->assertEquals(OrderStatus::Pending, $order->status);
-$this->assertCount(3, $order->items);
-$this->assertTrue($order->total > 0);
-
-// Good - Pest fluent expectations
+// Pest fluent expectations over PHPUnit assertions
 expect($order->status)->toBe(OrderStatus::Pending);
 expect($order->items)->toHaveCount(3);
-expect($order->total)->toBeGreaterThan(0);
 expect($user->orders)->each->toBeInstanceOf(Order::class);
-expect($response->json('data'))->toMatchArray([
-    'status' => 'pending',
-    'total' => '99.99',
-]);
+expect($response->json('data'))->toMatchArray(['status' => 'pending', 'total' => '99.99']);
 ```
 
-### Datasets (Parametrize)
+### Datasets
 
 ```php
-dataset('invalid_totals', [
-    'negative' => [-1],
-    'zero' => [0],
-    'too_large' => [100000],
-    'string' => ['abc'],
-]);
+dataset('invalid_totals', ['negative' => [-1], 'zero' => [0], 'string' => ['abc']]);
 
 it('rejects invalid totals', function (mixed $total) {
     $user = User::factory()->create();
-
-    $this->actingAs($user)->postJson('/api/orders', [
-        'total' => $total,
-        'items' => [['product_name' => 'X', 'quantity' => 1, 'unit_price' => '1.00']],
-        'shipping_address' => '123 Main St',
-    ])->assertUnprocessable();
+    $this->actingAs($user)->postJson('/api/orders', ['total' => $total, /* ... */])
+        ->assertUnprocessable();
 })->with('invalid_totals');
 ```
 
-### 2. MODEL FACTORIES
+### Factories
 
 ```php
-class OrderFactory extends Factory
-{
-    protected $model = Order::class;
-
-    public function definition(): array
-    {
+class OrderFactory extends Factory {
+    public function definition(): array {
         return [
             'user_id' => User::factory(),
             'status' => OrderStatus::Pending,
             'total' => fake()->randomFloat(2, 10, 999),
-            'shipping_address' => fake()->address(),
         ];
     }
 
-    // States
-    public function completed(): static
-    {
-        return $this->state(fn(array $attributes) => [
-            'status' => OrderStatus::Completed,
-        ]);
+    public function completed(): static {
+        return $this->state(fn() => ['status' => OrderStatus::Completed]);
     }
 
-    public function cancelled(): static
-    {
-        return $this->state(fn(array $attributes) => [
-            'status' => OrderStatus::Cancelled,
-        ]);
-    }
-
-    // With relationships
-    public function withItems(int $count = 3): static
-    {
+    public function withItems(int $count = 3): static {
         return $this->has(OrderItem::factory()->count($count), 'items');
     }
 }
 
 // Usage
-$order = Order::factory()->withItems(5)->create();
-$orders = Order::factory()->completed()->count(10)->create();
-$order = Order::factory()->for($user)->create();
+Order::factory()->withItems(5)->create();
+Order::factory()->completed()->count(10)->create();
+Order::factory()->for($user)->create();
+
+// Sequences
+Order::factory()->count(3)->sequence(
+    ['status' => OrderStatus::Pending],
+    ['status' => OrderStatus::Processing],
+    ['status' => OrderStatus::Completed],
+)->create();
 ```
 
-### Sequences
+### HTTP tests
 
 ```php
-$orders = Order::factory()
-    ->count(3)
-    ->sequence(
-        ['status' => OrderStatus::Pending],
-        ['status' => OrderStatus::Processing],
-        ['status' => OrderStatus::Completed],
-    )
-    ->create();
-```
-
-### 3. HTTP TESTS
-
-```php
-// GET with assertions
-$this->actingAs($user)
-    ->getJson('/api/orders')
+$this->actingAs($user)->getJson('/api/orders')
     ->assertOk()
     ->assertJsonCount(5, 'data')
-    ->assertJsonStructure([
-        'data' => [['id', 'status', 'total', 'created_at']],
-        'meta' => ['current_page', 'last_page'],
-    ]);
+    ->assertJsonStructure(['data' => [['id', 'status', 'total']], 'meta' => ['current_page']]);
 
-// POST with JSON
-$this->actingAs($user)
-    ->postJson('/api/orders', $payload)
-    ->assertCreated()
-    ->assertJsonPath('data.status', 'pending');
-
-// PUT
-$this->actingAs($user)
-    ->putJson("/api/orders/{$order->id}", ['shipping_address' => 'New Address'])
-    ->assertOk();
-
-// DELETE
-$this->actingAs($user)
-    ->deleteJson("/api/orders/{$order->id}")
-    ->assertNoContent();
+$this->actingAs($user)->postJson('/api/orders', $payload)->assertCreated();
+$this->actingAs($user)->putJson("/api/orders/{$order->id}", $payload)->assertOk();
+$this->actingAs($user)->deleteJson("/api/orders/{$order->id}")->assertNoContent();
 ```
 
-### 4. DATABASE ASSERTIONS
+### Database assertions
 
 ```php
-// Always use RefreshDatabase trait
 uses(RefreshDatabase::class);
 
-// Assert record exists
-$this->assertDatabaseHas('orders', [
-    'user_id' => $user->id,
-    'status' => 'pending',
-]);
-
-// Assert record does not exist
-$this->assertDatabaseMissing('orders', [
-    'id' => $order->id,
-]);
-
-// Assert record count
+$this->assertDatabaseHas('orders', ['user_id' => $user->id, 'status' => 'pending']);
+$this->assertDatabaseMissing('orders', ['id' => $order->id]);
 $this->assertDatabaseCount('orders', 5);
-
-// Assert soft-deleted
 $this->assertSoftDeleted('orders', ['id' => $order->id]);
 ```
 
-### 5. FACADE MOCKING
+### Facade fakes
 
 ```php
-// Queue fake - verify jobs dispatched without running them
-it('dispatches payment job after order creation', function () {
-    Queue::fake();
+// Queue - verify dispatch without running
+Queue::fake();
+// ... act ...
+Queue::assertPushed(ProcessPayment::class, fn($job) => $job->orderId === $order->id);
+Queue::assertPushedOn('payments', ProcessPayment::class);
 
-    $user = User::factory()->create();
-    $this->actingAs($user)->postJson('/api/orders', $validPayload);
+// Event
+Event::fake([OrderCreated::class]);
+Event::assertDispatched(OrderCreated::class, fn($e) => $e->order->id === $order->id);
 
-    Queue::assertPushed(ProcessPayment::class, function ($job) {
-        return $job->orderId === Order::first()->id;
-    });
-    Queue::assertPushedOn('payments', ProcessPayment::class);
-});
+// Notification
+Notification::fake();
+Notification::assertSentTo($user, OrderConfirmationNotification::class);
 
-// Event fake
-it('dispatches OrderCreated event', function () {
-    Event::fake([OrderCreated::class]);
+// Mail
+Mail::fake();
+Mail::assertSent(InvoiceMail::class, fn($mail) => $mail->hasTo($order->user->email));
 
-    // ... trigger action ...
-
-    Event::assertDispatched(OrderCreated::class, function ($event) use ($order) {
-        return $event->order->id === $order->id;
-    });
-});
-
-// Notification fake
-it('sends confirmation notification', function () {
-    Notification::fake();
-
-    // ... trigger action ...
-
-    Notification::assertSentTo($user, OrderConfirmationNotification::class);
-});
-
-// Mail fake
-it('sends invoice email', function () {
-    Mail::fake();
-
-    // ... trigger action ...
-
-    Mail::assertSent(InvoiceMail::class, function ($mail) use ($order) {
-        return $mail->hasTo($order->user->email);
-    });
-});
-
-// HTTP client fake (external API calls)
-it('calls payment gateway', function () {
-    Http::fake([
-        'payments.example.com/*' => Http::response(['status' => 'success'], 200),
-    ]);
-
-    // ... trigger action ...
-
-    Http::assertSent(function ($request) {
-        return $request->url() === 'https://payments.example.com/charge'
-            && $request['amount'] === 9999;
-    });
-});
+// HTTP client (external APIs)
+Http::fake(['payments.example.com/*' => Http::response(['status' => 'success'], 200)]);
+Http::assertSent(fn($request) =>
+    $request->url() === 'https://payments.example.com/charge' && $request['amount'] === 9999
+);
 ```
 
-### 6. TESTING JOBS DIRECTLY
+### Testing jobs directly
 
-Use `Queue::fake()` to verify dispatch. Test `handle()` directly to verify job logic.
+`Queue::fake()` verifies dispatch but prevents `handle()` from running. Test job logic by invoking `handle()` with explicit dependencies.
 
 ```php
-// Bad - using Queue::fake() and expecting the job logic to run
-it('processes payment', function () {
-    Queue::fake();
-    // ... trigger order creation ...
-    // Queue::fake() prevents handle() from running - you can't assert payment state
-    Queue::assertPushed(ProcessPayment::class); // only verifies dispatch, not logic
-});
+// Bad - Queue::fake() can't assert payment state because handle() never runs
+Queue::fake();
+// ... trigger ...
+Queue::assertPushed(ProcessPayment::class); // dispatch only, no logic
 
-// Good - test handle() directly for job logic
-it('processes payment for order', function () {
-    $order = Order::factory()->create(['status' => OrderStatus::Pending]);
+// Good - invoke handle() directly
+$order = Order::factory()->create(['status' => OrderStatus::Pending]);
+$paymentService = Mockery::mock(PaymentService::class);
+$paymentService->shouldReceive('charge')->once();
 
-    $paymentService = Mockery::mock(PaymentService::class);
-    $paymentService->shouldReceive('charge')->once()->with(
-        Mockery::on(fn($o) => $o->id === $order->id)
-    );
+(new ProcessPayment($order->id))->handle($paymentService);
 
-    $job = new ProcessPayment($order->id);
-    $job->handle($paymentService);
-
-    expect($order->fresh()->status)->toBe(OrderStatus::Processing);
-});
+expect($order->fresh()->status)->toBe(OrderStatus::Processing);
 ```
 
-### 7. TESTING AUTHORIZATION
+### Authorization
 
 ```php
-it('prevents non-owner from viewing order', function () {
+it('prevents non-owner access', function () {
     $order = Order::factory()->create();
-    $otherUser = User::factory()->create();
-
-    $this->actingAs($otherUser)
+    $this->actingAs(User::factory()->create())
         ->getJson("/api/orders/{$order->id}")
         ->assertForbidden();
 });
-
-it('allows owner to view order', function () {
-    $order = Order::factory()->create();
-
-    $this->actingAs($order->user)
-        ->getJson("/api/orders/{$order->id}")
-        ->assertOk();
-});
 ```
 
-### 8. TESTING TRANSACTIONS AND SIDE EFFECTS
-
-Test that failed operations roll back database changes and that side effects fire correctly.
+### Transactions and side effects
 
 ```php
-// Test transaction rollback on failure
+// Rollback on failure
 it('rolls back order when payment fails', function () {
-    Http::fake([
-        'payments.example.com/*' => Http::response(['error' => 'declined'], 422),
-    ]);
-
+    Http::fake(['payments.example.com/*' => Http::response(['error' => 'declined'], 422)]);
     $user = User::factory()->create();
 
-    $this->actingAs($user)->postJson('/api/orders', $validPayload)
-        ->assertStatus(422);
-
+    $this->actingAs($user)->postJson('/api/orders', $validPayload)->assertStatus(422);
     $this->assertDatabaseMissing('orders', ['user_id' => $user->id]);
-    $this->assertDatabaseCount('order_items', 0);
 });
 
-// Test side-effect state changes (e.g., inventory)
-it('decrements product stock after order', function () {
+// Side-effect state changes
+it('decrements stock after order', function () {
     $product = Product::factory()->create(['stock' => 10]);
-    $user = User::factory()->create();
-
-    $this->actingAs($user)->postJson('/api/orders', [
-        'items' => [['product_id' => $product->id, 'quantity' => 3]],
-    ])->assertCreated();
+    $this->actingAs(User::factory()->create())
+        ->postJson('/api/orders', ['items' => [['product_id' => $product->id, 'quantity' => 3]]])
+        ->assertCreated();
 
     expect($product->fresh()->stock)->toBe(7);
 });
 ```
 
-### 9. UNIT TESTING SERVICES
+### Unit testing services
 
-Test business logic in isolation without HTTP layer.
+Test business logic in isolation - skip the HTTP layer when verifying pure logic.
 
 ```php
-// Bad - testing service logic through HTTP endpoint (slow, tests too much)
-it('calculates order total', function () {
-    $user = User::factory()->create();
-    $response = $this->actingAs($user)->postJson('/api/orders', [...]);
-    expect($response->json('data.total'))->toBe('149.97');
-});
+// Bad - HTTP roundtrip to test calculation
+$response = $this->actingAs($user)->postJson('/api/orders', [...]);
+expect($response->json('data.total'))->toBe('149.97');
 
-// Good - test service directly with explicit dependencies
-it('calculates order total from items', function () {
-    $dto = new CreateOrderDTO(
-        userId: 1,
-        total: '0', // will be calculated
-        items: [
-            new OrderItemDTO(productName: 'A', quantity: 2, unitPrice: '49.99'),
-            new OrderItemDTO(productName: 'B', quantity: 1, unitPrice: '49.99'),
-        ],
-    );
-
-    $service = app(OrderService::class);
-    $order = $service->create($dto);
-
-    expect($order->total)->toBe('149.97');
-    expect($order->items)->toHaveCount(2);
-});
+// Good - call service directly
+$dto = new CreateOrderDTO(userId: 1, total: '0', items: [/* ... */]);
+$order = app(OrderService::class)->create($dto);
+expect($order->total)->toBe('149.97');
 ```
 
-### 10. TESTING WEBHOOKS
-
-Test webhook endpoints by crafting payloads and verifying signature handling, idempotency, and async dispatch.
+### Webhooks
 
 ```php
 describe('StripeWebhookController', function () {
-    it('processes valid webhook with correct signature', function () {
+    it('processes valid signed webhook', function () {
         Queue::fake();
 
-        $payload = json_encode([
-            'type' => 'payment_intent.succeeded',
-            'data' => ['object' => ['id' => 'pi_123', 'metadata' => ['order_id' => '1']]],
-        ]);
-
+        $payload = json_encode(['type' => 'payment_intent.succeeded', 'data' => [...]]);
         $timestamp = time();
-        $secret = config('services.stripe.webhook_secret');
         $signature = 't=' . $timestamp . ',v1=' . hash_hmac(
-            'sha256',
-            $timestamp . '.' . $payload,
-            $secret,
+            'sha256', $timestamp . '.' . $payload, config('services.stripe.webhook_secret')
         );
 
-        $this->postJson('/webhooks/stripe', [], [
-            'Stripe-Signature' => $signature,
-            'Content-Type' => 'application/json',
-        ])->assertOk();
+        $this->postJson('/webhooks/stripe', [], ['Stripe-Signature' => $signature])
+            ->assertOk();
 
         Queue::assertPushed(ProcessStripeEvent::class);
     });
 
-    it('rejects webhook with invalid signature', function () {
-        $this->postJson('/webhooks/stripe', [], [
-            'Stripe-Signature' => 't=123,v1=invalid',
-            'Content-Type' => 'application/json',
-        ])->assertForbidden();
-    });
-
-    it('rejects webhook with missing signature', function () {
-        $this->postJson('/webhooks/stripe')
+    it('rejects invalid signature', function () {
+        $this->postJson('/webhooks/stripe', [], ['Stripe-Signature' => 't=123,v1=invalid'])
             ->assertForbidden();
     });
 });
-```
 
-#### Webhook Idempotency Test
-
-```php
+// Idempotency - duplicate events must not double-process
 it('skips duplicate webhook events', function () {
-    $eventId = 'evt_123';
-
-    // First call - processes
-    WebhookEvent::create(['provider_event_id' => $eventId, 'type' => 'payment_intent.succeeded']);
-
-    // Job should detect duplicate and return early
-    $job = new ProcessStripeEvent('payment_intent.succeeded', ['id' => $eventId], $eventId);
-    $job->handle();
-
-    // Assert no duplicate processing occurred
+    WebhookEvent::create(['provider_event_id' => 'evt_123', 'type' => 'payment_intent.succeeded']);
+    (new ProcessStripeEvent('payment_intent.succeeded', ['id' => 'evt_123'], 'evt_123'))->handle();
     $this->assertDatabaseCount('webhook_events', 1);
 });
 ```
 
-### 11. TEST SCOPE DECISION
+### Test scope decision
 
-| Scope             | What to Test                                        | What to Mock                                 | Use When                            |
-| ----------------- | --------------------------------------------------- | -------------------------------------------- | ----------------------------------- |
-| Feature (HTTP)    | Full request/response cycle, DB state, status codes | External APIs (`Http::fake()`), queues, mail | Endpoint behavior, validation, auth |
-| Feature (Service) | Service method with real DB                         | External APIs, queues                        | Business logic with DB interactions |
-| Unit              | Single class in isolation                           | All dependencies (Mockery)                   | Pure logic, calculations, DTOs      |
-| Job               | `handle()` method directly                          | External services                            | Queue job processing logic          |
+| Scope             | What to Test                    | What to Mock                  | Use When                          |
+| ----------------- | ------------------------------- | ----------------------------- | --------------------------------- |
+| Feature (HTTP)    | Request/response, DB, status    | External APIs, queues, mail   | Endpoint, validation, auth        |
+| Feature (Service) | Service method with real DB     | External APIs, queues         | Business logic + DB               |
+| Unit              | Single class in isolation       | All dependencies (Mockery)    | Pure logic, calculations, DTOs    |
+| Job               | `handle()` directly             | External services             | Queue job processing logic        |
 
 ### RefreshDatabase vs DatabaseTransactions
 
-| Trait                  | How It Works                                             | Use When                                     |
-| ---------------------- | -------------------------------------------------------- | -------------------------------------------- |
-| `RefreshDatabase`      | Migrates once, wraps each test in transaction + rollback | Default - most feature tests                 |
-| `DatabaseTransactions` | Wraps test in transaction but does NOT migrate           | Tests that need to test transaction behavior |
+| Trait                  | Behavior                                       | Use When                        |
+| ---------------------- | ---------------------------------------------- | ------------------------------- |
+| `RefreshDatabase`      | Migrates once, wraps each test in transaction  | Default - most feature tests    |
+| `DatabaseTransactions` | Wraps in transaction, does NOT migrate         | Testing transaction behavior    |
 
-### 12. TEST ORGANIZATION
+### Organization
 
 ```
 tests/
-  Pest.php                     # Pest configuration (uses, helpers)
+  Pest.php
   Feature/
-    Http/
-      OrderControllerTest.php  # API endpoint tests
-      AuthControllerTest.php
-    Jobs/
-      ProcessPaymentTest.php   # Queue job tests
-    Services/
-      OrderServiceTest.php     # Service integration tests
+    Http/      # OrderControllerTest.php
+    Jobs/      # ProcessPaymentTest.php
+    Services/  # OrderServiceTest.php
   Unit/
-    Actions/
-      CreateOrderTest.php      # Action unit tests
-    Models/
-      OrderTest.php            # Model scope, cast, relationship tests
+    Actions/   # CreateOrderTest.php
+    Models/    # OrderTest.php
 ```
-
-### Pest.php Configuration
 
 ```php
 // tests/Pest.php
@@ -518,38 +293,21 @@ uses(Tests\TestCase::class, RefreshDatabase::class)->in('Feature');
 uses(Tests\TestCase::class)->in('Unit');
 ```
 
-### 13. CI AND COVERAGE
+### CI and coverage
 
 ```xml
 <!-- phpunit.xml -->
-<coverage>
-    <include>
-        <directory suffix=".php">app</directory>
-    </include>
-    <exclude>
-        <directory>app/Providers</directory>
-    </exclude>
-</coverage>
-
 <php>
-    <env name="APP_ENV" value="testing"/>
     <env name="DB_CONNECTION" value="mysql"/>
-    <env name="DB_DATABASE" value="testing"/>
     <env name="QUEUE_CONNECTION" value="sync"/>
     <env name="CACHE_STORE" value="array"/>
-    <env name="SESSION_DRIVER" value="array"/>
 </php>
 ```
 
 ```bash
-# Run tests with coverage
 php artisan test --coverage --min=80
-
-# Run specific test file
-php artisan test --filter=OrderControllerTest
-
-# Parallel testing
 php artisan test --parallel
+php artisan test --filter=OrderControllerTest
 ```
 
 ## Output Format
@@ -557,7 +315,6 @@ php artisan test --parallel
 ```
 ## Test Files
 | File | Type | Tests | Assertions | Fakes/Mocks |
-
 Type: {Feature/HTTP | Feature/Service | Unit | Job}
 
 ## Coverage
@@ -570,15 +327,12 @@ Excluded: [directories]
 
 ## Avoid
 
-- PHPUnit class-based syntax when Pest is available (use `it()`, `expect()`, `describe()`)
-- Testing against SQLite when production is MySQL (behavior differences with JSON, dates, constraints)
-- Missing `RefreshDatabase` trait (test isolation failure)
-- `@depends` between test methods (tests must be independent)
-- Mocking everything (test real DB interactions for feature tests)
-- `Queue::fake()` in tests that need to verify job `handle()` logic (fake prevents execution)
-- Shared mutable state between tests
-- Missing factory states (inline data setup duplicated across tests)
-- Testing private methods directly (test through public interface)
+- SQLite test DB when production is MySQL (JSON, date, constraint behavior differs)
+- `Queue::fake()` when you need to verify `handle()` logic - fake blocks execution
+- `@depends` or shared mutable state between tests
+- Mocking everything in feature tests - real DB interactions catch real bugs
+- Inline data duplicated across tests instead of factory states
+- Testing private methods directly - go through public interface
+- Webhook tests without signature verification (passes locally, fails in prod)
+- Missing idempotency tests for webhook handlers - duplicate events double-process
 - `dd()` left in test files
-- Webhook tests without signature verification (tests pass but production rejects unsigned requests)
-- Missing idempotency tests for webhook handlers (duplicate events cause double processing)

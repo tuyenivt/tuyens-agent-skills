@@ -13,138 +13,95 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Laravel-specific orientation: composer deps, framework version, env config layout, queue backend, broadcasting, frontend stack.
+- Workflow needs Laravel-specific orientation: composer deps, framework version, env layout, queue backend, broadcasting, frontend stack.
 - Project has `composer.json` with `laravel/framework`, `artisan`.
 
 ## Rules
 
-- Identify Laravel version (`composer.json` first, `composer.lock` for resolved); 10 LTS, 11 / 12 are current. Each major has different bootstrap (Laravel 11 introduced consolidated `bootstrap/app.php`).
-- Identify PHP version (`composer.json` `require.php`); PHP 8.2+ standard.
-- Identify queue backend (`config/queue.php` default + `.env` `QUEUE_CONNECTION`); `sync` (no real queue), `database`, `redis`, `sqs`, `beanstalkd`. Sync in tests/dev hides async bugs.
-- Identify auth approach: Laravel Breeze (basic), Jetstream (with teams/2FA), Sanctum (SPA/API), Passport (OAuth2), Fortify (headless).
-- Identify frontend: Inertia.js + Vue/React, Livewire, Blade-only, or API-only (Sanctum).
+- Identify Laravel version (`composer.json`, resolved in `composer.lock`); 10 LTS vs 11/12 differ in bootstrap (11 introduced consolidated `bootstrap/app.php`).
+- Identify PHP version (`composer.json` `require.php`); 8.2+ standard.
+- Identify queue backend (`config/queue.php` default + `.env` `QUEUE_CONNECTION`): `sync` hides async bugs; real backends are `database`, `redis`, `sqs`, `beanstalkd`.
+- Identify auth: Breeze, Jetstream, Sanctum (SPA/API), Passport (OAuth2), Fortify (headless).
+- Identify frontend: Inertia + Vue/React, Livewire, Blade-only, or API-only.
 
 ## Patterns
 
 ### Build Inventory
 
-| File                | What it tells you                                                                |
-| ------------------- | -------------------------------------------------------------------------------- |
-| `composer.json`     | PHP deps; Laravel version range                                                  |
-| `composer.lock`     | Locked versions                                                                  |
-| `package.json`      | NPM deps for frontend assets                                                      |
-| `vite.config.js`    | Vite config (Laravel 9.19+ default)                                              |
-| `webpack.mix.js`    | Laravel Mix config (legacy, pre-Vite)                                             |
-| `phpunit.xml`       | PHPUnit config; test database settings                                            |
-| `phpstan.neon` / `psalm.xml` | Static analysis config                                                  |
-| `pint.json`         | Laravel Pint (formatter) config                                                  |
+| File | What it tells you |
+| ---- | ----------------- |
+| `composer.json` / `composer.lock` | PHP deps; Laravel version range and locked versions |
+| `package.json` + `vite.config.js` / `webpack.mix.js` | Frontend assets; Vite (9.19+) vs legacy Mix |
+| `phpunit.xml` | PHPUnit + test DB settings |
+| `phpstan.neon` / `psalm.xml` / `pint.json` | Static analysis and formatter config |
 
 ### Bootstrap Path
 
-1. PHP toolchain: confirm `composer.json` `require.php` matches local `php -v`. Use `phpenv`/Homebrew.
-2. Install: `composer install`.
-3. Frontend: `npm install` (or `pnpm`/`yarn`).
-4. Environment: `cp .env.example .env && php artisan key:generate`. Edit `.env` for DB, queue, mail, etc.
-5. Database: `php artisan migrate` (or `migrate:fresh --seed` for full reset with seeders).
-6. Local services: `compose.yml` (Laravel Sail provides one) for MySQL/Postgres/Redis/MailPit.
-7. Run:
-   - **Backend:** `php artisan serve` (dev server) or `php-fpm` + nginx for production parity.
-   - **Frontend:** `npm run dev` (Vite hot reload).
-   - **Queue worker:** `php artisan queue:work` (or `queue:listen` for code-reload in dev).
-   - **Scheduler (if cron-like tasks):** `php artisan schedule:work` (dev).
-8. Verify: `http://127.0.0.1:8000`; `/up` (Laravel 11+) or custom `/health`.
+1. PHP toolchain: `composer.json` `require.php` matches `php -v` (`phpenv`/Homebrew).
+2. `composer install`; `npm install` (or pnpm/yarn).
+3. `cp .env.example .env && php artisan key:generate`; edit DB/queue/mail.
+4. `php artisan migrate` (or `migrate:fresh --seed`).
+5. Local services: `compose.yml` (Sail provides one) for MySQL/Postgres/Redis/MailPit.
+6. Run: `php artisan serve` (backend), `npm run dev` (Vite), `php artisan queue:work` (worker), `php artisan schedule:work` (dev scheduler).
+7. Verify: `http://127.0.0.1:8000`; `/up` (Laravel 11+) or custom `/health`.
 
 ### Key File Inventory
 
-**Laravel 11 / 12 (consolidated bootstrap):**
+Bootstrap differs by version:
 
-| Location                          | Purpose                                                                                  |
-| --------------------------------- | ---------------------------------------------------------------------------------------- |
-| `bootstrap/app.php`               | Application configuration: routes, middleware, exception handling - all in one file       |
-| `routes/web.php`                  | Web routes (with session, CSRF)                                                            |
-| `routes/api.php`                  | API routes (Laravel 11+: enable explicitly via `withRouting`)                              |
-| `routes/console.php`              | Closures for artisan commands and scheduling                                                |
+- **Laravel 11/12:** `bootstrap/app.php` consolidates routes, middleware, exception handling. `routes/{web,api,console}.php`; `api.php` enabled explicitly via `withRouting`.
+- **Laravel 10-:** `app/Http/Kernel.php` (middleware), `app/Console/Kernel.php` (commands + scheduler), `app/Exceptions/Handler.php`.
 
-**Laravel 10 and earlier:**
+All versions:
 
-| Location                          | Purpose                                                                                  |
-| --------------------------------- | ---------------------------------------------------------------------------------------- |
-| `app/Http/Kernel.php`             | Middleware pipeline + route middleware groups                                              |
-| `app/Console/Kernel.php`          | Artisan commands + scheduler                                                               |
-| `app/Exceptions/Handler.php`      | Exception rendering                                                                         |
-
-**All versions:**
-
-| Location                  | Purpose                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `app/Models/`             | Eloquent models                                                                          |
-| `app/Http/Controllers/`   | Controllers                                                                               |
-| `app/Http/Requests/`      | Form requests (validation + authorization)                                                |
-| `app/Http/Middleware/`    | Custom middleware                                                                         |
-| `app/Providers/`          | Service providers                                                                         |
-| `app/Jobs/`               | Queueable jobs                                                                             |
-| `app/Listeners/`          | Event listeners                                                                            |
-| `app/Events/`             | Events (broadcastable if `ShouldBroadcast`)                                                |
-| `app/Policies/`           | Model policies for authorization                                                           |
-| `app/Console/Commands/`   | Custom artisan commands                                                                    |
-| `database/migrations/`    | Migrations (`YYYY_MM_DD_HHMMSS_*.php`)                                                    |
-| `database/seeders/`       | DB seeders                                                                                 |
-| `database/factories/`     | Model factories for tests                                                                  |
-| `config/`                 | Config files (each returns array; accessed via `config('file.key')`)                       |
-| `resources/views/`        | Blade templates                                                                            |
-| `resources/js/` + `resources/css/` | Frontend assets                                                                  |
-| `tests/Feature/` + `tests/Unit/` | PHPUnit tests                                                                       |
+| Location | Purpose |
+| -------- | ------- |
+| `app/Models/`, `app/Http/Controllers/`, `app/Http/Requests/`, `app/Http/Middleware/` | Core HTTP layer; Requests handle validation + authorization |
+| `app/Providers/`, `app/Jobs/`, `app/Events/`, `app/Listeners/`, `app/Policies/`, `app/Console/Commands/` | DI bindings, queueables, events (broadcastable via `ShouldBroadcast`), authz, artisan |
+| `database/{migrations,seeders,factories}/` | Schema + test data |
+| `config/` | Arrays accessed via `config('file.key')` |
+| `resources/views/`, `resources/js/`, `resources/css/` | Blade + frontend assets |
+| `tests/Feature/` + `tests/Unit/` | PHPUnit/Pest tests |
 
 ### Package Layout Convention
 
-Check which the project uses before describing the architecture:
+Check which the project uses before describing architecture:
 
-- **Layer-package** (Laravel default, dominant in tutorials and most Laravel codebases): `app/Http/Controllers/`, `app/Http/Requests/`, `app/Services/`, `app/Models/`, `app/Jobs/`, `app/Policies/` group files by stereotype. Every Order-related concern lives in a different directory. Matches `php artisan make:*` defaults
-- **Feature-package / Domain-Driven** (less common in Laravel, more common in larger / DDD-influenced codebases): `app/Domain/Orders/{Controller,Service,Repository,Action,Job}.php` keeps an entire feature in one directory; cross-feature imports go through public service interfaces. Easier to extract a feature later. Often paired with custom `composer.json` PSR-4 autoload entries
-- **Mixed** (common in growing Laravel codebases): `app/Domain/Orders/` (feature-package) sits next to a legacy `app/Services/OrderService.php` (layer-package). When you find both, the project is mid-migration - new code goes in the feature-package side, edits to legacy code stay in place until a planned refactor. Confirm direction with the team before adding files; `php artisan make:*` will default to layer-package locations and need manual relocation
+- **Layer-package** (Laravel default, dominant): `app/Http/Controllers/`, `app/Services/`, `app/Models/`, `app/Jobs/`, `app/Policies/` group by stereotype. Matches `php artisan make:*` defaults.
+- **Feature-package / DDD** (less common, larger codebases): `app/Domain/Orders/{Controller,Service,Repository,Action,Job}.php` keeps a feature in one directory; cross-feature imports go through public interfaces. Often paired with custom `composer.json` PSR-4 entries.
+- **Mixed** (growing codebases): `app/Domain/Orders/` next to legacy `app/Services/OrderService.php` signals mid-migration: new code goes feature-package, legacy stays until refactor. Confirm direction; `make:*` defaults to layer-package locations and needs manual relocation.
 
 ### Conventions
 
-- **Eloquent over query builder** for most cases; query builder for complex queries.
-- **Form requests** for validation in controllers (typehinted parameter triggers validation).
-- **Service providers** register bindings (`register()`) and run boot logic (`boot()`).
-- **Policies + gates** for authorization; `authorize('update', $post)` in controllers.
-- **Resource controllers** + `Route::resource(...)` for RESTful CRUD.
-- **API resources** (`app/Http/Resources/`) for response shaping; replaces direct model serialization.
-- **Tests:** Pest (modern) or PHPUnit (default); database refresh per test via `RefreshDatabase` trait.
-- **Pint** for code style; **Larastan / PHPStan / Psalm** for static analysis.
+- Eloquent over query builder (latter for complex queries).
+- Form requests typehinted into controllers trigger validation.
+- Service providers: bindings in `register()`, boot logic in `boot()`.
+- Policies + gates for authz (`authorize('update', $post)`).
+- `Route::resource(...)` for RESTful CRUD; API resources (`app/Http/Resources/`) shape responses.
+- Tests: Pest or PHPUnit; `RefreshDatabase` trait per test.
+- Pint formatter; Larastan/PHPStan/Psalm static analysis.
 
 ### Risk Hotspots Specific to Laravel
 
-- **Mass assignment + raw input** (`$guarded = []`, `Model::create($request->all())`, `whereRaw($input)`): see `laravel-security-patterns`.
-- **N+1 in Blade / API Resources / loops**, `Model::all()` on growable tables: see `laravel-eloquent-patterns`.
-- **Job dispatched inside `DB::transaction` without `->afterCommit()`**, jobs taking Eloquent models in constructors: see `laravel-queue-patterns`.
-- **Migration safety on hot tables** (rename / drop / NOT NULL on large tables): see `laravel-migration-safety`.
-- **`env()` outside config files** returning null after `config:cache`: see `laravel-security-patterns`.
-- **Eloquent quirks** to flag on first read: soft-delete global scope, `update()` query-builder skipping events, query-builder `update()` vs model `update()`, observers firing inside transactions, middleware-alias drift between Laravel 10 / 11+.
+- Mass assignment, raw input (`$guarded = []`, `Model::create($request->all())`, `whereRaw($input)`): see `laravel-security-patterns`.
+- N+1 in Blade/Resources/loops, `Model::all()` on growable tables: see `laravel-eloquent-patterns`.
+- Jobs dispatched inside `DB::transaction` without `->afterCommit()`, jobs taking Eloquent models in constructors: see `laravel-queue-patterns`.
+- Migration safety on hot tables (rename / drop / NOT NULL): see `laravel-migration-safety`.
+- `env()` outside config files returns null after `config:cache`: see `laravel-security-patterns`.
+- Eloquent quirks: soft-delete global scope, query-builder `update()` skipping events, observers firing inside transactions, middleware-alias drift between 10 and 11+.
 
 ### First-PR Safe Zones
 
 - New route + controller method following existing pattern.
 - New model + migration + factory + feature test.
-- New Form Request for validation.
-- New artisan command in `app/Console/Commands/`.
+- New Form Request; new artisan command in `app/Console/Commands/`.
 
-Riskier:
-
-- Service providers - run at boot.
-- Middleware pipeline changes - apply to many routes.
-- Authentication / Sanctum config.
-- Production migrations with foreign key changes.
+Riskier: service providers (boot-time), middleware pipeline (broad reach), auth/Sanctum config, production migrations with FK changes.
 
 ### Ecosystem Currency
 
-- Laravel 11 / 12 standard; 10 LTS for legacy projects.
-- PHP 8.3 / 8.4 latest; 8.2 minimum.
-- Pest 2/3 increasingly common over PHPUnit.
-- Inertia.js for SPA-like with server-side routing.
-- Livewire 3 for hybrid (PHP-driven reactivity).
-- Pint default; Laravel Pint v1.x.
+- Laravel 11/12 standard; 10 LTS for legacy. PHP 8.3/8.4 latest, 8.2 minimum.
+- Pest 2/3 increasingly common; Inertia for SPA-like; Livewire 3 for PHP-driven reactivity; Pint default.
 
 ## Output Format
 
@@ -164,8 +121,8 @@ Inject into `task-onboard` sections:
 
 ## Avoid
 
-- Treating Laravel 10 patterns as current for Laravel 11+ projects (bootstrap layout differs)
-- Listing every package in composer.json - focus on the architectural ones
-- Recommending `env()` in runtime code
-- Skipping queue backend identification - sync vs real backend changes everything
-- Confusing query builder `update()` with model `update()` semantics
+- Treating Laravel 10 patterns as current for 11+ projects (bootstrap differs).
+- Listing every composer package - focus on architectural ones.
+- Recommending `env()` in runtime code.
+- Skipping queue backend identification - sync vs real backend changes everything.
+- Confusing query builder `update()` with model `update()` semantics.
