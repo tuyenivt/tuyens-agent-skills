@@ -1,6 +1,6 @@
 ---
 name: vue-code-explain
-description: Vue 3.5 / Nuxt / Vite explain signals: reactivity, Composition vs Options API, watchers, lifecycle, Pinia, Nuxt server/client boundaries.
+description: Vue 3.5 / Nuxt / Vite explain signals - reactivity, Composition vs Options API, watchers, Pinia, SSR/CSR boundary.
 metadata:
   category: frontend
   tags: [explanation, code-understanding, vue, nuxt, composition-api]
@@ -9,157 +9,115 @@ user-invocable: false
 
 # Vue Code Explain (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-code-explain` when the detected stack is Vue (Nuxt primary, Vite secondary).
+> Load `Use skill: stack-detect` first to determine the project stack. Composed by `task-code-explain` when stack is Vue (Nuxt primary, Vite secondary).
 
 ## When to Use
 
-- A workflow needs Vue-specific signals: reactivity primitives, composition vs options API, watchers and watch effect, lifecycle hooks, Pinia stores, Nuxt SSR/CSR boundary.
-- Target is a `.vue` SFC, composable, store, or Nuxt page/layout.
+Workflow needs Vue-specific signals on a `.vue` SFC, composable, Pinia store, or Nuxt page/layout/server route.
 
 ## Rules
 
-- Identify the API style first: Composition API with `<script setup>` (modern), Composition API in `setup()` function, or Options API (legacy). Mental model differs significantly.
-- For each reactive primitive (`ref`, `reactive`, `computed`, `shallowRef`, `readonly`), identify what triggers updates - and surface common destructuring traps that lose reactivity.
-- For watchers, distinguish `watch` (explicit source), `watchEffect` (auto-tracks), and `watchPostEffect`/`watchSyncEffect` (timing variants).
-- For Nuxt, identify server-only, client-only, or universal contexts. `process.server`, `process.client`, `useState` (SSR-safe state), `useFetch`/`useAsyncData` matter.
-- Surface Pinia store usage - whether the component reads via `storeToRefs` (preserves reactivity) or destructures directly (loses it).
+- Identify the API style first: `<script setup>` (modern), Composition `setup()`, or Options API. Mental model differs.
+- For each reactive primitive, name what triggers updates and flag reactivity-loss traps (destructure, replacement, missing `.value`).
+- Distinguish `watch` (explicit), `watchEffect` (auto-track), and flush timing (`pre`/`post`/`sync`).
+- For Nuxt, classify each block as server-only, client-only, or universal; name the data-fetching composable (`useFetch`/`useAsyncData`/`$fetch`/`useState`).
+- For Pinia, state whether the consumer used `storeToRefs` (preserves state/getter reactivity) or destructured directly (loses it). Actions destructure safely.
 
 ## Patterns
 
-### Reactivity
+### Reactivity primitives
 
-| Construct                | Behavior                                                                                  | What to flag                                                                                                                |
-| ------------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `ref(value)`             | Reactive container; access via `.value`                                                   | Forgetting `.value` in `<script>` is the most common Vue bug; unwrapped automatically in `<template>`                       |
-| `reactive(obj)`          | Reactive proxy of an object                                                               | Destructuring breaks reactivity (`const { x } = reactive({...})` - `x` is a plain value); use `toRefs` to preserve          |
-| `computed(() => ...)`    | Cached, reactive derivation; auto-tracks dependencies                                     | Computed cannot have side effects; if you need them, use `watchEffect`                                                       |
-| `computed({ get, set })` | Writable computed                                                                         | The setter must update the underlying state, not a captured local                                                            |
-| `shallowRef`             | Like `ref`, but only `.value` itself is reactive (not deep)                               | Useful for large objects you mutate in bulk; mutations require explicit `.value = newValue`                                  |
-| `shallowReactive`        | Reactive only at the top level                                                            | Nested mutations do not trigger updates                                                                                      |
-| `readonly(obj)`          | Wraps in immutable proxy                                                                  | Mutations log a warning in development, no-op in production                                                                  |
-| `toRef(obj, 'key')`      | Creates a `ref` linked to `obj.key`; preserves reactivity through destructuring             | Used for prop pass-through                                                                                                   |
-| `toRefs(obj)`            | Converts every property of a `reactive` to refs                                           | Standard pattern after returning from a composable                                                                           |
+| Construct           | Triggers update on                       | Trap to flag                                                       |
+| ------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| `ref(v)`            | `.value` assignment                      | Missing `.value` in `<script>`; auto-unwrap only in `<template>`   |
+| `reactive(obj)`     | Property mutation                        | Destructure or whole-object replace loses reactivity; use `toRefs` |
+| `computed(getter)`  | Tracked dep change                       | No side effects; use `watchEffect` instead                         |
+| `shallowRef`        | `.value` assignment only                 | Nested mutations are not tracked                                   |
+| `readonly(obj)`     | Never (warns in dev)                     | -                                                                  |
 
-### `<script setup>` (default modern style)
+### `<script setup>`
 
-- All top-level bindings are exposed to the template automatically.
-- `defineProps`, `defineEmits`, `defineExpose`, `defineSlots`, `defineModel` (Vue 3.4+) are compiler macros - not imports.
-- `defineProps<{...}>()` for type-only props (TypeScript). Runtime defaults via `withDefaults(defineProps<...>(), {...})`.
-- Imports in `<script setup>` are component-local; cannot be referenced from outside without `defineExpose`.
+- Top-level bindings auto-exposed to template.
+- `defineProps`, `defineEmits`, `defineModel` (3.4+), `defineExpose`, `defineSlots` are compiler macros, not imports.
+- `defineProps<T>()` + `withDefaults(...)` for typed props with runtime defaults.
 
-### Lifecycle Hooks
+### Lifecycle (Composition API)
 
-| Composition API hook | Options API equivalent | Fires                                                       |
-| -------------------- | ---------------------- | ----------------------------------------------------------- |
-| `onBeforeMount`      | `beforeMount`          | Before DOM attach                                           |
-| `onMounted`          | `mounted`              | After DOM attach                                            |
-| `onBeforeUpdate`     | `beforeUpdate`         | Before reactive update applies to DOM                       |
-| `onUpdated`          | `updated`              | After reactive update applies to DOM                        |
-| `onBeforeUnmount`    | `beforeUnmount`        | Before component is detached                                |
-| `onUnmounted`        | `unmounted`            | After component is detached - cleanup subscriptions/timers   |
-| `onErrorCaptured`    | `errorCaptured`        | Error from descendant; return false to stop propagation     |
-| `onActivated`        | `activated`            | `<KeepAlive>`-managed component is reactivated              |
-| `onDeactivated`      | `deactivated`          | `<KeepAlive>`-managed component is deactivated              |
+`onBeforeMount`, `onMounted`, `onBeforeUpdate`, `onUpdated`, `onBeforeUnmount`, `onUnmounted` mirror Options hooks. `onErrorCaptured` (return `false` stops propagation), `onActivated`/`onDeactivated` (under `<KeepAlive>`). Must be registered synchronously in `setup` or a composable.
 
 ### Watchers
 
-- `watch(source, (newVal, oldVal) => {...})`: explicit source. Source can be ref, reactive object, getter, or array.
-- `watch(source, cb, { immediate: true, deep: true, flush: 'post' })`:
-  - `immediate`: run on registration with current value.
-  - `deep`: deep-watch a reactive object (otherwise only top-level changes trigger).
-  - `flush`: `'pre'` (default, before update), `'post'` (after DOM update), `'sync'` (synchronous).
-- `watchEffect(() => {...})`: auto-tracks reactive deps used inside; reruns when any change. Cannot access `oldValue`.
-- `watchEffect((onCleanup) => { onCleanup(() => ...) })`: cleanup before next run or on unmount - essential for cancellable async.
+- `watch(src, (n, o) => ...)`. Source: ref, reactive, getter, or array.
+- Options: `immediate`, `deep`, `flush: 'pre' | 'post' | 'sync'`.
+- `watchEffect(fn)`: auto-tracks deps used inside, no `oldValue`.
+- `(onCleanup) => { onCleanup(() => ...) }`: cancel previous run; essential for async.
 
-### Common Reactivity Pitfalls
+### Pinia
 
-- Destructuring `reactive`: `const { x } = reactive({ x: 1 })` - `x` is a plain number, no longer reactive.
-- Replacing a `reactive` object whole: `state = { ...newState }` - the original proxy is replaced; consumers still hold the old reference. Mutate keys instead, or use `ref` and assign `.value`.
-- `props` are read-only. Mutating directly throws warnings; use `defineEmits` or `defineModel` to two-way bind.
-- `v-for` without `key`: identity confusion on reorder; updates wrong DOM nodes.
+- `defineStore('id', setup-fn | options-obj)`.
+- `const store = useMyStore()`; `storeToRefs(store)` to destructure state/getters reactively. Actions can be destructured directly.
+- `$patch`, `$reset`, `$onAction`, `$subscribe` for batch mutation, reset, interception.
 
-### Pinia Stores
+### Nuxt 3
 
-- Defined via `defineStore('id', () => { ... })` (setup-style) or `defineStore('id', { state, getters, actions })` (options-style).
-- Setup-style: returns an object of refs/computed/functions. Component uses `const store = useMyStore()`.
-- `storeToRefs(store)`: destructure store reactively. Plain destructuring loses reactivity for `state` and `getters`.
-- Actions can be sync or async; `$patch(...)` for batched mutations; `$reset()` returns to initial state.
-- `$onAction`, `$subscribe` for store-level interception (logging, persistence).
+- File routing: `pages/foo/[id].vue`; params via `useRoute().params.id`.
+- Layouts: `layouts/default.vue`; per-page override `definePageMeta({ layout: '...' })`.
+- Server: `server/api/*.ts`, `server/middleware/*.ts` run on Nitro.
+- Data: `useFetch(url)` SSR-aware (returns `{ data, error, pending, refresh }`); `useAsyncData(key, fn)` custom fetcher; `$fetch` low-level, manual SSR; `useState(key, init)` SSR-safe shared state.
+- Context: `import.meta.server` / `import.meta.client` (3.10+). Older `process.server`/`process.client` still works but is legacy.
+- `<ClientOnly>` wrapper: renders children only on client; flag for SSR-incompatible components (charts, browser-API widgets).
 
-### Nuxt 3 Specifics
+### Pitfalls
 
-- File-based routing: `pages/index.vue`, `pages/users/[id].vue`. Route params via `useRoute().params.id`.
-- Layouts: `layouts/default.vue` wraps every page; `definePageMeta({ layout: 'auth' })` per-page override.
-- Server-only: API routes in `server/api/*.ts`, server middleware in `server/middleware/*.ts`. Run on Nitro server.
-- Universal data fetching:
-  - `useFetch(url)`: SSR-aware; runs on server during SSR, hydrated on client; returns `{ data, error, pending, refresh }`.
-  - `useAsyncData(key, fetcher)`: same idea but with a custom fetcher.
-  - `$fetch(url)`: low-level fetch (Ofetch); manual SSR handling.
-- `useState(key, init)`: SSR-safe shared state; serialized into the page payload and rehydrated on client.
-- `useCookie(name)`: SSR-safe cookie access.
-- `process.server` / `process.client`: branch-only logic. Note: `import.meta.server` / `import.meta.client` in Nuxt 3.10+.
-
-### Composables
-
-- Functions starting with `use*` (convention).
-- Encapsulate stateful logic; return refs/computed/functions.
-- Composables called inside `setup()` or another composable can register lifecycle hooks; calling outside silently misses lifecycle.
-- Standard composables: `useRoute`, `useRouter`, `useFetch`, `useAsyncData`, `useState`, `useHead`, `useCookie` (Nuxt); `useMouse`, `useDebounce`, etc. (VueUse).
-
-### Slots
-
-- Default slot: `<slot />`.
-- Named: `<slot name="header" />` consumed via `<template #header>` in parent.
-- Scoped: `<slot :user="currentUser" />` consumed via `<template #default="{ user }">`.
-- `useSlots()` and `useAttrs()` in setup; provide programmatic access.
+- `const { x } = reactive({ x: 1 })`: `x` is a plain value.
+- `state = { ...new }` on a `reactive`: external holders keep the old proxy. Mutate keys, or wrap in `ref`.
+- `props` are read-only; use `defineEmits` or `defineModel`.
+- `v-for :key="index"`: equivalent to no key for reorders/inserts; identity bugs. Use a stable id.
+- Pinia `const { items, total } = useCartStore()`: state/getters lose reactivity. Use `storeToRefs`.
 
 ### TypeScript
 
-- `<script setup lang="ts">`. Props typed via `defineProps<T>()`. Emits via `defineEmits<{ (e: 'update', value: string): void }>()`.
-- `Ref<T>`, `ComputedRef<T>`, `MaybeRef<T>` types.
-- Vite + `vue-tsc` for project-wide type-check (not built into Vite by default).
+`<script setup lang="ts">`; `defineProps<T>()`, `defineEmits<{(e:'update', v:string):void}>()`. Types: `Ref<T>`, `ComputedRef<T>`, `MaybeRef<T>`. Project type-check via `vue-tsc`.
 
 ## Output Format
 
-This atomic produces signals consumed by `task-code-explain`. Inject the following:
+Signals consumed by `task-code-explain`:
 
-**Into "Flow Context":**
+**Flow Context:**
 
-- API style: `<script setup>`, Composition `setup()`, or Options API
-- Reactive primitives in use and what they track
+- API style (`<script setup>` | Composition `setup()` | Options)
+- Reactive primitives in use and what each tracks
 - Lifecycle hooks registered
-- For Nuxt: SSR/CSR boundary, data fetching composables
-- Pinia store dependencies and reactivity preservation method
+- Nuxt: render context per block (server | client | universal), data-fetching composables
+- Pinia: stores used and reactivity-preservation method (`storeToRefs` | direct destructure | full store)
 
-**Into "Non-Obvious Behavior":**
+**Non-Obvious Behavior:**
 
-- Destructuring `reactive` losing reactivity
-- Computed without side effects vs watchEffect with side effects
-- `props` mutation warnings vs `defineModel` two-way binding
-- `v-for` without `key` causing identity bugs
-- Nuxt fetch returning during SSR with state preserved across hydration
-- `process.server`/`process.client` branching
+- Reactivity loss from destructure/replacement
+- `useFetch` SSR execution with payload rehydration on client
+- `<ClientOnly>` skipping SSR for child tree
+- `v-for` key choice (stable id vs index vs missing)
+- `defineModel` two-way binding vs `props` read-only
 
-**Into "Key Invariants":**
+**Key Invariants:**
 
-- `.value` required for ref access in `<script>`
-- Lifecycle hooks must be registered synchronously inside `setup` or a composable
-- `props` are read-only
-- `useFetch` on the server must produce serializable data (no functions, no cycles)
+- `.value` for refs in `<script>`
+- Lifecycle hooks registered synchronously in `setup` or composable
+- `props` read-only
+- `useFetch` server payload must be serializable
 
-**Into "Change Impact Preview":**
+**Change Impact Preview:**
 
-- Switching `ref` to `reactive` (or vice versa): every consumer accesses the value differently
-- Removing `storeToRefs` and destructuring directly: silent reactivity loss in templates
-- Adding a `watch` with `deep: true`: performance cost on large objects
-- Changing a `useFetch` to client-only: SEO and initial paint regress
-- Adding a v-for without a stable key: list reorder bugs
+- `ref` <-> `reactive` swap: every consumer's access pattern changes
+- Drop `storeToRefs`: silent template reactivity loss
+- Add `deep: true` watch on large object: traversal cost per change
+- `useFetch` -> client-only: loses SSR/SEO and delays first paint
+- Switch `v-for` key from stable id to index: reorder bugs
 
 ## Avoid
 
-- Treating `ref` and `reactive` as interchangeable - access patterns differ
-- Recommending Options API patterns in `<script setup>` files
-- Glossing over `storeToRefs` - destructuring is the #1 Pinia bug
-- Confusing `watchEffect` and `computed` - one has side effects, the other does not
-- Using `process.server` syntax in Nuxt 3.10+ examples (now `import.meta.server`)
-- Listing every lifecycle hook when only one is used
+- Treating `ref` and `reactive` as interchangeable
+- Recommending Options API patterns inside `<script setup>`
+- Enumerating every lifecycle hook when only one is used
+- Listing `process.server` as canonical for Nuxt 3.10+ (use `import.meta.*`)
+- Flagging direct destructure of Pinia actions as a bug (only state/getters need `storeToRefs`)

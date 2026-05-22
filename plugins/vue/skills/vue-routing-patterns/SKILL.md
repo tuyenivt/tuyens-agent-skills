@@ -1,6 +1,6 @@
 ---
 name: vue-routing-patterns
-description: Vue 3.5 routing: Vue Router (Vite) and Nuxt file-based routing, layouts, middleware, navigation guards, nested routes, lazy loading.
+description: Vue 3.5 routing - Nuxt file-based pages, Vue Router (Vite), layouts, middleware, guards, nested/dynamic routes, lazy loading.
 metadata:
   category: frontend
   tags: [vue, routing, nuxt, vue-router, layouts, middleware, navigation-guards]
@@ -13,299 +13,119 @@ user-invocable: false
 
 ## When to Use
 
-- Designing route structure for a new feature or application
-- Choosing between Nuxt file-based routing and Vue Router configuration
-- Adding layouts, middleware, or navigation guards
-- Implementing nested routes, dynamic segments, or catch-all routes
-- Reviewing routing for correctness and performance
+- Designing route structure for a new feature or app
+- Adding layouts, middleware, guards, nested or dynamic routes
+- Reviewing routing for correctness, safety, and performance
 
 ## Rules
 
-- Every route must have error handling - unhandled errors should not crash the entire app
-- Loading states must be defined for routes that fetch data - no blank screens during navigation
-- Route parameters must be validated before use - never trust URL params as safe input
-- Middleware must be fast and stateless - it runs on every matching navigation
-- Prefer Nuxt file-based routing conventions when using Nuxt - do not fight the framework
-- Lazy-load routes that are not part of the initial navigation
+- Validate dynamic params before use (treat URL as untrusted input)
+- Every navigation has defined error and loading states
+- Middleware/guards are fast, stateless, and exclude their own redirect target
+- Lazy-load non-initial routes via dynamic `import()` (Vue Router) or file-based pages (Nuxt)
+- In Nuxt, use file-based routing and `navigateTo()`; do not hand-roll route configs or call `useRouter().push()` in middleware/plugins/server
 
 ## Patterns
 
-### Nuxt File-Based Routing
+### Nuxt file-based routing
 
 ```
 pages/
-  index.vue              # / (home)
-  about.vue              # /about
+  index.vue              # /
   dashboard/
     index.vue            # /dashboard
-    settings.vue         # /dashboard/settings
-    [teamId].vue         # /dashboard/:teamId (dynamic segment)
-  products/
-    index.vue            # /products
-    [id].vue             # /products/:id
-  [...slug].vue          # catch-all: /any/path/here
+    [teamId].vue         # /dashboard/:teamId
+  products/[id].vue      # /products/:id
+  [...slug].vue          # catch-all
 ```
 
-### Nuxt Layouts
+Layout via `<slot />` in `layouts/<name>.vue`; page opts in with `definePageMeta({ layout: '<name>' })`.
 
-```
-layouts/
-  default.vue            # Default layout for all pages
-  dashboard.vue          # Dashboard-specific layout
-```
-
-```vue
-<!-- layouts/dashboard.vue -->
-<template>
-  <div class="flex">
-    <Sidebar />
-    <main class="flex-1">
-      <slot />
-      <!-- page content renders here -->
-    </main>
-  </div>
-</template>
-```
-
-```vue
-<!-- pages/dashboard/index.vue -->
-<script setup lang="ts">
-definePageMeta({
-  layout: "dashboard",
-});
-</script>
-
-<template>
-  <div>
-    <h1>Dashboard</h1>
-  </div>
-</template>
-```
-
-### Nuxt Middleware
+### Nuxt middleware (named + global)
 
 ```ts
-// middleware/auth.ts (named middleware)
-export default defineNuxtRouteMiddleware((to) => {
+// middleware/auth.ts  -> opt-in via definePageMeta({ middleware: 'auth' })
+export default defineNuxtRouteMiddleware(() => {
   const { loggedIn } = useUserSession();
-
-  if (!loggedIn.value) {
-    return navigateTo("/login");
-  }
+  if (!loggedIn.value) return navigateTo("/login");
 });
-```
 
-```vue
-<!-- pages/dashboard/index.vue -->
-<script setup lang="ts">
-definePageMeta({
-  middleware: "auth",
-});
-</script>
-```
-
-```ts
-// middleware/auth.global.ts (global middleware - runs on every route)
+// middleware/auth.global.ts  -> runs on every navigation
 export default defineNuxtRouteMiddleware((to) => {
   const publicRoutes = ["/", "/login", "/signup"];
   const { loggedIn } = useUserSession();
-
-  if (!publicRoutes.includes(to.path) && !loggedIn.value) {
-    return navigateTo("/login");
-  }
+  if (!publicRoutes.includes(to.path) && !loggedIn.value) return navigateTo("/login");
 });
 ```
 
-**Bad** - Middleware with unconditional redirect (infinite loop):
+Bad - unconditional redirect causes an infinite loop:
 
 ```ts
-export default defineNuxtRouteMiddleware(() => {
-  return navigateTo("/login"); // always redirects, even from /login!
-});
+export default defineNuxtRouteMiddleware(() => navigateTo("/login"));
 ```
 
-### Nuxt Route Parameters
-
-```vue
-<!-- pages/products/[id].vue -->
-<script setup lang="ts">
-const route = useRoute();
-const productId = computed(() => route.params.id as string);
-
-// Use a computed URL so useFetch refetches when route params change
-const { data: product } = await useFetch(
-  computed(() => `/api/products/${productId.value}`),
-);
-</script>
-```
-
-### Nuxt Route Validation
+### Nuxt params, validation, fetch
 
 ```vue
 <!-- pages/products/[id].vue -->
 <script setup lang="ts">
 definePageMeta({
-  validate: async (route) => {
-    // Only allow numeric IDs
-    return /^\d+$/.test(route.params.id as string);
-  },
+  validate: (route) => /^\d+$/.test(route.params.id as string),
 });
+const route = useRoute();
+// computed URL so useFetch refetches when params change
+const { data: product } = await useFetch(() => `/api/products/${route.params.id}`);
 </script>
 ```
 
-### Nuxt Error Pages
+### Nuxt error page
 
 ```vue
-<!-- error.vue (root level - handles all unhandled errors) -->
+<!-- error.vue (root) -->
 <script setup lang="ts">
-const props = defineProps<{
-  error: {
-    statusCode: number;
-    message: string;
-  };
-}>();
-
-function handleClear() {
-  clearError({ redirect: "/" });
-}
+defineProps<{ error: { statusCode: number; message: string } }>();
 </script>
-
 <template>
   <div>
     <h1>{{ error.statusCode }}</h1>
     <p>{{ error.message }}</p>
-    <button @click="handleClear">Go Home</button>
+    <button @click="clearError({ redirect: '/' })">Go Home</button>
   </div>
 </template>
 ```
 
-### Vue Router (Vite) Patterns
+### Vue Router (Vite) - lazy routes, nested layouts, meta guards
 
 ```ts
 // router/index.ts
 import { createRouter, createWebHistory } from "vue-router";
 
-const router = createRouter({
+export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    {
-      path: "/",
-      component: () => import("@/layouts/DefaultLayout.vue"),
-      children: [
-        { path: "", component: () => import("@/pages/Home.vue") },
-        { path: "about", component: () => import("@/pages/About.vue") },
-      ],
-    },
     {
       path: "/dashboard",
       component: () => import("@/layouts/DashboardLayout.vue"),
       meta: { requiresAuth: true },
       children: [
         { path: "", component: () => import("@/pages/Dashboard.vue") },
-        { path: "settings", component: () => import("@/pages/Settings.vue") },
-        {
-          path: ":teamId",
-          component: () => import("@/pages/Team.vue"),
-          props: true,
-        },
+        { path: ":teamId", component: () => import("@/pages/Team.vue"), props: true },
       ],
     },
   ],
 });
-```
 
-### Vue Router Navigation Guards
-
-```ts
-// Global guard
-router.beforeEach((to, from) => {
+router.beforeEach((to) => {
   const auth = useAuthStore();
-
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
 });
-
-// Per-route guard
-{
-  path: "/admin",
-  component: AdminPage,
-  beforeEnter: (to) => {
-    const auth = useAuthStore();
-    if (!auth.isAdmin) return { path: "/403" };
-  },
-}
 ```
 
-### Vue Router Layout Pattern
-
-```vue
-<!-- layouts/DashboardLayout.vue -->
-<template>
-  <div class="flex">
-    <Sidebar />
-    <main class="flex-1">
-      <RouterView />
-      <!-- child routes render here -->
-    </main>
-  </div>
-</template>
-```
-
-### Dynamic Route Parameters
-
-```vue
-<!-- Vue Router - useRoute composable -->
-<script setup lang="ts">
-import { useRoute } from "vue-router";
-
-const route = useRoute();
-const teamId = computed(() => route.params.teamId as string);
-</script>
-```
-
-### Nuxt Navigation: `navigateTo` vs `useRouter`
-
-In Nuxt, prefer `navigateTo()` over `useRouter().push()` - it works in both server and client contexts:
-
-```ts
-// In middleware, plugins, server code - only navigateTo works
-export default defineNuxtRouteMiddleware((to) => {
-  if (!isAuthenticated()) {
-    return navigateTo("/login"); // works server-side
-  }
-});
-
-// In components - both work, but navigateTo is more universal
-async function handleSubmit() {
-  await saveData();
-  await navigateTo(`/products/${newId}`);
-}
-```
-
-### Route Transition Animations
-
-```vue
-<!-- Nuxt -->
-<template>
-  <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
-</template>
-
-<style>
-.page-enter-active,
-.page-leave-active {
-  transition: opacity 0.2s;
-}
-.page-enter-from,
-.page-leave-to {
-  opacity: 0;
-}
-</style>
-```
+Layout renders children via `<RouterView />` (mirrors Nuxt's `<slot />`). Access params with `useRoute()`.
 
 ## Output Format
-
-Consuming workflow skills depend on this structure.
 
 ```
 ## Routing Design
@@ -314,11 +134,11 @@ Consuming workflow skills depend on this structure.
 
 ### Route Map
 
-| Path                 | Page Component    | Layout      | Middleware  | Auth       |
-| -------------------- | ----------------- | ----------- | ---------- | ---------- |
-| /                    | index.vue         | default     | -          | Public     |
-| /dashboard           | dashboard/index   | dashboard   | auth       | Protected  |
-| /dashboard/:teamId   | dashboard/[teamId]| dashboard   | auth       | Protected  |
+| Path               | Page              | Layout    | Middleware/Guard | Access    |
+| ------------------ | ----------------- | --------- | ---------------- | --------- |
+| /                  | index.vue         | default   | -                | Public    |
+| /dashboard         | dashboard/index   | dashboard | auth             | Protected |
+| /dashboard/:teamId | dashboard/[teamId]| dashboard | auth             | Protected |
 
 ### Recommendations
 
@@ -326,18 +146,15 @@ Consuming workflow skills depend on this structure.
 
 ### Issues Found
 
-- [Severity: High | Medium | Low] {description}
+- [Severity: {High | Medium | Low}] {description}
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 ```
 
 ## Avoid
 
-- Routes without error handling (unhandled errors crash the app)
-- Routes without loading states (blank screens during data fetching)
-- Middleware with unconditional redirects (infinite loops)
-- Using `window.location` for navigation instead of the router (breaks SPA behavior)
-- Dynamic segments without validation (trusting URL params as safe data)
-- Manual route configuration in Nuxt when file-based routing handles it
-- Eager-loading all routes in Vue Router (use lazy loading with dynamic imports)
-- Heavy computation in navigation guards (runs on every navigation)
+- Unconditional redirects in middleware/guards (infinite loops)
+- `window.location` for navigation (breaks SPA + SSR)
+- Hand-rolled route configs in Nuxt
+- Eager-loading every route in Vue Router
+- Heavy work in guards or middleware (runs on every matching navigation)

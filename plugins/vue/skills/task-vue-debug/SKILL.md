@@ -1,184 +1,166 @@
 ---
 name: task-vue-debug
-description: Debug Vue 3.5 / Nuxt 3 / Vite: reactivity gotchas, template compilation, hydration mismatches, build failures, runtime errors.
+description: Debug Vue 3.5 / Nuxt 3 / Vite: reactivity, hydration mismatches, template/compile errors, Nuxt auto-imports, stale data, build failures.
 metadata:
   category: frontend
-  tags: [vue, debug, reactivity, hydration, nuxt, error, troubleshooting]
+  tags: [vue, debug, reactivity, hydration, nuxt, troubleshooting]
   type: workflow
 user-invocable: true
 ---
-
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
 
 # Debug - Vue Debugging Workflow
 
 ## When to Use
 
-- Vue error or warning you need help understanding
-- Reactivity not working as expected (ref not updating, watch not firing, computed stale)
-- Hydration mismatch in Nuxt or SSR setup
-- Template compilation error or runtime template warning
-- Nuxt-specific errors (auto-import failures, server route issues, middleware errors)
-- Build or TypeScript compilation error
-- Test failure you can't figure out
-- Behavior that doesn't match expectations (no error, but wrong result)
+- Vue/Nuxt error, warning, or compile/build failure
+- Reactivity issue (ref not updating, watch not firing, computed stale, destructured prop frozen)
+- Hydration mismatch in Nuxt / SSR
+- Test failure tied to Vue (async render, composable-outside-setup)
+- "No error, wrong result" - data missing, stale, or unequal across renders
 
-**Not for**: Production incident response with containment and blast radius assessment - use `/task-oncall-start` instead.
-
-**Approach**: Classify before fixing. Understand the error, trace through the codebase, explain why (not just what), and apply the smallest correct change aligned with project patterns.
-
-**Edge cases**:
-
-- **Vague description, no error message**: Ask for the exact console output, the component where it occurs, and steps to reproduce before classifying.
-- **Multiple errors**: Identify the root error (usually the first in the console) and focus on that. Mention secondary errors only if they are independent.
-- **No source code available**: If the error points to framework internals only, explain the framework behavior and ask the user for the application code that triggered it.
-- **Intermittent/non-deterministic bug**: Note that the issue may be race-condition or timing-related; ask for reproduction steps and whether it occurs in development, production, or both.
-
-## Inputs
-
-| Input                           | Required | Description                             |
-| ------------------------------- | -------- | --------------------------------------- |
-| Error message or console output | Yes      | The primary failure signal              |
-| Relevant source file            | No       | Component or composable where it occurs |
-| Steps to reproduce              | No       | What triggers the error                 |
-| Expected vs actual behavior     | No       | For logic bugs without exceptions       |
-| Browser / Node version          | No       | For environment-specific issues         |
-
-## Rules
-
-- Always classify the error before reading code
-- Show the exact code change needed - no vague suggestions
-- Explain WHY the error happened, not just how to fix it
-- Prefer minimal fixes over refactors - fix the bug, don't redesign
-- If confidence is LOW, say so and state what additional info would help
-- Do not suggest unrelated improvements or style changes
-- Reference atomic skills only when the fix involves a pattern they cover
+Not for: production incident triage (`/task-oncall-start`), perf tuning (`task-vue-review-perf`), new feature work (`task-vue-implement`).
 
 ## Workflow
 
-STEP 1 - INTAKE: Accept one or more of: Vue warning/error message, Nuxt build/runtime error, browser console output, TypeScript compilation error, test failure output, or description of unexpected behavior. If the input is ambiguous, ask one clarifying question before proceeding.
+### STEP 1 - BEHAVIORAL PRINCIPLES
 
-STEP 2 - CLASSIFY: Identify the error category to guide investigation:
+Use skill: `behavioral-principles`. These rules govern every step below.
 
-**Reactivity error** -> Unexpected behavior with refs, reactive, computed, or watchers:
+### STEP 2 - STACK DETECT
 
-| Error Pattern                       | Likely Cause                                 | Load Skill                            |
-| ----------------------------------- | -------------------------------------------- | ------------------------------------- |
-| Prop not reactive after destructure | Destructured props lose reactivity (pre-3.5) | Use skill: `vue-component-patterns`   |
-| Computed not updating               | Non-reactive dependency in computed          | Use skill: `vue-composables-patterns` |
-| Watch not firing                    | Watching wrong ref level (.value vs ref)     | Use skill: `vue-composables-patterns` |
-| `reactive()` losing reactivity      | Reassignment instead of property mutation    | Use skill: `vue-composables-patterns` |
+Use skill: `stack-detect`. Confirm Vue major (3.4 / 3.5+), Nuxt vs Vite, state layer (Pinia, `useState`), data layer (`useFetch`/`useAsyncData`, TanStack Query). Output drives which atomic skill loads in STEP 4.
 
-**Hydration error** -> Server/client HTML mismatch:
+### STEP 3 - INTAKE
 
-| Error Pattern                                 | Likely Cause                         | Load Skill                          |
-| --------------------------------------------- | ------------------------------------ | ----------------------------------- |
-| "Hydration node mismatch"                     | Server/client render difference      | Use skill: `vue-nuxt-patterns`      |
-| "Hydration text content mismatch"             | Dynamic value (date, random, window) | Use skill: `vue-nuxt-patterns`      |
-| "Hydration completed but contains mismatches" | Conditional render using browser API | Use skill: `vue-component-patterns` |
+Accept one of: error message, console output, build/test failure, "wrong result, no error" report. For partial input, ask once for the missing piece:
 
-**Template error** -> Compilation or runtime template issue:
+- Error path: exact console text, file:line, repro steps, dev vs prod
+- No-error path: expected vs observed value, which boundary it crosses (SSR payload -> client store, `useFetch` cache, prop -> child, watcher source), frequency (every nav / intermittent / under load)
 
-| Error Pattern                           | Likely Cause                                 | Load Skill                            |
-| --------------------------------------- | -------------------------------------------- | ------------------------------------- |
-| "Component is already defined"          | Name collision (auto-import + manual import) | Use skill: `vue-nuxt-patterns`        |
-| "Property X was accessed during render" | Accessing undefined reactive property        | Use skill: `vue-composables-patterns` |
-| "Invalid prop: type check failed"       | Wrong prop type passed                       | Use skill: `vue-component-patterns`   |
+### STEP 4 - CLASSIFY
 
-**Nuxt-specific error** -> Auto-imports, server routes, middleware:
+Match one row; load the listed skill. Stop at the first match.
 
-| Error Pattern                  | Likely Cause                         | Load Skill                        |
-| ------------------------------ | ------------------------------------ | --------------------------------- |
-| "500 - [nuxt] unhandled error" | Server route or middleware failure   | Use skill: `vue-nuxt-patterns`    |
-| Auto-import not resolving      | File not in expected directory       | Use skill: `vue-nuxt-patterns`    |
-| Middleware redirect loop       | Unconditional redirect in middleware | Use skill: `vue-routing-patterns` |
+**Reactivity**
 
-**Build / TypeScript error** -> compilation or bundling issue:
+| Symptom | Cause | Skill |
+|---|---|---|
+| Destructured prop never updates | Pre-3.5 destructure loses reactivity; use `toRefs(props)` / `() => props.x` | `vue-component-patterns` |
+| Destructured Pinia field frozen | Missing `storeToRefs(useFooStore())` | `vue-state-patterns` |
+| `computed` stale | Non-reactive dependency, or read inside non-reactive context | `vue-composables-patterns` |
+| `watch` never fires | `watch(state.x, fn)` passes a value; rewrite as `watch(() => state.x, fn)` | `vue-composables-patterns` |
+| `reactive()` reassignment does nothing | `state = next` swaps local; mutate with `Object.assign(state, next)` or use `ref` | `vue-composables-patterns` |
+| `shallowRef` field write ignored | Only whole-value assignment triggers; do `r.value = { ...r.value, x }` | `vue-composables-patterns` |
+| "Maximum recursive updates exceeded" | Watcher/computed mutates its own source | `vue-composables-patterns` |
 
-| Error Pattern                          | Likely Cause                           | Load Skill                          |
-| -------------------------------------- | -------------------------------------- | ----------------------------------- |
-| "Cannot find module" in .vue file      | Missing type declaration or path alias | -                                   |
-| "Type X is not assignable to type Y"   | Props/emits type mismatch              | Use skill: `vue-component-patterns` |
-| Vite build fails with "default export" | CJS/ESM module interop issue           | -                                   |
+**Hydration** (server/client HTML differs)
 
-**Runtime error** -> JavaScript exception during render or event handling:
+| Symptom | Cause | Skill |
+|---|---|---|
+| "Hydration text content mismatch" | Dynamic value (`Date.now()`, `Math.random`, `window`) in render | `vue-nuxt-patterns` |
+| "Hydration node mismatch" | Conditional render gated by browser-only API | `vue-component-patterns` |
+| `useState` collision across components | Same key in different files maps to one slot; namespace keys | `vue-nuxt-patterns` |
+| SSR payload field undefined on client | Store/`useState` shape diverged from API; project to typed DTO at fetch layer | `vue-data-fetching` |
 
-| Error Pattern                         | Likely Cause                        | Load Skill                            |
-| ------------------------------------- | ----------------------------------- | ------------------------------------- |
-| "Cannot read properties of undefined" | Accessing ref before data loads     | Use skill: `vue-data-fetching`        |
-| "Maximum recursive updates exceeded"  | Infinite watch/computed cycle       | Use skill: `vue-composables-patterns` |
-| "Failed to resolve component"         | Missing registration or auto-import | Use skill: `vue-nuxt-patterns`        |
+**Template / compile**
 
-**Test failure** -> assertion mismatch, async timing, mock setup:
+| Symptom | Cause | Skill |
+|---|---|---|
+| "Component is already defined" | Auto-import + manual import collision | `vue-nuxt-patterns` |
+| "Property X was accessed during render" | Undefined reactive property | `vue-composables-patterns` |
+| "Invalid prop: type check failed" | Wrong prop type passed | `vue-component-patterns` |
+| `defineModel` updates don't propagate | Child mixes `defineProps` + `defineEmits` half-implemented | `vue-component-patterns` |
 
-| Error Pattern                           | Likely Cause                             | Load Skill                        |
-| --------------------------------------- | ---------------------------------------- | --------------------------------- |
-| "wrapper.find() returned empty"         | Async render not awaited (flushPromises) | Use skill: `vue-testing-patterns` |
-| "Cannot access X before initialization" | Composable called outside setup context  | Use skill: `vue-testing-patterns` |
-| Snapshot mismatch after upgrade         | Component output changed                 | Use skill: `vue-testing-patterns` |
+**Nuxt / routing**
 
-**Performance issue** -> slow renders, memory leak, bundle size -> Use skill: `frontend-performance`
+| Symptom | Cause | Skill |
+|---|---|---|
+| "500 [nuxt] unhandled error" | Server route / middleware throws | `vue-nuxt-patterns` |
+| Auto-import unresolved | File outside `components/`, `composables/`, `utils/` | `vue-nuxt-patterns` |
+| Middleware redirect loop | Unconditional redirect | `vue-routing-patterns` |
+| `readBody` accepts unknown fields | Replace with `readValidatedBody(event, Schema.parse)` | `vue-data-fetching` |
 
-**No-error / wrong-behavior intake.** When the user reports "no exception, but the value is wrong / missing / stale," the bug almost always lives at a boundary where data crosses a reactivity, hydration, or serialization seam. There is no stack trace to follow - work the seams. Vue-flavored surfaces:
+**Stale data / wrong result, no error** - bug lives at a data boundary
 
-| Surface                                       | Symptom                                                                                                | Diagnostic                                                                                                                         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Pinia destructure without `storeToRefs`       | Component renders the initial value forever; mutations to the store do nothing in the template          | Grep for `const { x } = useFooStore()` in the failing component; replace with `const { x } = storeToRefs(useFooStore())`           |
-| `useFetch` without stable `key`               | Same callsite called with different args returns the cached first call's data                          | Confirm the call has `{ key }` derived from the actual variant; flag dynamic keys built via `JSON.stringify` (cache miss every time) |
-| Nitro `readBody` without Zod                  | Extra fields silently flow into ORM (or get silently dropped); no error, just wrong stored shape       | Replace `await readBody(event)` with `await readValidatedBody(event, Schema.parse)`; round-trip-test the endpoint                  |
-| Reactive `props` destructure pre-Vue-3.5      | Child receives a snapshot at mount, never updates when parent changes the prop                          | Confirm Vue version; if < 3.5, use `toRefs(props)` or `computed(() => props.x)` instead of bare destructure                        |
-| `shallowRef` mutation via property write      | `obj.value.field = x` runs but template doesn't update; only `obj.value = next` triggers reactivity   | Audit mutation sites; assign whole-value (`shallow.value = { ...shallow.value, field: x }`) or convert to `ref`                    |
-| `watch` source mismatch                       | Watcher never fires (or fires only once at registration with wrong value)                              | `watch(state.x, fn)` passes the current value, not a getter; rewrite as `watch(() => state.x, fn)`                                 |
-| `reactive` reassignment                       | `state = { ...next }` swaps the local but the original proxy consumers held is unchanged              | Mutate keys (`Object.assign(state, next)`) or convert to `ref` and assign `.value`                                                  |
-| SSR payload field drift                       | Pinia store / `useState` shape diverged from the API response; client reads as undefined silently      | Compare hydration payload (`view-source` for `__NUXT__`) against store schema; project to a typed DTO at the data-fetch layer       |
-| `useFetch` `transform` mutation               | `transform: (data) => { data.foo = 'bar'; return data }` runs once on server, returns cached data on client | `transform` must be pure - return a new object; cached payload reuses the function's output, not its side effects                |
-| `defineModel` two-way drift (Vue 3.4+)        | Parent's `v-model` is read but updates from child don't propagate                                      | Confirm child uses `defineModel()` (not `defineProps` + `defineEmits` half-implemented); audit modifier mismatch                   |
-| `useState` SSR key collision                  | Two unrelated components share state because they used the same key                                    | `useState('user')` and `useState('user')` in different files map to the same slot; namespace keys per concern                      |
+| Symptom | Cause | Skill |
+|---|---|---|
+| `useFetch` returns first-call data forever | Unstable or missing `key` (esp. `JSON.stringify` key) | `vue-data-fetching` |
+| `useFetch` `transform` returns stale shape | `transform` mutates input; must be pure and return a new object | `vue-data-fetching` |
+| Pinia mutation invisible in template | Destructured store without `storeToRefs` | `vue-state-patterns` |
 
-Recommended diagnostic instrumentation for these cases: add `console.log` (or a `watchEffect` logger) at each boundary the data crosses - input to the failing function, output to the next layer - and compare expected vs observed shape. The bug is almost always a missing field, a `.value` access vs identity, or a stale cache key. Pair with a round-trip test at the boundary so the regression is caught next time.
+**Build / type / test**
 
-STEP 3 - LOCATE: Read the error to identify the source file and component name. Open the file and surrounding context (~50 lines above and below). Trace the component tree: page -> layout -> parent component -> failing component. Identify which layer the bug is in (Component | Composable | State | Data Fetching | Routing | Build).
+| Symptom | Where to look |
+|---|---|
+| TS / Vite build error | First error in output; later ones cascade. Common: `.vue` path alias missing, CJS/ESM interop |
+| Type X not assignable to Y on prop/emit | Use skill: `vue-component-patterns` |
+| `wrapper.find()` empty / "Cannot access X before initialization" | Async render not awaited (`flushPromises`) or composable called outside `setup` - Use skill: `vue-testing-patterns` |
+| Performance / slow render / leak | Use skill: `frontend-performance` |
 
-STEP 4 - ROOT CAUSE: Explain WHY this error occurred, not just what happened. Reference the specific code that causes the issue. If it's a pattern violation (not just a one-off bug), name the pattern. Rate confidence: HIGH (certain, evidence is clear), MEDIUM (likely, but alternative causes exist), or LOW (need more info to confirm).
+### STEP 5 - LOCATE
 
-STEP 5 - FIX: Show the exact code change needed (before / after). If multiple fixes are possible, rank by: (1) Correctness, (2) Minimal change surface, (3) Alignment with project patterns. Explain any trade-offs between alternatives.
+Open the failing file plus ~50 lines of context. Trace upstream: page -> layout -> parent -> failing component, OR fetch -> SSR payload -> store -> template. Name the layer: Component | Composable | State | Data Fetching | Routing | Build.
 
-STEP 6 - PREVENT: Suggest a test that would have caught this bug. If it's a pattern violation, reference the relevant atomic skill. If the same bug could exist elsewhere, identify other occurrences (grep for similar patterns).
+For stale-data: instrument each boundary the value crosses (server fetch result, hydration payload, store after mutation, prop into child) with `console.log` or a `watchEffect` logger. Compare expected vs observed shape.
+
+### STEP 6 - ROOT CAUSE
+
+Explain **why**, citing `file:line`. State confidence:
+
+- **HIGH** - reproduced or evidence is direct
+- **MEDIUM** - strong pattern match, alternative causes exist
+- **LOW** - need more info; list what
+
+### STEP 7 - FIX
+
+Before/after diff, smallest change that resolves the root cause. Rank alternatives by (1) correctness, (2) change surface, (3) alignment with existing patterns.
+
+### STEP 8 - PREVENT
+
+One guard:
+
+- Test that exercises the exact path (Vitest + `@vue/test-utils` for component/composable; Playwright for hydration / SSR round-trip)
+- Lint rule re-enabled if it was disabled (`vue/no-mutating-props`, `vue/no-setup-props-destructure`)
+- `grep` for the same anti-pattern elsewhere; list occurrences
+
+Skip if fix is trivial (typo, missing import).
 
 ## Output Format
 
-Present the analysis in this structure:
+```
+## Classification
+[Reactivity | Hydration | Template | Nuxt | Stale data | Build | Test]: [specific row]
+Layer: [Component | Composable | State | Data Fetching | Routing | Build]
 
-**Bug Analysis** - error type, confidence (HIGH/MEDIUM/LOW), layer (Component/Composable/State/Data Fetching/Routing/Build)
+## Root Cause (confidence: HIGH | MEDIUM | LOW)
+[Why, citing file:line]
 
-**Root Cause** - explanation of why this happened, referencing specific code
+## Fix
+[Before/after diff]
 
-**Fix** - before/after code diff showing the exact change, with explanation
+## Prevention
+[Test, lint, or grep result - omit if trivial]
+```
 
-**Prevention** (omit if fix is trivial) - test that would catch this bug, pattern reference, other occurrences found via grep
-
-### Output Constraints
-
-- Keep the analysis focused - one bug, one fix
-- Omit Prevention section if the fix is trivial (e.g., typo, missing import)
-- If confidence is LOW, add a **Needs Clarification** section listing what info would help
-- No code style commentary unrelated to the bug
-- No suggestions for unrelated improvements
+If confidence is LOW, add `## Needs Clarification` listing the missing input.
 
 ## Self-Check
 
-- [ ] Error input accepted and clarified if ambiguous (STEP 1)
-- [ ] Error classified into category before any code is read or fix proposed (STEP 2)
-- [ ] Source file and component located; layer identified (STEP 3)
-- [ ] Root cause explains WHY with specific code reference; confidence level stated (STEP 4)
-- [ ] Concrete before/after fix provided; fix is minimal, addresses root cause not symptom (STEP 5)
-- [ ] Test suggested that would catch this bug; other occurrences identified if pattern is widespread (STEP 6)
+- [ ] STEP 1: behavioral-principles loaded
+- [ ] STEP 2: stack-detect loaded; Vue major, Nuxt vs Vite, state and data layers identified
+- [ ] STEP 3: full error or wrong-result spec captured; one clarifying question max if partial
+- [ ] STEP 4: classified into one row before reading code; correct atomic skill loaded
+- [ ] STEP 5: failing file located; layer named; for stale-data, boundaries instrumented
+- [ ] STEP 6: root cause cites file:line; confidence stated
+- [ ] STEP 7: before/after fix is minimal and targets root cause
+- [ ] STEP 8: prevention guard added, or skipped with reason
 
 ## Avoid
 
-- Generic debugging advice ("add console.log", "clear cache")
-- Fixing symptoms instead of root causes
-- Suggesting refactors when a targeted fix suffices
-- Analysis without reading the actual source code
-- Proposing fixes that introduce new anti-patterns (adding `any`, suppressing ESLint, using Options API)
-- Mixing incident response concerns into developer debugging
+- Reading code before classifying
+- Generic advice ("add console.log", "clear cache") without naming the boundary
+- Fixing a symptom (`key: Math.random()` to force refetch) instead of the missing stable key
+- Refactor when a targeted fix suffices
+- `any`, `eslint-disable`, `<ClientOnly>` wrap to silence a hydration mismatch
+- Switching to Options API to dodge a Composition API bug
+- Mixing incident-response (containment, blast radius) into developer debugging

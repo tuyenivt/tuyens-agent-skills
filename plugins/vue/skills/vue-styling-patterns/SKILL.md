@@ -1,9 +1,9 @@
 ---
 name: vue-styling-patterns
-description: Vue 3.5 styling: scoped styles, CSS v-bind, Tailwind, UnoCSS, Vuetify, PrimeVue, design tokens, responsive, dark mode.
+description: Vue 3.5 styling review: scoped styles, CSS v-bind, Tailwind/UnoCSS, component libraries, design tokens, dark mode, responsive.
 metadata:
   category: frontend
-  tags: [vue, styling, scoped-styles, css-v-bind, tailwind, unocss, vuetify, primevue, dark-mode]
+  tags: [vue, styling, scoped-styles, tailwind, dark-mode]
 user-invocable: false
 ---
 
@@ -13,107 +13,70 @@ user-invocable: false
 
 ## When to Use
 
-- Choosing a styling approach for a Vue project
-- Using Vue-specific styling features (scoped styles, CSS v-bind)
-- Implementing responsive design, dark mode, or design tokens
+- Choosing or reviewing a styling approach for a Vue/Nuxt project
+- Applying Vue-specific features (scoped styles, `:deep()`, CSS `v-bind`)
+- Implementing dark mode, responsive layout, or design tokens
 - Integrating component libraries (Vuetify, PrimeVue, Headless UI)
-- Reviewing styling patterns for consistency and maintainability
 
 ## Rules
 
-- Use the project's established styling approach - do not mix paradigms without good reason
-- Tailwind CSS is the primary recommendation for new projects
-- Scoped styles are the default for component-specific CSS in Vue SFCs
-- CSS v-bind for reactive dynamic styles - not inline `:style` bindings for static values
-- Responsive design must be mobile-first (min-width breakpoints)
-- Dark mode must use CSS custom properties or Tailwind's `dark:` variant
-- Styling must not break accessibility (sufficient contrast, visible focus indicators)
+- Use the project's established styling approach; do not mix paradigms without an explicit boundary.
+- Tailwind CSS is the default recommendation for new projects.
+- Scoped styles are the default for component-local CSS in SFCs; reach for `:deep()` before `!important`.
+- Use CSS `v-bind` only for reactive values; static styling stays in classes or plain CSS.
+- Responsive design is mobile-first (`min-width` breakpoints).
+- Dark mode uses Tailwind's `dark:` variant or CSS custom properties; never hardcoded color pairs in templates.
+- Preserve accessibility: WCAG contrast, visible focus indicators.
 
 ## Patterns
 
-### Styling Approach Selection
+### Approach Selection
 
-| Approach      | When to Use                                       | Vue Integration       |
-| ------------- | ------------------------------------------------- | --------------------- |
-| Tailwind CSS  | New projects, rapid development, design systems   | Native, Nuxt module   |
-| Scoped Styles | Component-specific CSS, minimal tooling           | Built-in              |
-| UnoCSS        | Tailwind alternative, faster build, Nuxt-native   | @unocss/nuxt          |
-| Vuetify       | Material Design apps, comprehensive component set | vuetify-nuxt-module   |
-| PrimeVue      | Enterprise apps, unstyled mode for customization  | @primevue/nuxt-module |
-| Headless UI   | Fully custom design with accessible primitives    | @headlessui/vue       |
+| Approach      | When to Use                                      | Vue/Nuxt Integration  |
+| ------------- | ------------------------------------------------ | --------------------- |
+| Tailwind CSS  | New projects, design systems, rapid iteration    | `@nuxtjs/tailwindcss` |
+| Scoped Styles | Component-local CSS, minimal tooling             | Built-in              |
+| UnoCSS        | Tailwind alternative with faster build           | `@unocss/nuxt`        |
+| Vuetify       | Material Design apps                             | `vuetify-nuxt-module` |
+| PrimeVue      | Enterprise apps; use `unstyled` with Tailwind    | `@primevue/nuxt-module` |
+| Headless UI   | Custom design with accessible primitives         | `@headlessui/vue`     |
 
-### Scoped Styles
+### Scoped Styles and Selectors
 
 ```vue
 <style scoped>
-/* Only applies to this component - no leaking to children */
-.card {
-  border-radius: 0.5rem;
-  padding: 1rem;
-}
-
-/* Deep selector to style child component internals */
-.card :deep(.child-class) {
-  color: red;
-}
-
-/* Slotted selector for styles on slotted content */
-.card :slotted(.slot-content) {
-  font-weight: bold;
-}
-
-/* Global selector within scoped block */
-:global(.some-global-class) {
-  color: blue;
-}
+.card :deep(.child)   { color: red; }   /* style child component internals */
+.card :slotted(.item) { font-weight: bold; } /* style slotted content */
+:global(.app-toast)   { color: blue; }  /* escape scope */
 </style>
 ```
 
-### CSS v-bind (Reactive Styles)
+### CSS `v-bind` (reactive only)
 
 ```vue
 <script setup lang="ts">
-const theme = ref({
-  primary: "#3b82f6",
-  radius: "0.5rem",
-});
-
+const theme = ref({ primary: "#3b82f6" });
 const progress = ref(75);
 </script>
 
 <style scoped>
-.button {
-  background-color: v-bind("theme.primary");
-  border-radius: v-bind("theme.radius");
-}
-
-.progress-bar {
-  width: v-bind("progress + '%'");
-  transition: width 0.3s ease;
-}
+.button       { background-color: v-bind("theme.primary"); }
+.progress-bar { width: v-bind("progress + '%'"); }
 </style>
 ```
 
-### Tailwind CSS with Vue
+### Tailwind Variant Composition
+
+Centralize variant maps; avoid string concatenation in templates.
 
 ```vue
 <script setup lang="ts">
-const props = defineProps<{
-  variant?: "primary" | "secondary" | "destructive";
-  size?: "sm" | "md" | "lg";
-}>();
-
-const variantClasses: Record<string, string> = {
+const props = defineProps<{ variant?: "primary" | "destructive"; size?: "sm" | "md" }>();
+const variants = {
   primary: "bg-blue-600 text-white hover:bg-blue-700",
-  secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
   destructive: "bg-red-600 text-white hover:bg-red-700",
 };
-
-const sizeClasses: Record<string, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-10 px-4 text-sm",
-  lg: "h-12 px-6 text-base",
-};
+const sizes = { sm: "h-8 px-3 text-sm", md: "h-10 px-4 text-sm" };
 </script>
 
 <template>
@@ -121,8 +84,8 @@ const sizeClasses: Record<string, string> = {
     :class="[
       'inline-flex items-center justify-center rounded-lg font-medium transition-colors',
       'focus-visible:outline-none focus-visible:ring-2',
-      variantClasses[variant ?? 'primary'],
-      sizeClasses[size ?? 'md'],
+      variants[props.variant ?? 'primary'],
+      sizes[props.size ?? 'md'],
     ]"
   >
     <slot />
@@ -132,89 +95,32 @@ const sizeClasses: Record<string, string> = {
 
 ### Tailwind with Nuxt
 
-**Tailwind v4** (CSS-native config, no `tailwind.config.ts`):
+Pick by installed Tailwind major version (`package.json`).
+
+- **v4**: CSS-first config via `@theme` in the imported CSS file; no `tailwind.config.ts`.
+- **v3**: JS config (`tailwind.config.ts`), referenced via the module's `cssPath`.
 
 ```ts
 // nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["@nuxtjs/tailwindcss"],
-});
+export default defineNuxtConfig({ modules: ["@nuxtjs/tailwindcss"] });
 ```
 
 ```css
-/* assets/css/tailwind.css */
+/* v4: assets/css/tailwind.css */
 @import "tailwindcss";
-@theme {
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-}
-```
-
-**Tailwind v3** (JS config):
-
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["@nuxtjs/tailwindcss"],
-  tailwindcss: {
-    cssPath: "~/assets/css/tailwind.css",
-  },
-});
-```
-
-### UnoCSS with Nuxt
-
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["@unocss/nuxt"],
-});
-
-// uno.config.ts
-import { defineConfig, presetUno, presetIcons } from "unocss";
-
-export default defineConfig({
-  presets: [presetUno(), presetIcons()],
-});
-```
-
-### Responsive Design
-
-Mobile-first with Tailwind breakpoints:
-
-```vue
-<template>
-  <div
-    class="
-      flex flex-col gap-4
-      md:flex-row md:gap-6
-      lg:gap-8
-    "
-  >
-    <aside
-      class="
-        w-full
-        md:w-64 md:shrink-0
-      "
-    >
-      <Sidebar />
-    </aside>
-    <main class="flex-1 min-w-0">
-      <slot />
-    </main>
-  </div>
-</template>
+@theme { --color-primary: #3b82f6; }
 ```
 
 ### Dark Mode
 
-**Tailwind dark mode (class strategy):**
+Class strategy (Tailwind) plus `@nuxtjs/color-mode` for Nuxt apps:
 
 ```ts
-// tailwind.config.ts
-export default {
-  darkMode: "class",
-};
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ["@nuxtjs/tailwindcss", "@nuxtjs/color-mode"],
+  colorMode: { classSuffix: "" }, // emits `dark` (not `dark-mode`) on <html>
+});
 ```
 
 ```vue
@@ -225,125 +131,67 @@ export default {
 </template>
 ```
 
-**Color mode with Nuxt:**
-
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["@nuxtjs/color-mode"],
-  colorMode: {
-    classSuffix: "",
-  },
-});
-```
-
-```vue
-<script setup lang="ts">
-const colorMode = useColorMode();
-</script>
-
-<template>
-  <button
-    @click="
-      colorMode.preference = colorMode.preference === 'light' ? 'dark' : 'light'
-    "
-  >
-    {{ colorMode.preference === "light" ? "Dark" : "Light" }} mode
-  </button>
-</template>
-```
-
 ### Design Tokens
 
 ```css
-/* assets/css/tokens.css */
-:root {
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-surface: #ffffff;
-  --color-text: #111827;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-}
-
-.dark {
-  --color-primary: #60a5fa;
-  --color-primary-hover: #93c5fd;
-  --color-surface: #111827;
-  --color-text: #f9fafb;
-}
+:root { --color-primary: #3b82f6; --color-surface: #ffffff; --radius-md: 0.5rem; }
+.dark { --color-primary: #60a5fa; --color-surface: #111827; }
 ```
 
-### Component Library Integration (PrimeVue Unstyled)
+Reference tokens from Tailwind via `@theme` (v4) or `theme.extend.colors` (v3) so classes and tokens stay in sync.
+
+### Component Library Integration
+
+Run PrimeVue/Vuetify in **unstyled mode** when Tailwind is already in use; otherwise their design system fights Tailwind utilities.
 
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
   modules: ["@primevue/nuxt-module"],
-  primevue: {
-    options: {
-      unstyled: true, // use your own styles
-    },
-  },
+  primevue: { options: { unstyled: true } },
 });
-```
-
-```vue
-<template>
-  <DataTable :value="products" :paginator="true" :rows="10">
-    <Column field="name" header="Name" sortable />
-    <Column field="price" header="Price" sortable />
-    <Column field="category" header="Category" />
-  </DataTable>
-</template>
 ```
 
 ## Output Format
 
-Consuming workflow skills depend on this structure.
+Consuming workflow skills parse this structure; preserve field names and enums.
 
 ```
 ## Styling Architecture
 
-**Stack:** {detected framework}
-**Styling approach:** {Tailwind CSS | Scoped Styles | UnoCSS}
-**Component library:** {Vuetify | PrimeVue | Headless UI | None}
+**Stack:** {Vue 3 + Vite | Nuxt 3 | Nuxt 4}
+**Primary approach:** {Tailwind v4 | Tailwind v3 | UnoCSS | Scoped Styles | Vuetify | PrimeVue}
+**Component library:** {Vuetify | PrimeVue (styled) | PrimeVue (unstyled) | Headless UI | None}
+**Dark mode:** {Tailwind class | @nuxtjs/color-mode | CSS vars | None}
+**Design tokens:** {Tailwind config | CSS custom properties | both | None}
 
-### Design Tokens
+### Findings
 
-| Token Category | Source                           |
-| -------------- | -------------------------------- |
-| Colors         | {CSS vars | Tailwind config}     |
-| Spacing        | {Tailwind default | custom}      |
-| Typography     | {font families and scale}        |
-| Dark mode      | {class strategy | @nuxtjs/color-mode} |
-
-### Component Variants
-
-| Component | Variants                           | Approach        |
-| --------- | ---------------------------------- | --------------- |
-| Button    | primary, secondary, destructive    | Tailwind classes|
-| Card      | default, outlined                  | Scoped + v-bind |
+| Area              | Status                                | Notes                              |
+| ----------------- | ------------------------------------- | ---------------------------------- |
+| Approach mixing   | {Consistent | Mixed (justified) | Mixed (issue)} | {boundary or conflict}    |
+| Scoped styles     | {OK | Leaking | Overusing :deep}      | {file:line}                        |
+| CSS v-bind usage  | {OK | Misused for static values}      | {file:line}                        |
+| Responsive        | {Mobile-first | Desktop-first}        | {breakpoints used}                 |
+| Dark mode         | {Working | Partial | Missing}         | {strategy gaps}                    |
+| Accessibility     | {OK | Contrast issue | Focus missing}| {component}                        |
 
 ### Recommendations
 
 - {recommendation with rationale}
 
-### Issues Found
+### Issues
 
-- [Severity: High | Medium | Low] {description}
+- [Severity: {High | Medium | Low}] {description}
   - Problem: {what is wrong}
-  - Fix: {concrete correction}
+  - Fix: {concrete correction with file path}
 ```
 
 ## Avoid
 
-- Mixing multiple styling paradigms in the same project without clear boundaries
-- Inline `:style` bindings for static values (use CSS v-bind or classes)
-- Unscoped styles that leak to child components unexpectedly
-- Desktop-first responsive design (mobile-first is the standard)
-- Hardcoded color values instead of design tokens or Tailwind classes
-- Using `!important` to override scoped styles (use `:deep()` or design tokens)
-- Installing Vuetify or PrimeVue (styled mode) in a project already using Tailwind (conflicting design systems)
-- CSS v-bind for values that don't change (use static CSS instead)
+- Mixing styling paradigms without an explicit boundary (e.g., Tailwind + Vuetify styled mode).
+- Inline `:style` or CSS `v-bind` for static values.
+- `!important` to override scoped styles; use `:deep()` or tokens.
+- Desktop-first breakpoints (`max-width` chains).
+- Hardcoded colors in templates instead of tokens or Tailwind classes.
+- Hardcoded `dark:`/`.dark` color pairs scattered across components instead of token swaps.

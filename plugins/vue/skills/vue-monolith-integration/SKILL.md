@@ -1,6 +1,6 @@
 ---
 name: vue-monolith-integration
-description: Integrate Vue into Rails / Django / Laravel monoliths: Inertia.js, jsbundling, django-vite, mount strategies, asset pipelines, layouts.
+description: Integrate Vue into Rails/Django/Laravel monoliths via Inertia.js, islands, widgets, or full SPA with correct asset pipeline and layouts.
 metadata:
   category: frontend
   tags: [vue, rails, django, laravel, inertia, monolith, integration, asset-pipeline]
@@ -14,30 +14,29 @@ user-invocable: false
 ## When to Use
 
 - Adding Vue to an existing Rails, Django, or Laravel monolith
-- Choosing between full SPA, island architecture, or widget embedding
-- Configuring asset pipelines (Vite, Webpack) for monolith integration
-- Setting up Inertia.js for seamless server-driven Vue pages
-- Migrating from server-rendered templates to Vue incrementally
+- Choosing between Inertia.js, islands, widgets, or full SPA
+- Configuring Vite for the monolith's asset pipeline
+- Migrating server-rendered templates to Vue incrementally
 
 ## Rules
 
-- Detect the monolith framework first (Rails, Django, Laravel) before choosing a strategy
-- Inertia.js is the primary recommendation for Rails and Laravel - it eliminates the need for a separate API layer
-- Island architecture is appropriate when only parts of pages need interactivity
-- Full SPA mode should only be chosen when the entire frontend will be Vue
-- Shared layouts (header, nav, footer) must be handled consistently across server-rendered and Vue-rendered pages
-- Asset pipeline must be configured correctly for the monolith's build system
+- Detect backend framework before choosing a strategy
+- One mount strategy per page; mixing Inertia and islands on the same route is undefined
+- Layout owner is single-source: either the server template or a Vue persistent layout, never both
+- Inertia.js handles CSRF, history, and partial reloads - do not reimplement
 
 ## Patterns
 
-### Mount Strategy Selection
+### Strategy Selection
 
-| Strategy         | When to Use                                      | Backend Support              |
-| ---------------- | ------------------------------------------------ | ---------------------------- |
-| Inertia.js       | Replace server templates with Vue pages entirely | Rails, Laravel               |
-| Islands          | Add interactivity to specific page sections      | All (Rails, Django, Laravel) |
-| Widget embedding | Embed standalone Vue widgets in existing pages   | All                          |
-| Full SPA         | Entire frontend is Vue, backend is API-only      | All (API mode)               |
+| Strategy   | Use When                                  | Backend Fit         |
+| ---------- | ----------------------------------------- | ------------------- |
+| Inertia.js | Replacing server views with Vue pages     | Rails, Laravel      |
+| Islands    | Interactive sections in server pages      | Django, Rails, Laravel |
+| Widget     | Self-contained components in legacy pages | Any                 |
+| Full SPA   | Entire frontend is Vue, backend is API    | Any (API mode)      |
+
+Inertia.js has no first-party Django adapter; prefer islands there.
 
 ### Inertia.js (Rails)
 
@@ -46,23 +45,13 @@ user-invocable: false
 gem "inertia_rails"
 
 # config/initializers/inertia_rails.rb
-InertiaRails.configure do |config|
-  config.version = ViteRuby.digest
-end
+InertiaRails.configure { |c| c.version = ViteRuby.digest }
 
 # app/controllers/products_controller.rb
 class ProductsController < ApplicationController
   def index
-    products = Product.all
     render inertia: "Products/Index", props: {
-      products: products.as_json(only: [:id, :name, :price])
-    }
-  end
-
-  def show
-    product = Product.find(params[:id])
-    render inertia: "Products/Show", props: {
-      product: product.as_json
+      products: Product.all.as_json(only: [:id, :name, :price])
     }
   end
 end
@@ -71,43 +60,27 @@ end
 ```vue
 <!-- app/frontend/pages/Products/Index.vue -->
 <script setup lang="ts">
-import { Head } from "@inertiajs/vue3";
-
-defineProps<{
-  products: Array<{ id: number; name: string; price: number }>;
-}>();
+import { Head, Link } from "@inertiajs/vue3";
+defineProps<{ products: Array<{ id: number; name: string; price: number }> }>();
 </script>
 
 <template>
   <Head title="Products" />
-  <div>
-    <h1>Products</h1>
-    <div v-for="product in products" :key="product.id">
-      <Link :href="`/products/${product.id}`">{{ product.name }}</Link>
-    </div>
-  </div>
+  <Link v-for="p in products" :key="p.id" :href="`/products/${p.id}`">
+    {{ p.name }}
+  </Link>
 </template>
 ```
 
 ### Inertia.js (Laravel)
 
 ```php
-// routes/web.php
-Route::get('/products', function () {
-    return Inertia::render('Products/Index', [
-        'products' => Product::all(),
-    ]);
-});
-
 // app/Http/Controllers/ProductController.php
-class ProductController extends Controller
+public function index()
 {
-    public function index()
-    {
-        return Inertia::render('Products/Index', [
-            'products' => Product::paginate(20),
-        ]);
-    }
+    return Inertia::render('Products/Index', [
+        'products' => Product::paginate(20),
+    ]);
 }
 ```
 
@@ -119,39 +92,19 @@ import { resolvePageComponent } from "laravel-vite-plugin/inertia-helpers";
 
 createInertiaApp({
   resolve: (name) =>
-    resolvePageComponent(
-      `./Pages/${name}.vue`,
-      import.meta.glob("./Pages/**/*.vue"),
-    ),
-  setup({ el, App, props, plugin }) {
-    createApp({ render: () => h(App, props) })
-      .use(plugin)
-      .mount(el);
-  },
+    resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob("./Pages/**/*.vue")),
+  setup: ({ el, App, props, plugin }) =>
+    createApp({ render: () => h(App, props) }).use(plugin).mount(el),
 });
 ```
 
-### Island Architecture (Django)
+### Islands (Django)
 
-Mount Vue components on specific DOM elements within server-rendered pages:
-
-```python
-# views.py
-def product_page(request, product_id):
-    product = get_object_or_404(Product, pk=product_id)
-    return render(request, "products/detail.html", {"product": product})
-```
-
-```html
-<!-- templates/products/detail.html -->
-{% load django_vite %} {% vite_hmr_client %}
-
+```django
+{% load django_vite %}
+{% vite_hmr_client %}
 <h1>{{ product.name }}</h1>
-<p>{{ product.description }}</p>
-
-<!-- Vue island: interactive review section -->
 <div id="reviews-app" data-product-id="{{ product.id }}"></div>
-
 {% vite_asset 'src/islands/reviews.ts' %}
 ```
 
@@ -161,118 +114,66 @@ import { createApp } from "vue";
 import ReviewSection from "./ReviewSection.vue";
 
 const el = document.getElementById("reviews-app");
-if (el) {
-  const app = createApp(ReviewSection, {
-    productId: el.dataset.productId,
-  });
-  app.mount(el);
-}
+if (el) createApp(ReviewSection, { productId: el.dataset.productId }).mount(el);
 ```
 
-### Widget Embedding (Any Backend)
+### Widget (Any Backend)
 
 ```ts
-// src/widgets/product-configurator.ts
+// src/widgets/configurator.ts
 import { createApp } from "vue";
 import ProductConfigurator from "./ProductConfigurator.vue";
 
-// Self-mounting widget - finds all matching elements
-document.querySelectorAll("[data-vue-configurator]").forEach((el) => {
-  const htmlEl = el as HTMLElement;
-  const app = createApp(ProductConfigurator, {
-    productId: htmlEl.dataset.productId,
-    options: JSON.parse(htmlEl.dataset.options || "{}"),
-  });
-  app.mount(el);
+document.querySelectorAll<HTMLElement>("[data-vue-configurator]").forEach((el) => {
+  createApp(ProductConfigurator, {
+    productId: el.dataset.productId,
+    options: JSON.parse(el.dataset.options || "{}"),
+  }).mount(el);
 });
 ```
 
 ```html
-<!-- Any server template -->
-<div
-  data-vue-configurator
-  data-product-id="123"
-  data-options='{"colors":["red","blue"]}'
-></div>
+<div data-vue-configurator data-product-id="123" data-options='{"colors":["red","blue"]}'></div>
 ```
 
-### Asset Pipeline Configuration
-
-**Rails with Vite (jsbundling-rails + vite_rails):**
-
-```ruby
-# Gemfile
-gem "vite_rails"
-```
+### Asset Pipeline
 
 ```ts
-// vite.config.ts
+// vite.config.ts - Rails (vite_rails)
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import RubyPlugin from "vite-plugin-ruby";
-
-export default defineConfig({
-  plugins: [vue(), RubyPlugin()],
-});
+export default defineConfig({ plugins: [vue(), RubyPlugin()] });
 ```
-
-**Django with django-vite:**
-
-```python
-# settings.py
-DJANGO_VITE = {
-    "default": {
-        "dev_mode": DEBUG,
-        "dev_server_host": "localhost",
-        "dev_server_port": 5173,
-    },
-}
-```
-
-**Laravel with Vite (built-in):**
 
 ```ts
-// vite.config.ts
+// vite.config.ts - Laravel
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import laravel from "laravel-vite-plugin";
-
 export default defineConfig({
   plugins: [laravel({ input: ["resources/js/app.ts"] }), vue()],
 });
 ```
 
-### Shared Layouts
-
-**Inertia.js persistent layouts:**
-
-```vue
-<!-- layouts/AppLayout.vue -->
-<template>
-  <div>
-    <nav><!-- shared navigation --></nav>
-    <main>
-      <slot />
-    </main>
-    <footer><!-- shared footer --></footer>
-  </div>
-</template>
+```python
+# settings.py - Django (django-vite)
+DJANGO_VITE = {"default": {"dev_mode": DEBUG, "dev_server_port": 5173}}
 ```
+
+### Shared Layout (Inertia persistent)
 
 ```vue
 <!-- pages/Products/Index.vue -->
 <script setup lang="ts">
 import AppLayout from "~/layouts/AppLayout.vue";
-
 defineOptions({ layout: AppLayout });
 </script>
 ```
 
-**Island architecture shared layout**: The server template handles the shared layout (header, footer, nav). Vue islands only control interactive sections within the server-rendered page.
+For islands and widgets the server template owns the layout; Vue controls only mounted regions.
 
 ## Output Format
-
-Consuming workflow skills depend on this structure.
 
 ```
 ## Monolith Integration Design
@@ -283,18 +184,15 @@ Consuming workflow skills depend on this structure.
 
 ### Integration Points
 
-| Page/Section       | Strategy   | Vue Component         | Data Source            |
-| ------------------ | ---------- | --------------------- | ---------------------- |
-| /products          | Inertia    | Products/Index.vue    | Controller props       |
-| /products/:id      | Islands    | ReviewSection.vue     | API fetch              |
-| /checkout (widget) | Widget     | CartWidget.vue        | data-* attributes      |
+| Page/Section  | Strategy | Vue Component      | Data Source      |
+| ------------- | -------- | ------------------ | ---------------- |
+| /products     | Inertia  | Products/Index.vue | Controller props |
+| /products/:id | Islands  | ReviewSection.vue  | API fetch        |
 
-### Shared Layout
+### Layout Ownership
 
-| Element    | Handled By        | Notes                           |
-| ---------- | ----------------- | ------------------------------- |
-| Navigation | {Server | Vue}    | {persistent layout | template}  |
-| Footer     | {Server | Vue}    | {persistent layout | template}  |
+- Navigation: {Server template / Vue persistent layout}
+- Footer: {Server template / Vue persistent layout}
 
 ### Recommendations
 
@@ -309,11 +207,10 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Full SPA mode when only parts of pages need interactivity (over-engineering)
-- Inertia.js with Django (limited community support - use islands instead)
-- Duplicating layouts in both server templates and Vue (single source of truth)
-- Manual CSRF token handling when Inertia.js handles it automatically
-- Loading the entire Vue bundle on pages with no Vue components
-- Mixing jQuery and Vue on the same DOM elements (unpredictable behavior)
-- Serving Vue assets without proper cache headers (stale bundles after deploy)
-- Widget embedding with heavy state management (use Inertia or full SPA instead)
+- Full SPA when only parts of pages are interactive
+- Inertia.js on Django (no first-party adapter)
+- Duplicating layouts across server templates and Vue
+- Loading the Vue bundle on pages with no Vue mount points
+- Mixing jQuery and Vue on the same DOM nodes
+- Vue assets served without cache-busting digests
+- Heavy state management inside widgets - escalate to Inertia or SPA

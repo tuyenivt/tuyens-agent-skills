@@ -13,264 +13,128 @@ user-invocable: false
 
 ## When to Use
 
-- Choosing a state management approach for a Vue feature
-- Deciding between local state, composable, and Pinia store
+- Choosing a state mechanism for a Vue feature
 - Designing Pinia stores with proper domain boundaries
-- Reviewing existing state management for performance or correctness issues
+- Reviewing existing state for performance, correctness, or SSR safety
 - Migrating from Vuex to Pinia
 
 ## Rules
 
-- Start with the simplest state mechanism - upgrade only when proven necessary (ref > composable > Pinia)
-- Pinia is the official recommendation - use it for all shared client state
-- Server state belongs in useFetch/useAsyncData or TanStack Query - not in Pinia
-- Every Pinia store must have a clear domain boundary - one store per domain, not one store for the entire app
-- Derived state must be computed via getters - never stored separately
-- Prefer Setup Stores (composable syntax) over Option Stores for consistency with Composition API
+- Escalate only when justified: `ref` -> composable -> Pinia. Use Pinia for all shared client state.
+- One store per domain. No mega-store coupling unrelated domains.
+- Use Setup Stores (Composition API). Option Stores only in legacy/Vuex-migration code.
+- Derived state is a `computed`/getter. Never store it.
+- Server state lives in `useFetch`/`useAsyncData` or TanStack Query, never Pinia.
+- URL-shareable state (filters, sort, pagination, search) lives in `route.query`, not refs.
+- Destructure stores via `storeToRefs()` for state/getters; actions destructure directly.
+- Mutate store state only through actions (preserves devtools timeline).
 
 ## Patterns
 
 ### State Mechanism Selection
 
-| Mechanism      | When to Use                                        | Example                           |
-| -------------- | -------------------------------------------------- | --------------------------------- |
-| ref            | Simple, component-local state                      | Toggle, input value, local flag   |
-| composable     | Reusable state logic shared across components      | useAuth, useTheme                 |
-| Pinia          | Shared client state across components              | Shopping cart, UI preferences     |
-| URL state      | State that should survive refresh/share            | Filters, sort, pagination, search |
-| useFetch       | Server state (API data)                            | User profile, product list        |
-| TanStack Query | Complex server state (caching, optimistic updates) | Real-time data, infinite lists    |
+| Mechanism      | When to Use                                  | Example                         |
+| -------------- | -------------------------------------------- | ------------------------------- |
+| ref            | Component-local state                        | Toggle, input value             |
+| composable     | Reusable logic, client-only or per-request   | useAuth, useTheme               |
+| Pinia          | Shared client state across components        | Cart, UI preferences            |
+| URL state      | Shareable/bookmarkable state                 | Filters, sort, pagination       |
+| useFetch       | Server state (API data)                      | User profile, product list      |
+| TanStack Query | Complex server state (cache, optimistic)     | Real-time data, infinite lists  |
 
-### Pinia Setup Store (Recommended)
+### Pinia Setup Store
 
 ```ts
 // stores/cart.ts
-import { defineStore } from "pinia";
-
 export const useCartStore = defineStore("cart", () => {
   const items = ref<CartItem[]>([]);
-
-  // Getters (computed)
   const totalItems = computed(() => items.value.length);
   const totalPrice = computed(() =>
-    items.value.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    items.value.reduce((sum, i) => sum + i.price * i.quantity, 0),
   );
 
-  // Actions
   function addItem(item: CartItem) {
     const existing = items.value.find((i) => i.id === item.id);
-    if (existing) {
-      existing.quantity++;
-    } else {
-      items.value.push({ ...item, quantity: 1 });
-    }
+    if (existing) existing.quantity++;
+    else items.value.push({ ...item, quantity: 1 });
   }
 
-  function removeItem(id: string) {
-    items.value = items.value.filter((i) => i.id !== id);
-  }
+  return { items, totalItems, totalPrice, addItem };
+}, { persist: true }); // optional: pinia-plugin-persistedstate
+```
 
-  function clearCart() {
-    items.value = [];
-  }
+**Consuming the store:**
 
-  return { items, totalItems, totalPrice, addItem, removeItem, clearCart };
-});
+```ts
+// Bad - loses reactivity
+const { items, totalItems } = useCartStore();
 
-// Usage in components:
+// Good
 const cart = useCartStore();
-cart.addItem(product);
-
-// Destructure reactively with storeToRefs (refs only, not actions)
-const { items, totalItems, totalPrice } = storeToRefs(cart);
-const { addItem, removeItem } = cart; // actions don't need storeToRefs
+const { items, totalItems } = storeToRefs(cart); // state + getters
+const { addItem } = cart;                         // actions
 ```
 
-**Bad** - Destructuring store without storeToRefs:
+### Composable Store (Module-Level Ref)
+
+For shared state without devtools/persistence needs. **SSR hazard**: module-level refs are singletons and leak across requests in Nuxt/SSR. Use `useState()` in Nuxt or Pinia instead.
 
 ```ts
-const { items, totalItems } = useCartStore(); // loses reactivity!
-```
-
-**Good** - Using storeToRefs:
-
-```ts
-const cart = useCartStore();
-const { items, totalItems } = storeToRefs(cart); // stays reactive
-```
-
-### Pinia Option Store
-
-```ts
-// stores/cart.ts (option syntax - familiar for Vuex users)
-export const useCartStore = defineStore("cart", {
-  state: () => ({
-    items: [] as CartItem[],
-  }),
-  getters: {
-    totalItems: (state) => state.items.length,
-    totalPrice: (state) =>
-      state.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
-  },
-  actions: {
-    addItem(item: CartItem) {
-      const existing = this.items.find((i) => i.id === item.id);
-      if (existing) {
-        existing.quantity++;
-      } else {
-        this.items.push({ ...item, quantity: 1 });
-      }
-    },
-    removeItem(id: string) {
-      this.items = this.items.filter((i) => i.id !== id);
-    },
-  },
-});
-```
-
-### Pinia with Persistence
-
-```ts
-// plugins/pinia-persist.ts (Nuxt plugin)
-import piniaPluginPersistedstate from "pinia-plugin-persistedstate";
-
-export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.$pinia.use(piniaPluginPersistedstate);
-});
-
-// In store:
-export const useCartStore = defineStore(
-  "cart",
-  () => {
-    const items = ref<CartItem[]>([]);
-    // ...
-    return { items };
-  },
-  {
-    persist: true, // persists to localStorage
-  },
-);
-```
-
-### Composable Store Pattern
-
-For reusable state that doesn't need Pinia's devtools or persistence.
-
-**Warning**: Module-level refs are singletons. In Nuxt/SSR, this leaks state across requests. Use `useState()` in Nuxt or Pinia for SSR-safe shared state.
-
-```ts
-// composables/useAuth.ts - client-only or Vite projects
-const user = ref<User | null>(null);
-const isAuthenticated = computed(() => !!user.value);
-
+// composables/useAuth.ts - client-only (Vite) or Nuxt useState
+const user = ref<User | null>(null); // unsafe in SSR
 export function useAuth() {
-  async function login(credentials: Credentials) {
-    const response = await $fetch("/api/auth/login", {
-      method: "POST",
-      body: credentials,
-    });
-    user.value = response.user;
-  }
+  const isAuthenticated = computed(() => !!user.value);
+  return { user: readonly(user), isAuthenticated };
+}
+```
 
-  async function logout() {
-    await $fetch("/api/auth/logout", { method: "POST" });
-    user.value = null;
-    navigateTo("/login");
-  }
+Nuxt-safe alternative:
 
-  return {
-    user: readonly(user),
-    isAuthenticated,
-    login,
-    logout,
-  };
+```ts
+export function useAuth() {
+  const user = useState<User | null>("auth.user", () => null);
+  return { user, isAuthenticated: computed(() => !!user.value) };
 }
 ```
 
 ### URL State
 
-Sync state with URL for shareable, bookmarkable UI:
-
-```vue
-<script setup lang="ts">
+```ts
 const route = useRoute();
 const router = useRouter();
+const category = computed(() => (route.query.category as string) ?? "all");
 
-// Read from URL
-const category = computed(() => (route.query.category as string) || "all");
-const page = computed(() => parseInt((route.query.page as string) || "1"));
-const sort = computed(() => (route.query.sort as string) || "name");
-
-// Write to URL
 function setFilter(key: string, value: string) {
-  router.push({
-    query: {
-      ...route.query,
-      [key]: value,
-      page: "1", // reset page on filter change
-    },
-  });
+  router.push({ query: { ...route.query, [key]: value, page: "1" } });
 }
-</script>
 ```
 
-### SSR Hydration with Pinia
+### SSR Hydration
 
-Nuxt handles Pinia SSR hydration automatically. For manual SSR setups:
+Nuxt auto-hydrates Pinia state from server to client; no manual wiring. For custom SSR setups, serialize `pinia.state.value` into the HTML payload and call `pinia.state.value = window.__INITIAL_STATE__` on the client before app mount.
+
+### Vuex -> Pinia Migration
+
+Map Vuex concepts directly:
+
+| Vuex                  | Pinia (Setup)                     |
+| --------------------- | --------------------------------- |
+| `state`               | `ref()` declarations              |
+| `getters`             | `computed()`                      |
+| `mutations`           | Removed - actions mutate directly |
+| `actions`             | Plain functions                   |
+| Namespaced modules    | Separate stores (`defineStore`)   |
 
 ```ts
-// Nuxt auto-hydrates Pinia state from server to client.
-// No manual setup needed. Just use stores normally:
-const cart = useCartStore();
-// State set during SSR is available on the client.
+// Before (Vuex)
+mutations: { increment(state) { state.count++ } },
+actions:   { asyncInc({ commit }) { commit("increment") } },
+
+// After (Pinia setup)
+const count = ref(0);
+function increment() { count.value++; }
+async function asyncInc() { increment(); }
 ```
-
-### Vuex Migration Path
-
-**Vuex (old):**
-
-```ts
-const store = createStore({
-  state: { count: 0 },
-  mutations: {
-    increment(state) {
-      state.count++;
-    },
-  },
-  actions: {
-    asyncIncrement({ commit }) {
-      commit("increment");
-    },
-  },
-  getters: { doubled: (state) => state.count * 2 },
-});
-```
-
-**Pinia (new):**
-
-```ts
-export const useCounterStore = defineStore("counter", () => {
-  const count = ref(0);
-  const doubled = computed(() => count.value * 2);
-
-  function increment() {
-    count.value++;
-  }
-
-  async function asyncIncrement() {
-    increment();
-  }
-
-  return { count, doubled, increment, asyncIncrement };
-});
-```
-
-Key migration differences:
-
-- No mutations - actions directly mutate state
-- No namespaced modules - each store is its own module
-- Full TypeScript support without type gymnastics
-- Composable syntax matches Composition API patterns
 
 ## Output Format
 
@@ -284,18 +148,18 @@ Consuming workflow skills depend on this structure.
 
 ### State Map
 
-| State          | Category   | Owner             | Mechanism               |
-| -------------- | ---------- | ----------------- | ----------------------- |
-| {state name}   | Local UI   | {component}       | ref                     |
-| {state name}   | Shared UI  | {store}           | Pinia                   |
-| {state name}   | Server     | -                 | useFetch / TanStack Query |
-| {state name}   | URL        | -                 | route.query             |
+| State        | Category   | Owner       | Mechanism                 |
+| ------------ | ---------- | ----------- | ------------------------- |
+| {state name} | Local UI   | {component} | ref                       |
+| {state name} | Shared UI  | {store}     | Pinia                     |
+| {state name} | Server     | -           | useFetch / TanStack Query |
+| {state name} | URL        | -           | route.query               |
 
 ### Stores
 
-| Store          | Domain         | Persisted | SSR Hydrated |
-| -------------- | -------------- | --------- | ------------ |
-| {storeName}    | {domain}       | {Yes|No}  | {Yes|No}     |
+| Store       | Domain   | Persisted | SSR Hydrated |
+| ----------- | -------- | --------- | ------------ |
+| {storeName} | {domain} | {Yes|No}  | {Yes|No}     |
 
 ### Recommendations
 
@@ -310,13 +174,9 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Storing server state (API data) in Pinia (use useFetch/useAsyncData or TanStack Query)
-- Creating one mega-store for the entire application (couples unrelated domains)
-- Option Stores when the rest of the codebase uses Composition API (inconsistency)
-- Storing derived values instead of computing them with getters
-- Using Vuex in new Vue 3 projects (Pinia is the official recommendation)
-- Reactive refs for state that should be in the URL (filters, pagination, sort)
-- Destructuring store without `storeToRefs()` (loses reactivity on state and getters)
-- Direct store mutation from components bypassing actions (breaks action-based devtools tracking)
-- Module-level refs in Nuxt/SSR composables (state leaks across requests - use `useState()` or Pinia)
-- Prop drilling through more than 2 levels when a store or provide/inject would be cleaner
+- Server state (API data) in Pinia stores
+- Mega-store coupling unrelated domains
+- Stored derived values instead of getters
+- Module-level refs in Nuxt/SSR composables (request leakage)
+- Vuex in new Vue 3 projects
+- Prop drilling beyond 2 levels when a store or `provide`/`inject` fits

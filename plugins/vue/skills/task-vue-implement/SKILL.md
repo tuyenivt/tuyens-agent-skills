@@ -1,143 +1,102 @@
 ---
 name: task-vue-implement
-description: End-to-end Vue 3.5 / Nuxt 3 / Vite feature implementation: SFCs, composables, Pinia, API, routing, styling, a11y, tests.
+description: Implement Vue 3.5 / Nuxt 3 / Vite feature end-to-end - SFCs, composables, Pinia, data, routing, forms, a11y, tests.
 metadata:
   category: frontend
-  tags: [vue, typescript, nuxt, vite, feature, implementation, workflow, composables, pinia, testing]
+  tags: [vue, typescript, nuxt, vite, feature, implementation, workflow]
   type: workflow
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
-
-# Implement Vue Feature
-
 ## When to Use
 
-- Implementing a new Vue feature end-to-end (components, state, data fetching, routing, tests)
-- Scaffolding a complete page or feature module with production-ready patterns
-- Adding a new user-facing flow with API integration and form handling
-- Any daily frontend coding task that requires coordinated generation of multiple Vue layers
+Building a new Vue feature spanning components, state, data fetching, routing, and tests. Not for single-component edits, bug fixes (use `task-vue-debug`), or refactors without new behavior.
 
-**Not for**: Single-component changes, bug fixes (use `task-vue-debug`), or refactoring without new functionality.
-
-**Edge cases**:
-
-- **Partial input**: If the user provides only a feature name without details, ask for components needed, data requirements, user interactions, and routing before proceeding to design.
-- **No API**: If the feature is purely UI (e.g., static page, settings toggle), skip data fetching and API integration steps; generate only components, state, styling, and tests.
-- **Existing components**: If the user references components that already exist, read them and extend or compose with them rather than creating duplicates.
-- **Vite project**: If stack-detect identifies Vite instead of Nuxt, skip server routes and Nuxt-specific features; use client-side routing (Vue Router) and client-side data fetching patterns.
-- **No forms**: If the feature has no form inputs, skip the form handling step entirely.
-- **Monolith detected**: If stack-detect identifies Rails, Django, or Laravel alongside Vue, load `vue-monolith-integration` in the design step to determine mount strategy (Inertia, islands, or widget).
-
-## Rules
-
-- TypeScript strict mode - no `any` types, no type assertions without justification
-- `<script setup lang="ts">` by default for all SFCs
-- Composition API only - no Options API in new code
-- Props typed with `defineProps<T>()` using interface; emits typed with `defineEmits<T>()`
-- Composables must start with `use` and encapsulate a single concern
-- Colocate tests with components (`ComponentName.test.ts` next to `ComponentName.vue`)
-- Each step must complete and be reviewed before proceeding to the next
-- Present the design to the user for approval before generating code
-- Run typecheck and lint after all files are generated
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 2 and follow its mode contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts from this workflow.
 
 ## Workflow
 
-STEP 1 - DETECT: Use skill: `stack-detect` to determine framework (Nuxt 3 vs Vite + Vue Router), TypeScript config, styling approach, state management library, test framework, and whether a monolith backend is present (Rails/Django/Laravel).
+**Step 1 - Behavioral principles.** Use skill: `behavioral-principles`.
 
-STEP 2 - GATHER: Requirements - feature name, user stories, components needed, data sources (API endpoints), user interactions, routing needs, form inputs, accessibility requirements.
+**Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm Vue 3 + (Nuxt 3 | Vite + Vue Router); identify styling, state lib (Pinia), test framework, and any monolith backend (Rails/Django/Laravel). Halt and ask if mismatched. Vite branch: skip Nuxt server routes and auto-imports, use Vue Router and client fetching.
 
-STEP 3 - DESIGN: Use skill: `vue-component-patterns` + `vue-routing-patterns`. If monolith detected (Rails/Django/Laravel): Use skill: `vue-monolith-integration`. Propose component tree with responsibility breakdown, file structure (using Nuxt conventions: `pages/`, `components/`, `composables/`, `server/api/` when Nuxt is detected), and routing. Distinguish page components from reusable components. Present for user approval before generating code.
+**Step 3 - Gather.** Ask: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
 
-STEP 4 - STATE: Use skill: `vue-state-patterns` + `frontend-state-management`. Identify state categories (local, shared, global, server, URL, form) and assign ownership to components or stores. Filters, pagination, and sort parameters should default to URL state for shareability.
+**Step 4 - Design.** Use skill: `vue-component-patterns` + `vue-routing-patterns`. If monolith detected: Use skill: `vue-monolith-integration` to choose mount strategy (Inertia | islands | widget). Propose component tree (page vs reusable), file layout, routes. Request approval before code:
 
-STEP 5 - DATA: Use skill: `vue-data-fetching` + `frontend-api-integration`. Define data fetching strategy - composable design, cache invalidation, loading/error states, optimistic updates if needed.
+```
+pages/<feature>/index.vue                          # Nuxt route (or src/views/ for Vite)
+components/<feature>/<Component>.vue + .test.ts
+composables/use<Name>.ts + .test.ts
+server/api/<resource>/index.get.ts                 # Nuxt only
+stores/<feature>.ts                                # Pinia, when shared/global
+types.ts
+```
 
-STEP 6 - COMPONENTS: Use skill: `vue-composables-patterns` + `vue-styling-patterns`. If Nuxt: Use skill: `vue-nuxt-patterns`. Generate SFC components with proper composable usage, styling, and Nuxt conventions.
+**Step 5 - State.** Use skill: `vue-state-patterns` + `frontend-state-management`. Categorize: local | shared | global | server | URL | form. Assign owner. Filters and pagination belong in URL state; server data in `useFetch`/`useAsyncData` or TanStack Query; no server state in Pinia.
 
-STEP 7 - FORMS: Use skill: `frontend-form-handling` (if feature has forms). Implement form validation, error display, submission handling, and dirty tracking.
+**Step 6 - Data.** Use skill: `vue-data-fetching` + `frontend-api-integration`. Define keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 
-STEP 8 - A11Y: Use skill: `frontend-accessibility`. Audit generated components for WCAG 2.1 AA compliance - semantic HTML, keyboard navigation, ARIA attributes, focus management.
+**Step 7 - Components.** Use skill: `vue-composables-patterns` + `vue-styling-patterns`. Nuxt: Use skill: `vue-nuxt-patterns`. Generate `<script setup lang="ts">` SFCs with `defineProps<T>()` / `defineEmits<T>()`; composables named `use*`, single concern.
 
-STEP 9 - TESTS: Use skill: `vue-testing-patterns` + `frontend-testing-patterns`. Generate component tests (Vue Test Utils), composable tests, integration tests (MSW), and identify critical paths for e2e.
+**Step 8 - Forms.** Use skill: `frontend-form-handling` (skip if no forms). Validation, error display, submit protection, dirty tracking.
 
-STEP 10 - VALIDATE: Run `npx nuxi typecheck` (Nuxt) or `npx vue-tsc --noEmit` (Vite) + lint + test. Present file list, component tree, and test count.
+**Step 9 - A11y.** Use skill: `frontend-accessibility`. Audit to WCAG 2.1 AA: semantic HTML, keyboard nav, ARIA, focus management.
 
-## Self-Check
+**Step 10 - Tests.** Use skill: `vue-testing-patterns` + `frontend-testing-patterns`. Component tests (Vue Test Utils), composable tests, integration with MSW. Assert behavior, not internals. List e2e candidates.
 
-- [ ] Stack detected and framework identified (STEP 1)
-- [ ] Requirements gathered - components, data sources, interactions, routing documented (STEP 2)
-- [ ] Component tree designed with mount strategy and approved by user (STEP 3)
-- [ ] State management categorized and assigned - no duplicated state, server state separated (STEP 4)
-- [ ] Data fetching uses useFetch/useAsyncData or TanStack Query with loading/error/empty states (STEP 5)
-- [ ] Components use proper composables, styling approach, and TypeScript types (STEP 6)
-- [ ] Forms have validation, error display, submission protection, and dirty tracking if applicable (STEP 7)
-- [ ] Accessibility audit passed - semantic HTML, keyboard accessible, ARIA attributes correct (STEP 8)
-- [ ] Tests cover components, composables, integration with MSW, and critical user flows (STEP 9)
-- [ ] TypeScript compiles with no errors; lint passes; tests pass (STEP 10)
+**Step 11 - Validate.** Run `npx nuxi typecheck` (Nuxt) or `npx vue-tsc --noEmit` (Vite), lint, test. Fix failures before reporting.
 
 ## Output Format
 
-Present a checklist of generated files:
-
 ```markdown
-## Generated Files
+## Files Generated
 
-### Components
-
-- [ ] `{path}/{ComponentName}.vue`
-- [ ] `{path}/{ComponentName}.test.ts`
-
-### Composables (if custom composables created)
-
-- [ ] `{path}/use{ComposableName}.ts`
-- [ ] `{path}/use{ComposableName}.test.ts`
-
-### Types
-
-- [ ] `{path}/types.ts`
-
-### API / Data
-
-- [ ] `{path}/{queryName}.ts` (query functions)
-
-### Server Routes (Nuxt only)
-
-- [ ] `server/api/{resource}/index.get.ts`
-- [ ] `server/api/{resource}/[id].get.ts`
+[grouped: routes/pages, components, composables, stores, server routes (Nuxt), types, tests]
 
 ## Component Tree
 
-{ComponentName} - {responsibility}
-├── {ChildA} - {responsibility}
-│ └── {ChildB} - {responsibility}
-└── {ChildC} - {responsibility}
+<Root> - {responsibility}
+├── <ChildA> - {responsibility}
+└── <ChildB> - {responsibility}
 
 ## State Map
 
-| State        | Category   | Owner       | Mechanism                             |
-| ------------ | ---------- | ----------- | ------------------------------------- |
-| {state name} | {category} | {component} | {ref / Pinia / useFetch / URL params} |
+| State | Category | Owner | Mechanism |
+| ----- | -------- | ----- | --------- |
+| ...   | local/shared/global/server/URL/form | ... | ref / Pinia / useFetch / useAsyncData / route query / VeeValidate |
+
+## Endpoints / Queries
+
+| Method | Path | Key | Loading | Error | Empty |
+| ------ | ---- | --- | ------- | ----- | ----- |
 
 ## Tests
 
-- Component tests: {count}
-- Composable tests: {count}
-- Integration tests: {count}
-- E2E candidates: {list of critical paths}
+- Component: {count} (Vue Test Utils)
+- Composable: {count}
+- Integration: {count} (MSW)
+- E2E candidates: {list}
 ```
+
+## Self-Check
+
+- [ ] Step 1-2: behavioral principles loaded; stack confirmed (Nuxt or Vite branch chosen; monolith strategy chosen if applicable)
+- [ ] Step 3-4: requirements gathered; component tree and file layout approved before code
+- [ ] Step 5: state categorized; URL state for filters/pagination; no server state in Pinia
+- [ ] Step 6: data calls have keys, cache invalidation, and loading/error/empty states
+- [ ] Step 7: `<script setup lang="ts">`, Composition API, typed props/emits, composables single-concern
+- [ ] Step 8: forms have validation, error display, submit protection, dirty tracking (if applicable)
+- [ ] Step 9: WCAG 2.1 AA - semantic HTML, keyboard, ARIA, focus
+- [ ] Step 10: tests assert behavior (Vue Test Utils + MSW); critical paths flagged for e2e
+- [ ] Step 11: typecheck, lint, tests pass
 
 ## Avoid
 
-- Using `any` type or suppressing TypeScript errors
-- Options API or mixins in new code
-- Storing server state in Pinia (use useFetch/useAsyncData or TanStack Query)
-- Using `reactive()` for primitives or simple values (use `ref()`)
-- Inline styles instead of the project's styling approach
-- Skipping loading, error, or empty states on data-fetching components
-- Tests that assert implementation details (internal state, watchers)
-- Generating code before the design is approved
+- `any` or suppressed TS errors; Options API or mixins in new code
+- Server state in Pinia - use `useFetch`/`useAsyncData` or TanStack Query
+- `reactive()` for primitives - use `ref()`
+- Missing loading/error/empty states on data-fetching components
+- Tests asserting internal state, watchers, or method calls
+- Generating code before design approval
 - Fighting Nuxt conventions (manual routing, manual imports) when Nuxt is detected

@@ -1,6 +1,6 @@
 ---
 name: vue-onboard-map
-description: Vue 3.5 / Nuxt / Vite onboarding map: package manager, build, TS config, routing, Pinia, useFetch / TanStack Query, styling, UI library.
+description: "Map Vue onboarding signals: Nuxt 3 vs Vite SPA, Vue 3.5, TS + vue-tsc, Pinia, useFetch / TanStack Query, styling, UI library."
 metadata:
   category: frontend
   tags: [onboarding, codebase-map, vue, nuxt, vite, pinia]
@@ -9,147 +9,114 @@ user-invocable: false
 
 # Vue Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-onboard` when the detected stack is Vue.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when the stack is Vue.
 
 ## When to Use
 
-- A workflow needs Vue-specific orientation: package manager, build framework, routing, state, data fetching, styling, component library.
-- Project has `package.json` with `vue` dep.
+Workflow needs Vue-specific orientation: build framework, routing, state, data fetching, styling, component library, SSR boundary. Project has `package.json` with `vue`.
 
 ## Rules
 
-- Identify build framework first: Nuxt 3 (`nuxt.config.*` + `nuxt` dep) or Vite SPA (`vite.config.*` + `@vitejs/plugin-vue`).
-- Identify Vue API style: Composition API with `<script setup>` is the modern default; Options API is legacy but possible.
-- Identify state management: Pinia (`pinia` dep, `stores/` directory) or Vuex (legacy, `vuex` dep).
-- Identify SSR vs CSR: Nuxt is SSR by default with hybrid rendering modes; Vite SPA is client-only.
-- Identify component library: Vuetify, Quasar, Element Plus, PrimeVue, Naive UI, Headless UI for Vue, custom.
+- Detect build framework first - Nuxt 3 (`nuxt.config.*` + `nuxt` dep) vs Vite SPA (`vite.config.*` + `@vitejs/plugin-vue`). Routing, SSR, and auto-imports diverge.
+- Detect API style - `<script setup>` + Composition API is the modern default; Options API is legacy.
+- Detect state - Pinia (`pinia` dep, `stores/`); Vuex is legacy.
+- Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`).
+- Detect data fetching - Nuxt: `useFetch` / `useAsyncData` / `$fetch`; Vite SPA: TanStack Query Vue, axios, native fetch.
 
 ## Patterns
 
-### Build Framework Inventory
+### Build Inventory
 
-| File                | What it tells you                                                                |
-| ------------------- | -------------------------------------------------------------------------------- |
-| `nuxt.config.ts`    | Nuxt project; module list, runtime config, build target                          |
-| `vite.config.ts`    | Vite SPA; `@vitejs/plugin-vue` and any code-splitting/transform plugins          |
-| `tsconfig.json`     | TypeScript config; `vue-tsc` for type checking                                    |
-| `package.json`      | Deps; check for `vue`, `nuxt`, `pinia`, `@vue/test-utils`, `vitest`, `playwright` |
-| `tailwind.config.*` | Tailwind                                                                          |
-| `unocss.config.*`   | UnoCSS (atomic CSS, often with Vue/Nuxt)                                         |
+| File                  | What it tells you                                            |
+| --------------------- | ------------------------------------------------------------ |
+| `nuxt.config.*`       | Nuxt; modules, runtime config, render mode                   |
+| `vite.config.*`       | Vite SPA; check `@vitejs/plugin-vue`                         |
+| `tsconfig.json`       | TS config; `vue-tsc` for type-checking SFCs                  |
+| `tailwind.config.*` / `unocss.config.*` | Tailwind or UnoCSS                         |
+| `.env.example`        | Env vars; Nuxt `NUXT_PUBLIC_*`, Vite `VITE_*` (client-exposed) |
+| `vitest.config.*`     | Vitest unit/component tests                                  |
+| `playwright.config.*` | E2E framework                                                |
 
-### Bootstrap Path
+### Bootstrap
 
-1. Node toolchain: `engines.node` in `package.json`; Nuxt 3 requires Node 18+.
-2. Install: `<manager> install` (npm/pnpm/yarn/bun).
-3. Env: `cp .env.example .env`.
-4. Run:
-   - **Nuxt:** `npm run dev` (port 3000); SSR + HMR.
-   - **Vite SPA:** `npm run dev` (port 5173).
-5. Verify: open browser; check `/_nuxt/` for Nuxt static; check root path.
+1. Install: `<manager> install` (manager from lockfile; `engines.node` in `package.json`; Nuxt 3 needs Node 18+).
+2. Env: `cp .env.example .env`.
+3. Run: `npm run dev` - Nuxt defaults to `:3000` (SSR + HMR), Vite to `:5173`.
+4. Verify: open entry route; Nuxt shows `/_nuxt/` static assets.
 
-### Key File Inventory
+### Key Files
 
-**Nuxt 3 (file-based routing):**
+**Nuxt 3 (file-based routing, auto-imports)**
 
-| Location                | Purpose                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `app.vue`               | Root component (rendered around all pages)                                |
-| `pages/index.vue`       | Home route                                                                 |
-| `pages/<route>.vue`     | Route                                                                      |
-| `pages/<dyn>/[id].vue`  | Dynamic route (`route.params.id`)                                          |
-| `layouts/default.vue`   | Default layout; per-page override via `definePageMeta({ layout: '...' })` |
-| `components/`           | Auto-imported components (no explicit `import`)                            |
-| `composables/`          | Auto-imported `use*` composables                                           |
-| `stores/`               | Pinia stores (auto-imported with `@pinia/nuxt` module)                     |
-| `server/api/<route>.ts` | API endpoint (Nitro server)                                                 |
-| `server/middleware/`    | Server-side middleware                                                      |
-| `middleware/`           | Route middleware (client/SSR)                                               |
-| `plugins/`              | Vue plugins (loaded at startup)                                             |
-| `nuxt.config.ts`        | Nuxt config; modules, runtime config, build options                          |
-| `assets/`               | Processed assets (CSS, fonts, images)                                       |
-| `public/`               | Static files served as-is                                                    |
+| Location                | Purpose                                                   |
+| ----------------------- | --------------------------------------------------------- |
+| `app.vue`               | Root component wrapping all pages                         |
+| `pages/<route>.vue`     | Route (`[id].vue` for dynamic)                            |
+| `layouts/<name>.vue`    | Layout; per-page via `definePageMeta({ layout })`         |
+| `components/`           | Auto-imported components                                  |
+| `composables/`          | Auto-imported `use*` composables                          |
+| `stores/`               | Pinia stores (with `@pinia/nuxt`)                         |
+| `server/api/<route>.ts` | Nitro API endpoint                                        |
+| `middleware/`           | Route middleware; `server/middleware/` for server-side    |
+| `plugins/`              | Vue plugins; `.client.ts` / `.server.ts` for SSR scoping  |
+| `nuxt.config.ts`        | Modules, runtime config, build options                    |
+| `public/`               | Static files served as-is                                 |
 
-**Vite SPA:**
+**Vite SPA**
 
-| Location                | Purpose                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `index.html`            | Entry HTML                                                                 |
-| `src/main.ts`           | Mount entry: `createApp(App).use(...).mount('#app')`                       |
-| `src/App.vue`           | Root component                                                             |
-| `src/router/index.ts`   | Vue Router config (if using Vue Router)                                    |
-| `src/views/` or `src/pages/` | Page components                                                       |
-| `src/components/`       | Reusable components                                                         |
-| `src/composables/`      | `use*` composables                                                          |
-| `src/stores/`           | Pinia stores                                                                |
-| `src/services/` or `src/api/` | HTTP clients                                                          |
-| `src/assets/`           | Static assets                                                                |
+| Location                | Purpose                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| `index.html` + `src/main.ts` | HTML entry + `createApp(App).mount('#app')`           |
+| `src/App.vue`           | Root component                                             |
+| `src/router/index.ts`   | Vue Router config                                          |
+| `src/views/` or `src/pages/` | Page components                                       |
+| `src/components/`, `src/composables/`, `src/stores/` | UI, composables, Pinia stores |
+| `src/api/` or `src/services/` | HTTP clients                                         |
 
 ### Conventions
 
-- **`<script setup>`** as default in modern Vue 3 projects; Composition API.
-- **TypeScript** with `vue-tsc` for type checking (separate from Vite).
-- **Pinia setup-style stores** (`defineStore('id', () => ({ ... }))`) more common than options-style.
+- **`<script setup>`** with Composition API; Options API is legacy.
+- **TS** with `vue-tsc` (separate from Vite's transpile).
+- **Pinia setup-style** stores (`defineStore('id', () => ({ ... }))`) preferred over options-style.
 - **Auto-imports in Nuxt:** components, composables, Vue/Nuxt utilities (no manual `import`).
-- **Styling:** scoped CSS in SFCs (`<style scoped>`), CSS modules, Tailwind, UnoCSS, or component library themes.
-- **Forms:** VeeValidate, FormKit, native v-model + manual validation.
-- **Data fetching (Nuxt):** `useFetch`, `useAsyncData`, `$fetch`. (Vite SPA: TanStack Query Vue, axios, fetch).
+- **Component library:** Vuetify, Quasar, Element Plus, PrimeVue, Naive UI, or custom - call out the one the project commits to.
+- **Styling:** scoped `<style>`, CSS Modules, Tailwind, UnoCSS, or library theme.
+- **Forms:** VeeValidate, FormKit, or `v-model` + manual validation.
 - **i18n:** `vue-i18n`, `@nuxtjs/i18n`.
 - **Tests:** Vitest + Vue Test Utils + happy-dom; Playwright for E2E.
 
-### Risk Hotspots Specific to Vue
+### Risk Hotspots
 
-- **Reactivity loss** (destructure / spread of `reactive`, Pinia destructure without `storeToRefs`, deep `reactive` over large data): see `vue-composables-patterns`, `vue-state-patterns`, `task-vue-review-perf`.
-- **Watcher misuse** (`watch` for derived state, `deep: true` on wide objects, missing `onUnmounted` cleanup): see `vue-composables-patterns`, `task-vue-review`.
-- **`v-for` keys** (missing or `:key="index"` on reorderable lists), **`v-for` + `v-if` on same element**: see `vue-component-patterns`.
-- **Data fetching** (`useFetch` cache `key` / `transform` missing, mutation invalidation missing, N+1 fan-out, `$fetch` in setup runs twice on SSR): see `vue-data-fetching`, `task-vue-review-perf`.
-- **SSR boundary** (browser APIs at top of `<script setup>`, async setup without `<Suspense>`, `useState` vs `ref` for cross-request state, `.client.ts` / `.server.ts` plugin suffix, composable lifecycle binding): see `vue-nuxt-patterns`, `task-vue-review`.
-- **Pinia / `useState` SSR ORM-leak** (full rows in `__NUXT__` payload), **`v-html` XSS**, **`NUXT_PUBLIC_*` / `VITE_*` secret leak**, **open redirect**, **Nitro endpoint without Zod / auth**: see `task-vue-review-security`.
-- **Vue 3.10+ syntax**: prefer `import.meta.server` / `import.meta.client` over legacy `process.server` / `process.client`.
+- **Reactivity loss** - destructuring `reactive` / Pinia state without `storeToRefs`: see `vue-state-patterns`, `vue-composables-patterns`.
+- **Watcher misuse** - `watch` for derived state, `deep: true` on wide objects, missing cleanup: see `vue-composables-patterns`.
+- **`v-for` issues** - missing/index keys on reorderable lists, `v-for` + `v-if` on same element: see `vue-component-patterns`.
+- **Data fetching** - `useFetch` missing `key` / `transform`, mutation invalidation gaps, `$fetch` in setup running twice on SSR: see `vue-data-fetching`.
+- **SSR boundary** - browser APIs in `<script setup>` top level, async setup without `<Suspense>`, `useState` vs `ref` for cross-request state, `.client.ts` / `.server.ts` plugin suffix: see `vue-nuxt-patterns`.
+- **Server -> client leaks** - full ORM rows in `__NUXT__` payload, `v-html` XSS, `NUXT_PUBLIC_*` / `VITE_*` secret leak, Nitro endpoint without Zod/auth: see `task-vue-review-security`.
+- **Nuxt 3.10+ syntax** - prefer `import.meta.server` / `import.meta.client` over legacy `process.server` / `process.client`.
 
 ### First-PR Safe Zones
 
-- New page in `pages/` (Nuxt) or new route in `src/router/` (Vite).
-- New component in `components/`.
-- New composable in `composables/`.
-- New env var in `.env.example` with safe default.
+Safe: new page in `pages/` (Nuxt) or new route in `src/router/` (Vite); new component in `components/`; new composable in `composables/`; new env var in `.env.example`.
 
-Riskier:
-
-- `app.vue` / `App.vue` - affects every page.
-- Plugins - run at startup.
-- Nuxt `nuxt.config.ts` - rebuild required.
-- Auth flow.
-
-### Ecosystem Currency
-
-- Vue 3.5+ with reactivity transform out (manual `.value` is back).
-- Nuxt 3 stable; Nuxt 4 (Vite-only with rolldown) in development.
-- Pinia 2.1+ standard for state.
-- Vite 5/6.
-- Vitest replacing Jest in new projects.
-- VueUse for composable utilities.
+Riskier: `app.vue` / `App.vue` (every page); `plugins/` (startup); `nuxt.config.ts` (rebuild); auth flow.
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** package manager, build framework (Nuxt vs Vite SPA), Vue version, TS + vue-tsc, state (Pinia/Vuex), styling, component library, data fetching.
-
-**Local Bootstrap:** install command, env file, run command, default port.
-
-**Architecture Map:** routing (file-based for Nuxt, config-based for Vite), components/composables/stores layout, plugins, server API for Nuxt.
-
-**Conventions:** `<script setup>`, Pinia store style (setup vs options), styling approach, auto-imports (Nuxt), data fetching pattern.
-
-**Risk Hotspots:** reactive destructuring, Pinia destructuring without storeToRefs, v-for keys, SSR-incompatible code, useState vs ref in Nuxt.
-
-**First-PR Safe Zones:** scoped to observed structure.
+- **Stack and Tooling**: package manager, build framework (Nuxt vs Vite SPA), Vue version, TS + vue-tsc, state (Pinia/Vuex), styling, component library, data fetching.
+- **Local Bootstrap**: install command, env file, run command, default port.
+- **Architecture Map**: routing (file-based for Nuxt, config for Vite), components/composables/stores layout, plugins, server API for Nuxt.
+- **Conventions**: `<script setup>`, Pinia store style, styling, auto-imports (Nuxt), data fetching pattern.
+- **Risk Hotspots**: reactive destructuring, Pinia without `storeToRefs`, `v-for` keys, SSR-incompatible code, `useState` vs `ref` in Nuxt.
+- **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid
 
-- Treating Vue 2 patterns as current
+- Treating Vue 2 / Options API as current
 - Recommending Vuex on a Pinia project
-- Listing every Nuxt module - focus on the architectural ones
-- Skipping `process.server`/`import.meta.server` distinction in Nuxt 3.10+
+- Listing every Nuxt module - call out the architectural ones
+- Recommending Options API inside `<script setup>` files
 - Glossing over Pinia destructuring as a top reactivity bug class
-- Recommending Options API in `<script setup>` files
+- Using `process.server` / `process.client` in Nuxt 3.10+

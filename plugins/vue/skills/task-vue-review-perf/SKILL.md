@@ -1,6 +1,6 @@
 ---
 name: task-vue-review-perf
-description: Vue / Nuxt perf review: Core Web Vitals, bundle size, hydration, reactivity hotspots, Pinia, useFetch cache, routeRules, prerender, images.
+description: "Vue / Nuxt perf review: Core Web Vitals, bundle, hydration, reactivity hotspots, Pinia, useFetch cache, routeRules, images."
 agent: vue-performance-engineer
 metadata:
   category: frontend
@@ -9,240 +9,201 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Vue Performance Review
 
-## Purpose
-
-Vue-aware performance review that names Core Web Vitals (LCP, INP, CLS), bundle splitting via `defineAsyncComponent` / Nuxt `<LazyXxx />` auto-imports, Nuxt `useFetch` / `useAsyncData` cache keys / `transform` / `getCachedData`, Pinia store granularity, `computed` vs method, `shallowRef` / `shallowReactive` for large structures, watcher discipline (`watchEffect` vs `watch` + flushing), `<NuxtImg>` / `<NuxtPicture>` and `@nuxt/fonts`, hydration cost, and `routeRules` (`prerender` / `swr` / `isr`) directly instead of routing through the generic frontend adapter. Produces findings with measured or estimated impact (LCP delta, bundle delta, hydration time) and concrete fixes using TypeScript-strict Vue 3 idioms.
-
-This workflow is the stack-specific delegate of `task-code-review-perf` for Vue. The core workflow's contract (invocation, diff resolution, output format) is preserved.
+Stack-specific delegate of `task-code-review-perf` for Vue 3 / Nuxt 3 / Vite. Preserves the parent contract (invocation, diff resolution, output shape).
 
 ## When to Use
 
-- Reviewing a Nuxt or Vite + Vue PR or branch for performance regressions
-- Investigating a slow page, route, or component (high INP, slow LCP, jank during interaction)
-- Pre-merge perf pass on changes touching the bundle (new dependency, new route, new lazy component), data fetching, or rendering boundaries
-- Quarterly Core Web Vitals / bundle-size sweep against RUM-flagged routes
+- Reviewing a Nuxt or Vite + Vue PR / branch for perf regressions
+- Investigating a slow page or interaction (high INP, slow LCP, jank, hydration cost)
+- Pre-merge pass on changes touching bundle, data fetching, or rendering boundaries
+- Quarterly Core Web Vitals / bundle sweep against RUM-flagged routes
 
 **Not for:**
 
-- General Vue code review (use `task-code-review` or `task-vue-review`)
-- Security review (use `task-code-review-security` or `task-vue-review-security`)
-- Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-vue-implement`)
+- General review (`task-vue-review`)
+- Security review (`task-vue-review-security`)
+- Production incident (`/task-oncall-start`)
+- Pre-implementation design (`task-vue-implement`)
+
+## Severity Rubric
+
+Steady-state user impact, not "how scary the code looks".
+
+| Severity   | Definition                                                                                                                                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **High**   | LCP / INP regression visible to every cold visitor: heavy lib in initial bundle (>50KB gzip, no split), full UI library import (Vuetify / PrimeVue / Element Plus), hero `<img>` blocking LCP, missing virtualization on 1k+ rows, sync work on input (>200ms INP), hydration mismatch, `useFetch` without key on hot navigation, `ssr: false` on a cacheable route. |
+| **Medium** | Degraded p95 / wasted re-renders: deep `reactive` over a large dataset, watcher cascade, identity-unstable inline objects/handlers in hot lists, barrel imports defeating tree-shake, `staleTime: 0` on hot query, missing `<NuxtImg>`, `$fetch` in `<script setup>` for initial-render data. |
+| **Low**    | Allocation / churn quick wins: missing `v-memo` on read-heavy lists, `computed` on primitives, `console.log` in render, missing `@nuxt/fonts`, missing `loading="lazy"` below-the-fold.                                                                                                |
+
+Tiebreaker: "would RUM flag this on a typical mobile cold visit?" yes -> High; "drag next quarter's perf budget?" yes -> Medium.
 
 ## Depth Levels
 
-| Depth      | When to Use                                                        | What Runs                                                                |
-| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `quick`    | Single component or route ("is this re-rendering ok?")             | Steps 4 + 5 only; reactivity hotspots + bundle deltas                    |
-| `standard` | Default - full Vue perf review                                     | All steps                                                                |
-| `deep`     | RUM-driven review with Core Web Vitals data, profiling, or budgets | All steps + capacity guidance, route budget plan, perf-test instructions |
-
-Default: `standard`.
+| Depth      | When                                                          | Runs                                        |
+| ---------- | ------------------------------------------------------------- | ------------------------------------------- |
+| `quick`    | Single component or route                                     | Steps 4 + 5 only (reactivity + bundle)      |
+| `standard` | Default - full Vue perf review                                | Steps 1-9                                   |
+| `deep`     | RUM-driven (Core Web Vitals data / profiling / route budgets) | All steps + capacity guidance + budget plan |
 
 ## Invocation
 
 Mirrors `task-code-review-perf`:
 
-| Invocation                       | Meaning                                                                                               |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-vue-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-vue-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-vue-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                       | Meaning                                                              |
+| -------------------------------- | -------------------------------------------------------------------- |
+| `/task-vue-review-perf`          | Review current branch vs its base; fails fast on trunk               |
+| `/task-vue-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                           |
+| `/task-vue-review-perf pr-<N>`   | Review PR head in local branch `pr-<N>` (user runs the fetch first)  |
 
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-perf` or `task-vue-review`, the parent passes the precondition handle plus already-read diff/log; skip Steps 1-3 re-detection.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to confirm Vue. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-vue-review` (parent already detected Vue), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Vue, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes Vue 3.5+ and TypeScript strict mode.
+Use skill: `behavioral-principles`. Governs every step that follows.
 
-Then detect the framework:
+### Step 2 - Confirm Stack and Detect Framework
 
-- `nuxt.config.{js,ts,mjs}` present / `nuxt` in `package.json` deps → **Nuxt 3**
-- `vite.config.{js,ts}` present / `vite` in deps + `vue` without `nuxt` → **Vite + Vue Router**
-- Both present → ask the user which surface this PR targets; do not guess
+Use skill: `stack-detect`. If parent already detected Vue, accept the handoff. If not Vue, stop and route to `/task-code-review-perf`. Assumes Vue 3.5+ (`useId`, `useTemplateRef`, reactive props destructure) or 3.4+ (`defineModel`); TypeScript strict.
 
-The framework decision drives which checklists in Steps 4-7 apply. Record `Framework: Nuxt 3 | Vite + Vue Router` for the Summary block. Also record `Vue: <version>` (Vue 3.5 unlocks reactive props destructure, `useId`, `useTemplateRef`, stable Suspense; Vue 3.4 unlocks `defineModel`).
+Record for the Summary block:
 
-### Step 2 - Resolve the Diff Under Review
+- `Framework:` Nuxt 3 | Vite + Vue Router
+- `Data Layer:` `useFetch` / `useAsyncData` | TanStack Query Vue | mixed
+- `Styling:` Tailwind / UnoCSS | scoped CSS / CSS Modules | CSS-in-JS (`vue-styled-components` / `emotion`)
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
+Heuristics: `nuxt.config.*` or `nuxt` in deps -> Nuxt 3; `vite.config.*` + `vue` without `nuxt` -> Vite + Vue Router; both present -> ask the user.
 
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+### Step 3 - Resolve Diff and Read Surface
 
-### Step 3 - Read the Performance Surface
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once; reuse. Skip entirely if parent passed the handle.
 
-Before applying the checklists, open the files that govern rendering, hydration, bundle, and data fetching so impact estimates ground in real code:
+Open the files that govern rendering, bundle, and data fetching so impact estimates ground in real code:
 
-**Nuxt 3 surface:**
+- **Nuxt 3:** changed `pages/`, `layouts/`, `components/`, `app.vue`, `composables/`, `server/api/`, `stores/`; `nuxt.config.*` (`routeRules`, `image`, `experimental`, `nitro`, `vite`); Suspense / `<LazyXxx />` boundaries
+- **Vite + Vue Router:** changed `src/**/*.vue` and composables (all client), `vite.config.*` chunks, `src/router/*.ts` lazy routes / Suspense, Pinia stores
+- Both: TanStack Query call sites, list components (rows + virtualization), image / font usage, `package.json` for new deps
 
-- Every changed `pages/**/*.vue`, `layouts/**/*.vue`, `components/**/*.vue`, `app.vue`, `error.vue`
-- Every changed `server/api/**/*.ts`, `server/routes/**/*.ts`, `server/middleware/**/*.ts` - Nitro server endpoints affect LCP via SSR data flow
-- `nuxt.config.{js,ts,mjs}` - `routeRules` (prerender / swr / isr / cache), `experimental` (`payloadExtraction`, `viewTransition`, `componentIslands`), `nitro` config, `image` module, `vite` overrides
-- Every changed `composables/**/*.ts` - `useFetch` / `useAsyncData` callsites, custom composable reactivity surface
-- Pinia stores (`stores/**/*.ts`) - state shape, getters, action invalidation patterns
-- Lazy components (`<LazyXxx />` auto-import or `defineAsyncComponent`) and `<Suspense>` boundaries
-- `package.json` for new dependencies - flag any client-side dependency > 50KB minified+gzipped
-
-**Vite + Vue Router surface:**
-
-- Every changed `src/**/*.vue` component and composable - all components run client-side; SSR is opt-in (Vite SSR template) and uncommon
-- `vite.config.{js,ts}` - plugins (`vue`, `vue-jsx`), `build.rollupOptions`, manual chunks, code-split config
-- `src/router/*.ts` / `src/main.ts` - route definitions, dynamic `import()` route components, `<Suspense>` boundaries
-- Pinia stores
-- `package.json` for new client dependencies
-
-For each finding produced later, cite a real `file:line`. If the diff is small but ripples through code that is not in the diff (a new shared component imports a heavy library that becomes part of every page that uses it), read the unchanged file too - the regression lives there.
+If a small diff ripples through unchanged code (new caller of a heavy library, shared component pulling a barrel), read the unchanged file too. Cite real `file:line` in every finding.
 
 ### Step 4 - Reactivity and Re-Render Hotspots
 
-Canonical reactivity / component-shape discipline lives in `vue-composables-patterns` and `vue-component-patterns`. This step is a review-scoped scan for the diff:
+Use skill: `vue-composables-patterns`. Use skill: `vue-component-patterns`. Workflow-specific verifications:
 
-- [ ] **Deep `reactive` over large read-only data** (API rows, lookup tables): every nested property is proxied. Flag for `shallowRef` / `shallowReactive` - see `vue-composables-patterns`
-- [ ] **Reactivity loss via destructure / spread**: `const { a } = reactive({...})`, `{ ...state }` produce plain values. Use `toRefs` or Vue 3.5+ props destructure
-- [ ] **Watcher misuse**: `watch(state, fn, { deep: true })` on a wide object; `flush: 'sync'` outside debugging; watcher cascades (`a → b → c`); `watchEffect` over-tracking when `watch(() => specificDep, fn)` was meant. Collapse cascades into one `computed` or one multi-target watcher
-- [ ] **`v-for` keys**: missing key, or `:key="index"` on a reorderable / filterable list breaks reconciliation and component state
-- [ ] **`v-for` + `v-if` on the same element**: `v-if` has higher precedence in Vue 3 and the iteration var isn't in scope. Filter via `computed` first
-- [ ] **Identity instability in templates**: inline `{ ... }` / `[ ... ]` as props or inline `() => ...` event handlers in a hot list rebuild on every parent render and cascade into child computeds / watchers. Lift to `computed` or stable `ref`
-- [ ] **Heavy sync work in `setup()` body / template expression**: parsing, sorting, JSON serialization. Move to `computed` with the real dep set, or precompute outside the component
-- [ ] **List virtualization absent**: simple rows × 1000+ or complex rows × 100+ without `vue-virtual-scroller` / `@tanstack/vue-virtual`
-- [ ] **`v-memo` / `v-once` opportunity missed** on read-heavy lists where row content rarely changes, or static content inside dynamic parents
-- [ ] **`provide` / `inject` re-render storm**: provided non-stable reactive object propagates to every consumer. Prefer fine-grained refs or split provides - see `vue-state-patterns`
+- Deep `reactive` over large read-only data (API rows, lookup tables) -> `shallowRef` / `shallowReactive`
+- Reactivity loss via destructure / spread (`const { a } = reactive(...)`, `{ ...state }`) -> `toRefs` or Vue 3.5+ props destructure
+- Watcher discipline: no wide `{ deep: true }`, no `flush: 'sync'` outside debugging, no `a -> b -> c` cascades; collapse to one `computed` or multi-target watcher
+- `v-for` `:key` is a stable id, not `index`, for reorderable / filterable lists
+- `v-for` + `v-if` on the same element -> filter via `computed` first (`v-if` has higher precedence in Vue 3)
+- Identity-unstable inline `{...}` / `[...]` props and inline `() => ...` handlers in hot lists -> lift to `computed` or stable `ref`
+- Heavy sync work in `setup()` / template expression -> `computed` with real deps, or precompute
+- Virtualize when simple rows > 1000 or complex rows > 100 (`vue-virtual-scroller`, `@tanstack/vue-virtual`)
+- `v-memo` / `v-once` on read-heavy lists where row content rarely changes
+- `provide` / `inject` re-render storm from a non-stable reactive object -> fine-grained refs or split provides (`vue-state-patterns`)
+
+```vue
+<!-- BAD: inline object recreated each render, deep reactive over 5K rows -->
+<script setup lang="ts">
+const orders = reactive(await $fetch('/api/orders')) // 5K rows, all proxied
+</script>
+<template>
+  <OrderRow v-for="o in orders" :key="o.id" :item="o" :config="{ dense: true }" />
+</template>
+
+<!-- GOOD: shallowRef, stable config, $fetch swapped to useFetch -->
+<script setup lang="ts">
+const { data: orders } = await useFetch('/api/orders', { key: 'orders' })
+const rows = shallowRef(orders.value ?? [])
+const ROW_CONFIG = { dense: true }
+</script>
+<template>
+  <OrderRow v-for="o in rows" :key="o.id" :item="o" :config="ROW_CONFIG" />
+</template>
+```
 
 ### Step 5 - Bundle Size and Code Splitting
 
-Use skill: `vue-component-patterns` for split boundaries; use skill: `vue-nuxt-patterns` for Nuxt-specific lazy components.
+Use skill: `vue-component-patterns`. Use skill: `vue-nuxt-patterns` (Nuxt).
 
-- [ ] **New dependencies measured**: any new entry in `dependencies` (not `devDependencies`) gets a size note. Flag anything > 50KB minified+gzipped that is not lazy-loaded
-- [ ] **Heavy libraries pulled into the client bundle eagerly**: charting (`chart.js`, `apexcharts`, `echarts`), rich text (`tiptap`, `quill`), date pickers (with moment), `moment` (use `date-fns` / `dayjs` / native `Intl`), `lodash` (use `lodash-es` and tree-shake; better, native or `radash`)
-- [ ] **Nuxt `<LazyXxx />` auto-import for heavy components**: prefixing a component name with `Lazy` (e.g., `<LazyEditor />`) auto-creates a dynamic import boundary. Flag eager `<Editor />` for components used on a single route, gated by user interaction, or only rendered conditionally
-- [ ] **`defineAsyncComponent` for non-Nuxt projects (Vite)**: `const Editor = defineAsyncComponent(() => import('./Editor.vue'))` wrapped in `<Suspense>`; route-level lazy via Vue Router `component: () => import('./EditorPage.vue')`
-- [ ] **Barrel-file imports defeating tree-shake**: `import { X } from '@/components'` where `index.ts` re-exports 50 things drags the whole barrel in if not configured for tree-shaking. Prefer direct path imports (`@/components/X.vue`) on the hot path. Nuxt auto-imports avoid this when used as components in templates - but flag explicit barrel imports of components in `<script setup>`
-- [ ] **`unplugin-vue-components` / `unplugin-auto-import` config**: when used, ensure `dts` is enabled (TS support) and the resolvers don't pull global UI libraries (`Vuetify`, `PrimeVue`) into every component. Component-level auto-import is fine; library-level can balloon the bundle
-- [ ] **CSS-in-JS / runtime CSS cost**: rare in Vue (scoped CSS, CSS Modules, Tailwind, UnoCSS are zero-runtime), but flag any `vue-styled-components` / `emotion` adoption as Medium - Vue's scoped styles already solve the problem zero-runtime
-- [ ] **Tree-shake friendly imports**: `import isEqual from 'lodash/isEqual'` (or `lodash-es`); never `import _ from 'lodash'`. `import { format } from 'date-fns'` not `import * as df from 'date-fns'`. Named imports also matter for large libs like `chart.js`, `@vueuse/core` (auto-imports only the composables you use, but explicit `import * as VueUse from '@vueuse/core'` defeats it)
-- [ ] **Charting / rich-editor / map libraries dynamically imported**: rarely belong in the initial bundle - they belong below the fold or behind interaction. Wrap with `<LazyChart />` (Nuxt) or `defineAsyncComponent` (Vite) + `<Suspense>`. Flag eager imports as a Medium even when the page genuinely uses the chart - the LCP impact is the same
-- [ ] **Vuetify / PrimeVue / Element Plus full-import**: importing the entire UI library (`import Vuetify from 'vuetify'`) instead of per-component (`import { VBtn, VCard } from 'vuetify/components'`) ships the whole library. Flag full-import as High
+- Every new `dependencies` entry sized; flag >50KB gzip not lazy-loaded
+- Charting (`chart.js`, `apexcharts`, `echarts`), rich text (`tiptap`, `quill`), maps, date pickers behind `<LazyXxx />` (Nuxt auto-import) or `defineAsyncComponent(() => import(...))` + `<Suspense>` (Vite) - even when the page uses the chart, the LCP impact is the same
+- Tree-shake-friendly imports: `import { format } from 'date-fns'`, `import isEqual from 'lodash/isEqual'`, never `import * as X from 'apexcharts' / 'lodash'`
+- Full UI library imports (`import Vuetify from 'vuetify'`) -> per-component (`import { VBtn } from 'vuetify/components'`) - flag as High
+- Barrel `index.ts` imports on the hot path -> direct paths; Nuxt component auto-imports are fine, explicit barrel imports in `<script setup>` are not
+- `moment` -> `date-fns` / `dayjs` / `Intl`; CSS-in-JS flagged when added to a scoped-CSS / Tailwind project
+- `unplugin-vue-components` resolvers don't pull a global UI library into every component
 
-> **Impact heuristic - bundle blast radius.** A 50KB gzip dependency on the home route adds ~50KB transferred on every cold visit (every visitor, every device). On 3G that is ~1.3s longer download; on cable ~50ms; the worst case dominates LCP for budget-constrained users. Phrase the impact as "+<N>KB on every cold visitor of every route that imports this," not "the bundle got bigger."
+Impact phrasing: "+<N>KB gzip on every cold visit to <route>", not "the bundle got bigger".
 
 ### Step 6 - Data Fetching and Caching
 
-Canonical fetching/caching idioms live in `vue-data-fetching`. Review-scoped scan:
+Use skill: `vue-data-fetching`. Workflow-specific verifications:
 
 **Nuxt 3 (`useFetch` / `useAsyncData` / `$fetch`):**
 
-- [ ] **`$fetch` in `<script setup>` for initial-render data** runs twice (server + client) - prefer `useFetch` so the SSR payload is reused on hydration
-- [ ] **Cache surface**: stable `key` for parameterized fetches (no `JSON.stringify`-built keys); `transform` / `pick` to project response down (full ORM rows in `useFetch` payload land in HTML); `getCachedData` for cross-navigation reuse on rarely-changing data
-- [ ] **SSR mode flags**: `server: false` for user-specific data not eligible for shared SSR cache; `lazy: true` + `<Suspense>` for below-fold non-critical fetches that would otherwise block SSR
-- [ ] **Mutation invalidation missing**: mutations without `refreshNuxtData(key)` / `clearNuxtData(key)` leave stale UI
-- [ ] **N+1 / waterfall**: `Promise.all(items.map(i => $fetch(...)))` is N round-trips - recommend a batched endpoint. Sequential `await useFetch(...); await useFetch(...);` for independent fetches blocks SSR - parallelize
-- [ ] **`<Suspense>` boundary**: async setup needs one in the parent. LCP element must not sit behind a Suspense fallback - that defers the LCP itself
+- `$fetch` in `<script setup>` for initial-render data runs twice (server + client) -> `useFetch` so SSR payload hydrates
+- Stable `key` for parameterized fetches (no JSON-stringified keys); `transform` / `pick` to project payload down; `getCachedData` for cross-navigation reuse
+- `server: false` for user-specific data not eligible for shared SSR cache; `lazy: true` + `<Suspense>` for below-fold fetches that would block SSR
+- Mutations call `refreshNuxtData(key)` / `clearNuxtData(key)`; missing invalidation -> stale UI
+- N+1 / waterfall: `Promise.all(items.map(i => $fetch(...)))` -> batched endpoint; sequential `await useFetch` for independent fetches -> parallelize
+- LCP element not gated by `<Suspense fallback>` waiting on slow data
 
-**TanStack Query Vue / VueQuery (both frameworks):**
+**TanStack Query Vue:**
 
-- [ ] **`staleTime` / `gcTime` not configured** - default `staleTime: 0` refetches on every mount
-- [ ] **Query keys**: stable structured arrays (`['orders', { ownerId, status }]`); no JSON-stringified keys
-- [ ] **Mutation invalidation explicit** via `onSuccess: () => queryClient.invalidateQueries(...)`
-- [ ] **No `$fetch()` in template expression** - fires on every render
+- `staleTime` / `gcTime` set; query keys are stable structured arrays, not JSON strings
+- Mutation invalidation explicit (`onSuccess: () => queryClient.invalidateQueries(...)`)
+- No `$fetch()` directly in a template expression (fires every render)
 
-### Step 7 - Core Web Vitals and Page Load
+### Step 7 - Core Web Vitals
 
 _Skipped at `quick` depth unless the diff touches a route, layout, or assets._
 
-**LCP (Largest Contentful Paint):**
+**LCP:**
 
-- [ ] **`<NuxtImg>` / `<NuxtPicture>` for images (Nuxt)**: `@nuxt/image` provides automatic responsive sizing, modern format conversion (AVIF/WebP), provider integration (Cloudinary / IPX). Flag raw `<img>` for hero / above-the-fold images. Use `:preload="true"` on the LCP image to mark it for high-priority preload
-- [ ] **Vite equivalent**: `vite-imagetools` or manual `<img loading="lazy" srcset="..." sizes="...">` with explicit `width` / `height`. Hero image should not be lazy
-- [ ] **`width` / `height` attributes** on every image (prevents CLS even when async-decoded); `<NuxtImg>` enforces this
-- [ ] **Hero image not deferred**: above-the-fold image must not be inside a lazy component, gated by `<Suspense>` for slow data, or set to `loading="lazy"`
-- [ ] **`@nuxt/fonts` for self-hosted fonts (Nuxt)**: auto-detects fonts in CSS and self-hosts with `font-display: swap`; flag `<link href="https://fonts.googleapis.com/...">` (extra DNS lookup + render-blocking CSS)
-- [ ] **`font-display: swap`**: webfonts use swap; flag `font-display: block` for above-the-fold text
+- Nuxt: `<NuxtImg :preload="true">` / `<NuxtPicture>` for hero / above-the-fold; flag raw `<img>`. Vite: `vite-imagetools` or explicit `srcset`/`sizes`/`width`/`height`
+- `width` / `height` on every image (CLS); `<NuxtImg>` enforces
+- Hero not gated by `<Suspense>`, lazy mount, `<ClientOnly>`, or `loading="lazy"`
+- Nuxt: `@nuxt/fonts` self-hosts webfonts; flag `<link href="fonts.googleapis.com">`. `font-display: swap` everywhere
 
-**INP (Interaction to Next Paint):**
+**INP:**
 
-- [ ] **No long synchronous tasks on user input**: form submit handler doing 50ms of synchronous work blocks paint. Defer via `nextTick` (defer to next tick) or break into `requestIdleCallback` chunks
-- [ ] **Heavy filtering / search uses `computed` with debounce**: typing into a search box that filters a 10K-row list synchronously on every keystroke janks; debounce input via `useDebounceFn` (`@vueuse/core`) and apply via a separate ref
-- [ ] **No long-running effects on click**: heavy computation in a click handler should be moved to a worker (`comlink` / native `Worker`), a network request, or `requestIdleCallback`
+- Debounce wide filter / search input via `useDebounceFn` (`@vueuse/core`); apply via a separate ref
+- Heavy click handlers offloaded to a worker, network request, or `requestIdleCallback`
+- Long synchronous work in submit handlers broken up via `nextTick` or chunking
 
-**CLS (Cumulative Layout Shift):**
+**CLS:**
 
-- [ ] **Reserved space for async content**: skeletons / placeholders with the same dimensions as the final content (`h-64 w-full` for an image slot, fixed-height containers for ads / embeds)
-- [ ] **No layout thrash from late-loading fonts**: `@nuxt/fonts` solves; for raw fonts use `font-display: swap` + `size-adjust` / `ascent-override` font metrics overrides
-- [ ] **Late-injecting elements at the top of the page**: A/B test snippets, banners, cookie modals that push content down trigger CLS - reserve space or load below the fold
+- Reserved dimensions on async slots (skeleton with same `h-`/`w-`)
+- Late-injecting A/B / banner / modal scripts reserve space or load below the fold
 
-### Step 8 - Hydration and Streaming (Nuxt)
+### Step 8 - Hydration, Streaming, `routeRules` (Nuxt)
 
-_Skipped on Vite + Vue Router projects (no SSR / hydration unless explicit Vite SSR template)._
+_Skipped on Vite-only projects._
 
-- [ ] **No hydration mismatch sources**: `Date.now()` / `Math.random()` / `new Date().toString()` rendered server-side without `<ClientOnly>` wrap or stable seed; access to `window` / `document` / `localStorage` / `navigator` in `<script setup>` body without `import.meta.client` / `process.client` guard
-- [ ] **`<ClientOnly>` for inherently client-only components**: components depending on `window`, `IntersectionObserver`, third-party widgets that don't SSR. Wrap with `<ClientOnly>` and provide a `<template #fallback>` to reserve space (else CLS)
-- [ ] **`onMounted` for browser-only APIs**: `window.matchMedia`, `localStorage`, `IntersectionObserver` accessed inside `onMounted` (which only runs on the client); never in `<script setup>` top-level
-- [ ] **`useState` for shared SSR state**: cross-component state preserved across SSR → client hydration uses Nuxt's `useState(key, init)`; flag `ref()` at module scope (cross-request leak in SSR) or in a composable that loses its value on hydration
-- [ ] **Component Islands (experimental)**: `<NuxtIsland name="Foo" />` for selectively-hydrated regions; mention only when the diff explicitly enables `experimental.componentIslands`
-- [ ] **Nuxt `payloadExtraction`**: enabled by default - keeps the SSR payload separate from HTML for prerender. Flag `experimental.payloadExtraction: false` without rationale
-- [ ] **`<Suspense>` for async setup**: long-running async setup in a child component blocks hydration of the entire subtree; isolate slow components in their own `<Suspense fallback>`
+- No hydration mismatch sources: `Date.now()`, `Math.random()`, `window` / `document` / `localStorage` / `navigator` access in `<script setup>` body -> `onMounted`, `<ClientOnly>` (with `<template #fallback>` to reserve space), or `import.meta.client` guard
+- Cross-component SSR state via `useState(key, init)`; flag module-scope `ref()` (cross-request leak) or composable-local state that loses value on hydration
+- Slow child `async setup` isolated in its own `<Suspense fallback>` so the parent shell hydrates first
+- `routeRules` per-route caching deliberate: `prerender` for marketing / docs, `swr: N` for occasionally-changing content, `isr` on Vercel / Netlify, `ssr: false` only for client-only dashboards, `headers` for CDN cache-control
+- `defineCachedEventHandler` / `cachedFunction` / `useStorage` for repeat-hit Nitro endpoints; uncached repeats on every SSR flagged
+- `experimental.payloadExtraction: false` flagged without rationale
+- Edge runtime (`nitro.preset: 'vercel-edge' / 'cloudflare'`) for low-TTFB handlers without Node APIs
 
-### Step 9 - Caching, ISR, and Edge (Nuxt `routeRules`)
+### Step 9 - Observability Hand-off and Report
 
-_Skipped at `quick` depth and on Vite projects._
+_Observability check skipped at `quick` depth._
 
-- [ ] **`routeRules` for per-route caching strategy (Nuxt 3)**: `nuxt.config.ts` `routeRules: { '/blog/**': { swr: 3600 }, '/admin/**': { ssr: false }, '/marketing/**': { prerender: true } }`. Flag a route that should be prerendered but is rendered SSR per-request, or a per-user route accidentally cached via `swr`
-- [ ] **`prerender` for static content**: marketing pages, blog index, docs - prerender at build time
-- [ ] **`swr` (Stale-While-Revalidate)** for content that changes occasionally: serves cached HTML, revalidates in background. `swr: 3600` = serve cached for 1h
-- [ ] **`isr` (Incremental Static Regeneration)** on platforms that support it (Vercel / Netlify) - prerender on first request, cache for N seconds
-- [ ] **`ssr: false` per-route** for client-only dashboards (e.g., admin) where SSR provides no value and the auth context only exists client-side
-- [ ] **`headers` route rule** for cache-control / CDN hints: `headers: { 'cache-control': 's-maxage=300, stale-while-revalidate=3600' }`
-- [ ] **Nitro storage cache (`useStorage`)**: server-side cache for expensive Nitro endpoint results; `defineCachedEventHandler` / `cachedFunction` for TTL'd memoization. Flag uncached repeat queries hit on every SSR
-- [ ] **Edge runtime where appropriate**: Nuxt 3 supports edge providers (Vercel Edge, Cloudflare Workers); `routeRules` `experimental: { wasm: true }` and provider-specific config. Use for low-TTFB globally; Node runtime for everything else
+Confirm presence only (depth belongs to `task-vue-review-observability`):
 
-### Step 10 - Observability for Perf (delegation hand-off)
+- `web-vitals` reporter wired, RUM SDK active, or Sentry Vue SDK with performance enabled on changed routes
+- Nitro server-side tracing when server work is non-trivial
+- No `console.log` left in render path of a hot route (if visible in diff)
 
-_Skipped at `quick` depth._
+Gaps -> Low / Recommendation with `[Delegate] -> task-vue-review-observability`.
 
-This step is intentionally narrow - depth on observability belongs to `task-vue-review-observability`. From a perf perspective, confirm only:
-
-- [ ] Critical user journeys reachable from this PR have **some** instrumentation (`web-vitals` reporter wired, RUM SDK active, Sentry Vue SDK with performance enabled, or Nitro server-side tracing); if not, raise as a Low/Recommendation finding and delegate to `task-vue-review-observability` rather than dictating the design here
-- [ ] No `console.log` left in render path / `<script setup>` body of a hot route - if visible in the diff. If not in the diff, skip
-
-Anything beyond presence/absence (sample rates, attribution, route segmentation) → `task-vue-review-observability` owns it. Note the gap, do not duplicate the audit here.
-
-
-### Step 11 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack confirmed as Vue; framework (Nuxt 3 / Vite + Vue Router) and Vue version recorded before any framework-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Performance surface read directly (changed components, layouts, route handlers, config, data-fetching composables, Pinia stores)
-- [ ] `vue-composables-patterns` and `vue-component-patterns` consulted for reactivity hotspots
-- [ ] Reactivity audit (deep `reactive` cost, watcher cascades, `computed` over-tracking, destructure de-reactivity) applied
-- [ ] Bundle deltas assessed for any new `dependencies` entry; tree-shake-friendly imports verified; UI library full-imports flagged
-- [ ] `vue-data-fetching` consulted for `useFetch` / `useAsyncData` cache options, transform / pick / key, mutation invalidation
-- [ ] N+1 fan-out (`Promise.all(items.map(...))`) flagged when present; batched-query alternative recommended
-- [ ] Inline objects / arrays in template props and inline event-handler functions flagged as identity-instability hazards
-- [ ] Tree-shake hostile imports (`import * as X from 'chart.js' / 'date-fns' / 'lodash'`) flagged
-- [ ] Heavy chart / editor / map libraries gated by `<LazyXxx />` / `defineAsyncComponent`; eager imports flagged
-- [ ] Core Web Vitals (LCP image / fonts / CLS reservations / INP debounce) checked when route or asset code changed
-- [ ] LCP element verified not deferred behind `<Suspense fallback>` / `<ClientOnly>` without rationale
-- [ ] Hydration / streaming checks applied for Nuxt; Vite section skipped on Vite-only projects
-- [ ] `routeRules` (`prerender` / `swr` / `isr` / `ssr: false` / `headers`) decisions reviewed for changed routes (Nuxt)
-- [ ] Every finding states impact - measured (`LCP: 2.8s -> 1.4s`) when RUM data exists, estimated otherwise (`+45KB gzip on every cold visit to /dashboard`) - never just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and budget plan
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Then use skill: `review-report-writer` with `report_type: review-perf`. Write the report to file; print the confirmation line.
 
 ## Output Format
 
@@ -251,6 +212,8 @@ Write the fully assembled review output to the report file before ending the ses
 
 **Stack Detected:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
+**Data Layer:** `useFetch` / `useAsyncData` | TanStack Query Vue | mixed
+**Styling:** Tailwind / UnoCSS | scoped CSS / CSS Modules | CSS-in-JS
 **Scope:** Frontend (Vue)
 **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
@@ -259,9 +222,9 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the Vue idiom: deep `reactive` over a 5K-row dataset, watcher cascade rebuilding state through three ticks, eager `<Editor />` for a route-only component, missing `<NuxtImg>` on hero, `useFetch` without `key` causing cache miss, etc.]
-- **Impact:** [estimated effect - e.g., "+120KB gzip on every cold visit to /dashboard" or measured "LCP 2.8s -> 1.4s after fix"]
-- **Fix:** [specific Vue change with code example - `shallowRef` for the dataset, `<LazyEditor>`, `useFetch(url, { key, transform })`, etc.]
+- **Issue:** [name the Vue idiom: deep `reactive` over a 5K-row dataset, watcher cascade, eager `<Editor />` for a route-only component, missing `<NuxtImg>` on hero, `useFetch` without `key`, full `vuetify` import, hydration mismatch from `Date.now()`, etc.]
+- **Impact:** [measured (`LCP 2.8s -> 1.4s`) or estimated (`+120KB gzip on every cold visit to /dashboard`, `~40 re-renders per scroll frame`)]
+- **Fix:** [specific Vue change with code - `shallowRef`, `<LazyEditor>`, `useFetch(url, { key, transform })`, `<NuxtImg :preload="true">`, etc.]
 
 ### Medium Impact
 
@@ -271,33 +234,49 @@ Write the fully assembled review output to the report file before ending the ses
 
 [Same structure]
 
-_Omit sections with no findings._
+_Omit empty sections._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Adopt `<LazyXxx />` for editor pages", "Convert long lists to `vue-virtual-scroller`", "Add bundle budget to CI"]
+[Structural items not tied to a single finding - route-level `<LazyXxx />` for editor pages, convert long lists to `vue-virtual-scroller`, add bundle budget to CI, adopt `routeRules` `swr` on marketing pages.]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, build config change, or perf-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Replace `reactive(orders)` with `shallowRef(orders)` in stores/orders.ts:42; mutate via `.value = next`"]
-2. **[Delegate]** [High] [scope: build] - [one-line action, e.g., "Add bundle budget for /dashboard route - spawn build-config subagent"]
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: build] - [one-line action]
 3. **[Implement]** [Medium] file:line - [one-line action]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
+
+## Self-Check
+
+- [ ] Step 1 - `behavioral-principles` loaded
+- [ ] Step 2 - stack confirmed Vue; `Framework`, `Data Layer`, `Styling` recorded
+- [ ] Step 3 - `review-precondition-check` ran or parent handle accepted; diff + log read once; performance surface opened (changed components, layouts, composables, config, stores, Nitro endpoints)
+- [ ] Step 4 - `vue-composables-patterns` + `vue-component-patterns` consulted; deep `reactive`, watcher cascades, destructure de-reactivity, `v-for` keys, identity-unstable inline props/handlers, virtualization, `v-memo` audited
+- [ ] Step 5 - bundle deltas sized per new dep; tree-shake-hostile imports and full UI-library imports flagged; heavy libs gated by `<LazyXxx />` / `defineAsyncComponent`
+- [ ] Step 6 - `vue-data-fetching` consulted; `useFetch` key / transform / `getCachedData` / mutation invalidation audited; `$fetch` in `<script setup>` for initial data flagged; TanStack `staleTime` / keys checked
+- [ ] Step 7 - LCP image / fonts, INP debounce, CLS reservations checked when routes or assets changed (skipped at `quick`)
+- [ ] Step 8 - hydration sources, `<Suspense>` streaming, `useState` for SSR state, `routeRules` (`prerender` / `swr` / `isr` / `ssr: false` / `headers`), Nitro caching reviewed (Nuxt only; skipped on Vite)
+- [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
+- [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
+- [ ] Depth honored: `quick` ran only Steps 4-5; `standard` ran 1-9; `deep` adds capacity + budget plan
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit when no actionable findings)
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting issues without naming the Vue idiom ("this is slow" vs "deep `reactive` over a 5K-row dataset; switch to `shallowRef` so only top-level mutation is tracked")
-- Recommending generic frontend advice when a Vue pattern applies (say "use `<LazyXxx />` auto-import", not "lazy load")
-- Suggesting `computed` everywhere as a default - the cost is cheap but cache invalidation still costs; only use when the value is reused or genuinely derived
-- Approving raw `<img>` for hero / above-the-fold images on Nuxt - `<NuxtImg :preload="true">` is the right tool
-- Approving `ssr: false` on a route without a per-route reason - it disables every server-rendering benefit
+- State-changing git (`fetch`, `checkout`, `reset`) - the user runs these to protect uncommitted work
+- "This is slow" without naming the Vue idiom (deep `reactive`, watcher cascade, eager chart import, missing virtualization, `useFetch` without `key`)
+- Generic frontend advice when a Vue pattern applies ("use `<LazyXxx />` auto-import", not "lazy load")
+- `computed` / `watch` as defaults - cache invalidation has a cost; only use when the value is reused or genuinely derived
+- Approving raw `<img>` for hero / above-the-fold on Nuxt (`<NuxtImg :preload="true">`)
+- Approving `ssr: false` on a route without a per-route reason - it disables every SSR benefit
 - Approving `useFetch` without a `key` for keyable data - cache reuse across navigation is lost
-- Approving full-import of Vuetify / PrimeVue / Element Plus when per-component import works - bundle balloons
-- Conflating perf review with general code review or security review - delegate those to their workflows
-- Treating high re-render counts as inherently bad - Vue's reactivity is fast; only investigate when a profile or interaction lag implicates re-renders
-- Recommending `useEffect`-style patterns (`watchEffect(() => fetch(...))`) when `useFetch` (Nuxt) would do
+- Approving full-import of Vuetify / PrimeVue / Element Plus when per-component works
+- Recommending `watchEffect(() => fetch(...))` when `useFetch` would do
+- Treating high re-render counts as inherently bad - investigate only when a profile or interaction lag implicates them
+- Conflating perf with general / security review - delegate
+- **Dual perf+security findings** (untrusted `v-html`, `eval`, prototype pollution via spread): report the perf half once with `[Delegate] -> task-vue-review-security` in Next Steps. Do not enumerate parallel security concerns
