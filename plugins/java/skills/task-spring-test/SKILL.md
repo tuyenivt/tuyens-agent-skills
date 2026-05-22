@@ -9,235 +9,190 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
+> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` after `behavioral-principles`. Generate one test per AC (use `Satisfies: AC<N>` in test names), cover every NFR with a verification step from `plan.md`, refuse tests for behavior the spec marks out-of-scope. Never edit `spec.md` / `plan.md` / `tasks.md`; surface gaps as proposed amendments.
 
 # Spring Boot Test
 
-## Purpose
+Spring-aware test strategy and scaffolding using JUnit 5, slices (`@WebMvcTest`, `@DataJpaTest`, `@JsonTest`), Testcontainers, Mockito, AssertJ, Spring Security Test, and the Spring test pyramid.
 
-Spring-aware test strategy and scaffolding using JUnit 5 idioms, Spring test slices, Testcontainers (PostgreSQL, Kafka, Redis), Mockito, AssertJ, and the Spring Boot test pyramid (unit / slice / full-context / E2E). Replaces the generic backend test patterns with Spring-specific guidance.
-
-This workflow is the stack-specific delegate of `task-code-test` for Java / Spring Boot. The core workflow's contract (output shape, prioritization rules) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-test` for Java / Spring Boot.
 
 ## When to Use
 
-- Designing a Spring Boot test strategy for a new service or module
-- Assessing test coverage gaps across unit / slice / full-context / contract tests
-- Scaffolding tests for under-covered controllers, services, repositories, or security configs
-- Reviewing test pyramid balance for a Spring Boot app
-- Adding boundary tests (validation, authorization, edge cases) to existing happy-path tests
+- Designing a test strategy for a new service / module
+- Assessing coverage gaps across unit / slice / full-context / contract
+- Scaffolding tests for under-covered controllers, services, repositories, security configs
+- Reviewing test-pyramid balance
+- Adding boundary tests to happy-path-only coverage
 
 **Not for:**
-
-- Test failure debugging (use `task-spring-debug`)
-- General code review (use `task-code-review`)
-- Production incident postmortems (use `/task-oncall-postmortem`)
+- Test failure debugging (`task-spring-debug`)
+- General code review (`task-code-review`)
+- Incident postmortems (`/task-oncall-postmortem`)
 
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a delegate of `task-code-test` (parent already detected Spring Boot), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-test` instead.
+Use skill: `stack-detect`. Accept pre-confirmed stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-test`.
 
 ### Step 3 - Read the Code Under Test and Existing Tests
 
-Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
+Output grounded in real conventions, not generic templates.
 
-- For each target named by the user, read the class top-to-bottom: public methods, request/response types, security annotations, transaction boundaries, external collaborators
-- Glob `src/test/java/**/*Test*.java` and read at least: one existing `@WebMvcTest`, one existing `@DataJpaTest`, one existing service unit test - learn the project's package layout, builder/factory names (`OrderTestData.builder()` vs Instancio vs `@RecordBuilder`), assertion library (AssertJ vs Hamcrest), authentication helpers (`@WithMockUser` vs custom `JwtRequestPostProcessor`)
-- Read `application-test.properties` / `application-test.yml` and any `TestContainersConfig` / `IntegrationTestBase` / `AbstractIntegrationTest` base class - reuse the project's container setup rather than scaffolding a new one
-- Read `build.gradle(.kts)` / `pom.xml` test dependencies to confirm Testcontainers, Instancio, AssertJ, Spring Cloud Contract, REST Assured presence
+- Read each target class top-to-bottom: public methods, request/response types, security annotations, transaction boundaries, external collaborators
+- Read at least one existing `@WebMvcTest`, one `@DataJpaTest`, one service unit test - learn the project's builders (`OrderTestData.builder()` vs Instancio vs `@RecordBuilder`), assertion library (AssertJ vs Hamcrest), auth helpers (`@WithMockUser` vs custom `JwtRequestPostProcessor`)
+- Read `application-test.properties` / `application-test.yml` and any `TestContainersConfig` / `IntegrationTestBase` / `AbstractIntegrationTest` base class - reuse the project's container setup
+- Read `build.gradle(.kts)` / `pom.xml` test deps to confirm Testcontainers, Instancio, AssertJ, Spring Cloud Contract, REST Assured presence
 
-If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
+If the project has no existing tests, say so and propose conventions explicitly in the strategy doc.
 
 ### Step 4 - Spring Test Pyramid
 
-The Spring Boot test pyramid maps to test types and slice annotations:
-
-| Layer               | Spring annotation / type                                                  | What belongs here                                                                           |
+| Layer               | Spring annotation / type                                                  | What belongs                                                                                |
 | ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Unit                | Plain JUnit 5 + Mockito (no Spring context)                               | Service business logic, mappers, validators, pure functions, calculation rules              |
+| Unit                | Plain JUnit 5 + Mockito (no Spring context)                               | Service logic, mappers, validators, pure functions, calculation rules                       |
 | Slice (integration) | `@WebMvcTest`, `@DataJpaTest`, `@JsonTest`, `@JdbcTest`, `@WebFluxTest`   | Controller routing/binding/validation; repository queries; serialization contracts          |
-| Full-context        | `@SpringBootTest` + Testcontainers                                        | End-to-end controller -> service -> repository -> real DB; security filter chain; messaging |
-| Contract            | Spring Cloud Contract / Pact (consumer-side)                              | API consumer/provider contracts                                                             |
-| E2E                 | `@SpringBootTest(webEnvironment = RANDOM_PORT)` + REST Assured / TestRest | Critical user journeys only - signup, checkout, payment                                     |
+| Full-context        | `@SpringBootTest` + Testcontainers                                        | End-to-end controller → service → repository → real DB; security chain; messaging           |
+| Contract            | Spring Cloud Contract / Pact                                              | API consumer/provider contracts                                                             |
+| E2E                 | `@SpringBootTest(webEnvironment = RANDOM_PORT)` + REST Assured            | Critical user journeys only - signup, checkout, payment                                     |
 
-**Many** unit tests, **some** slice tests, **few** full-context / E2E tests. `@SpringBootTest` is slow (loads full context) - use sparingly.
+Many unit tests, some slices, few full-context / E2E. `@SpringBootTest` is slow - use sparingly.
 
 ### Step 5 - Apply Spring Test Patterns
 
-Use skill: `spring-test-integration` for the canonical patterns referenced below. Compose the following atomic skills as the test scope demands - the goal is to load the patterns once and reference them rather than restate them here:
+Use skill: `spring-test-integration` for the canonical patterns. Compose as scope demands - load the patterns once and reference rather than restate:
 
-- Authentication / authorization tests (`@WithMockUser`, `jwt()` post-processor, method-security): Use skill: `spring-security-patterns`.
-- `@Async` / `@Scheduled` / async event listener tests, executor configuration assumptions: Use skill: `spring-async-processing`.
-- Kafka / Rabbit / outbox / message-listener tests, idempotency assertions on consumers: Use skill: `spring-messaging-patterns`.
-- N+1 detection in `@DataJpaTest` (`SessionFactory.getStatistics().getQueryExecutionCount()`), fetch-graph correctness: Use skill: `spring-jpa-performance`.
-- `@TransactionalEventListener` phase assertions, `REQUIRES_NEW` / self-invocation testing, `@RecordApplicationEvents`: Use skill: `spring-transaction`.
-- `@RestControllerAdvice` / ProblemDetail assertions in controller slices: Use skill: `spring-exception-handling`.
+- Auth tests (`@WithMockUser`, `jwt()` post-processor, method security) → `spring-security-patterns`
+- `@Async` / `@Scheduled` / event listener tests → `spring-async-processing`
+- Kafka / Rabbit / outbox / listener idempotency → `spring-messaging-patterns`
+- N+1 detection in `@DataJpaTest` (`Statistics.getQueryExecutionCount()`), fetch-graph correctness → `spring-jpa-performance`
+- `@TransactionalEventListener` phase assertions, `REQUIRES_NEW`, `@RecordApplicationEvents` → `spring-transaction`
+- `@RestControllerAdvice` / ProblemDetail assertions → `spring-exception-handling`
 
-**Unit tests (`src/test/java/.../service/`):**
+**Unit tests:** JUnit 5 + Mockito + AssertJ, no Spring context. One test per outcome. Stub HTTP via Mockito on the client interface. Use `ArgumentCaptor<DomainEvent>` on `ApplicationEventPublisher` for richer assertions than `verify(...)`.
 
-JUnit 5 + Mockito + AssertJ, no Spring context. One test per outcome (success, validation failure, external failure, edge case). Stub HTTP via Mockito on the client interface; never simulate repository SQL behavior in mocks - that belongs in a slice test. Use `ArgumentCaptor<DomainEvent>` on `ApplicationEventPublisher` for richer assertions than `verify(...)`.
+**HTTP stubbing by test type:**
 
-**HTTP stubbing - choose by test type, not by habit:**
+| Test type             | Stub HTTP via                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| Plain unit            | Mockito on the client interface                                                                        |
+| `@SpringBootTest`     | WireMock (`@WireMockTest` in spring-boot-test 3.2+, or `WireMockExtension`) - exercises real `RestClient` / `WebClient` config (timeouts, retries, deserialization) |
+| `@WebMvcTest`         | Downstream client mocked via `@MockitoBean` - this slice does not exercise outbound calls              |
 
-| Test type             | Stub HTTP via                                                       |
-| --------------------- | ------------------------------------------------------------------- |
-| Plain unit test       | Mockito on the client interface - fastest, no network              |
-| `@SpringBootTest`     | WireMock (`@WireMockTest` in spring-boot-test 3.2+, or `WireMockExtension`) - exercises real `RestClient` / `WebClient` config including timeouts, retries, deserialization, error handling |
-| `@WebMvcTest`         | The downstream client is mocked (`@MockitoBean`) - this slice does not exercise outbound calls |
+Mocking `RestClient` itself in an integration test bypasses the wiring the test exists to verify.
 
-Mocking `RestClient` itself in an integration test bypasses the very wiring the integration test exists to verify. Use WireMock so the request actually leaves the bean.
+**Idempotency tests:** when the code accepts an idempotency key (payment, webhook, message handler), test that invoking twice with the same key short-circuits the second call - no second DB write, no second outbound HTTP. Pair `verify(gateway, times(1))` with a row-count assertion.
 
-**Idempotency tests for replay-safe operations:**
+**Controller slices (`@WebMvcTest`):**
 
-When the code under test accepts an idempotency key (payment charge, webhook delivery, message handler), include a test that invokes the operation twice with the same key and asserts the second call short-circuits without producing a duplicate side effect (no second DB write, no second outbound HTTP call). A unit test with `verify(gateway, times(1))` plus a `@DataJpaTest` or `@SpringBootTest` asserting row count is the typical pair.
+- One test per `(method+path, role, outcome)` triple
+- Auth via `@WithMockUser` / `@WithUserDetails` / `SecurityMockMvcRequestPostProcessors`
+- Authorization: separate test for "user without permission gets 403" per protected endpoint
+- Validation: "rejects invalid payload" test for any `@Valid` DTO
+- Response shape: assert key fields, status, headers, content-type - not the full body
+- Mock the service layer with `@MockitoBean`
 
-**Controller slice tests (`@WebMvcTest`):**
+**Repository slices (`@DataJpaTest`):**
 
-- One test per `(method+path, role, outcome)` triple - covers routing, controller, request/response binding, validation, and `SecurityFilterChain` matchers
-- Use `MockMvc` (servlet) or `WebTestClient` (reactive)
-- Authentication via `@WithMockUser`, `@WithUserDetails`, or `SecurityMockMvcRequestPostProcessors.user(...)` / `.jwt()`
-- Authorization: a separate test for "user without permission gets 403" per protected endpoint
-- Validation: a "rejects invalid payload" test for any DTO with `@Valid` constraints
-- Response shape: assert key fields, status, headers, and `Content-Type` - not the full body
-- Mock the service layer with `@MockitoBean` (Boot 3.4+) or `@MockBean` (deprecated in 3.4 but still works)
+- Testcontainers Postgres via `@ServiceConnection` - `@DataJpaTest` defaults to H2 which diverges from Postgres on JSONB, partial indexes, window functions, `ON CONFLICT`
+- One test per derived query / `@Query` - assert SQL behavior, not just that the method returns something
+- Native queries must run against Testcontainers (H2 won't parse Postgres syntax)
+- N+1 detection: `spring.jpa.properties.hibernate.generate_statistics=true` in `application-test.properties`; assert `Statistics.getQueryExecutionCount()`
 
-**Repository slice tests (`@DataJpaTest`):**
-
-- Use Testcontainers PostgreSQL via `@ServiceConnection` (Boot 3.1+) - `@DataJpaTest` defaults to H2, which diverges from PostgreSQL on JSONB, partial indexes, window functions, and `ON CONFLICT`. Pin to the production engine.
-- One test per derived query method or `@Query` - assert the SQL is correct, not just that the method returns something
-- Custom `@Query` JPQL: assert the result set against fixture data inserted via the repository or `TestEntityManager`
-- Native queries: must run against Testcontainers (H2 will not parse PostgreSQL syntax)
-- N+1 detection: enable `spring.jpa.properties.hibernate.generate_statistics=true` in `application-test.properties`; assert `Statistics.getQueryExecutionCount()` for repository methods that load associations
-
-**Security slice (`@WebMvcTest` + Spring Security Test):**
+**Security slices:**
 
 - One test per `(endpoint, principal-state, outcome)` triple
-- Anonymous: assert 401 for protected endpoints
-- Authenticated without role: assert 403 for role-gated endpoints
+- Anonymous: assert 401 on protected
+- Authenticated without role: assert 403 on role-gated
 - Authenticated with role: assert 200 plus expected payload
-- CSRF: for `@WebMvcTest`, requests need `.with(csrf())` for state-changing methods - this is a feature, not a workaround
+- CSRF: `@WebMvcTest` state-changing methods need `.with(csrf())`
 
-**Full-context / Testcontainers (`@SpringBootTest`):**
+**Full-context (`@SpringBootTest`):**
 
-- Reserve for tests that genuinely need the full context: end-to-end auth flows, transactional outbox, message-driven listeners, scheduled jobs
-- Use `@Testcontainers` + `@Container static PostgreSQLContainer<?> pg = ...` with `@DynamicPropertySource` to wire datasource properties
-- Use `@Sql` for fixture data; reset state between tests via `@Transactional` rollback or explicit cleanup
-- Avoid `@DirtiesContext` - it flushes the cached context, multiplying test time
-- **`@Transactional` on the test class auto-rolls back, but spawned threads do not see uncommitted test data.** A test that triggers `@Async`, `@Scheduled`, `TaskExecutor.submit`, or any code expecting the row to be visible from another thread will fail inside the async thread (often silently). For tests exercising async paths, drop `@Transactional` from the test and clean up via `@Sql(executionPhase = AFTER_TEST_METHOD)` or explicit teardown.
-- **Asserting transactional event listener phases**: use `@RecordApplicationEvents` (Boot 3+) with `ApplicationEvents` injection to assert *what* was published *and when* (correlate with transaction commit). Mocking `ApplicationEventPublisher` in unit tests verifies the event was published but cannot distinguish `BEFORE_COMMIT` from `AFTER_COMMIT` semantics - use a full-context test if the phase matters.
+- Reserve for tests that need the full context: end-to-end auth, transactional outbox, message-driven listeners, scheduled jobs
+- `@Container static PostgreSQLContainer<?> pg = ...` with `@DynamicPropertySource` or `@ServiceConnection`
+- `@Sql` for fixtures; clean between tests via `@Transactional` rollback or explicit cleanup
+- Avoid `@DirtiesContext` - it flushes the cached context
+- **`@Transactional` on the test class auto-rolls back, but spawned threads do not see uncommitted data.** Tests triggering `@Async`, `@Scheduled`, or `TaskExecutor.submit` fail inside the async thread (often silently). For async paths, drop `@Transactional` and clean up via `@Sql(executionPhase = AFTER_TEST_METHOD)` or explicit teardown
+- **`@TransactionalEventListener` phase**: use `@RecordApplicationEvents` (Boot 3+) with `ApplicationEvents` to assert *what* was published *and when*. Mocking `ApplicationEventPublisher` cannot distinguish `BEFORE_COMMIT` from `AFTER_COMMIT`
 
 **Contract tests:**
 
-- Spring Cloud Contract: contracts in `src/test/resources/contracts/`; provider verifies via generated tests; consumer pulls stubs via stub runner
-- Pact: pact files committed to a broker; provider verification runs as a separate test class
+- Spring Cloud Contract: contracts in `src/test/resources/contracts/`; provider verifies via generated tests; consumer pulls stubs
+- Pact: pact files in a broker; provider verification as a separate test class
 
-### Step 6 - Test Boundaries (Spring-Specific)
+### Step 6 - Test Boundaries
 
-**What deserves a unit test:**
+**Unit test:** service logic, mappers (especially MapStruct), validators, `@ConfigurationProperties` validation, domain rules, calculations, state-machine transitions, Spring-independent helpers.
 
-- Service logic, mappers (especially MapStruct), validators, custom `@ConfigurationProperties` validation
-- Domain rules, calculation, state-machine transitions
-- Spring-independent helpers / utilities
+**Slice test:** every controller endpoint (happy + 401/403 + 4xx); every custom repository query; serialization contracts (`@JsonTest`) when the shape is part of the API; security configuration.
 
-**What deserves a slice test:**
+**Full-context:** cross-component flows (controller → service → repo → external); auth flows end-to-end; transactional outbox / message-driven listeners; scheduled jobs via Awaitility and a real clock.
 
-- Every controller endpoint (`@WebMvcTest`): happy path + 401/403 + 4xx validation
-- Every custom repository query (`@DataJpaTest` + Testcontainers): query result correctness
-- Serialization contracts (`@JsonTest`): DTO <-> JSON round trip when the serialization shape is part of the API
-- Security configuration (`@WebMvcTest`): role-based access, CSRF handling, JWT decoding
+**No test needed:**
 
-**What deserves a full-context test:**
-
-- Cross-component flows that traverse controller -> service -> repository -> external (Kafka / S3 / mail)
-- Auth flows end-to-end (login -> token issuance -> protected resource access)
-- Transactional outbox / message-driven listeners
-- Scheduled jobs (`@Scheduled`) verified via `Awaitility` and a real clock
-
-**What does NOT need a test:**
-
-- Spring-provided behavior: `@Autowired` injection, `@RequestMapping` route resolution, default Jackson serialization (test that you wired things correctly via slice tests, not that Spring works)
-- Generated boilerplate: Lombok-generated getters/setters, MapStruct identity mappings between identical fields
-- Trivial delegation: `service.findById(id) -> repository.findById(id)` with no logic
+- Spring-provided behavior (`@Autowired`, route resolution, default Jackson) - test your wiring via slices, not the framework
+- Generated boilerplate (Lombok getters/setters, MapStruct identity mappings)
+- Trivial delegation (`service.findById(id) -> repository.findById(id)` with no logic)
 
 ### Step 7 - Test Data and Fixtures
 
-- Prefer constructor-based or builder-based data factories (Instancio, Easy Random, or hand-rolled `OrderTestData.builder()`) over JSON fixtures
-- For repository tests with Testcontainers, use `@Sql("/fixtures/orders.sql")` for shared setup; isolate per-test data inside the test
-- Records / immutable DTOs: instantiate directly via constructor - no factories needed for trivial cases
-- **Avoid `flush + clear` patterns** unless the test is specifically asserting first-level cache behavior
-- Test data must be minimal and focused - 100-row `IntStream.range` setups signal the test belongs at integration / load-test layer
+- Constructor / builder factories (Instancio, Easy Random, `OrderTestData.builder()`) over JSON fixtures
+- Repository tests: `@Sql("/fixtures/orders.sql")` for shared setup; per-test data isolated in the test
+- Records / immutable DTOs: instantiate directly via constructor for trivial cases
+- Avoid `flush + clear` unless the test asserts first-level-cache behavior
+- Minimal, focused data - `IntStream.range(0, 100)` setups belong in integration / load-test layer
 
 ### Step 8 - Prioritization (when coverage is low)
 
-If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing controllers get full coverage.
+If line coverage (or equivalent signal) is below ~50%, run this step before scaffolding - it determines _which_ tests first. Alphabetical / by-file scaffolding misses authorization holes while plumbing gets full coverage.
 
-When starting from low test coverage, prioritize by Spring-specific risk:
+**P1 - Auth:** `@WebMvcTest` per protected endpoint asserting 401 / 403 with `@WithMockUser` + unauthenticated; OAuth2 / JWT issuer/audience/signature/expiry; method security `@PreAuthorize` at the service layer.
 
-**Priority 1 - Authorization and authentication:**
+**P2 - Data integrity:** `@DataJpaTest` for every repository with `@Query` / derived methods on business-critical tables; service tests for write operations (one happy path + one rollback); transactional outbox / message dispatch idempotency.
 
-- `@WebMvcTest` per protected endpoint asserting 401 / 403 with `@WithMockUser` and unauthenticated cases
-- OAuth2 / JWT flow tests covering issuer, audience, signature, expiry validation
-- Method security: `@PreAuthorize` expressions tested at the service layer
+**P3 - Business-critical flows:** revenue paths (checkout, billing, subscription transitions), state-machine transitions, scheduled jobs touching billing / notifications.
 
-**Priority 2 - Data integrity:**
+**P4 - High-churn code:** files with frequent recent commits (`git log --since="3 months ago"`); files with bug-fix history (`git log --grep="fix"`).
 
-- `@DataJpaTest` for every repository with custom `@Query` or derived methods that touch business-critical tables
-- Service tests for write operations (one happy path + one rollback per write)
-- Transactional outbox / message dispatch idempotency
-
-**Priority 3 - Business-critical flows:**
-
-- Revenue paths (checkout, billing, subscription state transitions)
-- State-machine transitions
-- Scheduled jobs touching billing or notifications
-
-**Priority 4 - High-churn code:**
-
-- Files with frequent recent commits (`git log --since="3 months ago"`)
-- Files with bug-fix history (`git log --grep="fix"`)
-
-**Priority 5 - Plumbing:**
-
-- Pass-through controllers, simple CRUD - lower risk, can wait
+**P5 - Plumbing:** pass-through controllers, simple CRUD.
 
 ### Step 9 - Test Infrastructure Hygiene
 
-- [ ] Testcontainers reused across tests via `@ServiceConnection` + reusable mode (`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`) for local fast cycles
-- [ ] `@SpringBootTest` count kept low; use `@MockitoBean` / `@MockBean` sparingly (each unique mock set forces a new context cache entry)
-- [ ] Test profile (`application-test.properties` / `@ActiveProfiles("test")`) overrides only what differs from prod - never silently disables security
-- [ ] JUnit 5 parallel execution enabled where safe (`junit.jupiter.execution.parallel.enabled=true`); per-class isolation for stateful tests
-- [ ] Mockito strict stubbing (`MockitoExtension` default in 4+) - flags unused stubs as test smells
+- [ ] Testcontainers reused via `@ServiceConnection` + reusable mode (`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`) for local cycles
+- [ ] `@SpringBootTest` count low; `@MockitoBean` / `@MockBean` sparingly (each unique mock set forces a new context cache entry)
+- [ ] Test profile overrides only what differs from prod - never silently disables security
+- [ ] JUnit 5 parallel execution where safe; per-class isolation for stateful tests
+- [ ] Mockito strict stubbing (default in 4+) - flags unused stubs
 - [ ] WireMock or Testcontainers for HTTP stubs; never real network calls
-- [ ] `gradle test --info` shows fixture/teardown timing; long-running fixtures flagged for refactoring
-- [ ] Coverage tool (JaCoCo) wired to CI with per-module thresholds; coverage reports excluded from the production JAR
+- [ ] JaCoCo wired to CI with per-module thresholds; reports excluded from production JAR
 
 ## Spring Review Checklist
 
-Quick-reference checklist for reviewing existing Spring tests:
+Quick-reference for reviewing existing Spring tests:
 
-- [ ] Test type matches what is being tested (controller -> `@WebMvcTest`, repository -> `@DataJpaTest`, service -> plain JUnit + Mockito)
-- [ ] Every controller endpoint has a slice test with at least happy + 401 + 403 + validation-error
-- [ ] Every custom `@Query` and derived repository method has a slice test against Testcontainers (not H2)
+- [ ] Test type matches what is being tested
+- [ ] Every controller endpoint has a slice test with happy + 401 + 403 + validation-error
+- [ ] Every custom `@Query` and derived method has a slice test against Testcontainers
 - [ ] Every `@PreAuthorize` expression has a passing-and-denied test
-- [ ] Test data created via builders/factories, not JSON fixtures
-- [ ] No `verify(repository).save(any())` patterns when the test could have asserted DB state via `@DataJpaTest` instead
+- [ ] Test data via builders / factories, not JSON fixtures
+- [ ] No `verify(repository).save(any())` patterns when `@DataJpaTest` could assert DB state
 - [ ] No `@SpringBootTest` for tests that could run as `@WebMvcTest` or unit
-- [ ] No `@DirtiesContext` unless the test specifically mutates singleton state
+- [ ] No `@DirtiesContext` unless mutating singleton state
 
 ## Output Format
 
 **Which output to produce:**
 
-- User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
-- User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
-- User asks "test strategy", "test plan", or coverage is below 50% -> Strategy Doc (optionally include Coverage Assessment)
-- If unclear, produce Strategy Doc as the default.
+- "What tests are missing?" / "review our coverage" → Coverage Assessment
+- "Write tests for X" / "scaffold tests" → Test Scaffolds
+- "Test strategy" / "test plan" / coverage < 50% → Strategy Doc (optionally with Coverage Assessment)
+- Unclear → Strategy Doc
 
 **Coverage Assessment:**
 
@@ -248,41 +203,41 @@ Quick-reference checklist for reviewing existing Spring tests:
 **Test framework:** JUnit 5, Mockito, AssertJ, Spring Boot Test, Testcontainers
 **Coverage gaps:**
 
-- **Unit tests:** [services / mappers without test coverage]
-- **Controller slice tests (@WebMvcTest):** [controllers without tests; controllers missing 401/403 paths]
-- **Repository slice tests (@DataJpaTest):** [repositories with @Query / derived methods without tests; repositories tested only against H2]
-- **Security tests:** [endpoints without authorization tests; missing JWT/OAuth2 flow tests]
-- **Full-context tests:** [transactional flows, listeners, scheduled jobs without coverage]
-- **Contract tests:** [provider/consumer contracts without verification]
+- **Unit:** [services / mappers without coverage]
+- **Controller slice (@WebMvcTest):** [controllers without tests; controllers missing 401/403]
+- **Repository slice (@DataJpaTest):** [repositories with @Query / derived methods without tests; H2-only]
+- **Security:** [endpoints without authz tests; missing JWT/OAuth2 flow tests]
+- **Full-context:** [transactional flows, listeners, scheduled jobs without coverage]
+- **Contract:** [provider/consumer contracts without verification]
 
 **Recommended pyramid balance:**
 
-- Unit (services, mappers, helpers): [count target]
-- Slice (@WebMvcTest, @DataJpaTest, @JsonTest): [count target]
-- Full-context (@SpringBootTest + Testcontainers): [count target - keep small]
+- Unit: [target]
+- Slice: [target]
+- Full-context: [target - keep small]
 ```
 
-**Test Scaffolds** (when generating boilerplate):
+**Test Scaffolds** (when generating):
 
-Produce ready-to-run JUnit 5 test files using project conventions. Each scaffold must include:
+Ready-to-run JUnit 5 files using project conventions. Each scaffold includes:
 
-- The right test type (`@WebMvcTest`, `@DataJpaTest`, `@SpringBootTest`, or plain JUnit + Mockito)
-- Builders / factories for test data instead of `new Order(...)` calls
-- For controller tests: happy path + 401 + 403 + validation-error
-- For repository tests: Testcontainers via `@ServiceConnection`; assertions against PostgreSQL semantics
-- For security tests: `@WithMockUser`, `.with(jwt())`, or anonymous; positive and denied cases
-- Inline comments explaining non-obvious setup (e.g., why `.with(csrf())` is required)
+- Right test type (`@WebMvcTest` / `@DataJpaTest` / `@SpringBootTest` / plain JUnit + Mockito)
+- Builders / factories for data (not `new Order(...)`)
+- Controller tests: happy + 401 + 403 + validation-error
+- Repository tests: Testcontainers via `@ServiceConnection`; assertions against Postgres semantics
+- Security tests: `@WithMockUser` / `.with(jwt())` / anonymous; positive and denied
+- Inline comments explaining non-obvious setup (why `.with(csrf())` is required)
 
-**Strategy Doc** (when designing a test strategy):
+**Strategy Doc:**
 
 ```markdown
 ## Spring Boot Test Strategy
 
-**Objective:** [what this strategy achieves]
-**Pyramid balance:** Unit {x}% / Slice (@WebMvcTest, @DataJpaTest) {y}% / Full-context {z}%
-**Tooling:** JUnit 5, Mockito (strict stubbing), AssertJ, Spring Boot Test, Testcontainers (PostgreSQL / Kafka), Spring Security Test
-**Database isolation:** Testcontainers PostgreSQL via @ServiceConnection + transactional rollback
-**Concurrency:** [JUnit parallel execution config]
+**Objective:** [what this achieves]
+**Pyramid balance:** Unit {x}% / Slice {y}% / Full-context {z}%
+**Tooling:** JUnit 5, Mockito (strict), AssertJ, Spring Boot Test, Testcontainers (Postgres / Kafka), Spring Security Test
+**Database isolation:** Testcontainers Postgres via @ServiceConnection + transactional rollback
+**Concurrency:** [JUnit parallel config]
 **Gaps to close (prioritized):**
 
 1. [Highest risk gap - typically authorization or repository correctness]
@@ -291,30 +246,30 @@ Produce ready-to-run JUnit 5 test files using project conventions. Each scaffold
 
 ## Self-Check
 
-- [ ] Behavioral principles loaded as Step 1 before any other delegation
-- [ ] Stack confirmed as Java / Spring Boot before any Spring-specific guidance applied (Step 2)
-- [ ] Code under test and a representative sample of existing tests read directly so scaffolds match project conventions (Step 3)
-- [ ] `spring-test-integration` consulted for canonical Spring test patterns
-- [ ] Test pyramid mapped to Spring slice annotations (unit -> plain JUnit + Mockito; slice -> `@WebMvcTest` / `@DataJpaTest` / `@JsonTest`; full-context -> `@SpringBootTest` + Testcontainers)
-- [ ] Boundaries clearly defined: each spec layer covers what it does best; no duplicated assertions across layers
-- [ ] Prioritization by risk applied when coverage is low - authorization and repository correctness first, plumbing last
-- [ ] Test data guidance includes builders/factories over JSON fixtures; immutable records preferred
-- [ ] Testcontainers used for repository and full-context tests; H2 flagged as a smell for production-Postgres apps
-- [ ] Security testing approach explicit (`@WithMockUser`, `.with(jwt())`, anonymous case)
-- [ ] Test scaffolds (if generated) include happy path + 401 + 403 + validation-error; idempotency for jobs / listeners; per-role tests for method security
-- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
-- [ ] Review checklist items addressed when reviewing existing tests
+- [ ] Behavioral principles loaded as Step 1
+- [ ] Stack confirmed before Spring-specific guidance
+- [ ] Code under test and a representative sample of existing tests read so scaffolds match conventions
+- [ ] `spring-test-integration` consulted for canonical patterns
+- [ ] Pyramid mapped to Spring slice annotations
+- [ ] Boundaries defined: each layer covers what it does best; no duplicated assertions across layers
+- [ ] Prioritization applied when coverage is low - auth and repository correctness first, plumbing last
+- [ ] Test data via builders / factories; immutable records preferred
+- [ ] Testcontainers used; H2 flagged for production-Postgres apps
+- [ ] Security testing explicit (`@WithMockUser`, `.with(jwt())`, anonymous)
+- [ ] Scaffolds include happy + 401 + 403 + validation-error; idempotency for jobs/listeners; per-role tests for method security
+- [ ] Spec-aware mode honored when `--spec` was passed
+- [ ] Review checklist applied when reviewing existing tests
 
 ## Avoid
 
-- Scaffolding tests without first reading existing tests in the project - the result imports the wrong builder, uses the wrong assertion library, or duplicates the integration-test base class
-- Chasing a coverage number instead of prioritizing by risk - 100% line coverage with no security tests misses the bigger threat
-- `@SpringBootTest` for tests that could run as `@WebMvcTest` or plain unit - context-load cost compounds across the suite
-- H2 in `@DataJpaTest` for apps that use PostgreSQL features (JSONB, partial indexes, `ON CONFLICT`, window functions) - tests pass, prod fails
-- Writing controller tests with `@SpringBootTest` instead of `@WebMvcTest` - heavier and slower for the same coverage
-- Duplicating test data factories per test class - share builders / Instancio configs
-- Using `verify(repository).save(any())` when a `@DataJpaTest` could assert actual persistence
-- Skipping CSRF (`.with(csrf())`) by disabling CSRF in tests - the test is now incorrect for the prod config
-- Skipping `@PreAuthorize` tests because the controller has a `@WebMvcTest` - method security is unit-tested separately so it can be reused
-- Testing Spring internals (e.g., that `@Autowired` works, that `@RequestMapping` resolves to a method) - test your wiring, not the framework
-- `@DirtiesContext` as a workaround for shared state - fix the test isolation instead
+- Scaffolding without first reading existing tests - results in wrong builder, wrong assertion library, duplicated base class
+- Chasing coverage numbers instead of prioritizing by risk
+- `@SpringBootTest` for tests that could be slice or unit
+- H2 in `@DataJpaTest` for Postgres-feature apps
+- Controller tests with `@SpringBootTest` instead of `@WebMvcTest`
+- Duplicating data factories per test class
+- `verify(repository).save(any())` when `@DataJpaTest` could assert actual persistence
+- Skipping CSRF (`.with(csrf())`) by disabling CSRF in tests - test is now incorrect for prod
+- Skipping `@PreAuthorize` tests because the controller has a `@WebMvcTest` - method security tested separately
+- Testing Spring internals (that `@Autowired` works, that `@RequestMapping` resolves)
+- `@DirtiesContext` as a workaround for shared state - fix the isolation

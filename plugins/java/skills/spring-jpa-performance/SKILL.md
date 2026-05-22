@@ -1,6 +1,6 @@
 ---
 name: spring-jpa-performance
-description: "JPA / Hibernate performance: N+1 detection via fetch joins and entity graphs, batch size tuning, projections, second-level cache."
+description: "JPA / Hibernate performance: N+1 fixes (fetch join, @EntityGraph, batch size), projections, pagination, locking, second-level cache."
 metadata:
   category: backend
   tags: [jpa, hibernate, performance, queries]
@@ -13,189 +13,98 @@ user-invocable: false
 
 ## When to Use
 
-- Optimizing data access layer queries
-- Preventing N+1 query problems
-- Reducing memory footprint of large result sets
-- Building dynamic filter/search queries with multiple optional parameters
+- Optimizing data-access queries; preventing N+1
+- Read-only endpoints with heavy entities
+- Dynamic filter/search endpoints with multiple optional params
 
 ## Rules
 
-- Default LAZY for all associations
-- Avoid EAGER fetching without explicit need
-- Use fetch join selectively for specific queries
-- Prefer projection over entity for read-only queries
-- Detect and eliminate N+1 queries
-- Keep entities small, avoid heavy logic inside entities
-- Add indexes on WHERE/ORDER BY/JOIN columns (see core plugin's `backend-db-indexing` for general index strategy)
-- Set `spring.jpa.open-in-view=false` in all environments - open-in-view silently masks lazy loading issues by keeping the Hibernate session open through the controller layer, causing unpredictable N+1 queries in the view
+- LAZY by default on all associations; never EAGER on `@OneToMany`
+- Set `spring.jpa.open-in-view=false` everywhere (OSIV silently masks N+1 and `LazyInitializationException`)
+- Read-only endpoints: project to DTO / record, do not return entities
+- Index every column used in WHERE / ORDER BY / JOIN
+- List endpoints always take `Pageable` - never unbounded `findAll()`
+- Service classes default to `@Transactional(readOnly = true)`; `@Transactional` only on mutating methods
 
 ## Patterns
 
-### N+1 Detection and Fix
-
-Bad - Causes N+1 queries:
+### N+1: fetch join vs `@EntityGraph`
 
 ```java
-List<User> users = userRepository.findAll(); // 1 query
-for (User u : users) {
-    System.out.println(u.getOrders()); // N additional queries
-}
-```
+// Bad - N+1 on u.getOrders() per row
+userRepository.findAll().forEach(u -> log.info("{}", u.getOrders()));
 
-Good - Fetch join prevents N+1:
-
-```java
+// Good - fetch join on custom JPQL
 @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.orders")
 List<User> findAllWithOrders();
-```
 
-Good - `@EntityGraph` for declarative fetch control (avoids JPQL when you just need eager loading on a standard query):
-
-```java
+// Good - @EntityGraph on derived query
 @EntityGraph(attributePaths = {"orders", "orders.items"})
 List<User> findByStatus(UserStatus status);
 ```
 
-Use fetch joins for custom JPQL queries; use `@EntityGraph` on derived query methods. Do not combine both - they conflict.
+Use fetch join for custom JPQL; `@EntityGraph` for derived methods. Do not combine.
 
-### Batch Fetching
+### Two fetch-join traps
 
-When fetch joins aren't practical (e.g., multiple `@OneToMany` causing a Cartesian product), use batch fetching to reduce N+1 to N/batch queries:
+1. **Two `JOIN FETCH` on `List` collections** → `MultipleBagFetchException` at startup. Fix: change one to `Set`, split into two queries, or use `@BatchSize`.
+2. **`Pageable` + collection `JOIN FETCH`** → Hibernate logs `HHH90003004` and paginates in memory (silent OOM).
+
+```java
+// Bad - in-memory pagination
+@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines")
+Page<Order> findAllWithLines(Pageable pageable);
+
+// Good - two-query: page IDs first, fetch associations by ID
+@Query("SELECT o.id FROM Order o ORDER BY o.id")
+Page<Long> findOrderIds(Pageable pageable);
+
+@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines WHERE o.id IN :ids ORDER BY o.id")
+List<Order> findWithLinesByIds(@Param("ids") List<Long> ids);
+```
+
+Or skip `JOIN FETCH` on paginated endpoints entirely and use batch fetching.
+
+### Batch fetching (multiple collections)
 
 ```yaml
-spring:
-  jpa:
-    properties:
-      hibernate:
-        default_batch_fetch_size: 16
+spring.jpa.properties.hibernate.default_batch_fetch_size: 16
 ```
 
 Or per-association:
 
 ```java
-@OneToMany(mappedBy = "order")
-@BatchSize(size = 16)
+@OneToMany(mappedBy = "order") @BatchSize(size = 16)
 private List<OrderItem> items;
 ```
 
-Batch fetching is the best option when an entity has multiple collections - fetch joins on more than one `@OneToMany` produce a Cartesian product that multiplies rows.
+Use batch fetching when an entity has multiple `@OneToMany` (fetch join produces Cartesian product).
 
-Two fetch-join traps to recognize by symptom:
-
-1. **Two `JOIN FETCH` on `List` collections in the same query** → `MultipleBagFetchException` at startup. Fix: change one collection to `Set`, split into two queries, or rely on `@BatchSize`.
-2. **`Pageable` + collection `JOIN FETCH`** → Hibernate logs `HHH90003004` and paginates in memory, loading every matching row first. Silent OOM on large tables.
-
-Bad - paginated query with a collection fetch join (in-memory pagination):
+### Projections for read-only queries
 
 ```java
-@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines")
-Page<Order> findAllWithLines(Pageable pageable); // loads ALL orders into memory first
+public record OrderSummary(Long id, String status, BigDecimal total) {}
+
+@Query("SELECT new com.example.dto.OrderSummary(o.id, o.status, o.total) FROM Order o WHERE o.customerId = :cid")
+List<OrderSummary> findSummaries(Long cid);
 ```
 
-Good - two-query pattern: page IDs first, then fetch associations by ID:
+Skips dirty-checking and avoids loading associations.
 
-```java
-@Query("SELECT o.id FROM Order o ORDER BY o.id")
-Page<Long> findOrderIds(Pageable pageable);
+### Pagination and dynamic filters
 
-@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines LEFT JOIN FETCH o.customer WHERE o.id IN :ids ORDER BY o.id")
-List<Order> findWithLinesByIds(@Param("ids") List<Long> ids);
-```
-
-Or skip `JOIN FETCH` on paginated endpoints entirely and lean on `default_batch_fetch_size`.
-
-### Projection Queries
-
-For read-only endpoints that don't need the full entity, use interface or record projections to reduce memory and skip Hibernate dirty-checking:
-
-```java
-// Interface projection - Spring generates the implementation
-public interface OrderSummary {
-    Long getId();
-    String getStatus();
-    BigDecimal getTotal();
-}
-
-@Query("SELECT o.id AS id, o.status AS status, o.total AS total FROM Order o WHERE o.customerId = :customerId")
-List<OrderSummary> findSummariesByCustomerId(Long customerId);
-
-// Record projection (Java 21+) - cleaner for DTOs
-public record OrderSummaryDto(Long id, String status, BigDecimal total) {}
-
-@Query("SELECT new com.example.dto.OrderSummaryDto(o.id, o.status, o.total) FROM Order o WHERE o.customerId = :customerId")
-List<OrderSummaryDto> findDtosByCustomerId(Long customerId);
-```
-
-### Read-Only Optimization
-
-`@Transactional(readOnly = true)` on the service class tells Hibernate to skip dirty-checking for all queries in that transaction - significant performance gain for read-heavy services:
-
-```java
-@Service
-@Transactional(readOnly = true)
-@RequiredArgsConstructor
-public class OrderQueryService {
-    // All methods here skip dirty-checking by default
-    public Page<OrderSummary> search(Specification<Order> spec, Pageable pageable) {
-        return orderRepository.findAll(spec, pageable);
-    }
-}
-```
-
-### Pagination
-
-Always use `Pageable` for list endpoints - never return unbounded result sets:
-
-```java
-Page<Order> findByStatus(OrderStatus status, Pageable pageable);
-
-// In controller:
-@GetMapping
-public Page<OrderResponse> list(Pageable pageable) {
-    return orderService.findAll(pageable).map(OrderResponse::from);
-}
-```
-
-For large datasets with stable sort order, use keyset pagination (scroll queries) instead of OFFSET - OFFSET scans and discards rows:
+`Page<T>` always for list endpoints. For very large datasets with stable sort, use keyset pagination over `OFFSET`:
 
 ```java
 @Query("SELECT o FROM Order o WHERE o.id > :lastId ORDER BY o.id")
-List<Order> findNextPage(@Param("lastId") Long lastId, Pageable pageable);
+List<Order> nextPage(@Param("lastId") Long lastId, Pageable pageable);
 ```
 
-### Dynamic Filters with Specification
+When an endpoint has 2+ optional filters, compose `Specification`s instead of writing combinatorial repository methods. `null` Specifications are ignored by Spring Data.
 
-When an endpoint supports multiple optional filter parameters, use `Specification` to compose them dynamically rather than writing a combinatorial explosion of repository methods:
+### Pessimistic locking
 
-```java
-public class ProductSpecifications {
-    public static Specification<Product> hasCategory(Long categoryId) {
-        return (root, query, cb) -> categoryId == null ? null : cb.equal(root.get("category").get("id"), categoryId);
-    }
-
-    public static Specification<Product> priceBetween(BigDecimal min, BigDecimal max) {
-        return (root, query, cb) -> {
-            if (min != null && max != null) return cb.between(root.get("price"), min, max);
-            if (min != null) return cb.greaterThanOrEqualTo(root.get("price"), min);
-            if (max != null) return cb.lessThanOrEqualTo(root.get("price"), max);
-            return null; // null spec is ignored by Spring Data
-        };
-    }
-}
-
-// In service:
-public Page<ProductResponse> search(Long categoryId, BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable) {
-    Specification<Product> spec = Specification.where(hasCategory(categoryId))
-        .and(priceBetween(minPrice, maxPrice));
-    return productRepository.findAll(spec, pageable).map(ProductResponse::from);
-}
-```
-
-Use derived query methods (e.g., `findByCategoryId`) for simple single-parameter filters. Switch to `Specification` only when the endpoint has 2+ optional filter parameters.
-
-### Pessimistic Locking for Critical Writes
-
-For operations where optimistic locking is insufficient (e.g., decrementing stock, balance deductions), use pessimistic locking to prevent concurrent overwrites:
+For decrements / balance updates where optimistic locking is insufficient:
 
 ```java
 @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -203,49 +112,24 @@ For operations where optimistic locking is insufficient (e.g., decrementing stoc
 Optional<Product> findByIdForUpdate(Long id);
 ```
 
-Use pessimistic locks only for short-lived transactions on single rows. For bulk operations, prefer optimistic locking with `@Version` and retry on `OptimisticLockException`.
+Short-lived transactions on single rows only. For bulk, use optimistic `@Version` + retry.
 
-### Second-Level Cache
+### Second-level cache
 
-Enable for entities that are read-heavy and rarely change (e.g., product catalog, configuration):
-
-```yaml
-spring:
-  jpa:
-    properties:
-      hibernate:
-        cache:
-          use_second_level_cache: true
-          region.factory_class: org.hibernate.cache.jcache.JCacheRegionFactory
-        javax.cache.provider: org.ehcache.jsr107.EhcacheCachingProvider
-```
-
-```java
-@Entity
-@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
-public class Product {
-    // ...
-}
-```
-
-Only cache entities with low write frequency - cache invalidation on every update negates the benefit for write-heavy entities.
+Enable for read-heavy, rarely-changed entities (catalog, config). Negates itself on write-heavy entities. Configuration goes under `hibernate.cache.*` with `@Cache(usage = READ_WRITE)` on the entity.
 
 ## Output Format
 
-When applying JPA performance patterns, document the optimization:
-
 ```
-Optimization: {N+1 Fix | Projection | Batch Fetch | Specification Filter | Cache | Pagination}
-Entity: {entity name}
-Change: {description of what was changed}
-Query Count: {before} → {after} (estimated)
+Optimization: {N+1 Fix | Projection | Batch Fetch | Specification | Cache | Pagination}
+Entity: {name}
+Change: {what changed}
+Query Count: {before} → {after}
 ```
 
 ## Avoid
 
-- EAGER fetching on `@OneToMany` relationships - it loads the collection on every query even when not needed
-- Fetch joins on multiple `@OneToMany` collections in the same query - triggers `MultipleBagFetchException`; use batch fetching or change one collection to `Set`
-- Combining `JOIN FETCH` on a collection with `Pageable` - Hibernate paginates in memory after loading all rows; use the two-query (IDs then entities) pattern or `default_batch_fetch_size`
-- `SELECT *` without projection for read-only endpoints - wastes memory and enables dirty-checking overhead
-- Unbounded `findAll()` without pagination on tables that grow over time
-- Second-level cache on frequently-written entities - cache invalidation overhead exceeds read benefit
+- `EAGER` on `@OneToMany` - loads collection on every query
+- Combining `JOIN FETCH` on a collection with `Pageable`
+- Returning entities from controllers - project to DTO
+- Second-level cache on write-heavy entities

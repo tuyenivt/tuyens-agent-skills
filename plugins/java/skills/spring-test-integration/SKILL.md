@@ -1,6 +1,6 @@
 ---
 name: spring-test-integration
-description: "Spring Boot test slices and Testcontainers: @DataJpaTest, @WebMvcTest, @SpringBootTest scoping, singleton containers, fixtures, Awaitility."
+description: "Spring test slices and Testcontainers: @DataJpaTest, @WebMvcTest, @SpringBootTest, singleton containers, fixtures, Awaitility, security tests."
 metadata:
   category: backend
   tags: [testing, spring-boot, testcontainers, integration-test, test-slices]
@@ -13,80 +13,64 @@ user-invocable: false
 
 ## When to Use
 
-- Choosing the right Spring test slice for a layer
-- Setting up Testcontainers for integration tests
-- Designing reusable test fixtures and assertions
-- Configuring test profiles and test-specific beans
-- Writing async/Virtual Thread-safe tests
+- Choosing the right Spring test slice
+- Setting up Testcontainers
+- Writing async / Virtual Thread-safe tests
+- Designing reusable fixtures
 
 ## Rules
 
-- Never use `@SpringBootTest` when a slice test suffices - it's 10x slower
-- Use Testcontainers with the production database engine when the test exercises DB-specific syntax (JSONB, partial indexes, `ON CONFLICT`, window functions); H2 silently passes on syntax that fails in prod
-- Use `@MockitoBean` not `@MockBean` (deprecated since Spring Boot 3.4.0)
-- Constructor injection with manual mocks over `@MockitoBean` when no Spring context needed
-- AssertJ fluent assertions over JUnit `assertEquals`
-- `@ActiveProfiles("test")` - always explicit, never rely on default
-- Test-specific `@Configuration` classes belong in `src/test/java`, never in `src/main/java`
-- Never use `Thread.sleep()` in async tests - use Awaitility
-- Never use `@DirtiesContext` - redesign the test instead
+- Match slice to layer (table below); never `@SpringBootTest` when a slice suffices
+- Testcontainers with the production DB engine when SQL is non-standard (JSONB, partial indexes, `ON CONFLICT`, window functions) - H2 silently passes prod-failing syntax
+- `@MockitoBean` (Boot 3.4+), not `@MockBean`
+- AssertJ over `assertEquals`
+- `@ActiveProfiles("test")` always explicit
+- No `Thread.sleep()` in async tests - use Awaitility
+- No `@DirtiesContext` - redesign the test instead
+
+## Test Slice Selection
+
+| Layer                    | Choice                                              |
+| ------------------------ | --------------------------------------------------- |
+| Repository               | `@DataJpaTest` + Testcontainers Postgres            |
+| Controller               | `@WebMvcTest` + MockMvc, mock services              |
+| Service (pure logic)     | Plain JUnit 5 + Mockito                             |
+| Service (Spring wiring)  | `@SpringBootTest` + `@MockitoBean` externals        |
+| Full integration         | `@SpringBootTest` + Testcontainers + WebTestClient  |
 
 ## Patterns
 
-### Test Slice Selection Guide
-
-```
-Repository layer       → @DataJpaTest (JPA, Flyway, Testcontainers Postgres)
-Controller layer       → @WebMvcTest (MockMvc, no DB, mock services)
-Service (logic only)   → Plain JUnit 5 + Mockito (no Spring context)
-Service (Spring wiring)→ @SpringBootTest + @MockitoBean for externals
-Full integration       → @SpringBootTest + Testcontainers + WebTestClient
-```
-
-### @DataJpaTest with Testcontainers
-
-Good - `@ServiceConnection` (Spring Boot 3.1+) auto-configures datasource:
+### `@DataJpaTest` with `@ServiceConnection`
 
 ```java
-@Testcontainers
-@DataJpaTest
+@Testcontainers @DataJpaTest
 class OrderRepositoryTest {
-    @Container
-    @ServiceConnection
+    @Container @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    @Autowired
-    private OrderRepository orderRepository;
+    @Autowired OrderRepository orderRepository;
 
     @Test
-    void shouldFindOrdersByStatus() {
-        orderRepository.save(OrderTestFixtures.anOrder(OrderStatus.PAID));
-
-        var results = orderRepository.findByStatus(OrderStatus.PAID);
-
-        assertThat(results).hasSize(1)
-            .first()
-            .satisfies(order -> assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID));
+    void findsByStatus() {
+        orderRepository.save(OrderTestFixtures.anOrder(PAID));
+        assertThat(orderRepository.findByStatus(PAID)).hasSize(1);
     }
 }
 ```
 
-### @WebMvcTest - Controller Slice
+Prefer `@ServiceConnection` (Spring Boot 3.1+) over `@DynamicPropertySource`.
+
+### `@WebMvcTest` controller slice
 
 ```java
 @WebMvcTest(OrderController.class)
 class OrderControllerTest {
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private OrderService orderService;
+    @Autowired MockMvc mockMvc;
+    @MockitoBean OrderService orderService;
 
     @Test
-    void shouldReturnOrder() throws Exception {
-        var order = OrderTestFixtures.anOrderDto();
-        when(orderService.findById(1L)).thenReturn(order);
-
+    void returnsOrder() throws Exception {
+        when(orderService.findById(1L)).thenReturn(OrderTestFixtures.anOrderDto());
         mockMvc.perform(get("/api/orders/1"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("PAID"));
@@ -94,144 +78,61 @@ class OrderControllerTest {
 }
 ```
 
-### Service Layer - Plain JUnit 5 (No Spring Context)
+### Plain JUnit for service logic
 
 ```java
 class OrderServiceTest {
-    private final OrderRepository orderRepository = mock(OrderRepository.class);
-    private final PaymentGateway paymentGateway = mock(PaymentGateway.class);
-    private final OrderService orderService = new OrderService(orderRepository, paymentGateway);
+    OrderRepository repo = mock(OrderRepository.class);
+    PaymentGateway gateway = mock(PaymentGateway.class);
+    OrderService service = new OrderService(repo, gateway);
 
     @Test
-    void shouldCompleteOrder() {
-        var order = OrderTestFixtures.anOrder(OrderStatus.PENDING);
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(paymentGateway.charge(any())).thenReturn(PaymentResult.success());
+    void completesOrder() {
+        when(repo.findById(1L)).thenReturn(Optional.of(OrderTestFixtures.anOrder(PENDING)));
+        when(gateway.charge(any())).thenReturn(PaymentResult.success());
 
-        var result = orderService.complete(1L);
+        var result = service.complete(1L);
 
-        assertThat(result.status()).isEqualTo(OrderStatus.PAID);
-        verify(orderRepository).save(any(Order.class));
+        assertThat(result.status()).isEqualTo(PAID);
+        verify(repo).save(any(Order.class));
     }
 }
 ```
 
-### Singleton Container Pattern
+### Singleton container pattern
 
-`@Container` + JUnit's `@Testcontainers` extension restarts the container per class. For a 6-minute suite that boots Postgres for every test class, the fix is a JVM-level singleton: declare the container `static` and start it once in a static initializer (or a base class). Subclasses inherit the running container and never pay the boot cost again.
-
-Local dev loops can shave further by enabling Testcontainers reuse - the container survives the JVM exit:
-
-```java
-.withReuse(true)  // and set testcontainers.reuse.enable=true in ~/.testcontainers.properties
-```
-
-Reuse is local-only - keep it off in CI so each pipeline run starts from a clean container.
+`@Container` + `@Testcontainers` restarts per class; for a multi-class suite this is the main test-time cost. Make the container a JVM-level singleton in a base class:
 
 ```java
 public abstract class AbstractIntegrationTest {
+    @Container @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
         new PostgreSQLContainer<>("postgres:16-alpine").withReuse(true);
-    static final GenericContainer<?> REDIS =
-        new GenericContainer<>("redis:7-alpine").withExposedPorts(6379).withReuse(true);
 
-    static {
-        POSTGRES.start();
-        REDIS.start();
-    }
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-    }
+    @Container @ServiceConnection
+    static final KafkaContainer KAFKA =
+        new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
 }
 ```
 
-Prefer `@ServiceConnection` over `@DynamicPropertySource` when available:
+`withReuse(true)` + `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` survives JVM exit. Local-only - keep off in CI for clean runs.
 
-```java
-public abstract class AbstractIntegrationTest {
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+### Security tests
 
-    @Container
-    @ServiceConnection
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
-}
-```
-
-### Test Fixture Patterns
-
-Builder pattern for test entities:
-
-```java
-public class OrderTestFixtures {
-    public static Order anOrder(OrderStatus status) {
-        return Order.builder()
-            .customerId(1L)
-            .status(status)
-            .totalAmount(BigDecimal.valueOf(99.99))
-            .build();
-    }
-
-    public static OrderDto anOrderDto() {
-        return new OrderDto(1L, 1L, OrderStatus.PAID, BigDecimal.valueOf(99.99));
-    }
-}
-```
-
-Use static factory methods on a single `*TestFixtures` class per aggregate; reach for `@TestConfiguration` only when fixtures need Spring-managed dependencies.
-
-### Mocking External HTTP Services with WireMock
-
-For services that call external APIs (payment gateways, notification services), use WireMock instead of mocking the client class - it verifies the actual HTTP request/response cycle:
-
-```java
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-@WireMockTest(httpPort = 8089)
-class PaymentIntegrationTest extends AbstractIntegrationTest {
-
-    @Test
-    void shouldProcessPaymentSuccessfully() {
-        stubFor(post(urlPathEqualTo("/api/charges"))
-            .willReturn(okJson("{\"status\": \"success\", \"chargeId\": \"ch_123\"}")));
-
-        var result = paymentGateway.charge(new ChargeRequest(orderId, amount));
-
-        assertThat(result.status()).isEqualTo("success");
-        verify(postRequestedFor(urlPathEqualTo("/api/charges"))
-            .withRequestBody(matchingJsonPath("$.amount")));
-    }
-}
-```
-
-Use `@MockitoBean` for unit tests where you only care about the service logic. Use WireMock for integration tests where the HTTP contract matters.
-
-### Spring Security Test
-
-For `@WebMvcTest` controllers behind security, the security filter chain runs but no authenticated user is bound. Use `@WithMockUser` for role-based asserts and the `jwt()` post-processor for OAuth2 resource server.
+Controller slices auto-wire the filter chain but bind no user. Use Spring Security Test post-processors:
 
 ```java
 @WebMvcTest(OrderController.class)
-@Import(SecurityConfig.class) // controller slices don't auto-load it
+@Import(SecurityConfig.class)  // controller slices don't auto-load it
 class OrderControllerTest {
-
-    @Autowired MockMvc mockMvc;
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void admin_can_delete_order() throws Exception {
-        mockMvc.perform(delete("/api/orders/1")).andExpect(status().isNoContent());
+    @Test @WithMockUser(roles = "ADMIN")
+    void admin_can_delete() throws Exception {
+        mockMvc.perform(delete("/api/orders/1").with(csrf())).andExpect(status().isNoContent());
     }
 
     @Test
-    void anonymous_cannot_delete() throws Exception {
-        mockMvc.perform(delete("/api/orders/1")).andExpect(status().isUnauthorized());
+    void anonymous_unauthorized() throws Exception {
+        mockMvc.perform(delete("/api/orders/1").with(csrf())).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -243,79 +144,62 @@ class OrderControllerTest {
 }
 ```
 
-### Transactional Rollback Between Tests
+### Transactional rollback gotcha
 
-`@DataJpaTest` wraps each test in a transaction and rolls back at the end - the DB is clean for the next test. `@SpringBootTest` does NOT roll back by default. Reusing test state between tests is the most common "my data persists between tests" footgun.
+`@DataJpaTest` auto-rolls back. `@SpringBootTest` does NOT by default - add `@Transactional` to the test class for rollback. But `@Transactional` does NOT cover spawned threads (`@Async`, `REQUIRES_NEW`, event listeners with their own transaction). Clean those up with `@Sql(executionPhase = AFTER_TEST_METHOD)` or `@AfterEach` truncate.
 
-```java
-@SpringBootTest
-@Transactional // opt in to per-test rollback for full-context tests
-class OrderServiceIT { ... }
-```
-
-If the code under test spawns a different transaction (e.g., `@Async`, `REQUIRES_NEW`, async event listener), `@Transactional` on the test class does NOT cover it - that data is committed and survives. Clean up explicitly via `@Sql(executionPhase = AFTER_TEST_METHOD)` or a `@AfterEach` truncate.
-
-### Mockito in Virtual Thread Context
-
-Mockito is safe with Virtual Threads - no thread-local issues. For async/Virtual Thread tests, use Awaitility:
+### Async tests with Awaitility
 
 ```java
 @Test
-void shouldProcessOrderAsync() {
+void processesAsync() {
     orderService.processAsync(orderId);
 
     await().atMost(Duration.ofSeconds(5))
         .pollInterval(Duration.ofMillis(100))
-        .untilAsserted(() -> {
-            var order = orderRepository.findById(orderId).orElseThrow();
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.COMPLETED);
-        });
+        .untilAsserted(() -> assertThat(orderRepository.findById(orderId).orElseThrow().getStatus())
+            .isEqualTo(COMPLETED));
 }
 ```
 
-Bad - blocks test unreliably:
+### WireMock for outbound HTTP
+
+For integration tests where the HTTP contract matters, use WireMock - it exercises the actual `RestClient` / `WebClient` config (timeouts, retries, deserialization) rather than bypassing it via a mocked client.
 
 ```java
-orderService.processAsync(orderId);
-Thread.sleep(2000); // Flaky, slow, unreliable
-assertThat(orderRepository.findById(orderId).get().getStatus()).isEqualTo(OrderStatus.COMPLETED);
-```
+@SpringBootTest(webEnvironment = RANDOM_PORT)
+@WireMockTest(httpPort = 8089)
+class PaymentIntegrationTest extends AbstractIntegrationTest {
+    @Test
+    void processesPayment() {
+        stubFor(post(urlPathEqualTo("/api/charges"))
+            .willReturn(okJson("""{"status":"success","chargeId":"ch_123"}""")));
 
-### Testing Idempotency and State Transitions
+        var result = paymentGateway.charge(new ChargeRequest(orderId, amount));
 
-For features with idempotency requirements (e.g., payment processing), test that duplicate requests return the same result:
-
-```java
-@Test
-void shouldReturnExistingPaymentForDuplicateIdempotencyKey() {
-    var request = PaymentTestFixtures.aPaymentRequest("idem-key-123");
-
-    // First call creates the payment
-    var first = paymentService.processPayment(request);
-    assertThat(first.status()).isEqualTo(PaymentStatus.COMPLETED);
-
-    // Second call with same idempotency key returns existing
-    var second = paymentService.processPayment(request);
-    assertThat(second.id()).isEqualTo(first.id());
-    assertThat(paymentRepository.findAllByIdempotencyKey("idem-key-123")).hasSize(1);
+        assertThat(result.status()).isEqualTo("success");
+        verify(postRequestedFor(urlPathEqualTo("/api/charges"))
+            .withRequestBody(matchingJsonPath("$.amount")));
+    }
 }
 ```
 
-For state machine transitions, test both valid and invalid transitions:
+### Fixtures
+
+Static factory methods on a `*TestFixtures` class per aggregate; only reach for `@TestConfiguration` when fixtures need Spring-managed dependencies.
 
 ```java
-@Test
-void shouldRejectInvalidStateTransition() {
-    var order = orderRepository.save(OrderTestFixtures.anOrder(OrderStatus.DELIVERED));
-
-    assertThatThrownBy(() -> orderService.transition(order.getId(), OrderStatus.PENDING))
-        .isInstanceOf(InvalidStateTransitionException.class);
+public class OrderTestFixtures {
+    public static Order anOrder(OrderStatus status) {
+        return Order.builder().customerId(1L).status(status).totalAmount(BigDecimal.valueOf(99.99)).build();
+    }
+    public static OrderDto anOrderDto() {
+        return new OrderDto(1L, 1L, PAID, BigDecimal.valueOf(99.99));
+    }
 }
 ```
 
-### Assertion Patterns
-
-Recursive comparison for entities (ignoring generated fields):
+Recursive comparison ignoring generated fields:
 
 ```java
 assertThat(actual)
@@ -324,82 +208,21 @@ assertThat(actual)
     .isEqualTo(expected);
 ```
 
-Custom assertion class for domain objects:
-
-```java
-public class OrderAssert extends AbstractAssert<OrderAssert, Order> {
-    public static OrderAssert assertThatOrder(Order actual) {
-        return new OrderAssert(actual);
-    }
-
-    public OrderAssert isPaid() {
-        assertThat(actual.getStatus()).isEqualTo(OrderStatus.PAID);
-        return this;
-    }
-
-    private OrderAssert(Order actual) {
-        super(actual, OrderAssert.class);
-    }
-}
-```
-
-JSON assertions for API responses:
-
-```java
-mockMvc.perform(get("/api/orders/1"))
-    .andExpect(status().isOk())
-    .andExpect(jsonPath("$.id").value(1))
-    .andExpect(jsonPath("$.items", hasSize(3)));
-```
-
-### Test Configuration
-
-`application-test.yml`:
-
-```yaml
-spring:
-  jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-  cache:
-    type: none
-
-logging:
-  level:
-    org.springframework.test: WARN
-    org.testcontainers: WARN
-```
-
-Always activate test profile explicitly:
-
-```java
-@SpringBootTest
-@ActiveProfiles("test")
-class OrderIntegrationTest extends AbstractIntegrationTest {
-    // ...
-}
-```
-
 ## Output Format
-
-When recommending test strategy, document the test plan:
 
 ```
 Layer: {Controller | Service | Repository | Integration}
-Slice: {@WebMvcTest | @DataJpaTest | @SpringBootTest | Plain JUnit 5}
+Slice: {@WebMvcTest | @DataJpaTest | @SpringBootTest | Plain JUnit}
 Containers: {Postgres | Kafka | Redis | WireMock | none}
-Mocking: {manual mock() | @MockitoBean | WireMock | none}
-Cases: {list of test scenarios}
+Mocking: {mock() | @MockitoBean | WireMock | none}
+Cases: {list}
 ```
 
 ## Avoid
 
-- `@SpringBootTest` for everything (slow, flaky)
-- H2 for integration tests (use Testcontainers with real DB)
-- `Thread.sleep()` in async tests (use Awaitility)
-- `@DirtiesContext` (kills test speed - redesign the test instead)
-- Testing implementation details (verify behavior, not method calls)
-- `@MockBean` (deprecated since Spring Boot 3.4.0 - use `@MockitoBean`)
-- `@DynamicPropertySource` when `@ServiceConnection` is available (Spring Boot 3.1+)
+- `@SpringBootTest` when a slice suffices
+- H2 for apps using Postgres features
+- `Thread.sleep()` in async tests
+- `@DirtiesContext` (kills suite speed)
+- `@MockBean` (deprecated since Boot 3.4)
+- Testing implementation details over behavior

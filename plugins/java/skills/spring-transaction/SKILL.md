@@ -1,6 +1,6 @@
 ---
 name: spring-transaction
-description: "Spring @Transactional scope, propagation, pitfalls: read-only optimization, self-invocation proxy bypass, checked exception rollback, timeout."
+description: "Spring @Transactional: scope, propagation, self-invocation bypass, rollback rules, read-only, IO-in-tx, AFTER_COMMIT events, timeouts."
 metadata:
   category: backend
   tags: [transactions, database, spring, consistency]
@@ -13,278 +13,173 @@ user-invocable: false
 
 ## When to Use
 
-- Managing consistency boundaries for database operations
-- Coordinating multiple operations that must succeed together
-- Controlling transaction scope and propagation
-- Ensuring atomicity for payment processing or state machine transitions
+- Defining DB consistency boundaries
+- Coordinating multi-step writes that must commit/rollback together
+- Idempotent writes (payments, state machines)
 
 ## Rules
 
-- Transactions only in service layer
-- Avoid `@Transactional` on controller
-- Avoid nested transactions
-- Default propagation is REQUIRED
-- Use REQUIRES_NEW only when justified
-- One transaction per use case, avoid long-running transactions
-- Use `readOnly=true` for query-only operations
-- Rollback on runtime exception only
-- Explicit rollback rules for checked exceptions
-- No remote IO (HTTP, broker publish, email) inside `@Transactional` - it holds the DB connection for the IO duration and exhausts the pool under load
-- Side effects that must not run on rollback (events, emails, broker publishes) fire from `@TransactionalEventListener(AFTER_COMMIT)`, not from inside the transactional method
-- `@Async` methods do not inherit the caller's transaction; pass identifiers, not managed entities
+- `@Transactional` lives on the service layer - never controller or repository
+- Default propagation `REQUIRED`; `REQUIRES_NEW` only with a written reason
+- `readOnly = true` on query-only methods (skips dirty-checking)
+- Checked exceptions need explicit `rollbackFor` - default rolls back unchecked only
+- No remote IO (HTTP, broker, email) inside a transaction - it holds the DB connection
+- Side effects that must not run on rollback fire from `@TransactionalEventListener(AFTER_COMMIT)`
+- `@Async` methods do not inherit the caller's transaction - pass IDs, not managed entities
+- Set `timeout` on long methods to bound connection-pool exposure
 
 ## Patterns
 
-### Transaction Scope
+### Self-invocation bypass
 
-Bad - Transactions in controller, nested:
+`@Transactional` rides Spring's AOP proxy. `this.method()` calls bypass the proxy - no transaction starts.
 
 ```java
-@RestController
-public class OrderController {
-    @PostMapping
-    @Transactional
-    public Order create(OrderRequest req) {
-        Order order = new Order(req);
-        return orderRepository.save(order); // Nested transaction
-    }
+// Bad - @Transactional on createWithAudit is ignored
+@Service
+class OrderService {
+    Order create(OrderRequest req) { return createWithAudit(req); }
+    @Transactional Order createWithAudit(OrderRequest req) { ... }
+}
+
+// Good - extract to a separate bean so the proxy intercepts
+class OrderService {
+    private final OrderAuditService auditService;
+    Order create(OrderRequest req) { return auditService.createWithAudit(req); }
 }
 ```
 
-Good - Transaction in service layer:
+### No remote IO inside `@Transactional`
+
+A 2-second HTTP call holds a HikariCP connection for 2 seconds. Under load the pool exhausts and requests block on `HikariPool-1 - Connection is not available`.
 
 ```java
-@Service
-public class OrderService {
-    @Transactional
-    public Order create(OrderRequest req) {
-        Order order = new Order(req);
-        return orderRepository.save(order);
-    }
-}
-```
-
-### Self-Invocation Proxy Bypass
-
-`@Transactional` works via Spring's AOP proxy. Calling a `@Transactional` method from **within the same class** bypasses the proxy - no transaction is started:
-
-```java
-// Bad: self-invocation - @Transactional on createWithAudit is ignored
-@Service
-public class OrderService {
-    public Order create(OrderRequest req) {
-        return createWithAudit(req); // calls directly, NOT through proxy
-    }
-
-    @Transactional
-    public Order createWithAudit(OrderRequest req) { ... }
-}
-
-// Good: extract to a separate Spring bean so the proxy intercepts
-@Service
-public class OrderService {
-    private final OrderAuditService auditService; // injected bean
-
-    public Order create(OrderRequest req) {
-        return auditService.createWithAudit(req); // goes through proxy
-    }
-}
-```
-
-### No Remote IO Inside `@Transactional`
-
-A DB connection is held for the duration of the transaction. A 2-second HTTP call inside the transaction holds a connection for 2 seconds; with a Hikari pool of 20 and 30 concurrent requests, the pool is exhausted and new requests block on `HikariPool-1 - Connection is not available`.
-
-```java
-// Bad: HTTP call + Kafka publish inside the transaction
+// Bad
 @Transactional
-public void placeOrder(OrderRequest req) {
+void placeOrder(OrderRequest req) {
     Order order = orderRepository.save(new Order(req));
-    inventoryClient.reserve(order.getId());     // 1-3s HTTP - holds DB conn
-    kafkaTemplate.send("orders", order);         // also holds DB conn
-    emailClient.sendConfirmation(order);          // and again
+    inventoryClient.reserve(order.getId());  // 1-3s HTTP, holds DB conn
+    kafkaTemplate.send("orders", order);     // also holds DB conn
 }
-```
 
-```java
-// Good: only the DB write is transactional. Side effects ride AFTER_COMMIT.
-public Order placeOrder(OrderRequest req) {
-    inventoryClient.reserve(req.itemId(), req.qty()); // pre-tx orchestration
-    Order order = saveOrder(req);                      // narrow @Transactional below
-    return order;
+// Good - only DB work transactional; side effects ride AFTER_COMMIT
+void placeOrder(OrderRequest req) {
+    inventoryClient.reserve(req.itemId(), req.qty());  // pre-tx
+    saveOrder(req);                                     // narrow tx below
 }
 
 @Transactional
-Order saveOrder(OrderRequest req) {
+void saveOrder(OrderRequest req) {
     Order order = orderRepository.save(new Order(req));
-    events.publishEvent(new OrderPlacedEvent(order.getId())); // dispatched after commit
-    return order;
+    events.publishEvent(new OrderPlacedEvent(order.getId()));
 }
 
-@Component
-class OrderPostCommit {
-    @TransactionalEventListener(phase = AFTER_COMMIT)
-    public void onPlaced(OrderPlacedEvent e) {
-        kafkaTemplate.send("orders", e.orderId());
-        emailClient.sendConfirmation(e.orderId()); // duplicates impossible: tx already committed
-    }
+@TransactionalEventListener(phase = AFTER_COMMIT)
+void onPlaced(OrderPlacedEvent e) {
+    kafkaTemplate.send("orders", e.orderId());
 }
 ```
 
-If the side effect must survive a process crash between commit and publish, use the transactional outbox (see `spring-messaging-patterns`).
+If the side effect must survive a crash between commit and publish, use the transactional outbox - see `spring-messaging-patterns`.
 
-### `@Async` Crosses the Transaction Boundary
+### `@Async` crosses the transaction boundary
 
 ```java
-// Bad: passing a managed entity to an async method
+// Bad - managed entity touched on a thread with no Session → LIE on lazy access
 @Transactional
-public void process(Long id) {
+void process(Long id) {
     Order order = orderRepository.findById(id).orElseThrow();
-    asyncService.handle(order); // async thread has no Session; LIE on lazy access
+    asyncService.handle(order);
 }
 
-// Good: pass identifiers, let the async method open its own transaction
+// Good - pass ID; async opens its own transaction
 @Transactional
-public void process(Long id) {
-    asyncService.handle(id);
-}
+void process(Long id) { asyncService.handle(id); }
 
-@Async
-@Transactional
-public void handle(Long orderId) {
-    Order order = orderRepository.findById(orderId).orElseThrow();
-    // ...
-}
+@Async @Transactional
+void handle(Long orderId) { Order o = orderRepository.findById(orderId).orElseThrow(); ... }
 ```
 
-### REQUIRES_NEW for Isolated Side Effects
-
-`REQUIRES_NEW` suspends the outer transaction and runs the method in its own transaction. Use it for audit logs or notifications that must commit regardless of whether the outer transaction rolls back:
+### Checked exception rollback
 
 ```java
-@Service
-public class AuditService {
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void logAction(String action, Long entityId) {
-        auditRepo.save(new AuditLog(action, entityId)); // commits independently
-    }
-}
-```
-
-Caution: REQUIRES_NEW opens a second DB connection - avoid in tight loops or high-throughput paths.
-
-### Checked Exception Rollback
-
-By default, `@Transactional` only rolls back on unchecked exceptions (RuntimeException). Checked exceptions commit the transaction, which is rarely what you want when a checked exception signals a failure:
-
-```java
-// Bad: checked exception commits the transaction - partial data persisted
+// Bad - PaymentException is checked → transaction COMMITS despite the failure
 @Transactional
-public void processPayment(Order order) throws PaymentException {
+void processPayment(Order order) throws PaymentException {
     orderRepo.save(order);
-    paymentGateway.charge(order); // throws PaymentException (checked) - transaction commits anyway
+    paymentGateway.charge(order);
 }
 
-// Good: explicit rollbackFor ensures rollback on checked exceptions
+// Good
 @Transactional(rollbackFor = Exception.class)
-public void processPayment(Order order) throws PaymentException {
-    orderRepo.save(order);
-    paymentGateway.charge(order); // PaymentException now triggers rollback
-}
+void processPayment(Order order) throws PaymentException { ... }
 ```
 
-### Read-Only Optimization
-
-`readOnly = true` tells Hibernate to skip dirty-checking for all entities loaded in the transaction - meaningful performance gain for read-heavy services:
+### Read-only services
 
 ```java
-@Service
-@Transactional(readOnly = true) // default for all methods
-@RequiredArgsConstructor
-public class OrderQueryService {
-
-    public Page<OrderDto> search(Specification<Order> spec, Pageable pageable) {
-        return orderRepo.findAll(spec, pageable).map(OrderDto::from);
+@Service @Transactional(readOnly = true) @RequiredArgsConstructor
+class OrderQueryService {
+    public Page<OrderDto> search(Specification<Order> spec, Pageable p) {
+        return orderRepo.findAll(spec, p).map(OrderDto::from);
     }
 
-    @Transactional // override: read-write for mutations only
-    public OrderDto updateStatus(Long id, OrderStatus status) {
-        Order order = orderRepo.findById(id).orElseThrow();
-        order.setStatus(status);
-        return OrderDto.from(orderRepo.save(order));
-    }
+    @Transactional  // override for writes
+    public OrderDto updateStatus(Long id, OrderStatus s) { ... }
 }
 ```
 
-### Idempotent Write with Optimistic Locking
+### `REQUIRES_NEW` for isolated side effects
 
-For operations that must be idempotent (e.g., payment processing), combine find-or-create with `@Version` to prevent double-processing:
+Audit/notification rows that must commit even if the outer transaction rolls back:
+
+```java
+@Transactional(propagation = REQUIRES_NEW)
+void logAction(String action, Long entityId) { auditRepo.save(...); }
+```
+
+Opens a second DB connection - avoid in tight loops.
+
+### Idempotent writes
 
 ```java
 @Transactional
-public PaymentResponse processPayment(PaymentRequest req) {
-    // Idempotency check - return existing if already processed
-    var existing = paymentRepository.findByIdempotencyKey(req.idempotencyKey());
-    if (existing.isPresent()) {
-        return PaymentResponse.from(existing.get());
-    }
-
-    Payment payment = Payment.from(req);
-    payment = paymentRepository.save(payment);
-    paymentGateway.charge(payment); // external call AFTER save
-    payment.setStatus(PaymentStatus.COMPLETED);
-    return PaymentResponse.from(paymentRepository.save(payment));
+PaymentResponse processPayment(PaymentRequest req) {
+    return paymentRepository.findByIdempotencyKey(req.idempotencyKey())
+        .map(PaymentResponse::from)
+        .orElseGet(() -> {
+            try {
+                Payment p = paymentRepository.save(Payment.from(req));
+                paymentGateway.charge(p);
+                p.setStatus(COMPLETED);
+                return PaymentResponse.from(paymentRepository.save(p));
+            } catch (DataIntegrityViolationException e) {
+                // concurrent insert won - re-fetch
+                return PaymentResponse.from(
+                    paymentRepository.findByIdempotencyKey(req.idempotencyKey()).orElseThrow());
+            }
+        });
 }
 ```
 
-If two concurrent requests arrive with the same idempotency key, the unique constraint on `idempotency_key` prevents double-insert. Catch `DataIntegrityViolationException` and re-fetch:
-
-```java
-@Transactional
-public PaymentResponse processPayment(PaymentRequest req) {
-    try {
-        return doProcess(req);
-    } catch (DataIntegrityViolationException e) {
-        // Concurrent insert won - return the existing record
-        return paymentRepository.findByIdempotencyKey(req.idempotencyKey())
-            .map(PaymentResponse::from)
-            .orElseThrow(() -> new PaymentGatewayException("Unexpected conflict", e));
-    }
-}
-```
-
-### Transaction Timeout
-
-Set timeouts to prevent long-running transactions from holding database locks and connections. The default is no timeout, which risks connection pool exhaustion:
-
-```java
-@Transactional(timeout = 10) // 10 seconds - fail fast if query or lock wait exceeds this
-public void processBatch(List<Order> orders) {
-    orders.forEach(this::processOrder);
-}
-```
+Unique constraint on `idempotency_key` is the authoritative barrier; the pre-check is just an optimization.
 
 ## Output Format
 
-When applying transaction patterns, document the boundary:
-
 ```
 Method: {class.method}
-Propagation: {REQUIRED | REQUIRES_NEW | NESTED | MANDATORY | NEVER | NOT_SUPPORTED | SUPPORTS}
-Isolation: {DEFAULT | READ_COMMITTED | REPEATABLE_READ | SERIALIZABLE}
+Propagation: {REQUIRED | REQUIRES_NEW | ...}
 Read-Only: {Yes | No}
 Rollback: {default | rollbackFor=Exception.class | custom}
 Timeout: {seconds | none}
 External-IO-In-Tx: {Yes | No}
 Post-Commit Hooks: {AFTER_COMMIT events | none}
-Reason: {why this configuration was chosen}
+Reason: {why this configuration}
 ```
 
 ## Avoid
 
 - `@Transactional` on controllers or repositories
-- Long-running transactions (hold locks, exhaust connection pool)
-- Mixing read and write operations without readOnly
-- Calling `@Transactional` methods within the same class (self-invocation - proxy bypass)
-- Relying on default rollback behavior when calling code that throws checked exceptions
-- Omitting timeout on batch-processing or external-call transactions
+- Calling `@Transactional` methods via `this.X()` (proxy bypass)
+- Holding DB connections through remote calls
+- Omitting `timeout` on batch / external-call transactions

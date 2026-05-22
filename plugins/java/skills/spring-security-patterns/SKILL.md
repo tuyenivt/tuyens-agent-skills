@@ -1,6 +1,6 @@
 ---
 name: spring-security-patterns
-description: "Spring Security 6 patterns for Spring Boot 3.5+: SecurityFilterChain, OAuth2/JWT resource server, method security, CORS, CSRF, headers."
+description: "Spring Security 6 / Boot 3.5+: SecurityFilterChain, OAuth2/JWT, method security, CORS, CSRF, security headers, multi-chain config."
 metadata:
   category: backend
   tags: [security, spring-security, oauth2, jwt, cors, csrf, authorization]
@@ -13,220 +13,144 @@ user-invocable: false
 
 ## When to Use
 
-- Configuring authentication and authorization for Spring Boot 3.5+ APIs
-- Setting up OAuth2/JWT resource server
-- Applying method-level security with SpEL expressions
-- Configuring CORS for SPA frontends
-- Hardening security headers and CSRF protection
+- Configuring auth for Spring Boot 3.5+ APIs
+- OAuth2 / JWT resource server setup
+- Method-level security with SpEL
+- CORS / CSRF / security headers
 
 ## Rules
 
-- Use `SecurityFilterChain` as `@Bean` - never extend `WebSecurityConfigurerAdapter` (removed in Spring Security 6)
-- Use `requestMatchers()` API - never `antMatchers()` (removed)
-- Use `@EnableMethodSecurity` - never `@EnableGlobalMethodSecurity` (deprecated)
-- STATELESS APIs must disable CSRF and sessions
-- Never store JWT in localStorage - use HttpOnly cookie or Authorization header from memory
-- Never use wildcard CORS origins (`*`) in production
-- Constructor injection only (`@RequiredArgsConstructor`)
-- Externalize security configuration (issuer URIs, allowed origins) via `@Value` or `@ConfigurationProperties`
+- `SecurityFilterChain` bean - `WebSecurityConfigurerAdapter` was removed in Spring Security 6
+- `requestMatchers(...)` - `antMatchers(...)` was removed
+- `@EnableMethodSecurity` - `@EnableGlobalMethodSecurity` is deprecated
+- STATELESS APIs disable CSRF and sessions
+- Externalize issuer URIs, allowed origins via `@ConfigurationProperties` / `@Value`
+- Constructor injection only
+- Never wildcard CORS origins (`*`) in prod
+- JWT in HttpOnly cookie or in-memory - never `localStorage`
 
 ## Patterns
 
-### Security Filter Chain
-
-Bad - `WebSecurityConfigurerAdapter` was removed in Spring Security 6 / Spring Boot 3:
+### Multi-chain SecurityFilterChain
 
 ```java
-// Compile error on Boot 3.x: class no longer exists
-@Configuration
-@EnableWebSecurity
-public class LegacySecurityConfig extends WebSecurityConfigurerAdapter {
-    @Override protected void configure(HttpSecurity http) throws Exception {
-        http.authorizeRequests()
-            .antMatchers("/api/admin/**").hasRole("ADMIN") // antMatchers also removed
-            .anyRequest().authenticated();
-    }
-}
-```
-
-Good - register one or more `SecurityFilterChain` beans (lambda DSL, `requestMatchers`):
-
-```java
-import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
-
-@Configuration
-@EnableWebSecurity
-@RequiredArgsConstructor
+@Configuration @EnableWebSecurity @RequiredArgsConstructor
 public class SecurityConfig {
 
-    @Bean
-    @Order(1)
-    SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+    @Bean @Order(1)
+    SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
         return http
             .securityMatcher("/api/**")
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .anyRequest().authenticated()
-            )
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
-            .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
+                .anyRequest().authenticated())
+            .oauth2ResourceServer(o -> o.jwt(withDefaults()))
+            .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
             .csrf(AbstractHttpConfigurer::disable)
             .build();
     }
 
-    @Bean
-    @Order(2)
-    SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
+    @Bean @Order(2)
+    SecurityFilterChain actuatorChain(HttpSecurity http) throws Exception {
         return http
             .securityMatcher("/actuator/**")
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                .anyRequest().hasRole("OPS")
-            )
-            .httpBasic(Customizer.withDefaults())
+                .anyRequest().hasRole("OPS"))
+            .httpBasic(withDefaults())
             .build();
     }
 }
 ```
 
-Role hierarchy configuration:
+Role hierarchy via `RoleHierarchy` bean:
 
 ```java
-@Bean
-RoleHierarchy roleHierarchy() {
+@Bean RoleHierarchy roleHierarchy() {
     return RoleHierarchyImpl.withRolePrefix("ROLE_")
         .role("ADMIN").implies("MANAGER")
-        .role("MANAGER").implies("USER")
-        .build();
+        .role("MANAGER").implies("USER").build();
 }
 ```
 
 ### JWT / OAuth2 Resource Server
 
-JwtDecoder with issuer validation:
-
 ```java
 @Bean
 JwtDecoder jwtDecoder(@Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
-    var decoder = JwtDecoders.fromIssuerLocation(issuerUri);
-    if (decoder instanceof NimbusJwtDecoder nimbusDecoder) {
-        var audienceValidator = new JwtClaimValidator<List<String>>(
-            "aud", aud -> aud != null && aud.contains("my-api")
-        );
-        var withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
-        var combined = new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
-        nimbusDecoder.setJwtValidator(combined);
-    }
+    var decoder = (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(issuerUri);
+    var audienceValidator = new JwtClaimValidator<List<String>>(
+        "aud", aud -> aud != null && aud.contains("my-api"));
+    decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+        JwtValidators.createDefaultWithIssuer(issuerUri), audienceValidator));
     return decoder;
 }
-```
 
-Custom role extraction from JWT claims:
-
-```java
 @Bean
 JwtAuthenticationConverter jwtAuthenticationConverter() {
-    var grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-    grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
-    grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
-
-    var converter = new JwtAuthenticationConverter();
-    converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
-    return converter;
+    var granted = new JwtGrantedAuthoritiesConverter();
+    granted.setAuthoritiesClaimName("roles");
+    granted.setAuthorityPrefix("ROLE_");
+    var c = new JwtAuthenticationConverter();
+    c.setJwtGrantedAuthoritiesConverter(granted);
+    return c;
 }
 ```
 
-`hasRole("ADMIN")` checks for authority `ROLE_ADMIN`; `hasAuthority("ADMIN")` checks for authority `ADMIN`. The `setAuthorityPrefix("ROLE_")` above lets your JWT carry plain `"admin"` / `"manager"` while `hasRole(...)` matchers continue to work. If your tokens already carry `ROLE_*` prefixed authorities, set the prefix to `""` instead - otherwise you end up with `ROLE_ROLE_ADMIN`.
+`hasRole("ADMIN")` matches authority `ROLE_ADMIN`; `hasAuthority("ADMIN")` matches `ADMIN`. If tokens already carry `ROLE_*`-prefixed authorities, set the prefix to `""` to avoid `ROLE_ROLE_ADMIN`.
 
-Auth0 specific: issuer URI is `https://{tenant}.auth0.com/` (trailing slash matters for the discovery lookup). Roles set via Auth0 Action / Rule are typically nested under a custom-namespaced claim (e.g., `https://my-app/roles`); read them with a custom converter rather than `setAuthoritiesClaimName("roles")`.
-
-Multi-tenant JWT validation (multiple issuers):
+Multi-tenant: use a token-introspecting decoder that picks per-issuer:
 
 ```java
 @Bean
-JwtDecoder multiTenantJwtDecoder(
-        @Value("${jwt.issuer-uris}") List<String> issuerUris) {
+JwtDecoder multiTenant(@Value("${jwt.issuer-uris}") List<String> issuerUris) {
     Map<String, JwtDecoder> decoders = issuerUris.stream()
-        .collect(Collectors.toMap(
-            Function.identity(),
-            JwtDecoders::fromIssuerLocation
-        ));
-
+        .collect(toMap(identity(), JwtDecoders::fromIssuerLocation));
     return token -> {
         var issuer = JWTParser.parse(token).getJWTClaimsSet().getIssuer();
-        var decoder = decoders.get(issuer);
-        if (decoder == null) {
-            throw new JwtException("Unknown issuer: " + issuer);
-        }
-        return decoder.decode(token);
+        var d = decoders.get(issuer);
+        if (d == null) throw new JwtException("Unknown issuer: " + issuer);
+        return d.decode(token);
     };
 }
 ```
 
-### Method-Level Security
-
-Enable and use `@PreAuthorize` / `@PostAuthorize`:
+### Method security
 
 ```java
-@Configuration
-@EnableMethodSecurity  // replaces @EnableGlobalMethodSecurity
-public class MethodSecurityConfig {}
+@Configuration @EnableMethodSecurity
+class MethodSecurityConfig {}
 
 @Service
-@Transactional(readOnly = true)
-@RequiredArgsConstructor
-public class OrderService {
-
-    private final OrderRepository orderRepository;
-
+class OrderService {
     @PreAuthorize("hasRole('ADMIN') or #userId == authentication.name")
-    public List<OrderDTO> findByUser(String userId) {
-        return orderRepository.findByUserId(userId).stream()
-            .map(OrderDTO::from)
-            .toList();
-    }
+    public List<OrderDTO> findByUser(String userId) { ... }
 
     @PostAuthorize("returnObject.ownerId() == authentication.name or hasRole('ADMIN')")
-    public OrderDTO findById(Long id) {
-        return orderRepository.findById(id)
-            .map(OrderDTO::from)
-            .orElseThrow(() -> new NotFoundException("Order not found"));
-    }
+    public OrderDTO findById(Long id) { ... }
 }
 ```
 
-Custom permission evaluator for domain-object authorization:
+Domain-object authorization via `PermissionEvaluator`:
 
 ```java
 @Component
 public class ProjectPermissionEvaluator implements PermissionEvaluator {
-
-    @Override
     public boolean hasPermission(Authentication auth, Object target, Object permission) {
-        if (target instanceof Project project) {
-            return project.getOwnerId().equals(auth.getName())
-                || auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        }
-        return false;
+        return target instanceof Project p &&
+            (p.getOwnerId().equals(auth.getName())
+                || auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
     }
-
-    @Override
-    public boolean hasPermission(Authentication auth, Serializable targetId,
-                                  String targetType, Object permission) {
-        return false; // implement if needed
+    public boolean hasPermission(Authentication auth, Serializable id, String type, Object permission) {
+        return false;
     }
 }
 
-// Usage:
-@PreAuthorize("hasPermission(#project, 'WRITE')")
-public void updateProject(Project project) { ... }
+// @PreAuthorize("hasPermission(#project, 'WRITE')")
 ```
 
-### CORS Configuration
-
-`CorsConfigurationSource` bean for JWT-based SPAs:
+### CORS for JWT SPAs
 
 ```java
 @Bean
@@ -238,153 +162,96 @@ CorsConfigurationSource corsConfigurationSource(
     config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-XSRF-TOKEN"));
     config.setExposedHeaders(List.of("X-Total-Count"));
     config.setAllowCredentials(true);
-    config.setMaxAge(3600L); // preflight cache 1 hour
-
-    var source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/api/**", config);
-    return source;
+    config.setMaxAge(3600L);
+    var src = new UrlBasedCorsConfigurationSource();
+    src.registerCorsConfiguration("/api/**", config);
+    return src;
 }
 ```
 
-Wire into SecurityFilterChain:
+### CSRF
 
 ```java
-http.cors(cors -> cors.configurationSource(corsConfigurationSource(allowedOrigins)))
-```
-
-### CSRF Handling
-
-STATELESS APIs - disable CSRF (no session to protect):
-
-```java
+// STATELESS API
 http.csrf(AbstractHttpConfigurer::disable)
-    .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
-```
+    .sessionManagement(s -> s.sessionCreationPolicy(STATELESS));
 
-Stateful apps - CookieCsrfTokenRepository for SPA (XSRF-TOKEN cookie + X-XSRF-TOKEN header):
-
-```java
+// Stateful SPA: cookie + header
 http.csrf(csrf -> csrf
     .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-    .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-)
+    .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler()));
 ```
 
-### Security Headers
-
-Configure via SecurityFilterChain `headers()` block:
+### Security headers
 
 ```java
-http.headers(headers -> headers
+http.headers(h -> h
     .contentSecurityPolicy(csp ->
         csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"))
-    .httpStrictTransportSecurity(hsts ->
-        hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
-    .contentTypeOptions(Customizer.withDefaults())  // X-Content-Type-Options: nosniff
-    .frameOptions(frame -> frame.deny())
-)
+    .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+    .contentTypeOptions(withDefaults())
+    .frameOptions(f -> f.deny()));
 ```
 
-### Webhook Endpoint Security
+### Webhook endpoints
 
-Webhook endpoints from external services (Stripe, GitHub) use signature-based authentication instead of JWT/OAuth2. Exclude them from the standard security filter chain and verify signatures in the controller or a dedicated filter:
+External webhooks (Stripe, GitHub) use signature-based authn, not JWT. Separate chain with `permitAll`:
 
 ```java
-@Bean
-@Order(0) // highest priority - before API security chain
-SecurityFilterChain webhookSecurityFilterChain(HttpSecurity http) throws Exception {
+@Bean @Order(0)
+SecurityFilterChain webhookChain(HttpSecurity http) throws Exception {
     return http
         .securityMatcher("/webhooks/**")
         .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
         .csrf(AbstractHttpConfigurer::disable)
-        .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
+        .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
         .build();
 }
 ```
 
-Signature validation happens in the webhook service, not in Spring Security - the signing mechanism is provider-specific (HMAC-SHA256 for Stripe, SHA-256 for GitHub).
+Signature validation (HMAC-SHA256 for Stripe, etc.) happens in the controller / dedicated filter, not Spring Security.
 
-### Testing Security
-
-Simple role-based test with `@WithMockUser`:
+### Tests
 
 ```java
 @WebMvcTest(UserController.class)
 class UserControllerSecurityTest {
-
-    @Autowired
-    private MockMvc mockMvc;
+    @Test @WithMockUser(roles = "ADMIN")
+    void admin_endpoint_returns_200() throws Exception {
+        mockMvc.perform(get("/api/admin/users")).andExpect(status().isOk());
+    }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
-    void adminEndpoint_withAdminRole_returns200() throws Exception {
-        mockMvc.perform(get("/api/admin/users"))
+    void unauthenticated_returns_401() throws Exception {
+        mockMvc.perform(get("/api/admin/users")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void with_jwt_authority() throws Exception {
+        mockMvc.perform(get("/api/orders")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                    .jwt(j -> j.claim("sub", "user-123"))))
             .andExpect(status().isOk());
-    }
-
-    @Test
-    void adminEndpoint_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(get("/api/admin/users"))
-            .andExpect(status().isUnauthorized());
-    }
-}
-```
-
-JWT-based test with `SecurityMockMvcRequestPostProcessors.jwt()`:
-
-```java
-@Test
-void jwtEndpoint_withValidJwt_returns200() throws Exception {
-    mockMvc.perform(get("/api/orders")
-            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
-                .jwt(j -> j.claim("sub", "user-123"))))
-        .andExpect(status().isOk());
-}
-```
-
-Integration test with real test key pair:
-
-```java
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-class SecurityIntegrationTest {
-
-    @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Test
-    void publicEndpoint_noAuth_returns200() {
-        var response = restTemplate.getForEntity("/api/public/health", String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    }
-
-    @Test
-    void protectedEndpoint_noAuth_returns401() {
-        var response = restTemplate.getForEntity("/api/orders", String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }
 ```
 
 ## Output Format
 
-When applying security patterns, document the configuration:
-
 ```
 Endpoint: {path pattern}
 Auth: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
 CSRF: {enabled | disabled - reason}
 Session: {STATELESS | IF_REQUIRED}
-CORS Origins: {list or "N/A"}
-JWT Issuer: {issuer URI or "N/A"}
+CORS Origins: {list or N/A}
+JWT Issuer: {URI or N/A}
 ```
 
 ## Avoid
 
-- `WebSecurityConfigurerAdapter` - removed in Spring Security 6
-- `antMatchers()` - replaced by `requestMatchers()`
-- `@EnableGlobalMethodSecurity` - replaced by `@EnableMethodSecurity`
-- `@Secured` - limited; prefer `@PreAuthorize` with SpEL
-- Disabling CSRF on stateful (session-based) applications
-- Storing JWT in `localStorage` - vulnerable to XSS; use HttpOnly cookie or keep in memory
-- Wildcard CORS origins (`*`) in production - specify exact origins
-- Hardcoded secrets or issuer URIs - externalize to configuration
+- `WebSecurityConfigurerAdapter`, `antMatchers()`, `@EnableGlobalMethodSecurity` (all removed/deprecated)
+- `@Secured` (limited - prefer `@PreAuthorize`)
+- Disabling CSRF on stateful apps
+- JWT in `localStorage` (XSS vector)
+- Wildcard CORS origins in prod
+- Hardcoded secrets / issuer URIs

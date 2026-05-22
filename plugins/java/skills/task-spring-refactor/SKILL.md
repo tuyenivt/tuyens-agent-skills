@@ -1,6 +1,6 @@
 ---
 name: task-spring-refactor
-description: "Spring Boot refactor plan: fat controllers, anemic domain, @Transactional misuse, field injection; phased steps with JUnit slice test coverage gate."
+description: "Spring Boot refactor plan: fat controllers, anemic domain, @Transactional misuse, field injection; phased steps with JUnit slice test gates."
 agent: java-tech-lead
 metadata:
   category: backend
@@ -11,281 +11,257 @@ user-invocable: true
 
 # Spring Boot Refactor
 
-## Purpose
+Produce a safe, step-by-step refactoring plan for a Spring Boot target. Identifies Spring smells and proposes independently-committable steps with JUnit / slice test gates between each.
 
-Produce a safe, step-by-step refactoring plan for a specific Spring Boot target (controller, service, repository, JPA entity, configuration class, aspect). Identifies Spring-specific smells (fat controllers, anemic domain, service god-objects, `@Transactional` misuse, single-impl interfaces, `@Autowired` field injection, JPA-listener callback abuse) and proposes independently-committable refactoring steps with JUnit / Spring slice test gates between each.
-
-This workflow is the stack-specific delegate of `task-code-refactor` for Java/Spring Boot.
+Stack-specific delegate of `task-code-refactor` for Java / Spring Boot.
 
 ## When to Use
 
-- Spring Boot code-smell identification and resolution
-- Spring technical-debt reduction with a concrete plan
-- Safe refactoring of a `@RestController` / `@Service` / `@Repository` / `@Entity` / configuration class
-- Pre-merge "this PR grew the fat-controller / god-service problem - what's the cleanup?"
+- Spring code-smell identification and resolution
+- Safe refactor of `@RestController` / `@Service` / `@Repository` / `@Entity` / configuration
+- Pre-merge "this PR grew the fat-controller problem - what's the cleanup?"
 
 **Not for:**
-
-- Deciding which debt to tackle first (use `task-debt-prioritize`)
+- Debt prioritization (use `task-debt-prioritize`)
 - Feature changes (use `task-spring-implement`)
 - Architecture-level restructuring across many modules (use `task-design-architecture`)
 - Bug fixes (use `task-spring-debug`)
 
 ## Inputs
 
-| Input                 | Required    | Description                                                                                                                  |
-| --------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Target scope          | Yes         | File, class, or package to refactor (e.g., `OrderController.java`, `com.acme.order.service.OrderService`)                    |
-| Goal                  | Yes         | What the refactoring should achieve (e.g., extract `OrderFulfillmentService`, kill `@PostUpdate` chain, split `UserService`) |
-| Test coverage status  | Recommended | Whether JUnit / Spring slice / Testcontainers coverage exists for the target area                                            |
-| Shared/public surface | Recommended | Whether the target is used across module / library / team boundaries                                                         |
+| Input                 | Required    | Description                                                                                                    |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| Target scope          | Yes         | File, class, or package (e.g., `OrderController.java`)                                                         |
+| Goal                  | Yes         | What the refactor should achieve (e.g., extract `OrderFulfillmentService`, kill `@PostUpdate` chain)           |
+| Test coverage status  | Recommended | Whether JUnit / slice / Testcontainers coverage exists                                                         |
+| Shared / public surface | Recommended | Whether the target crosses module / library / team boundaries                                                |
 
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-refactor` instead.
+Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent dispatcher. If not Spring Boot, stop and tell the user to invoke `/task-code-refactor`.
 
 ### Step 3 - Read the Target
 
-Read the actual file(s) named in the Inputs table before classifying smells. A refactor plan grounded in the user's prose summary instead of the source will hallucinate smells that aren't there and miss ones that are. Specifically:
+A refactor plan grounded in the user's prose hallucinates smells that aren't there and misses ones that are. Read source before classifying.
 
-1. Read the target class top-to-bottom; note method count, longest method, field injection vs constructor injection, `@Transactional` placement, every external collaborator (`RestClient`, `KafkaTemplate`, `JmsTemplate`, mailers).
-2. Read the matching test file (e.g., `OrderServiceTest.java`, `@WebMvcTest(OrderController.class)`); count cases by outcome (happy path, validation failure, external failure, security denial).
-3. If callers are obvious (controller calling the service, scheduled job calling the service), read the immediate caller too - removing or reshaping a public method without seeing call sites is how silent breakage happens.
+1. Read the target class top-to-bottom: method count, longest method, injection style, `@Transactional` placement, every external collaborator (`RestClient`, `KafkaTemplate`, mailers)
+2. Read the matching test file; count cases by outcome (happy path, validation, external failure, security denial)
+3. Read immediate callers (the controller that calls the service, the scheduled job) - removing or reshaping a public method without seeing call sites is how silent breakage happens
 
-If the user named only the goal without a target file, ask for the target before proceeding. Do not guess.
+If the user named only the goal without a target file, ask for the target.
 
 ### Step 4 - Coverage Gate (mandatory)
 
-Refactoring without test coverage is a rewrite with extra steps. Before proposing any refactor:
+Refactoring without coverage is a rewrite with extra steps.
 
-1. Identify the tests covering the target (`<Target>Test.java`, `<Target>IntegrationTest.java`, `@WebMvcTest(<Target>Controller.class)`, `@DataJpaTest` for repositories)
-2. Run coverage assessment - if coverage is missing or thin, **stop and require coverage first** before proposing refactor steps. Recommend `task-spring-test` to fill gaps
-3. If coverage exists but is happy-path-only, flag the boundary-test gap as a prerequisite step in the plan (refactor must not silently change validation / 401 / 403 / not-found behavior)
+1. Identify covering tests (`<Target>Test.java`, `@WebMvcTest(<Target>Controller.class)`, `@DataJpaTest`)
+2. Assess - if missing or thin, **stop and require coverage first**. Recommend `task-spring-test`
+3. If happy-path-only, flag boundary-test gap as a prerequisite step
 
-**Output of this step:** explicit coverage status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (refuse to proceed without coverage)`. Do not proceed past Step 5 if coverage is inadequate.
+**Output:** explicit status - `Adequate` / `Thin (boundary tests missing)` / `Inadequate (cannot proceed)`.
 
 ### Step 5 - Identify Spring Smells
 
-Inspect the target for these Spring-specific smells. Use judgment - these are signals, not hard rules. For deeper diagnosis on any flagged smell, load the matching atomic skill rather than restating its rules:
+For deeper diagnosis on any flagged smell, load the matching atomic rather than restating its rules:
 
-- JPA / Hibernate symptoms (N+1, EAGER on `@OneToMany`, MultipleBagFetchException, paginated `JOIN FETCH`): Use skill: `spring-jpa-performance`.
-- `@Transactional` placement, propagation, self-invocation, IO-in-tx, post-commit side effects: Use skill: `spring-transaction`.
-- `@Async` / `@Scheduled` / event listener mis-wiring, executor configuration: Use skill: `spring-async-processing`.
-- Kafka / Rabbit / outbox / idempotent-consumer patterns: Use skill: `spring-messaging-patterns`.
-- Error handling refactors (`@RestControllerAdvice` + `ProblemDetail`): Use skill: `spring-exception-handling`.
-- Coverage gate filling: Use skill: `spring-test-integration` for slice / Testcontainers / security-test patterns.
+- JPA / Hibernate (N+1, EAGER on `@OneToMany`, paginated `JOIN FETCH`, `MultipleBagFetchException`) → `spring-jpa-performance`
+- `@Transactional` placement, propagation, self-invocation, IO-in-tx, post-commit → `spring-transaction`
+- `@Async` / `@Scheduled` / event listener mis-wiring → `spring-async-processing`
+- Kafka / Rabbit / outbox / idempotent consumer → `spring-messaging-patterns`
+- `@RestControllerAdvice` / `ProblemDetail` refactor → `spring-exception-handling`
+- Coverage gap filling → `spring-test-integration`
 
 **Controller smells:**
 
-| Smell                                         | Signal                                                                                                             | Risk   |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------ |
-| Fat Controller                                | Controller method > 10 lines of orchestration (multiple service calls, conditional dispatch, response shaping)     | High   |
-| Logic in Controller                           | Business rules, validation beyond Bean Validation, calculation, or domain decisions inside the handler             | High   |
-| Direct Repository in Controller               | Controllers call `@Repository` methods directly, bypassing the service layer                                       | Medium |
-| JPA Entity in API                             | `@RestController` returns `@Entity` types or accepts entities as `@RequestBody` (mass assignment + lazy load risk) | High   |
-| Manual Validation Duplicating Bean Validation | Controller body re-checks `@NotNull` / `@Size` constraints already on the DTO                                      | Low    |
+| Smell                              | Signal                                                                                                              | Risk   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------ |
+| Fat Controller                     | Method > 10 lines of orchestration (multiple service calls, conditional dispatch, response shaping)                 | High   |
+| Logic in Controller                | Business rules, calculation, or domain decisions inside the handler                                                 | High   |
+| Direct Repository in Controller    | Controllers bypass the service layer                                                                                | Medium |
+| JPA Entity in API                  | Returns `@Entity` types or accepts entities as `@RequestBody` (mass assignment + lazy load risk)                    | High   |
+| Manual Validation Duplicating DTO  | Controller re-checks `@NotNull` / `@Size` already on the DTO                                                        | Low    |
 
 **Service smells:**
 
-| Smell                                         | Signal                                                                                                                                           | Risk   |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| God Service                                   | `@Service` > 500 lines; mixes orchestration, persistence, mapping, external clients, scheduling                                                  | High   |
-| Anemic Domain                                 | Entities are pure data containers; business rules live in services with names like `OrderHelper.calculate(order)` and could belong on the entity | High   |
-| Single-Implementation Interface               | `OrderService` interface + single `OrderServiceImpl` with no test double, no second implementation, no AOP target                                | Medium |
-| `@Transactional` Self-Invocation              | `this.transactionalMethod()` called from a non-transactional method in the same bean - proxy bypassed, transaction silently does not start       | High   |
-| `@Transactional(REQUIRES_NEW)` Without Reason | Propagation `REQUIRES_NEW` used without a comment explaining why outer rollback should not propagate                                             | Medium |
-| External I/O Inside `@Transactional`          | HTTP call, message publish, or file write inside a transactional method (defers commit, holds DB locks long)                                     | High   |
-| Service Returning Boolean                     | Service returns `boolean`; caller cannot distinguish failure cases (validation vs not-found vs external)                                         | Medium |
+| Smell                              | Signal                                                                                                              | Risk   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------ |
+| God Service                        | `@Service` > 500 lines mixing orchestration / persistence / mapping / external clients / scheduling                 | High   |
+| Anemic Domain                      | Entities are pure data; business rules in services like `OrderHelper.calculate(order)` belong on the entity         | High   |
+| Single-Implementation Interface    | `OrderService` interface + lone `OrderServiceImpl` with no AOP / second impl / non-Mockito test seam                | Medium |
+| `@Transactional` Self-Invocation   | `this.txMethod()` from a non-tx method in the same bean - proxy bypassed                                            | High   |
+| `REQUIRES_NEW` Without Reason      | Propagation `REQUIRES_NEW` used without a written justification                                                     | Medium |
+| External I/O Inside `@Transactional` | HTTP / message publish / file write inside the transaction (defers commit, holds DB locks)                        | High   |
+| Service Returning Boolean          | Caller cannot distinguish validation vs not-found vs external failure                                               | Medium |
 
 **Persistence / JPA smells:**
 
-| Smell                                                   | Signal                                                                                                                     | Risk   |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Fat Entity                                              | `@Entity` > 300 lines; mixes mapping, computed properties, business operations, mapping helpers                            | High   |
-| `@PostUpdate` / `@PostPersist` Abuse                    | JPA lifecycle callback dispatching emails, publishing events, calling external services - races commit and silently breaks | High   |
-| `FetchType.EAGER` on Collections                        | Eager fetch on `@OneToMany` / `@ManyToMany` - cartesian explosion + locks lazy semantics elsewhere                         | High   |
-| Repository Returning `List` for Unbounded Reads         | `findAll()`, `findByX(...)` without `Pageable` parameter                                                                   | Medium |
-| `default_scope`-equivalent Hibernate `@Filter` Surprise | Hibernate `@Filter` always-on, silently mutating query results across the app                                              | High   |
-| `@Query` String Concatenation                           | Dynamic JPQL built via string concat instead of `Specification` / `Querydsl` / `JpaSpecificationExecutor`                  | Medium |
+| Smell                              | Signal                                                                                                              | Risk   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------ |
+| Fat Entity                         | `@Entity` > 300 lines mixing mapping / computed properties / business operations                                    | High   |
+| `@PostUpdate` / `@PostPersist` Abuse | Lifecycle callback firing emails / events / external calls - races commit and breaks silently                     | High   |
+| `FetchType.EAGER` on Collections   | Eager `@OneToMany` / `@ManyToMany` - cartesian explosion                                                            | High   |
+| Repository Returning Unbounded List | `findAll()` / `findByX(...)` without `Pageable`                                                                    | Medium |
+| Always-on Hibernate `@Filter`      | Silently mutates query results across the app                                                                       | High   |
+| `@Query` String Concatenation      | Dynamic JPQL via string concat instead of `Specification` / Querydsl                                                | Medium |
 
 **Configuration / DI smells:**
 
-| Smell                              | Signal                                                                                             | Risk   |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
-| `@Autowired` Field Injection       | `@Autowired private SomeBean bean;` - breaks immutability, hurts testability, hides dependencies   | High   |
-| `@Autowired` Setter Injection      | Same problems plus mutable bean state                                                              | Medium |
-| `@Value("${...}")` Field Injection | Single config values scattered across classes; should be `@ConfigurationProperties` record         | Medium |
-| `ApplicationContextAware` Lookup   | Service uses `ApplicationContext.getBean(...)` for cross-bean lookup - service locator antipattern | High   |
-| Hidden `@ConditionalOnProperty`    | Bean conditional on a property with no off path (no environment ever sets it false)                | Low    |
+| Smell                              | Signal                                                                                                              | Risk   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------ |
+| `@Autowired` Field Injection       | Breaks immutability, hurts testability, hides dependencies                                                          | High   |
+| `@Value("${...}")` Field Injection | Scattered config; should be `@ConfigurationProperties` record                                                       | Medium |
+| `ApplicationContextAware` Lookup   | Service locator antipattern                                                                                         | High   |
+| Hidden `@ConditionalOnProperty`    | Bean conditional on a property with no off path                                                                     | Low    |
 
-**Aspect / interceptor smells:**
+**Aspect / async / messaging:**
 
-| Smell                         | Signal                                                                                                       | Risk   |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
-| Aspect as Hidden Control Flow | `@Around` aspect that can swallow exceptions, rewrite return values, or short-circuit method calls invisibly | High   |
-| Aspect Across Many Pointcuts  | One `@Aspect` class with > 3 unrelated `@Around` advices - split per-concern                                 | Medium |
+| Smell                                | Signal                                                                                                            | Risk   |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------ |
+| Aspect as Hidden Control Flow        | `@Around` that swallows exceptions, rewrites returns, or short-circuits invisibly                                 | High   |
+| `@KafkaListener` Without Idempotency | Re-runs side effects on redelivery (no dedup key, no upsert)                                                      | High   |
+| `synchronized` on Virtual Thread Path | Pins the carrier thread - defeats Boot 3.2+ Virtual Threads                                                      | High   |
+| `@Async` Without `TaskDecorator`     | Trace / MDC / SecurityContext lost across the boundary                                                            | Medium |
 
-**Async / messaging smells:**
+**Test smells (when in scope):**
 
-| Smell                                 | Signal                                                                                                 | Risk   |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------ |
-| `@Async` Doing Too Much               | Single `@Async` method orchestrating 4+ business steps without sub-services                            | Medium |
-| `@KafkaListener` Without Idempotency  | Listener that re-runs side effects when the same message is delivered twice (no dedup key, no upsert)  | High   |
-| `synchronized` on Virtual Thread Path | `synchronized` block in a `@Service` running under Boot 3.2+ Virtual Threads - pins the carrier thread | High   |
-| `@Async` Without `TaskDecorator`      | Trace context, MDC, and `SecurityContext` lost across the async boundary                               | Medium |
+| Smell                                         | Signal                                                                                  | Risk   |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- | ------ |
+| `@SpringBootTest` for Unit Logic              | Full context for what could be plain JUnit + Mockito                                    | Medium |
+| H2 in `@DataJpaTest` for Postgres-Feature App | Pass on H2, fail on JSONB / partial index / `ON CONFLICT` in prod                       | High   |
+| `@DirtiesContext`                             | Used to work around shared state instead of fixing isolation                            | Medium |
 
-**Test smells (when refactoring brings tests into scope):**
+Use skill: `backend-coding-standards` for cross-language smells. Use skill: `complexity-review` when the target shows over-engineering (single-impl interfaces, base classes for two children, premature Strategy/Factory, redundant mapping layers) - those are simplification opportunities.
 
-| Smell                                         | Signal                                                                               | Risk   |
-| --------------------------------------------- | ------------------------------------------------------------------------------------ | ------ |
-| `@SpringBootTest` for Unit Logic              | Full context loaded for what could be a plain JUnit + Mockito test                   | Medium |
-| H2 in `@DataJpaTest` for Postgres-feature App | Tests pass on H2 but fail in prod on JSONB / partial index / `ON CONFLICT` semantics | High   |
-| `@DirtiesContext`                             | Used to work around shared state instead of fixing isolation                         | Medium |
+Apply judgment: a 25-line `@Service` method with clearly named private steps is fine; a 10-line method doing three unrelated things is not.
 
-**General OO smells (apply with Spring judgment):**
+### Step 6 - Blast Radius
 
-Use skill: `backend-coding-standards` for the cross-language smell catalog.
-Use skill: `complexity-review` when the target shows over-engineering signals (single-impl interfaces, base classes for two children, premature `Strategy`/`Factory`, redundant mapping layers) - those are simplification opportunities, not refactor steps to extract more abstractions.
+Use skill: `review-blast-radius`. Spring-specific signals:
 
-Apply Spring judgment - a 25-line `@Service` method orchestrating clearly named private steps is fine; a 10-line method doing three unrelated things is not.
+- **Public API surface** - target is a controller used by external clients
+- **Library / module boundary** - `@AutoConfiguration`, published artifact, or starter
+- **Aspect with broad pointcut** - `execution(* com.acme..*.*(..))` affects every match
+- **Bean injected widely** - `@Bean` with > 10 callers; signature changes cascade
+- **JPA entity used in many queries** - cascades through every `@Query` / `Specification`
+- **`@Transactional` method called from outside** - removing `@Transactional` from a public method may silently break callers
 
-### Step 6 - Cross-Module Risk Assessment
-
-Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected by the refactor.
-
-Spring-specific blast-radius signals:
-
-- [ ] **Public API surface**: target is a controller used by external clients - refactor risks API contract change
-- [ ] **Library / module boundary**: target is in a `@AutoConfiguration` class, a published artifact, or a Spring Boot starter consumed by other apps
-- [ ] **Aspect with broad pointcut**: refactoring an aspect with a `execution(* com.acme..*.*(..))` pointcut affects every matching method
-- [ ] **Bean injected widely**: target is a `@Bean` injected into > 10 callers - signature changes cascade
-- [ ] **JPA entity used in many queries**: refactoring an entity affects every `@Query` / `Specification` / `JpaSpecificationExecutor`
-- [ ] **`@Transactional` method called from outside**: removing `@Transactional` from a public method may silently break callers depending on its boundary
-
-State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single module, multiple callers) / **Wide** (cross-module, public API, broad aspect) / **Critical** (`@AutoConfiguration` published, entity used by 5+ services).
+State blast radius before proposing steps: **Narrow** / **Moderate** / **Wide** / **Critical**.
 
 ### Step 7 - Propose the Step Sequence
 
-Each refactoring step must be:
+Each step is:
 
-1. **Independently committable** - the codebase compiles and the test suite passes after each step
-2. **Behaviorally invariant** - no behavior change unless explicitly noted as a separate step
-3. **Reversible** - rollback is one revert away
-4. **Tested** - the existing JUnit / slice / Testcontainers suite continues to pass; new tests added when extracting new units
+1. **Independently committable** - codebase compiles, suite passes
+2. **Behaviorally invariant** - no behavior change unless explicitly noted
+3. **Reversible** - one revert away
+4. **Tested** - existing tests stay green; new tests added when extracting new units
 
-**Transaction-boundary watch.** When extracting orchestration that runs inside a `@Transactional` method, the extracted unit inherits the transaction context (via the proxy when called from the original entry point). If the extracted code makes HTTP calls, publishes Kafka messages, or writes files, they now happen mid-transaction (a regression). State the transaction stance per step: "callee runs inside caller's `@Transactional`" or "callee uses `@TransactionalEventListener(phase = AFTER_COMMIT)` / outbox to defer side effects." Never silently move I/O across a transaction boundary.
+**Transaction-boundary watch.** When extracting orchestration from a `@Transactional` method, the extracted unit inherits the transaction (via the proxy). If the extracted code does HTTP / Kafka / file writes, they now happen mid-transaction (a regression). State the transaction stance per step: "callee runs inside caller's `@Transactional`" or "callee uses `@TransactionalEventListener(AFTER_COMMIT)` / outbox to defer side effects."
 
-**Common Spring refactor recipes:**
+**Common recipes:**
 
-**Recipe: Extract service from fat controller**
+**Extract service from fat controller**
 
-1. Add `<Verb><Noun>Service` (e.g., `PlaceOrderService`) with a single intention-revealing method returning a domain result type (record or sealed interface); copy logic from controller; controller still does the original work
-2. Add `<Verb><Noun>ServiceTest` with one test per outcome (success, validation failure, external failure)
-3. Update controller to call the service; preserve response shape; ensure `@WebMvcTest` slice test passes unchanged
-4. Remove the original logic from the controller; verify `@WebMvcTest` passes
-5. Add a `@WebMvcTest` example asserting service failure surfaces as the expected error response (likely via `@RestControllerAdvice`)
+1. Add `<Verb><Noun>Service` (e.g., `PlaceOrderService`) with one intention-revealing method returning a domain result type; copy logic from controller
+2. Add `<Verb><Noun>ServiceTest` - one test per outcome
+3. Controller calls the service; preserve response shape; `@WebMvcTest` passes unchanged
+4. Remove the original controller logic; verify `@WebMvcTest`
+5. Add `@WebMvcTest` asserting service failure surfaces as the expected error response (likely via `@RestControllerAdvice`)
 
-**Recipe: Convert `@PostUpdate` / JPA lifecycle callback to `@TransactionalEventListener(AFTER_COMMIT)`**
+**Convert `@PostUpdate` to `@TransactionalEventListener(AFTER_COMMIT)`**
 
-1. Add a `@SpringBootTest` (or focused `@DataJpaTest` + service test) reproducing the current observable behavior (record updated, email sent, event published)
-2. Replace the JPA `@PostUpdate` with a domain event published from the service: `applicationEventPublisher.publishEvent(new OrderUpdated(orderId))`. Add an `@EventListener` (or `@TransactionalEventListener(phase = AFTER_COMMIT)`) for the side effect
-3. Run tests; confirm pass. Side effects now fire post-commit instead of mid-transaction
-4. If callback was doing cross-aggregate work, extract the side-effect handler into its own `@Service`; remove the listener from the entity class
-5. Run the full suite; verify no orphan code paths still rely on the JPA lifecycle callback
+1. Add a test pinning current observable behavior (record updated, email sent, event published)
+2. Replace `@PostUpdate` with a domain event published from the service. Add listener (sync or `@TransactionalEventListener(AFTER_COMMIT)`)
+3. Run tests; confirm pass. Side effects now post-commit
+4. If callback was cross-aggregate work, extract the handler to its own `@Service`; remove the listener from the entity
+5. Full suite; verify no code path still relies on the JPA callback
 
-**Recipe: Untangle fat controller + JPA-callback orchestration (combined case)**
+**Untangle fat controller + JPA-callback orchestration**
 
-A controller endpoint triggers an entity write whose `@PostUpdate` / `@PostPersist` callbacks fan out (mailers, message publishes, audit writes). Sequence:
+1. **Pin behavior** with a test asserting every observable side effect
+2. **Promote callbacks to AFTER_COMMIT** by publishing a domain event from where the callback fires today. Side effects now post-commit; tests stay green
+3. **Introduce a service** that owns orchestration; controller calls it. Audit other call sites (`save`, `merge`, scheduled jobs) and route them through the service
+4. **Delete the entity-level callbacks**; service + AFTER_COMMIT listeners are the single source
 
-1. **Pin behavior** with a test asserting every observable side effect (record updated, mailer queued, event published, audit row written)
-2. **Promote callbacks to `@TransactionalEventListener(AFTER_COMMIT)`** by publishing a domain event from the entity setter (or where the callback fires today). Side effects now run post-commit; tests stay green
-3. **Introduce a service** that owns the orchestration; controller calls it. Audit other call sites (`save`, `entityManager.merge`, scheduled jobs, migrations) and route them through the service
-4. **Delete the entity-level callbacks**; the service plus AFTER_COMMIT listeners are the single source of orchestration
+Do not introduce a `ThreadLocal` "skip when called from service" flag - it traps the codebase. Promote to AFTER_COMMIT first, then move ownership.
 
-Do not introduce a `ThreadLocal` "skip when called from service" flag - it traps the codebase if the deletion step slips. Promote to AFTER_COMMIT first (step 2), then move ownership.
+**Split god service**
 
-**Recipe: Split god service into focused services**
+1. Identify orthogonal concerns (`OrderService` doing place + cancel + refund + reporting → `PlaceOrderService`, `CancelOrderService`, ...)
+2. Extract one concern at a time; god service delegates temporarily
+3. Update callers to inject the focused service; remove delegation
+4. Repeat; delete the empty god service
+5. Verify all callers still pass
 
-1. Identify the orthogonal concerns inside the service (e.g., `OrderService` doing place + cancel + refund + reporting → split into `PlaceOrderService`, `CancelOrderService`, `RefundOrderService`, `OrderReportService`)
-2. Extract one concern at a time into a new `@Service` with clear constructor injection; original god service delegates to it temporarily
-3. Update callers to inject and call the new focused service directly; remove delegation from god service
-4. Repeat until god service is empty; delete it. Each extraction commits independently
-5. Verify all `@WebMvcTest` / `@SpringBootTest` callers still pass
+**Eliminate single-implementation interface**
 
-**Recipe: Eliminate single-implementation interface**
+1. Confirm no test doubles, second impl, AOP target requirement
+2. Inline: rename `OrderServiceImpl` → `OrderService`, delete the interface
+3. Run tests
+4. **Skip if** the interface is part of a published library API
 
-1. Confirm the interface has no test doubles, no second implementation, no AOP target requirement (some AOP cases need an interface for JDK proxies)
-2. Inline the interface: rename `OrderServiceImpl` → `OrderService`, delete the interface, update callers (most cases the IDE rename handles it)
-3. Run tests; confirm pass. Caller code is shorter and clearer
-4. **Skip if** the interface is part of a published library API or has a real second implementation - the smell is fake
+**Migrate `@Autowired` field to constructor injection**
 
-**Recipe: Migrate `@Autowired` field injection to constructor injection**
+1. Verify the class isn't a Spring-instantiated bean that needs field injection (almost never)
+2. Add a constructor accepting injected dependencies; mark fields `final`
+3. Remove `@Autowired` annotations. Lombok `@RequiredArgsConstructor` works
+4. Run tests; Mockito `@InjectMocks` continues to work
 
-1. Verify the class is not a Spring-instantiated bean that must use field injection (rare; almost never the case)
-2. Add a constructor accepting the injected dependencies as parameters; mark fields `final`
-3. Remove `@Autowired` annotations on fields. Lombok `@RequiredArgsConstructor` works if the project already uses Lombok
-4. Run tests; confirm pass. Mockito `@InjectMocks` continues to work
-5. Repeat per class; one class per commit if the suite is slow
+**Make `@KafkaListener` idempotent**
 
-**Recipe: Make `@KafkaListener` idempotent**
+1. Test asserting the side effect happens exactly once when the same message is delivered twice (different offsets, same business key)
+2. Idempotency guard: dedup table on message UUID, business-key upsert (`ON CONFLICT DO NOTHING`), or version check
+3. Verify retries on transient failures still complete
+4. Configure DLT so poison messages don't loop
 
-1. Add a listener test asserting the side effect happens exactly once when the same message is delivered twice (different offsets, same business key)
-2. Add an idempotency guard: dedup table keyed by message UUID, business-key upsert (`ON CONFLICT DO NOTHING`), or version check
-3. Verify retries on transient failures still complete the work
-4. Configure DLT (`spring.kafka.listener.ack-mode: manual_immediate` + retry / DLT topic) so poison messages do not loop forever
+**Move external I/O out of `@Transactional`** (most damaging smell)
 
-**Recipe: Move external I/O out of `@Transactional`**
+A `@Service` method does DB write → HTTP call → DB write inside one `@Transactional`. Under load, the HTTP call holds a HikariCP connection for its full duration, exhausting the pool.
 
-The most damaging Spring smell: a `@Service` method does DB write -> HTTP call -> DB write all inside one `@Transactional`. Under load the HTTP call holds a HikariCP connection for its full duration, exhausting the pool.
+1. Add an integration test asserting current end-to-end behavior
+2. Choose:
+   - **Outbox** - within the transaction, write the side-effect intent to an `outbox` table; a separate scheduled poller (or AFTER_COMMIT) reads it and performs the I/O. Strongest guarantee.
+   - **AFTER_COMMIT listener** - publish a domain event; listener performs HTTP after commit. Simpler, but at-most-once; if the listener fails, the side effect is lost.
+3. Implement; transactional method now contains DB only; I/O moves to listener / poller
+4. Run integration test - failure semantics changed (side effect now post-commit; HTTP failure no longer rolls back DB). Confirm acceptable
+5. Audit retry/idempotency on the receiver
 
-1. Add an integration test asserting current observable behavior end-to-end (DB row state, side effect fired)
-2. Decide the new ordering. Two viable shapes:
-   - **Outbox pattern:** within the transaction, write the side effect intent to an `outbox` table; a separate scheduled poller (or `@TransactionalEventListener(AFTER_COMMIT)`) reads the outbox and performs the I/O. Strongest delivery guarantee.
-   - **Defer side effect to `@TransactionalEventListener(AFTER_COMMIT)`:** publish a domain event from the service; a listener performs the HTTP call after commit. Simpler, but at-most-once - if the listener fails, the side effect is lost.
-3. Implement the chosen shape. The transactional method now contains only DB work; the I/O moves to the listener / poller
-4. Run the integration test - failure semantics changed (the side effect now fires after commit, not before; if the I/O fails, the DB write still stands). Confirm this is acceptable for the use case
-5. Audit retry/idempotency: if the side effect can be retried, the listener / poller must be idempotent against the receiver
+**State the failure-mode change in the step.** Old code rolled back the DB on a failed HTTP call; new code does not. If callers relied on the coupling, this is a behavioral change.
 
-**State the failure-mode change explicitly in the step.** The old code rolled back the DB on a failed HTTP call; the new code does not. If callers relied on that coupling, this is a behavioral change, not a pure refactor.
+**Replace JPA entity in API with record DTO**
 
-**Recipe: Replace JPA `@Entity` in API with record-DTO**
-
-`@RestController` accepting or returning `@Entity` types causes mass-assignment, lazy-load failures, and accidentally exposes internal columns.
-
-1. Define a request record (e.g., `record CreateOrderRequest(@NotBlank String customerEmail, @Positive int quantity) {}`) with Bean Validation annotations
-2. Define a response record (e.g., `record OrderResponse(UUID id, String status, BigDecimal total) {}`)
-3. Add explicit mapping from entity to response record in the service or a dedicated mapper - inside the `@Transactional` boundary so lazy associations resolve
-4. Update controller signature: `@RequestBody @Valid CreateOrderRequest`, return `OrderResponse`
+1. Define request record with Bean Validation
+2. Define response record
+3. Add explicit entity → response mapping in the service or dedicated mapper - inside `@Transactional` so lazy associations resolve
+4. Update controller signatures; return record
 5. Update `@WebMvcTest` to assert the new shape (no entity fields leaking)
-6. Verify no other callers were depending on the entity shape over the wire (API consumers must be coordinated separately if so)
+6. Coordinate API consumers separately if they were depending on the old shape
 
-**Recipe: Fix `@Transactional` self-invocation**
+**Fix `@Transactional` self-invocation**
 
-See `spring-transaction` for the canonical fix patterns (extract to separate bean, self-injection, `TransactionTemplate`). The refactor adds: a regression test asserting the transaction *actually starts* (e.g., a row written in the inner method is rolled back when an exception is thrown after the call returns). Adding `@Transactional` to the inner method without restructuring the call does not fix the bug.
+See `spring-transaction` for the canonical fix patterns (extract to separate bean, self-injection, `TransactionTemplate`). Add a regression test asserting the transaction *actually starts* (a row written in the inner method is rolled back when an exception is thrown after the call returns).
 
-**Recipe: Replace `synchronized` on Virtual Thread paths**
+**Replace `synchronized` on Virtual Thread paths**
 
-1. Confirm the path runs under Virtual Threads (Boot 3.2+ with `spring.threads.virtual.enabled=true`)
-2. Replace `synchronized(this)` / `synchronized(lock)` with `ReentrantLock` (or `StampedLock` for read-heavy paths)
-3. Verify behavior with a concurrency test (multiple Virtual Threads racing the critical section)
-4. Audit other `synchronized` blocks in the same module - they pin too
+1. Confirm the path runs under Virtual Threads (Boot 3.2+ + `spring.threads.virtual.enabled=true`)
+2. Replace `synchronized` with `ReentrantLock` (or `StampedLock` for read-heavy paths)
+3. Verify with a concurrency test
+4. Audit other `synchronized` blocks in the same module
 
 ### Step 8 - Validate Plan Against Goal
 
-Before finalizing the plan, check:
-
-- [ ] Goal is achieved at the end of the sequence
-- [ ] Each step is small enough to review in < 30 minutes
-- [ ] Test coverage runs between every step (not just at the end)
-- [ ] Steps are ordered low-risk first (extracts, additions) before high-risk (deletions, signature changes, aspect rewrites)
-- [ ] Rollback path is one revert per step
-- [ ] No step bundles "while we're here" unrelated cleanup
+- [ ] Goal achieved at end of sequence
+- [ ] Each step < 30 minutes to review
+- [ ] Tests run between every step
+- [ ] Low-risk first (extracts, additions) before high-risk (deletions, signature changes)
+- [ ] Rollback is one revert per step
+- [ ] No "while we're here" cleanup bundled in
 
 ## Output Format
 
@@ -300,7 +276,7 @@ Before finalizing the plan, check:
 
 **Status:** Adequate | Thin (boundary tests missing) | Inadequate (cannot proceed)
 
-[If Inadequate: state what coverage must exist before refactor begins, and recommend running `task-spring-test` first.]
+[If Inadequate: what coverage must exist; recommend `task-spring-test` first.]
 
 ## Smells Identified
 
@@ -310,7 +286,7 @@ Before finalizing the plan, check:
 
 ## Blast Radius
 
-[Narrow | Moderate | Wide | Critical] - [one-paragraph rationale citing callers, tests, public surface]
+[Narrow | Moderate | Wide | Critical] - [paragraph citing callers, tests, public surface]
 
 ## Step Sequence
 
@@ -318,54 +294,48 @@ Before finalizing the plan, check:
 
 - **Change:** [what is added / extracted / moved]
 - **Risk:** [Low | Medium | High]
-- **Test gate:** [which tests must pass after this step - JUnit / `@WebMvcTest` / `@DataJpaTest` / `@SpringBootTest`]
-- **Transaction stance:** [callee runs inside caller's `@Transactional` | callee uses `@TransactionalEventListener(AFTER_COMMIT)` | not transactional]
-- **Rollback:** [how to revert in one git revert]
-
-### Step 2 - [Action verb + noun]
-
-[Same structure]
+- **Test gate:** [JUnit / `@WebMvcTest` / `@DataJpaTest` / `@SpringBootTest`]
+- **Transaction stance:** [inside caller's `@Transactional` | AFTER_COMMIT | not transactional]
+- **Rollback:** [how to revert in one revert]
 
 [... continue numbering ...]
 
 ## Verification
 
-- [ ] Goal achieved at end of sequence: [restate goal]
+- [ ] Goal achieved: [restate goal]
 - [ ] Each step independently committable
 - [ ] Test suite passes between every step
 - [ ] No bundled unrelated cleanup
-- [ ] Rollback path is one revert per step
+- [ ] Rollback is one revert per step
 - [ ] No I/O silently moved across `@Transactional` boundaries
 
 ## Out of Scope
 
-[Adjacent improvements explicitly NOT in this plan - e.g., "renaming `OrderProcessor` to `OrderFulfiller` is a follow-up; this plan only extracts behavior, not renames"]
+[Adjacent improvements NOT in this plan]
 ```
 
 ## Self-Check
 
-- [ ] Behavioral principles loaded as Step 1 before any other delegation
-- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher) (Step 2)
-- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 3)
-- [ ] Coverage gate evaluated; refused to propose plan if coverage was inadequate (Step 4)
-- [ ] Spring-specific smells identified using Step 5 catalog (controller, service, persistence, configuration/DI, aspect, async/messaging) (Step 5)
-- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 6)
-- [ ] Each step independently committable; test gate stated per step (Step 7)
-- [ ] Transaction stance stated per step (no I/O silently moved across `@Transactional` boundary) (Step 7)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, aspect rewrites, signature changes) (Step 7)
-- [ ] No step bundles unrelated cleanup (Step 7)
-- [ ] Goal explicitly mapped to the end state of the sequence (Step 8)
-- [ ] Rollback path is one revert per step (Step 8)
+- [ ] Behavioral principles loaded as Step 1
+- [ ] Stack confirmed (or accepted from parent dispatcher)
+- [ ] Target file(s) and tests read directly - no smells inferred from prose
+- [ ] Coverage gate evaluated; refused to proceed if inadequate
+- [ ] Spring smells identified from Step 5 catalog
+- [ ] Blast radius stated before steps
+- [ ] Each step independently committable with explicit test gate
+- [ ] Transaction stance stated per step
+- [ ] Low-risk first; no unrelated cleanup bundled
+- [ ] Goal mapped to end state; rollback is one revert per step
 
 ## Avoid
 
-- Proposing a refactor without a test-coverage gate - that's a rewrite, not a refactor
-- Bundling behavior changes with refactoring steps - keep them separate, label clearly
-- Making "while we're here" unrelated cleanups - they belong in their own PR
-- Renaming during a refactor (rename PRs are separate; mixing the two doubles the review surface)
-- Removing JPA `@PostUpdate` / `@PostPersist` callbacks without a test asserting the original behavior is preserved
-- Extracting an interface with one implementation - wait for the second use case before generalizing
-- Replacing `@Transactional` self-invocation by adding `@Transactional` to the inner method without restructuring the call - the proxy is still bypassed
-- Moving HTTP calls or message publishes from a non-transactional context to inside a transactional one (or vice versa) without explicitly stating the transaction stance
-- Refactoring an `@AutoConfiguration` class without a backward-compatibility plan - that is a published API
-- Replacing `synchronized` with `ReentrantLock` on a non-Virtual-Thread path with no concurrency benefit (premature change)
+- Refactor without a coverage gate - that's a rewrite
+- Bundling behavior changes with refactor steps - keep separate, label
+- "While we're here" cleanups - their own PR
+- Renaming during refactor - rename PRs are separate
+- Removing JPA `@PostUpdate` / `@PostPersist` without a test asserting the original behavior
+- Extracting an interface with one implementation - wait for the second use case
+- Fixing `@Transactional` self-invocation by adding `@Transactional` to the inner method without restructuring the call - proxy is still bypassed
+- Moving HTTP / message publish across `@Transactional` boundaries without explicit transaction stance
+- Refactoring `@AutoConfiguration` without a backward-compatibility plan - published API
+- `synchronized` → `ReentrantLock` on a non-VT path with no concurrency benefit

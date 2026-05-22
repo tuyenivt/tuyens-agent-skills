@@ -1,6 +1,6 @@
 ---
 name: task-spring-review-observability
-description: "Spring Boot observability review: Micrometer, Actuator, Logback MDC, Micrometer Tracing/OTel, listener instrumentation, error trackers."
+description: "Spring Boot observability review: Logback JSON, MDC, Actuator, Micrometer, Micrometer Tracing/OTel, listener instrumentation, error trackers."
 agent: java-tech-lead
 metadata:
   category: backend
@@ -11,196 +11,175 @@ user-invocable: true
 
 # Spring Boot Observability Review
 
-## Purpose
+Spring-aware observability review naming Micrometer, Spring Boot Actuator, Logback / Logstash JSON, MDC, Micrometer Tracing / OTel, listener interceptors, error-tracker starters - at the library / starter level. Infra concerns (Datadog SaaS dashboards, Sentry org settings, log forwarder config) stay out of scope.
 
-Spring-aware observability review that names Micrometer, Spring Boot Actuator, Logback / Logstash JSON encoder, MDC correlation, Micrometer Tracing (Boot 3+) / OpenTelemetry, `@KafkaListener` / `@RabbitListener` interceptors, and error-tracker Spring Boot starters directly instead of routing through the generic adapter. Focuses on whether Spring production behavior is visible, diagnosable, and alertable - at the _library and starter_ level. Infra-level concerns (Datadog SaaS dashboards, Sentry org settings, log forwarder config) stay out of scope.
-
-This workflow is the stack-specific delegate of `task-code-review-observability` for Java/Spring Boot. The core workflow's contract (depth levels, output format) is preserved.
+Stack-specific delegate of `task-code-review-observability` for Java / Spring Boot.
 
 ## When to Use
 
-- Reviewing a Spring Boot PR for observability regressions or new instrumentation gaps
-- Pre-release observability check for a new Spring service or major feature
-- Post-incident review when Spring diagnosis was slow or evidence was missing
-- Adopting Micrometer Tracing / OpenTelemetry / Logstash JSON encoder in a Spring Boot app
-- Auditing async / messaging tracing and correlation across the request → `@Async` / listener boundary
+- Spring Boot PR with observability regressions or new instrumentation gaps
+- Pre-release observability check for a new Spring service / major feature
+- Post-incident review when diagnosis was slow or evidence was missing
+- Adopting Micrometer Tracing / OTel / Logstash JSON encoder
+- Auditing async / messaging tracing and MDC correlation
 
 **Not for:**
-
-- General Spring Boot code review (use `task-spring-review`)
-- Spring performance issues with a known bottleneck (use `task-spring-review-perf`)
-- Active production incident investigation (use `/task-oncall-start`)
-- Infra-level observability (Datadog dashboards, Grafana panels, alert rules, log forwarder config) - those are not in source code
+- General Spring review (`task-spring-review`)
+- Perf with known bottleneck (`task-spring-review-perf`)
+- Active incident (`/task-oncall-start`)
+- Infra observability (Datadog dashboards, Grafana panels, alert rules) - not in source code
 
 ## Depth Levels
 
-| Depth      | When to Use                                                       | What Runs                                            |
-| ---------- | ----------------------------------------------------------------- | ---------------------------------------------------- |
-| `quick`    | Single endpoint, controller, or listener                          | Logging + Micrometer metrics check only              |
-| `standard` | Default - full Spring observability review                        | All steps                                            |
-| `deep`     | Pre-release of a critical Spring service, or post-incident review | All steps + SLI/SLO suggestions for Spring endpoints |
+| Depth      | When                                                          | What Runs                                            |
+| ---------- | ------------------------------------------------------------- | ---------------------------------------------------- |
+| `quick`    | Single endpoint, controller, or listener                      | Logging + Micrometer metrics only                    |
+| `standard` | Default                                                       | All steps                                            |
+| `deep`     | Pre-release of critical service or post-incident review       | All steps + SLI/SLO suggestions for Spring endpoints |
 
 Default: `standard`.
 
 ## Invocation
 
-Mirrors `task-code-review-observability`:
+| Invocation                                   | Meaning                                                       |
+| -------------------------------------------- | ------------------------------------------------------------- |
+| `/task-spring-review-observability`          | Current branch vs base; fails fast on trunk                   |
+| `/task-spring-review-observability <branch>` | `<branch>` vs base (3-dot diff)                               |
+| `/task-spring-review-observability pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch first)         |
 
-| Invocation                                   | Meaning                                                                                               |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-spring-review-observability`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-spring-review-observability <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-spring-review-observability pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review-observability` or `task-spring-review`, the parent passes the precondition-check handle plus the already-read diff and commit log; Step 3 below is skipped.
+When invoked as a subagent, the parent passes the precondition handle + pre-read diff and commit log; Step 3 below is skipped.
 
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. Load these rules first - they govern every step including stack detection, scope decisions, and finding generation.
+Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Java / Spring Boot. If invoked as a subagent of a Spring-aware parent, accept the pre-confirmed stack and skip re-detection. If the detected stack is not Spring Boot, stop and tell the user to invoke `/task-code-review-observability` instead.
+Use skill: `stack-detect`. Accept a pre-confirmed stack from a Spring-aware parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review-observability`.
 
-### Step 3 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent and the parent passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent and the parent passed the handle plus artifacts.
 
-If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+If the precondition check stops with a fail-fast message, surface verbatim and stop. No state-changing git from this workflow.
 
 ### Step 4 - Read the Instrumentation Surface
 
-Before applying the checklists below, open the files that actually configure observability so findings cite real lines, not assumptions:
+Before applying checklists, open files that actually configure observability so findings cite real lines:
 
-- `src/main/resources/logback-spring.xml` (and `logback-spring-<profile>.xml` if present) - encoder type, MDC patterns, masking
-- `src/main/resources/application.yml` (and per-profile variants) - `management.*`, `logging.*`, `spring.kafka.listener.observation-enabled`, `management.tracing.*`
-- `build.gradle(.kts)` / `pom.xml` - confirm presence of `spring-boot-starter-actuator`, `micrometer-registry-prometheus`, `micrometer-tracing-bridge-otel`, error-tracker starters
-- Every changed file in the diff that registers a `MeterRegistry`, `Counter`, `Timer`, `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`, or modifies `MDC`
+- `logback-spring.xml` (and `logback-spring-<profile>.xml`) - encoder type, MDC patterns, masking
+- `application.yml` (and per-profile) - `management.*`, `logging.*`, `spring.kafka.listener.observation-enabled`, `management.tracing.*`
+- `build.gradle(.kts)` / `pom.xml` - `spring-boot-starter-actuator`, `micrometer-registry-prometheus`, `micrometer-tracing-bridge-otel`, error-tracker starters
+- Every changed file registering `MeterRegistry`, `Counter`, `Timer`, `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`, or `MDC`
 
-For diffs touching only one of these surfaces (a new listener but no `application.yml` change, say), still read the existing config to know whether MDC propagation, observation flags, and starters are wired - a missing wire is the finding.
+For diffs touching only one surface (a new listener but no `application.yml` change), still read existing config to know whether MDC propagation, observation flags, and starters are wired - a missing wire is the finding.
 
-### Step 5 - Structured Logging (Logback + Logstash encoder / SLF4J)
+### Step 5 - Structured Logging
 
-Inspect `src/main/resources/logback-spring.xml`, `application.yml` `logging.*` keys, and any `log.*` callsite in the diff:
-
-- [ ] **Production logger emits JSON** - Logstash Logback encoder (`net.logstash.logback.encoder.LogstashEncoder`) or equivalent (Logback `JsonEncoder` in Logback 1.5+, `JsonLayout`). No raw text logs in production.
-- [ ] **MDC correlation fields injected** in every log line: `traceId`, `spanId`, `requestId`, `userId` (when authenticated), `tenantId`, plus business correlation IDs (`orderId`, `invoiceId`). Use `MDC.put(...)` in a filter / interceptor at request boundary; clear in `finally`.
-- [ ] **`logging.pattern.console` / `pattern.file`** include `%X{traceId}` and `%X{spanId}` placeholders so non-JSON local dev logs still show correlation
-- [ ] **Sensitive-field masking**: Logback masking encoder or Logstash `maskMessageRegex` covers `password`, `token`, `authorization`, `creditCard`, `ssn`, `apiKey`. DTOs use `@JsonIgnore` for the same fields so `log.info("payload={}", dto)` cannot leak them via Jackson.
-- [ ] **No `log.info("user={}", user)` / `log.info(entity.toString())`** that serializes a JPA entity (triggers lazy loads and may log PII / hashed passwords). Always log specific fields by ID.
-- [ ] **No HTTP request/response body logging in production paths**. `RestClient` / `WebClient` interceptors that log full request and response bodies (`ClientHttpRequestInterceptor`, `ExchangeFilterFunction`) leak PII the moment a request includes user data. If body logging exists, it must be scoped to a non-prod profile or use a redacting interceptor with an explicit field allowlist.
-- [ ] **Log levels used correctly**: `error` for actionable failures, `warn` for recoverable anomalies, `info` for state transitions, `debug` for verbose diagnostics. Default root level `INFO` in prod; `DEBUG`/`TRACE` reserved for targeted packages
-- [ ] **Parameterized logging only** (`log.info("processing order={}", orderId)`) - no string concatenation (`log.info("processing order=" + orderId)`); no `String.format(...)` inside logger calls
-- [ ] **No log spam in hot loops** - `forEach` over large collections, scheduled jobs running every second, Kafka listener at high TPS must not log per-iteration; use `log.atDebug()` or sampled logging
-- [ ] **Async appenders** (`AsyncAppender` or Logstash async TCP) configured for high-volume paths so logging is not on the request critical path; queue-full policy explicit (`neverBlock=true` for non-critical paths)
+- [ ] **Production logger emits JSON** - Logstash Logback encoder (`net.logstash.logback.encoder.LogstashEncoder`) or Logback 1.5+ `JsonEncoder` / `JsonLayout`. No raw text logs in prod.
+- [ ] **MDC correlation injected** on every log line: `traceId`, `spanId`, `requestId`, `userId` (when authenticated), `tenantId`, plus business correlation IDs (`orderId`, `invoiceId`). `MDC.put(...)` in a filter / interceptor at request boundary; clear in `finally`.
+- [ ] **`logging.pattern.console` / `pattern.file`** include `%X{traceId}` and `%X{spanId}` so non-JSON local logs show correlation
+- [ ] **Sensitive-field masking** - Logback masking encoder or Logstash `maskMessageRegex` covers `password`, `token`, `authorization`, `creditCard`, `ssn`, `apiKey`. DTOs use `@JsonIgnore` on the same fields so `log.info("payload={}", dto)` can't leak via Jackson.
+- [ ] **No `log.info("user={}", user)`** that serializes a JPA entity (lazy loads, PII risk). Log specific fields by ID.
+- [ ] **No HTTP body logging in prod paths** - `RestClient` / `WebClient` body-logging interceptors leak PII. Scope to non-prod profile or use a redacting interceptor with an explicit allowlist.
+- [ ] **Log levels correct** - `error` actionable, `warn` recoverable, `info` state transitions, `debug` verbose. Default root `INFO` in prod
+- [ ] **Parameterized logging** - `log.info("processing order={}", orderId)`; no string concatenation; no `String.format(...)` in logger calls
+- [ ] **No log spam in hot loops** - per-iteration `forEach` / per-second `@Scheduled` / high-TPS listener uses `log.atDebug()` or sampling
+- [ ] **Async appenders** - `AsyncAppender` / Logstash async TCP for high-volume; queue-full policy explicit
 
 ### Step 6 - Spring Boot Actuator
 
-Inspect `application.yml` `management.*` keys and any custom `@Endpoint` / `HealthIndicator` / `InfoContributor`:
-
-- [ ] **Actuator dependency present** (`spring-boot-starter-actuator`) - if absent in a service that warrants observability, flag it
-- [ ] **`management.endpoints.web.exposure.include`** is minimal in prod: typically `health, info, metrics, prometheus` (and `loggers` if dynamic log-level change is needed). Never `*` in prod.
-- [ ] **Sensitive endpoints gated**: `env`, `heapdump`, `threaddump`, `mappings`, `configprops`, `loggers` (when exposed) are auth-required (`management.endpoint.<name>.access` or behind a separate `SecurityFilterChain` for `/actuator/**`)
-- [ ] **Health endpoint depth**: `/actuator/health` exposes high-level status only by default; `management.endpoint.health.show-details: when-authorized` (not `always` in prod). Custom `HealthIndicator` implementations report cleanly (no exception leak in the response body)
-- [ ] **Liveness vs readiness**: Boot 2.3+ liveness/readiness groups configured for Kubernetes (`management.endpoint.health.probes.enabled: true`); `/actuator/health/liveness` does not depend on downstream services (only on the JVM/app itself); `/actuator/health/readiness` reflects whether the app is ready to serve (DB up, caches warmed)
-- [ ] **`info` endpoint**: build, git, and version info exposed (`management.info.git.enabled`, `management.info.build.enabled`); does not leak environment variables or sensitive config
-- [ ] **`management.server.port`** separated from main server port in prod when network isolation is required (cluster-internal access only)
+- [ ] **`spring-boot-starter-actuator`** present (flag if absent in a service that warrants observability)
+- [ ] **`management.endpoints.web.exposure.include`** minimal in prod: typically `health, info, metrics, prometheus` (+ `loggers` if dynamic log-level change is needed). Never `*` in prod
+- [ ] **Sensitive endpoints gated** - `env`, `heapdump`, `threaddump`, `mappings`, `configprops`, `loggers` are auth-required (`management.endpoint.<name>.access` or behind a separate `SecurityFilterChain` for `/actuator/**`)
+- [ ] **Health depth** - `/actuator/health` high-level only by default; `management.endpoint.health.show-details: when-authorized` (not `always`)
+- [ ] **Liveness vs readiness** - Boot 2.3+ probes configured for Kubernetes (`management.endpoint.health.probes.enabled: true`); liveness depends on JVM/app only; readiness reflects ability to serve (DB, caches warmed)
+- [ ] **`info` endpoint** - build, git, version info on (`management.info.git.enabled`, `management.info.build.enabled`); no env-var or sensitive leakage
+- [ ] **`management.server.port`** separated from main port in prod when network isolation is required
 
 ### Step 7 - Micrometer Metrics
 
-Inspect any `MeterRegistry`, `@Timed`, or `Counter` / `Timer` registration:
+- [ ] **`micrometer-registry-prometheus`** (or equivalent) on classpath; `/actuator/prometheus` exposed
+- [ ] **Auto-instrumentation enabled** - `http.server.requests`, HikariCP `hikaricp.*`, JPA `hibernate.*` (`generate_statistics=true` non-prod), JVM `jvm.memory.*` / `jvm.gc.*`, container `tomcat.*`
+- [ ] **Custom business metrics** under a consistent namespace (`acme.orders.placed`, `acme.payments.failed`); units explicit (`Counter` counts, `Timer` durations, `Gauge` instantaneous, `DistributionSummary` histograms)
+- [ ] **Tag cardinality bounded.** Reject:
+  - **High-cardinality identifiers** - `userId`, `orderId`, `paymentId`, `requestId`, `traceId` (these belong on traces and logs)
+  - **Continuously varying numerics** - `amount`, `latency_ms`, `payload_size_bytes` (use `DistributionSummary` / histogram)
+  - **Free text** - error messages, search terms, raw HTTP paths with embedded IDs (normalize `/orders/42` → `/orders/{id}`)
+  Allowed: enums / bounded categories (`status`, `tenant_tier`, `region`, `error_code`)
+- [ ] **`http.server.requests` URI templating** - tag must be the route template (`/orders/{id}`), not the resolved path. Verify `WebMvcMetricsFilter` is in the chain; custom HTTP timers use `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE`
+- [ ] **`@Timed` on hot paths** - critical user journeys; `histogram = true` only when latency-distribution is required (cost: more series)
+- [ ] **`MeterFilter`** trims unused / high-cardinality metrics
+- [ ] **No metric registration in hot loop** - `Counter.builder(...).register(...)` _creates_ each call; cache the result in a `final` field
 
-- [ ] **`micrometer-registry-prometheus`** (or equivalent) on the classpath; `/actuator/prometheus` exposed; scrape endpoint used by the org's metrics platform
-- [ ] **Spring auto-instrumentation enabled**: HTTP server timer (`http.server.requests`), JDBC (HikariCP `hikaricp.*`), JPA (`hibernate.*` with `spring.jpa.properties.hibernate.generate_statistics=true` non-prod), JVM (`jvm.memory.*`, `jvm.gc.*`), Tomcat / Jetty / Undertow (`tomcat.*`)
-- [ ] **Custom business metrics** named under a consistent namespace (`acme.orders.placed`, `acme.payments.failed`); units explicit (`Counter` for counts, `Timer` for durations, `Gauge` for instantaneous values, `DistributionSummary` for histograms)
-- [ ] **Tag cardinality bounded**: tags do not include unbounded values - causes metric-cardinality blow-up. Categories of tag value to reject:
-  - **High-cardinality identifiers**: `userId`, `orderId`, `paymentId`, `requestId`, `traceId` (these belong on traces and logs, not metrics)
-  - **Numeric values that vary continuously**: `amount`, `amount_cents`, `latency_ms`, `payload_size_bytes` (use a `DistributionSummary` or histogram instead of a tag)
-  - **Free-text values**: error messages, user-supplied search terms, raw HTTP paths with embedded IDs (`/orders/42` - normalize to `/orders/{id}` first)
-  Allowed tag values are enums / known categories with bounded cardinality (`status`, `tenant_tier`, `region`, `error_code`)
-- [ ] **`http.server.requests` URI templating**: Spring auto-instrumentation tags this metric with `uri`. The tag value must be the *route template* (`/orders/{id}`), not the resolved path (`/orders/42`). Misconfigured filters or manually-built `Timer.builder` calls that pass `request.getRequestURI()` cause unbounded cardinality. Verify `WebMvcMetricsFilter` is in the chain and any custom HTTP timer uses `HttpServletRequest`'s `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE`
-- [ ] **`@Timed` on hot paths**: service methods on critical user journeys; `histogram = true` only when latency-distribution observability is required (cost: more series)
-- [ ] **`MeterFilter`** trims unused metrics or denies high-cardinality dimensions where applicable
-- [ ] **No metric registration in hot loop**: `meterRegistry.counter(...)` looked up per-request returns the cached counter, but `Counter.builder(...).register(...)` _creates_ on each call. Cache the builder result in a `final` field
+### Step 8 - Distributed Tracing
 
-### Step 8 - Distributed Tracing (Micrometer Tracing / OpenTelemetry)
+_Skipped at `quick` depth._
 
-_Skipped at `quick` depth - see Depth Levels above._
-
-Inspect tracing dependencies and bridge config:
-
-- [ ] **Tracing bridge configured**: `io.micrometer:micrometer-tracing-bridge-otel` + `io.opentelemetry:opentelemetry-exporter-otlp` (preferred for OpenTelemetry pipelines), or `micrometer-tracing-bridge-brave` for Zipkin. Boot 3+ uses Micrometer Tracing; Boot 2.x apps using Sleuth flagged for migration
-- [ ] **Sampling policy explicit**: `management.tracing.sampling.probability` set per env (e.g., `0.1` in prod, `1.0` in staging); not left at default
-- [ ] **`Observation` API used** for custom spans (Boot 3+) - `Observation.start("process-order", registry)` over manual span management
-- [ ] **`traceparent` propagation** validated on outbound: `RestClient` / `WebClient` / Feign auto-instrumented; manual `OkHttpClient` / `HttpClient` instances flagged for missing tracing interceptor
-- [ ] **`@Async` and Virtual Thread tracing**: `ContextSnapshot` / `TaskDecorator` propagates trace context across thread boundaries; flag `@Async` methods that lose trace correlation
-- [ ] **Database span enrichment**: `p6spy` or `datasource-proxy` attaches SQL to spans in non-prod; `query_log_tags`-equivalent (Hibernate `hibernate.session.events.log` or `StatementInspector`) attaches the originating service/method to slow queries
-- [ ] **Spans not too granular**: do not wrap `getUserById` in an `Observation` if the JDBC span already covers it - over-instrumentation is noise
+- [ ] **Tracing bridge configured** - `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` (OTel pipelines) or `micrometer-tracing-bridge-brave` (Zipkin). Boot 3+ uses Micrometer Tracing; Boot 2.x Sleuth flagged for migration
+- [ ] **Sampling policy explicit** - `management.tracing.sampling.probability` per env (e.g., `0.1` prod, `1.0` staging); not left at default
+- [ ] **`Observation` API used** for custom spans on Boot 3+ - `Observation.start("process-order", registry)` over manual span management
+- [ ] **`traceparent` propagation** - `RestClient` / `WebClient` / Feign auto-instrumented; manual `OkHttpClient` / `HttpClient` flagged for missing tracing interceptor
+- [ ] **`@Async` and Virtual Thread tracing** - `ContextSnapshot` / `TaskDecorator` propagates trace context across thread boundaries
+- [ ] **Database span enrichment** - `p6spy` / `datasource-proxy` attaches SQL to spans non-prod
+- [ ] **Spans not over-granular** - don't wrap `getUserById` in `Observation` if JDBC span already covers it
 
 ### Step 9 - Async / Messaging Observability
 
 _Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@JmsListener` / `@Async` / `@Scheduled`._
 
-Inspect `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`:
+- [ ] **Kafka observability** - `spring.kafka.listener.observation-enabled: true` (Boot 3+) bridges producer trace context
+- [ ] **RabbitMQ observability** - `spring.rabbitmq.listener.simple.observation-enabled: true`
+- [ ] **MDC propagation across consumer threads** - filter / aspect copies `traceId`, `userId`, `tenantId` from message headers; clears in `finally`
+- [ ] **Listener metrics** - per-topic `Timer` for handle latency, `Counter` for retries / DLT, queue / partition lag exposed
+- [ ] **`@Async` decoration** - `TaskDecorator` (or `ContextPropagatingTaskDecorator`) preserves MDC, security, trace context
+- [ ] **`@Scheduled` instrumentation** - each method emits `Observation`; per-job duration timer; missed-execution alerting
 
-- [ ] **Kafka observability enabled**: `spring.kafka.listener.observation-enabled: true` (Boot 3+) so consumer messages create spans bridging producer trace context
-- [ ] **RabbitMQ observability**: `spring.rabbitmq.listener.simple.observation-enabled: true`; producer / consumer span linkage via `traceparent` header
-- [ ] **MDC propagation across consumer threads**: filter / aspect copies `traceId`, `userId`, `tenantId` from message headers into MDC at handler entry; clears in `finally`
-- [ ] **Listener metrics**: per-topic `Timer` for handle latency; `Counter` for retries / DLT; queue / partition lag metric exposed
-- [ ] **`@Async` decoration**: `TaskDecorator` (or `ContextPropagatingTaskDecorator` from Micrometer Context Propagation) preserves MDC, security context, and trace context across the boundary
-- [ ] **`@Scheduled` instrumentation**: each scheduled method emits an `Observation` so trace data exists; per-job duration timer; missed-execution alerting via metric
-
-### Step 10 - Error Tracking (Sentry / Honeybadger / Rollbar starters)
+### Step 10 - Error Tracking
 
 _Skipped at `quick` depth unless the diff modifies `@RestControllerAdvice`, error-tracker config, or DSN/API-key handling._
 
-Inspect Sentry / Honeybadger / Rollbar dependencies and config:
+- [ ] **Boot starter wired** - `sentry-spring-boot-starter-jakarta`, `honeybadger`, or `rollbar-spring-boot-starter`
+- [ ] **DSN / API key** in env var or Vault - not in `application.yml`
+- [ ] **Release / env tags** from build metadata (`sentry.release`, `sentry.environment`)
+- [ ] **PII scrubbing on** - `sentry.send-default-pii: false` in prod; explicit breadcrumb allowlist
+- [ ] **MDC forwarded** - error event includes `traceId`, `userId`, `tenantId`
+- [ ] **Sample rate explicit** - `sentry.traces-sample-rate`, `profiles-sample-rate` per env; not `1.0` in prod
+- [ ] **Ignored exceptions documented** - `sentry.ignored-exceptions-for-type` (e.g., `OptimisticLockException` when retry handles it); each ignore has a comment
+- [ ] **`@RestControllerAdvice`** captures the original exception before replacing it with a response DTO
 
-- [ ] **Boot starter** present (`sentry-spring-boot-starter-jakarta`, `honeybadger`, `rollbar-spring-boot-starter`) - integrates with `@RestControllerAdvice`, MDC, and Logback automatically
-- [ ] **DSN / API key** in env var or Vault, not committed to `application.yml`
-- [ ] **Release / environment tags** populated from build metadata (`sentry.release`, `sentry.environment`)
-- [ ] **PII scrubbing on**: `sentry.send-default-pii: false` in prod; explicit allowlist of breadcrumb fields
-- [ ] **MDC fields forwarded**: error event includes `traceId`, `userId`, `tenantId` so Sentry incidents link back to traces / users
-- [ ] **Sample rate explicit**: `sentry.traces-sample-rate`, `sentry.profiles-sample-rate` per env; not `1.0` in prod for tracing
-- [ ] **Ignored exceptions documented**: `sentry.ignored-exceptions-for-type` lists classes that should not page (e.g., `OptimisticLockException` when retry handles it); each ignore has a comment
-- [ ] **`@RestControllerAdvice` maps exceptions to user-facing responses without losing the stack** - error tracker captures the original exception before the advice replaces it with a response DTO
+### Step 11 - Health Checks and SLIs (`deep` only)
 
-### Step 11 - Health Checks and SLIs (deep depth only)
-
-When invoked at `deep`, evaluate:
-
-- [ ] Critical user journeys have at least one Micrometer SLI (`http.server.requests` filtered to the journey URI, success rate, p95 latency)
-- [ ] DB / cache / message broker / external API health checked via `HealthIndicator` (Spring Boot auto-configures most); custom indicators for non-Spring-managed dependencies
-- [ ] SLO targets documented in code (`@SLO`-style annotations or service README) - not a free-floating Confluence page
-- [ ] Synthetic probes (k6 / Gatling) call `/actuator/health/readiness` not just `/actuator/health` - readiness reflects ability to serve
-
+- [ ] Critical user journeys have a Micrometer SLI (`http.server.requests` filtered to the journey URI, success rate, p95)
+- [ ] DB / cache / broker / external API checked via `HealthIndicator`; custom indicators for non-Spring-managed dependencies
+- [ ] SLO targets documented in code, not a free-floating Confluence page
+- [ ] Synthetic probes (k6 / Gatling) call `/actuator/health/readiness`, not `/actuator/health`
 
 ### Step 12 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`.
+Use skill: `review-report-writer` with `report_type: review-observability`. Write to the report file before ending; print confirmation.
 
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] Behavioral principles loaded as Step 1 before any other delegation
-- [ ] Stack confirmed as Java / Spring Boot (or accepted from parent dispatcher)
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow)
-- [ ] Diff and commit log were read once and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained (skipped when invoked as a subagent - the parent already gated)
-- [ ] Instrumentation surfaces (logback-spring.xml, application.yml `management.*`, build file dependencies, changed listeners/registrations) read directly before applying checklists
-- [ ] Logback / SLF4J structured logging assessed: JSON encoder, MDC correlation, sensitive-field masking, log level discipline, parameterized logging
-- [ ] Spring Boot Actuator config reviewed: exposure list minimal, sensitive endpoints gated, liveness/readiness probes configured, info / health depth bounded
-- [ ] Micrometer metrics assessed: registry on classpath, auto-instrumentation enabled, tag cardinality bounded, custom metrics named under namespace
-- [ ] Tracing bridge assessed: Boot 3+ Micrometer Tracing or Sleuth-migration-flag, sampling explicit, propagation across `@Async` and outbound clients
-- [ ] Messaging observability assessed: Kafka / RabbitMQ / JMS listener observation, MDC propagation across consumer threads, queue lag metric
-- [ ] Error tracker integration assessed: Boot starter wired, DSN externalized, PII scrubbed, MDC forwarded, sample rate explicit
-- [ ] Findings name a Spring / Micrometer / Logback idiom directly - not "add observability"
-- [ ] Library-level scope respected; infra-level concerns (Datadog dashboards, log forwarder config, alert rules) explicitly deferred to ops
-- [ ] Depth honored: `quick` skipped tracing/messaging/error-tracker/SLI steps unless diff signals required them; `deep` ran the SLI step
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] Behavioral principles loaded as Step 1
+- [ ] Stack confirmed (or accepted from parent)
+- [ ] `review-precondition-check` ran (or handle received)
+- [ ] Diff and commit log read once and reused
+- [ ] When `head_matches_current` was false, explicit user approval obtained (skipped when running as subagent)
+- [ ] Instrumentation surfaces (logback-spring.xml, application.yml management/logging, build dependencies, changed listeners) read before checklists
+- [ ] Structured logging assessed: JSON encoder, MDC, masking, level discipline, parameterized
+- [ ] Actuator config reviewed: exposure minimal, sensitive gated, probes configured, info / health depth bounded
+- [ ] Micrometer metrics: registry present, auto-instrumentation enabled, tag cardinality bounded, custom metrics namespaced
+- [ ] Tracing: Micrometer Tracing on Boot 3+ or Sleuth-migration flag, sampling explicit, propagation across `@Async` and outbound clients
+- [ ] Messaging observability: Kafka / Rabbit / JMS listener observation, MDC propagation, queue lag metric
+- [ ] Error tracker: starter wired, DSN externalized, PII scrubbed, MDC forwarded, sample rate explicit
+- [ ] Findings name a Spring / Micrometer / Logback idiom - not "add observability"
+- [ ] Library-level scope respected; infra concerns explicitly deferred to ops
+- [ ] Depth honored: `quick` skipped tracing / messaging / error-tracker / SLI unless signals fired; `deep` ran SLI step
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit if none)
+- [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Output Format
 
@@ -208,54 +187,51 @@ Write the fully assembled review output to the report file before ending the ses
 ## Spring Boot Observability Review Summary
 
 **Stack Detected:** Java <version> / Spring Boot <version>
-**Logging:** Logback + Logstash JSON encoder | Logback JsonEncoder | log4j2 | other
+**Logging:** Logback + Logstash JSON | Logback JsonEncoder | log4j2 | other
 **Metrics:** Micrometer + Prometheus | Micrometer + StatsD | none
-**Tracing:** Micrometer Tracing (OTel) | Micrometer Tracing (Brave/Zipkin) | Spring Cloud Sleuth (deprecated) | none
+**Tracing:** Micrometer Tracing (OTel) | Micrometer Tracing (Brave/Zipkin) | Sleuth (deprecated) | none
 **Error Tracker:** Sentry | Honeybadger | Rollbar | none
-**Overall:** Adequate | Gaps Found - [count by impact: High/Medium/Low]
+**Overall:** Adequate | Gaps Found - [count: High/Medium/Low]
 
 ## Findings
 
 ### High Impact
-
 - **Location:** [file:line or config key]
-- **Issue:** [what is missing / wrong - name the Spring idiom: missing MDC propagation across `@Async`, unbounded tag cardinality on `userId`, Actuator `*` exposure, etc.]
-- **Impact:** [diagnosability / alertability / cost cost]
-- **Fix:** [specific Spring / Micrometer / Logback change with code or YAML example]
+- **Issue:** [name the idiom: missing MDC propagation across `@Async`, unbounded tag cardinality on `userId`, Actuator `*` exposure, etc.]
+- **Impact:** [diagnosability / alertability / cost]
+- **Fix:** [specific Spring / Micrometer / Logback change with code or YAML]
 
 ### Medium Impact
-
 [Same structure]
 
 ### Low Impact / Quick Wins
-
 [Same structure]
 
-_Omit sections with no findings._
+_Omit empty sections._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Add Logstash JSON encoder", "Migrate Sleuth → Micrometer Tracing", "Introduce `ContextPropagatingTaskDecorator` for `@Async`"]
+[Structural improvements not tied to a specific finding]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting instrumentation, dashboard work, or ops collaboration). Order: High > Medium > Low Impact.
+Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting / dashboards / ops). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `MDC.put(\"orderId\", id)` at OrderService#place entry; clear in `finally`"]
-2. **[Delegate]** [High] [scope: ops] - [one-line action, e.g., "Wire `/actuator/prometheus` to org Prometheus scrape config"]
+1. **[Implement]** [High] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: ops] - [one-line action]
 3. **[Implement]** [Medium] file:line - [one-line action]
 
-_Omit this section if there are no actionable findings._
+_Omit if no actionable findings._
 ```
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow
-- Reporting gaps without naming the Spring / Micrometer / Logback idiom ("add metrics" vs "register Micrometer `Counter` named `acme.orders.placed` with bounded tags")
-- Recommending generic observability advice when a Spring starter or auto-config exists (say "add `spring-boot-starter-actuator`", not "expose health endpoints")
-- Reviewing infra-level concerns (Datadog SaaS settings, Grafana alert rules, log forwarder config, on-call rotation) - those are not in source code and belong to ops review
-- Treating high tag cardinality (`userId`, `orderId`) as acceptable - metric series cost compounds; require enum / category tags
-- Leaving `*` in `management.endpoints.web.exposure.include` as acceptable in prod
-- Suggesting `log.info("...", e)` (loses stack trace) instead of `log.error("...", e)` (preserves it)
+- Running `git fetch`, `git checkout`, or any state-changing git from this workflow
+- Reporting gaps without naming the idiom ("add metrics" vs "register `Counter` named `acme.orders.placed` with bounded tags")
+- Generic observability advice when a Spring starter exists (say "add `spring-boot-starter-actuator`", not "expose health endpoints")
+- Reviewing infra concerns (Datadog, Grafana, log forwarder, on-call) - belong to ops review
+- Treating high tag cardinality (`userId`, `orderId`) as acceptable
+- Leaving `*` in `management.endpoints.web.exposure.include` for prod
+- Suggesting `log.info("...", e)` (loses stack) instead of `log.error("...", e)`
 - Approving Sleuth on Boot 3 - migrate to Micrometer Tracing
-- Approving `WebSecurityConfigurerAdapter` patterns gating Actuator - removed in Spring Security 6, use `SecurityFilterChain`
+- Approving `WebSecurityConfigurerAdapter` patterns gating Actuator - use `SecurityFilterChain`
