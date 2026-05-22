@@ -1,6 +1,6 @@
 ---
 name: dotnet-db-migration-safety
-description: Enforce zero-downtime EF Core migration patterns including expand-then-contract, rollback-safe DDL, and safe NOT NULL constraints on large tables.
+description: Enforce zero-downtime EF Core migrations - expand-then-contract, NOT VALID constraints, concurrent indexes, out-of-band apply.
 metadata:
   category: backend
   tags: [ef-core, migrations, zero-downtime, ddl, database]
@@ -11,96 +11,111 @@ user-invocable: false
 
 ## When to Use
 
-- Adding, renaming, or removing columns and tables
-- Making schema changes in a zero-downtime deployment pipeline
-- Designing rollback-safe migration sequences
+- Adding, renaming, dropping columns or tables
+- Tightening constraints (NOT NULL, FK, CHECK) on populated tables
+- Adding indexes to large tables
+- Designing rollback-safe migration sequences for zero-downtime deploys
 
 ## Rules
 
-- Never rename columns or tables in a single migration - use expand-then-contract
-- Always apply migrations out-of-band (not on app startup in production)
-- Make all new columns nullable or with a default value - never NOT NULL without a default
-- Keep migrations small and focused: one concern per migration
-- Test migrations against a copy of the production schema before deploying
-- Never delete a migration that has been applied to any environment - add a new revert migration instead
-- Use `migrationBuilder.Sql()` for data migrations; keep them idempotent
+- One concern per migration; each phase in its own file
+- New columns are nullable or have a default - never add NOT NULL without a default to an existing table
+- Renames and drops use expand-then-contract; old name removed only after no deployed code references it
+- Tightening constraints on populated tables uses `NOT VALID` + `VALIDATE` (PostgreSQL) or `WITH (ONLINE = ON)` (SQL Server) via `migrationBuilder.Sql()`
+- Index creation on large tables uses `CONCURRENTLY` (PostgreSQL) or `ONLINE = ON` (SQL Server)
+- Data migrations use `migrationBuilder.Sql()` and are idempotent (re-runnable without corruption)
+- Migrations are applied out-of-band, not on app startup
+- Applied migrations are never edited or deleted; revert via a new migration
 
-## Expand-Then-Contract Pattern
+## Patterns
 
-**Phase 1 - Expand** (deploy with old + new code both working):
+### Expand-Then-Contract (rename or replace)
+
+Three migrations deployed across three releases. Old code keeps running until Phase 3.
+
+Phase 1 - Expand (add nullable target column):
 
 ```csharp
-migrationBuilder.AddColumn<string>(
-    name: "email_address",
-    table: "users",
-    nullable: true);       // nullable while backfill happens
+migrationBuilder.AddColumn<string>("email_address", "users", nullable: true);
 ```
 
-**Phase 2 - Backfill** (data migration, separate migration file):
+Phase 2 - Backfill (idempotent data migration):
 
 ```csharp
-migrationBuilder.Sql(@"
-    UPDATE users SET email_address = email WHERE email_address IS NULL
-");
+migrationBuilder.Sql(
+    "UPDATE users SET email_address = email " +
+    "WHERE email_address IS NULL AND email IS NOT NULL;");
 ```
 
-**Phase 3 - Contract** (after old code is fully retired):
+Phase 3 - Contract (only after all deployed code reads `email_address`):
 
 ```csharp
-migrationBuilder.AlterColumn<string>(
-    name: "email_address",
-    table: "users",
-    nullable: false);      // tighten constraint once all rows are populated
+// Separate migration: enforce NOT NULL (see below for large tables)
+migrationBuilder.AlterColumn<string>("email_address", "users", nullable: false);
 
-migrationBuilder.DropColumn(name: "email", table: "users");
+// Separate migration: drop the old column
+migrationBuilder.DropColumn("email", "users");
 ```
 
 ### NOT NULL on Large Tables (PostgreSQL)
 
-`AlterColumn nullable: false` maps to `ALTER COLUMN SET NOT NULL`, which acquires an `AccessExclusiveLock` and scans every row. On tables with millions of rows this blocks reads and writes for seconds or longer.
+`AlterColumn(nullable: false)` issues `ALTER COLUMN SET NOT NULL`, taking `AccessExclusiveLock` and scanning every row - blocks reads and writes. Use a `NOT VALID` CHECK constraint, then validate separately. EF Core does not generate this; use `migrationBuilder.Sql()`.
 
-Use NOT VALID + VALIDATE CONSTRAINT instead - this skips scanning existing rows (no lock) and validates separately with a `ShareUpdateExclusiveLock` that allows concurrent reads and writes:
+Migration A - add constraint (instant, no row scan):
 
 ```csharp
-// Phase 3a: Add CHECK constraint without scanning existing rows (instant, no lock)
 migrationBuilder.Sql(@"
     ALTER TABLE users
     ADD CONSTRAINT users_email_address_not_null
-    CHECK (email_address IS NOT NULL) NOT VALID;
-");
-
-// Phase 3b: Validate existing rows in a separate migration
-// (ShareUpdateExclusiveLock - allows concurrent reads and writes)
-migrationBuilder.Sql(@"
-    ALTER TABLE users
-    VALIDATE CONSTRAINT users_email_address_not_null;
-");
+    CHECK (email_address IS NOT NULL) NOT VALID;");
 ```
 
-Each phase goes in its own migration file so they can be deployed separately. On SQL Server, the equivalent is `WITH (ONLINE = ON)` on index/constraint operations, which is enabled by default for Enterprise Edition.
+Migration B - validate (allows concurrent reads/writes):
 
-Note: EF Core does not generate NOT VALID constraints automatically - always use `migrationBuilder.Sql()` for this pattern.
+```csharp
+migrationBuilder.Sql(
+    "ALTER TABLE users VALIDATE CONSTRAINT users_email_address_not_null;");
+```
 
-## Apply Migrations Safely
+SQL Server equivalent: `ALTER TABLE ... ADD CONSTRAINT ... WITH (ONLINE = ON)` (Enterprise Edition).
+
+### Index on Large Tables
+
+```csharp
+// Bad - locks the table against writes during build
+migrationBuilder.CreateIndex("ix_orders_created_at", "orders", "created_at");
+
+// Good - PostgreSQL concurrent build, no write lock
+migrationBuilder.Sql("CREATE INDEX CONCURRENTLY ix_orders_created_at ON orders(created_at);");
+```
+
+`CONCURRENTLY` cannot run inside a transaction; configure the migration with `migrationBuilder.Sql(..., suppressTransaction: true)`.
+
+### Apply Migrations
 
 ```bash
-# Apply pending migrations without starting the app
+# Out-of-band, before deploying new app code
 dotnet ef database update --connection "$CONNECTION_STRING"
+```
 
-# Or via a dedicated CLI tool in CI/CD
-dotnet run --project src/Migrator -- migrate
+## Output Format
+
+When proposing a migration plan:
+
+```
+Change: <description>
+Risk: {Low | Moderate | High}        # High if locks a large table or breaks old code
+Phases:
+  1. <migration name> - <DDL/data step> - <release N>
+  2. ...
+Rollback: <how to revert each phase>
+Locks: <expected lock type and table size impact>
 ```
 
 ## Avoid
 
-- `Database.MigrateAsync()` in `Program.cs` for production apps (races, permission issues)
-- Dropping a column while code still references it
-- Adding a NOT NULL column without a default to an existing table
-- Squashing migrations that have been applied to production
-
-## Edge Cases
-
-- **Index creation on large tables**: `CREATE INDEX` acquires a lock that blocks writes. Use `CREATE INDEX CONCURRENTLY` (PostgreSQL) or `CREATE INDEX ... WITH (ONLINE = ON)` (SQL Server Enterprise) via `migrationBuilder.Sql()` - EF Core does not generate concurrent indexes.
-- **Enum column additions**: Adding a new enum value is safe, but removing or renaming one requires expand-then-contract just like column renames.
-- **Migration ordering conflicts**: When multiple branches add migrations, the `ModelSnapshot` will conflict on merge. Resolve by regenerating the snapshot: delete the conflicting snapshot, keep both migration files, and run `dotnet ef migrations script` to verify correctness.
-- **Empty migrations**: If `dotnet ef migrations add` generates an empty migration (no `Up`/`Down` body), the model snapshot still changed. Investigate whether a configuration change was unintentional before removing it.
+- `Database.MigrateAsync()` in `Program.cs` for production (startup races, permission scope)
+- Combining schema and data changes in one migration
+- `AlterColumn(nullable: false)` on tables over ~1M rows without `NOT VALID` + `VALIDATE`
+- Creating non-concurrent indexes on large tables
+- Editing or squashing migrations already applied to any shared environment

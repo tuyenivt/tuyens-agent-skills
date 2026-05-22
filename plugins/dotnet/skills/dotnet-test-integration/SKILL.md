@@ -1,9 +1,9 @@
 ---
 name: dotnet-test-integration
-description: "ASP.NET Core integration tests: WebApplicationFactory, Testcontainers for real DB, Bogus data generation, Respawn state isolation."
+description: "Write ASP.NET Core integration tests with WebApplicationFactory, Testcontainers, Respawn isolation, and Bogus test data."
 metadata:
   category: backend
-  tags: [xunit, testcontainers, webapplicationfactory, integration-testing, bogus]
+  tags: [xunit, testcontainers, webapplicationfactory, integration-testing, bogus, respawn]
 user-invocable: false
 ---
 
@@ -11,145 +11,101 @@ user-invocable: false
 
 ## When to Use
 
-- Selecting the right test type for each layer (unit, integration, API)
-- Setting up Testcontainers for real database tests
-- Generating realistic test data with Bogus
-- Testing HTTP endpoints with `WebApplicationFactory`
+Selecting a test layer, wiring Testcontainers, writing `WebApplicationFactory` API tests, isolating DB state between tests, generating realistic fixtures.
 
 ## Test Layer Strategy
 
-| Layer       | Tool                                   | Scope                                  |
-| ----------- | -------------------------------------- | -------------------------------------- |
-| Domain      | xUnit (no framework deps)              | Pure unit tests for domain logic       |
-| Application | xUnit + NSubstitute / Moq              | Service tests with mocked repositories |
-| Repository  | xUnit + Testcontainers (PostgreSQL)    | Real DB queries, migrations            |
-| API         | `WebApplicationFactory` + `HttpClient` | Full HTTP request/response cycle       |
+| Layer       | Tool                                   | Scope                            |
+| ----------- | -------------------------------------- | -------------------------------- |
+| Domain      | xUnit                                  | Pure logic, no framework deps    |
+| Application | xUnit + NSubstitute                    | Services with mocked dependencies |
+| Repository  | xUnit + Testcontainers (PostgreSQL)    | Real DB queries, migrations      |
+| API         | `WebApplicationFactory` + `HttpClient` | Full HTTP request/response cycle |
 
 ## Rules
 
-- Use `IClassFixture<T>` for shared expensive setup (e.g., Testcontainers database)
-- Use `NSubstitute` or `Moq` for application-layer unit tests - never spin up infrastructure
-- Generate test data with `Bogus` `Faker<T>` - avoid hand-crafted magic strings
-- Every test follows Arrange / Act / Assert structure with clear naming: `Method_Scenario_ExpectedResult`
-- Prefer `WebApplicationFactory` over mocking the HTTP layer for API tests
-- Use `respawn` to reset database state between tests (not `DeleteAsync` on every table)
+- Share expensive setup (Testcontainers, `WebApplicationFactory`) via `IClassFixture<T>` or `[Collection]`.
+- Reset DB state with `Respawn` between tests; never `DeleteAsync` per table.
+- Generate fixtures with `Bogus` `Faker<T>`; no hand-crafted magic values.
+- Name tests `Method_Scenario_ExpectedResult`; structure Arrange / Act / Assert.
+- Test the API through `WebApplicationFactory`, not by mocking `HttpClient`.
+- Override services (DB, external clients) in `ConfigureWebHost`; never hit real external systems.
 
 ## Patterns
 
-Repository test with Testcontainers:
+**Shared Testcontainers fixture** - one container, reused across the class:
 
 ```csharp
-public class OrderRepositoryTests(PostgresContainerFixture db) : IClassFixture<PostgresContainerFixture>
+public sealed class PostgresFixture : IAsyncLifetime
 {
-    [Fact]
-    public async Task GetByIdAsync_ExistingOrder_ReturnsOrder()
-    {
-        // Arrange
-        var order = new OrderFaker().Generate();
-        await db.Context.Orders.AddAsync(order);
-        await db.Context.SaveChangesAsync();
-
-        // Act
-        var result = await db.Repository.GetByIdAsync(order.Id, CancellationToken.None);
-
-        // Assert
-        result.Should().NotBeNull();
-        result!.Id.Should().Be(order.Id);
-    }
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().WithImage("postgres:16-alpine").Build();
+    public string ConnectionString => _db.GetConnectionString();
+    public async Task InitializeAsync() { await _db.StartAsync(); /* migrate */ }
+    public async Task DisposeAsync() => await _db.DisposeAsync();
 }
 ```
 
-API test with WebApplicationFactory:
+Share one container across multiple test classes via `[CollectionDefinition]` instead of one per class.
+
+**WebApplicationFactory override** - swap DB to the container:
 
 ```csharp
-public class OrdersApiTests(CustomWebAppFactory factory) : IClassFixture<CustomWebAppFactory>
-{
-    [Fact]
-    public async Task CreateOrder_ValidRequest_Returns201()
+protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    builder.ConfigureServices(s =>
     {
-        var client = factory.CreateClient();
-        var request = new CreateOrderRequestFaker().Generate();
+        s.RemoveAll<DbContextOptions<AppDbContext>>();
+        s.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
+    });
+```
 
-        var response = await client.PostAsJsonAsync("/api/v1/orders", request);
+**API test** - Arrange / Act / Assert through HTTP:
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-    }
+```csharp
+[Fact]
+public async Task CreateOrder_ValidRequest_Returns201()
+{
+    var request = new CreateOrderRequestFaker().Generate();
+    var response = await _client.PostAsJsonAsync("/api/v1/orders", request);
+    response.StatusCode.Should().Be(HttpStatusCode.Created);
 }
 ```
 
-Bogus faker:
+**Respawn between tests** - reset in `InitializeAsync`, not `Dispose`:
+
+```csharp
+public Task InitializeAsync() =>
+    _respawner.ResetAsync(_fixture.ConnectionString); // not in DisposeAsync - async cleanup unreliable
+```
+
+Configure once: `await Respawner.CreateAsync(conn, new RespawnerOptions { DbAdapter = DbAdapter.Postgres })`.
+
+**Bogus faker** - bind to the domain constructor, not raw properties:
 
 ```csharp
 public sealed class OrderFaker : Faker<Order>
 {
-    public OrderFaker() =>
-        CustomInstantiator(f => Order.Create(
-            customerId: f.Random.Guid(),
-            totalAmount: f.Finance.Amount(1, 10_000)));
+    public OrderFaker() => CustomInstantiator(f =>
+        Order.Create(customerId: f.Random.Guid(), totalAmount: f.Finance.Amount(1, 10_000)));
 }
 ```
+
+**Bad:** hardcoded ports or connection strings in test config.
+**Good:** read `_fixture.ConnectionString` at runtime; `WebApplicationFactory` assigns a random port.
+
+## Output Format
+
+When asked to add or review integration tests, produce:
+
+- **Layer:** `{Domain | Application | Repository | API}`
+- **Fixtures:** list of `IClassFixture` / `[Collection]` types introduced or reused.
+- **Isolation:** `{Respawn | per-test transaction | fresh container}` with justification.
+- **Test list:** `Method_Scenario_ExpectedResult` names with the assertion target.
+- **Service overrides:** which DI registrations replaced in `ConfigureWebHost`.
 
 ## Avoid
 
-- `Thread.Sleep` in tests - use `await Task.Delay` or proper async assertions
-- Shared mutable state between tests (test isolation)
-- Testing implementation details - test observable behaviour
-- Hardcoded connection strings - read from `IConfiguration` or Testcontainers
-
-## Testcontainers Fixture
-
-Shared Testcontainers fixture to avoid spinning up a new database per test class:
-
-```csharp
-public sealed class PostgresContainerFixture : IAsyncLifetime
-{
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .Build();
-
-    public string ConnectionString => _container.GetConnectionString();
-    public AppDbContext Context { get; private set; } = null!;
-
-    public async Task InitializeAsync()
-    {
-        await _container.StartAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(ConnectionString)
-            .Options;
-        Context = new AppDbContext(options);
-        await Context.Database.MigrateAsync();
-    }
-
-    public async Task DisposeAsync() => await _container.DisposeAsync();
-}
-```
-
-## WebApplicationFactory Fixture
-
-Override services to use Testcontainers instead of a real database:
-
-```csharp
-public sealed class CustomWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
-{
-    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().Build();
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.ConfigureServices(services =>
-        {
-            services.RemoveAll<DbContextOptions<AppDbContext>>();
-            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_db.GetConnectionString()));
-        });
-    }
-
-    public async Task InitializeAsync() => await _db.StartAsync();
-    public new async Task DisposeAsync() => await _db.DisposeAsync();
-}
-```
-
-## Edge Cases
-
-- **Parallel test execution**: xUnit runs test classes in parallel by default. Each class sharing the same `IClassFixture` gets the same instance, but different classes get different instances. Use `[Collection]` to share a single Testcontainers instance across multiple test classes to avoid excessive container creation.
-- **Respawn with PostgreSQL**: When using Respawn, pass `new RespawnerOptions { DbAdapter = DbAdapter.Postgres }` and call `ResetAsync` in the test constructor or `InitializeAsync`, not in `Dispose` (async cleanup in `Dispose` is unreliable).
-- **WebApplicationFactory port conflicts**: `WebApplicationFactory` uses a random port by default. Do not hardcode ports in test configuration.
-- **Docker not available in CI**: Testcontainers requires a Docker-compatible runtime. In CI environments without Docker, use Testcontainers Cloud or fall back to SQLite for a degraded but functional test suite.
+- `Thread.Sleep` - use `await Task.Delay` or polling assertions.
+- Shared mutable state between tests.
+- Asserting on implementation details instead of observable behaviour.
+- Spinning up a new container per test class when `[Collection]` would share one.
+- Falling back to SQLite when the production DB is PostgreSQL - drift hides bugs.

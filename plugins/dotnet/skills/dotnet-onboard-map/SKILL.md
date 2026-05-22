@@ -9,151 +9,99 @@ user-invocable: false
 
 # .NET Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-onboard` when the detected stack is .NET / ASP.NET Core.
+> Load `Use skill: stack-detect` first to determine the project stack. Composed by `task-onboard` when the detected stack is .NET / ASP.NET Core.
 
 ## When to Use
 
-- A workflow needs .NET-specific orientation: solution structure, target framework, Clean Architecture layering, EF Core + migrations, config/secrets pipeline.
-- Project has `*.sln` and `*.csproj` files; or pure SDK-style project with `*.csproj`.
+Workflow needs .NET-specific orientation: target framework, solution layering, EF Core + migrations, config/secrets, presentation style (MVC / Minimal API / Blazor / Worker). Project has `*.sln` and/or `*.csproj`.
 
 ## Rules
 
-- Identify target framework first: `<TargetFramework>net8.0</TargetFramework>` or `net9.0` in `.csproj`. LTS (8) vs STS (9) affects support window.
-- Identify solution structure: `*.sln` lists projects; common Clean Architecture has `Domain`, `Application`, `Infrastructure`, `Presentation`/`API`/`Web` projects.
-- Identify ORM: EF Core (most common; check `*.csproj` for `Microsoft.EntityFrameworkCore.*`), Dapper, NHibernate.
-- Identify presentation: ASP.NET Core MVC, Minimal APIs, Razor Pages, Blazor (Server/WebAssembly), gRPC, Worker Service.
-- Identify CQRS / MediatR if present (`MediatR` package); changes how endpoints invoke logic.
+- Read target framework from `.csproj` (`<TargetFramework>net8.0</TargetFramework>`) before anything else; LTS (8, 10) vs STS (9) drives support window.
+- Identify presentation style (MVC controllers, Minimal API endpoints, Razor, Blazor Server/WASM, gRPC, Worker Service) - it determines where new HTTP entry points land.
+- Identify ORM by `.csproj` package refs: `Microsoft.EntityFrameworkCore.*` (most common), Dapper, NHibernate.
+- Identify layout (see Patterns) before describing architecture; new code placement depends on it.
+- Flag missing `global.json` if multiple SDKs are installed and team needs reproducibility.
 
 ## Patterns
 
-### Build Inventory
+### File Inventory
 
-| File              | What it tells you                                                                |
-| ----------------- | -------------------------------------------------------------------------------- |
-| `*.sln`           | Solution; lists projects and their relationships                                  |
-| `*.csproj`        | Project file: target framework, package refs, project refs                       |
-| `Directory.Packages.props` | Central package management (if present)                                |
-| `Directory.Build.props` / `Directory.Build.targets` | Solution-wide MSBuild config                  |
-| `global.json`     | SDK version pin                                                                   |
-| `nuget.config`    | NuGet package source config                                                       |
-| `appsettings*.json` | Configuration files                                                             |
-| `Program.cs`      | App entry; `var builder = WebApplication.CreateBuilder(args); ...`                |
-| `*.Tests.csproj` / `*.UnitTests.csproj` | Test projects                                              |
+| File                                                | Signal                                              |
+| --------------------------------------------------- | --------------------------------------------------- |
+| `*.sln`                                             | Project list and relationships                      |
+| `*.csproj`                                          | Target framework, package refs, project refs        |
+| `global.json`                                       | SDK pin                                             |
+| `Directory.Packages.props`                          | Central package management                          |
+| `Directory.Build.props` / `.targets`                | Solution-wide MSBuild config                        |
+| `appsettings*.json`                                 | Config per environment                              |
+| `Properties/launchSettings.json`                    | Dev URLs and env vars                               |
+| `Program.cs`                                        | DI registration, middleware pipeline, `app.Run()`   |
+| `*.Tests.csproj` / `*.IntegrationTests.csproj`      | Test projects                                       |
+
+### Layout Variants
+
+Detect which the project uses (drives new-code placement):
+
+- **Clean Architecture** (default for .NET): `src/{Domain, Application, Infrastructure, Api}` as separate projects. Domain has no refs; Application -> Domain; Infrastructure -> Application; Api -> all. Layer rules enforced by `<ProjectReference>` graph. New logic: `Application/Features/<F>/`; persistence: `Infrastructure/Persistence/`; HTTP: `Api/Controllers/` or `Api/Endpoints/`.
+- **Vertical slice / feature folders**: single `Api` project with `Features/<F>/{Handler, Endpoint, Request, Repository}.cs`. Layering by namespace, not project; no compile-time gate.
+- **Modular monolith**: `src/Modules/<Module>/{Domain, Application, Infrastructure, Api}` - Clean stack per module, inter-module via `BuildingBlocks` or MediatR notifications.
+- **Worker Service**: `src/Worker/Program.cs` with `AddHostedService<T>`; no HTTP. New jobs are `BackgroundService` subclasses.
+- **Single-file Minimal API**: all endpoints in `Program.cs`. Refactor once endpoints exceed ~5.
+
+`Program.cs` stays thin (config + DI + middleware + `Run`). Business logic in `Program.cs` is a smell.
 
 ### Bootstrap Path
 
-1. SDK: confirm `global.json` SDK version matches `dotnet --version`. Install via `winget`/Homebrew/`dotnet-install.sh`.
-2. Restore: `dotnet restore`.
-3. Local services: `compose.yml` for SQL Server / Postgres / Redis; secrets via `dotnet user-secrets` for dev.
-4. Migrations:
-   - `dotnet ef database update --project src/Infrastructure --startup-project src/Api` (EF Core).
-   - Migrations in `src/Infrastructure/Migrations/` typically.
-5. Run: `dotnet run --project src/Api` or `dotnet watch run --project src/Api`.
-6. Verify: HTTPS port from `appsettings.json` `Kestrel:Endpoints` or launch profile (`Properties/launchSettings.json`); `/swagger` if Swashbuckle is present.
+1. SDK: match `global.json` to `dotnet --version`.
+2. `dotnet restore`.
+3. Services: `compose.yml` for SQL Server / Postgres / Redis; `dotnet user-secrets set` for dev secrets.
+4. Migrations (EF Core): `dotnet ef database update --project src/Infrastructure --startup-project src/Api`. Multi-DbContext: add `--context <Name>`.
+5. Run: `dotnet run --project src/Api` (or `dotnet watch run`).
+6. Verify: URL from `launchSettings.json` or `Kestrel:Endpoints`; `/swagger` if Swashbuckle is referenced.
 
-### Key File Inventory
+### Conventions (call out what's present)
 
-**Clean Architecture solution:**
+- DI: constructor injection via `IServiceCollection`.
+- Config: `IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`; secrets via `dotnet user-secrets` (dev), Key Vault / Secrets Manager (prod).
+- Logging: `ILogger<T>`; Serilog or NLog if referenced.
+- Validation: FluentValidation if referenced, else DataAnnotations.
+- Async: `async`/`await` with `CancellationToken` on every async method.
+- MediatR / CQRS: if `MediatR` is referenced, endpoints dispatch to handlers; pipeline behaviors carry cross-cutting concerns.
+- EF Core: `DbSet<T>` per aggregate; configs in `IEntityTypeConfiguration<T>`.
+- Tests: xUnit (dominant), NUnit/MSTest (legacy); Moq or NSubstitute.
 
-| Project               | Purpose                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| `src/Domain/`         | Entities, value objects, domain events, no external deps                |
-| `src/Application/`    | Use cases, MediatR handlers, DTOs, interfaces (e.g., `IRepository<T>`)  |
-| `src/Infrastructure/` | EF Core implementations, external clients, migration history             |
-| `src/Api/` (or `Web/`, `Presentation/`) | Controllers, minimal APIs, SignalR; `Program.cs` lives here |
-| `tests/<Project>.Tests/` | Unit tests per layer                                                  |
-| `tests/<Project>.IntegrationTests/` | Integration tests (often with WebApplicationFactory)         |
+### Risk Hotspots
 
-**Within `src/Api/`:**
-
-| File / dir             | Purpose                                                              |
-| ---------------------- | -------------------------------------------------------------------- |
-| `Program.cs`           | DI container setup, middleware pipeline, app startup                  |
-| `appsettings.json` + `appsettings.Development.json` | Config                                  |
-| `Properties/launchSettings.json` | Dev environment + URLs                                       |
-| `Controllers/`         | Controller-based routes                                              |
-| `Endpoints/`           | Minimal API endpoint groups (if used)                                |
-| `Middleware/`          | Custom middleware                                                     |
-| `Filters/`             | Action/exception filters                                              |
-
-### Module Layout Convention
-
-Check which the project uses before describing the architecture - this drives where new code should land:
-
-- **Clean Architecture (most common in production .NET)**: `src/Domain/`, `src/Application/`, `src/Infrastructure/`, `src/Api/` (or `Web/` / `Presentation/`) as separate projects in the solution. Domain has no project references; Application references Domain only; Infrastructure references Application + Domain (implements interfaces); Api references all. Cross-project boundaries enforced by `.csproj` `<ProjectReference>` graph - the compiler catches a layer violation. New business logic lands in `Application/Features/<Feature>/`; persistence in `Infrastructure/Persistence/Repositories/`; HTTP entry in `Api/Controllers/`. MediatR is typical for the Application layer
-- **Feature folders / vertical slice (modern alternative within a single project)**: `src/Api/Features/Orders/{PlaceOrderHandler.cs, PlaceOrderEndpoint.cs, PlaceOrderRequest.cs, OrderRepository.cs}` - each feature is a folder owning its entire vertical (request DTO + validator + handler + endpoint + repository). No separate Application / Infrastructure projects; layering is by namespace convention, not by project. Recognizable by `Features/` directory and lack of separate Domain / Application / Infrastructure projects. Easier to navigate per-feature; harder to enforce layer rules (no compile-time gate)
-- **Minimal API endpoint groups (`MapGroup`)**: `src/Api/Endpoints/OrdersEndpoints.cs` with `app.MapGroup("/api/v1/orders").MapOrdersEndpoints();` extension method pattern. Often combined with feature folders. Replaces `Controllers/` directory in greenfield .NET 7+ projects. The endpoint extension is the public surface; behind it sits the same handler/service/repository tree as Clean Architecture (or feature-folder Vertical Slice)
-- **Modular monolith / multi-bounded-context**: `src/Modules/Orders/{Orders.Domain, Orders.Application, Orders.Infrastructure, Orders.Api}` - each module is its own Clean Architecture stack inside a top-level `Modules/` folder. Modules communicate via a shared `BuildingBlocks` library or in-process bus (`MediatR.Notifications`). Used by teams scaling toward microservice extraction without paying the deploy cost yet. Recognizable by `src/Modules/<ModuleName>/` directory tree
-- **Worker Service / Background-only**: `src/Worker/` with `Program.cs` calling `Host.CreateDefaultBuilder().ConfigureServices(s => s.AddHostedService<MyWorker>())`. No HTTP surface. New jobs land as `IHostedService` or `BackgroundService` subclasses; shared logic typically in a separate library project
-- **Single-`Program.cs` minimal API (small services / samples)**: everything in `Api/Program.cs` with inline endpoint mappings. Fine for < 5 endpoints or templates; refactor to feature folders or Clean Architecture before it grows
-
-`Program.cs` (or the API project's `Program.cs` in Clean Architecture) is always thin (load config, build DI, register middleware, `app.Run()`). Business logic in `Program.cs` is a smell - it cannot be tested without booting the host. Move to a handler / service / extension method.
-
-### Conventions
-
-- **Constructor injection** via DI container (built-in `IServiceCollection`); no field/property injection without explicit attribute.
-- **`async`/`await` everywhere I/O is involved**; `CancellationToken` parameter on every async method.
-- **Configuration:** `IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>` patterns; secrets via `dotnet user-secrets` (dev), Azure Key Vault / AWS Secrets Manager (prod).
-- **Logging:** `ILogger<T>` via DI; categorized by generic type. `Serilog` and `NLog` common alternatives.
-- **Validation:** FluentValidation is common; data annotations alternative.
-- **MediatR + CQRS:** if present, every endpoint is thin and dispatches to a handler. Pipeline behaviors for cross-cutting concerns.
-- **Tests:** xUnit dominant; NUnit and MSTest legacy. Moq or NSubstitute for mocking.
-- **EF Core conventions:** `DbSet<Entity>` per aggregate; configurations in `IEntityTypeConfiguration<T>` files (Fluent API).
-
-### Risk Hotspots Specific to .NET
-
-- **Async / cancellation** (`.Result` / `.Wait()` / `GetAwaiter().GetResult()` blocking, `async void` outside event handlers, missing `CancellationToken` propagation, blocking on a `BackgroundService`): see `dotnet-async-patterns`, `task-dotnet-review-perf`.
-- **EF Core data access** (N+1 via lazy load / per-iteration `.Single()`, `Include` cartesian explosion, missing `AsNoTracking()`, `IQueryable` → client-eval boundary, multiple `SaveChangesAsync` per use case): see `dotnet-ef-performance`.
-- **DI lifetime** (Singleton capturing Scoped = captive dependency; `DbContext` is Scoped, never Singleton; enable `ValidateScopes` in dev): see `dotnet-async-patterns`, `task-dotnet-review`.
-- **Background-worker dispatch inside transaction**, payloads carrying tracked entities: see `dotnet-messaging-patterns`, `dotnet-transaction`.
-- **Mass assignment / SQL injection / JWT misvalidation / `Process.Start` shell-out**: see `dotnet-security-patterns`, `task-dotnet-review-security`.
-- **Migration safety** (online / `CONCURRENTLY` index, `lock_timeout`, expand-then-contract, multi-DbContext via `--context`): see `dotnet-db-migration-safety`.
-- **.NET quirks** to flag on first read: `ConfigureAwait(false)` is a no-op in ASP.NET Core (reserve for libraries), middleware order (`UseRouting` → `UseAuthentication` → `UseAuthorization`), `appsettings.Production.json` accidentally committed, `BinaryFormatter` / `Newtonsoft.Json TypeNameHandling.All` on untrusted input.
+- **Async / cancellation**: `.Result`, `.Wait()`, `GetAwaiter().GetResult()`, `async void` outside event handlers, missing `CancellationToken` propagation. See `dotnet-async-patterns`.
+- **EF Core**: N+1 via lazy load, `Include` cartesian explosion, missing `AsNoTracking()` on reads, `IQueryable` -> client-eval boundary, multi `SaveChangesAsync` per use case. See `dotnet-ef-performance`.
+- **DI lifetime**: Singleton capturing Scoped (captive); `DbContext` is Scoped, never Singleton; enable `ValidateScopes` in dev. See `dotnet-async-patterns`.
+- **Background dispatch in transaction** / payloads carrying tracked entities. See `dotnet-messaging-patterns`, `dotnet-transaction`.
+- **Migrations**: online indexes, `lock_timeout`, expand-then-contract, multi-DbContext via `--context`. See `dotnet-db-migration-safety`.
+- **Security**: mass assignment, SQL injection, JWT misvalidation, `BinaryFormatter` / `Newtonsoft.Json TypeNameHandling.All` on untrusted input. See `dotnet-security-patterns`.
+- **ASP.NET Core quirks**: middleware order (`UseRouting` -> `UseAuthentication` -> `UseAuthorization`); `ConfigureAwait(false)` is a no-op in app code (reserve for libraries); `appsettings.Production.json` accidentally committed.
 
 ### First-PR Safe Zones
 
-- New endpoint in existing controller / minimal API endpoint group.
-- New MediatR handler + DTO + validator (CQRS projects).
-- New unit test in `tests/<Project>.Tests/`.
-- New configuration option in `appsettings.json` + `IOptions<T>`.
+Safer: new endpoint in existing controller/group; new MediatR handler + DTO + validator; new unit test; new `IOptions<T>` config key.
 
-Riskier:
-
-- `Program.cs` - DI registration order matters; middleware order matters.
-- EF Core migrations - production rollback requires explicit reverse migration.
-- DI lifetime changes - cascade through the dependency graph.
-- Authentication/authorization configuration.
-
-### Ecosystem Currency
-
-- .NET 8 LTS standard; .NET 9 STS; .NET 10 LTS expected.
-- Minimal APIs gaining over MVC controllers in new projects.
-- EF Core 8+ has bulk operations (`ExecuteUpdate`, `ExecuteDelete`).
-- `record` types standard for DTOs; primary constructors (C# 12) common.
-- Source generators replacing reflection-based startup in libraries.
-- AOT compilation supported but constrains library choices (no reflection-heavy code).
+Riskier: `Program.cs` edits (DI order, middleware order), EF Core migrations, DI lifetime changes, auth configuration.
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** target framework, solution structure (Clean Architecture or other), ORM, presentation layer (MVC/Minimal/Blazor), MediatR/CQRS presence, validation library, test framework.
-
-**Local Bootstrap:** `dotnet restore`, user secrets setup if needed, `dotnet ef database update`, `dotnet run --project ...`, default ports, swagger path.
-
-**Architecture Map:** project layering, `Program.cs` location, controllers/endpoints directory, DbContext + entity configuration locations.
-
-**Conventions:** DI, `IOptions<T>` config, logging stack, async/cancellation token usage, validation library, test framework.
-
-**Risk Hotspots:** captive dependencies, DbContext concurrency, IQueryable client-side boundary, middleware ordering, async-over-sync deadlocks, migration multi-context.
-
-**First-PR Safe Zones:** scoped to observed structure.
+- **Stack and Tooling**: target framework; layout variant; ORM + provider; presentation style; MediatR/CQRS yes/no; validation lib; logging stack; test framework.
+- **Local Bootstrap**: SDK check, `dotnet restore`, services compose, `dotnet user-secrets`, `dotnet ef database update` (with `--project`/`--startup-project`/`--context`), `dotnet run --project ...`, URL, swagger path.
+- **Architecture Map**: project graph (which references which), `Program.cs` location, controllers/endpoints directory, `DbContext` + `IEntityTypeConfiguration<T>` locations, migrations directory.
+- **Conventions**: DI, `IOptions<T>`, logging, async/cancellation, validation, tests - only what the repo actually uses.
+- **Risk Hotspots**: subset from the list above that applies to the observed code.
+- **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid
 
-- Listing solution projects without identifying their layer purpose
-- Treating .NET Framework patterns as current (.NET Core / .NET 5+ unified)
-- Recommending `ConfigureAwait(false)` in ASP.NET Core app code
-- Skipping `dotnet user-secrets` for dev configuration
-- Glossing over middleware order in `Program.cs`
-- Treating MVC and Minimal API endpoint patterns as interchangeable
+- Listing solution projects without naming each one's layer purpose.
+- Treating .NET Framework patterns as current (.NET 5+ is unified).
+- Recommending `ConfigureAwait(false)` in ASP.NET Core app code.
+- Skipping `dotnet user-secrets` for dev configuration.
+- Conflating MVC, Minimal API, and Razor patterns.

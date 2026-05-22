@@ -1,6 +1,6 @@
 ---
 name: dotnet-exception-handling
-description: "ASP.NET Core centralized exception handling: IExceptionHandler, RFC 7807 Problem Details, domain exception hierarchy mapped to HTTP codes."
+description: "ASP.NET Core centralized error handling: IExceptionHandler, RFC 7807 Problem Details, domain exception hierarchy, FluentValidation mapping."
 metadata:
   category: backend
   tags: [exception-handling, problem-details, middleware, error-responses]
@@ -11,64 +11,78 @@ user-invocable: false
 
 ## When to Use
 
-- Setting up centralised error handling in ASP.NET Core
-- Mapping domain/application exceptions to HTTP Problem Details responses
-- Ensuring consistent error response format across all endpoints
+Centralizing ASP.NET Core error handling, mapping domain/application exceptions to RFC 7807 Problem Details, or replacing ad-hoc `try/catch` + `BadRequest()` in controllers.
 
 ## Rules
 
-- Use `IExceptionHandler` (ASP.NET Core 8+) or `UseExceptionHandler` middleware - never try/catch in controllers
-- Always return RFC 7807 Problem Details (`application/problem+json`) for error responses
-- Define a domain exception hierarchy: `DomainException` → `NotFoundException`, `ConflictException`, `ValidationException`
-- Map domain exceptions to HTTP status codes in one place (the exception handler)
-- Log unhandled exceptions at `Error` level with full context; log expected exceptions at `Warning`
-- Never expose stack traces or internal details to API consumers
+- Handle errors centrally via `IExceptionHandler` (.NET 8+) or `UseExceptionHandler`; no `try/catch` in controllers for response shaping.
+- Return `application/problem+json` (RFC 7807) for every error response, including `traceId`.
+- Define one domain exception hierarchy rooted at `DomainException`; map to status codes in exactly one place.
+- Disambiguate when both a domain `ValidationException` and `FluentValidation.ValidationException` exist - use the FQN in switch arms.
+- Log unhandled (`>= 500`) at `Error` with full context; log expected domain exceptions at `Warning`; do not log `OperationCanceledException` as an error.
+- Expose `detail`/stack traces only in Development (`IHostEnvironment.IsDevelopment()`).
 
-## Pattern
+## Patterns
 
-Domain exception hierarchy:
+### Domain exception hierarchy
 
 ```csharp
 public abstract class DomainException(string message) : Exception(message);
 public sealed class NotFoundException(string resource, object id)
     : DomainException($"{resource} '{id}' was not found.");
 public sealed class ConflictException(string message) : DomainException(message);
+public sealed class DomainValidationException(IDictionary<string, string[]> errors)
+    : DomainException("Validation failed") { public IDictionary<string, string[]> Errors { get; } = errors; }
 ```
 
-Global exception handler (.NET 8+):
+### Unified handler
+
+Single switch maps every exception to `(status, title)`. FluentValidation and cancellation are arms of the same switch - no parallel `if` branches.
 
 ```csharp
-public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
-    : IExceptionHandler
+public sealed class GlobalExceptionHandler(
+    ILogger<GlobalExceptionHandler> logger,
+    IHostEnvironment env) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
-        HttpContext context, Exception exception, CancellationToken ct)
+        HttpContext ctx, Exception ex, CancellationToken ct)
     {
-        var (status, title) = exception switch
+        if (ex is OperationCanceledException && ct.IsCancellationRequested)
+            return true; // client disconnect - no response body
+
+        var (status, title) = ex switch
         {
-            NotFoundException   => (404, "Not Found"),
-            ConflictException   => (409, "Conflict"),
-            ValidationException => (422, "Validation Error"),
-            _                   => (500, "Internal Server Error")
+            NotFoundException                       => (404, "Not Found"),
+            ConflictException                       => (409, "Conflict"),
+            DomainValidationException               => (422, "Validation Error"),
+            FluentValidation.ValidationException    => (422, "Validation Error"),
+            _                                       => (500, "Internal Server Error")
         };
 
-        if (status == 500)
-            logger.LogError(exception, "Unhandled exception");
-        else
-            logger.LogWarning(exception, "Domain exception: {Title}", title);
+        if (status >= 500) logger.LogError(ex, "Unhandled exception");
+        else               logger.LogWarning(ex, "Domain exception: {Title}", title);
+
+        var extensions = new Dictionary<string, object?> { ["traceId"] = ctx.TraceIdentifier };
+        if (ex is FluentValidation.ValidationException fve)
+            extensions["errors"] = fve.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+        else if (ex is DomainValidationException dve)
+            extensions["errors"] = dve.Errors;
 
         await Results.Problem(
             statusCode: status,
             title: title,
-            detail: status < 500 ? exception.Message : null
-        ).ExecuteAsync(context);
+            detail: status < 500 || env.IsDevelopment() ? ex.Message : null,
+            extensions: extensions
+        ).ExecuteAsync(ctx);
 
         return true;
     }
 }
 ```
 
-Registration in `Program.cs`:
+### Registration
 
 ```csharp
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -76,42 +90,31 @@ builder.Services.AddProblemDetails();
 app.UseExceptionHandler();
 ```
 
-## FluentValidation Integration
-
-When using `FluentValidation`, validation failures throw `ValidationException` with a list of errors. Map them to a 422 response with per-field details:
+### Anti-pattern: controller try/catch
 
 ```csharp
-FluentValidation.ValidationException ve => (422, "Validation Error"),
+// Bad: per-endpoint shaping, inconsistent payloads, hides 404 as 500
+try { return Ok(await svc.Get(id)); }
+catch (Exception e) { return BadRequest(new { error = e.Message }); }
+
+// Good: let domain exceptions propagate
+return Ok(await svc.Get(id)); // NotFoundException -> 404 Problem Details
 ```
 
-In the handler, attach validation errors to the Problem Details extensions:
+## Output Format
 
-```csharp
-if (exception is FluentValidation.ValidationException validationEx)
-{
-    var errors = validationEx.Errors
-        .GroupBy(e => e.PropertyName)
-        .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+When applying this skill, produce:
 
-    await Results.Problem(
-        statusCode: 422,
-        title: "Validation Error",
-        extensions: new Dictionary<string, object?> { ["errors"] = errors }
-    ).ExecuteAsync(context);
-    return true;
-}
-```
-
-## Edge Cases
-
-- **Multiple IExceptionHandler registrations**: ASP.NET Core 8 chains handlers in registration order. If the first handler returns `true`, subsequent handlers are skipped. Register the most specific handler first.
-- **Minimal API vs controllers**: `IExceptionHandler` works for both Minimal APIs and controllers. No separate configuration is needed.
-- **OperationCanceledException**: Client disconnections throw `OperationCanceledException`. Do not log these as errors - return early or let the framework handle them (ASP.NET Core returns no response body for cancelled requests).
+- **Files**: `GlobalExceptionHandler.cs` (Web layer), `DomainException.cs` + subtypes (Domain layer).
+- **Exception map**: table of `Exception -> (HTTP status, log level)`.
+- **Registration diff**: lines added to `Program.cs` (`AddExceptionHandler`, `AddProblemDetails`, `UseExceptionHandler`).
+- **Removed**: list of controller `try/catch` blocks deleted.
 
 ## Avoid
 
-- `try/catch` in controllers just to return `BadRequest()`
-- Different error response shapes across endpoints
-- Swallowing exceptions without logging
-- Returning `500` for expected domain errors
-- Catching `Exception` broadly in service code instead of letting it propagate to the global handler
+- `try/catch` in controllers to return `BadRequest()` / `NotFound()`.
+- Parallel `if (ex is X)` branches alongside the central switch.
+- Catching `Exception` broadly in services instead of propagating.
+- Returning `500` for expected domain errors (missing resource, conflict, validation).
+- Leaking `ex.Message`, stack traces, or inner exception chains to clients in non-Development environments.
+- Logging `OperationCanceledException` from client disconnects as `Error`.

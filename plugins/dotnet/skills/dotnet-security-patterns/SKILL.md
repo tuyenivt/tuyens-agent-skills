@@ -1,6 +1,6 @@
 ---
 name: dotnet-security-patterns
-description: Configure JWT bearer authentication, policy-based authorization, and OWASP hardening for ASP.NET Core APIs with secure defaults.
+description: Configure JWT bearer auth, policy-based authorization, and OWASP hardening for ASP.NET Core 8 APIs with secure defaults.
 metadata:
   category: backend
   tags: [security, jwt, authentication, authorization, owasp, aspnet-core]
@@ -13,80 +13,109 @@ user-invocable: false
 
 - Configuring JWT bearer authentication in ASP.NET Core 8
 - Defining policy-based or role-based authorization
-- Hardening API endpoints against OWASP Top 10 vulnerabilities
-- Securing sensitive configuration (secrets, connection strings)
+- Hardening API endpoints against OWASP Top 10
+- Securing secrets and connection strings
 
 ## Rules
 
-- Every endpoint must have an explicit auth rule - `[Authorize]` or `[AllowAnonymous]`; never rely on "default deny"
-- Use policy-based authorization over role strings in business logic
-- Store secrets in environment variables or a vault - never in `appsettings.json`
-- Enable HTTPS redirection and HSTS in production
-- Validate JWT issuer, audience, and signing key - reject tokens with `none` algorithm
-- Use `FluentValidation` + `[ApiController]` for input validation to prevent injection
-- Set `SameSite=Strict` or `Lax` for cookies; set `HttpOnly` and `Secure` flags
+- Set a `RequireAuthenticatedUser` fallback policy; mark public endpoints `[AllowAnonymous]` explicitly.
+- Validate JWT issuer, audience, lifetime, and signing key; reject `alg: none`.
+- Use policies (`[Authorize(Policy = "...")]`) for authorization; do not branch on `IsInRole` or claim values inside controllers/services.
+- Load secrets from environment variables, User Secrets, or a vault - never from `appsettings.json`.
+- Enable HTTPS redirection and HSTS in production.
+- Set cookies `HttpOnly`, `Secure`, `SameSite=Strict` or `Lax`; enable antiforgery on cookie-authenticated state-mutating endpoints.
+- Use short-lived access tokens (5-15 min) with refresh tokens; JWTs cannot be revoked once issued.
 
-## Pattern
+## Patterns
 
-JWT bearer setup (.NET 8):
+### JWT bearer with full validation
 
 ```csharp
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(o =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        o.MapInboundClaims = false; // preserve external claim names (Auth0, Azure AD)
+        o.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = true,
-            ValidateAudience         = true,
-            ValidateLifetime         = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
-            ValidAudience            = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(
+            ValidateIssuer = true, ValidateAudience = true,
+            ValidateLifetime = true, ValidateIssuerSigningKey = true,
+            ValidIssuer   = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
         };
     });
 ```
 
-Policy-based authorization:
+Use asymmetric keys (RSA/ECDSA public key in `IssuerSigningKey`) when validation runs in services that do not mint tokens.
 
-```csharp
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("OwnerOrAdmin", policy =>
-        policy.RequireAssertion(ctx =>
-            ctx.User.IsInRole("Admin") ||
-            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) == ctx.Resource?.ToString()));
-});
-
-// Controller usage
-[Authorize(Policy = "AdminOnly")]
-[HttpDelete("{id}")]
-public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { ... }
-```
-
-Global require-auth fallback:
+### Fallback policy + explicit public endpoints
 
 ```csharp
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build());
+        .RequireAuthenticatedUser().Build());
+
+app.MapHealthChecks("/health").AllowAnonymous(); // fallback applies to everything otherwise
+```
+
+### Policy over inline role/claim checks
+
+Bad - authorization logic leaks into the controller:
+
+```csharp
+public async Task<IActionResult> Delete(Guid id)
+{
+    if (!User.IsInRole("Admin")) return Forbid();
+    ...
+}
+```
+
+Good - declarative policy, testable in isolation:
+
+```csharp
+builder.Services.AddAuthorization(o =>
+    o.AddPolicy("OwnerOrAdmin", p => p.RequireAssertion(ctx =>
+        ctx.User.IsInRole("Admin") ||
+        ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) == ctx.Resource?.ToString())));
+
+[Authorize(Policy = "OwnerOrAdmin")]
+[HttpDelete("{id}")] public Task<IActionResult> Delete(Guid id, ...) { ... }
+```
+
+### Secrets out of source
+
+Bad - `appsettings.json` checked into git:
+
+```json
+{ "Jwt": { "Key": "super-secret-signing-key" } }
+```
+
+Good - environment / User Secrets / vault, bound via configuration:
+
+```csharp
+// dotnet user-secrets set "Jwt:Key" "..."   (dev)
+// AZURE_KEYVAULT_URI / env var              (prod)
+var key = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key not configured");
+```
+
+## Output Format
+
+When applied during review or implementation, report findings as:
+
+```
+Finding: <one-line description>
+Severity: {Critical | High | Medium | Low}
+Rule: <which Rule was violated>
+Location: <file:line or "Program.cs">
+Fix: <code-level remediation, reference Pattern by name>
 ```
 
 ## Avoid
 
-- Hard-coding secrets in source code or `appsettings.json`
-- `[AllowAnonymous]` without explicit justification in code review
-- Returning detailed error messages (stack traces) from auth failures
-- Disabling CSRF protection on state-mutating endpoints
-- JWT tokens without expiry (`exp` claim)
-
-## Edge Cases
-
-- **Symmetric vs asymmetric keys**: `SymmetricSecurityKey` is simpler but requires the same secret on all services. For microservices or third-party identity providers, use asymmetric keys (RSA/ECDSA) with `TokenValidationParameters.IssuerSigningKey` set to the public key only.
-- **Fallback policy + health checks**: The `SetFallbackPolicy(RequireAuthenticatedUser)` applies to ALL endpoints including health checks. Explicitly map health check endpoints with `[AllowAnonymous]` or use `RequireAuthorization()` selectively on endpoint groups instead.
-- **Claims from external providers**: When using external identity providers (Auth0, Azure AD), claim types differ from the defaults. Configure `MapInboundClaims = false` on `JwtBearerOptions` and use the actual claim names from the token.
-- **Token refresh**: JWTs are stateless - you cannot revoke them. Use short-lived access tokens (5-15 minutes) paired with refresh tokens stored securely. Implement a token revocation check for sensitive operations if needed.
+- `[AllowAnonymous]` without justification in code review.
+- Returning stack traces or token-parsing details from auth failures.
+- Disabling antiforgery on cookie-auth state-mutating endpoints.
+- JWTs without `exp`; long-lived (>1h) access tokens.
+- Mandating a specific validation library; `[ApiController]` + DataAnnotations or FluentValidation are both acceptable.

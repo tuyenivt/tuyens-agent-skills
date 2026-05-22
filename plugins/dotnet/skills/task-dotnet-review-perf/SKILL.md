@@ -1,6 +1,6 @@
 ---
 name: task-dotnet-review-perf
-description: ".NET / ASP.NET Core / EF Core performance review: N+1, AsNoTracking, async pitfalls, allocations, JSON, IMemoryCache/IDistributedCache."
+description: ".NET / ASP.NET Core / EF Core perf review: N+1, AsNoTracking, async pitfalls, allocations, caching, pool sizing, migration safety."
 agent: dotnet-performance-engineer
 metadata:
   category: backend
@@ -13,45 +13,41 @@ user-invocable: true
 
 # .NET Performance Review
 
-## Purpose
-
-.NET-aware performance review that names EF Core N+1 patterns (per-iteration `.Single()` / lazy-loaded navigations / missing `Include`), `Include` cartesian explosion without `AsSplitQuery`, missing `AsNoTracking()` on read paths, EF Core compiled queries (`EF.CompileAsyncQuery`), `DbContext` pool sizing (`AddDbContextPool` over `AddDbContext`, `MaxPoolSize`), connection pool sizing (Npgsql/SQL Server connection string `Maximum Pool Size`), async pitfalls (`.Result` / `.Wait()` thread-pool starvation, `async void`, `Task.Run` misuse, missing `CancellationToken`), allocation hotspots (`string` concat, LINQ enumeration in hot paths, boxed value types in collections), `Newtonsoft.Json` vs `System.Text.Json` (with source generation for hot paths), `IMemoryCache` (in-process) vs `IDistributedCache` (Redis), output caching / response caching middleware, `IHttpClientFactory` connection reuse, Polly v8 `ResiliencePipeline` shape, and EF Core migration safety idioms directly instead of routing through the generic backend adapter. Produces findings with measured or estimated impact (latency, throughput, query count, allocations, GC pressure, request-thread blocking) and concrete fixes using idiomatic C#.
-
-This workflow is the stack-specific delegate of `task-code-review-perf` for .NET. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-perf` for .NET. Names EF Core / ASP.NET Core / async / allocation idioms directly. Produces findings with measured or estimated impact (latency, throughput, query count, allocations, thread-pool blocking) and concrete fixes.
 
 ## When to Use
 
-- Reviewing a .NET / ASP.NET Core PR or branch for performance regressions
+- Reviewing a .NET / ASP.NET Core PR for perf regressions
 - Investigating a slow endpoint, background worker, or MassTransit consumer
-- Pre-merge perf pass on changes touching EF Core queries, async paths, allocation hotspots, or caching primitives
-- Quarterly N+1 / pool-sizing / `dotnet-counters` review against profiler / OTel data
+- Pre-merge perf pass on EF Core queries, async paths, allocations, or caching
+- Quarterly N+1 / pool-sizing review against profiler / OTel data
 
 **Not for:**
 
-- General .NET code review (use `task-code-review` or `task-dotnet-review`)
-- Security review (use `task-code-review-security` or `task-dotnet-review-security`)
-- Production incident response (use `/task-oncall-start`)
-- Pre-implementation feature design (use `task-dotnet-implement`)
+- General .NET review (`task-dotnet-review`)
+- Security review (`task-dotnet-review-security`)
+- Incident response (`/task-oncall-start`)
+- Pre-implementation design (`task-dotnet-implement`)
 
 ## Severity Rubric
 
-Use these definitions to keep `High` / `Medium` / `Low` Impact labels consistent across runs. Severity is about steady-state production impact and recovery effort, not how scary the code looks.
+Impact = steady-state production behavior, not how scary the code looks.
 
-| Severity     | Definition                                                                                                                                                                                                                                                                              |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **High**     | Production outage shape under steady load: thread-pool starvation from `.Result` / `.Wait()` blocking on async, `DbContext` pool exhaustion under traffic, EF Core N+1 multiplying baseline RPS by O(N), `Include` cartesian explosion materializing 100x rows, `HttpClient` socket exhaustion from per-request `new HttpClient()`, scoped service captured by singleton, unbounded `Channel<T>` reads. Or deploy-time outage on hot tables (NOT NULL ADD with non-constant default on a 10M+-row table, non-online index on hot table on SQL Server Standard SKU). |
-| **Medium**   | Degraded p95 / p99 latency, wasted bandwidth, missing pool sizing on a net-new service, `SELECT *` (entity materialization without projection) over wide entities, missing pagination on endpoints that *can* grow but currently don't, `Newtonsoft.Json` in non-trivial JSON paths, missing `IMemoryCache` on cache-friendly read endpoints. Recoverable with a follow-up PR; not paging on-call. |
-| **Low**      | CPU / allocation churn (`string.Format` in hot paths, LINQ enumeration over arrays where `for` loop fits, missing `StringBuilder` capacity), missing response compression, missing `[ResponseCache]` / output-cache directives, missing `[ProducesResponseType]` for OpenAPI hot path docs.                                                                                                                                                                |
+| Severity   | Definition |
+| ---------- | ---------- |
+| **High**   | Outage-shape under load: `.Result` / `.Wait()` thread-pool starvation, `DbContext` pool exhaustion, N+1 multiplying RPS by O(N), `Include` cartesian explosion, `new HttpClient()` socket exhaustion, singleton capturing scoped `DbContext`, unbounded `Channel<T>`. Or deploy-time outage: non-online DDL on a hot table, `CREATE INDEX CONCURRENTLY` inside a migration transaction (fails at deploy). |
+| **Medium** | Degraded p95/p99: missing pool sizing on new service, entity materialization over wide tables without projection, missing pagination on growable lists, `Newtonsoft.Json` in non-trivial paths, missing `IMemoryCache` on cache-friendly reads. Follow-up PR fixable. |
+| **Low**    | CPU / allocation churn (`string.Format` in hot paths, LINQ in tight loops), missing response compression / output cache, missing `[ProducesResponseType]`. |
 
-When uncertain between tiers, ask "would this page on-call within 24 hours of a 2x traffic increase?" - yes ⇒ High; "would this drag the next quarter's perf budget?" - yes ⇒ Medium.
+Tiebreaker: "would this page on-call within 24h of a 2x traffic spike?" - yes ⇒ High. "Would this drag next quarter's perf budget?" - yes ⇒ Medium.
 
 ## Depth Levels
 
-| Depth      | When to Use                                                  | What Runs                                          |
-| ---------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `quick`    | Single endpoint or repository ("is this query ok?")          | Steps 4 + 5 only; EF Core hotspots + migrations    |
-| `standard` | Default - full .NET perf review                              | All steps                                          |
-| `deep`     | Profiling-driven review with `dotnet-trace` / `PerfView` / OTel / `BenchmarkDotNet` data | All steps + capacity guidance and load plan |
+| Depth      | When                                                      | Runs                                          |
+| ---------- | --------------------------------------------------------- | --------------------------------------------- |
+| `quick`    | Single endpoint or repository                             | Steps 4 + 5                                   |
+| `standard` | Default - full perf review                                | All steps                                     |
+| `deep`     | Profiler-driven (`dotnet-trace` / `PerfView` / OTel / BDN)| All steps + capacity guidance + load-test plan |
 
 Default: `standard`.
 
@@ -59,210 +55,166 @@ Default: `standard`.
 
 Mirrors `task-code-review-perf`:
 
-| Invocation                          | Meaning                                                                                               |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-dotnet-review-perf`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-dotnet-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-dotnet-review-perf pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
+| Invocation                          | Meaning                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| `/task-dotnet-review-perf`          | Review current branch vs base; fails fast on a trunk branch              |
+| `/task-dotnet-review-perf <branch>` | Review `<branch>` vs base (3-dot diff)                                   |
+| `/task-dotnet-review-perf pr-<N>`   | Review PR head fetched into local `pr-<N>` (user runs the fetch first)   |
 
-When invoked as a subagent of `task-code-review-perf` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as a subagent of `task-code-review-perf` or `task-dotnet-review`, Steps 1-2 reuse the parent's pre-confirmed stack and pre-read diff / commit log.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Async / Data-Access Surface
+### Step 1 - Confirm Stack and Detect Surface
 
-Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If invoked as a delegate of `task-code-review-perf` or as a subagent of `task-dotnet-review` (parent already detected .NET), accept the pre-confirmed stack and skip re-detection. If the detected stack is not .NET, stop and tell the user to invoke `/task-code-review-perf` instead - this workflow assumes .NET 8 LTS+ on ASP.NET Core.
+Use skill: `stack-detect` to confirm .NET / ASP.NET Core. If not .NET, stop and direct the user to `/task-code-review-perf`.
 
-Detect data access:
+Record for the Summary block:
 
-- `Microsoft.EntityFrameworkCore` in `.csproj` → **EF Core**
-- `Dapper` in `.csproj` → **Dapper**
-- Both → **mixed**
+- **Data Access:** `EF Core <version>` | `Dapper <version>` | `mixed` (based on `.csproj` packages)
+- **Mediator:** `MediatR` | `none`
+- **Messaging:** `MassTransit` | `Hangfire` | `Channel` | `none`
 
-Detect mediator: MediatR (`MediatR` package in `.csproj`) or none. Detect messaging: `MassTransit`, `Hangfire`, in-process `Channel<T>`, or none.
+Data-access value drives Step 4 branch selection.
 
-The data-access decision drives which checklists in Step 4 apply. Record `Data Access: EF Core <version> | Dapper <version> | mixed`, `Mediator: MediatR | none`, `Messaging: MassTransit | Hangfire | Channel | none` for the Summary block.
+### Step 2 - Resolve the Diff
 
-### Step 2 - Resolve the Diff Under Review
-
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-perf` and the parent passed the handle plus pre-read artifacts.
-
-If `review-precondition-check` stops with a fail-fast message (dirty tree, trunk branch, missing PR ref, or denied head-vs-current confirmation), surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once, reuse for all subsequent steps. If the check stops with a fail-fast message, surface it verbatim and stop. Never run state-changing git commands from this workflow.
 
 ### Step 3 - Read the Performance Surface
 
-Before applying the checklists, open the files that govern query and concurrency behavior so impact estimates ground in real code:
+For each finding produced later, cite a real `file:line`. Open the files that govern query and concurrency behavior before applying checklists:
 
-**EF Core surface:**
+- **EF Core:** changed queries, repositories, handlers; `Program.cs` `AddDbContext` / `AddDbContextPool`; connection string pool config; migrations under `Migrations/`; `UseLazyLoadingProxies()` (silent N+1).
+- **Dapper:** `QueryAsync<T>` / `ExecuteAsync` shape; multi-mapper / `splitOn`.
+- **Async surface:** `async Task` / `async void` signatures, `.Result` / `.Wait()`, `Task.Run`, missing `CancellationToken`, new `Task.WhenAll` / `Parallel.ForEachAsync` / `Channel<T>`, `BackgroundService` lifecycle, singleton-capturing-scoped.
+- **Shared:** `IHttpClientFactory` vs `new HttpClient()`; Polly v8 `ResiliencePipeline`; `IMemoryCache` / `IDistributedCache`; MassTransit / Hangfire consumers.
 
-- Every changed query (`db.Orders.Where(...)`, `.Include(...)`, `.Select(...)`, `.ToListAsync(ct)`, `.FirstOrDefaultAsync(ct)`, `.SingleAsync(ct)`, `.CountAsync(ct)`, `FromSqlRaw`, `FromSqlInterpolated`)
-- Every changed handler / repository for transaction usage (`db.Database.BeginTransactionAsync(ct)`, `tx.CommitAsync(ct)`, `db.SaveChangesAsync(ct)`)
-- `Program.cs` `AddDbContext` / `AddDbContextPool` / `AddDbContextFactory` registration; pool size; connection string pool config (`Maximum Pool Size`, `Minimum Pool Size`, `Connection Lifetime`)
-- Migration files under `Migrations/`
-- Lazy loading enabled (`UseLazyLoadingProxies()`) - silent N+1 generator
+If the diff is small but ripples into unchanged code (a new caller hitting an existing N+1 repo), read the unchanged file - the regression lives there.
 
-**Dapper surface (when in use):**
+### Step 4 - Data-Access Hotspots
 
-- Every `connection.QueryAsync<T>(...)` / `ExecuteAsync(...)` for parameterization and shape
-- Multi-mapper / `splitOn` usage for joins
+Use skill: `dotnet-ef-performance`. Apply the EF Core checklist on EF Core projects, Dapper checklist on Dapper-only, both on mixed.
 
-**Async / runtime surface:**
+**EF Core - changed queries / repositories:**
 
-- Every changed handler / service for `async Task` vs `async void` signatures, `await` placement, `.Result` / `.Wait()` calls, `Task.Run` calls, missing `CancellationToken`
-- New `Task.WhenAll(...)` fan-out; new `Channel<T>` patterns; new `Parallel.ForEachAsync`
-- `BackgroundService` / `IHostedService` lifecycle (`ExecuteAsync`, `StopAsync`)
-- Singleton service definitions touching scoped dependencies (captive-dependency check)
+- [ ] N+1 (per-iteration `.Single()` / `.First()` / `.ToList()` inside `foreach`) - resolve via `Include` / `ThenInclude` (add `AsSplitQuery()` on multi-collection includes to avoid cartesian explosion), or projection via `.Select(new Dto(...))`
+- [ ] `UseLazyLoadingProxies()` enabled - silent N+1; flag unless justified
+- [ ] `AsNoTracking()` on read-only queries; tracked path only on mutations
+- [ ] `.ToListAsync(ct)` without `.Skip().Take()` or keyset pagination on growable lists; missing `HasIndex` for `Where` / `OrderBy` / `GroupBy`
+- [ ] Bulk insert via `AddRange` + single `SaveChangesAsync` (or `EFCore.BulkExtensions` for 1000+); per-row INSERT in a loop is N round-trips
+- [ ] Single `SaveChangesAsync` per use case; per-iteration `SaveChangesAsync` inside `foreach` is worst case
+- [ ] Transactions wrap multi-statement writes; no HTTP / publish I/O inside open transaction (dispatch after commit)
+- [ ] `AddDbContextPool` over `AddDbContext` for high-throughput; `Maximum Pool Size × replicas ≤ DB cap`; never `new SqlConnection()` per request
+- [ ] `EF.CompileAsyncQuery` reserved for hot queries (premature when applied everywhere)
 
-**Both:**
+**Dapper:**
 
-- HTTP / external clients (`IHttpClientFactory.CreateClient(...)` vs `new HttpClient()`); typed clients via `services.AddHttpClient<TClient>(...)`; Polly v8 `ResiliencePipeline` registration
-- In-process cache (`IMemoryCache`); distributed cache (`IDistributedCache`, Redis via `Microsoft.Extensions.Caching.StackExchangeRedis`)
-- Background workers; MassTransit consumers; Hangfire jobs
-
-For each finding produced later, cite a real `file:line`. If the diff is small but ripples through code that is not in the diff (a new endpoint calling an existing repository whose query does an N+1), read the unchanged file too - the regression lives there even though the line count attributes it to the new caller.
-
-### Step 4 - EF Core (or Dapper) Hotspots
-
-> If `Data Access: EF Core` was recorded in Step 1, **skip the Dapper subsection entirely** below. Likewise skip the EF Core subsection on Dapper-only projects. The bifurcation exists for mixed codebases - on monoglot projects it should be one read, not two.
-
-**If EF Core** - use skill: `dotnet-ef-performance` for canonical patterns. Review-scoped scan of every changed query, repository, handler, controller:
-
-- [ ] N+1 (per-iteration `.Single()` / `.First()` / `.ToList()` inside `foreach`); resolve via `Include` / `ThenInclude` (with `AsSplitQuery()` to avoid cartesian explosion on multi-collection includes), or projection via `.Select(new Dto(...))`
-- [ ] `UseLazyLoadingProxies()` enabled (silent N+1 generator) - flag unless explicitly justified
-- [ ] `AsNoTracking()` on read-only queries (skips change-tracker overhead); mutations use the default tracked path
-- [ ] `EF.CompileAsyncQuery(...)` cached at startup for hot queries (premature when applied everywhere)
-- [ ] `.ToListAsync(ct)` without `.Skip().Take()` or keyset pagination on growable lists; missing `HasIndex(...)` for `Where` / `OrderBy` / `GroupBy` columns
-- [ ] Bulk insert via `AddRange(...)` + single `SaveChangesAsync(ct)` (or `EFCore.BulkExtensions` for 1000+); per-row `INSERT` in a loop is N round-trips × N transactions
-- [ ] Single `SaveChangesAsync(ct)` per use case (multi-`SaveChangesAsync` splits atomicity); per-iteration `SaveChangesAsync` inside `foreach` is the worst case (combine both halves into one finding)
-- [ ] Transactions wrap multi-statement writes via `BeginTransactionAsync` / `CommitAsync`; no HTTP / publish I/O inside the open transaction (capture inputs, dispatch after commit)
-- [ ] Pool config: `AddDbContextPool<AppDbContext>(...)` over `AddDbContext` for high-throughput; `Maximum Pool Size × replicas ≤ DB cap`; never `new SqlConnection(...)` per request
-
-**If Dapper** - use skill: `dotnet-ef-performance`:
-
-- [ ] N+1 resolved via `WHERE id = ANY(@ids)` (Postgres) / TVP (SQL Server); multi-mapper or flat-DTO projection for joins; pagination on list queries; pooled `IDbConnectionFactory`
+- [ ] N+1 resolved via `WHERE id = ANY(@ids)` (Postgres) / TVP (SQL Server); multi-mapper or flat-DTO for joins; pagination on lists; pooled `IDbConnectionFactory`
 
 ### Step 5 - Indexes and Migrations
 
-Use skill: `dotnet-db-migration-safety` for safe-migration checks on any change in `Migrations/`.
+Use skill: `dotnet-db-migration-safety` for any change under `Migrations/`.
 
-- [ ] Every property referenced in `Where` / `OrderBy` / `GroupBy` is backed by an index (`builder.HasIndex(x => x.Email)` or `[Index(nameof(Email))]` in the entity config)
-- [ ] Composite indexes match the leftmost-prefix pattern of the queries
-- [ ] Foreign keys have indexes (PostgreSQL does not auto-index FKs; SQL Server's clustered index is on the PK, not FKs)
-- [ ] Indexes on large tables use online / concurrent options:
-  - PostgreSQL: `migrationBuilder.Sql("CREATE INDEX CONCURRENTLY ix_... ON ...");` (cannot run inside the migration transaction; flag `CREATE INDEX CONCURRENTLY` inside a default migration transaction as a finding)
-  - SQL Server: `migrationBuilder.Sql("CREATE INDEX ix_... ON ... WITH (ONLINE = ON);");` (Enterprise SKU only)
-- [ ] **`SET lock_timeout`** (PostgreSQL) or `SET LOCK_TIMEOUT` (SQL Server) before DDL on large tables to fail fast instead of blocking
-- [ ] Unique constraints enforced at the database level (not just `[Required]` data annotation)
-- [ ] Partial / filtered indexes used for boolean/enum filters that select a small subset (PostgreSQL `CREATE INDEX ... WHERE status = 'pending'`; SQL Server filtered index `WHERE Status = 'Pending'`)
-- [ ] No DDL on hot tables in a single migration (expand-then-contract: add column nullable, backfill, switch reads, drop old column in a later release)
-- [ ] **Backfill via keyset pagination** in `migrationBuilder.Sql(...)` (`WHERE id > @lastId ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N` (re-scans the same rows on every iteration)
-- [ ] Data migrations isolated from DDL migrations - separate migration files
-- [ ] **Migrations applied via `dotnet ef database update` as a deployment step**, not via `db.Database.Migrate()` on app startup for multi-replica deployments (every replica races the migration on rollout). Single-replica or local dev startup migration is fine; flag startup migration on multi-replica prod
+- [ ] Every column in `Where` / `OrderBy` / `GroupBy` is indexed; composite indexes match leftmost-prefix; FKs indexed (Postgres / SQL Server don't auto-index FKs the way you might assume)
+- [ ] Online / concurrent indexes on hot tables:
+  - Postgres: `migrationBuilder.Sql("CREATE INDEX CONCURRENTLY ...", suppressTransaction: true)` - the typed `migrationBuilder.CreateIndex(...)` runs inside the migration transaction, which is incompatible with `CONCURRENTLY`. Flag typed `CreateIndex` on a hot table as `[High]`; flag `Sql("CREATE INDEX CONCURRENTLY ...")` missing `suppressTransaction: true` as `[High]` (fails at deploy)
+  - SQL Server: `WITH (ONLINE = ON)` (Enterprise SKU only)
+- [ ] `SET lock_timeout` (Postgres) / `SET LOCK_TIMEOUT` (SQL Server) before DDL on large tables - fail fast over block
+- [ ] Partial / filtered indexes for boolean/enum filters selecting a small subset
+- [ ] Expand-then-contract on hot-table column changes (add nullable, backfill, switch reads, drop later)
+- [ ] Backfill via keyset pagination (`WHERE id > @lastId ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N` (re-scans every iteration)
+- [ ] Migrations applied via `dotnet ef database update` as a deploy step, not `db.Database.Migrate()` on startup for multi-replica deployments (replicas race)
 
-**Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot in `Where` / `OrderBy` / `GroupBy` even if no query in the diff currently references it - someone is adding the index for a reason. Validate the index is actually needed (column shape, expected selectivity), then assess migration safety. Conversely, when the diff _adds a column_ the application also queries on, flag the missing index proactively rather than waiting for a separate migration PR.
+**Reasoning rule.** Diff adds an index ⇒ treat the column as hot (someone added it for a reason); validate need, then assess safety. Diff adds a column the app also filters on ⇒ flag missing index proactively.
 
-**Migration impact template.** Before approving any migration step on a hot table, state the impact: _"DDL on a 50M-row table without `WITH (ONLINE = ON)` (SQL Server) or `CREATE INDEX CONCURRENTLY` (PostgreSQL) blocks all writes for the duration of the index build (typically 5-30 min on Postgres at this scale; SQL Server depends on SKU). Acquires `ACCESS EXCLUSIVE` on Postgres, schema-modification lock on SQL Server; every other transaction queues."_ If the row count is unknown, ask, or note "row count not in diff - confirm before deploy."
+**Impact template.** Before approving DDL on a hot table, state row count and lock posture: e.g., _"50M rows without `WITH (ONLINE = ON)` blocks writes 5-30 min; Postgres acquires `ACCESS EXCLUSIVE`, SQL Server takes a schema-modification lock; all writes queue."_ Row count not in diff ⇒ ask, or note "row count unknown - confirm before deploy."
 
-**EF Core CONCURRENTLY mechanics.** `migrationBuilder.CreateIndex(...)` always runs inside the migration transaction, which is incompatible with `CREATE INDEX CONCURRENTLY` (PostgreSQL requires it outside any transaction). The fix on Postgres is to drop into raw SQL with `migrationBuilder.Sql("CREATE INDEX CONCURRENTLY ix_... ON ...", suppressTransaction: true);` - the `suppressTransaction: true` flag tells EF Core to skip the wrapping transaction for that statement. Flag any `migrationBuilder.CreateIndex(...)` (the typed API) on a hot Postgres table as `[High]` and recommend the raw-SQL form; flag `migrationBuilder.Sql("CREATE INDEX CONCURRENTLY ...")` without `suppressTransaction: true` as `[High]` (will fail at deploy time).
+### Step 6 - Async, Threading, Concurrency
 
-### Step 6 - Async, Threading, and Concurrency
+Use skill: `dotnet-async-patterns`. Scan changes touching `async Task`, `Task.WhenAll`, `Task.Run`, `Channel<T>`, `Parallel.ForEachAsync`, workers:
 
-Use skill: `dotnet-async-patterns` for canonical patterns. Review-scoped scan of changes touching `async Task`, `Task.WhenAll`, `Task.Run`, `Channel<T>`, `Parallel.ForEachAsync`, worker pools:
+- [ ] No `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` on async; no `async void` outside event handlers
+- [ ] `CancellationToken ct` propagated through every async chain; `Task.Run` only for CPU-bound work (not "making sync code async")
+- [ ] Sequential `await`s over independent calls collapsed via `Task.WhenAll`; fan-out bounded via `Parallel.ForEachAsync(items, new ParallelOptions { MaxDegreeOfParallelism = N })`
+- [ ] `HttpClient` via `IHttpClientFactory`; Polly v8 `ResiliencePipeline` shape: retry → circuit breaker → timeout (innermost); explicit `HttpClient.Timeout` (default 100s)
+- [ ] No singleton capturing scoped (`AppDbContext`); use `IServiceScopeFactory.CreateScope()` per operation
+- [ ] `SemaphoreSlim.WaitAsync(ct)` over sync `Wait()` or `Monitor.Enter` across `await`
+- [ ] `Channel.CreateBounded<T>(N)` with explicit `FullMode` over `CreateUnbounded` (memory leak under backpressure)
+- [ ] `BackgroundService.ExecuteAsync` uses `while (!stoppingToken.IsCancellationRequested)`; `Task.Delay(..., stoppingToken)` over `Thread.Sleep`
+- [ ] No HTTP / external I/O inside `BeginTransactionAsync...CommitAsync`; capture inputs, dispatch after commit
 
-- [ ] No `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` on async methods (thread-pool starvation, deadlock under `SynchronizationContext`); no `async void` outside event handlers (swallows exceptions, crashes via `UnobservedTaskException`)
-- [ ] `CancellationToken ct` propagated as last parameter through every async chain; `Task.Run` only for offloading CPU-bound work (not "making sync code async")
-- [ ] Sequential `await`s over independent calls collapsed via `Task.WhenAll`; fan-out bounded via `Parallel.ForEachAsync(items, new ParallelOptions { MaxDegreeOfParallelism = N })` (not unbounded `Task.WhenAll(items.Select(...))`)
-- [ ] `HttpClient` via `IHttpClientFactory` (never `new HttpClient()` per request); Polly v8 `ResiliencePipeline` shape: retry → circuit breaker → timeout (innermost); explicit `HttpClient.Timeout` (default 100s)
-- [ ] No Singleton capturing Scoped (`AppDbContext`); use `IServiceScopeFactory.CreateScope()` per operation
-- [ ] `SemaphoreSlim.WaitAsync(ct)` over `Monitor.Enter` / sync `SemaphoreSlim.Wait()` for async-aware locking
-- [ ] `Channel.CreateBounded<T>(N)` over `CreateUnbounded<T>()` (unbounded leaks under backpressure); reader propagates `stoppingToken`
-- [ ] `BackgroundService.ExecuteAsync` uses `while (!stoppingToken.IsCancellationRequested)` with `stoppingToken` forwarded; `Task.Delay(..., stoppingToken)` over `Thread.Sleep` (which blocks the thread and ignores cancellation)
-- [ ] No external I/O inside `BeginTransactionAsync...CommitAsync` (drains pool, holds row locks for upstream tail); capture inputs, dispatch after commit
-- [ ] `ConfigureAwait(false)` reserved for library code (no-op in ASP.NET Core)
+**Impact framing.** `.Result` blocking = thread-pool starvation proportional to RPS × blocking duration (pool injects 1 thread / 500ms; arrival > scale ⇒ queue fills, p99 → seconds). Synchronous upstream call = "p99 = max(self, upstream p99)". When RPS / row count aren't in the diff or `CLAUDE.md`, state the assumption alongside the estimate.
 
-> **Impact framing.** Phrase `.Result` blocking as "thread-pool starvation proportional to RPS × blocking duration" (default `MinThreads = ProcessorCount`, pool scales by injecting one thread every 500ms; arrival rate > scale rate → queue fills, p99 → multi-second). Phrase synchronous critical-path calls as "p99 = max(self, upstream p99)" - recommend cache / circuit breaker / fire-and-forget when non-blocking-business, strict Polly `AddTimeout(...)` + fallback when blocking-business. When RPS / row count isn't in the diff or `CLAUDE.md`, state the assumption alongside the impact estimate. **Hot path** means: per-request on the request thread, per-row in a `.ToListAsync` result, or inside a `BackgroundService` / consumer loop - allocation / CPU checks (Step 7) only fire on hot paths.
+**Hot path = per-request on the request thread, per-row in a `.ToListAsync` result, or inside a `BackgroundService` / consumer loop.** Step 7 / Step 8 only fire on hot paths.
 
-### Step 7 - Allocation Hotspots and CPU Cost
+### Step 7 - Allocations and CPU
 
 _Skipped at `quick` depth unless the diff touches hot loops or large allocations._
 
-- [ ] **`string` concat in hot loops**: `s += part;` in a tight loop allocates a new string per iteration. Use `StringBuilder` (pre-size with `new StringBuilder(capacity)` when known) or `string.Create(length, state, span)` for advanced cases
-- [ ] **`string.Format` / interpolation in hot paths**: each call allocates; for high-frequency log lines use structured logging templates (`_logger.LogInformation("Order {OrderId} placed", id)` keeps the template constant and lets the logger defer formatting until needed)
-- [ ] **`StringBuilder` without capacity**: when the final size is known, `new StringBuilder(capacity)` avoids the geometric reallocation pattern
-- [ ] **LINQ enumeration over arrays / lists in hot paths**: `.Where(...).Select(...).ToArray()` allocates an iterator per stage; for arrays a `for` loop avoids the allocations. Profile before optimizing - LINQ is usually fine outside the hottest paths
-- [ ] **Boxed value types in collections**: `List<object>` storing `int` / `Guid` boxes every value. Use `List<int>` / generic typed collections
-- [ ] **Avoid `ToList()` mid-pipeline**: `.Where(...).ToList().Select(...).ToList()` materializes twice; chain LINQ and call `.ToList()` once at the end
-- [ ] **`Span<T>` / `Memory<T>` for parsing / slicing**: avoid intermediate `string` / `byte[]` allocations when a `ReadOnlySpan<char>` or `ReadOnlySpan<byte>` would slice the existing buffer
-- [ ] **`Dictionary<K, V>` capacity hint**: `new Dictionary<K, V>(capacity)` when count is known to avoid rehashing growth
-- [ ] **`System.Text.Json` over `Newtonsoft.Json` in hot paths**: System.Text.Json is faster, lower-allocation, and is the .NET 6+ default. For very hot serialization paths, enable source generation: `[JsonSerializable(typeof(OrderResponse))] partial class OrderJsonContext : JsonSerializerContext` to skip runtime reflection
-- [ ] **`JsonSerializer.SerializeAsync(stream, ...)` writes directly to the response body**: vs `JsonSerializer.Serialize(...)` which allocates the full string first
-- [ ] **`#[ResponseCompression]`**: response compression middleware (`UseResponseCompression()`) for JSON responses > 1KB; configure providers (Brotli > Gzip)
-- [ ] **`record struct` / `readonly struct` for small value types**: avoids heap allocation when the type is small and copied less than ~16 bytes
-- [ ] **`ArrayPool<T>.Shared.Rent(...)` / `MemoryPool<T>`** for transient large buffers in hot paths
+- [ ] `string` concat / `string.Format` in hot loops - use `StringBuilder` (pre-sized) or structured logging templates (`_logger.LogInformation("Order {OrderId} placed", id)`)
+- [ ] LINQ chains in tight loops over arrays - profile first; replace with `for` only when measured
+- [ ] Boxing: `List<object>` storing `int` / `Guid` - use typed generic collections
+- [ ] `ToList()` mid-pipeline materializes twice - chain LINQ, call `ToList()` once at the end
+- [ ] `System.Text.Json` over `Newtonsoft.Json` in hot paths; enable source generation (`[JsonSerializable(typeof(T))] partial class TJsonContext : JsonSerializerContext`) for very hot serialization
+- [ ] `JsonSerializer.SerializeAsync(stream, ...)` directly to the response body over `Serialize(...)` (allocates full string)
+- [ ] `Span<T>` / `Memory<T>` / `ArrayPool<T>.Shared.Rent` for transient large buffers in hot paths
+- [ ] `record struct` / `readonly struct` for small value types (< ~16 bytes, copied less than passed)
 
-### Step 8 - Caching and Response Performance
+### Step 8 - Caching and Response
 
 _Skipped at `quick` depth unless the diff touches caching primitives._
 
-- [ ] **In-process cache (`IMemoryCache`)**: register via `services.AddMemoryCache()`; configure size limit (`SetSize(...)` per entry + `SizeLimit` on options) - unbounded `IMemoryCache` is a memory leak; absolute / sliding expiration mandatory; `_cache.GetOrCreateAsync(key, async entry => { entry.SetAbsoluteExpiration(TimeSpan.FromMinutes(5)); return await fetchAsync(); })` for cache-aside
-- [ ] **Distributed cache (`IDistributedCache`)**: Redis via `Microsoft.Extensions.Caching.StackExchangeRedis` for cross-replica state; serialize via `System.Text.Json`; explicit TTL via `DistributedCacheEntryOptions.SetAbsoluteExpiration(...)`
-- [ ] **Cache stampede protection**: hot keys with expensive regeneration use single-flight - `IMemoryCache` with a `SemaphoreSlim` per key (or library `LazyCache` / `FusionCache`); for distributed cache, Redis `SET NX EX` lock
-- [ ] **Cache invalidation explicit** - no caches that never expire and never invalidate; document staleness budget; prefer event-driven invalidation over time-based when correctness matters
-- [ ] **Output caching** (.NET 7+): `services.AddOutputCache(...)` and `app.UseOutputCache()` middleware; `[OutputCache(Duration = 60, VaryByQueryKeys = new[] { "page" })]` on read-heavy GET actions. Replaces the older `[ResponseCache]` for server-side caching
-- [ ] **Response caching** (`[ResponseCache]` / `UseResponseCaching`): client / proxy-side via `Cache-Control` headers - distinct from output caching which is server-side
-- [ ] **HTTP client response caching**: `IHttpClientFactory` with a delegating handler that respects `Cache-Control`; or `Microsoft.Extensions.Caching.Memory` wrapping the `HttpClient` call site
-- [ ] **`ETag` / `Last-Modified` headers** on read-heavy endpoints supporting conditional requests (304 Not Modified saves serialization + transfer)
-- [ ] **Per-request memoization**: store on `HttpContext.Items` for values used by multiple middlewares / filters in the same request
+- [ ] `IMemoryCache`: register via `AddMemoryCache()`; **size limit mandatory** (`SizeLimit` on options + per-entry `SetSize`) - unbounded is a memory leak; absolute / sliding expiration mandatory; cache-aside via `GetOrCreateAsync(key, async entry => { entry.SetAbsoluteExpiration(...); return await ...; })`
+- [ ] `IDistributedCache` (Redis via `StackExchangeRedis`) for cross-replica state; explicit TTL via `DistributedCacheEntryOptions.SetAbsoluteExpiration`
+- [ ] Cache stampede protection on expensive regen: `SemaphoreSlim` per key, `LazyCache` / `FusionCache`, or Redis `SET NX EX`
+- [ ] Explicit invalidation strategy - never "expires never, invalidates never"
+- [ ] Output caching (`AddOutputCache` / `UseOutputCache` + `[OutputCache(Duration = 60, VaryByQueryKeys = new[] { "page" })]`) on read-heavy GET actions; distinct from client-side `[ResponseCache]`
+- [ ] Response compression (`UseResponseCompression()`, Brotli > Gzip) for JSON > 1KB
+- [ ] `ETag` / `Last-Modified` on read-heavy endpoints supporting conditional requests
 
-### Step 9 - Background Workers / MassTransit / Hangfire
+### Step 9 - Background Workers
 
-_Skipped at `quick` depth unless the diff touches background workers or message brokers._
+_Skipped at `quick` depth unless the diff touches workers or brokers._
 
-Use skill: `dotnet-messaging-patterns` for canonical patterns. Review-scoped scan:
+Use skill: `dotnet-messaging-patterns`.
 
-- [ ] **All workers**: idempotent (re-fetch state, check-then-act); payload carries IDs / value types, never tracked entities; dispatch AFTER `SaveChangesAsync(ct)` (use transactional outbox via `AddEntityFrameworkOutbox<AppDbContext>` for exactly-once)
-- [ ] **`BackgroundService` / `IHostedService`**: `while (!stoppingToken.IsCancellationRequested)` with `stoppingToken` forwarded; `Task.Delay(..., stoppingToken)` over `Thread.Sleep`; `IServiceScopeFactory.CreateScope()` per iteration (BackgroundService is Singleton, `DbContext` is Scoped)
-- [ ] **MassTransit**: `cfg.UseConcurrencyLimit(N)` to bound consumer parallelism (default unbounded); explicit `UseMessageRetry(r => r.Intervals(...))` per consumer
-- [ ] **Hangfire**: `BackgroundJobServerOptions.WorkerCount` tuned for CPU + I/O profile (default `ProcessorCount * 5`); dashboard gated by auth filter (`app.UseHangfireDashboard("/hangfire", new DashboardOptions { Authorization = [...] })`) - missing auth in prod is also a security finding
+- [ ] Workers idempotent (re-fetch state, check-then-act); payload carries IDs, not tracked entities; dispatch AFTER `SaveChangesAsync` (use `AddEntityFrameworkOutbox<AppDbContext>` for exactly-once)
+- [ ] `BackgroundService`: `IServiceScopeFactory.CreateScope()` per iteration (BackgroundService is Singleton, `DbContext` is Scoped); cancellation propagated
+- [ ] MassTransit: `cfg.UseConcurrencyLimit(N)` (default unbounded); explicit `UseMessageRetry` per consumer
+- [ ] Hangfire: `WorkerCount` tuned for CPU + I/O profile; dashboard gated by `DashboardOptions.Authorization` (missing prod auth is also a security finding)
 
-### Step 10 - Observability for Perf (delegation hand-off)
+### Step 10 - Observability Hand-off
 
 _Skipped at `quick` depth._
 
-This step is intentionally narrow - depth on observability belongs to `task-dotnet-review-observability`. From a perf perspective, confirm only:
+Narrow: confirm presence/absence only; depth on observability belongs to `task-dotnet-review-observability`.
 
-- [ ] Slow paths reachable from this PR have **some** instrumentation (Serilog `_logger.LogInformation(...)` with structured fields OR a `Meter` / `Histogram<double>` instrument); if not, raise as a Low/Recommendation finding and delegate to `task-dotnet-review-observability` for a proper instrumentation pass rather than dictating the design here
-- [ ] EF Core logging not at `Information` for SQL in prod (configured via `optionsBuilder.LogTo(Console.WriteLine, LogLevel.Warning)` or via `appsettings.json` `Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command = Warning` floor)
-- [ ] `dotnet-counters` / `dotnet-trace` runnable in non-prod for live profiling (no code change needed; this is a CI / runbook check)
+- [ ] Slow paths reachable from the PR have some instrumentation (`ILogger` structured log OR a `Meter` / `Histogram<double>`); raise as Low + delegate if absent
+- [ ] EF Core SQL logging not at `Information` in prod (floor at `Warning` via `optionsBuilder.LogTo` or `appsettings.json`)
+- [ ] `dotnet-counters` / `dotnet-trace` runnable in non-prod (runbook / CI check)
 
-Anything beyond presence/absence (sampling rates, span attributes, correlation IDs, multi-process metric aggregation) → `task-dotnet-review-observability` owns it. Note the gap, do not duplicate the audit here.
-
+Anything beyond presence/absence → `task-dotnet-review-observability` owns it.
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`.
+Use skill: `review-report-writer` with `report_type: review-perf`. Write the assembled review to the report file; print the confirmation line to console.
 
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Self-Check
 
-- [ ] Stack confirmed as .NET / ASP.NET Core; data-access mix, mediator, and messaging recorded before any specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent)
-- [ ] Performance surface read directly (queries / repositories, handlers, pool config, migrations, async sites, channels, singleton/scoped registrations)
-- [ ] `dotnet-ef-performance` consulted for the project's data-access mix; N+1, lazy loading, cartesian explosion via `Include`, projection vs entity materialization, `AsNoTracking` checked
-- [ ] `dotnet-db-migration-safety` consulted for any migration change; `lock_timeout`, online/concurrent index, keyset-pagination backfill, expand-contract, startup-vs-deploy migration verified
-- [ ] `dotnet-async-patterns` consulted; `.Result` / `.Wait()`, `async void`, `Task.Run` misuse, missing `CancellationToken`, captive scoped via singleton, `BackgroundService` cancellation audited
-- [ ] `dotnet-messaging-patterns` consulted for any background-worker / MassTransit / Hangfire change; idempotency, post-commit dispatch (outbox), bounded consumer parallelism verified
-- [ ] `DbContext` pool sizing + connection-string `Maximum Pool Size` validated against worker / replica concurrency model **if pool config is in the diff**; otherwise note as Low / Recommendation and skip rather than fail the check
-- [ ] Allocation hotspots assessed when the diff touches hot loops or large structs (`string` concat, LINQ in tight loops, boxing, `Newtonsoft.Json` in hot paths)
-- [ ] Caching strategy assessed (`IMemoryCache` vs `IDistributedCache`, output caching, single-flight, invalidation explicit)
-- [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when profiler / OTel data exists, estimated otherwise (`adds ~N queries per request at K rows` or `each blocked thread starves the pool`) - never just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity guidance and load-test plan
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] **Step 1:** Stack confirmed; `Data Access`, `Mediator`, `Messaging` recorded
+- [ ] **Step 2:** `review-precondition-check` ran (or handle received); diff and commit log read once and reused
+- [ ] **Step 3:** Performance surface read directly (queries, pool config, migrations, async sites, singleton/scoped registrations)
+- [ ] **Step 4:** `dotnet-ef-performance` consulted; N+1, lazy loading, cartesian explosion, projection, `AsNoTracking` checked; pool sizing validated when in diff
+- [ ] **Step 5:** `dotnet-db-migration-safety` consulted on any `Migrations/` change; `lock_timeout`, CONCURRENTLY / `ONLINE = ON`, keyset backfill, expand-contract, deploy-vs-startup migration verified
+- [ ] **Step 6:** `dotnet-async-patterns` consulted; `.Result` / `.Wait()`, `async void`, `Task.Run` misuse, missing `CancellationToken`, captive scoped, `BackgroundService` cancellation audited
+- [ ] **Step 7:** Allocation hotspots assessed when diff touches hot loops or large structs
+- [ ] **Step 8:** Caching strategy assessed (size limit, expiration, stampede, invalidation, output caching)
+- [ ] **Step 9:** `dotnet-messaging-patterns` consulted on any worker / MassTransit / Hangfire change; idempotency, post-commit dispatch, bounded parallelism verified
+- [ ] **Step 10:** Observability presence/absence noted; depth gaps delegated to `task-dotnet-review-observability`
+- [ ] **Step 11:** Report written via `review-report-writer`; confirmation line printed
+- [ ] Every finding states impact (measured `p95: 800ms -> 120ms`, or estimated `adds ~N queries per request at K rows`) - never just "this is slow"
+- [ ] Findings ordered High > Medium > Low; depth honored; Next Steps tagged `[Implement]` / `[Delegate]` (omitted only when no actionable findings)
 
 ## Output Format
 
@@ -281,9 +233,9 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the .NET idiom: N+1 via per-iteration `.Single()` inside a `foreach`, missing `Include` triggering lazy load, `Include` cartesian explosion without `AsSplitQuery`, missing `AsNoTracking()`, sync `.Result` blocking on async, `new HttpClient()` per request leaking sockets, singleton capturing scoped `DbContext`, dispatch inside transaction without outbox, `[FromBody] DomainEntity` mass assignment, etc.]
-- **Impact:** [estimated effect - e.g., "N+1 in OrdersController.List adds ~200 queries per request at 100 orders" or measured "p95 800ms -> 120ms after fix"]
-- **Fix:** [specific .NET change with code example - `db.Orders.AsNoTracking().Include(o => o.Items).AsSplitQuery().ToListAsync(ct)`, `Parallel.ForEachAsync` with bounded `MaxDegreeOfParallelism`, `IHttpClientFactory.CreateClient`, `IServiceScopeFactory.CreateScope` per iteration in singleton, MassTransit transactional outbox, etc.]
+- **Issue:** [.NET idiom named - e.g., "N+1 via per-iteration `.Single()` inside `foreach`", "Singleton capturing scoped `DbContext`", "`CREATE INDEX CONCURRENTLY` inside default migration transaction"]
+- **Impact:** [measured `p95 800ms -> 120ms` or estimated `~200 extra queries per request at 100 orders`]
+- **Fix:** [specific .NET change with code - `db.Orders.AsNoTracking().Include(o => o.Items).AsSplitQuery().ToListAsync(ct)`, `IHttpClientFactory.CreateClient`, `migrationBuilder.Sql(..., suppressTransaction: true)`, etc.]
 
 ### Medium Impact
 
@@ -297,37 +249,29 @@ _Omit sections with no findings._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Switch list endpoint to keyset pagination", "Add Redis cache for product catalog reads", "Move PDF generation to a Hangfire job", "Wrap external HTTP calls in Polly v8 ResiliencePipeline with retry + circuit breaker + timeout"]
+[Structural improvements not tied to a specific finding - e.g., "Switch list endpoint to keyset pagination", "Add Redis cache for product catalog reads", "Wrap external HTTP calls in Polly v8 ResiliencePipeline (retry + circuit breaker + timeout)"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, schema migration, or load-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting refactor / schema / load-test work). Order: High > Medium > Low.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Replace `.Result` with `await` in OrdersController.GetById; propagate `CancellationToken ct` from action signature through the call chain"]
+1. **[Implement]** [High] file:line - [one-line action, e.g., "Replace `.Result` with `await` in OrdersController.GetById; propagate `CancellationToken ct` from action signature"]
 2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add `CREATE INDEX CONCURRENTLY` migration on (TenantId, CreatedAt) - spawn DB migration subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
 
 _Omit this section if there are no actionable findings._
 ```
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting issues without naming the .NET idiom ("this is slow" vs "N+1 from per-iteration `.Single()` inside `foreach`; replace with `.Where(o => ids.Contains(o.Id)).ToListAsync(ct)`")
-- Recommending generic backend advice when a .NET pattern applies (say "use `Parallel.ForEachAsync` with `MaxDegreeOfParallelism`", not "use a worker pool")
-- Suggesting `Task.Run(() => syncMethod())` to "make sync code async" - offloads the thread without changing the work; make the underlying API async instead
-- Suggesting `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` for sync-over-async on the request path - thread-pool starvation and deadlock surface
-- Suggesting `lock(...) { await ... }` (compile error) or `Monitor.Enter` across `await` - use `SemaphoreSlim.WaitAsync(ct)`
-- Suggesting `Channel.CreateUnbounded<T>()` to "avoid backpressure" - that is a memory leak; use `CreateBounded<T>(N)` with explicit `FullMode`
-- Suggesting `new HttpClient()` per request - socket exhaustion under load; use `IHttpClientFactory`
-- Suggesting caching without an invalidation strategy
-- Conflating performance review with general code review or security review - delegate those to their workflows
-- Treating background-worker retries as a substitute for idempotency - retries with non-idempotent jobs cause double-charging / double-emailing
-- Recommending `FromSqlRaw($"... {input}")` for "dynamic" queries - parameterize via `FromSqlInterpolated` (parameterizes interpolated holes), `FromSqlRaw("... {0}", input)` with explicit parameters, or LINQ. When `FromSqlRaw($"...")` is found, the perf concern (defeats query plan reuse, plan-cache pollution) is the smaller half - the SQL injection surface is the bigger half. Add a `[Delegate] -> task-dotnet-review-security` entry to Next Steps so the security half doesn't get silently absorbed into a perf finding
-
-> **Cross-workflow finding ownership.** When a finding is dual perf+security (the `FromSqlRaw($"...")` interpolation above, `Process.Start` shell-out, deserialization of untrusted input via `JsonSerializer.Deserialize<DomainEntity>`), the perf review reports it once with a `[Delegate] -> task-dotnet-review-security` entry in Next Steps and stops there - it does **not** enumerate every parallel security concern in the file (auth bypass, IDOR, mass assignment, open redirect, JWT misvalidation). Those are the security delegate's territory. The perf review's job is to surface the perf half cleanly and hand off; trying to be exhaustive on the security half drowns the perf signal and produces two parallel security audits.
-- Reporting "missing index" without confirming the column actually appears in a `Where` / `OrderBy` / `GroupBy` in the diff
-- Approving lazy loading (`UseLazyLoadingProxies()`) - silent N+1 generator; use explicit `Include` / `ThenInclude` or projection
-- Approving `[FromBody] DomainEntity` parameter binding or `JsonSerializer.Deserialize<DomainEntity>(body)` - mass-assignment vector; use a request DTO record
-- Approving singleton with scoped dependency - captive-dependency bug; use `IServiceScopeFactory`
-- Approving `ConfigureAwait(false)` blanket-applied to ASP.NET Core handlers - it's a no-op there and adds noise; reserve for shared library code
+- Running `git fetch` / `git checkout` / any state-changing git command - user runs these
+- Reporting "this is slow" without naming the .NET idiom (N+1 via per-iteration `.Single()`, `Include` cartesian without `AsSplitQuery`, singleton-captures-scoped, etc.)
+- Generic backend advice when a .NET pattern exists (`Parallel.ForEachAsync` with `MaxDegreeOfParallelism`, not "use a worker pool")
+- Recommending caching without an invalidation strategy
+- Approving lazy loading (`UseLazyLoadingProxies`) - silent N+1
+- Approving `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>(body)` - mass-assignment vector; use a request DTO record
+- Approving singleton with scoped dependency - captive-dependency; use `IServiceScopeFactory`
+- Approving `ConfigureAwait(false)` blanket-applied to ASP.NET Core handlers - no-op there
+- Reporting "missing index" without confirming the column appears in `Where` / `OrderBy` / `GroupBy` in the diff
+- Treating background-worker retries as a substitute for idempotency
+- Conflating perf review with general or security review - delegate
+- `FromSqlRaw($"...{input}")` is dual perf+security: file one perf finding (plan-cache pollution) and add `[Delegate] -> task-dotnet-review-security` to Next Steps for the SQLi half. Don't enumerate parallel security concerns; that's the security delegate's territory.

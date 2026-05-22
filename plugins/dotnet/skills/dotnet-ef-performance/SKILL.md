@@ -1,6 +1,6 @@
 ---
 name: dotnet-ef-performance
-description: "EF Core performance: N+1 prevention, projection queries, compiled queries, keyset pagination, bulk ops, Dapper fallback."
+description: "EF Core perf: N+1, projection, AsNoTracking, AsSplitQuery, compiled queries, keyset pagination, ExecuteUpdate/Delete, Dapper."
 metadata:
   category: backend
   tags: [ef-core, dapper, performance, queries, n+1]
@@ -11,129 +11,95 @@ user-invocable: false
 
 ## When to Use
 
-- Optimizing data access layer queries
-- Preventing N+1 query problems in EF Core
-- Selecting between EF Core and Dapper for a given query
-- Reducing memory footprint of large result sets
+- Diagnosing slow EF Core queries or high allocation in the data layer
+- Removing N+1, cartesian explosion, or deep-page `Skip` scans
+- Choosing between EF Core projection, compiled query, and Dapper
 
 ## Rules
 
-- Default to `AsNoTracking()` for all read-only queries
-- Never call `Include()` without a concrete loading requirement
-- Use projections (`Select()`) instead of full entity loads for read-only views
-- Prefer Dapper for complex reporting queries or bulk reads
-- Detect and eliminate N+1: never lazy-load inside a loop
-- Add indexes on `WHERE`/`ORDER BY`/`JOIN` columns (see core plugin's `backend-db-indexing`)
-- Use `AsSplitQuery()` for multi-collection includes to avoid cartesian explosion
-- Batch writes with `ExecuteUpdateAsync` / `ExecuteDeleteAsync` (EF Core 7+) for bulk mutations
+- Read paths: `AsNoTracking()` + project to a DTO with `Select()`. Do not use `Include()` when projecting - the projection drives the join.
+- `Include()` is only for tracked writes or when the full navigation is returned.
+- Multiple collection `Include()`s: add `AsSplitQuery()` to avoid cartesian explosion.
+- Mutate in bulk with `ExecuteUpdateAsync` / `ExecuteDeleteAsync`. Never loop `SaveChangesAsync`.
+- Paginate large/unbounded sets with keyset (`WHERE key > @last`), not `Skip/Take`.
+- Use compiled queries (`EF.CompileAsyncQuery`) only for hot single-entity lookups (no `Include`, no `AsSplitQuery`).
+- Drop to Dapper when the query needs SQL features EF translates poorly (window functions, recursive CTEs, multi-row UNPIVOT). Reuse the connection via `_context.Database.GetDbConnection()`.
 
-## Pattern
+## Patterns
 
-Bad - causes N+1 queries:
+**N+1 via lazy/implicit navigation - project instead of Include.**
 
 ```csharp
+// Bad: N queries for Customer.Name
 var orders = await _context.Orders.ToListAsync();
-foreach (var order in orders)
-{
-    Console.WriteLine(order.Customer.Name); // N additional queries
-}
-```
+foreach (var o in orders) log(o.Customer.Name);
 
-Good - explicit include prevents N+1:
-
-```csharp
-var orders = await _context.Orders
-    .AsNoTracking()
-    .Include(o => o.Customer)
-    .Select(o => new OrderSummaryDto(o.Id, o.Customer.Name, o.TotalAmount))
-    .ToListAsync(cancellationToken);
-```
-
-Good - Dapper for complex read:
-
-```csharp
-var sql = "SELECT o.Id, c.Name FROM Orders o JOIN Customers c ON c.Id = o.CustomerId WHERE o.Status = @Status";
-var results = await _connection.QueryAsync<OrderSummaryDto>(sql, new { Status = status });
-```
-
-## Compiled Queries
-
-For hot-path queries executed frequently, compiled queries skip expression tree translation on every call:
-
-```csharp
-private static readonly Func<AppDbContext, Guid, CancellationToken, Task<Order?>> GetOrderById =
-    EF.CompileAsyncQuery((AppDbContext ctx, Guid id, CancellationToken ct) =>
-        ctx.Orders.AsNoTracking().FirstOrDefault(o => o.Id == id));
-
-// Usage
-var order = await GetOrderById(_context, orderId, ct);
-```
-
-## Pagination
-
-Use keyset pagination for large datasets - `Skip(N)` scans and discards N rows on every page:
-
-```csharp
-// Offset pagination (simple but slow for deep pages)
-var page = await _context.Products
-    .AsNoTracking()
-    .OrderBy(p => p.Name)
-    .Skip((pageNumber - 1) * pageSize)
-    .Take(pageSize)
-    .ToListAsync(ct);
-
-// Keyset pagination (consistent performance regardless of page depth)
-var page = await _context.Products
-    .AsNoTracking()
-    .Where(p => p.Name.CompareTo(lastSeenName) > 0)
-    .OrderBy(p => p.Name)
-    .Take(pageSize)
+// Good: one SQL, no tracking, no Include
+var orders = await _context.Orders.AsNoTracking()
+    .Select(o => new OrderDto(o.Id, o.Customer.Name, o.Total))
     .ToListAsync(ct);
 ```
 
-## Bulk Operations
-
-`ExecuteUpdateAsync` and `ExecuteDeleteAsync` (EF Core 7+) run directly as SQL - no entity loading, no change tracking:
+**Cartesian explosion from multiple collection Includes.**
 
 ```csharp
-// Deactivate all products in a category - single SQL UPDATE
-await _context.Products
-    .Where(p => p.CategoryId == categoryId)
+// Bad: Orders x Items x Tags rows multiplied
+ctx.Orders.Include(o => o.Items).Include(o => o.Tags).ToListAsync();
+
+// Good: split into separate SQL statements
+ctx.Orders.AsSplitQuery().Include(o => o.Items).Include(o => o.Tags).ToListAsync();
+```
+
+**Bulk mutation - no entity load, no tracking.**
+
+```csharp
+// Bad: load + per-row SaveChanges
+foreach (var p in await ctx.Products.Where(p => p.CategoryId == id).ToListAsync())
+    { p.IsActive = false; await ctx.SaveChangesAsync(); }
+
+// Good: single SQL UPDATE
+await ctx.Products.Where(p => p.CategoryId == id)
     .ExecuteUpdateAsync(s => s.SetProperty(p => p.IsActive, false), ct);
-
-// Purge soft-deleted records older than 90 days - single SQL DELETE
-await _context.Products
-    .Where(p => !p.IsActive && p.DeletedAt < DateTime.UtcNow.AddDays(-90))
-    .ExecuteDeleteAsync(ct);
 ```
 
-## Global Query Filters
-
-Apply cross-cutting filters (soft delete, multi-tenancy) once in configuration rather than scattering `.Where()` clauses:
+**Keyset pagination - constant cost regardless of depth.**
 
 ```csharp
-// In IEntityTypeConfiguration<Product>
-builder.HasQueryFilter(p => !p.IsDeleted);
+// Bad: Skip scans and discards N rows
+ctx.Products.OrderBy(p => p.Id).Skip((page - 1) * size).Take(size);
 
-// All queries automatically exclude deleted records
-var active = await _context.Products.ToListAsync(ct);
+// Good: filter by last seen key
+ctx.Products.Where(p => p.Id > lastId).OrderBy(p => p.Id).Take(size);
+```
 
-// Bypass when needed (e.g., admin view)
-var all = await _context.Products.IgnoreQueryFilters().ToListAsync(ct);
+**Compiled query for hot-path single-entity lookup.**
+
+```csharp
+private static readonly Func<AppDbContext, Guid, CancellationToken, Task<Order?>> GetById =
+    EF.CompileAsyncQuery((AppDbContext c, Guid id, CancellationToken ct) =>
+        c.Orders.AsNoTracking().FirstOrDefault(o => o.Id == id));
+```
+
+**Global query filter - centralize soft-delete / tenancy.**
+
+```csharp
+builder.HasQueryFilter(p => !p.IsDeleted);              // applied to root AND Includes
+var all = ctx.Products.IgnoreQueryFilters().ToList();   // bypass when needed
+```
+
+## Output Format
+
+```
+Finding: <one-line problem>
+Location: <file:line or query name>
+Cause: {N+1 | Cartesian | Tracking overhead | Deep Skip | Loop SaveChanges | Over-fetch | Other}
+Fix: <pattern name from this skill> - <one-line change>
+Impact: {Latency | Memory | DB load} - <rough magnitude if measurable>
 ```
 
 ## Avoid
 
-- `Include()` chains without `AsNoTracking()` on read paths
-- Loading entire entity graphs when only a few columns are needed
-- Lazy loading (disabled by default - keep it disabled)
-- Calling `SaveChangesAsync()` inside a loop
-- `Skip/Take` pagination on tables with millions of rows - use keyset pagination
-- Loading entities just to delete or update them - use `ExecuteUpdateAsync`/`ExecuteDeleteAsync`
-
-## Edge Cases
-
-- **Global query filters + Include**: Global query filters (e.g., soft delete) apply to `Include()` targets too. If you need to include soft-deleted related entities, use `IgnoreQueryFilters()` on the included navigation, not the root query.
-- **AsSplitQuery with ordering**: Split queries execute as separate SQL statements. If the root query uses `OrderBy`, the related collections may not preserve the expected order - verify the final materialized order in tests.
-- **Compiled queries limitations**: Compiled queries do not support `Include()`, `AsSplitQuery()`, or query filters that reference the `DbContext`. Use them only for simple single-entity lookups.
-- **Dapper + EF Core coexistence**: When using Dapper alongside EF Core, obtain the `DbConnection` from `_context.Database.GetDbConnection()` to reuse the same connection and participate in the same transaction if needed.
+- `Include()` on a projected (`Select`) read path - projection already drives the join.
+- Compiled queries that reference `Include`, `AsSplitQuery`, or context-bound filters - unsupported.
+- Mixing keyset and offset pagination on the same endpoint - the cursor contract breaks.
+- Calling Dapper on a separate `DbConnection` when a transaction is already open on the `DbContext`.

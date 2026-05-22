@@ -11,132 +11,93 @@ user-invocable: false
 
 ## When to Use
 
-- Defining transactional boundaries in service methods
+- Defining transactional boundaries in service / command handlers
 - Coordinating multiple aggregate writes in a single transaction
-- Handling distributed operations with outbox or saga patterns
+- Writing domain rows together with an outbox row for downstream eventing
 
 ## Rules
 
-- One `SaveChangesAsync()` per use-case - avoid partial saves
-- Wrap multi-step writes in `IDbContextTransaction` only when needed
-- Keep transactions short: fetch data outside the transaction, write inside
-- Never share a single `DbContext` across parallel async operations
-- Use `IUnitOfWork` abstraction in Clean Architecture to decouple services from EF Core
-- Register `DbContext` with `AddDbContext` (scoped lifetime) - never singleton
+- One `SaveChangesAsync` per use-case; never partial saves
+- Wrap multi-step writes in `IDbContextTransaction` only when more than one `SaveChangesAsync` is unavoidable, or when a non-default isolation level is required
+- Fetch read-only data outside the transaction; keep the transaction body to writes + commit
+- One `DbContext` per logical operation; never share across concurrent awaits
+- In Clean Architecture, the Application layer depends on `IUnitOfWork`; `DbContext` implements it in Infrastructure
+- With `EnableRetryOnFailure`, every explicit `BeginTransactionAsync` must run inside `CreateExecutionStrategy().ExecuteAsync(...)`
 
-## Pattern
+## Patterns
 
-Single save per use-case:
+### Single SaveChanges is the default
 
-```csharp
-public async Task<OrderId> PlaceOrderAsync(PlaceOrderCommand command, CancellationToken ct)
-{
-    var customer = await _customerRepository.GetByIdAsync(command.CustomerId, ct);
-    var order = customer.PlaceOrder(command.Items);     // domain logic
-    _context.Orders.Add(order);
-    await _context.SaveChangesAsync(ct);               // single flush
-    return order.Id;
-}
-```
-
-Explicit transaction for cross-aggregate writes:
+If all writes flow through one `DbContext`, a single `SaveChangesAsync` is already atomic - no explicit transaction needed. This includes the outbox pattern: domain rows and the `OutboxMessage` row commit together.
 
 ```csharp
-await using var tx = await _context.Database.BeginTransactionAsync(ct);
-try
-{
-    _context.Orders.Add(order);
-    _context.Invoices.Add(invoice);
-    await _context.SaveChangesAsync(ct);
-    await tx.CommitAsync(ct);
-}
-catch
-{
-    await tx.RollbackAsync(ct);
-    throw;
-}
+_context.Orders.Add(order);
+_context.Outbox.Add(OutboxMessage.For(new OrderPlaced(order.Id)));
+await _uow.SaveChangesAsync(ct);   // atomic: order + outbox row
 ```
 
-IUnitOfWork abstraction (Clean Architecture):
+### Explicit transaction under retry
 
-```csharp
-// Application layer interface
-public interface IUnitOfWork
-{
-    Task<int> SaveChangesAsync(CancellationToken ct = default);
-}
-
-// Infrastructure implementation - DbContext already is a UoW
-public sealed class AppDbContext : DbContext, IUnitOfWork { }
-
-// Handler uses the interface, not DbContext directly
-public sealed class PlaceOrderHandler(IOrderRepository orders, IUnitOfWork uow)
-{
-    public async Task<OrderId> Handle(PlaceOrderCommand cmd, CancellationToken ct)
-    {
-        var order = Order.Create(cmd.CustomerId, cmd.Items);
-        await orders.AddAsync(order, ct);
-        await uow.SaveChangesAsync(ct);
-        return order.Id;
-    }
-}
-```
-
-## Transient Fault Retry
-
-Enable automatic retry for transient database errors (connection drops, deadlocks). EF Core handles this at the provider level - do not write manual retry loops:
-
-```csharp
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString, npgsql =>
-        npgsql.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorCodesToAdd: null)));
-```
-
-When using `EnableRetryOnFailure` with explicit transactions, wrap the entire operation in an execution strategy:
+Required when you need a non-default isolation level, multiple `SaveChangesAsync` calls, or raw SQL alongside EF writes. With `EnableRetryOnFailure`, calling `BeginTransactionAsync` outside an execution strategy throws.
 
 ```csharp
 var strategy = _context.Database.CreateExecutionStrategy();
 await strategy.ExecuteAsync(async () =>
 {
-    await using var tx = await _context.Database.BeginTransactionAsync(ct);
+    await using var tx = await _context.Database
+        .BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
     _context.Orders.Add(order);
     _context.Invoices.Add(invoice);
-    await _context.SaveChangesAsync(ct);
+    await _uow.SaveChangesAsync(ct);
     await tx.CommitAsync(ct);
 });
 ```
 
-## Isolation Levels
+The `await using` handles rollback on exception; no manual `catch` block needed.
 
-Default (`ReadCommitted`) is correct for most use cases. Only escalate when needed:
-
-| Isolation Level         | Use When                                                  |
-| ----------------------- | --------------------------------------------------------- |
-| `ReadCommitted`         | Default. Standard CRUD, most business operations          |
-| `RepeatableRead`        | Read-then-write where the read value must not change      |
-| `Serializable`          | Financial operations requiring strict sequential ordering |
-| `Snapshot` (SQL Server) | Long-running reads that must not block or be blocked      |
+### IUnitOfWork in Clean Architecture
 
 ```csharp
-await using var tx = await _context.Database
-    .BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+public interface IUnitOfWork { Task<int> SaveChangesAsync(CancellationToken ct = default); }
+public sealed class AppDbContext : DbContext, IUnitOfWork { /* ... */ }
 ```
+
+Handlers depend on `IUnitOfWork` (and repositories), never `DbContext` directly.
+
+### EnableRetryOnFailure setup
+
+```csharp
+options.UseNpgsql(cs, npgsql => npgsql.EnableRetryOnFailure(
+    maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5)));
+```
+
+Do not write manual retry loops around `SaveChangesAsync` - the provider strategy handles transient faults.
+
+### Isolation levels
+
+Default is `ReadCommitted`. Escalate only with cause:
+
+| Level                   | Use when                                                       |
+| ----------------------- | -------------------------------------------------------------- |
+| `ReadCommitted`         | Default; standard CRUD                                         |
+| `RepeatableRead`        | Read-then-write where the read value must not change mid-tx    |
+| `Serializable`          | Strict sequential ordering (financial postings, balance debit) |
+| `Snapshot` (SQL Server) | Long reads that must neither block nor be blocked              |
+
+## Output Format
+
+When recommending a transactional boundary, state:
+
+- **Boundary**: `{Single SaveChanges | Explicit transaction | Saga/outbox}`
+- **Isolation**: `{ReadCommitted | RepeatableRead | Serializable | Snapshot}`
+- **Retry wrapping**: `{Not required | CreateExecutionStrategy required}`
+- **Rationale**: one line tying the choice to the use-case (concurrency risk, multi-aggregate, raw SQL, etc.)
 
 ## Avoid
 
-- Multiple `SaveChangesAsync()` calls within one request handler (partial saves on failure)
-- Long-running transactions holding database locks
-- `DbContext` reuse across threads
-- Business logic inside the `catch` block of a transaction
-- Manual retry loops around `SaveChangesAsync` - use `EnableRetryOnFailure` instead
-- `Serializable` isolation when `RepeatableRead` suffices (unnecessary lock contention)
-
-## Edge Cases
-
-- **Execution strategy + explicit transactions**: When `EnableRetryOnFailure` is active, you cannot call `BeginTransactionAsync` directly - it throws. Always wrap in `CreateExecutionStrategy().ExecuteAsync()` as shown in the Transient Fault Retry section.
-- **Ambient TransactionScope**: Avoid `TransactionScope` in async code unless using `TransactionScopeAsyncFlowOption.Enabled`. Forgetting this option causes the transaction to be lost after the first `await`.
-- **Distributed transactions**: `TransactionScope` with multiple databases or resources escalates to MSDTC, which is not supported on Linux or in most cloud environments. Use the saga/outbox pattern instead.
-- **Read-only queries inside transactions**: Read-only queries inside a `RepeatableRead` or `Serializable` transaction acquire shared locks that block writers. Move read-only queries outside the transaction when possible, or use `AsNoTracking()` with `ReadCommitted`.
+- Multiple `SaveChangesAsync` in one handler when a single call suffices
+- Long-running transactions (network calls, user input, external HTTP inside the tx)
+- `TransactionScope` in async code without `TransactionScopeAsyncFlowOption.Enabled` (lost after first `await`)
+- `TransactionScope` spanning multiple databases - escalates to MSDTC, unsupported on Linux/cloud; use saga/outbox
+- `Serializable` where `RepeatableRead` or row-level locking (`SELECT ... FOR UPDATE` via raw SQL) would do
+- Read-only queries inside `RepeatableRead` / `Serializable` transactions - move them outside or use `AsNoTracking()` with `ReadCommitted`
