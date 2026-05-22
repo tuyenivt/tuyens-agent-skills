@@ -150,62 +150,42 @@ func TestGetUser_NotFound(t *testing.T) {
 
 ### Webhook Handler Tests (Signature Validation)
 
-Webhook handlers require testing with raw bodies and valid/invalid signatures:
+Webhook handlers need a table-driven signature test: valid, invalid, missing.
 
 ```go
-func TestStripeWebhook_ValidSignature(t *testing.T) {
+func TestStripeWebhook(t *testing.T) {
     t.Parallel()
 
     secret := "whsec_test_secret"
-    payload := []byte(`{"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_123"}}}`)
+    payload := []byte(`{"type":"payment_intent.succeeded","data":{"object":{"id":"pi_123"}}}`)
+    validSig := computeStripeSignature(t, payload, secret)
 
-    // Generate a valid signature (use Stripe's test helper or compute HMAC)
-    sig := computeStripeSignature(t, payload, secret)
-
-    mockSvc := &MockPaymentService{
-        HandleWebhookEventFn: func(ctx context.Context, event stripe.Event) error {
-            assert.Equal(t, "payment_intent.succeeded", event.Type)
-            return nil
-        },
+    tests := []struct {
+        name     string
+        sigHeader string
+        wantStatus int
+    }{
+        {name: "valid", sigHeader: validSig, wantStatus: http.StatusOK},
+        {name: "invalid", sigHeader: "invalid", wantStatus: http.StatusUnauthorized},
+        {name: "missing", sigHeader: "", wantStatus: http.StatusUnauthorized},
     }
 
-    r := gin.New()
-    r.POST("/webhooks/stripe", WebhookSignature(secret), StripeWebhook(mockSvc))
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            t.Parallel()
+            mockSvc := &MockPaymentService{HandleWebhookEventFn: func(ctx context.Context, e stripe.Event) error { return nil }}
+            r := gin.New()
+            r.POST("/webhooks/stripe", WebhookSignature(secret), StripeWebhook(mockSvc))
 
-    w := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
-    req.Header.Set("Stripe-Signature", sig)
-    r.ServeHTTP(w, req)
-
-    assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestStripeWebhook_InvalidSignature(t *testing.T) {
-    t.Parallel()
-
-    r := gin.New()
-    r.POST("/webhooks/stripe", WebhookSignature("whsec_test"), StripeWebhook(nil))
-
-    w := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", strings.NewReader(`{}`))
-    req.Header.Set("Stripe-Signature", "invalid")
-    r.ServeHTTP(w, req)
-
-    assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestStripeWebhook_MissingSignature(t *testing.T) {
-    t.Parallel()
-
-    r := gin.New()
-    r.POST("/webhooks/stripe", WebhookSignature("whsec_test"), StripeWebhook(nil))
-
-    w := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", strings.NewReader(`{}`))
-    // No Stripe-Signature header
-    r.ServeHTTP(w, req)
-
-    assert.Equal(t, http.StatusUnauthorized, w.Code)
+            w := httptest.NewRecorder()
+            req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
+            if tt.sigHeader != "" {
+                req.Header.Set("Stripe-Signature", tt.sigHeader)
+            }
+            r.ServeHTTP(w, req)
+            assert.Equal(t, tt.wantStatus, w.Code)
+        })
+    }
 }
 ```
 

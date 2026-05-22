@@ -98,22 +98,20 @@ When the diff removes a middleware or relaxes auth, also `git log -p` the prior 
 
 ### Step 4 - OWASP Triage (Go Lens)
 
-This step is a **triage pass**, not a separate findings list. Run through the OWASP categories below and produce a single output: a list of categories that show signal in this diff (e.g., `Broken Access Control: yes`, `Injection: yes`, `SSRF: yes`, `Insecure Design: no`). Steps 5-9 then produce the actual findings; do **not** repeat them here.
+This is a **triage pass**, not a findings list. Produce a per-category verdict (`yes` / `no signal in diff`) - downstream Steps 5-9 produce the actual findings; do not repeat them here.
 
-The triage output funnels which downstream steps must run carefully versus which can be fast-passed. If a category shows no signal, explicitly state `No signal in diff` for that category in the Summary.
-
-| Risk                          | Go-specific check                                                                                                                                                                                                                                          |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Broken Access Control         | Every protected route has JWT middleware applied at the router-group level (`v1.Group("/orders", auth.Required())`); ownership check in the service / handler body for per-owner data. Empty / missing is a finding.                                       |
-| Injection                     | GORM uses `?` placeholders or named arguments by default; `db.Raw("SELECT ... WHERE id = ?", id)` is parameterized; `db.Raw(fmt.Sprintf("SELECT ... %s", input))` is **not**. sqlx `db.Select(&out, "WHERE id = ?", id)` parameterized; `db.NamedExec` named params. `exec.Command(name, args...)` with arg slice is fine; `exec.Command("sh", "-c", userInput)` is RCE. |
-| Cryptographic Failures        | `bcrypt.GenerateFromPassword(pw, bcrypt.DefaultCost)` (cost ≥ 10) or `argon2.IDKey(...)` for passwords. Never `md5.New()` / `sha1.New()` for auth (only for non-security checksums). JWT signing key from env / Vault, not hardcoded. `crypto/rand` (not `math/rand`) for tokens / nonces. |
-| Security Misconfiguration     | `gin-contrib/secure` middleware applied (HSTS, frame-options, content-type-options); CORS origin allowlist (not `AllowAllOrigins: true` in prod); `gin.SetMode(gin.ReleaseMode)` in prod; `pprof` endpoint gated or absent in prod.                        |
-| SSRF                          | `http.Get(userControlledURL)` / `http.Client.Do` with user-controlled URL validates hostname against allowlist; rejects RFC1918, link-local, cloud metadata before request.                                                                                |
-| XSS                           | Gin auto-escapes JSON responses; if rendering HTML templates (`html/template`, not `text/template`), auto-escapes. `c.HTML(text/template.New(...))` is XSS-prone - flag.                                                                                  |
-| Insecure Design (A04)         | Default-deny: top-level router group requiring auth unless explicitly public; explicit public routes whitelisted, not opt-out.                                                                                                                             |
-| Vulnerable Components (A06)   | `govulncheck ./...` clean for affected; Renovate / Dependabot active. No pinned-but-stale package with known CVE in `go.sum`.                                                                                                                              |
-| Data Integrity Failures (A08) | `json.Unmarshal` on untrusted input bounded by request size limit (`router.MaxMultipartMemory`, `gin-contrib/size`); `gob.Decode` flagged on untrusted input - it instantiates types, classic Go gadget surface; `unsafe` usage flagged. Mass assignment: `mapstructure.Decode(req.Body, &user)` flagged. |
-| Logging & Monitoring (A09)    | `slog` does not log `password`, `token`, `authorization`, `cookie`. Auth events logged. Sentry `BeforeSend` strips PII (when wired).                                                                                                                       |
+| Risk | Go-specific signal |
+|------|--------------------|
+| Broken Access Control | Missing JWT middleware at router-group level; missing ownership check for per-owner data |
+| Injection | `db.Raw(fmt.Sprintf(...))`; `exec.Command("sh", "-c", userInput)`; unparameterized SQL via `+` |
+| Cryptographic Failures | `md5` / `sha1` for auth; hardcoded JWT key; `math/rand` for tokens; missing `bcrypt` / `argon2` |
+| Security Misconfiguration | `AllowAllOrigins: true`; `gin.DebugMode` in prod; ungated `pprof`; missing `gin-contrib/secure` |
+| SSRF | `http.Get(userURL)` without allowlist; RFC1918 / metadata IP not rejected |
+| XSS | `text/template` (not `html/template`); `c.HTML` with user-supplied template |
+| Insecure Design (A04) | Default-allow router (auth opt-in instead of opt-out) |
+| Vulnerable Components (A06) | Stale package with known CVE; missing `govulncheck` in CI |
+| Data Integrity Failures (A08) | `gob.Decode` on untrusted input; `mapstructure.Decode(req.Body, &model)`; missing request-size limit; `unsafe` |
+| Logging & Monitoring (A09) | `slog` logging `password` / `token` / `authorization`; missing auth event log; Sentry not stripping PII |
 
 ### Step 5 - Authentication
 

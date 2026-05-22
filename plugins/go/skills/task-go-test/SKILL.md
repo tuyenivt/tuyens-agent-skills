@@ -9,239 +9,187 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `// Satisfies: AC<N>` mapping or test-name suffix), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
+> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles`. Generate one test per acceptance criterion (use `// Satisfies: AC<N>` mapping), cover every NFR with a verification step from `plan.md`, refuse to generate tests for out-of-scope behavior. Never edit spec artifacts.
 
 # Go Test
 
-## Purpose
-
-Go-aware test strategy and scaffolding using table-driven tests (the canonical Go pattern), `httptest.NewRecorder` + `gin.New()` for handler tests, Testcontainers-go for PostgreSQL repository tests, `gomock` / `mockery` for interface mocks, Asynq test patterns (in-process server vs Testcontainers Redis), and `go test -race` for concurrency safety. Replaces the generic backend test patterns with Go-specific guidance.
-
-This workflow is the stack-specific delegate of `task-code-test` for Go. The core workflow's contract (output shape, prioritization rules) is preserved so callers see a stable shape.
+Go-aware test strategy and scaffolding using table-driven tests, `httptest.NewRecorder` + `gin.New()`, Testcontainers-go for PostgreSQL repositories, `gomock` / `mockery` for interface mocks, Asynq test patterns (in-process vs Testcontainers Redis), `go test -race` for concurrency safety.
 
 ## When to Use
 
-- Designing a test strategy for a new Go/Gin service / package
-- Assessing test coverage gaps across unit / integration / handler / job layers
-- Scaffolding tests for under-covered handlers, services, repositories, or auth code
-- Reviewing test pyramid balance for a Go app
-- Adding boundary tests (validation, authorization, error paths) to existing happy-path tests
+- Test strategy for a new Go/Gin service or package
+- Test-coverage gap assessment across layers
+- Scaffolding tests for under-covered handlers / services / repositories / auth code
+- Test pyramid review for a Go app
+- Adding boundary tests (validation, authorization, error paths) to happy-path-only tests
 
 **Not for:**
-
-- Test failure / panic debugging (use `task-go-debug`)
-- General code review (use `task-code-review` / `task-go-review`)
-- Production incident postmortems (use `/task-oncall-postmortem`)
+- Test failure debugging (`task-go-debug`)
+- General review (`task-go-review`)
+- Postmortems (`/task-oncall-postmortem`)
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Data-Access Mix
+### Step 1 - Confirm Stack and Detect Data Access
 
-Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-test` (parent already detected Go), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-test` instead.
-
-Detect data access (GORM / sqlx / database/sql / mixed) and messaging (Asynq / Kafka / none). Detect mock framework (`gomock` from `go.uber.org/mock`, hand-written mocks, `mockery`-generated). Record `Data Access`, `Messaging`, `Mock Framework` for the output.
+Use skill: `stack-detect`. Accept pre-confirmed stack from parent. Record `Data Access` (GORM / sqlx / mixed / database/sql), `Messaging` (Asynq / Kafka / none), `Mock Framework` (`gomock` from `go.uber.org/mock`, hand-written, `mockery`-generated).
 
 ### Step 2 - Read the Code Under Test and Existing Tests
 
-Before producing assessment, scaffolds, or strategy, open both the production code in scope and a representative sample of existing tests. This grounds the output in real conventions instead of generic templates.
+Output grounded in project conventions, not generic templates.
 
-- For each target named by the user, read the package top-to-bottom: exported functions / types, request / response types, middleware, transaction boundaries, external collaborators
-- Glob `**/*_test.go` and read at least: one existing handler test, one existing service / repository test, one existing Asynq task test (if applicable), `TestMain` setup files - learn the project's test layout, mock strategy (`gomock` vs hand-written), HTTP-stub library (`httpmock` vs `httptest.NewServer`), authentication helpers
-- Read `Makefile` / `taskfile` / CI config for `go test -race ./...`, coverage flags, integration-test segregation (`-tags=integration`)
-- Read `internal/testutil/*.go` (or equivalent) for shared fixtures (Testcontainers init, fake JWT generator, factory utilities)
-- Read `cmd/api/main.go` for middleware order that handler tests must replicate (auth, recovery, error handler)
+- Read each target's package top-to-bottom: exported functions / types, request/response types, middleware, transaction boundaries, external collaborators
+- Glob `**/*_test.go` and read: one existing handler test, one service / repository test, one Asynq task test (if applicable), `TestMain` setup files - learn test layout, mock strategy, HTTP-stub library, authentication helpers
+- Read `Makefile` / `taskfile` / CI for `go test -race ./...`, coverage flags, integration-test segregation (`-tags=integration`)
+- Read `internal/testutil/*.go` for shared fixtures (Testcontainers init, fake JWT, factories)
+- Read `cmd/api/main.go` for middleware order that handler tests must replicate
 
-If the project has no existing tests, say so and propose conventions explicitly in the strategy doc rather than inventing them silently.
+If no existing tests: say so and propose conventions explicitly rather than inventing them silently.
 
 ### Step 3 - Go Test Pyramid
 
-The Go test pyramid maps to test types:
+| Layer | Tooling | What belongs |
+|-------|---------|--------------|
+| Unit | `testing` + `gomock` / hand-written mocks | Service logic, validators, mappers, pure functions |
+| Integration | `testing` + Testcontainers Postgres + real GORM / sqlx | Repository queries, ORM constraints, DB invariants |
+| Handler | `httptest.NewRecorder` + `gin.New()` | Routing, binding, validation, middleware |
+| Job | Asynq in-process server or Testcontainers Redis + real worker | Task processor happy path, retry, idempotency |
+| E2E | `httptest.NewServer` + Testcontainers (Postgres + Redis) | Critical journeys only - signup, checkout, payment |
+| Contract | Pact / OpenAPI consumer-driven | API contract validation |
 
-| Layer       | Tooling                                                         | What belongs here                                                              |
-| ----------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Unit        | `testing` package + `gomock` / hand-written mocks               | Service business logic, validators, mappers, pure functions, calculation rules |
-| Integration | `testing` + Testcontainers PostgreSQL + real GORM / sqlx client | Repository queries, ORM constraints, DB-level invariants                       |
-| Handler     | `httptest.NewRecorder` + `gin.New()` with real handler          | Routing, request / response binding, validation, middleware                    |
-| Job         | Asynq in-process server or Testcontainers Redis + real worker   | Asynq task processor happy path, retry logic, idempotency                      |
-| E2E         | `httptest.NewServer` + Testcontainers (Postgres + Redis)        | Critical user journeys only - signup, checkout, payment                        |
-| Contract    | Pact / OpenAPI consumer-driven                                  | API contract validation against schema                                         |
-
-**Many** unit tests, **some** handler / integration tests, **few** full E2E tests. `go test -race ./...` on every CI run.
+**Many** unit, **some** handler / integration, **few** E2E. `go test -race ./...` on every CI run.
 
 ### Step 4 - Apply Go Test Patterns
 
-Use skill: `go-testing-patterns` for the canonical table-driven, fixtures, testcontainers, mocking, and `synctest` patterns. The notes below cover only what is layer-specific or layout-specific to this workflow's output.
+Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testcontainers, mocking, `synctest` patterns. Notes below cover only layer-specific or layout-specific items.
 
-**Unit tests (`*_test.go` colocated):**
+**Unit tests** (`*_test.go` colocated):
 
-- Standard `testing` package; one test function per public method, with table-driven cases for outcomes (success, validation failure, external failure, edge case)
-- **No Gin context / DB** - if a unit test needs `gin.New()` or a DB, it is misclassified
-- Stub external HTTP via `httptest.NewServer` returning canned responses; do not stub repositories with full SQL behavior - use Testcontainers for that
+- One test function per public method; table-driven cases for outcomes (success, validation failure, external failure, edge)
+- **No Gin context / DB** - if a unit needs `gin.New()` or DB, it is misclassified
+- Stub external HTTP via `httptest.NewServer` returning canned responses
 - `gomock` for interface mocks at service boundaries; generate via `mockgen -source=service.go -destination=mock_service/mock.go`
-- `t.Cleanup(func() { ... })` for teardown - cleaner than `defer` inside the test body
-- Use `testify/assert` and `testify/require` for clarity (`require` halts on failure, `assert` continues)
+- `t.Cleanup` for teardown (not `defer` in test body)
+- `testify/require` halts on failure; `testify/assert` continues
 
 **Gin handler tests:**
 
-- Build a real `gin.New()` engine in the test (not `gin.Default()` - avoid the default logging middleware noise); apply the same global middleware as production (recovery, request-id, error handler, auth)
-- `w := httptest.NewRecorder(); req, _ := http.NewRequest("POST", "/orders", bytes.NewReader(body)); engine.ServeHTTP(w, req); assert.Equal(t, 201, w.Code)`
+- Build a real `gin.New()` engine (not `gin.Default()` - default logging noise); apply the same global middleware as production (recovery, request-id, error handler, auth)
+- `w := httptest.NewRecorder(); req := http.NewRequest(...); engine.ServeHTTP(w, req)`
 - One test per `(method, path, principal-state, outcome)` triple
-- Authentication via JWT middleware that reads a test-issued token, OR a test-only middleware that injects fixed claims into `c.Set("claims", ...)`
-- Authorization: a separate test for "anonymous → 401" and "wrong role → 403" per protected endpoint
-- Validation: a "rejects invalid payload" test for any endpoint with a DTO body
-- Response shape: assert key fields, status, headers, and `Content-Type`
-- DB: override the GORM / sqlx instance to point at the Testcontainers connection; transactional rollback per test (see Repository tests below)
+- Authentication via JWT middleware reading a test-issued token, OR a test-only middleware injecting fixed claims
+- Authorization: separate "anonymous → 401" and "wrong role → 403" tests per protected endpoint
+- Validation: "rejects invalid payload" per DTO body
+- Response shape: assert key fields, status, headers, `Content-Type`
+- DB: override the GORM / sqlx instance pointing at Testcontainers; transactional rollback per test
 
 **Repository / ORM integration tests:**
 
-- Testcontainers PostgreSQL via `testcontainers-go` - **not SQLite, not in-memory** - SQLite diverges from PostgreSQL on JSON / JSONB, partial indexes, window functions, `ON CONFLICT`, array types, `LATERAL` joins
-- Shared container per test suite via `TestMain`, not per-test container creation - container startup is ~3-5s, multiplied across tests it dominates suite runtime
-- Per-test transactional rollback via fixture: GORM `db.Begin()` at test start, `tx.Rollback()` at end (`t.Cleanup`); pass `tx` to the repository constructor
-- One test per non-trivial query: assert SQL semantics (filter correctness, sort order, eager-load result), not just "method returns something"
-- N+1 detection: enable GORM `Logger: logger.Default.LogMode(logger.Info)` in test setup and count queries via a custom logger that increments a counter
-- Custom indexes / constraints: insert violating data and assert the right error is raised (`pgconn.PgError` with `Code: "23505"` for unique violation; GORM wraps as `gorm.ErrDuplicatedKey`)
+- Testcontainers PostgreSQL via `testcontainers-go` - **not SQLite, not in-memory** (SQLite diverges on JSON / JSONB, partial indexes, window functions, `ON CONFLICT`, arrays, `LATERAL`)
+- Shared container per suite via `TestMain` (container startup is ~3-5s)
+- Per-test transactional rollback: GORM `db.Begin()` at start, `tx.Rollback()` in `t.Cleanup`; pass `tx` to repository constructor
+- One test per non-trivial query; assert SQL semantics (filter, sort, eager-load result), not just "method returns something"
+- N+1 detection: enable GORM `Logger: logger.Default.LogMode(logger.Info)` in test setup, count queries
+- Custom indexes / constraints: insert violating data; assert the right error (`pgconn.PgError.Code: "23505"` for unique; GORM wraps as `gorm.ErrDuplicatedKey`)
 
 **DTO / validator tests:**
 
-- Use `validator.New()` directly: `err := validate.Struct(req)` - faster than going through a full handler test
-- Edge cases: missing required fields, wrong types via `BindJSON` (test against the actual binding pipeline for the conversion layer), out-of-range values, custom validators
+- `validator.New()` directly: `err := validate.Struct(req)` (faster than a full handler test)
+- Edge cases: missing required, wrong types via `BindJSON`, out-of-range, custom validators
 
 **Asynq / Kafka job tests:**
 
-- **In-process Asynq for fast tests**: Asynq's `inspect` package + a manually-instantiated handler; invoke `handler.ProcessTask(ctx, task)` directly without running a real worker. No Redis. Best for handler logic.
-- **Testcontainers Redis + real Asynq Server** for tests that need actual broker behavior (retry, `Timeout`, real `MaxRetry`)
-- Idempotency test: invoke the processor twice with the same payload, assert side effect happens once
-- Retry test: stub the external call to fail twice then succeed; assert task completes; assert retry count
-- Archived / max-retries test: stub the external call to fail forever; assert task ends in `archived` state without infinite loop
-- For Kafka (franz-go): use `kfake` (the in-process fake broker from franz-go) for unit tests; Testcontainers Kafka for integration
+- **In-process Asynq**: instantiate handler; invoke `handler.ProcessTask(ctx, task)` directly without a real worker. No Redis. Best for handler logic
+- **Testcontainers Redis + real Asynq Server** for tests needing actual broker behavior (retry, `Timeout`, real `MaxRetry`)
+- Idempotency: invoke processor twice with same payload; assert side effect happens once
+- Retry: stub external call to fail twice then succeed; assert task completes; assert retry count
+- Archived / max-retries: stub to fail forever; assert task ends in `archived` without infinite loop
+- Kafka (franz-go): `kfake` (in-process fake broker) for unit; Testcontainers Kafka for integration
 
-**E2E / full-context tests:**
+**E2E / full-context:**
 
-- Reserve for tests that genuinely need the full stack: auth flow end-to-end, transactional commit + Asynq dispatch, scheduled-task behavior
-- Use `httptest.NewServer(engine)` over the real `*gin.Engine` so the test makes actual HTTP calls; pair with Testcontainers Postgres + Redis
-- Avoid for tests that a handler test could cover - context-load cost compounds
+- Reserve for full-stack tests: auth flow end-to-end, transactional commit + Asynq dispatch, scheduled-task behavior
+- `httptest.NewServer(engine)` over real `*gin.Engine`; pair with Testcontainers Postgres + Redis
+- Avoid for what a handler test could cover
 
 **Race detector:**
 
-- `go test -race ./...` mandatory in CI for any package that uses goroutines, channels, mutexes, or `sync` primitives
-- Race detector slows tests ~2-10x; some teams run race-disabled in dev and race-enabled in CI - acceptable, but the CI run must catch it
+- `go test -race ./...` mandatory in CI for packages using goroutines, channels, mutexes, or `sync`
+- ~2-10x slowdown; some teams disable in dev and enable in CI - acceptable, but CI must catch it
 
 ### Step 5 - Test Boundaries (Go-Specific)
 
-**What deserves a unit test:**
+**Unit:** services, mappers, validators, middleware in isolation, pure functions / utilities, domain rules, calculations, state-machine transitions, concurrent helpers (with `go test -race`)
 
-- Service logic, mappers, validators, custom middleware (the middleware function in isolation), pure functions / utilities
-- Domain rules, calculation, state-machine transitions
-- Concurrent helpers (worker pool, errgroup wrapper) tested with `go test -race`
+**Handler:** every endpoint: happy + 401 + 403 + 4xx validation; pagination contract; filtering / sorting / search params; custom error middleware mapping
 
-**What deserves a handler test:**
+**Integration / Testcontainers:** every repository method with a non-trivial query (multi-column filter, join, eager-load via `Preload`, aggregate); ORM constraints (unique, check, FK ON DELETE); migration smoke test (apply all on clean DB)
 
-- Every endpoint: happy path + 401 + 403 + 4xx validation
-- Pagination contract (`limit` / `offset` / cursor)
-- Filtering / sorting / search query params
-- Custom error middleware mapping domain errors → HTTP status
+**Asynq / Kafka:** every task with retry logic, idempotency requirements, or external side effects; workflows (assert complete and aggregate correctly); post-commit dispatched tasks (assert they fire after parent commits)
 
-**What deserves an integration / Testcontainers test:**
-
-- Every repository method with a non-trivial query (filter on multiple columns, join, eager-load via `Preload`, aggregate)
-- ORM constraints (unique, check, FK ON DELETE behavior)
-- Migration smoke test: apply all migrations on a clean Testcontainers DB; useful when migrations are squashed
-
-**What deserves an Asynq / Kafka test:**
-
-- Every task with retry logic, idempotency requirements, or external side effects
-- Task chains / workflows - assert the workflow completes and aggregates correctly
-- Tasks dispatched via post-commit pattern - assert they fire after the parent commits, not before
-
-**What does NOT need a test:**
-
-- Framework-provided behavior: Gin routing resolution, middleware dispatch, default validator engine (test that you wired things correctly via handler tests, not that the framework works)
-- Generated boilerplate: DTOs with no logic, getters returning a single field
-- Trivial delegation: `service.Get(id) -> repository.Get(id)` with no logic
+**Does NOT need a test:** framework-provided behavior (Gin routing, middleware dispatch, default validator); generated boilerplate (DTOs, getters); trivial delegation (`service.Get(id) -> repository.Get(id)` with no logic)
 
 ### Step 6 - Test Data and Fixtures
 
-- Prefer factory functions (`NewTestOrder(opts ...func(*Order)) *Order`) over hand-rolled struct literals; configure factories per project convention
-- For repository tests with Testcontainers, use factories to insert; isolate per-test data inside the test (transactional rollback) or use a unique-per-test prefix
-- Avoid mutating shared test fixtures - use `t.Cleanup` to rebuild
-- Test data must be minimal and focused - 100-row `for i := 0; i < 100; i++` setups signal the test belongs at integration / load-test layer
+- Factory functions (`NewTestOrder(opts ...func(*Order)) *Order`) over hand-rolled struct literals
+- Repository tests with Testcontainers: factories to insert; isolate per-test via transactional rollback or unique-per-test prefix
+- Avoid mutating shared fixtures; `t.Cleanup` to rebuild
+- Test data minimal and focused - 100-row setups signal the test belongs at integration / load layer
 
 ### Step 7 - Prioritization (when coverage is low)
 
-If line coverage (or your equivalent project signal) is below ~50%, **run this step before scaffolding** - it determines _which_ tests to scaffold first. Scaffolding alphabetically or by file is wrong when authorization holes go untested while plumbing endpoints get full coverage.
+If coverage is below ~50%, **run this before scaffolding** - determines _which_ tests to scaffold first. Scaffolding alphabetically is wrong when authorization holes go untested while plumbing endpoints get full coverage.
 
-When starting from low test coverage, prioritize by Go-specific risk:
+| Priority | Targets |
+|----------|---------|
+| P1 - Authentication & Authorization | Handler test per protected endpoint asserting 401 anonymous + 403 wrong-role; JWT middleware tests (issuer, audience, signature, expiry); custom auth middleware unit tests |
+| P2 - Data Integrity | Repository / ORM integration tests for non-trivial queries; service write-path tests (one happy + one rollback); Asynq task idempotency; `go test -race ./...` for concurrent paths |
+| P3 - Business-Critical Flows | Revenue paths (checkout, billing, subscription states); state-machine transitions; scheduled tasks touching billing or notifications |
+| P4 - High-Churn Code | Files with frequent recent commits (`git log --since="3 months ago"`); files with bug-fix history |
+| P5 - Plumbing | Pass-through handlers, simple CRUD - lower risk, can wait |
 
-**Priority 1 - Authorization and authentication:**
-
-- Handler test per protected endpoint asserting 401 anonymous + 403 wrong-role
-- JWT middleware tests covering issuer, audience, signature, expiry validation
-- Custom auth middleware unit-tested
-
-**Priority 2 - Data integrity:**
-
-- Repository / ORM integration tests for every non-trivial query
-- Service tests for write operations (one happy path + one rollback per write)
-- Asynq task idempotency for any task with side effects
-- `go test -race ./...` for any concurrent code path
-
-**Priority 3 - Business-critical flows:**
-
-- Revenue paths (checkout, billing, subscription state transitions)
-- State-machine transitions (often modeled as enums in Go)
-- Scheduled tasks touching billing or notifications
-
-**Priority 4 - High-churn code:**
-
-- Files with frequent recent commits (`git log --since="3 months ago"`)
-- Files with bug-fix history (`git log --grep="fix"`)
-
-**Priority 5 - Plumbing:**
-
-- Pass-through handlers, simple CRUD - lower risk, can wait
-
-**Multi-band rule.** Some targets fall into more than one band - a refund Asynq processor is both P2 (data-integrity, side-effect idempotency) and P3 (revenue path); a payment-history endpoint is both P1 (authorization on per-owner data) and P3 (revenue). When a target qualifies for multiple bands, file it under the **highest** band (lowest number) and note the secondary band so the test plan covers both axes (e.g., a refund test must assert idempotency *and* the refund-amount invariants, not just one). Do not split the same target across two bands - that hides one of the risks.
+**Multi-band rule.** When a target qualifies for multiple bands (a refund Asynq processor is P2 idempotency AND P3 revenue), file under the **highest** band (lowest number) and note the secondary so the plan covers both axes. Do not split across bands - hides one risk.
 
 ### Step 8 - Test Infrastructure Hygiene
 
-- [ ] Testcontainers reused across tests via `TestMain` and `testcontainers.Reuse` (set via `~/.testcontainers.properties` `testcontainers.reuse.enable=true` for local fast cycles)
-- [ ] `go test -race ./...` runs in CI for at least the packages with concurrent code
-- [ ] Test profile only overrides what differs from prod - never silently disables auth middleware
-- [ ] Integration tests separated via `//go:build integration` build tag (`go test -tags=integration ./...`) so the unit suite stays fast
-- [ ] HTTP stubs via `httptest.NewServer` returning canned responses; never real network calls in CI
-- [ ] **SDK clients / non-default transports that bypass `httptest.NewServer` stubs**: `httptest.NewServer` only intercepts traffic when the system-under-test points its HTTP client at the test server's URL - typically by injecting the server URL into the SDK config. Common bypass surfaces: (a) `aws-sdk-go-v2` clients constructed with `config.WithHTTPClient(&http.Client{Transport: ...})` or with a baked-in endpoint resolver - if the test doesn't override `EndpointResolver` / `BaseEndpoint`, the SDK hits real AWS; (b) `resty.New()` clients with a custom `*http.Transport` that ignore env-level proxy hooks; (c) `google.golang.org/grpc` clients - gRPC uses HTTP/2 over its own dialer and `httptest.NewServer`'s HTTP/1 listener cannot serve it; use `bufconn` (`google.golang.org/grpc/test/bufconn`) for in-memory gRPC tests; (d) `cloud.google.com/go/storage` and similar Google SDK clients that read `STORAGE_EMULATOR_HOST` only when explicitly enabled. Verify by adding one stubbed test and asserting the stub server received the request (`server.URL` was hit, request count > 0); if it didn't, the test is silently calling production. Never let the test pass with "no calls were made to the stub" as a green signal - that's the failure mode
-- [ ] `t.Cleanup` for teardown over `defer` inside test body - more robust on test failure
-- [ ] Coverage via `go test -coverprofile=cover.out ./... && go tool cover -html=cover.out` wired to CI with per-package thresholds; coverage exclusions documented
-- [ ] No data races in CI race-detector runs - new races block merge
-- [ ] `gomock` mocks regenerated when interfaces change (CI check via `go generate ./... && git diff --exit-code`)
+- [ ] Testcontainers reused via `TestMain` + `testcontainers.Reuse` (`~/.testcontainers.properties` `testcontainers.reuse.enable=true` for local cycles)
+- [ ] `go test -race ./...` runs in CI for packages with concurrent code
+- [ ] Test profile overrides only what differs from prod - never silently disables auth middleware
+- [ ] Integration tests segregated via `//go:build integration` (`go test -tags=integration ./...`)
+- [ ] HTTP stubs via `httptest.NewServer`; never real network in CI
+- [ ] **SDK clients bypassing `httptest.NewServer` stubs**: only intercepts when system-under-test points its client at the server URL. Bypass surfaces: (a) `aws-sdk-go-v2` with baked-in endpoint resolver - override `EndpointResolver` / `BaseEndpoint`; (b) `resty.New()` with custom `*http.Transport` ignoring env proxy hooks; (c) `google.golang.org/grpc` - use `bufconn` (`google.golang.org/grpc/test/bufconn`) for in-memory gRPC, NOT `httptest.NewServer` (HTTP/1 vs HTTP/2); (d) Google SDK clients reading `STORAGE_EMULATOR_HOST` only when explicitly enabled. Verify with a stubbed test asserting the stub received the request (`server.URL` hit, request count > 0). "No calls were made to the stub" as a green signal is the failure mode
+- [ ] `t.Cleanup` for teardown over `defer` (more robust on failure)
+- [ ] Coverage via `go test -coverprofile=cover.out ./... && go tool cover -html=cover.out`; per-package thresholds; exclusions documented
+- [ ] No data races in CI race-detector runs
+- [ ] `gomock` mocks regenerated when interfaces change (`go generate ./... && git diff --exit-code`)
 
 ## Go Review Checklist
 
-Quick-reference checklist for reviewing existing Go tests:
+Quick-reference for reviewing existing Go tests:
 
-- [ ] Test type matches what is being tested (handler -> `httptest` + `gin.New()`, repository -> Testcontainers, service -> unit + mocks)
-- [ ] Tests are table-driven, not copy-pasted
-- [ ] Every endpoint has at least happy + 401 + 403 + validation-error
-- [ ] Every non-trivial repository query has an integration test against Testcontainers (not SQLite)
+- [ ] Test type matches what's tested (handler → `httptest` + `gin.New()`, repository → Testcontainers, service → unit + mocks)
+- [ ] Table-driven, not copy-pasted
+- [ ] Every endpoint has happy + 401 + 403 + validation-error
+- [ ] Every non-trivial repository query has Testcontainers integration (not SQLite)
 - [ ] Every custom middleware has a passing-and-denied test
-- [ ] Test data created via factories, not raw struct literals
-- [ ] No `repository.Save = ...` mocks when an integration test could assert real DB state
-- [ ] No full-stack E2E tests for what a handler test could cover
-- [ ] No in-process Asynq mock masking at-least-once / retry semantics on critical tasks
+- [ ] Test data via factories, not raw literals
+- [ ] No `repository.Save = ...` mocks when integration could assert real DB state
+- [ ] No full E2E for what a handler test could cover
+- [ ] No in-process Asynq mock masking at-least-once / retry on critical tasks
 - [ ] `go test -race ./...` clean in CI
-- [ ] No `interface{}` / `any` on mocked methods - use the generated `gomock` types
+- [ ] No `interface{}` / `any` on mocked methods
 
 ## Output Format
 
 **Which output to produce:**
 
-- User asks "what tests are missing?" or "review our test coverage" -> Coverage Assessment
-- User asks "write tests for X" or "scaffold tests" -> Test Scaffolds
-- User asks "test strategy", "test plan", or coverage is below 50% with no scaffolds requested -> Strategy Doc (optionally include Coverage Assessment)
-- User asks for **two or more deliverables in the same invocation** ("review coverage AND scaffold tests", "what's missing and write the tests") -> produce them in this order, separated by a horizontal rule (`---`): Coverage Assessment, then Strategy Doc (if requested), then Test Scaffolds. Do not silently drop one.
-- If unclear, produce Strategy Doc as the default.
+- User asks "what tests are missing?" → Coverage Assessment
+- User asks "write tests for X" or "scaffold" → Test Scaffolds
+- User asks "test strategy" / "test plan", or coverage < 50% with no scaffolds requested → Strategy Doc (optionally with Coverage Assessment)
+- User asks for **2+ deliverables** ("review coverage AND scaffold") → produce in this order separated by `---`: Coverage Assessment → Strategy Doc → Test Scaffolds. Do not silently drop one
+- If unclear, default to Strategy Doc
 
 **Coverage Assessment:**
 
@@ -249,113 +197,107 @@ Quick-reference checklist for reviewing existing Go tests:
 ## Go Test Coverage Assessment
 
 **Stack:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+**Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none
 **Test framework:** `testing` + table-driven, `httptest`, Testcontainers, gomock
 **Coverage gaps:**
 
-- **Unit tests:** [services / validators / mappers without test coverage]
-- **Handler tests:** [endpoints without tests; endpoints missing 401/403/validation paths]
-- **Integration tests:** [repositories with non-trivial queries without tests; tests running on SQLite for a Postgres app]
-- **Auth tests:** [endpoints without authorization tests; missing JWT middleware tests]
-- **Job tests:** [Asynq processors without tests; tasks without idempotency / retry tests]
-- **Race-detector gaps:** [packages with goroutines / channels / mutexes not covered by `go test -race`]
-- **Contract tests:** [OpenAPI / Pact contracts without verification]
+- **Unit:** [services / validators / mappers without coverage]
+- **Handler:** [endpoints without tests; missing 401/403/validation]
+- **Integration:** [repositories with non-trivial queries without tests; tests on SQLite for Postgres app]
+- **Auth:** [endpoints without authorization tests; missing JWT middleware tests]
+- **Job:** [Asynq processors without tests; tasks without idempotency / retry tests]
+- **Race-detector gaps:** [packages with goroutines / channels / mutexes without `-race`]
+- **Contract:** [OpenAPI / Pact without verification]
 
-**Recommended pyramid balance:**
+**Recommended pyramid balance:** Unit [target] / Handler + integration [target] / E2E [target - keep small]
 
-- Unit (services, validators, helpers): [count target]
-- Handler + integration (httptest + Testcontainers): [count target]
-- E2E (full stack with Asynq / Redis): [count target - keep small]
+**Prioritization** _(include when coverage < ~50% or > 5 gaps)_:
 
-**Prioritization** _(include when current coverage is below ~50% or the assessment surfaces > 5 gaps)_
-
-Apply the Step 7 risk bands. Order follow-up work as:
-
-1. **P1 - Authorization & authentication:** [list specific endpoints / flows missing 401/403/ownership tests]
-2. **P2 - Data integrity:** [repositories with non-trivial queries / write paths without rollback tests / Asynq tasks with unguarded side effects / packages missing race-detector coverage]
-3. **P3 - Business-critical flows:** [revenue, state machines, scheduled tasks touching billing or notifications]
-4. **P4 - High-churn code:** [files with frequent recent commits or bug-fix history]
-5. **P5 - Plumbing:** [pass-through handlers / simple CRUD - lowest risk]
+1. **P1 - Authorization & authentication:** [specific endpoints / flows missing 401/403/ownership]
+2. **P2 - Data integrity:** [repositories with non-trivial queries / write paths without rollback / Asynq tasks with unguarded side effects / packages missing race coverage]
+3. **P3 - Business-critical flows:** [revenue, state machines, scheduled billing/notification tasks]
+4. **P4 - High-churn:** [files with frequent recent commits or bug-fix history]
+5. **P5 - Plumbing:** [pass-through handlers / simple CRUD]
 ```
 
-**Test Scaffolds** (when generating boilerplate):
+**Test Scaffolds:**
 
-Produce ready-to-run Go test files using project conventions. Each scaffold must include:
+Ready-to-run Go test files using project conventions:
 
-- The right test type (handler / integration / unit / job)
-- Table-driven structure with `t.Run(tc.name, ...)`
-- Factories for test data instead of raw struct literals
-- For handler tests: happy path + 401 + 403 + validation-error
-- For repository tests: Testcontainers PostgreSQL; assertions against PostgreSQL semantics
-- For auth tests: anonymous + wrong-role + correct-role cases
-- For Asynq tests: idempotency + retry + max-retries cases when applicable
+- Right test type (handler / integration / unit / job)
+- Table-driven with `t.Run(tc.name, ...)`
+- Factories over raw struct literals
+- Handler tests: happy + 401 + 403 + validation-error
+- Repository tests: Testcontainers PostgreSQL; assertions against PostgreSQL semantics
+- Auth tests: anonymous + wrong-role + correct-role
+- Asynq tests: idempotency + retry + max-retries when applicable
 - `t.Cleanup` for teardown
-- `go test -race`-safe (no data races introduced by the test fixture)
+- `go test -race`-safe (no races introduced by the fixture)
 
-**Strategy Doc** (when designing a test strategy):
+**Strategy Doc:**
 
 ```markdown
 ## Go Test Strategy
 
 **Objective:** [what this strategy achieves]
-**Pyramid balance:** Unit {x}% / Handler + Integration {y}% / E2E {z}%
-**Tooling:** `testing` + table-driven, `httptest`, Testcontainers PostgreSQL, gomock, `go test -race`, Asynq in-process + real-broker integration
-**Database isolation:** Testcontainers PostgreSQL + per-test transactional rollback (GORM `db.Begin()` + `tx.Rollback()` in `t.Cleanup`)
-**Concurrency:** `go test -race ./...` mandatory in CI; `t.Parallel()` for test cases that are independent
+**Pyramid balance:** Unit {x}% / Handler + integration {y}% / E2E {z}%
+**Tooling:** `testing` + table-driven, `httptest`, Testcontainers Postgres, gomock, `go test -race`, Asynq in-process + real-broker
+**Database isolation:** Testcontainers Postgres + per-test transactional rollback (GORM `db.Begin()` + `tx.Rollback()` in `t.Cleanup`)
+**Concurrency:** `go test -race ./...` mandatory in CI; `t.Parallel()` for independent cases
 **Gaps to close (prioritized):**
 
-1. [Highest risk gap - typically authorization or repository correctness]
-2. [...]
+1. [Highest risk - typically authorization or repository correctness]
+2. ...
 ```
 
 ## Self-Check
 
-**Always (any deliverable):**
+**Always:**
 
-- [ ] Stack confirmed as Go / Gin; data-access mix and messaging recorded before any framework-specific guidance applied (Step 1)
-- [ ] Code under test and a representative sample of existing tests + setup files read directly so output matches project conventions (Step 2)
-- [ ] `go-testing-patterns` consulted for canonical Go test patterns
-- [ ] Auth testing approach explicit (test-issued JWT or test-only middleware injecting claims)
-- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
+- [ ] Stack confirmed; data-access mix and messaging recorded (Step 1)
+- [ ] Code under test and existing tests + setup files read directly (Step 2)
+- [ ] `go-testing-patterns` consulted
+- [ ] Auth testing approach explicit (test-issued JWT or test-only claims-injecting middleware)
+- [ ] Spec-aware mode honored when `--spec` was passed
 
-**Strategy Doc / Coverage Assessment only:**
+**Strategy / Coverage Assessment:**
 
-- [ ] Test pyramid mapped to Go idioms (unit -> `testing` + mocks; handler -> `httptest` + `gin.New()`; integration -> Testcontainers; Asynq -> in-process + real-broker for non-trivial cases)
-- [ ] Boundaries clearly defined: each layer covers what it does best; no duplicated assertions across layers
-- [ ] Prioritization by risk applied when coverage is low - P1 authorization, P2 data integrity, P3 business-critical, P4 high-churn, P5 plumbing
-- [ ] Testcontainers used for repository and full-context tests; SQLite flagged as a smell for production-Postgres apps
-- [ ] `go test -race ./...` CI presence flagged when packages with concurrent code lack race coverage
+- [ ] Pyramid mapped to Go idioms (unit → `testing` + mocks; handler → `httptest` + `gin.New()`; integration → Testcontainers; Asynq → in-process + real-broker for non-trivial cases)
+- [ ] Boundaries defined: each layer covers what it does best; no duplicated assertions
+- [ ] Risk-based prioritization when coverage is low (P1 auth, P2 integrity, P3 business, P4 churn, P5 plumbing)
+- [ ] Testcontainers used for repository / full-context; SQLite flagged for Postgres apps
+- [ ] `-race` CI presence flagged when concurrent packages lack race coverage
 
-**Test Scaffolds only:**
+**Scaffolds:**
 
-- [ ] Tests are table-driven, not copy-pasted per case
-- [ ] Test data created via factory functions, not raw struct literals; typed factory return shapes
-- [ ] Handler scaffolds include happy path + 401 + 403 + validation-error; IDOR test for any per-owner / per-tenant resource
-- [ ] Handler scaffolds apply same global middleware as `cmd/api/main.go` (missing auth middleware masks authorization bugs)
-- [ ] Repository scaffolds run against Testcontainers PostgreSQL with per-test cleanup - never SQLite for Postgres apps
-- [ ] Asynq scaffolds include idempotency + retry; real-broker (Testcontainers Redis) variant present for tasks with non-trivial `MaxRetry` / `Timeout`
-- [ ] `t.Cleanup` (not `defer` in test body) for teardown
-- [ ] Validator unit tests scaffolded for any non-trivial DTO with custom struct tags
+- [ ] Table-driven, not copy-pasted
+- [ ] Factory functions over raw literals; typed return shapes
+- [ ] Handler: happy + 401 + 403 + validation-error; IDOR for per-owner / per-tenant resources
+- [ ] Handler applies same global middleware as `cmd/api/main.go` (missing auth masks authz bugs)
+- [ ] Repository runs against Testcontainers Postgres with per-test cleanup
+- [ ] Asynq: idempotency + retry; real-broker variant for tasks with non-trivial `MaxRetry` / `Timeout`
+- [ ] `t.Cleanup` (not `defer`)
+- [ ] Validator unit tests for non-trivial DTOs with custom tags
 
-**Review-existing-tests mode only:**
+**Review-existing-tests mode:**
 
-- [ ] Review checklist items addressed for every test file in scope
+- [ ] Checklist items addressed for every test file in scope
 
 ## Avoid
 
-- Scaffolding tests without first reading existing tests + setup files - the result imports the wrong factory, uses the wrong HTTP-stub library, or duplicates the integration-test base fixture
-- Chasing a coverage number instead of prioritizing by risk - 100% line coverage with no auth tests misses the bigger threat
-- Writing a separate test function per case when a table-driven test would do - copy-paste tests are harder to maintain and grow inconsistencies
-- Full E2E tests (full Testcontainers + real broker) for what a handler test could cover - context cost compounds across the suite
-- SQLite / in-memory DB in repository tests for apps that use PostgreSQL features (JSONB, partial indexes, `ON CONFLICT`, array types) - tests pass, prod fails
-- Handler tests that build the Gin engine without applying the same global middleware as `cmd/api/main.go` - validation rules and auth differ between test and prod silently
-- Writing handler tests with a real running server when `httptest.NewRecorder` + `engine.ServeHTTP(w, req)` is faster and more deterministic
-- Duplicating factories per package - share via `internal/testutil/factories.go`
-- Using `repository.Save = ...`-style internal mocks when a Testcontainers integration test could assert real DB state
-- Mocking auth middleware to silence DTO failures - the test is now incorrect for the prod config
-- Skipping validator unit tests because the handler has an integration test - validators are unit-tested separately so they can be reused
-- Testing framework internals (e.g., that Gin routes match, that `validator` runs `required` tag) - test your wiring, not the framework
-- Using in-process Asynq mocks as a substitute for a real-broker test on tasks with non-trivial `MaxRetry` / `Timeout` - the mock skips the broker and masks at-least-once / archived-task semantics
-- Using `interface{}` / `any` to silence type errors in mocks - use generated `gomock` types or hand-written mocks with the right signature
-- Skipping `go test -race ./...` for packages that use goroutines, channels, or `sync` primitives - the race is real, the test will eventually flake or break in prod
+- Scaffolding without reading existing tests + setup - imports wrong factory, duplicates fixture
+- Chasing coverage % instead of prioritizing by risk
+- A separate test function per case when table-driven would do
+- Full E2E for what a handler test could cover
+- SQLite / in-memory DB for Postgres apps (JSONB, partial indexes, `ON CONFLICT`, arrays)
+- Handler tests without same global middleware as `cmd/api/main.go`
+- Real-server handler tests when `httptest.NewRecorder` + `engine.ServeHTTP` is faster
+- Duplicating factories per package; share via `internal/testutil/factories.go`
+- `repository.Save = ...` mocks when Testcontainers would assert real DB state
+- Mocking auth middleware to silence DTO failures
+- Skipping validator unit tests because the handler has an integration test
+- Testing framework internals (that Gin routes match, that `validator` runs `required`)
+- In-process Asynq mocks for tasks with non-trivial `MaxRetry` / `Timeout` (mask at-least-once / archived)
+- `interface{}` / `any` to silence type errors in mocks
+- Skipping `go test -race ./...` for packages using goroutines / channels / `sync`

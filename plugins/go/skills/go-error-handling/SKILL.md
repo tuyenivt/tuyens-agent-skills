@@ -136,16 +136,9 @@ func (h *userHandler) GetUser(c *gin.Context) {
 
 ### Wrapping External API Errors
 
-Third-party APIs (Stripe, payment gateways, etc.) return their own error types. Wrap them into domain errors at the integration boundary so callers never depend on the external library:
+Third-party SDK error types stop at the gateway boundary; callers depend only on domain sentinels.
 
 ```go
-// Bad: leaking Stripe error types into domain layer
-func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
-    _, err := charge.New(...)
-    return err // caller must import stripe to check error type
-}
-
-// Good: classify and wrap at the boundary
 var (
     ErrPaymentDeclined = errors.New("payment declined")
     ErrGatewayTimeout  = errors.New("payment gateway timeout")
@@ -153,9 +146,7 @@ var (
 
 func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
     _, err := charge.New(...)
-    if err == nil {
-        return nil
-    }
+    if err == nil { return nil }
 
     var stripeErr *stripe.Error
     if errors.As(err, &stripeErr) {
@@ -164,11 +155,8 @@ func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
             return fmt.Errorf("charge %s: %w", req.ID, ErrPaymentDeclined)
         case stripe.ErrorCodeRateLimit:
             return fmt.Errorf("charge %s: %w", req.ID, ErrRetryable)
-        default:
-            return fmt.Errorf("charge %s: stripe error %s: %w", req.ID, stripeErr.Code, err)
         }
     }
-
     if ctx.Err() != nil {
         return fmt.Errorf("charge %s: %w", req.ID, ErrGatewayTimeout)
     }
@@ -230,11 +218,10 @@ func ErrorMiddleware() gin.HandlerFunc {
 
 ## Edge Cases
 
-- **nil error wrapping**: `fmt.Errorf("context: %w", nil)` returns a non-nil error with text "context: <nil>" - always check `if err != nil` before wrapping
-- **errors.Is on nil**: `errors.Is(nil, ErrNotFound)` returns false, which is correct - no guard needed
-- **Multiple wrapping**: wrapping with `%w` twice in the same format string (Go 1.20+) creates a multi-error; use `errors.Is` / `errors.As` which traverse all wrapped errors
-- **Unwrap loop**: custom error types implementing `Unwrap() error` must not create cycles - an infinite unwrap chain will hang `errors.Is` / `errors.As`
-- **Third-party errors without Error interface**: some libraries return error-like values that don't implement `error`. Check the library's documentation and use type assertions at the boundary
+- **nil wrap**: `fmt.Errorf("context: %w", nil)` returns a non-nil error - guard with `if err != nil` before wrapping
+- **Multi-`%w` (Go 1.20+)**: `fmt.Errorf("%w: %w", ErrRetryable, cause)` lets one error match two sentinels; `errors.Is` / `errors.As` traverse both branches
+- **`Unwrap` cycle**: custom error types must not create cycles - `errors.Is` / `errors.As` will hang
+- **Third-party error-like values**: some libraries return values that don't implement `error`; use type assertions at the boundary
 
 ## Output Format
 

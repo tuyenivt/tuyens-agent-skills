@@ -9,373 +9,305 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Go Refactor
 
-## Purpose
-
-Produce a safe, step-by-step refactoring plan for a specific Go target (Gin handler, service, repository, GORM model, Asynq processor, DTO). Identifies Go-specific smells (Step 4 catalog) and proposes independently-committable steps with `go build ./...` + `go test -race ./...` gates between each.
-
-This workflow is the stack-specific delegate of `task-code-refactor` for Go.
+Safe, step-by-step refactoring plan for a Go target (handler, service, repository, GORM model, Asynq processor, DTO). Identifies smells, proposes independently-committable steps with `go build` + `go test -race` gates between each.
 
 ## When to Use
 
-- Go code-smell identification and resolution
-- Go technical-debt reduction with a concrete plan
-- Safe refactoring of a handler / service / repository / package / Asynq processor
-- Pre-merge "this PR grew the fat-handler / god-service problem - what's the cleanup?"
+- Go code-smell resolution
+- Technical-debt reduction with a concrete plan
+- Safe refactor of a handler / service / repository / Asynq processor
+- "This PR grew the fat-handler problem - what's the cleanup?"
 
 **Not for:**
-
-- Deciding which debt to tackle first (use `task-debt-prioritize`)
-- Feature changes (use `task-go-implement`)
-- Architecture-level restructuring across many packages (use `task-design-architecture`)
-- Bug fixes / panic investigations (use `task-go-debug`)
+- Choosing what debt to tackle (`task-debt-prioritize`)
+- Feature changes (`task-go-implement`)
+- Cross-package restructuring (`task-design-architecture`)
+- Bug fixes (`task-go-debug`)
 
 ## Inputs
 
-| Input                 | Required    | Description                                                                                                                                                  |
-| --------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Target scope          | Yes         | File or package to refactor (e.g., `internal/orders/handler.go`, `internal/orders/service.go`, `internal/worker/payment_processor.go`)                       |
-| Goal                  | Yes         | What the refactoring should achieve (e.g., extract `PlaceOrder` service, kill GORM `AfterCreate` hook chain, split `OrdersService` god package)              |
-| Test coverage status  | Recommended | Whether `*_test.go` / Testcontainers / Asynq coverage exists for the target area; whether `go test -race` is clean for the package                           |
-| Shared/public surface | Recommended | Whether the target is used across package / module / team boundaries                                                                                         |
+| Input | Required | Description |
+|-------|----------|-------------|
+| Target scope | Yes | File / package to refactor |
+| Goal | Yes | What the refactor should achieve |
+| Test coverage status | Recommended | Whether tests / Testcontainers / Asynq coverage exist; whether `go test -race` is clean |
+| Shared/public surface | Recommended | Whether the target is used across package / module / team boundaries |
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Data-Access Mix
+### Step 1 - Confirm Stack and Detect Data Access
 
-Use skill: `stack-detect` to confirm Go / Gin. If invoked as a subagent of a Go-aware parent, accept the pre-confirmed stack. If the detected stack is not Go, stop and tell the user to invoke `/task-code-refactor` instead.
-
-Detect data access (GORM / sqlx / database/sql / mixed) and messaging (Asynq / Kafka / none). Record `Data Access`, `Messaging` for the output.
+Use skill: `stack-detect`. Accept pre-confirmed stack from parent. Record `Data Access` (GORM / sqlx / mixed / database/sql) and `Messaging` (Asynq / Kafka / none).
 
 ### Step 2 - Read the Target
 
-Read the actual file(s) named in the Inputs table before classifying smells. A refactor plan grounded in the user's prose summary instead of the source will hallucinate smells that aren't there and miss ones that are. Specifically:
+Refactor plans grounded in user prose hallucinate smells. Before classifying:
 
-1. Read the target file top-to-bottom; note function count, longest function, sync-vs-async signature mix (`error` returns, `context.Context` first param), transaction placement (`db.Transaction(...)`), every external collaborator (`http.Client`, `client.Enqueue` Asynq, mailers, GORM hooks).
-2. Read the matching test file(s) (e.g., `service_test.go`, `handler_test.go`); count cases by outcome (happy path, validation failure, external failure, auth denial). Confirm `go test -race` runs clean (or note it doesn't).
-3. If callers are obvious (handler calling the service, scheduled task calling the service), read the immediate caller too - removing or reshaping a public function without seeing call sites is how silent breakage happens.
+1. Read the target file top-to-bottom; note function count, longest function, sync-vs-async signatures, transaction placement, every external collaborator (`http.Client`, Asynq `client.Enqueue`, mailers, GORM hooks)
+2. Read the matching test files; count cases by outcome (happy / validation / external / auth). Confirm `go test -race` is clean
+3. Read the immediate caller (handler calling the service, scheduled task calling the service) - signature changes cascade
 
-If the user named only the goal without a target file / package, ask for the target before proceeding. Do not guess.
+If only a goal was given without a target file, ask for the target.
 
-**Sibling-smell disposition.** Real targets live inside fat packages. If the file containing the target also contains other smells (e.g., the user names `CreateOrder` but the same handler file has IDOR in `GetOrder` and an `exec.Command("sh", "-c", userInput)` in `BulkImport`), do **not** action them in this plan and do **not** ignore them silently. List them under a `Sibling Smells (Out of Scope)` heading in the output, briefly state why each is deferred (separate target, separate severity, separate skill - e.g., security findings belong in `task-go-review-security`), and recommend follow-up invocations. This disambiguates "while we're here cleanup" (forbidden) from "name the deferred work for hand-off" (required).
+**Sibling-smell disposition.** If the target file contains other smells beyond the named target (IDOR in `GetOrder`, `exec.Command` in `BulkImport`), do **not** action them and do **not** ignore them. List under `Sibling Smells (Out of Scope)` with brief deferral rationale and a recommended follow-up invocation.
 
 ### Step 3 - Coverage Gate (mandatory)
 
-Refactoring without test coverage is a rewrite with extra steps. Identify the tests covering the target (`*_test.go`, integration tests against Testcontainers, Asynq processor tests), then assign one of three statuses with sharp boundaries:
+Refactoring without tests is a rewrite. Assign one of three statuses:
 
-| Status       | Definition                                                                                                                                   | What the workflow does                                                                                                                        |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Adequate`   | Happy path **plus** at least 2 boundary outcomes per public entry point (e.g., validation failure, auth denial, external failure, not-found) | Proceed to Step 4 normally                                                                                                                    |
-| `Thin`       | Happy path **plus** exactly 1 boundary outcome                                                                                               | Proceed, but the plan **must** include a non-optional `Step 0 - Coverage prerequisite` adding the missing boundaries before any refactor step |
-| `Inadequate` | No tests, or **happy-path-only** (success case alone)                                                                                        | **Refuse to produce Steps 1+.** The only output is the Coverage Gate verdict and a recommendation to run `task-go-test` first                 |
+| Status | Definition | Action |
+|--------|------------|--------|
+| `Adequate` | Happy path + ≥ 2 boundary outcomes per public entry (validation, auth denial, external failure, not-found) | Proceed to Step 4 |
+| `Thin` | Happy path + exactly 1 boundary outcome | Proceed; plan must include non-optional `Step 0 - Coverage prerequisite` |
+| `Inadequate` | No tests, or happy-path-only | **Refuse Steps 1+.** Output Coverage Gate verdict + recommendation to run `task-go-test` first |
 
-**Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves validation, authorization, or error behavior - you would be flying blind.
+**Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot verify the refactor preserves validation, authorization, or error behavior.
 
-**Race-detector check.** If the target package contains goroutines, channels, mutexes, or `sync` primitives, also confirm `go test -race ./<package>/...` is run in CI. If not, treat coverage status as one tier worse (Adequate → Thin, Thin → Inadequate) - refactoring concurrent code without race coverage is unsafe.
+**Race-detector check.** If the target uses goroutines / channels / `sync` primitives, confirm `go test -race ./<package>/...` is in CI. If not, downgrade status by one tier (Adequate → Thin, Thin → Inadequate).
 
-**Output of this step:** explicit coverage status using one of the three labels above. Do not proceed past Step 4 if status is `Inadequate`.
+Output the explicit status before proceeding.
 
 ### Step 4 - Identify Go Smells
 
-Inspect the target for these Go-specific smells. Use judgment - these are signals, not hard rules.
+Use skill: `go-overengineering-review` for: binding/service guards vs GORM/DB constraints, defensive nil after non-nil constructors, silent `if err != nil { return nil }` swallows, single-impl interfaces at the implementation side, `BaseRepository` embedding, naked `go fn()` wrapping sequential calls.
 
-**Handler / Route smells:**
+**Additional Go smells not covered by `go-overengineering-review`:**
 
-| Smell                                   | Signal                                                                                                                                                                                              | Risk   |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Fat Handler                             | Handler > 30 lines of orchestration (multiple service calls, conditional dispatch, response shaping, business rules)                                                                                | High   |
-| Logic in Handler                        | Business rules, validation beyond `ShouldBindJSON` + struct tags, calculation, or domain decisions inside the handler                                                                               | High   |
-| Direct Repository / GORM in Handler     | Handlers call `db.Find(...)` directly, bypassing the service layer                                                                                                                                  | Medium |
-| ORM Model Returned from Handler         | Handler returns `*model.Order` directly via `c.JSON(...)` without mapping (mass-assignment + lazy-load risk on serialization, leaks GORM tags / soft-delete columns / internal fields)              | High   |
-| Manual Validation Duplicating Tags      | Handler body re-checks `len(req.Name) > 0` constraints already on the validator struct tag                                                                                                          | Low    |
-| `BindJSON` (vs `ShouldBindJSON`)        | `BindJSON` writes 400 directly and returns - handler loses control of the error response shape; use `ShouldBindJSON` so the error middleware can format consistently                                | Low    |
-| Per-handler `c.JSON(500, ...)` Errors   | Inline error mapping scattered across handlers instead of `c.Error(err)` + central error middleware                                                                                                 | Medium |
-| Missing Validator Tags on DTO           | DTO declared without `validate:"required,..."` - anything-goes input                                                                                                                                | High   |
-| Mass Assignment via `mapstructure`      | `mapstructure.Decode(req.Body, &order)` decoded directly into a domain model - client can override server-set fields like `UserID`, `Role`                                                          | High   |
-
-**Service smells:**
-
-| Smell                              | Signal                                                                                                                                                                          | Risk   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| God Service File                   | `*_service.go` > 500 lines; mixes orchestration, persistence, mapping, external clients, scheduling                                                                             | High   |
-| Anemic Domain                      | Models are pure data containers; business rules live in `*_helpers.go` with names like `CalculateTotal(order)` and could belong as methods on the model                         | High   |
-| Single-Implementation Interface    | `OrderRepositoryInterface` + single `gormOrderRepository` with no second implementation, no test mock generated - the interface adds nothing                                    | Medium |
-| Missing `context.Context` First Param | Service method does I/O / blocks but takes no `ctx`; cancellation cannot propagate; logs cannot correlate to the request                                                      | High   |
-| `panic` in Service Code            | `panic("should never happen")` for impossible-but-not-actually-impossible cases - return a wrapped error instead; panics escape the error model                                 | High   |
-| External I/O Inside DB Transaction | HTTP call, message publish, or file write inside `db.Transaction(func(tx *gorm.DB) error {...})` (defers commit, holds DB locks long, races worker pickup before commit)         | High   |
-| Returning `bool` From Failure-Capable Operation | Service returns `bool` (or `(T, bool)`); caller cannot distinguish failure cases (validation vs not-found vs external) - return `(T, error)` with sentinel errors      | Medium |
-| Floating Goroutine                 | `go fn()` in a service body without ownership (no `errgroup`, no `sync.WaitGroup`) and without a cancellation path (`<-ctx.Done()`) - leak                                      | High   |
-
-**Persistence / GORM / sqlx smells:**
-
-| Smell                                        | Signal                                                                                                                                                                                                          | Risk   |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Fat Model                                    | GORM model struct with > 300 lines of methods; mixes mapping, computed properties, business operations, validation                                                                                              | High   |
-| GORM `AfterCreate` / `AfterUpdate` Abuse     | Hook dispatching emails, publishing events, calling external services - races commit and silently breaks; hidden control flow                                                                                   | High   |
-| `db.Find` Without Limit / Pagination         | Returns full table without pagination                                                                                                                                                                           | Medium |
-| GORM N+1 via Lazy Access                     | Code accesses `order.Items` after `db.Find(&orders)` without `Preload("Items")` - per-row query (N+1)                                                                                                           | High   |
-| `db.Raw(fmt.Sprintf(...))` String Concat     | Dynamic SQL built via string concatenation instead of parameterized `db.Raw("... WHERE id = ?", id)` or `db.Where("col = ?", val)`                                                                              | High   |
-| Missing `defer rows.Close()`                 | `rows, err := db.QueryContext(...)` without `defer rows.Close()` - leaks connections to the pool                                                                                                                | High   |
-| Missing `db.WithContext(ctx)` On Queries     | Queries do not propagate cancellation; long-running queries continue after request cancel                                                                                                                       | Medium |
-| `db.AutoMigrate` In Production Code          | Schema changes via `db.AutoMigrate` in app startup; should be `golang-migrate` files for reproducibility / reviewability                                                                                        | High   |
-| ORM Model Stored Outside Connection Scope    | GORM model assigned to a package-level cache, sent to an Asynq task payload, or `json.Marshal`-ed long after the request ends - lazy attributes, stale data. Cache IDs and re-fetch instead                     | High   |
-
-**Configuration / DI smells:**
-
-| Smell                        | Signal                                                                                                           | Risk   |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------ |
-| Package-level Mutable State  | `var cache = map[string]T{}` / `var handlers = []Fn{}` mutated by request handlers                               | High   |
-| Package-level `*sql.DB` Var  | `var DB *gorm.DB` accessed directly by repositories instead of constructor injection                             | High   |
-| `os.Getenv("X")` Sprinkled   | `os.Getenv` scattered across packages; should be loaded once into a typed config struct at startup                | Medium |
-| Hardcoded Defaults Inline    | Default values inline in code rather than a typed config struct                                                  | Medium |
-| `init()` Wiring              | `init()` functions wiring shared state, registering globals - causes test isolation failures and hidden coupling | High   |
-| Single-Impl Interface        | Interface defined for a single concrete type with no test mock and no second implementation                      | Medium |
-| Interface At Producer        | Interface defined in the package that implements it (Java style); Go idiom is interface at the consumer          | Medium |
-
-**Concurrency / Async smells:**
-
-| Smell                                      | Signal                                                                                                                                                  | Risk   |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Goroutine Without Owner                    | `go fn()` in a long-running service without `errgroup`, `sync.WaitGroup`, or a worker pool with shutdown                                                | High   |
-| Goroutine Without Cancellation Path        | Goroutine blocked on a channel send / receive with no `select { case <-ctx.Done(): return }` arm - leak                                                 | High   |
-| Unbounded `errgroup.Group.Go(...)` Fan-out | Fan-out over a list without `g.SetLimit(N)` (Go 1.20+) or a semaphore - exhausts pool / file descriptors at scale                                       | High   |
-| `sync.Mutex` Held Across I/O               | `mu.Lock(); db.Query(...); mu.Unlock()` - serializes I/O across all callers                                                                             | High   |
-| Channel Without Cancellation Pair          | `result := <-ch` without `select { case result := <-ch: ... case <-ctx.Done(): return }` - deadlocks if no sender appears                               | High   |
-| `client.Enqueue()` Inside DB Transaction   | Asynq task dispatched inside `db.Transaction(...)` - worker may pick it up before commit                                                                | High   |
-| Asynq Task Without Idempotency             | Task that re-runs side effects when delivered twice (no dedup, no upsert, no state check)                                                               | High   |
-| Asynq Task Without `MaxRetry` for Critical | Critical task (payment, billing) running with default `MaxRetry: 25` (or whatever default) - no explicit retry policy documented                        | Medium |
+| Smell | Signal | Risk |
+|-------|--------|------|
+| Fat Handler | Handler > 30 lines orchestrating multiple service calls, dispatch, response shaping | High |
+| Logic in Handler | Business rules, validation beyond binding, calculation in handler body | High |
+| Direct GORM in Handler | `db.Find(...)` in handler, bypassing service | Medium |
+| ORM Model in `c.JSON` | Raw `c.JSON(200, *model.User)` without DTO mapping | High |
+| `BindJSON` (not `ShouldBindJSON`) | Handler loses error response control | Low |
+| Per-handler `c.JSON(500, ...)` | Inline error mapping vs central error middleware | Medium |
+| Mass Assignment | `mapstructure.Decode(req.Body, &model)` | High |
+| God Service File | `*_service.go` > 500 lines mixing orchestration + persistence + clients | High |
+| Anemic Domain | Business rules in `*_helpers.go` instead of methods on the model | High |
+| Missing `ctx` First Param | I/O-doing function without `context.Context` first | High |
+| `panic` in Service Code | "should never happen" panics; return wrapped error instead | High |
+| External I/O Inside DB Transaction | HTTP / Asynq / mailer inside `db.Transaction(...)` | High |
+| Returning `bool` From Failure-Capable Op | Cannot distinguish validation vs not-found vs external; use `(T, error)` | Medium |
+| Floating Goroutine | `go fn()` without `errgroup` / `WaitGroup` / queue submission | High |
+| Fat Model | GORM model struct > 300 lines mixing mapping + computed + business + validation | High |
+| GORM `AfterCreate` Abuse | Hook dispatching emails / events / external calls; races commit | High |
+| `db.Find` Without Limit | Unbounded list | Medium |
+| GORM N+1 via Lazy Access | `order.Items` after `Find` without `Preload` | High |
+| `db.Raw(fmt.Sprintf(...))` | SQL injection via concat instead of `?` placeholders | High |
+| Missing `defer rows.Close()` | Leaks connections to the pool | High |
+| Missing `db.WithContext(ctx)` | No cancellation propagation | Medium |
+| `db.AutoMigrate` In Production | Use `golang-migrate` files instead | High |
+| ORM Model Outside Connection Scope | Model in package cache / Asynq payload / `json.Marshal`-ed long after request | High |
+| Package-level Mutable State | `var cache = map[string]T{}` mutated by request handlers | High |
+| Package-level `*sql.DB` | Accessed directly by repositories instead of constructor-injected | High |
+| `os.Getenv("X")` Sprinkled | Should be loaded once into a typed config struct | Medium |
+| `init()` Wiring | `init()` registering globals; breaks test isolation | High |
+| Interface At Producer | Interface in implementation package vs at consumer | Medium |
+| Goroutine Without Cancellation | Block on channel send/receive with no `case <-ctx.Done()` | High |
+| Unbounded `errgroup.Go` Fan-out | No `g.SetLimit(N)` over a large list | High |
+| `sync.Mutex` Across I/O | `mu.Lock(); db.Query(...); mu.Unlock()` serializes I/O | High |
+| `client.Enqueue` Inside Transaction | Worker may pick up before commit | High |
+| Asynq Task Without Idempotency | Re-runs side effects on retry | High |
 
 **Test smells (when refactoring brings tests into scope):**
 
-| Smell                                       | Signal                                                                            | Risk   |
-| ------------------------------------------- | --------------------------------------------------------------------------------- | ------ |
-| Repository Mocked With In-Process State     | Patching `repo.Save = ...` with map storage instead of using a Testcontainers integration test                                                                       | Medium |
-| SQLite in Repository Tests for Postgres App | Tests pass on SQLite but fail in prod on JSONB / partial index / `ON CONFLICT`    | High   |
-| In-Process Asynq Mocking Reality            | Mock processor hides at-least-once / retry / archived semantics                   | Medium |
-| Copy-Paste Test Functions                   | Multiple near-identical test functions where a table-driven test would do         | Low    |
-| `interface{}` / `any` In Test Mocks         | Type-cast escape hatch used to bypass a real type bug                             | Medium |
+- Repository mocked with in-process state map (use Testcontainers integration)
+- SQLite in repository tests for a Postgres app (JSONB, partial index, `ON CONFLICT` diverge)
+- In-process Asynq mocking reality (hides at-least-once semantics)
+- Copy-paste test functions where table-driven would do
+- `interface{}` / `any` in test mocks to bypass type bugs
 
-**General OO smells (apply with Go judgment):**
+**General OO smells:**
 
 Use skill: `backend-coding-standards` for the cross-language smell catalog.
-Use skill: `complexity-review` when the target shows over-engineering signals (single-impl interfaces, abstract base structs for two embedders, premature factory / strategy, redundant mapping layers) - those are simplification opportunities, not refactor steps to extract more abstractions.
+Use skill: `complexity-review` when the target shows over-engineering signals (single-impl interfaces, abstract bases for two embedders, premature factory, redundant mapping layers) - those are simplification opportunities, not refactor steps to extract more abstractions.
 
-Apply Go judgment - a 25-line service function orchestrating clearly named private functions is fine; a 10-line function doing three unrelated things is not.
+Apply Go judgment: a 25-line service function orchestrating clearly named private functions is fine; a 10-line function doing three unrelated things is not.
 
 ### Step 5 - Cross-Module Risk Assessment
 
-Use skill: `review-blast-radius` to estimate how many callers, tests, and deployments are affected by the refactor.
+Use skill: `review-blast-radius`.
 
-Go-specific blast-radius signals:
+Go-specific signals: public handler used by external clients; published Go module surface; GORM hook with broad receiver; service injected widely; model used in many queries; DTO reused across endpoints; exported symbol in `internal/x`.
 
-- [ ] **Public API surface**: target is a handler used by external clients - refactor risks API contract change
-- [ ] **Module boundary**: target is in a published Go module consumed by other apps (replace directives, vendor, etc.)
-- [ ] **GORM hook with broad receiver**: refactoring an `AfterCreate` connected to many models / a callback registered globally affects every dispatch
-- [ ] **Service injected widely**: target is constructed in `cmd/api/main.go` and passed to many other services - signature changes cascade
-- [ ] **Model used in many queries**: refactoring a model affects every repository / `Find` / `Preload` call
-- [ ] **DTO reused across endpoints**: DTO field rename / removal cascades into every dependent endpoint and its tests
-- [ ] **Exported package symbol**: refactoring an exported type / function in `internal/x` or a public package means every internal importer breaks
-
-State the blast radius before proposing steps: **Narrow** (single file, single caller) / **Moderate** (single package, multiple callers) / **Wide** (cross-package, public handler API, broad GORM hook) / **Critical** (published module, model used by 5+ services).
+State blast radius: **Narrow** / **Moderate** / **Wide** / **Critical**.
 
 ### Step 6 - Propose the Step Sequence
 
-Each refactoring step must be:
+Each step must be:
 
-1. **Independently committable** - the codebase compiles with `go build ./...` cleanly and the test suite passes after each step (`go test -race ./...` for packages with concurrency)
-2. **Behaviorally invariant** - no behavior change unless explicitly noted as a separate step (or labeled `coupled-fix`, see below)
-3. **Reversible** - rollback is one revert away
-4. **Tested** - the existing test suite continues to pass; new tests added when extracting new units
+1. **Independently committable** - `go build ./...` clean and tests (with `-race` for concurrent packages) pass after each step
+2. **Behaviorally invariant** unless labeled `coupled-fix`
+3. **Reversible** in one revert
+4. **Tested** - existing suite still passes; new tests when extracting new units
 
-**Recipe interleaving.** When more than one Common Recipe applies to a single target (e.g., a fat handler that also has `mapstructure.Decode(req.Body, target)`, leaks a goroutine, and stashes a GORM model in a package-level cache), do **not** concatenate the recipes - that produces a 25-step plan mixing concerns. Identify the **primary** refactor (usually the one named in the user's goal), use that recipe as the spine, and fold supporting recipes in as additive sub-steps where dependencies require it. State the primary recipe explicitly in the output via the `Primary recipe:` field. If the spine grows past ~8 steps, split into two plans / two PRs rather than one mega-plan.
+**Recipe interleaving.** When multiple recipes apply (a fat handler that also has `mapstructure.Decode`, leaks a goroutine, and uses a package-level cache), don't concatenate - identify the **primary** refactor (usually the one in the user's goal), name it as `Primary recipe:`, fold supporting recipes as sub-steps. If the spine > 8 steps, split into two PRs.
 
-**Coupled-fix language.** Sometimes a refactor genuinely depends on a behavior change (e.g., extracting a service that derives `UserID` from the JWT claims _requires_ the principal to be available, so adding auth middleware to the route is a structural prerequisite, not "while-we're-here cleanup"). When this happens, label the step `coupled-fix` in the Output Format with its own test gate and rationale. This is **not** a bundling violation - it is an explicit prerequisite. Do not silently fold it into an extraction step.
+**Coupled-fix language.** Sometimes a refactor depends on a behavior change (extracting a service that reads `UserID` from JWT claims requires the route to have auth middleware - a structural prerequisite). Label the step `coupled-fix` with its own test gate. Not a bundling violation; an explicit prerequisite.
 
-**Transaction-boundary watch.** When extracting orchestration that runs inside `db.Transaction(func(tx *gorm.DB) error {...})`, the extracted unit inherits the transaction context if called from the original entry point. If the extracted code makes HTTP calls, publishes to Asynq, or writes files, they now happen mid-transaction (a regression). State the transaction stance per step: "callee runs inside caller's transaction" or "callee uses post-commit dispatch (event emitter / closure-after-Transaction-returns) to defer side effects." Never silently move I/O across a transaction boundary.
+**Per-step disclosures** - state explicitly:
 
-**Context-propagation watch.** Adding `ctx context.Context` to a function signature crosses an async-cancellation boundary. State whether the new signature accepts `ctx` and whether all callers now plumb it through (no `context.TODO()` / `context.Background()` mid-call as a placeholder - those signal "I gave up on plumbing"). Never silently change a function from no-context to context-aware without auditing every call site.
-
-**Concurrency-stance watch.** Adding goroutines or `errgroup` introduces concurrency. State whether `go test -race ./...` is added to CI for the affected package as part of the refactor - if not, the new race surface is unguarded. Mutex changes (introducing, removing, swapping `Mutex` ↔ `RWMutex`) similarly demand race coverage.
+- **Transaction stance**: callee inside caller's transaction | post-commit dispatch | not transactional. Never silently move I/O across a transaction boundary
+- **Context stance**: accepts ctx | passes ctx through | unchanged. Never silently change a function from no-context to context-aware without auditing every call site
+- **Concurrency stance**: no change | introduces goroutine (race coverage required) | removes goroutine | mutex change
 
 **Common Go refactor recipes:**
 
-**Recipe: Extract service from fat handler**
+**Extract service from fat handler**
 
-1. Add `internal/<feature>/service.go` (or new file alongside) with a single intention-revealing method `func (s *OrderService) Place(ctx context.Context, in PlaceOrderInput) (*PlaceOrderResult, error)`; copy logic from handler; handler still does the original work
-2. Add `service_test.go` with table-driven tests covering one case per outcome (success, validation failure, external failure)
-3. Update handler to call the service via constructor injection; preserve response shape; ensure handler tests pass unchanged
-4. Remove the original logic from the handler; verify handler tests pass
-5. Add a handler-level test asserting service failure surfaces as the expected error response (likely via `c.Error(err)` + central error middleware)
+1. Add `internal/<feature>/service.go` with one intention-revealing method `func (s *OrderService) Place(ctx, in) (*Result, error)`; copy logic; handler unchanged
+2. Add `service_test.go` with table-driven cases (success, validation, external failure)
+3. Handler calls the service via constructor injection; preserve response shape
+4. Remove logic from handler; handler tests still green
+5. Add handler-level test asserting service failure surfaces as expected error response
 
-**Recipe: Move side effects out of an open DB transaction**
+**Move side effects out of an open DB transaction**
 
-Pick **one** of these options per refactor; do not stack them. Option A is simpler and the right default; Option B is justified only when the side effect is genuinely required-once (delivery guarantees, durable retry, cross-region replay) and a process crash between commit and dispatch is unacceptable.
+Pick **one**; do not stack.
 
-**Option A - Post-commit dispatch (capture inputs in tx, dispatch after `Transaction` returns nil):**
+**Option A - Post-commit dispatch** (default; simpler):
 
-1. Identify the I/O inside `db.Transaction(func(tx *gorm.DB) error {...})` - `client.Enqueue(...)` (Asynq), `producer.Produce(...)` (Kafka), `http.Client.Do(...)`, `mailer.Send(...)`, `cache.Set(...)`. These currently fire mid-transaction; the worker / downstream may observe the row before it's committed (or not at all if the tx rolls back)
-2. Hoist the dispatch out of the closure. Capture only the inputs needed (IDs, payloads) inside the tx; dispatch after the tx returns nil:
+1. Identify I/O inside `db.Transaction(...)` (`client.Enqueue`, `producer.Produce`, `http.Client.Do`, `mailer.Send`, `cache.Set`)
+2. Hoist out. Capture inputs (IDs, payloads) inside the tx; dispatch after `Transaction` returns nil:
    ```go
    var orderID int64
-   var payload []byte
    err := db.Transaction(func(tx *gorm.DB) error {
        if err := tx.Create(&order).Error; err != nil { return err }
        orderID = order.ID
-       payload = mustMarshal(NotificationPayload{OrderID: orderID})
        return nil
    })
    if err != nil { return err }
-   // post-commit: row is visible to other connections; safe to dispatch
    if _, err := asynqClient.Enqueue(asynq.NewTask("order.notify", payload)); err != nil {
        slog.ErrorContext(ctx, "post-commit enqueue failed", "order_id", orderID, "err", err)
-       // option: write to outbox here (Option B's relay handles retry) or accept best-effort
    }
    ```
-3. Document the failure mode: "process crash between commit and `Enqueue` drops the dispatch." If that's unacceptable, switch to Option B
-4. Run `go test ./...`; verify the side effect fires after the tx commits (a test that asserts `mock.AssertCalled(t, "Enqueue", ...)` fires only after `db.Commit()` was reached)
+3. Document the failure mode: "process crash between commit and `Enqueue` drops the dispatch." If unacceptable, switch to Option B
+4. Test asserts side effect fires after commit was reached
 
-**Option B - Transactional outbox (durable, at-least-once):**
+**Option B - Transactional outbox** (durable, at-least-once):
 
-1. Add an `outbox_messages` table inside the same DB: `id BIGSERIAL`, `aggregate_type TEXT`, `aggregate_id BIGINT`, `event_type TEXT`, `payload JSONB`, `created_at TIMESTAMPTZ`, `processed_at TIMESTAMPTZ NULL`, partial index `(processed_at) WHERE processed_at IS NULL`
-2. Inside `db.Transaction(func(tx *gorm.DB) error {...})`, INSERT into `outbox_messages` alongside the business write - both commit atomically; no enqueue inside the tx
-3. Add a relay (separate goroutine / Asynq scheduled task / standalone consumer) that polls / streams unprocessed rows and dispatches the side effect:
+1. Add `outbox_messages` table: `id`, `aggregate_id`, `event_type`, `payload`, `created_at`, `processed_at NULL`, partial index `(processed_at) WHERE processed_at IS NULL`
+2. Inside `db.Transaction`, INSERT into `outbox_messages` alongside the business write - both commit atomically; no enqueue inside the tx
+3. Relay (separate goroutine / scheduled task) polls unprocessed rows and dispatches:
    ```go
-   var msgs []OutboxMessage
-   err := db.WithContext(ctx).
-       Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-       Where("processed_at IS NULL").
-       Order("id").
-       Limit(100).
-       Find(&msgs).Error
-   for _, m := range msgs {
-       if _, err := asynqClient.Enqueue(asynq.NewTask(m.EventType, m.Payload), asynq.TaskID(fmt.Sprintf("outbox-%d", m.ID))); err != nil {
-           continue // leave unprocessed; next poll retries
-       }
-       db.Model(&m).Update("processed_at", time.Now())
-   }
+   db.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+       Where("processed_at IS NULL").Order("id").Limit(100).Find(&msgs)
    ```
-   `FOR UPDATE SKIP LOCKED` lets multiple relay replicas run concurrently without contending on the same rows; Postgres-only (MySQL 8.0+ also supports it; SQLite doesn't)
-4. Side-effect handlers (the Asynq task processors) MUST be idempotent - `asynq.TaskID("outbox-<id>")` provides client-side dedup against retry storms but the handler still needs upserts / state checks because rebalances and retries are at-least-once
-5. Document the relay's lag budget (e.g., "outbox processed within 5s p99") and the monitoring alert (queue depth, oldest unprocessed `created_at`)
-6. Run `go test -race ./...`; assert the outbox row is written in the same tx (rolling back the tx leaves no outbox row); assert the relay is idempotent under double-delivery
+   `FOR UPDATE SKIP LOCKED` lets multiple relay replicas run without row contention (Postgres / MySQL 8.0+)
+4. Side-effect handlers MUST be idempotent (`asynq.TaskID("outbox-<id>")` for client dedup + upserts in the handler)
+5. Document lag budget and monitoring (queue depth, oldest unprocessed `created_at`)
+6. `go test -race`; outbox row is written in the same tx; relay is idempotent under double-delivery
 
-**Recipe: Convert GORM `AfterCreate` hook side effects to post-commit dispatch**
+**Convert GORM `AfterCreate` side effects to post-commit dispatch**
 
-1. Add a service-level test (or handler test) reproducing the current observable behavior (record updated, email sent, event published)
-2. Move the side-effect call out of the hook and into the service method that triggered the create; the side effect now fires after `db.Transaction(...)` returns nil. Side effects fire post-commit instead of mid-transaction
-3. Run `go test ./...`; confirm pass
-4. If the hook was doing cross-aggregate work, extract the side-effect handler into a service method and call it from the calling service explicitly - remove the hook entirely
-5. Run the full suite (`go test -race ./...`); verify no orphan code paths still rely on the hook
+1. Add a service / handler test reproducing observable behavior (record updated, email sent, event published)
+2. Move side-effect call out of the hook into the service method that triggered the create; fires after `db.Transaction` returns nil
+3. `go test ./...`; confirm pass
+4. If the hook did cross-aggregate work, extract to a service method called from the calling service; remove the hook
+5. Full suite (`go test -race`); no orphan paths relying on the hook
 
-**Recipe: Untangle fat handler + hook-driven side effects (combined case)**
+**Untangle fat handler + hook-driven side effects (combined case)**
 
-The most common Go refactor: a handler `Create` triggers a `db.Create(&order)` whose `AfterCreate` hook fans out (mailers, Asynq dispatches, audit writes). Removing the hook and extracting a service must happen as one logical change, but in safe sub-steps so the suite stays green between commits.
+The most common Go refactor: a handler `Create` triggers `db.Create(&order)` whose `AfterCreate` fans out (mailers, Asynq, audits).
 
-Do **not** introduce a context-value bypass flag (`context.WithValue(ctx, skipHooksKey{}, true)`) to silence the hook while the service runs in parallel. A request-scoped skip flag is invisible control flow: the hook still exists in source, fires for some callers, no-ops for others, and a future caller who forgets the flag silently re-doubles the side effect. The same anti-pattern in JVM land is the ThreadLocal hook-skip flag - both fail the same way. Audit-then-delete is the safe sequence; never ship a hook that lies about what it does.
+Do **not** introduce a context-value bypass flag (`context.WithValue(ctx, skipHooksKey{}, true)`) to silence the hook while the service runs in parallel. Invisible control flow; a future caller forgets the flag and silently re-doubles the side effect. Audit-then-delete is the safe sequence.
 
-1. **Pin behavior with a handler + service test** asserting every observable side effect (record updated, mailer enqueued, task dispatched, audit row written) - this is the contract the refactor must preserve
-2. **Promote hook dispatch to post-commit** first (move the dispatch out of `AfterCreate` and into the calling service after `db.Transaction(...)` returns); side effects fire post-commit; tests still pass. The hook is now empty
-3. **Audit every caller of `db.Create(&Order{...})`** - handler, scheduled tasks, migrations, other services. List them. Each one must move to the new service method **before** step 4 (so the hook can be deleted without leaving a caller relying on it)
-4. **Introduce the service method** (`func (s *OrderService) Create(ctx context.Context, in CreateOrderInput) (*model.Order, error)`) that performs the write *and* the side effects; migrate all audited callers to it in one PR each; the now-empty hook still runs but does nothing
-5. **Delete the hook entirely** once no caller bypasses the service; tests still green
+1. **Pin behavior** with a handler + service test asserting every observable side effect - this is the contract
+2. **Promote hook dispatch to post-commit** (move the dispatch out of `AfterCreate` into the calling service); tests still pass; hook now empty
+3. **Audit every caller of `db.Create(&Order{...})`** - handler, scheduled tasks, migrations, other services. List them. Each must move to the new service method **before** step 4
+4. **Introduce the service method** performing write + side effects; migrate audited callers one PR each; empty hook still runs but does nothing
+5. **Delete the hook** once no caller bypasses the service
 
-If the audit in step 3 finds a caller that genuinely cannot move to the service yet (e.g., a migration that runs before the service is wired), pause: either keep the hook and defer the refactor, or split the work across releases. Do not paper over with a bypass flag.
+If step 3 finds a caller that cannot move yet (e.g., a migration before the service is wired), pause: keep the hook and defer the refactor, or split across releases. Do not paper over with a bypass flag.
 
-**Recipe: Eliminate goroutine leak**
+**Eliminate goroutine leak**
 
-1. Identify the leaked goroutine - bare `go fn()` in a request handler / service, no owner, no `<-ctx.Done()` arm
-2. Wrap in `errgroup.WithContext(ctx)`: `g, gctx := errgroup.WithContext(ctx); g.Go(func() error { ... })`; for unbounded fan-out, add `g.SetLimit(N)` (Go 1.20+)
-3. Add `<-gctx.Done()` arms to any blocking `select` inside the goroutine: `select { case x := <-ch: ... case <-gctx.Done(): return gctx.Err() }`
-4. `if err := g.Wait(); err != nil { return fmt.Errorf("worker pool: %w", err) }` at the end of the orchestrator
-5. Run `go test -race ./<package>/...`; confirm clean. If `-race` was not in CI for this package, add it as part of the refactor
-6. Validate goroutine count under load (or via pprof `goroutine` profile) shows no growth over time
+1. Identify bare `go fn()` with no owner / no `<-ctx.Done()`
+2. Wrap in `errgroup.WithContext(ctx)`; for unbounded fan-out add `g.SetLimit(N)`
+3. Add `<-gctx.Done()` arms to blocking selects
+4. `if err := g.Wait(); err != nil { return fmt.Errorf("worker pool: %w", err) }`
+5. `go test -race ./<package>/...`; clean. Add `-race` to CI if not present
+6. Validate goroutine count under load (pprof `goroutine` profile)
 
-**Recipe: Eliminate `sync.Mutex` held across I/O**
+**Eliminate `sync.Mutex` held across I/O**
 
-1. Identify the critical section: `mu.Lock(); db.Query(...); mu.Unlock()` (or any I/O - HTTP, file, channel send to a slow consumer)
-2. Decide: does the I/O need to be serialized? If no (typical case), drop the lock before I/O and reacquire only for the small mutation:
+1. Identify `mu.Lock(); db.Query(...); mu.Unlock()`
+2. If I/O need not be serialized: drop the lock before I/O; reacquire only for the mutation:
    ```go
-   mu.Lock()
-   localCopy := *state
-   mu.Unlock()
+   mu.Lock(); localCopy := *state; mu.Unlock()
    result, err := io.Call(ctx, localCopy)
    if err != nil { return err }
-   mu.Lock()
-   state.applyResult(result)
-   mu.Unlock()
+   mu.Lock(); state.applyResult(result); mu.Unlock()
    ```
-3. If yes (must serialize), use a per-key mutex (`sync.Map[K]*sync.Mutex`) or `singleflight.Group` to dedupe concurrent calls without blocking unrelated ones
-4. Run `go test -race ./...`; confirm clean
-5. Add a benchmark asserting throughput improves (`go test -bench`)
+3. If serialization is required: per-key mutex (`sync.Map[K]*sync.Mutex`) or `singleflight.Group`
+4. `go test -race`; clean
+5. Benchmark asserting throughput improves
 
-**Recipe: Plumb `context.Context` through a previously context-free path**
+**Plumb `context.Context` through a context-free path**
 
-1. Add `ctx context.Context` as the first parameter to the target function (Go convention)
-2. Pass `ctx` to every downstream call that supports it: `db.WithContext(ctx).Find(...)`, `http.NewRequestWithContext(ctx, ...)`, channel sends with `<-ctx.Done()` selects
-3. Update every caller to plumb the existing `ctx` (typically `c.Request.Context()` from Gin) - never `context.Background()` / `context.TODO()` as placeholder
-4. Run tests; confirm pass
-5. Add a test asserting cancellation propagates: `ctx, cancel := context.WithCancel(...); cancel(); ... assert err == context.Canceled`
+1. Add `ctx context.Context` as first parameter
+2. Pass `ctx` to every downstream call: `db.WithContext(ctx).Find(...)`, `http.NewRequestWithContext(ctx, ...)`, `select` with `<-ctx.Done()`
+3. Every caller passes the existing `ctx` (typically `c.Request.Context()`); never `context.Background()` / `context.TODO()` as placeholder
+4. Tests pass; add cancellation propagation test
 
-**Recipe: Split god service into focused services**
+**Split god service into focused services**
 
-1. Identify the orthogonal concerns inside the service file (e.g., `orders/service.go` doing place + cancel + refund + reporting → split into `place.go`, `cancel.go`, `refund.go`, `report.go` with focused service structs or focused methods on a smaller `OrderService`)
-2. Extract one concern at a time into a new file with explicit constructors; original god service delegates to it temporarily
-3. Update callers to use the new focused service directly; remove delegation from god service
-4. Repeat until god service is empty; delete it. Each extraction commits independently
-5. Verify all tests still pass
+1. Identify orthogonal concerns inside the file
+2. Extract one concern at a time into a new file with explicit constructors; the god service delegates temporarily
+3. Callers use the focused service directly; remove delegation
+4. Repeat; delete the god service when empty
+5. All tests still pass
 
-**Recipe: Eliminate single-implementation interface**
+**Eliminate single-implementation interface**
 
-1. Confirm the interface has no test mocks (no generated `mock_x` package), no second implementation, no construction-time abstraction need
-2. Inline: the consuming code uses the concrete struct directly via constructor injection - `func NewOrderService(repo *gormOrderRepository) *OrderService` instead of `func NewOrderService(repo OrderRepository) *OrderService`. Delete the interface
-3. Run tests; confirm pass. Caller code is shorter and clearer
-4. **Skip if** the interface is part of a published library API or has a real second implementation (or a generated mock used in tests) - the smell is fake
+1. Confirm no test mocks, no second impl, no construction-time abstraction need
+2. Inline: consumer uses the concrete struct via constructor injection. Delete the interface
+3. Tests still pass; caller code shorter and clearer
+4. **Skip if** the interface is a published library API or has a real second impl
 
-**Recipe: Move interface from producer to consumer**
+**Move interface from producer to consumer**
 
-1. Identify the interface defined in the implementing package (Java style: `repository/interface.go` declaring `type OrderRepository interface {...}` next to the implementation)
-2. Move the interface declaration into the consuming package (typically `service`): `service/order.go` declares the interface alongside the service that consumes it
-3. Update imports; the producer (`repository`) no longer references the interface - it just returns its concrete struct
-4. Run tests; confirm pass
-5. The Go idiom is now followed: "accept interfaces, return structs" - interfaces declared at the consumer
+1. Identify the interface in the implementing package (Java style)
+2. Move into the consuming package
+3. Update imports; producer just returns its concrete struct
+4. Tests pass
 
-**Recipe: Make Asynq task idempotent**
+**Make Asynq task idempotent**
 
-1. Add a task test asserting the side effect happens exactly once when the same payload is processed twice (different request IDs, same business key)
-2. Add an idempotency guard inside the handler: dedup table keyed by `task.ResultWriter().TaskID()` or by a business key; upsert via GORM `db.Clauses(clause.OnConflict{...}).Create(...)`; or version check
+1. Test asserting side effect happens exactly once on duplicate processing
+2. Idempotency guard inside handler: dedup table keyed by business key; upsert via `db.Clauses(clause.OnConflict{...}).Create(...)`; or version check
 3. Verify retries on transient failures still complete the work
-4. Configure `MaxRetry`, `Timeout`, `Retention` explicit on the task type (or via `asynq.MaxRetry`, `asynq.Timeout` enqueue options) so poison messages do not loop forever
-5. Use `asynq.TaskID(businessKey)` on `client.Enqueue(...)` for client-side dedup when the same input must collapse to one task
+4. Configure `MaxRetry`, `Timeout`, `Retention` explicitly
+5. Use `asynq.TaskID(businessKey)` on `client.Enqueue(...)` for client-side dedup
 
-**Recipe: Eliminate mass assignment via `mapstructure.Decode`**
+**Eliminate mass assignment via `mapstructure.Decode`**
 
-1. Identify the unsafe decode: `mapstructure.Decode(req.Body, &order)`, `json.Unmarshal(body, &order)` directly into a domain model
-2. Define a request DTO with explicit fields and validator tags: `type UpdateOrderRequest struct { Notes string `validate:"max=500"` }` - no `UserID`, `Role`, `IsAdmin`, etc.
-3. Replace the decode with `c.ShouldBindJSON(&req)`, then explicit field copy: `order.Notes = req.Notes`
-4. Add a test attempting to inject `user_id` / `role` keys; assert they are stripped
-5. Audit other unsafe decodes in the codebase
+1. Identify the unsafe decode
+2. Define a request DTO with explicit fields and validator tags: no `UserID`, `Role`, `IsAdmin`
+3. Replace with `c.ShouldBindJSON(&req)`, then explicit field copy: `order.Notes = req.Notes`
+4. Test attempts to inject `user_id` / `role`; assert stripped
+5. Audit other unsafe decodes
 
-**Recipe: Replace package-level mutable state**
+**Replace package-level mutable state**
 
-1. Identify the mutable state (`var cache = map[string]T{}`, `var DB *gorm.DB`, `var handlers = []Fn{}`)
-2. Move into a struct with a constructor: `type Cache struct { mu sync.RWMutex; data map[string]T }`; `func NewCache() *Cache { ... }`; injected via constructor
-3. Replace package-level reads/writes with method calls on the injected instance
-4. Update callers to receive the new dependency explicitly (constructor argument, typically wired in `cmd/api/main.go`)
-5. Run tests; confirm pass; assert cross-test isolation (no leaking state between tests via `go test -race -count=10`)
+1. Identify the mutable state (`var cache = map[string]T{}`, `var DB *gorm.DB`)
+2. Move into a struct with a constructor: `type Cache struct { mu sync.RWMutex; data map[string]T }`; `func NewCache() *Cache`; constructor-injected
+3. Replace package-level access with method calls
+4. Callers receive the new dependency explicitly (constructor argument)
+5. Tests pass; assert cross-test isolation (`go test -race -count=10`)
 
 ### Step 7 - Validate Plan Against Goal
 
-Before finalizing the plan, check:
-
-- [ ] Goal is achieved at the end of the sequence
-- [ ] Each step is small enough to review in < 30 minutes
-- [ ] Test coverage runs between every step (not just at the end); `go test -race ./...` for concurrent code
-- [ ] Steps are ordered low-risk first (extracts, additions) before high-risk (deletions, signature changes, hook removals)
+- [ ] Goal achieved at the end of the sequence
+- [ ] Each step small enough to review in < 30 minutes
+- [ ] Test coverage runs between every step; `go test -race` for concurrent code
+- [ ] Low-risk steps first (extracts, additions) before high-risk (deletions, signature changes, hook removals)
 - [ ] Rollback path is one revert per step
-- [ ] No step bundles "while we're here" unrelated cleanup
+- [ ] No step bundles unrelated cleanup
 
 ## Output Format
 
@@ -384,37 +316,33 @@ Before finalizing the plan, check:
 
 **Target:** [file:line or path]
 **Goal:** [what this refactor achieves]
-**Primary recipe:** [name from "Common Go refactor recipes" - this is the spine]
+**Primary recipe:** [name from "Common Go refactor recipes"]
 **Stack:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+**Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none
 
 ## Coverage Gate
 
 **Status:** Adequate | Thin | Inadequate
-**Race-detector coverage:** clean | not run for this package | n/a (no concurrency in target)
+**Race-detector coverage:** clean | not run for this package | n/a
 
-[If Adequate: one sentence on the boundary cases that exist.]
-[If Thin: list the missing boundary tests; Step 0 below covers them.]
-[If Inadequate: state what coverage must exist before refactor begins, and recommend running `task-go-test` first. **Stop the workflow here** - omit Blast Radius, Step Sequence, and Verification. You may still produce the **Smells Identified** and **Sibling Smells (Out of Scope)** sections as a *preview* so the implementer has a target list when filling the coverage gap; mark them clearly as preview-only.]
+[If Adequate: one sentence on boundary cases.]
+[If Thin: list missing boundary tests; Step 0 covers them.]
+[If Inadequate: state what coverage must exist; recommend running `task-go-test` first. **Stop the workflow here** - omit Blast Radius, Step Sequence, Verification. You may still produce **Smells Identified** and **Sibling Smells** as a preview; mark preview-only.]
 
-**Coverage prerequisite list shape (when status is `Thin` or `Inadequate`).** List required tests as one row per public entry point with this shape: `entry-point | outcome | recommended layer`. Outcomes cover at minimum: validation failure (4xx), authorization denial (401/403), not-found / IDOR, external-collaborator failure. Layer options: handler test (`httptest` + `gin.New()`), service unit test, repository integration test (Testcontainers), Asynq task test. Example: `POST /orders | unknown-field rejected | handler test`. This makes the prerequisite directly actionable rather than a vague "add boundary tests."
+**Coverage prerequisite list shape (when `Thin` or `Inadequate`):** one row per public entry point: `entry-point | outcome | recommended layer`. Outcomes cover validation failure, authorization denial, not-found / IDOR, external-collaborator failure. Layer options: handler test (`httptest` + `gin.New()`), service unit test, repository integration (Testcontainers), Asynq task test.
 
 ## Smells Identified
 
-| Smell        | Location  | Risk | Notes                                  |
-| ------------ | --------- | ---- | -------------------------------------- |
-| [Smell name] | file:line | High | [Why this is the smell - one sentence] |
+| Smell | Location | Risk | Notes |
+| ----- | -------- | ---- | ----- |
 
 ## Sibling Smells (Out of Scope)
 
-_Other smells in the same file/package that this plan does NOT address. Listed for hand-off, not action._
+| Smell | Location | Why deferred | Recommended follow-up |
+| ----- | -------- | ------------ | --------------------- |
 
-| Smell   | Location  | Why deferred                                                                                | Recommended follow-up                                                          |
-| ------- | --------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [Smell] | file:line | [separate target / separate severity / belongs to security review / belongs to perf review] | [`task-go-review-security` / `task-go-refactor` on a different target / etc.]  |
-
-_Omit this section if the target file has no other smells._
+_Omit if no other smells in target._
 
 ## Blast Radius
 
@@ -422,11 +350,11 @@ _Omit this section if the target file has no other smells._
 
 ## Step Sequence
 
-### Step 0 - Coverage prerequisite _(skip if Coverage Gate is Adequate)_
+### Step 0 - Coverage prerequisite _(skip if Adequate)_
 
-- **Change:** add the missing boundary tests identified in the Coverage Gate
-- **Risk:** Low (tests-only change)
-- **Test gate:** new tests pass; existing suite still green; `go test -race ./...` clean if applicable
+- **Change:** add boundary tests from Coverage Gate
+- **Risk:** Low
+- **Test gate:** new tests pass; existing suite green; `go test -race ./...` clean if applicable
 - **Rollback:** revert added test files
 
 ### Step 1 - [Action verb + noun]
@@ -434,74 +362,72 @@ _Omit this section if the target file has no other smells._
 - **Change:** [what is added / extracted / moved]
 - **Risk:** [Low | Medium | High]
 - **Step kind:** [refactor | coupled-fix]
-- **Test gate:** [which tests must pass after this step - unit / handler / Testcontainers integration / Asynq; `go test -race ./...` for concurrent code]
-- **Transaction stance:** [callee runs inside caller's transaction | callee uses post-commit dispatch | not transactional]
+- **Test gate:** [which tests must pass; `go test -race` for concurrent]
+- **Transaction stance:** [callee inside caller's tx | post-commit dispatch | not transactional]
 - **Context stance:** [accepts ctx | passes ctx through | unchanged]
-- **Concurrency stance:** [no concurrency change | introduces goroutine (race coverage required) | removes goroutine | mutex change]
-- **Rollback:** [how to revert in one git revert]
+- **Concurrency stance:** [no change | introduces goroutine (race required) | removes goroutine | mutex change]
+- **Rollback:** [how to revert]
 
-### Step 2 - [Action verb + noun]
+### Step 2 - [...]
 
-[Same structure. Use `Step kind: coupled-fix` for any step that intentionally changes behavior because the refactor depends on it (e.g., adding auth middleware to a route group so the extracted service can derive `UserID` from claims). Always state why the coupling is structural, not cosmetic.]
-
-[... continue numbering ...]
+[`Step kind: coupled-fix` for steps that intentionally change behavior because the refactor depends on it; state why the coupling is structural.]
 
 ## Verification
 
-- [ ] Goal achieved at end of sequence: [restate goal]
+- [ ] Goal achieved at end of sequence
 - [ ] Each step independently committable
-- [ ] `go build ./...` clean and `go test ./...` (with `-race` for concurrent packages) passes between every step
-- [ ] No bundled unrelated cleanup
+- [ ] `go build ./...` clean and `go test ./...` (with `-race`) passes between every step
+- [ ] No bundled cleanup
 - [ ] Rollback path is one revert per step
 - [ ] No I/O silently moved across transaction boundaries
-- [ ] No silent change to context-propagation behavior; every call site updated
+- [ ] No silent context-propagation change
 - [ ] No new concurrency without race-detector coverage in CI
 
 ## Out of Scope
 
-[Adjacent improvements explicitly NOT in this plan - e.g., "renaming `OrderProcessor` to `OrderFulfiller` is a follow-up; this plan only extracts behavior, not renames"]
+[Adjacent improvements explicitly NOT in this plan]
 ```
 
 ## Self-Check
 
-**Plan-time checks (verifiable now from the plan itself):**
+**Plan-time:**
 
-- [ ] Stack confirmed as Go / Gin (or accepted from parent dispatcher); data-access mix and messaging recorded (Step 1)
-- [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
-- [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
-- [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin`; race-detector check applied for concurrent packages (Step 3)
-- [ ] Go-specific smells identified using Step 4 catalog (handler/route, service, persistence, configuration/DI, concurrency/Asynq) (Step 4)
-- [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
-- [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 6)
-- [ ] Step 0 included if Coverage Gate is `Thin`; omitted if `Adequate` (Output Format)
-- [ ] Transaction stance stated per step (no I/O silently moved across transaction boundary) (Step 6)
-- [ ] Context stance stated per step (no silent context-propagation change) (Step 6)
-- [ ] Concurrency stance stated per step (race-detector coverage required when concurrency added) (Step 6)
-- [ ] `Step kind:` set to `coupled-fix` for any step that intentionally changes behavior because the refactor depends on it; rationale stated; otherwise `refactor` (Step 6)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, hook removals, signature changes) (Step 6)
-- [ ] Plan length ≤ ~8 steps, or split into multiple PRs explicitly (Step 6)
+- [ ] Stack confirmed; data-access mix and messaging recorded (Step 1)
+- [ ] Target files and matching tests read directly before classification (Step 2)
+- [ ] Sibling smells listed with deferral rationale (or section omitted) (Step 2)
+- [ ] Coverage gate evaluated using sharp boundaries; happy-path-only treated as `Inadequate`; plan refused if `Inadequate`; race-detector check applied (Step 3)
+- [ ] Smells identified using Step 4 catalog (Step 4)
+- [ ] Blast radius stated before steps (Step 5)
+- [ ] `Primary recipe:` named; supporting recipes folded as sub-steps (Step 6)
+- [ ] Step 0 included if `Thin`; omitted if `Adequate` (Output Format)
+- [ ] Transaction stance per step (Step 6)
+- [ ] Context stance per step (Step 6)
+- [ ] Concurrency stance per step (Step 6)
+- [ ] `Step kind: coupled-fix` labeled for any intentional behavior change with rationale (Step 6)
+- [ ] Steps ordered low-risk first (Step 6)
+- [ ] Plan length ≤ 8 steps or split (Step 6)
 - [ ] No step bundles unrelated cleanup (Step 6)
-- [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
+- [ ] Goal mapped to end state (Step 7)
 
-**Execution-time gates (commitments the plan makes for the implementer):**
+**Execution-time (commitments for the implementer):**
 
 - [ ] `go build ./...` clean and `go test ./...` passes between every step
-- [ ] `go test -race ./...` clean for any package touched by a concurrency-introducing step
+- [ ] `go test -race ./...` clean for concurrency-introducing steps
 - [ ] Each step independently committable
 - [ ] Rollback path is one revert per step
 
 ## Avoid
 
-- Proposing a refactor without a test-coverage gate - that's a rewrite, not a refactor
-- Proposing a refactor that introduces concurrency to a package that lacks `go test -race` in CI - the new race surface is unguarded
-- Bundling behavior changes with refactoring steps - keep them separate, label clearly
-- Making "while we're here" unrelated cleanups - they belong in their own PR
-- Renaming during a refactor (rename PRs are separate; mixing the two doubles the review surface)
-- Removing GORM hooks without a test asserting the original side effects are preserved (post-commit, in the right order)
-- Adding a `context.Value` skip-flag to silence a hook for "the new path" while the old path still triggers it - the hook now lies about what it does and a future caller will silently re-double or skip the side effect; audit callers and delete the hook outright instead
-- Extracting a single-implementation interface without a real second use case - wait for the second use case before generalizing
-- Moving HTTP calls or Asynq dispatches from a non-transactional context to inside a `db.Transaction(...)` (or vice versa) without explicitly stating the transaction stance
-- Changing a function from no-context to context-aware without auditing every call site - missing context plumbing means cancellation does not propagate, and the bug is silent
-- Refactoring an exported symbol in a published Go module without a backward-compatibility plan - that is a public API
-- Replacing `gorm` with `sqlx` (or vice versa) on a code path with no measured benefit (premature change; if the team is on GORM and it works, the recipe is "address the smell" not "swap libraries")
-- Replacing package-level mutable state with `context.Value` carrying a pointer to it - that is the same global with extra steps; use constructor injection instead
+- Refactor without a coverage gate - that's a rewrite
+- Introducing concurrency to a package without `go test -race` in CI
+- Bundling behavior changes with refactoring steps
+- "While we're here" unrelated cleanup
+- Renaming during a refactor (separate PRs)
+- Removing GORM hooks without a test asserting original side effects are preserved
+- `context.Value` skip-flag to silence a hook for "the new path" - audit and delete the hook outright instead
+- Extracting a single-impl interface without a real second use case
+- Moving I/O across a transaction boundary without explicit transaction-stance disclosure
+- Changing a function from no-context to context-aware without auditing every call site
+- Refactoring an exported symbol in a published module without a backward-compatibility plan
+- Replacing `gorm` with `sqlx` (or vice versa) without measured benefit
+- Replacing package-level state with `context.Value` carrying a pointer - same global with extra steps

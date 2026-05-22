@@ -190,10 +190,10 @@ Inspect SDK config:
 When invoked at `deep`, evaluate:
 
 - [ ] Critical user journeys have at least one Prometheus / OTel SLI (HTTP request rate filtered to the journey URI, success rate, p95 latency)
-- [ ] **Liveness vs readiness vs dependency-health are three distinct endpoints, not one** - this is the most-misused pattern in Go services and a per-PR finding when a single `/health` does all three:
-  - **`/livez` (liveness)**: returns 200 unconditionally as long as the Go process can serve HTTP. NO DB ping, NO Redis ping, NO Asynq inspector call, NO outbound HTTP. The kubelet uses this to decide "kill and restart this pod"; coupling it to a dependency means a Postgres blip restarts every replica simultaneously, amplifying the outage. A bare `func(c *gin.Context) { c.Status(200) }` is the correct implementation
-  - **`/readyz` (readiness)**: own-pod-only checks - DB pool reachable from THIS pod (`db.PingContext(ctx)` with a tight timeout), Redis reachable, Asynq client connected. Used by the kubelet to gate traffic. Crucially it MUST NOT include third-party API pings (Stripe, Twilio, Sentry, S3) - if Stripe has a 5min outage, you do NOT want the kubelet to pull every replica out of the LB; that turns Stripe's outage into your full outage. Use a circuit breaker (`gobreaker`) on the request path instead
-  - **`/internal/deps` or `/debug/health` (dependency observability)**: returns JSON with per-dependency status including third-party APIs - this is for dashboards and on-call investigation, NOT for K8s probes. Verify any K8s manifest in the diff doesn't point `readinessProbe` or `livenessProbe` at this URL (would re-create the cascading-outage problem above)
+- [ ] **Three distinct endpoints, not one `/health`.** A single `/health` doing all three is a per-PR finding:
+  - **`/livez` (liveness)**: returns 200 unconditionally if the process serves HTTP. No DB / Redis / Asynq / outbound pings. Kubelet uses this to decide "kill and restart"; coupling to a dependency makes a Postgres blip restart every replica
+  - **`/readyz` (readiness)**: own-pod-only checks (DB pool, Redis, Asynq client) with tight timeouts. Kubelet gates traffic on it. Never includes third-party pings (Stripe, Twilio, S3) - a 5-min Stripe outage would pull every replica out of the LB; use a circuit breaker (`gobreaker`) on the request path instead
+  - **`/internal/deps` or `/debug/health` (dependency observability)**: JSON with per-dependency status including third-party APIs, for dashboards and on-call. NOT for K8s probes. Verify any K8s manifest in the diff doesn't point `readinessProbe` / `livenessProbe` at this URL
 - [ ] Health endpoints return JSON with per-dependency status (on the dependency-observability endpoint, not the K8s probe endpoints), so on-call can distinguish DB-down from worker-stuck without `kubectl exec`
 - [ ] SLO targets documented in code (`internal/slo/*.go` or module README) - not a free-floating Confluence page
 
