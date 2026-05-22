@@ -13,334 +13,228 @@ user-invocable: false
 
 ## When to Use
 
-- Configuring authentication and authorization for Kotlin/Spring Boot 3.5+ APIs
-- Setting up OAuth2/JWT resource server with Kotlin DSL
-- Applying method-level security with SpEL expressions
-- Configuring CORS for SPA frontends
-- Hardening security headers and CSRF protection
-- Propagating `SecurityContext` across `suspend` functions and `Flow`
+- Configuring authentication / authorization for Kotlin / Spring Boot 3.5+ APIs
+- Setting up OAuth2 / JWT resource server with the Kotlin DSL
+- Applying method security, CORS, CSRF, security headers
+- Propagating `SecurityContext` across `suspend` functions
 
 ## Rules
 
-- Use `SecurityFilterChain` as `@Bean` - never extend `WebSecurityConfigurerAdapter` (removed in Spring Security 6)
-- Prefer the Kotlin Security DSL (`http { ... }`) over the chained Java builder
-- Use `@EnableMethodSecurity` - never `@EnableGlobalMethodSecurity` (deprecated)
-- STATELESS APIs must disable CSRF and sessions
-- Never store JWT in localStorage - use HttpOnly cookie or Authorization header from memory
-- Never use wildcard CORS origins (`*`) in production
-- Constructor injection only via primary constructor; no `lateinit` for security beans
-- Externalize security configuration (issuer URIs, allowed origins) via `@ConfigurationProperties` data class
-- For `suspend` controllers / WebFlux, use `ReactiveSecurityContextHolder` - blocking `SecurityContextHolder` does not propagate across coroutine boundaries
+- `SecurityFilterChain` as `@Bean`. `WebSecurityConfigurerAdapter` is removed in Spring Security 6.
+- Kotlin DSL `http { ... }` over the chained Java builder. Requires `import org.springframework.security.config.annotation.web.invoke`.
+- `@EnableMethodSecurity` (not deprecated `@EnableGlobalMethodSecurity`).
+- Stateless APIs: disable CSRF, set `SessionCreationPolicy.STATELESS`.
+- Externalize issuers / allowed origins / secrets via `@ConfigurationProperties`. Never wildcards (`"*"`) in production CORS.
+- Escape `$` in SpEL (`@Value("\${...}")`, `@PreAuthorize`) - Kotlin string templates collide with `${...}`.
+- `SecurityContextHolder` does not propagate across `suspend` boundaries. Use `ReactiveSecurityContextHolder`, `@AuthenticationPrincipal`, or pass the principal explicitly.
 
 ## Patterns
 
-### Security Filter Chain (Kotlin DSL)
+### `SecurityFilterChain` (Kotlin DSL)
 
-Multiple filter chains for different path groups, ordered by specificity. The Kotlin DSL is more concise than the Java chained builder:
+Multiple chains for different path groups, ordered by `@Order`:
 
 ```kotlin
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 class SecurityConfig {
 
-    @Bean
-    @Order(1)
-    fun apiSecurityFilterChain(http: HttpSecurity): SecurityFilterChain = http {
-        securityMatcher("/api/**")
-        authorizeHttpRequests {
-            authorize("/api/public/**", permitAll)
-            authorize("/api/admin/**", hasRole("ADMIN"))
-            authorize(anyRequest, authenticated)
+    @Bean @Order(1)
+    fun apiChain(http: HttpSecurity): SecurityFilterChain {
+        http {
+            securityMatcher("/api/**")
+            authorizeHttpRequests {
+                authorize("/api/public/**", permitAll)
+                authorize("/api/admin/**", hasRole("ADMIN"))
+                authorize(anyRequest, authenticated)
+            }
+            oauth2ResourceServer { jwt { } }
+            sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
+            csrf { disable() }
+            cors { }
         }
-        oauth2ResourceServer { jwt { } }
-        sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
-        csrf { disable() }
-    }.let { http.build() }
+        return http.build()
+    }
 
-    @Bean
-    @Order(2)
-    fun actuatorSecurityFilterChain(http: HttpSecurity): SecurityFilterChain = http {
-        securityMatcher("/actuator/**")
-        authorizeHttpRequests {
-            authorize("/actuator/health", permitAll)
-            authorize("/actuator/info", permitAll)
-            authorize(anyRequest, hasRole("OPS"))
+    @Bean @Order(2)
+    fun actuatorChain(http: HttpSecurity): SecurityFilterChain {
+        http {
+            securityMatcher("/actuator/**")
+            authorizeHttpRequests {
+                authorize("/actuator/health", permitAll)
+                authorize(anyRequest, hasRole("OPS"))
+            }
+            httpBasic { }
         }
-        httpBasic { }
-    }.let { http.build() }
+        return http.build()
+    }
 }
 ```
 
-Role hierarchy configuration:
+### JWT / OAuth2 resource server
 
 ```kotlin
 @Bean
-fun roleHierarchy(): RoleHierarchy = RoleHierarchyImpl.withRolePrefix("ROLE_")
-    .role("ADMIN").implies("MANAGER")
-    .role("MANAGER").implies("USER")
-    .build()
-```
-
-### JWT / OAuth2 Resource Server
-
-JwtDecoder with issuer validation:
-
-```kotlin
-@Bean
-fun jwtDecoder(@Value("\${spring.security.oauth2.resourceserver.jwt.issuer-uri}") issuerUri: String): JwtDecoder {
-    val decoder = JwtDecoders.fromIssuerLocation(issuerUri) as NimbusJwtDecoder
-    val audienceValidator = JwtClaimValidator<List<String>>("aud") { aud -> aud != null && "my-api" in aud }
-    val withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri)
-    decoder.setJwtValidator(DelegatingOAuth2TokenValidator(withIssuer, audienceValidator))
+fun jwtDecoder(@Value("\${spring.security.oauth2.resourceserver.jwt.issuer-uri}") issuer: String): JwtDecoder {
+    val decoder = JwtDecoders.fromIssuerLocation(issuer) as NimbusJwtDecoder
+    val audience = JwtClaimValidator<List<String>>("aud") { it != null && "my-api" in it }
+    decoder.setJwtValidator(DelegatingOAuth2TokenValidator(JwtValidators.createDefaultWithIssuer(issuer), audience))
     return decoder
 }
-```
 
-Custom role extraction from JWT claims:
-
-```kotlin
 @Bean
-fun jwtAuthenticationConverter(): JwtAuthenticationConverter {
-    val grantedAuthoritiesConverter = JwtGrantedAuthoritiesConverter().apply {
+fun jwtAuthConverter(): JwtAuthenticationConverter {
+    val authorities = JwtGrantedAuthoritiesConverter().apply {
         setAuthoritiesClaimName("roles")
         setAuthorityPrefix("ROLE_")
     }
-    return JwtAuthenticationConverter().apply {
-        setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter)
-    }
+    return JwtAuthenticationConverter().apply { setJwtGrantedAuthoritiesConverter(authorities) }
 }
 ```
 
-Multi-tenant JWT validation (multiple issuers):
+Multi-tenant: keep a `Map<issuer, JwtDecoder>` and dispatch by the `iss` claim from `JWTParser`.
+
+### Method security
 
 ```kotlin
-@Bean
-fun multiTenantJwtDecoder(@Value("\${jwt.issuer-uris}") issuerUris: List<String>): JwtDecoder {
-    val decoders: Map<String, JwtDecoder> = issuerUris.associateWith { JwtDecoders.fromIssuerLocation(it) }
-    return JwtDecoder { token ->
-        val issuer = JWTParser.parse(token).jwtClaimsSet.issuer
-        decoders[issuer]?.decode(token) ?: throw JwtException("Unknown issuer: $issuer")
-    }
-}
-```
-
-### Method-Level Security
-
-Enable and use `@PreAuthorize` / `@PostAuthorize`. Note: in Kotlin, escape `$` in SpEL with `\$`:
-
-```kotlin
-@Configuration
-@EnableMethodSecurity
-class MethodSecurityConfig
-
 @Service
-@Transactional(readOnly = true)
-class OrderService(private val orderRepository: OrderRepository) {
-
+class OrderService(private val repo: OrderRepository) {
     @PreAuthorize("hasRole('ADMIN') or #userId == authentication.name")
-    fun findByUser(userId: String): List<OrderDTO> =
-        orderRepository.findByUserId(userId).map { OrderDTO.from(it) }
+    fun findByUser(userId: String): List<OrderDto> = ...
 
     @PostAuthorize("returnObject.ownerId == authentication.name or hasRole('ADMIN')")
-    fun findById(id: Long): OrderDTO =
-        orderRepository.findById(id).map { OrderDTO.from(it) }.orElseThrow { NotFoundException("Order not found") }
+    fun findById(id: Long): OrderDto = ...
 }
 ```
 
-Custom permission evaluator for domain-object authorization:
+Custom permission for domain-object authorization:
 
 ```kotlin
 @Component
 class ProjectPermissionEvaluator : PermissionEvaluator {
-
     override fun hasPermission(auth: Authentication, target: Any?, permission: Any?): Boolean = when (target) {
         is Project -> target.ownerId == auth.name || auth.authorities.any { it.authority == "ROLE_ADMIN" }
         else -> false
     }
-
-    override fun hasPermission(auth: Authentication, targetId: Serializable?, targetType: String?, permission: Any?): Boolean = false
+    override fun hasPermission(a: Authentication, id: Serializable?, t: String?, p: Any?) = false
 }
-
-// Usage:
-@PreAuthorize("hasPermission(#project, 'WRITE')")
-fun updateProject(project: Project) { /* ... */ }
 ```
 
-### CORS Configuration
-
-`CorsConfigurationSource` bean for JWT-based SPAs. Externalize allowed origins via `@ConfigurationProperties`:
+### CORS
 
 ```kotlin
 @ConfigurationProperties(prefix = "app.cors")
 data class CorsProperties(val allowedOrigins: List<String> = emptyList())
 
 @Bean
-fun corsConfigurationSource(props: CorsProperties): CorsConfigurationSource {
+fun corsSource(props: CorsProperties): CorsConfigurationSource {
     val config = CorsConfiguration().apply {
         allowedOrigins = props.allowedOrigins
         allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
         allowedHeaders = listOf("Authorization", "Content-Type", "X-XSRF-TOKEN")
         exposedHeaders = listOf("X-Total-Count")
         allowCredentials = true
-        maxAge = 3600L
+        maxAge = 3600
     }
-    return UrlBasedCorsConfigurationSource().apply {
-        registerCorsConfiguration("/api/**", config)
-    }
+    return UrlBasedCorsConfigurationSource().apply { registerCorsConfiguration("/api/**", config) }
 }
 ```
 
-Wire into the security DSL via `cors { }`.
+Wire via `cors { }` inside the DSL.
 
-### CSRF Handling
-
-STATELESS APIs - disable CSRF (no session to protect):
+### CSRF
 
 ```kotlin
-http {
-    csrf { disable() }
-    sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
+// Stateless JWT API
+csrf { disable() }
+sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
+
+// Stateful SPA - XSRF-TOKEN cookie + X-XSRF-TOKEN header
+csrf {
+    csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
+    csrfTokenRequestHandler = SpaCsrfTokenRequestHandler()
 }
 ```
 
-Stateful apps - CookieCsrfTokenRepository for SPA (XSRF-TOKEN cookie + X-XSRF-TOKEN header):
+### Security headers
 
 ```kotlin
-http {
-    csrf {
-        csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
-        csrfTokenRequestHandler = SpaCsrfTokenRequestHandler()
-    }
+headers {
+    contentSecurityPolicy { policyDirectives = "default-src 'self'; script-src 'self'" }
+    httpStrictTransportSecurity { includeSubDomains = true; maxAgeInSeconds = 31_536_000 }
+    contentTypeOptions { }
+    frameOptions { deny = true }
 }
 ```
 
-### Security Headers
+### Webhook endpoints
 
-Configure via the Kotlin DSL `headers { }` block:
+External webhooks (Stripe, GitHub) authenticate via signature, not JWT. Exclude from API chain:
 
 ```kotlin
-http {
-    headers {
-        contentSecurityPolicy {
-            policyDirectives = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
-        }
-        httpStrictTransportSecurity {
-            includeSubDomains = true
-            maxAgeInSeconds = 31536000
-        }
-        contentTypeOptions { }
-        frameOptions { deny = true }
+@Bean @Order(0)
+fun webhookChain(http: HttpSecurity): SecurityFilterChain {
+    http {
+        securityMatcher("/webhooks/**")
+        authorizeHttpRequests { authorize(anyRequest, permitAll) }
+        csrf { disable() }
+        sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
     }
+    return http.build()
 }
 ```
 
-### Webhook Endpoint Security
+HMAC validation via `MessageDigest.isEqual` (timing-safe) in the controller.
 
-Webhook endpoints from external services (Stripe, GitHub) use signature-based authentication instead of JWT/OAuth2. Exclude them from the standard security filter chain:
+### `@AuthenticationPrincipal` for suspend controllers
+
+```kotlin
+@GetMapping("/orders")
+suspend fun list(@AuthenticationPrincipal jwt: Jwt): List<OrderResponse> =
+    service.listForUser(jwt.subject).map { it.toResponse() }
+```
+
+Cleanest option for `suspend` - principal is a method argument, no ThreadLocal involved.
+
+### `AuthorizationManager` for request-context rules
 
 ```kotlin
 @Bean
-@Order(0) // highest priority - before API security chain
-fun webhookSecurityFilterChain(http: HttpSecurity): SecurityFilterChain = http {
-    securityMatcher("/webhooks/**")
-    authorizeHttpRequests { authorize(anyRequest, permitAll) }
-    csrf { disable() }
-    sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
-}.let { http.build() }
-```
-
-Signature validation happens in the webhook service (HMAC comparison via `MessageDigest.isEqual` for timing-safety).
-
-### `@AuthenticationPrincipal` in Controllers
-
-Inject the JWT principal directly into a controller method instead of reaching into `SecurityContextHolder`:
-
-```kotlin
-@RestController
-class OrderController(private val service: OrderService) {
-
-    @GetMapping("/orders")
-    suspend fun list(@AuthenticationPrincipal jwt: Jwt): List<OrderResponse> =
-        service.listForUser(userId = jwt.subject).map { it.toResponse() }
-
-    // For custom user details, type-narrow the principal
-    @GetMapping("/me")
-    fun me(@AuthenticationPrincipal user: AppUserDetails): UserResponse = user.toResponse()
-}
-```
-
-This is the cleanest option for `suspend` controllers because it sidesteps the ThreadLocal-vs-coroutine-context question entirely - the principal is passed as a method argument and stays valid across dispatcher switches.
-
-### Custom Authorization with `AuthorizationManager`
-
-Spring Security 6 replaces the deprecated `AccessDecisionManager` with `AuthorizationManager<RequestAuthorizationContext>`. Use it inside the DSL when an authorization rule needs more context than `hasRole` / `hasAuthority` can express:
-
-```kotlin
-@Bean
-fun ownsTenantManager(): AuthorizationManager<RequestAuthorizationContext> =
-    AuthorizationManager { authentication, ctx ->
+fun ownsTenant(): AuthorizationManager<RequestAuthorizationContext> =
+    AuthorizationManager { auth, ctx ->
         val tenantId = ctx.request.getHeader("X-Tenant-Id")
-        val authority = "TENANT_$tenantId"
-        AuthorizationDecision(authentication.get().authorities.any { it.authority == authority })
+        AuthorizationDecision(auth.get().authorities.any { it.authority == "TENANT_$tenantId" })
     }
 
-http {
-    authorizeHttpRequests {
-        authorize("/api/tenants/**", access(ownsTenantManager()))    // composes with the DSL
-        authorize(anyRequest, authenticated)
-    }
-}
+// In DSL: authorize("/api/tenants/**", access(ownsTenant()))
 ```
 
-Use `@PreAuthorize` for method-level checks and `AuthorizationManager` for filter-chain-level rules that depend on the request.
-
-### Coroutine Security Context
-
-`SecurityContextHolder` uses ThreadLocal and does not propagate across `suspend` boundaries. For coroutine-based services, use the reactive holder or pass the principal explicitly:
+### Coroutine `SecurityContext`
 
 ```kotlin
-// Bad: SecurityContextHolder.getContext() inside suspend - returns empty after dispatcher switch
-suspend fun getCurrentUser(): String? = SecurityContextHolder.getContext().authentication?.name
+// Bad - empty after dispatcher switch
+suspend fun currentUser(): String? = SecurityContextHolder.getContext().authentication?.name
 
-// Good: ReactiveSecurityContextHolder.getContext().awaitFirstOrNull()
-suspend fun getCurrentUser(): String? =
+// Good - reactive holder
+suspend fun currentUser(): String? =
     ReactiveSecurityContextHolder.getContext().awaitFirstOrNull()?.authentication?.name
 
-// Best: pass the principal as a method parameter so the suspend function is stateless
-suspend fun listUserOrders(principal: String): List<Order> =
-    orderRepo.findByUserId(principal)
+// Best - pass principal explicitly
+suspend fun listUserOrders(principal: String): List<Order> = orderRepo.findByUserId(principal)
 ```
 
-For `@Async` (non-coroutine) Kotlin code, configure `SecurityContextHolder.MODE_INHERITABLETHREADLOCAL` or wrap the executor with a `DelegatingSecurityContextExecutor`.
+For `@Async` (non-coroutine), use `MODE_INHERITABLETHREADLOCAL` or `DelegatingSecurityContextExecutor`.
 
-### Testing Security
-
-Simple role-based test with `@WithMockUser`:
+### Testing
 
 ```kotlin
-@WebMvcTest(UserController::class)
-class UserControllerSecurityTest {
-
-    @Autowired lateinit var mockMvc: MockMvc
-
-    @Test
-    @WithMockUser(roles = ["ADMIN"])
-    fun `admin endpoint with admin role returns 200`() {
-        mockMvc.get("/api/admin/users").andExpect { status { isOk() } }
-    }
-
-    @Test
-    fun `admin endpoint unauthenticated returns 401`() {
-        mockMvc.get("/api/admin/users").andExpect { status { isUnauthorized() } }
-    }
+@Test @WithMockUser(roles = ["ADMIN"])
+fun `admin returns 200`() {
+    mockMvc.get("/api/admin/users").andExpect { status { isOk() } }
 }
-```
 
-JWT-based test:
-
-```kotlin
-@Test
-fun `jwt endpoint with valid jwt returns 200`() {
+@Test fun `jwt with valid token`() {
     mockMvc.get("/api/orders") {
         with(jwt().authorities(SimpleGrantedAuthority("ROLE_USER")).jwt { it.claim("sub", "user-123") })
     }.andExpect { status { isOk() } }
@@ -349,15 +243,13 @@ fun `jwt endpoint with valid jwt returns 200`() {
 
 ## Output Format
 
-When applying security patterns, document the configuration:
-
 ```
 Endpoint: {path pattern}
 Auth: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
 CSRF: {enabled | disabled - reason}
 Session: {STATELESS | IF_REQUIRED}
-CORS Origins: {list or "N/A"}
-JWT Issuer: {issuer URI or "N/A"}
+CORS Origins: {list | N/A}
+JWT Issuer: {URI | N/A}
 DSL: {Kotlin DSL | Java builder}
 ```
 
@@ -365,10 +257,10 @@ DSL: {Kotlin DSL | Java builder}
 
 - `WebSecurityConfigurerAdapter` - removed in Spring Security 6
 - `@EnableGlobalMethodSecurity` - replaced by `@EnableMethodSecurity`
-- `@Secured` - limited; prefer `@PreAuthorize` with SpEL
-- Disabling CSRF on stateful (session-based) applications
-- Storing JWT in `localStorage` - vulnerable to XSS; use HttpOnly cookie or keep in memory
-- Wildcard CORS origins (`*`) in production
-- Hardcoded secrets or issuer URIs - externalize to `@ConfigurationProperties` data class
-- `SecurityContextHolder.getContext()` inside `suspend` functions - use `ReactiveSecurityContextHolder` or pass principal explicitly
-- Forgetting to escape `$` in SpEL strings - Kotlin string templates collide with `${...}` SpEL syntax
+- `@Secured` - use `@PreAuthorize` with SpEL
+- Disabling CSRF on session-based applications
+- JWT in `localStorage` - HttpOnly cookie or memory only
+- Wildcard CORS origins (`"*"`) in production
+- Hardcoded secrets or issuer URIs
+- `SecurityContextHolder.getContext()` inside `suspend`
+- Forgetting to escape `$` in SpEL strings

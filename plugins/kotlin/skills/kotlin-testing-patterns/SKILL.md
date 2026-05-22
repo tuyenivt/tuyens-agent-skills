@@ -10,495 +10,247 @@ user-invocable: false
 
 ## When to Use
 
-- Writing unit tests for Kotlin services, handlers, or domain logic with Spring Boot
-- Mocking `suspend` functions or `Flow` producers in tests
-- Setting up integration tests with Testcontainers for Kotlin Spring Boot projects
-- Choosing between MockK, Mockito, Kotest, and JUnit 5 for a Kotlin project
-- Reviewing tests for Kotlin-specific anti-patterns (Mockito with final classes, missing `coEvery`)
+- Writing or reviewing unit tests for Kotlin services, handlers, or domain logic
+- Mocking `suspend` functions or `Flow` producers
+- Setting up Testcontainers for integration tests
+- Choosing between MockK, Mockito, Kotest, and JUnit 5
 
-Not for production debugging (see `task-kotlin-debug`) or coroutine design patterns (see `kotlin-coroutines-spring`).
+Not for production debugging (`task-kotlin-debug`) or coroutine design (`kotlin-coroutines-spring`).
 
 ## Rules
 
-- Use MockK over Mockito for Kotlin - MockK works with final classes by default; Mockito requires `open` or the `mock-maker-inline` extension
-- Use `coEvery` / `coVerify` for `suspend` function mocks - regular `every` / `verify` silently fails on coroutines
-- Use `@MockkBean` instead of `@MockBean` in Spring test slices when mocking Kotlin classes
-- Use `runTest { }` for all coroutine-based test bodies - it controls virtual time and prevents test flakiness
-- Prefer kotest matchers (`shouldBe`, `shouldThrow`) over JUnit assertions in Kotlin tests for readability
-- Call `clearAllMocks()` in `@AfterEach` when tests share mock state - stale stubs cause intermittent failures
-- Use Testcontainers for repository/integration tests - never mock the database for persistence tests
+- MockK over Mockito - works on final classes by default.
+- `coEvery` / `coVerify` for `suspend` functions. Regular `every` / `verify` silently fail (MockK reports "no answer found" at runtime).
+- `@MockkBean` (springmockk) over `@MockBean` in Spring slices.
+- `runTest { }` for all coroutine test bodies. Virtual time, no real waits, no flakes.
+- Kotest matchers (`shouldBe`, `shouldThrow`) over JUnit assertions for readability.
+- `clearAllMocks()` in `@AfterEach` (or `@BeforeEach` for `@MockkBean` - Spring caches contexts and mocks carry stub state between tests).
+- Testcontainers for persistence tests - never H2 for Postgres-feature apps.
 
 ## Patterns
 
-### MockK Basics
+### MockK basics
 
 ```kotlin
-// Unit test with MockK
 class OrderServiceTest {
-
     private val repo = mockk<OrderRepository>()
     private val service = OrderService(repo)
 
-    @AfterEach
-    fun cleanup() = clearAllMocks()
+    @AfterEach fun cleanup() = clearAllMocks()
 
-    @Test
-    fun `returns order when found`() {
-        val order = Order(id = 1L, userId = 42L, status = OrderStatus.PENDING)
-        every { repo.findById(1L) } returns order
-
-        val result = service.getOrder(1L)
-
-        result shouldBe order
+    @Test fun `returns order when found`() {
+        every { repo.findById(1L) } returns Order(id = 1L)
+        service.getOrder(1L) shouldBe Order(id = 1L)
         verify(exactly = 1) { repo.findById(1L) }
     }
 
-    @Test
-    fun `throws when order not found`() {
+    @Test fun `throws when not found`() {
         every { repo.findById(any()) } returns null
-
-        shouldThrow<OrderNotFoundException> {
-            service.getOrder(999L)
-        }
+        shouldThrow<OrderNotFoundException> { service.getOrder(999L) }
     }
 
-    @Test
-    fun `captures argument passed to save`() {
+    @Test fun `captures save argument`() {
         val slot = slot<Order>()
         every { repo.save(capture(slot)) } answers { slot.captured }
-
         service.placeOrder(PlaceOrderRequest(userId = 1L))
-
         slot.captured.userId shouldBe 1L
-        slot.captured.status shouldBe OrderStatus.PENDING
     }
 }
 ```
 
-### MockK for Suspend Functions
-
-The most common MockK mistake in Kotlin projects: using `every`/`verify` instead of `coEvery`/`coVerify` for `suspend` functions. Regular versions silently ignore the stub and MockK reports "no answer found."
+### MockK for suspend functions
 
 ```kotlin
-class OrderServiceTest {
+@Test fun `places order in sequence`() = runTest {
+    coEvery { userRepo.findById(42L) } returns User(id = 42L)
+    coEvery { inventoryRepo.reserve(any()) } returns Reservation("r1")
+    coEvery { orderRepo.save(any()) } answers { firstArg() }
 
-    private val repo = mockk<OrderRepository>()
-    private val service = OrderService(repo)
+    service.placeOrder(PlaceOrderRequest(userId = 42L, items = listOf(item)))
 
-    @Test
-    fun `finds order asynchronously`() = runTest {
-        val order = Order(id = 1L, userId = 42L)
-        coEvery { repo.findById(1L) } returns order  // coEvery for suspend functions
-
-        val result = service.findOrder(1L)
-
-        result shouldBe order
-        coVerify(exactly = 1) { repo.findById(1L) }  // coVerify for suspend functions
-    }
-
-    @Test
-    fun `handles suspend function throwing`() = runTest {
-        coEvery { repo.findById(any()) } throws OrderNotFoundException(999L)
-
-        shouldThrow<OrderNotFoundException> {
-            service.findOrder(999L)
-        }
-    }
-
-    @Test
-    fun `places order in correct sequence`() = runTest {
-        coEvery { userRepo.findById(42L) } returns User(id = 42L)
-        coEvery { inventoryRepo.reserve(any()) } returns Reservation("r1")
-        coEvery { orderRepo.save(any()) } answers { firstArg() }
-
-        service.placeOrder(PlaceOrderRequest(userId = 42L, items = listOf(item)))
-
-        // coVerifyOrder asserts the calls happened in this exact order.
-        // Use coVerifySequence for a stricter check that nothing else was called.
-        coVerifyOrder {
-            userRepo.findById(42L)
-            inventoryRepo.reserve(any())
-            orderRepo.save(any())
-        }
+    coVerifyOrder {     // stricter: coVerifySequence checks nothing else called
+        userRepo.findById(42L)
+        inventoryRepo.reserve(any())
+        orderRepo.save(any())
     }
 }
 
-// Bad: every silently fails for suspend functions
-every { repo.findById(1L) } returns order  // stub is ignored -> "no answer found" at runtime
+// Bad: every silently fails for suspend
+every { repo.findById(1L) } returns order
 
-// Good: coEvery for suspend functions
+// Good
 coEvery { repo.findById(1L) } returns order
 ```
 
-**`Flow`-returning functions are usually NOT `suspend`** (e.g. `fun findAllByUserId(id: Long): Flow<Order>` on `CoroutineCrudRepository`). For those, use plain `every` + `returns flow`. Only use `coEvery` when the function signature is `suspend fun ... : Flow<T>`. When in doubt, look for the `suspend` modifier on the declaration.
+**`Flow`-returning functions are usually not suspend** (e.g. `fun findAllByUserId(): Flow<Order>` on `CoroutineCrudRepository`). Use plain `every` + `returns flow`. Only `coEvery` when the signature is `suspend fun ... : Flow<T>`.
 
-### Flow Testing with Turbine
+### Flow testing with Turbine
 
 ```kotlin
-// Turbine library: https://github.com/cashapp/turbine
-class OrderStreamServiceTest {
+@Test fun `streams active orders`() = runTest {
+    every { repo.findAllByUserId(42L) } returns listOf(
+        Order(id = 1, status = ACTIVE),
+        Order(id = 2, status = CANCELLED),
+    ).asFlow()
 
-    private val repo = mockk<OrderRepository>()
-    private val service = OrderStreamService(repo)
-
-    @Test
-    fun `streams active orders`() = runTest {
-        val orders = listOf(
-            Order(id = 1L, status = OrderStatus.ACTIVE),
-            Order(id = 2L, status = OrderStatus.CANCELLED),
-            Order(id = 3L, status = OrderStatus.ACTIVE),
-        )
-        every { repo.findAllByUserId(42L) } returns orders.asFlow()
-
-        service.streamActiveOrders(42L).test {
-            awaitItem().id shouldBe 1L
-            awaitItem().id shouldBe 3L  // CANCELLED filtered out
-            awaitComplete()
-        }
+    service.streamActiveOrders(42L).test {
+        awaitItem().id shouldBe 1L
+        awaitComplete()
     }
+}
 
-    @Test
-    fun `propagates error in flow`() = runTest {
-        every { repo.findAllByUserId(any()) } returns flow { throw RuntimeException("db error") }
-
-        service.streamActiveOrders(42L).test {
-            awaitError().message shouldBe "db error"
-        }
-    }
+@Test fun `propagates flow error`() = runTest {
+    every { repo.findAllByUserId(any()) } returns flow { throw RuntimeException("db") }
+    service.streamActiveOrders(42L).test { awaitError().message shouldBe "db" }
 }
 ```
 
-### Spring Test Slices with @MockkBean
+### `@MockkBean` in Spring slices
 
 ```kotlin
-// @WebMvcTest with MockK
 @WebMvcTest(OrderController::class)
 class OrderControllerTest {
+    @Autowired lateinit var mockMvc: MockMvc
+    @MockkBean lateinit var service: OrderService
 
-    @Autowired
-    lateinit var mockMvc: MockMvc
+    @BeforeEach fun reset() = clearAllMocks()       // Spring caches contexts; mocks carry stubs across tests
 
-    @MockkBean  // NOT @MockBean - use MockkBean for Kotlin classes
-    lateinit var orderService: OrderService
-
-    @Test
-    fun `GET order returns 200`() {
-        val order = Order(id = 1L, userId = 42L)
-        coEvery { orderService.findOrder(1L) } returns order
-
-        mockMvc.get("/api/orders/1")
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.id") { value(1) }
-            }
-    }
-
-    @Test
-    fun `GET non-existent order returns 404`() {
-        coEvery { orderService.findOrder(999L) } throws OrderNotFoundException(999L)
-
-        mockMvc.get("/api/orders/999")
-            .andExpect { status { isNotFound() } }
+    @Test fun `GET order`() {
+        coEvery { service.findOrder(1L) } returns Order(id = 1)
+        mockMvc.get("/api/orders/1").andExpect { status { isOk() } }
     }
 }
 ```
 
-### Testcontainers for Integration Tests
+### Testcontainers for persistence
 
 ```kotlin
-// Abstract base class for repository tests with Testcontainers
 @DataJpaTest
 @Testcontainers
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@AutoConfigureTestDatabase(replace = Replace.NONE)
 abstract class AbstractRepositoryTest {
-
     companion object {
-        @Container
-        @JvmStatic
+        @Container @JvmStatic
         val postgres = PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("test")
-            .withUsername("test")
-            .withPassword("test")
 
-        @DynamicPropertySource
-        @JvmStatic
-        fun configureProperties(registry: DynamicPropertyRegistry) {
+        @DynamicPropertySource @JvmStatic
+        fun props(registry: DynamicPropertyRegistry) {
             registry.add("spring.datasource.url", postgres::getJdbcUrl)
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
         }
     }
 }
-
-// Concrete repository test
-class OrderRepositoryTest : AbstractRepositoryTest() {
-
-    @Autowired
-    lateinit var repo: OrderRepository
-
-    @Test
-    fun `saves and retrieves order`() {
-        val order = Order(userId = 42L, status = OrderStatus.PENDING)
-        val saved = repo.save(order)
-
-        val found = repo.findById(saved.id)
-
-        found shouldNotBeNull()
-        found.userId shouldBe 42L
-        found.status shouldBe OrderStatus.PENDING
-    }
-
-    @Test
-    fun `finds orders by user ID`() {
-        repo.save(Order(userId = 1L, status = OrderStatus.ACTIVE))
-        repo.save(Order(userId = 1L, status = OrderStatus.CANCELLED))
-        repo.save(Order(userId = 2L, status = OrderStatus.ACTIVE))
-
-        val orders = repo.findAllByUserId(1L)
-
-        orders shouldHaveSize 2
-        orders.map { it.userId }.toSet() shouldBe setOf(1L)
-    }
-}
 ```
 
-### Test Fixture Factories
+`@Container` on a `companion object` `@JvmStatic` property - otherwise the container is recreated per test class instance.
 
-Use factory functions instead of complex builders to create test data. Kotlin named parameters with defaults make this clean:
+### Fixture factories
+
+Named parameters with defaults replace builders:
 
 ```kotlin
-// Test fixture factory - keep in a shared test-support file
 fun createOrder(
     id: Long = 0L,
     userId: Long = 42L,
-    status: OrderStatus = OrderStatus.PENDING,
+    status: OrderStatus = PENDING,
     total: BigDecimal = BigDecimal("99.99"),
-    createdAt: Instant = Instant.now(),
-) = Order(
-    id = id,
-    userId = userId,
-    status = status,
-    total = total,
-    createdAt = createdAt,
-)
+) = Order(id, userId, status, total)
 
-fun createOrderRequest(
-    userId: Long = 1L,
-    items: List<OrderItemRequest> = listOf(createOrderItemRequest()),
-    shippingAddress: String = "123 Test St",
-) = CreateOrderRequest(
-    userId = userId,
-    items = items,
-    shippingAddress = shippingAddress,
-)
-
-// Usage in tests - only specify what differs from defaults
-@Test
-fun `calculates total for active orders`() {
-    val orders = listOf(
-        createOrder(total = BigDecimal("10.00"), status = OrderStatus.ACTIVE),
-        createOrder(total = BigDecimal("20.00"), status = OrderStatus.ACTIVE),
-        createOrder(total = BigDecimal("30.00"), status = OrderStatus.CANCELLED),
-    )
-
-    service.totalActiveRevenue(orders) shouldBe BigDecimal("30.00")
+@Test fun example() {
+    val active = createOrder(status = ACTIVE, total = BigDecimal("10"))
+    val cancelled = createOrder(status = CANCELLED)
+    // only specify what differs
 }
 ```
 
-### Kotest Styles and Matchers
+Share factories across slice and full-context tests in `TestFixtures.kt`; never duplicate per test class.
+
+### Kotest styles
 
 ```kotlin
-// FunSpec style (similar to JUnit 5)
 class OrderServiceSpec : FunSpec({
-
     val repo = mockk<OrderRepository>()
     val service = OrderService(repo)
-
     afterEach { clearAllMocks() }
 
     test("returns order when found") {
-        val order = Order(id = 1L)
-        coEvery { repo.findById(1L) } returns order
-
-        service.findOrder(1L) shouldBe order
+        coEvery { repo.findById(1L) } returns Order(id = 1L)
+        service.findOrder(1L).id shouldBe 1L
     }
 })
 
-// BehaviorSpec style (Given/When/Then)
-class OrderServiceBehaviorSpec : BehaviorSpec({
-
-    val repo = mockk<OrderRepository>()
-    val service = OrderService(repo)
-
-    afterEach { clearAllMocks() }
-
-    given("an existing order") {
-        val order = Order(id = 1L, status = OrderStatus.ACTIVE)
-        coEvery { repo.findById(1L) } returns order
-
-        `when`("finding by ID") {
-            val result = service.findOrder(1L)
-
-            then("returns the order") {
-                result.id shouldBe 1L
-                result.status shouldBe OrderStatus.ACTIVE
-            }
-        }
-    }
-})
-
-// Property-based testing with Arb generators
-class OrderValidationSpec : FunSpec({
-
-    test("total is always non-negative") {
-        checkAll(Arb.long(min = 1), Arb.bigDecimal(min = BigDecimal.ZERO)) { userId, total ->
-            val order = Order(userId = userId, total = total)
-            order.total shouldBeGreaterThanOrEqualTo BigDecimal.ZERO
-        }
-    }
-})
+// BehaviorSpec (Given/When/Then) and property-based testing via Arb / checkAll also available
 ```
 
-### Coroutine Testing with runTest
+### Coroutine timeouts in `runTest`
 
 ```kotlin
-@Test
-fun `parallel operations complete correctly`() = runTest {
-    // TestDispatcher controls virtual time - no real waiting
-    coEvery { userService.findUser(any()) } coAnswers {
-        delay(100) // simulated delay - advances instantly in runTest
-        User(id = 1L)
-    }
-
-    val result = dashboardService.getDashboard(userId = 1L)
-
-    result.user.id shouldBe 1L
-}
-
-@Test
-fun `timeout is enforced`() = runTest {
-    coEvery { slowService.fetch() } coAnswers {
-        delay(10_000) // 10 seconds in virtual time
-        "result"
-    }
-
+@Test fun `timeout enforced`() = runTest {
+    coEvery { slowService.fetch() } coAnswers { delay(10_000); "result" }   // virtual time
     shouldThrow<TimeoutCancellationException> {
-        withTimeout(1_000) {
-            slowService.fetch()
-        }
+        withTimeout(1_000) { slowService.fetch() }
     }
 }
 ```
 
-## Edge Cases
+`delay()` advances instantly under `runTest`. Use `withTimeout` inside for real-timeout assertions.
 
-**Mocking extension functions**: MockK can mock extension functions, but only with `mockkStatic`. Pair every `mockkStatic` with an `unmockkStatic` in `@AfterEach` (or a `try/finally`) - extension mocks are JVM-wide and leak across tests in the same module:
-
-```kotlin
-// Extension function under test
-fun Order.isExpired(): Boolean = this.createdAt.isBefore(Instant.now().minus(Duration.ofDays(30)))
-
-class OrderExpiryTest {
-    @BeforeEach fun setup() { mockkStatic(Order::isExpired) }
-    @AfterEach  fun cleanup() { unmockkStatic(Order::isExpired) }
-
-    @Test fun `treats every order as expired`() {
-        every { any<Order>().isExpired() } returns true
-        ...
-    }
-}
-```
-
-For top-level extension functions, mock the file class instead: `mockkStatic("com.example.OrdersKt")` (file `Orders.kt` → class `OrdersKt`).
-
-**`@MockkBean` does not reset between tests.** Spring caches the test context, so `@MockkBean`-injected mocks carry stub state from one test to the next. This is the most common cause of `@WebMvcTest` flakiness. Add `clearAllMocks()` (or `clearMocks(orderService)`) in `@BeforeEach`:
+### Mocking extension functions
 
 ```kotlin
-@WebMvcTest(OrderController::class)
-class OrderControllerTest {
-    @MockkBean lateinit var orderService: OrderService
-
-    @BeforeEach fun resetMocks() = clearAllMocks()  // wipe stubs from previous test
-}
+@BeforeEach fun setup() { mockkStatic(Order::isExpired) }
+@AfterEach  fun cleanup() { unmockkStatic(Order::isExpired) }   // extension mocks are JVM-wide; leak across tests
 ```
 
-**lateinit in tests**: When using `@MockkBean` with `lateinit var`, ensure the test context is properly initialized. If you see `UninitializedPropertyAccessException`, verify `@ExtendWith(MockKExtension::class)` or `@SpringBootTest` is present on the test class.
+For top-level extensions: `mockkStatic("com.example.OrdersKt")` (file `Orders.kt` → class `OrdersKt`).
 
-**Relaxed mocks for large interfaces**: When a mock has many methods but only a few are relevant to the test, use `relaxed = true` to avoid stubbing every call:
+### Relaxed mocks
 
 ```kotlin
-val repo = mockk<OrderRepository>(relaxed = true) // returns default values for unstubbed methods
-coEvery { repo.findById(1L) } returns order // override only what matters
+val repo = mockk<OrderRepository>(relaxed = true)   // returns defaults for unstubbed methods
+coEvery { repo.findById(1L) } returns order         // override only what matters
 ```
 
-Use relaxed mocks sparingly - they hide missing stubs that might indicate incorrect test assumptions.
-
-**Testing coroutine timeouts**: `runTest` uses virtual time, so `delay()` advances instantly. To test real timeout behavior, use `withTimeout` inside `runTest` - the virtual clock handles it correctly without real waiting.
-
-**Testcontainers lifecycle**: Use `@Container` on a `companion object` property with `@JvmStatic` - otherwise the container is recreated per test class instance instead of being shared. For multi-container setups (Postgres + Redis), use `@DynamicPropertySource` to wire each container's connection details.
-
-**WebTestClient with coroutines**: Use `WebTestClient` (not `MockMvc`) when testing reactive/coroutine controllers with `@SpringBootTest(webEnvironment = RANDOM_PORT)`:
-
-```kotlin
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class OrderIntegrationTest {
-
-    @Autowired
-    lateinit var client: WebTestClient
-
-    @Test
-    fun `creates and retrieves order`() {
-        val request = CreateOrderRequest(userId = 1L, total = BigDecimal("99.99"))
-
-        client.post().uri("/api/orders")
-            .bodyValue(request)
-            .exchange()
-            .expectStatus().isCreated
-            .expectBody<OrderResponse>()
-            .consumeWith { response ->
-                response.responseBody?.total shouldBe BigDecimal("99.99")
-            }
-    }
-}
-```
+Use sparingly - hides missing stubs.
 
 ## Output Format
 
 ```
 ## Test Plan
 
-### Test Layers
-| Layer | Framework | Test Count | Description |
-|-------|-----------|------------|-------------|
-| Unit | MockK + kotest | {count} | Service logic, domain rules |
-| Integration | @DataJpaTest + Testcontainers | {count} | Repository queries, persistence |
-| API | @WebMvcTest + @MockkBean | {count} | Controller routing, validation, serialization |
+### Layers
+| Layer       | Framework                          | Count | Description |
+| ----------- | ---------------------------------- | ----- | ----------- |
+| Unit        | MockK + kotest                     |       | Service logic, domain rules |
+| Integration | @DataJpaTest + Testcontainers      |       | Repository queries |
+| API         | @WebMvcTest + @MockkBean           |       | Routing, validation, serialization |
 
 ### Coverage
-| Scenario | Test Method | Layer |
-|----------|-------------|-------|
-| Happy path - {operation} | {test method name} | {unit/integration/API} |
-| Not found | {test method name} | {unit/API} |
-| Validation error | {test method name} | {API} |
-| {edge case} | {test method name} | {layer} |
+| Scenario        | Test method | Layer |
+| --------------- | ----------- | ----- |
+| Happy path      |             |       |
+| Not found       |             |       |
+| Validation      |             |       |
 
-### MockK Configuration
-- Suspend functions: coEvery/coVerify used for {list of suspend methods}
-- Relaxed mocks: {none / justified usage}
-- clearAllMocks: {in @AfterEach / per-spec afterEach}
+### MockK configuration
+- Suspend functions stubbed with coEvery/coVerify: {list}
+- Relaxed mocks: {none | justified}
+- clearAllMocks: {location}
 
 ### Testcontainers
-- Container: {PostgreSQLContainer / MySQLContainer / none}
-- Shared base class: {yes / no}
+- Container: {PostgreSQLContainer | none}
+- Shared base class: {yes | no}
 ```
 
 ## Avoid
 
-- Mockito for mocking Kotlin classes - use MockK (works with final classes by default)
-- `every` / `verify` for `suspend` functions - use `coEvery` / `coVerify` (regular versions silently fail)
-- `@MockBean` in Spring test slices - use `@MockkBean`
-- `runBlocking` in test bodies - use `runTest` (controls virtual time, prevents flakiness)
-- JUnit 5 assertions in Kotlin code - use kotest matchers or assertk for readability
-- Relaxed mocks as default - use only when a mock has many irrelevant methods
-- Mocking the database in persistence tests - use Testcontainers with `@DataJpaTest`
-- Forgetting `clearAllMocks()` cleanup - causes intermittent failures from stale stubs
+- Mockito for Kotlin classes - use MockK
+- `every` / `verify` for `suspend` functions
+- `@MockBean` in Spring slices for Kotlin classes
+- `runBlocking` in test bodies - use `runTest`
+- JUnit assertions in Kotlin tests - use kotest matchers
+- Relaxed mocks as default
+- Mocking the database in persistence tests
+- Forgetting `clearAllMocks()` cleanup
+- `@MockkBean` without `clearAllMocks()` in `@BeforeEach` - Spring caches contexts and stubs leak across tests

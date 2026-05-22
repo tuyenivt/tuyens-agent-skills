@@ -9,181 +9,157 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after STEP 1 (behavioral-principles) and STEP 2 (stack-detect). The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
+> **Spec-aware mode:** If `--spec <slug>` is passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after STEP 1 and STEP 2. The preamble chooses mode and dictates which gather/design steps to skip. Treat the spec as source of truth; surface conflicts as proposed amendments. Never edit `spec.md`, `plan.md`, or `tasks.md`.
 
 # Implement Kotlin Feature
 
 ## When to Use
 
-- Implementing a new Kotlin + Spring Boot feature end-to-end (entity, controller, tests, migration)
-- Scaffolding a complete CRUD or domain-specific resource with Kotlin idioms
-- Adding a new domain aggregate with REST API, persistence, coroutines, and test coverage
-- Any daily coding task that requires coordinated generation of multiple Spring Boot layers in Kotlin
+- End-to-end Kotlin + Spring Boot feature (entity, controller, tests, migration)
+- New domain aggregate with REST API, persistence, coroutines, tests
+- Any daily coding task requiring coordinated generation across Spring layers
 
-Not for single-file changes (edit directly) or isolated bug fixes (use `task-kotlin-debug`).
+Not for single-file changes (edit directly) or bug fixes (use `task-kotlin-debug`).
 
 ## Edge Cases
 
-- **Partial input**: User gives a vague feature name without details. Ask targeted questions in STEP 1 - never guess field names, types, or relationships
-- **No database**: Feature has no persistence (e.g., external API aggregation). Skip STEP 3 (entity + migration) and STEP 4 (repository). Generate service and controller only
-- **Existing entity**: User says "add endpoints for Order" and the entity already exists. Read the existing entity class and extend rather than creating a new one. Check for existing DTOs and repositories too
-- **Referenced entity doesn't exist**: Design references another entity (e.g., `User`) that isn't in the codebase yet. Ask the user whether to create it or use a plain ID reference
-- **Maven project**: Steps reference `./gradlew` but the project uses Maven. Detect `pom.xml` vs `build.gradle.kts` and adjust build commands (`./mvnw` or `mvn`)
-- **Bulk operations**: User needs batch create/update/delete. Use `@Transactional` with `saveAll()`, add a dedicated bulk endpoint (POST/PUT to collection URI), and validate collection size limits
-- **Coroutine vs blocking**: Not all endpoints need `suspend`. If the service layer is entirely blocking (JPA/JDBC), use regular functions. Add `suspend` only when the service path genuinely uses coroutines (parallel calls, Flow, R2DBC)
-- **Kotlin enum serialization**: When using Kotlin enums in API requests/responses, ensure Jackson serializes by name (default) or configure `@JsonValue` for custom serialization
-- **Soft-delete**: Replace physical deletes with a `deletedAt: Instant?` column and Hibernate's `@SQLDelete` + `@SQLRestriction` (Hibernate 6) to filter soft-deleted rows from default queries. Add an explicit "include deleted" repository method for admin paths. Update the migration with the new nullable column and a partial index `WHERE deleted_at IS NULL` on lookup columns. The DELETE endpoint then issues an UPDATE rather than a DELETE
+- **Vague input**: ask targeted questions; never guess field names, types, relationships.
+- **No persistence**: skip STEP 4 (entity + migration) and STEP 5 (repository). Generate service and controller.
+- **Existing entity**: read it and extend. Check existing DTOs / repositories too.
+- **Referenced entity missing**: ask whether to create or use a plain ID reference.
+- **Maven project**: detect `pom.xml` and use `./mvnw` instead of `./gradlew`.
+- **Bulk operations**: `@Transactional` + `saveAll()`, dedicated bulk endpoint, collection size limits.
+- **Coroutine vs blocking**: `suspend` only when the service path actually uses coroutines (parallel calls, Flow, R2DBC). For blocking JPA, regular functions.
+- **Soft-delete**: `deletedAt: Instant?` + Hibernate `@SQLDelete` + `@SQLRestriction`; partial index `WHERE deleted_at IS NULL`; DELETE endpoint issues UPDATE.
 
 ## Rules
 
-- Constructor injection only - never `@Autowired` fields
-- `data class` for DTOs; regular `class` for JPA entities (Hibernate proxies are incompatible with data classes)
-- `@Transactional(readOnly = true)` as default on service classes; `@Transactional` on mutating methods only
-- Never expose JPA entities in API responses - always map to DTO data classes
-- No `synchronized` blocks - breaks Virtual Threads; use `ReentrantLock` if needed
-- Use `suspend` endpoints only when the service path is coroutine-based
-- Use `@MockkBean` not `@MockBean`; `coEvery`/`coVerify` for `suspend` function mocks
-- Configure `kotlin-jpa` and `kotlin-spring` Gradle plugins if not already present
-- Each step must complete and be reviewed before proceeding to the next
-- Present the design to the user for approval before generating code
+- Constructor injection only; no `@Autowired` fields.
+- `data class` for DTOs; regular `class` for JPA entities.
+- `@Transactional(readOnly = true)` default on service classes; `@Transactional` on mutating methods only.
+- Never expose JPA entities in API responses - map to DTO data classes.
+- No `synchronized` blocks (breaks Virtual Threads) - `ReentrantLock` if needed.
+- `suspend` endpoints only when the service path is coroutine-based.
+- `@MockkBean` not `@MockBean`; `coEvery` / `coVerify` for `suspend` mocks.
+- Verify `kotlin("plugin.jpa")` and `kotlin("plugin.spring")` in `build.gradle.kts`.
+- Each step completes before the next.
+- Present design and wait for approval before generating code.
 
-## Implementation
+## Workflow
 
-### STEP 1 - LOAD BEHAVIORAL PRINCIPLES (MANDATORY, FIRST)
+### STEP 1 - Load behavioral principles (mandatory, first)
 
-Use skill: `behavioral-principles`. These rules govern every step that follows - load them first so they are in effect for stack detection, requirements gathering, design, code generation, and validation.
+Use skill: `behavioral-principles`.
 
-### STEP 2 - DETECT STACK AND GATHER REQUIREMENTS (MANDATORY)
+### STEP 2 - Detect stack + gather requirements
 
-Use skill: `stack-detect` to confirm the project is Kotlin + Spring Boot and identify framework versions, database, and build tool.
+Use skill: `stack-detect`.
 
 Collect and confirm:
 
-- Feature/resource name and package
+- Feature / resource name and package
 - Operations (CRUD + domain actions)
-- Fields, constraints, validation rules
-- Relationships to existing entities
-- API visibility (public/internal/admin)
-- Coroutine usage expectations (suspend services? Flow streaming?)
-- Async/messaging needs
+- Fields, constraints, validation
+- Relationships
+- API visibility (public / internal / admin)
+- Coroutine usage (suspend services? Flow streaming?)
+- Async / messaging needs
 
-Do not continue until requirements are complete. If the user provides incomplete input, ask targeted clarifying questions.
+Don't continue until requirements are complete.
 
-### STEP 3 - DESIGN (MANDATORY APPROVAL GATE)
+### STEP 3 - Design (mandatory approval gate)
 
 Propose and wait for approval:
 
-- Endpoints (method, URI, status codes, request/response DTOs)
-- Entity model + DB schema changes
-- Service methods and transaction boundaries
+- Endpoints (method, URI, status, request/response DTOs)
+- Entity model + DB schema
+- Service methods + transaction boundaries
 - Coroutine scope decisions (suspend vs blocking, Flow vs List)
-- Error model and validation behavior
-- Kotlin enum types for status/category fields
+- Error model + validation
+- Kotlin enums for status / category
 
-Only generate code after user approves design.
+Generate code only after approval.
 
-### STEP 4 - ENTITY + MIGRATION
+### STEP 4 - Entity + migration
 
-Use skill: `kotlin-idioms` for Kotlin/JPA entity conventions (regular class, not data class, with `equals`/`hashCode` on ID, `kotlin-jpa`/`kotlin-spring` plugin check).
-
+Use skill: `kotlin-idioms` for entity conventions.
 Use skill: `kotlin-spring-db-migration-safety` for zero-downtime migration safety.
 
 Generate:
 
-- Entity: Kotlin class (not data class) with JPA annotations, audit fields, ID-based equals/hashCode
-- Kotlin enum for status/type fields (if applicable)
-- Flyway migration with indexes for FK and filter columns
-- Verify `kotlin-jpa` and `kotlin-spring` plugins in `build.gradle.kts`
+- Entity: regular Kotlin class, JPA annotations, audit fields, ID-based equals/hashCode
+- Kotlin enum for status / type
+- Flyway migration with indexes on FK + filter columns
+- Verify `kotlin-jpa` + `kotlin-spring` plugins
 
-Entity changes must always include a migration.
+Entity changes always include a migration.
 
-### STEP 5 - REPOSITORY
+### STEP 5 - Repository
 
-Use skill: `kotlin-spring-jpa-performance` for query patterns.
+Use skill: `kotlin-spring-jpa-performance`.
 
-Generate Spring Data repository and custom queries as needed:
-
-- Extend `JpaRepository<{Name}, Long>` (or `CoroutineCrudRepository` if project uses R2DBC)
+- `JpaRepository<{Name}, Long>` (or `CoroutineCrudRepository` for R2DBC)
 - JPQL `@Query` before native SQL; `Specification` for dynamic filters
-- Add `Pageable` methods when listing/filtering is required
+- `Pageable` on list / filter methods
 
-### STEP 6 - SERVICE
+### STEP 6 - Service
 
-Use skill: `kotlin-coroutines-spring` for coroutine boundaries and context propagation.
-
+Use skill: `kotlin-coroutines-spring` for coroutine boundaries.
 Use skill: `kotlin-spring-transaction` for transaction patterns.
 
-Generate service with business rules and mapping:
-
-- Constructor injection only
-- `@Service @Transactional(readOnly = true)`
-- `@Transactional` on mutating methods only
-- Entity-DTO mapping via extension functions (e.g., `Entity.toResponse()`)
+- Constructor injection
+- `@Service @Transactional(readOnly = true)` default
+- `@Transactional` on mutating methods
+- Entity-to-DTO via extension functions
 - Business exceptions from common base
-- `suspend` only when service path is coroutine-based (parallel calls, Flow, R2DBC)
+- `suspend` only when the path is coroutine-based
 
-### STEP 7 - CONTROLLER + DTO
+### STEP 7 - Controller + DTO
 
 Use skill: `backend-api-guidelines` for REST conventions.
 
-Generate:
-
-- REST controller with `@RestController @RequestMapping("/api/v1/{resources}")`
-- Kotlin request/response data classes with Jakarta validation annotations
-- `@Valid @RequestBody` on writes; `Pageable` on list endpoints
+- `@RestController @RequestMapping("/api/v1/{resources}")`
+- Kotlin request / response data classes with Jakarta validation
+- `@Valid @RequestBody`; `Pageable` for list endpoints
 - `201 CREATED` for POST, `204 NO_CONTENT` for DELETE
-
-Rules:
-
-- Use `suspend` endpoints only when service path is coroutine-based
+- `suspend` endpoints only when service path is coroutine-based
 - Never return entities directly
-- Use Kotlin named parameters in DTO constructors for clarity
 
-### STEP 8 - ERROR HANDLING + SECURITY CHECK
+### STEP 8 - Error handling + security check
 
-Use skill: `kotlin-spring-exception-handling` for error mapping patterns.
+Use skill: `kotlin-spring-exception-handling`.
 
-- Apply consistent error mapping (use existing `@ControllerAdvice` or create if absent)
-- Map domain exceptions to HTTP status codes:
+- Apply consistent error mapping via existing or new `@ControllerAdvice`
+- Map domain exceptions:
 
 | Domain Error          | HTTP Status |
 | --------------------- | ----------- |
 | NotFound              | 404         |
 | ValidationFailed      | 400         |
-| Conflict/DuplicateKey | 409         |
+| Conflict / Duplicate  | 409         |
 | Unauthorized          | 403         |
 | BusinessRuleViolation | 422         |
 
-- Confirm endpoint auth requirements are explicit before finalizing
+- Endpoint auth requirements explicit before finalizing
 
-### STEP 9 - TESTS
+### STEP 9 - Tests
 
-Use skill: `kotlin-testing-patterns` for MockK, kotest, Testcontainers, and coroutine test patterns.
+Use skill: `kotlin-testing-patterns`.
 
-Generate all three layers:
+- Unit: MockK + `coEvery` / `coVerify`; kotest matchers; fixture factories
+- Repository: `@DataJpaTest` + Testcontainers
+- Controller: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
 
-- Unit tests: MockK with `coEvery`/`coVerify` for suspend functions; kotest matchers; test fixture factories
-- Repository integration tests: `@DataJpaTest` + Testcontainers (PostgreSQLContainer or project-specific)
-- Controller/API tests: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
+Cover: happy path, not-found, validation, error responses, edge cases.
 
-Cover: happy path, not-found, validation errors, error responses, and edge cases from domain logic.
-
-### STEP 10 - VALIDATE
-
-Run the appropriate build command:
+### STEP 10 - Validate
 
 - Gradle: `./gradlew compileKotlin compileTestKotlin test`
 - Maven: `./mvnw compile test-compile test`
 
-Verify:
+Verify: tests pass, no unsafe-cast warnings, detekt / ktlint clean (if configured).
 
-- All tests pass
-- No compilation warnings about unsafe casts or unchecked operations
-- No detekt or ktlint violations (if configured)
-
-### STEP 11 - OUTPUT SUMMARY
-
-Present the output format below.
+### STEP 11 - Output
 
 ## Output
 
@@ -198,9 +174,7 @@ Present the output format below.
 - [ ] Service: `src/main/kotlin/.../service/{Name}Service.kt`
 - [ ] Controller: `src/main/kotlin/.../controller/{Name}Controller.kt`
 - [ ] Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql`
-- [ ] Unit test: `src/test/kotlin/.../service/{Name}ServiceTest.kt`
-- [ ] Integration test: `src/test/kotlin/.../repository/{Name}RepositoryTest.kt`
-- [ ] API test: `src/test/kotlin/.../controller/{Name}ControllerTest.kt`
+- [ ] Unit test, integration test, API test
 
 ## Endpoints
 
@@ -213,32 +187,29 @@ Present the output format below.
 | DELETE | /api/v1/{resources}/{id} | 204    | Delete           |
 
 ## Tests
-
-- Unit tests: {count} (service layer)
-- Integration tests: {count} (repository layer)
-- API tests: {count} (controller layer)
+- Unit / Integration / API counts
 ```
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded as STEP 1 before stack detection or any other delegation
-- [ ] Stack detected and requirements gathered; design approved before any code generated
-- [ ] All layers generated: entity, Flyway migration, repository, service, controller, DTOs, tests
-- [ ] `kotlin-jpa` and `kotlin-spring` Gradle plugins verified; Kotlin class (not data class) for JPA entities
-- [ ] `data class` for DTOs; constructor injection only; no `synchronized` blocks
-- [ ] `suspend` used consistently where needed; MockK with `coEvery`/`coVerify` for suspend functions
-- [ ] `@MockkBean` used (not `@MockBean`); Testcontainers for integration tests
-- [ ] `./gradlew compileKotlin compileTestKotlin test` (or Maven equivalent) passes
-- [ ] Migration includes indexes; list endpoints paginated; file list, endpoint table, and test count presented
+- [ ] `behavioral-principles` loaded as STEP 1
+- [ ] Stack detected; design approved before code
+- [ ] All layers generated: entity, migration, repository, service, controller, DTOs, tests
+- [ ] `kotlin-jpa` and `kotlin-spring` plugins verified; entity is regular class
+- [ ] `data class` for DTOs; constructor injection only; no `synchronized`
+- [ ] `suspend` used consistently; MockK with `coEvery` / `coVerify` for suspend functions
+- [ ] `@MockkBean` not `@MockBean`; Testcontainers for integration tests
+- [ ] Build + tests pass
+- [ ] Migration includes indexes; list endpoints paginated
 
 ## Avoid
 
 - Generating code before design approval
 - `data class` for JPA entities
 - `@Autowired` field injection
-- `synchronized` blocks (breaks Virtual Threads)
-- Exposing JPA entities in API responses
+- `synchronized` blocks
+- Returning entities from controllers
 - `@MockBean` instead of `@MockkBean`
-- `every`/`verify` for suspend functions instead of `coEvery`/`coVerify`
-- Skipping Flyway migration when entity changes
-- Manual `open` modifiers on entities/services instead of Kotlin compiler plugins
+- `every` / `verify` for suspend functions
+- Skipping the migration when an entity changes
+- Manual `open` on entities or services

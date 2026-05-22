@@ -10,353 +10,193 @@ user-invocable: false
 
 ## When to Use
 
-- Writing async service or controller methods in a Spring Boot + Kotlin project
-- Streaming database results or HTTP responses with `Flow<T>`
-- Running parallel operations within a single request (fan-out, scatter-gather)
+- Writing or reviewing `suspend` services / controllers, `Flow` streaming, or parallel fan-out within a request
 - Configuring application-scoped coroutine beans for background work
-- Adding timeout or retry behavior to coroutine-based service calls
-- Reviewing coroutine usage for anti-patterns (GlobalScope, runBlocking in handlers)
+- Adding timeout / retry / cancellation behavior to coroutine-based service calls
 
-Not for general Kotlin idioms (see `kotlin-idioms`) or test patterns for coroutines (see `kotlin-testing-patterns`).
+Not for general Kotlin idioms (see `kotlin-idioms`) or coroutine test patterns (see `kotlin-testing-patterns`).
 
 ## Rules
 
-- Never use `GlobalScope.launch` - it escapes structured concurrency and leaks coroutines on shutdown
-- Never use `runBlocking` in request handlers or Spring beans - it blocks the thread and defeats the purpose of coroutines
-- Never use `Dispatchers.IO` alongside Virtual Threads (Spring Boot 3.2+ default) - they serve the same purpose; use `Dispatchers.Default` for CPU-bound work only
-- Blocking calls inside a coroutine must be wrapped with `withContext(Dispatchers.IO)` if Virtual Threads are not active
-- Use `coroutineScope { }` for parallel fan-out within a request - it cancels all children on failure
-- Use `supervisorScope { }` only when some operations are optional and you have an explicit fallback for each failing child
-- Always provide a `CoroutineExceptionHandler` or structured error handling when launching fire-and-forget background work
+- Never `GlobalScope.launch` - leaks on shutdown. Use a managed `CoroutineScope` bean.
+- Never `runBlocking` in request handlers or Spring beans. Acceptable only at non-suspend framework boundaries (`@Scheduled`, CLI `main`, JPA lifecycle hooks).
+- With Virtual Threads (Boot 3.2+, `spring.threads.virtual.enabled=true`), do not use `Dispatchers.IO` - the VT already absorbs blocking I/O. `Dispatchers.Default` only for CPU-bound work.
+- `coroutineScope { }` for required fan-out (one failure cancels siblings). `supervisorScope { }` only when each optional child has an explicit fallback.
+- Always rethrow `CancellationException` before catching `Exception` - otherwise structured cancellation is silently swallowed.
+- Never switch dispatchers (`withContext(...)`) inside a `@Transactional suspend` body - the transaction is bound to the entering thread and writes on a new dispatcher escape it.
 
 ## Patterns
 
-### suspend Functions in @Service
+### `suspend` services and controllers
 
-Spring Boot 3.5+ handles coroutine context automatically for `suspend` functions in `@Service` and `@RestController`:
+Spring Boot 3.5+ propagates coroutine context automatically:
 
 ```kotlin
 @Service
 class OrderService(private val repo: OrderRepository) {
-
-    suspend fun findOrder(id: Long): Order {
-        return repo.findById(id) ?: throw OrderNotFoundException(id)
-    }
-
-    suspend fun placeOrder(request: PlaceOrderRequest): Order {
-        val order = Order(userId = request.userId, total = request.total)
-        return repo.save(order)
-    }
+    suspend fun findOrder(id: Long): Order = repo.findById(id) ?: throw OrderNotFoundException(id)
 }
 
 @RestController
-@RequestMapping("/api/orders")
 class OrderController(private val service: OrderService) {
-
-    @GetMapping("/{id}")
-    suspend fun getOrder(@PathVariable id: Long): Order {
-        return service.findOrder(id)
-    }
+    @GetMapping("/api/orders/{id}")
+    suspend fun get(@PathVariable id: Long): Order = service.findOrder(id)
 }
 ```
 
-### Flow for Streaming Results
-
-Use `Flow<T>` when results are large or produced incrementally:
+### `Flow` streaming
 
 ```kotlin
-// Repository returning a Flow (R2DBC or custom streaming)
 interface OrderRepository : CoroutineCrudRepository<Order, Long> {
-    fun findAllByUserId(userId: Long): Flow<Order>
+    fun findAllByUserId(userId: Long): Flow<Order>     // not suspend; Flow is cold
 }
 
-// Service streaming results
-@Service
-class OrderService(private val repo: OrderRepository) {
-
-    fun streamUserOrders(userId: Long): Flow<Order> =
-        repo.findAllByUserId(userId)
-            .filter { it.status != OrderStatus.CANCELLED }
-            .map { it.toSummary() }
-}
-
-// Controller returning a Flow - Spring streams the response
 @GetMapping("/stream", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
-fun streamOrders(@RequestParam userId: Long): Flow<OrderSummary> =
-    service.streamUserOrders(userId)
+fun stream(@RequestParam userId: Long): Flow<OrderSummary> =
+    repo.findAllByUserId(userId).filter { it.status != CANCELLED }.map { it.toSummary() }
 ```
 
-**`flowOn` for blocking sources, not `withContext` inside a collector.** When a Flow's *upstream* does blocking work (legacy JDBC, slow file I/O, no Virtual Threads), shift just the upstream with `flowOn`. The downstream operators and the terminal collector stay on the caller's context.
+**`flowOn` (not `withContext` in `collect`) for blocking sources.** Shifts the producer; downstream stays on the caller's context.
 
 ```kotlin
-// Good: flowOn shifts only the producer + operators above it
-fun loadAuditEvents(): Flow<AuditEvent> = flow {
-    legacyJdbcAuditDao.streamAll().forEach { emit(it.toEvent()) }   // blocking source
-}.flowOn(Dispatchers.IO)                                            // confines blocking to IO
+// Good
+flow { legacyJdbcDao.streamAll().forEach { emit(it) } }.flowOn(Dispatchers.IO)
 
-// Bad: withContext inside collect doesn't change where emit() ran;
-// the producer still blocks the caller's thread.
+// Bad - withContext inside collect doesn't move the producer
 flow.collect { withContext(Dispatchers.IO) { ... } }
 ```
 
-When Virtual Threads are active, `flowOn(Dispatchers.IO)` is usually unnecessary - the producer thread is already a VT and can block safely.
+With Virtual Threads, `flowOn(Dispatchers.IO)` is usually unnecessary.
 
-### Coroutine-Aware Transactions
+### `coroutineScope` vs `supervisorScope`
 
-`@Transactional` works with `suspend` functions in Spring Boot 3.5+:
+| Scope             | Child failure                          | Use when                                |
+| ----------------- | -------------------------------------- | --------------------------------------- |
+| `coroutineScope`  | Cancels siblings, rethrows             | All children required (all-or-nothing)  |
+| `supervisorScope` | Siblings continue; each fails alone    | Optional children with fallbacks        |
 
 ```kotlin
-@Service
-class OrderService(
-    private val orderRepo: OrderRepository,
-    private val inventoryRepo: InventoryRepository,
-) {
+// All required - one failure aborts the whole dashboard
+suspend fun getDashboard(uid: Long): Dashboard = coroutineScope {
+    val user = async { userService.find(uid) }
+    val orders = async { orderService.recent(uid) }
+    Dashboard(user.await(), orders.await())
+}
 
-    @Transactional
-    suspend fun placeOrderWithInventory(request: PlaceOrderRequest): Order {
-        val order = orderRepo.save(Order(userId = request.userId))
-
-        // Both run in the same transaction - if inventoryRepo.reserve throws, order is rolled back
-        inventoryRepo.reserve(request.items)
-
-        return order
-    }
+// Optional - recommendations failure shouldn't break the profile
+suspend fun getProfile(uid: Long): Profile = supervisorScope {
+    val user = async { userService.find(uid) }
+    val recs = async { recService.get(uid) }
+    Profile(user.await(), runCatching { recs.await() }.getOrDefault(emptyList()))
 }
 ```
 
-**Caveat: do not switch dispatchers inside a `@Transactional suspend fun`.** The transaction is bound to the coroutine context that entered the method. A `withContext(Dispatchers.IO) { ... }` inside the body runs the inner block on a different thread that has no transaction attached - writes inside escape the transaction silently and `@Transactional` rollback won't apply to them. Keep the transactional method on its inherited dispatcher; if a sub-step truly needs CPU offload, do it before/after the transactional call, not inside it. See `kotlin-spring-transaction` for the full rule.
+### `@Transactional` on `suspend`
 
-### `launch` vs `async` (Quick Primer)
-
-If you're coming from `CompletableFuture` or `Future`:
-
-| Builder  | Returns         | Use For                                                       |
-| -------- | --------------- | ------------------------------------------------------------- |
-| `launch` | `Job`           | Fire-and-forget work where you don't need a return value      |
-| `async`  | `Deferred<T>`   | Concurrent work where you need the result via `.await()`      |
-
-Both are launched inside a `CoroutineScope` (e.g. `coroutineScope { }` or an injected scope bean). They start immediately by default; pass `start = CoroutineStart.LAZY` to defer. `await()` and `join()` suspend until completion and rethrow any exception from the child.
-
-### coroutineScope vs supervisorScope
-
-| Scope             | Child failure behavior                              | Use When                                                    |
-| ----------------- | --------------------------------------------------- | ----------------------------------------------------------- |
-| `coroutineScope`  | One child failure cancels all siblings and rethrows | All operations are required; partial failure = full failure |
-| `supervisorScope` | Each child fails independently; siblings continue   | Optional operations; collect partial results                |
+Works in Spring Boot 3.x. Keep the body on the inherited dispatcher - **no `withContext` inside the transactional body** (the new thread has no transaction attached, writes escape silently):
 
 ```kotlin
-// coroutineScope: all-or-nothing - if ANY child throws, siblings are cancelled
-suspend fun getDashboard(userId: Long): Dashboard = coroutineScope {
-    val user = async { userService.findUser(userId) }       // required
-    val orders = async { orderService.getRecentOrders(userId) } // required
-
-    Dashboard(user = user.await(), orders = orders.await())
-    // If userService throws, orderService is cancelled and exception propagates
-}
-
-// supervisorScope: best-effort - collect what succeeds, tolerate failures
-suspend fun getEnrichedProfile(userId: Long): Profile = supervisorScope {
-    val user = async { userService.findUser(userId) }               // required
-    val recommendations = async { recommendationService.get(userId) } // optional
-
-    val recs = try {
-        recommendations.await()
-    } catch (e: Exception) {
-        emptyList() // fallback - recommendation failure doesn't break the profile
-    }
-
-    Profile(user = user.await(), recommendations = recs)
+@Transactional
+suspend fun placeOrder(req: PlaceOrderRequest): Order {
+    val order = orderRepo.save(Order(userId = req.userId))
+    inventoryRepo.reserve(req.items)        // same transaction; rollback applies
+    return order
 }
 ```
 
-### CoroutineScope Bean for Background Work
-
-Spring beans that need to launch fire-and-forget work (events, notifications) require a managed `CoroutineScope` that shuts down cleanly with the application:
+### `CoroutineScope` bean for background work
 
 ```kotlin
 @Configuration
 class CoroutineConfig {
-
     @Bean
-    fun applicationScope(): CoroutineScope =
-        CoroutineScope(
-            SupervisorJob() +
-            Dispatchers.Default +
-            CoroutineExceptionHandler { _, throwable ->
-                log.error("Unhandled coroutine exception", throwable)
-            }
-        )
-
-    @Bean
-    fun cleanupOnShutdown(scope: CoroutineScope): DisposableBean = DisposableBean {
-        scope.cancel()
-    }
-}
-
-// Usage: inject the scope for background work
-@Service
-class OrderEventPublisher(
-    private val scope: CoroutineScope,
-    private val notificationService: NotificationService,
-) {
-
-    fun publishOrderCreated(order: Order) {
-        scope.launch {
-            // fire-and-forget - failure is logged by CoroutineExceptionHandler, not propagated
-            notificationService.sendOrderConfirmation(order)
+    fun applicationScope(): CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t ->
+            log.error("unhandled coroutine exception", t)
         }
-    }
+    )
+
+    @Bean
+    fun shutdownScope(scope: CoroutineScope) = DisposableBean { scope.cancel() }
 }
 
-// Bad: GlobalScope - leaks on shutdown, no error handling
-fun publishOrderCreated(order: Order) {
-    GlobalScope.launch { notificationService.sendOrderConfirmation(order) }
+@Service
+class OrderEventPublisher(private val scope: CoroutineScope, private val notifier: NotificationService) {
+    fun publishCreated(order: Order) = scope.launch {
+        notifier.sendConfirmation(order)    // fire-and-forget; failures hit the handler
+    }
 }
 ```
 
-### Timeout and Retry Patterns
+### Timeout and retry
 
 ```kotlin
-// Timeout: use withTimeout for time-bounded operations
-suspend fun fetchProductWithTimeout(id: String): Product =
-    withTimeout(Duration.ofSeconds(5).toMillis()) {
-        externalApiClient.fetchProduct(id)
-    }
+suspend fun fetchWithTimeout(id: String): Product =
+    withTimeout(3_000) { externalApi.fetchProduct(id) }
 
-// Retry with exponential backoff
-//
-// CRITICAL: rethrow CancellationException before catching Exception. Otherwise the
-// retry swallows structured-concurrency cancellation (parent cancelled, scope timeout,
-// HTTP client disconnect) and silently retries something the caller already gave up on.
-suspend fun <T> retryWithBackoff(
-    maxRetries: Int = 3,
-    initialDelay: Long = 100,
-    maxDelay: Long = 2000,
-    block: suspend () -> T,
-): T {
-    var currentDelay = initialDelay
+suspend fun <T> retryWithBackoff(maxRetries: Int = 3, initialDelay: Long = 100, block: suspend () -> T): T {
+    var delay = initialDelay
     repeat(maxRetries - 1) {
-        try {
-            return block()
-        } catch (e: CancellationException) {
-            throw e                                  // never retry on cancellation
-        } catch (e: Exception) {
-            delay(currentDelay)
-            currentDelay = (currentDelay * 2).coerceAtMost(maxDelay)
-        }
+        try { return block() }
+        catch (e: CancellationException) { throw e }    // never swallow cancellation
+        catch (e: Exception) { delay(delay); delay = (delay * 2).coerceAtMost(2000) }
     }
-    return block() // last attempt - let exception propagate
+    return block()
 }
-
-// Usage
-suspend fun fetchWithRetry(id: String): Product =
-    retryWithBackoff(maxRetries = 3) {
-        withTimeout(3_000) {
-            externalApiClient.fetchProduct(id)
-        }
-    }
 ```
 
-### WebClient with Coroutines
+### `WebClient` with coroutines
 
 ```kotlin
-@Service
-class ExternalApiClient(private val webClient: WebClient) {
-
-    suspend fun fetchProduct(id: String): Product =
-        webClient.get()
-            .uri("/products/{id}", id)
-            .retrieve()
-            .awaitBody<Product>() // suspend - no blocking
-
-    suspend fun fetchWithFullResponse(id: String): ResponseEntity<Product> =
-        webClient.get()
-            .uri("/products/{id}", id)
-            .awaitExchange { response ->
-                if (response.statusCode().is2xxSuccessful) {
-                    ResponseEntity.ok(response.awaitBody<Product>())
-                } else {
-                    ResponseEntity.status(response.statusCode()).build()
-                }
-            }
-}
+suspend fun fetchProduct(id: String): Product =
+    webClient.get().uri("/products/{id}", id).retrieve().awaitBody()
 ```
 
-### Dispatchers Usage with Virtual Threads
+### Dispatchers with Virtual Threads
 
-Spring Boot 3.2+ enables Virtual Threads by default (`spring.threads.virtual.enabled=true`). With Virtual Threads active:
-
-| Dispatcher            | When to Use                                                        |
-| --------------------- | ------------------------------------------------------------------ |
-| _(none - default)_    | I/O operations with Virtual Threads enabled (safe on VT)           |
-| `Dispatchers.Default` | CPU-bound work only (image processing, crypto, heavy computation)  |
-| `Dispatchers.IO`      | Only when Virtual Threads are NOT active and you have blocking I/O |
+| Dispatcher            | When                                                  |
+| --------------------- | ----------------------------------------------------- |
+| _(none / default)_    | I/O with Virtual Threads enabled                      |
+| `Dispatchers.Default` | CPU-bound work (image processing, crypto)             |
+| `Dispatchers.IO`      | Blocking I/O when Virtual Threads NOT active          |
 
 ```kotlin
-// Good: let Virtual Threads handle I/O automatically - no Dispatchers.IO needed
-suspend fun fetchData(): Data {
-    return repo.findAll() // blocking JDBC call is safe on Virtual Thread
-}
+// VT active - no Dispatchers.IO needed
+suspend fun fetchData(): Data = repo.findAll()
 
-// Good: Dispatchers.Default only for CPU-bound work
-suspend fun processImage(bytes: ByteArray): ByteArray =
-    withContext(Dispatchers.Default) {
-        runImageProcessing(bytes) // CPU-intensive
-    }
-
-// Bad: redundant Dispatchers.IO when Virtual Threads are active
-suspend fun fetchData(): Data =
-    withContext(Dispatchers.IO) { // unnecessary - Virtual Thread already handles this
-        repo.findAll()
-    }
+// CPU-bound - Dispatchers.Default
+suspend fun processImage(bytes: ByteArray): ByteArray = withContext(Dispatchers.Default) { run(bytes) }
 ```
 
-## Edge Cases
+### `@Scheduled` with coroutines
 
-**Mixed blocking and coroutine codebases**: When a project has both blocking (JDBC/JPA) and coroutine-based (R2DBC) code paths, keep them in separate service classes. Do not mix `suspend` and blocking calls in the same service without explicit dispatcher management.
-
-**Spring `@Scheduled` with coroutines**: `@Scheduled` methods cannot be `suspend`. Use a `CoroutineScope` bean:
+`@Scheduled` methods cannot be `suspend`. Bridge via a scope bean:
 
 ```kotlin
 @Component
 class ScheduledTasks(private val scope: CoroutineScope, private val service: OrderService) {
-
     @Scheduled(fixedRate = 60_000)
-    fun cleanupExpiredOrders() {
-        scope.launch { service.cleanupExpired() }
-    }
+    fun cleanup() { scope.launch { service.cleanupExpired() } }
 }
 ```
 
-**Exception handling in Flow**: Exceptions thrown inside `Flow.collect` violate exception transparency. Use the `catch` operator before `collect`:
+### `Flow` exception transparency
+
+Throwing inside `collect { }` violates the contract. Use `catch` before `collect`:
 
 ```kotlin
-// Bad: throwing inside collect violates exception transparency
-flow.collect { value ->
-    if (value.isInvalid()) throw ValidationException("invalid") // breaks Flow contract
-}
-
-// Good: catch operator before collect
-flow
-    .onEach { value -> if (value.isInvalid()) throw ValidationException("invalid") }
-    .catch { e -> log.error("Flow error", e) }
-    .collect { value -> process(value) }
+flow.onEach { if (it.isInvalid()) throw ValidationException("invalid") }
+    .catch { log.error("flow error", it) }
+    .collect { process(it) }
 ```
 
-**Spring WebMVC vs WebFlux**: `suspend` controllers work in both WebMVC and WebFlux. With WebMVC + Virtual Threads, `suspend` functions still work but the performance benefit is marginal since VTs already handle I/O efficiently. Choose `suspend` when the service layer genuinely benefits from structured concurrency (parallel fan-out, timeouts), not just because it's available.
+### Cancellation cleanup
 
-**Cancellation and cleanup**: When a coroutine is cancelled (e.g., HTTP client disconnects), cleanup code in `finally` blocks runs but cannot call other suspend functions unless wrapped in `withContext(NonCancellable)`:
+Suspend calls in `finally` after cancellation need `withContext(NonCancellable)`:
 
 ```kotlin
-suspend fun processOrder(id: Long) {
-    try {
-        orderService.process(id)
-    } finally {
-        withContext(NonCancellable) {
-            auditService.logCompletion(id) // suspend call in finally needs NonCancellable
-        }
-    }
-}
+try { orderService.process(id) }
+finally { withContext(NonCancellable) { auditService.logCompletion(id) } }
 ```
 
 ## Output Format
@@ -364,35 +204,27 @@ suspend fun processOrder(id: Long) {
 ```
 ## Coroutine Design
 
-### Suspend Boundaries
-| Layer | Method | suspend? | Rationale |
-|-------|--------|----------|-----------|
-| Controller | {method} | {yes/no} | {why} |
-| Service | {method} | {yes/no} | {why} |
-| Repository | {method} | {yes/no} | {why} |
+### Suspend boundaries
+| Layer      | Method  | suspend? | Rationale |
+| ---------- | ------- | -------- | --------- |
 
-### Scope Decisions
-| Operation | Scope Type | Rationale |
-|-----------|------------|-----------|
-| {operation} | {coroutineScope / supervisorScope / applicationScope bean} | {why} |
+### Scope decisions
+| Operation | Scope                            | Rationale |
+| --------- | -------------------------------- | --------- |
 
-### Dispatcher Configuration
-- Virtual Threads active: {yes / no}
-- Dispatchers.IO usage: {none / justified locations}
+### Dispatcher configuration
+- Virtual Threads active: {yes | no}
+- Dispatchers.IO usage: {none | justified}
 - Dispatchers.Default usage: {CPU-bound locations}
-
-### Warnings
-- {any edge cases or anti-patterns found}
 ```
 
 ## Avoid
 
-- `GlobalScope` - always use `coroutineScope { }` or a managed scope bean
-- `runBlocking` in request handlers, services, or any Spring bean (legitimate uses: `main()` of a CLI, glue at the boundary of a non-suspend framework hook, and tests - though tests should prefer `runTest`)
-- Catching `Exception` (or worse, `Throwable`) without rethrowing `CancellationException` first - this breaks structured concurrency cancellation
-- Switching dispatchers (`withContext`) inside a `@Transactional suspend fun` - writes on the new dispatcher escape the transaction
-- Blocking calls inside coroutines without `withContext(Dispatchers.IO)` (when not using Virtual Threads)
-- `Dispatchers.IO` when Virtual Threads are active (Spring Boot 3.2+)
-- `withContext(Dispatchers.IO)` inside a Flow `collect` to fix a blocking producer - use `flowOn` upstream instead
-- Mixing `suspend` and blocking calls in the same service class without explicit dispatcher management
-- Forgetting `withContext(NonCancellable)` for suspend cleanup in `finally` blocks
+- `GlobalScope` - use a managed scope bean
+- `runBlocking` in request handlers, services, or any Spring bean
+- Catching `Exception` without first rethrowing `CancellationException`
+- `withContext(...)` inside `@Transactional suspend` - writes escape the transaction
+- Blocking calls inside coroutines without VTs and without `withContext(Dispatchers.IO)`
+- `Dispatchers.IO` when Virtual Threads are active
+- `withContext(Dispatchers.IO)` inside `Flow.collect` to fix a blocking producer - use `flowOn` upstream
+- `withContext(NonCancellable)` omitted for suspend cleanup in `finally`

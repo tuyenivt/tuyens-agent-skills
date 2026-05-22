@@ -13,28 +13,28 @@ user-invocable: false
 
 ## When to Use
 
-- Adding, modifying, or removing database schema elements in a live Kotlin/Spring system
-- Planning zero-downtime deployments with schema changes
-- Reviewing migration files for safety before merging
-- Coordinating schema changes across multiple services
-- Onboarding Flyway or Liquibase into an existing Kotlin/Spring Boot project
+- Adding / modifying / removing schema in a live Kotlin / Spring system
+- Planning zero-downtime deploys with schema changes
+- Reviewing migrations before merge
+- Onboarding Flyway / Liquibase into an existing project
 
 ## Rules
 
-- Never add a NOT NULL column in a single migration on large tables - add nullable first, backfill, then constrain
-- Never rename columns directly - use add, migrate, drop across three separate migrations
-- Never drop a column in the same release it stops being used - wait one full release cycle
-- Never mix DDL and DML in the same migration file
-- Always create indexes non-blocking (CONCURRENTLY for Postgres, ALGORITHM=INPLACE for MySQL)
-- Never use `spring.jpa.hibernate.ddl-auto=update` outside local development
-- Migrations must be backward-compatible with the N-1 version of the application code
-- Use feature flags to gate schema-dependent code paths during expand-then-contract deployments
+- Migrations must be backward-compatible with the N-1 application code.
+- Never add NOT NULL to an existing column in one step on large tables (expand-then-contract).
+- Never rename columns directly - add, migrate, drop across three migrations.
+- Never drop a column in the same release it stops being used - one full release cycle of grace.
+- Never mix DDL and DML in the same migration file.
+- Indexes on large tables: non-blocking (`CONCURRENTLY` on Postgres, `ALGORITHM=INPLACE` on MySQL).
+- `spring.jpa.hibernate.ddl-auto=validate` outside local dev. Never `update`.
+- Set `lock_timeout` / `statement_timeout` before every DDL on a large table.
+- Feature-flag gate schema-dependent code paths during expand-then-contract deploys.
 
 ## Patterns
 
-### 0. Always Set a Lock Timeout Before DDL
+### Lock timeout before DDL
 
-A blocked DDL statement does not just wait - it queues *behind* every existing lock holder *and in front of* every new query for the same table, causing rapid pile-up. Set short `lock_timeout` and `statement_timeout` before each migration so a stuck statement fails fast and the rest of the system stays healthy.
+A blocked DDL queues behind every existing lock and ahead of every new query for the same table, causing pile-up. Fail fast instead.
 
 ```sql
 -- Postgres
@@ -47,75 +47,36 @@ SET SESSION lock_wait_timeout = 3;
 ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 ```
 
-Apply this at the top of every migration that touches a large table. A failed migration is recoverable; a 30-minute production lock pile-up usually is not.
-
-### 1. Zero-Downtime DDL Rules
-
-Bad - adds NOT NULL column in one step, locks table on large datasets:
+### Add NOT NULL column (three migrations)
 
 ```sql
--- V20250213_1000__add_status_to_orders.sql
-ALTER TABLE orders ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'PENDING';
-```
-
-Good - three-migration sequence:
-
-```sql
--- Migration 1: add nullable column
--- V20250213_1000__add_status_nullable_to_orders.sql
+-- V1: add nullable
 ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 
--- Migration 2 (next release): backfill existing rows IN BATCHES
--- V20250214_1000__backfill_status_on_orders.sql
--- A single UPDATE on a 50M-row table holds locks for minutes and bloats WAL/replication lag.
--- Run as a repeated, key-paged UPDATE driven from the application or a one-off job, not from the migration.
--- If you must do it in SQL, use a procedural batch loop:
-DO $$
-DECLARE
-    rows_affected INT;
-BEGIN
-    LOOP
-        UPDATE orders SET status = 'PENDING'
-            WHERE id IN (SELECT id FROM orders WHERE status IS NULL LIMIT 5000 FOR UPDATE SKIP LOCKED);
-        GET DIAGNOSTICS rows_affected = ROW_COUNT;
-        EXIT WHEN rows_affected = 0;
-        COMMIT;          -- requires DO block in a procedure on Postgres; otherwise drive from app code
-    END LOOP;
-END $$;
+-- V2 (next release): backfill in batches - drive from application or one-off job,
+-- not a single UPDATE (which holds locks and bloats WAL/replication lag on a 50M-row table)
+-- If from SQL, use a key-paged loop with FOR UPDATE SKIP LOCKED + COMMIT per batch.
 
--- Migration 3 (release after backfill): enforce constraint
--- V20250215_1000__constrain_status_on_orders.sql
+-- V3 (release after backfill): enforce constraint
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
-**Note on Postgres 11+ ADD COLUMN with default:** On Postgres 11 or later, `ALTER TABLE t ADD COLUMN c TYPE NOT NULL DEFAULT 'x'` is a fast metadata-only change for non-volatile defaults - it does *not* rewrite the table. So on modern Postgres a one-step `ADD COLUMN ... NOT NULL DEFAULT ...` is acceptable for static defaults. MySQL still rewrites the table; the three-migration dance is required there. Always use the multi-step pattern when the default is a function call (e.g. `now()`, `gen_random_uuid()`) - those are volatile and trigger a rewrite even on Postgres.
+**Postgres 11+ note:** `ADD COLUMN ... NOT NULL DEFAULT 'static'` is a metadata-only change (fast, no rewrite) for non-volatile defaults. Single-step is acceptable. MySQL still rewrites - three-step required. Volatile defaults (`now()`, `gen_random_uuid()`) trigger a rewrite even on Postgres - use three-step.
 
-Bad - direct column rename locks table and breaks running app code:
-
-```sql
-ALTER TABLE orders RENAME COLUMN customer_ref TO customer_id;
-```
-
-Good - expand-then-contract across three migrations:
+### Rename column (expand-then-contract)
 
 ```sql
--- Migration 1: add new column
+-- V1: add new column
 ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 
--- Migration 2: backfill and keep in sync via app code or trigger
+-- V2: backfill (and keep in sync via app code or trigger)
 UPDATE orders SET customer_id = customer_ref;
 
--- Migration 3 (next release after old column unused): drop old column
+-- V3 (next release, after old column unused): drop
 ALTER TABLE orders DROP COLUMN customer_ref;
 ```
 
-Bad - index creation locks the table:
-
-```sql
-CREATE INDEX idx_orders_customer ON orders(customer_id);
-```
-
-Good - non-blocking index creation:
+### Non-blocking indexes
 
 ```sql
 -- Postgres
@@ -125,70 +86,47 @@ CREATE INDEX CONCURRENTLY idx_orders_customer ON orders(customer_id);
 ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
-**Flyway + CONCURRENTLY caveat**: PostgreSQL's `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. Flyway wraps each migration in a transaction by default. To use CONCURRENTLY, disable the transaction for that migration file:
+**Flyway + CONCURRENTLY:** Postgres `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. Disable Flyway's transaction wrapper:
 
 ```sql
--- V20250213_1100__create_index_orders_customer.sql
+-- V20250213_1100__create_index.sql
 -- flyway:executeInTransaction=false
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
 
-### Idempotency Key and CHECK Constraint Migrations
+### Unique constraint via concurrent index
 
 ```sql
--- V20250213_1200__add_idempotency_key_to_payments.sql
+-- V1: add column
 ALTER TABLE payments ADD COLUMN idempotency_key VARCHAR(255);
 
--- V20250213_1210__create_unique_index_idempotency_key.sql
+-- V2: unique index (concurrent)
 -- flyway:executeInTransaction=false
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_payments_idempotency_key
     ON payments(idempotency_key);
-
--- V20250213_1220__add_status_check_constraint.sql
-ALTER TABLE payments ADD CONSTRAINT payments_status_check
-    CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'));
 ```
 
-### 2. Flyway Conventions
+### Flyway conventions
 
-Naming pattern: `V{yyyyMMdd}_{HHmm}__{description}.sql`
-
-```
-V20250213_1030__add_payment_intent_id_to_orders.sql
-V20250213_1100__create_index_orders_payment_intent.sql
-R__create_order_summary_view.sql          -- Repeatable: views, functions
-```
-
-One DDL statement per migration file. Spring Boot `application.yml`:
+Naming: `V{yyyyMMdd}_{HHmm}__{description}.sql` for versioned, `R__name.sql` for repeatable (views, functions).
 
 ```yaml
 spring:
   flyway:
-    locations: classpath:db/migration,classpath:db/migration/common
+    locations: classpath:db/migration
     baseline-on-migrate: true
-    baseline-version: 0
     validate-on-migrate: true
     out-of-order: false
-    clean-disabled: true     # CRITICAL for any non-local environment - flyway.clean() drops every object
+    clean-disabled: true     # CRITICAL outside local - flyway.clean() drops everything
 ```
 
-**`flyway.repair()` after a failed migration:** when a migration crashes mid-statement, Flyway's `flyway_schema_history` table marks it as failed. Subsequent boots refuse to run. Inspect the partial state, finish or roll back the DDL manually, then run `flyway.repair()` (programmatically or via the Flyway CLI) to clear the failed entry. Never just delete the row.
+One DDL statement per file.
 
-Multi-module layout:
+**`flyway.repair()` after a crash:** when a migration fails mid-statement, the row in `flyway_schema_history` is marked failed and subsequent boots refuse. Inspect partial state, finish or roll back the DDL manually, then call `flyway.repair()`. Never just delete the row.
 
-```yaml
-spring:
-  flyway:
-    locations:
-      - classpath:db/migration/core
-      - classpath:db/migration/orders
-      - classpath:db/migration/payments
-```
-
-### 3. Liquibase Conventions
+### Liquibase
 
 ```xml
-<!-- changelog/orders/ORD-1234.xml -->
 <changeSet id="ORD-1234-001" author="dev-team" context="prod,staging">
     <preConditions onFail="MARK_RAN">
         <not><columnExists tableName="orders" columnName="payment_intent_id"/></not>
@@ -202,100 +140,62 @@ spring:
 </changeSet>
 ```
 
-Always include a rollback block - never omit it for non-auto-reversible changes.
+Always include a rollback block for non-auto-reversible changes.
 
-### 4. Spring Boot Integration (Kotlin)
+### Spring integration
 
-Testcontainers-based migration validation in CI (Kotlin syntax):
+Validate migrations in CI:
 
 ```kotlin
 @SpringBootTest
 @Testcontainers
 class MigrationIntegrityTest {
-
     companion object {
-        @Container
-        @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:16-alpine")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun datasourceProps(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+        @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:16-alpine")
+        @DynamicPropertySource @JvmStatic
+        fun props(r: DynamicPropertyRegistry) {
+            r.add("spring.datasource.url", postgres::getJdbcUrl)
+            r.add("spring.datasource.username", postgres::getUsername)
+            r.add("spring.datasource.password", postgres::getPassword)
         }
     }
-
     @Autowired lateinit var flyway: Flyway
-
-    @Test
-    fun `all migrations apply cleanly`() {
+    @Test fun `migrations apply cleanly`() {
         flyway.clean()
-        val result = flyway.migrate()
-        result.success shouldBe true
-        result.migrationsExecuted shouldBeGreaterThan 0
+        flyway.migrate().migrationsExecuted shouldBeGreaterThan 0
     }
 }
 ```
 
-Separate, smaller connection pool during migrations:
+Separate, smaller pool during migrations:
 
 ```yaml
-# application-migration.yml - activate only during migration phase
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 5
-      connection-timeout: 60000
+# application-migration.yml
+spring.datasource.hikari: { maximum-pool-size: 5, connection-timeout: 60000 }
 ```
-
-Never allow Hibernate to manage the schema in staging or production:
 
 ```yaml
-# Bad in any non-local environment
-spring:
-  jpa:
-    hibernate:
-      ddl-auto: update
-
-# Good - all environments beyond local
-spring:
-  jpa:
-    hibernate:
-      ddl-auto: validate
+# Good - validate only
+spring.jpa.hibernate.ddl-auto: validate
 ```
 
-### 5. Multi-Service Migration Ordering (Expand-Then-Contract)
+### Multi-service ordering (expand-then-contract)
 
 ```
-Release N-1 (current):   app reads column_a only
-Release N   (expand):    add column_b (nullable); app writes both column_a and column_b
-Release N+1 (contract):  app reads column_b only; drop column_a
+Release N-1:   app reads column_a only
+Release N:     add column_b nullable; app writes both
+Release N+1:   app reads column_b only; drop column_a
 ```
 
-Feature flag gating during expand phase:
-
-```kotlin
-@Service
-class OrderService(private val featureFlags: FeatureFlags) {
-    fun processOrder(req: OrderRequest) =
-        if (featureFlags.isEnabled("USE_PAYMENT_INTENT_V2")) processWithPaymentIntent(req)
-        else processLegacy(req)
-}
-```
-
-Backward-compatibility rule: every migration applied in release N must be safe to run while release N-1 code is still serving traffic.
+Feature-flag the cutover so the new path is reversible without a redeploy.
 
 ## Output Format
-
-When generating migrations, document each file:
 
 ```
 Migration: {filename}
 Type: {DDL | DML}
 Operation: {ADD COLUMN | ADD INDEX | BACKFILL | DROP COLUMN | RENAME | CONSTRAINT}
-Table: {table name}
+Table: {name}
 Locks Table: {yes | no}
 Backward Compatible: {yes | no - why}
 Rollback: {auto-reversible | manual rollback provided | N/A}
@@ -303,19 +203,19 @@ Rollback: {auto-reversible | manual rollback provided | N/A}
 
 ## Checklist
 
-- [ ] Migration is backward-compatible with current running code?
-- [ ] No table locks on large tables?
-- [ ] Rollback tested?
-- [ ] Index creation is non-blocking?
-- [ ] Separate DDL and DML migrations?
+- [ ] Backward-compatible with current running code
+- [ ] No locks on large tables
+- [ ] Rollback tested
+- [ ] Index creation non-blocking
+- [ ] DDL and DML in separate files
 
 ## Avoid
 
-- `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` in a single migration on large tables
-- Data migrations (DML) mixed with schema changes (DDL) in the same file
-- `spring.jpa.hibernate.ddl-auto=update` in any environment beyond local dev
-- Migrations that read environment variables or application state at execution time
-- Renaming columns directly in a single ALTER statement
-- Dropping columns in the same release they are removed from application code
-- Blocking index creation without CONCURRENTLY / ALGORITHM=INPLACE
-- Omitting rollback blocks in Liquibase changesets for non-auto-reversible changes
+- `ADD COLUMN ... NOT NULL DEFAULT ...` single-step on large tables (except Postgres 11+ static defaults)
+- DML mixed with DDL
+- `spring.jpa.hibernate.ddl-auto=update` outside local
+- Migrations reading env vars or app state at execution time
+- Direct column renames
+- Dropping columns in the same release they leave the app
+- Blocking index creation (no `CONCURRENTLY` / `ALGORITHM=INPLACE`)
+- Liquibase changesets without rollback for non-reversible changes

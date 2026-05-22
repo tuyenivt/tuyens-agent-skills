@@ -13,38 +13,37 @@ user-invocable: false
 
 ## When to Use
 
-- Centralizing error handling across REST APIs in Kotlin/Spring
-- Mapping business exceptions to appropriate HTTP status codes
-- Wrapping third-party API errors (Stripe, payment gateways) into domain exceptions
-- Ensuring consistent error response format
-- Designing sealed-class error hierarchies for exhaustive `when` handling
+- Centralizing error handling in Kotlin / Spring REST APIs
+- Mapping domain exceptions to HTTP status codes
+- Wrapping third-party API errors into domain types
+- Designing sealed-class result hierarchies
 
 ## Rules
 
-- Use `@RestControllerAdvice` for centralized exception handling
-- No try-catch in controller for business logic
-- Map business exceptions to 4xx, system errors to 5xx
-- Never expose stack traces to clients
-- Use RFC 9457 `ProblemDetail` as the standard error response format (Spring Boot 3.x native support)
-- Log system exceptions only, not expected business exceptions
-- Use sealed classes for closed error hierarchies when modeling domain results; convert to exceptions at the controller boundary
+- `@RestControllerAdvice` for centralized handling. No try/catch in controllers for business logic.
+- `ProblemDetail` (RFC 9457) as the response format. Spring Boot 3.x has native support.
+- Business exceptions: 4xx, no stack trace logged. System exceptions: 5xx, log with stack trace.
+- Never expose stack traces or internal details to clients.
+- Domain exceptions: `open` base class (kotlin-spring plugin only opens annotated classes).
+- Wrap third-party exceptions at the integration boundary. Callers should not import Stripe/AWS/etc. types.
+- Sealed-class results when callers programmatically branch on multiple failure modes; otherwise throw.
 
-## Domain Exception to HTTP Status Mapping
+## Domain exception → HTTP status
 
-| Exception Class                                 | HTTP Status               | When to Use                                                 |
-| ----------------------------------------------- | ------------------------- | ----------------------------------------------------------- |
-| `ValidationException`                           | 400 Bad Request           | Input validation failure                                    |
-| `AuthenticationException`                       | 401 Unauthorized          | Missing or invalid credentials                              |
-| `AccessDeniedException`                         | 403 Forbidden             | Authenticated but not authorized                            |
-| `NotFoundException` / `EntityNotFoundException` | 404 Not Found             | Resource does not exist                                     |
-| `ConflictException`                             | 409 Conflict              | State conflict (duplicate, optimistic lock)                 |
-| `UnprocessableEntityException`                  | 422 Unprocessable Entity  | Semantically invalid (valid format, invalid business state) |
-| `RateLimitException`                            | 429 Too Many Requests     | Rate limit exceeded                                         |
-| `RuntimeException` (unexpected)                 | 500 Internal Server Error | System failure - log with stack trace                       |
+| Exception                                       | HTTP                      | When                                                  |
+| ----------------------------------------------- | ------------------------- | ----------------------------------------------------- |
+| `ValidationException`                           | 400 Bad Request           | Input validation failure                              |
+| `AuthenticationException`                       | 401 Unauthorized          | Missing / invalid credentials                         |
+| `AccessDeniedException`                         | 403 Forbidden             | Authenticated, not authorized                         |
+| `NotFoundException` / `EntityNotFoundException` | 404 Not Found             | Resource does not exist                               |
+| `ConflictException`                             | 409 Conflict              | Duplicate / optimistic lock                           |
+| `UnprocessableEntityException`                  | 422 Unprocessable Entity  | Valid format, invalid business state                  |
+| `RateLimitException`                            | 429 Too Many Requests     | Rate limit exceeded                                   |
+| Unexpected `RuntimeException`                   | 500 Internal Server Error | System failure - log with stack trace                 |
 
-## Domain Exception Hierarchy
+## Patterns
 
-Define a base exception that carries an error code and HTTP status. Make it `open` so subclasses can extend; the `kotlin("plugin.spring")` plugin only opens annotated classes, so domain exceptions need explicit `open`:
+### Domain exception hierarchy
 
 ```kotlin
 abstract class DomainException(
@@ -59,174 +58,96 @@ class OrderNotFoundException(id: Long) :
 class InsufficientStockException(sku: String, requested: Int, available: Int) :
     DomainException(
         "Insufficient stock for $sku: requested $requested, available $available",
-        HttpStatus.CONFLICT,
-        "INSUFFICIENT_STOCK",
+        HttpStatus.CONFLICT, "INSUFFICIENT_STOCK",
     )
-
-class DuplicateEmailException(email: String) :
-    DomainException("Email already registered: $email", HttpStatus.CONFLICT, "DUPLICATE_EMAIL")
 ```
 
-### Sealed Result Hierarchy (Alternative)
+### Sealed result hierarchy (alternative)
 
-For service layers that prefer to return results rather than throw, use sealed classes - the controller converts to HTTP at the boundary:
+When callers branch on multiple distinct failures, return a sealed type and convert at the controller boundary:
 
 ```kotlin
 sealed interface OrderResult {
     data class Success(val order: Order) : OrderResult
     data class NotFound(val id: Long) : OrderResult
     data class InsufficientStock(val sku: String, val available: Int) : OrderResult
-    data class Unauthorized(val reason: String) : OrderResult
 }
 
-@RestController
-class OrderController(private val service: OrderService) {
-    @GetMapping("/{id}")
-    fun get(@PathVariable id: Long): ResponseEntity<*> = when (val result = service.findById(id)) {
-        is OrderResult.Success -> ResponseEntity.ok(result.order.toResponse())
-        is OrderResult.NotFound -> throw OrderNotFoundException(result.id)
-        is OrderResult.InsufficientStock -> throw InsufficientStockException(result.sku, 0, result.available)
-        is OrderResult.Unauthorized -> throw AccessDeniedException(result.reason)
-    }
+@GetMapping("/{id}")
+fun get(@PathVariable id: Long): ResponseEntity<*> = when (val r = service.findById(id)) {
+    is OrderResult.Success -> ResponseEntity.ok(r.order.toResponse())
+    is OrderResult.NotFound -> throw OrderNotFoundException(r.id)
+    is OrderResult.InsufficientStock -> throw InsufficientStockException(r.sku, 0, r.available)
 }
 ```
 
-## Patterns
+### `@RestControllerAdvice`
 
-Bad - Scattered error handling:
-
-```kotlin
-@RestController
-class UserController(private val userService: UserService) {
-    @PostMapping("/users")
-    fun createUser(@RequestBody req: UserRequest): ResponseEntity<*> = try {
-        ResponseEntity.ok(userService.create(req))
-    } catch (e: Exception) {
-        ResponseEntity.status(500).body("Error")
-    }
-}
-```
-
-Good - Centralized exception handling with RFC 9457 ProblemDetail.
-
-**Handler precedence:** Spring picks the most specific `@ExceptionHandler` - the one whose declared type is closest to the thrown exception in the type hierarchy. So `handleNotFound(NotFoundException)` wins over `handleDomainException(DomainException)` for a `NotFoundException`, and the catch-all `handleUnexpected(Exception)` only runs when nothing more specific matched. Keep the handlers ordered from most-specific to most-general for readability; the runtime ignores declaration order.
+Spring picks the most specific `@ExceptionHandler` by exception-type hierarchy - declaration order doesn't matter, but order most-specific to most-general for readability.
 
 ```kotlin
 @RestControllerAdvice
 class GlobalExceptionHandler {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // Business exception: 400, no stack trace logged
-    @ExceptionHandler(ValidationException::class)
-    fun handleValidation(ex: ValidationException): ProblemDetail =
-        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.message ?: "Invalid input").apply {
-            title = "Validation Failed"
-            setProperty("traceId", MDC.get("traceId"))
-        }
-
-    // Domain not found: 404
     @ExceptionHandler(NotFoundException::class)
     fun handleNotFound(ex: NotFoundException): ProblemDetail =
-        ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.message ?: "Not found").apply {
-            title = "Resource Not Found"
-            setProperty("traceId", MDC.get("traceId"))
-        }
+        problem(HttpStatus.NOT_FOUND, "Resource Not Found", ex.message ?: "Not found")
 
-    // Generic domain exception handler - catches all DomainException subclasses
     @ExceptionHandler(DomainException::class)
-    fun handleDomainException(ex: DomainException): ProblemDetail =
-        ProblemDetail.forStatusAndDetail(ex.status, ex.message ?: "Error").apply {
-            title = ex.errorCode
-            setProperty("traceId", MDC.get("traceId"))
-        }
+    fun handleDomain(ex: DomainException): ProblemDetail =
+        problem(ex.status, ex.errorCode, ex.message ?: "Error")
 
-    // Bean validation errors: 400, with per-field details
     @ExceptionHandler(MethodArgumentNotValidException::class)
-    fun handleValidationErrors(ex: MethodArgumentNotValidException): ProblemDetail =
-        ProblemDetail.forStatus(HttpStatus.BAD_REQUEST).apply {
-            title = "Validation Failed"
-            setProperty("traceId", MDC.get("traceId"))
-            setProperty(
-                "fieldErrors",
-                ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "invalid") },
-            )
+    fun handleBeanValidation(ex: MethodArgumentNotValidException): ProblemDetail =
+        problem(HttpStatus.BAD_REQUEST, "Validation Failed", "Invalid request body").apply {
+            setProperty("fieldErrors",
+                ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "invalid") })
         }
 
-    // Database constraint violation: 409 (e.g., unique constraint on email, SKU)
+    @ExceptionHandler(HandlerMethodValidationException::class)        // Spring 6 path/query validation
+    fun handleParamValidation(ex: HandlerMethodValidationException): ProblemDetail =
+        problem(HttpStatus.BAD_REQUEST, "Validation Failed", "Invalid request parameters")
+
     @ExceptionHandler(DataIntegrityViolationException::class)
     fun handleDataIntegrity(ex: DataIntegrityViolationException): ProblemDetail {
-        log.warn("Data integrity violation: {}", ex.mostSpecificCause.message)
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "A record with the given value already exists").apply {
-            title = "Conflict"
-            setProperty("traceId", MDC.get("traceId"))
-        }
+        log.warn("integrity violation: {}", ex.mostSpecificCause.message)
+        return problem(HttpStatus.CONFLICT, "Conflict", "A record with this value already exists")
     }
 
-    // Optimistic lock conflict: 409 with retry hint
-    // Both Spring's OptimisticLockingFailureException and JPA's ObjectOptimisticLockingFailureException land here.
-    @ExceptionHandler(OptimisticLockingFailureException::class)
+    @ExceptionHandler(OptimisticLockingFailureException::class)       // includes ObjectOptimisticLockingFailureException
     fun handleOptimisticLock(ex: OptimisticLockingFailureException): ProblemDetail {
-        log.warn("Optimistic lock conflict: {}", ex.message)
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The resource was modified concurrently. Reload and retry.").apply {
-            title = "Concurrent Modification"
-            setProperty("traceId", MDC.get("traceId"))
-            setProperty("retryable", true)
-        }
+        log.warn("optimistic lock: {}", ex.message)
+        return problem(HttpStatus.CONFLICT, "Concurrent Modification",
+            "The resource was modified concurrently. Reload and retry.")
+            .apply { setProperty("retryable", true) }
     }
 
-    // Malformed JSON / type mismatch on @RequestBody: 400, not 500
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadable(ex: HttpMessageNotReadableException): ProblemDetail =
-        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request body is missing or malformed").apply {
-            title = "Bad Request"
-            setProperty("traceId", MDC.get("traceId"))
-        }
+        problem(HttpStatus.BAD_REQUEST, "Bad Request", "Request body is missing or malformed")
 
-    // Path / query parameter bean validation (Spring 6 / Boot 3) - separate from @RequestBody validation above
-    @ExceptionHandler(HandlerMethodValidationException::class)
-    fun handleParamValidation(ex: HandlerMethodValidationException): ProblemDetail =
-        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request parameters").apply {
-            title = "Validation Failed"
-            setProperty("traceId", MDC.get("traceId"))
-            setProperty(
-                "paramErrors",
-                ex.allValidationResults.flatMap { r ->
-                    r.resolvableErrors.map { e -> r.methodParameter.parameterName to (e.defaultMessage ?: "invalid") }
-                }.toMap(),
-            )
-        }
-
-    // System exception: 500, log with stack trace
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ProblemDetail {
-        log.error("Unexpected error", ex)
-        return ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR).apply {
-            detail = "An unexpected error occurred"
+        log.error("unexpected error", ex)
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Server Error", "An unexpected error occurred")
+    }
+
+    private fun problem(status: HttpStatus, title: String, detail: String): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(status, detail).apply {
+            this.title = title
             setProperty("traceId", MDC.get("traceId"))
         }
-    }
 }
 ```
 
-### Wrapping External API Errors
-
-Third-party APIs (Stripe, payment gateways, etc.) return their own exception types. Wrap them into domain exceptions at the integration boundary so callers never depend on the external library:
+### Wrap third-party errors at the boundary
 
 ```kotlin
-// Bad: leaking Stripe exception into service layer
-@Service
-class PaymentService(private val stripeClient: StripeClient) {
-    fun charge(req: PaymentRequest): PaymentResult = stripeClient.charge(req) // caller must import com.stripe.exception
-}
-
-// Good: classify and wrap at the boundary
 @Component
-class StripePaymentGateway(private val stripeClient: StripeClient) : PaymentGateway {
-
+class StripePaymentGateway(private val stripe: StripeClient) : PaymentGateway {
     override fun charge(req: PaymentRequest): PaymentResult = try {
-        val charge = stripeClient.createCharge(req.amount, req.currency)
-        PaymentResult.success(charge.id)
+        PaymentResult.success(stripe.createCharge(req.amount, req.currency).id)
     } catch (e: CardException) {
         throw PaymentDeclinedException(req.orderId, e.declineCode)
     } catch (e: StripeRateLimitException) {
@@ -237,55 +158,43 @@ class StripePaymentGateway(private val stripeClient: StripeClient) : PaymentGate
 }
 ```
 
-### Retryable vs Permanent Error Classification
-
-When calling external services, callers need to know whether to retry. Use a marker `open class` (Kotlin requires explicit `open`):
+### Retryable vs permanent
 
 ```kotlin
 open class RetryableException(
-    message: String,
-    status: HttpStatus,
-    errorCode: String,
+    message: String, status: HttpStatus, errorCode: String,
 ) : DomainException(message, status, errorCode) {
     open val isRetryable: Boolean = true
 }
 
 class PaymentRetryableException(orderId: Long, reason: String, cause: Throwable) :
-    RetryableException(
-        "Payment temporarily failed for order $orderId: $reason",
-        HttpStatus.SERVICE_UNAVAILABLE,
-        "PAYMENT_RETRYABLE",
-    ) {
+    RetryableException("Payment temporarily failed for order $orderId: $reason",
+        HttpStatus.SERVICE_UNAVAILABLE, "PAYMENT_RETRYABLE") {
     init { initCause(cause) }
 }
 ```
 
-Enable ProblemDetail in `application.yml`:
+### Enable ProblemDetail
 
 ```yaml
-spring:
-  mvc:
-    problemdetails:
-      enabled: true
+spring.mvc.problemdetails.enabled: true
 ```
 
 ## Output Format
 
-When applying exception handling patterns, document the mapping:
-
 ```
-Exception: {exception class}
-HTTP Status: {status code and name}
-Error Code: {domain error code}
+Exception: {class}
+HTTP Status: {code and name}
+Error Code: {domain code}
 Logged: {yes (ERROR) | yes (WARN) | no}
-Response Detail: {what the client sees}
+Response Detail: {client-visible}
 ```
 
 ## Avoid
 
-- Try-catch blocks in controllers
-- Exposing implementation details or stack traces
-- Using 200 status for error responses
-- Custom error format when ProblemDetail (RFC 9457) is available - standard format enables client interoperability
-- Logging expected business exceptions (404, 400) as ERROR - they are not system failures
-- `runCatching { }.getOrThrow()` chains that discard the original exception type - preserve the cause
+- Try/catch in controllers
+- Exposing stack traces or internal details
+- 200 status with error payloads
+- Custom error format when ProblemDetail covers it
+- Logging expected business exceptions (404, 400) as ERROR
+- `runCatching { }.getOrThrow()` chains that drop the original cause

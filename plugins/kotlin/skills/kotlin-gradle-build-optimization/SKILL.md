@@ -13,40 +13,46 @@ user-invocable: false
 
 ## When to Use
 
-- Setting up a new Kotlin/Spring Boot Gradle project or migrating from Maven
-- Optimizing slow Gradle builds (local or CI)
-- Structuring a multi-module Kotlin/Spring Boot project
-- Standardizing dependency versions across modules
-- Configuring CI/CD pipelines for Kotlin/Gradle projects
-- Diagnosing JPA / Spring proxy issues caused by missing Kotlin compiler plugins
+- Setting up a new Kotlin / Spring Boot Gradle project or migrating from Maven
+- Optimizing slow Gradle builds
+- Structuring multi-module Kotlin projects
+- Diagnosing JPA / Spring proxy issues caused by missing compiler plugins
 
 ## Rules
 
-- Use Kotlin DSL (`.gradle.kts`) for all new projects - the natural fit for Kotlin codebases
-- Centralize dependency versions in `gradle/libs.versions.toml`
-- Enable parallel execution and build cache by default
-- Use convention plugins instead of `allprojects {}` / `subprojects {}`
-- Apply Spring Boot plugin only to application modules, never library modules
-- Minimize `api()` dependency scope - prefer `implementation()`
-- Commit Gradle wrapper files (`gradlew`, `gradle-wrapper.jar`) to version control
-- Always configure `kotlin("plugin.spring")` for projects using `@Component` / `@Service` / `@Configuration` / `@Transactional`
-- Always configure `kotlin("plugin.jpa")` for projects with JPA `@Entity` / `@Embeddable` / `@MappedSuperclass`
+- Kotlin DSL (`.gradle.kts`) for new projects.
+- Centralize versions in `gradle/libs.versions.toml`.
+- Parallel execution + build cache on by default.
+- Convention plugins in `build-logic/`, not `allprojects {}` / `subprojects {}`.
+- Spring Boot plugin only on application modules.
+- `implementation()` by default. `api()` only when types appear in the public API.
+- `kotlin("plugin.spring")` for projects using `@Component` / `@Service` / `@Configuration` / `@Transactional`.
+- `kotlin("plugin.jpa")` for projects with JPA `@Entity` / `@Embeddable` / `@MappedSuperclass`.
+- Exclude `mockito-core` from `spring-boot-starter-test` when using springmockk.
 
 ## Patterns
 
-### Required Kotlin Compiler Plugins
+### Required Kotlin compiler plugins
 
-Kotlin classes are `final` by default and have no no-arg constructors; JPA and Spring proxies need both. The fix is the `kotlin("plugin.spring")` + `kotlin("plugin.jpa")` plugin pair (canonical config in `kotlin-idioms` § Gradle Plugin Configuration). Symptoms when missing: `No default constructor for entity` (JPA), `BeanNotOfRequiredTypeException` / `could not initialize proxy` on `@Transactional` (Spring).
+Kotlin classes are `final` by default with no no-arg constructors. JPA and Spring proxies need both:
 
-### Version Catalog
+```kotlin
+plugins {
+    kotlin("plugin.spring")   // opens @Component / @Service / @Configuration / @Transactional
+    kotlin("plugin.jpa")      // no-arg constructors for @Entity / @Embeddable / @MappedSuperclass
+}
+```
 
-Define `gradle/libs.versions.toml`:
+Missing - symptoms: `No default constructor for entity` (JPA), `BeanNotOfRequiredTypeException` / `could not initialize proxy` on `@Transactional` (Spring AOP).
+
+### Version catalog
+
+`gradle/libs.versions.toml`:
 
 ```toml
 [versions]
 kotlin = "2.0.21"
 spring-boot = "3.5.0"
-java = "21"
 mockk = "1.13.13"
 kotest = "5.9.1"
 springmockk = "4.0.2"
@@ -56,7 +62,6 @@ testcontainers = "1.20.4"
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
-spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor" }
@@ -72,10 +77,9 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
 kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
-spring-dependency-management = { id = "io.spring.dependency-management", version = "1.1.7" }
 ```
 
-Usage in `build.gradle.kts`:
+Usage:
 
 ```kotlin
 plugins {
@@ -83,88 +87,68 @@ plugins {
     alias(libs.plugins.kotlin.spring)
     alias(libs.plugins.kotlin.jpa)
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
 }
 
 dependencies {
     implementation(libs.spring.boot.starter.web)
-    implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.kotlin.reflect)
-    implementation(libs.kotlinx.coroutines.reactor)
 
     testImplementation(libs.spring.boot.starter.test) {
-        exclude(module = "mockito-core") // springmockk replaces Mockito
+        exclude(module = "mockito-core")     // springmockk replaces Mockito
     }
     testImplementation(libs.mockk)
     testImplementation(libs.springmockk)
-    testImplementation(libs.kotest.runner)
-    testImplementation(libs.kotest.assertions)
-    testImplementation(libs.testcontainers.postgresql)
 }
 ```
 
-### Diagnosing a Slow Build
-
-Don't guess - measure. Two commands answer almost every "why is the build slow?" question:
+### Diagnose slow builds
 
 ```bash
-./gradlew build --scan                  # publishes a build scan with task durations, cache hits/misses, dependency timings
-./gradlew build --profile               # local HTML report at build/reports/profile/
+./gradlew build --scan        # task durations, cache hit rate, dependency timings
+./gradlew build --profile     # local HTML at build/reports/profile/
 ```
 
-Read the build scan's "Performance" tab first. Common findings: low cache hit rate (no remote cache), `compileKotlin` dominating because incremental compilation is off, or a test task fork-starting per class. Each maps to a specific knob in this skill.
+Read the scan's Performance tab first. Common findings: low cache hit rate (no remote cache), `compileKotlin` dominates (incremental off), test forks per class.
 
-### Build Performance
-
-Configure `gradle.properties`:
+### Build performance
 
 ```properties
+# gradle.properties
 org.gradle.parallel=true
 org.gradle.caching=true
 org.gradle.configuration-cache=true
-org.gradle.configuration-cache.problems=warn
 org.gradle.daemon.idletimeout=600000
 org.gradle.jvmargs=-Xmx2g -XX:+UseG1GC
-
-# Kotlin daemon JVM args
 kotlin.daemon.jvmargs=-Xmx2g
 ```
 
-### Multi-Module Structure
-
-Root `settings.gradle.kts`:
+### Multi-module
 
 ```kotlin
+// settings.gradle.kts
 rootProject.name = "my-app"
-
 include("app", "domain", "infrastructure")
-
 includeBuild("build-logic")
 ```
 
-Convention plugin in `build-logic/src/main/kotlin/kotlin-conventions.gradle.kts`:
+Convention plugin `build-logic/src/main/kotlin/kotlin-conventions.gradle.kts`:
 
 ```kotlin
-plugins {
-    kotlin("jvm")
-}
+plugins { kotlin("jvm") }
 
 kotlin {
     jvmToolchain(21)
-    compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict") // strict null-safety on Java interop
-    }
+    compilerOptions { freeCompilerArgs.addAll("-Xjsr305=strict") }
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    maxParallelForks = Runtime.getRuntime().availableProcessors().div(2).coerceAtLeast(1)
-    jvmArgs("-Djdk.virtualThreadScheduler.parallelism=4")
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
 }
 ```
 
-Application module `app/build.gradle.kts`:
+Application module:
 
 ```kotlin
 plugins {
@@ -172,41 +156,22 @@ plugins {
     alias(libs.plugins.kotlin.spring)
     alias(libs.plugins.kotlin.jpa)
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
 }
-
-dependencies {
-    implementation(project(":domain"))
-    implementation(project(":infrastructure"))
-    implementation(libs.spring.boot.starter.web)
-}
+dependencies { implementation(project(":domain")) }
 ```
 
-Library module `domain/build.gradle.kts`:
+Library module:
 
 ```kotlin
-plugins {
-    id("kotlin-conventions")
-    `java-library`
-}
-
-// No Spring Boot plugin - this is a library module
+plugins { id("kotlin-conventions"); `java-library` }
+// No Spring Boot plugin - libraries don't produce bootJar
 dependencies {
-    api(libs.spring.boot.starter.data.jpa) // api() only when types leak into public API
+    api(libs.spring.boot.starter.data.jpa)      // api() only when types leak into public API
     implementation(libs.kotlinx.coroutines.reactor)
 }
 ```
 
-### api() vs implementation() Scope
-
-| Scope              | When to Use                                                  |
-| ------------------ | ------------------------------------------------------------ |
-| `implementation()` | Default - dependency is internal to the module               |
-| `api()`            | Only when dependency types appear in the module's public API |
-
-### Spring Boot-Specific Configuration
-
-Boot JAR with layered JARs for Docker:
+### Boot JAR with layers
 
 ```kotlin
 tasks.bootJar {
@@ -215,39 +180,35 @@ tasks.bootJar {
 }
 ```
 
-GraalVM native image support:
+### Remote build cache
+
+Wire in `settings.gradle.kts` for cross-machine task-output sharing:
 
 ```kotlin
-tasks.processAot { enabled = true }
-tasks.processTestAot { enabled = true }
-```
-
-### Dependency Management
-
-BOM import via `platform()`:
-
-```kotlin
-dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.0"))
+buildCache {
+    local { isEnabled = true }
+    remote<HttpBuildCache> {
+        url = uri("https://gradle-cache.example.com/cache/")
+        isPush = System.getenv("CI") == "true"    // CI populates; devs only read
+        credentials {
+            username = providers.gradleProperty("buildCacheUser").orNull
+            password = providers.gradleProperty("buildCachePass").orNull
+        }
+    }
 }
 ```
 
-Strict dependency resolution:
+5-10x speedup on cold builds hitting populated caches.
 
-```kotlin
-configurations.all {
-    resolutionStrategy { failOnVersionConflict() }
-}
+### CI
+
+```bash
+./gradlew build --parallel --build-cache --no-daemon
 ```
 
-Dependency locking for reproducible builds:
+Daemon wastes memory in ephemeral runners.
 
-```kotlin
-dependencyLocking { lockAllConfigurations() }
-// Generate: ./gradlew dependencies --write-locks
-```
-
-### Detekt and Ktlint Wiring
+### Detekt + ktlint
 
 ```kotlin
 plugins {
@@ -261,76 +222,26 @@ detekt {
 }
 ```
 
-CI gate:
-
 ```bash
 ./gradlew detekt ktlintCheck check --parallel --build-cache --no-daemon
 ```
-
-### CI/CD Optimization
-
-Recommended CI build command:
-
-```bash
-./gradlew build --parallel --build-cache --no-daemon
-```
-
-Pipeline stage separation:
-
-```bash
-./gradlew check --parallel --build-cache --no-daemon       # compile + unit + detekt
-./gradlew integrationTest --parallel --build-cache --no-daemon
-```
-
-**Remote build cache** is what makes a 12-module monorepo feel fast across machines and CI. Wire one up in `settings.gradle.kts` so every developer and every CI runner shares the same task outputs:
-
-```kotlin
-buildCache {
-    local { isEnabled = true }
-    remote<HttpBuildCache> {
-        url = uri("https://gradle-cache.example.com/cache/")
-        isPush = System.getenv("CI") == "true"   // CI populates the cache; devs only read
-        credentials {
-            username = providers.gradleProperty("buildCacheUser").orNull
-            password = providers.gradleProperty("buildCachePass").orNull
-        }
-    }
-}
-```
-
-A cold local build that fetches from a populated remote cache is typically 5-10x faster than running every task. If the build scan shows cache misses on tasks that should be deterministic, look for non-relocatable inputs (absolute paths, timestamps, environment-dependent flags).
-
-CI cache directories:
-
-```yaml
-- uses: actions/cache@v4
-  with:
-    path: |
-      ~/.gradle/caches
-      ~/.gradle/wrapper
-    key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
-```
-
-Use `--no-daemon` in CI - daemon wastes memory in ephemeral runners.
 
 ## Output Format
 
 ```
 Optimization: {version catalog | build cache | configuration cache | parallel | convention plugin | dependency scope | kotlin-spring/jpa plugin}
-File: {file path}
+File: {path}
 Change: {description}
 Impact: {build time | dependency management | maintainability | proxy correctness}
 ```
 
 ## Avoid
 
-- Groovy DSL (`.gradle`) for new Kotlin projects - use Kotlin DSL (`.gradle.kts`)
-- `allprojects {}` / `subprojects {}` blocks - use convention plugins in `build-logic/`
-- Manual `open` modifiers on `@Entity` / `@Service` / `@Component` classes - use `kotlin("plugin.spring")` and `kotlin("plugin.jpa")`
-- Force-resolving all configurations at configuration time - delays build startup
-- Publishing internal modules as JARs when `project()` dependency suffices
-- Applying Spring Boot plugin to library modules - only application modules need `bootJar`
-- Using `api()` by default - prefer `implementation()`, use `api()` only for public API types
-- Running CI builds with Gradle daemon - use `--no-daemon` for ephemeral runners
-- Hardcoding dependency versions in `build.gradle.kts` - centralize in version catalog
-- Forgetting to exclude `mockito-core` when using `springmockk` - the test runtime ends up with both
+- Groovy DSL for new Kotlin projects
+- `allprojects {}` / `subprojects {}` - use convention plugins
+- Manual `open` on `@Entity` / `@Service` - use the Gradle plugins
+- Applying Spring Boot plugin to library modules
+- Default `api()` - prefer `implementation()`
+- CI builds with the Gradle daemon
+- Hardcoded versions in `build.gradle.kts`
+- `mockito-core` and `springmockk` both on the test classpath
