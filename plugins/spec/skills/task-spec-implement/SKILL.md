@@ -45,13 +45,28 @@ Use skill: spec-artifact-paths
 
 Abort cleanly if `spec.md`, `plan.md`, or `tasks.md` is missing.
 
-### STEP 5 - Branch on Mode
+### STEP 5 - Checklist Gate
 
-**speckit-installed:** read `tasks.md` and `plan.md` for context, instruct the user to run `/speckit.implement`, then reconcile Spec Kit's task output with our schema if they want artifacts kept in sync. Do not silently overwrite Spec Kit's state. Skip to STEP 11.
+If a `checklists/` directory exists alongside the feature artifacts, scan every `*.md` and count `- [ ]` (incomplete) vs `- [X]` / `- [x]` (complete). Render the per-file status:
+
+| Checklist | Total | Completed | Incomplete | Status |
+| --------- | ----- | --------- | ---------- | ------ |
+| requirements.md | 12 | 12 | 0 | PASS |
+| ux.md | 8 | 5 | 3 | FAIL |
+
+- All PASS -> continue to STEP 6.
+- Any FAIL -> stop, show the table, and ask the user explicitly: "Proceed with incomplete checklists?" Wait for an explicit yes/no. Treat anything other than an explicit yes as halt.
+- No `checklists/` directory -> proceed silently.
+
+This matches upstream `/speckit-implement`; bypass it only on a clear user override.
+
+### STEP 6 - Branch on Mode
+
+**speckit-installed:** read `tasks.md` and `plan.md` for context, instruct the user to run `/speckit-implement` (any `before_implement` / `after_implement` hooks registered in `.specify/extensions.yml` will fire as part of that call, including upstream's own checklist gate - do not bypass them), then reconcile Spec Kit's task output with our schema if they want artifacts kept in sync. Do not silently overwrite Spec Kit's state. Skip to STEP 12.
 
 **standalone:** continue.
 
-### STEP 6 - Pick Next Task
+### STEP 7 - Pick Next Task
 
 | Flag          | Selection                                                                  |
 | ------------- | -------------------------------------------------------------------------- |
@@ -62,7 +77,7 @@ If dependencies are unfinished, stop and surface them. The dependency graph is t
 On `--dry-run`, print the chosen task and planned delegation, then exit.
 If every task is `[x]`, print "all tasks complete" and exit.
 
-### STEP 7 - Resolve Delegation Target
+### STEP 8 - Resolve Delegation Target
 
 Map task `Type` to a stack workflow. The convention is `task-<stack>-implement`.
 
@@ -76,11 +91,11 @@ Map task `Type` to a stack workflow. The convention is `task-<stack>-implement`.
 
 For fullstack ambiguity (e.g., `api` could mean backend or frontend client), read the plan's API contract. If still ambiguous, ask once and remember.
 
-### STEP 8 - Mark In Progress (BEFORE delegation)
+### STEP 9 - Mark In Progress (BEFORE delegation)
 
 Update `tasks.md`: `[ ]` -> `[~]`. Append a Revisions entry naming the task ID, timestamp, and `task-spec-implement`. Bump `Last updated`. The `[~]` is the resumable breadcrumb if the run is interrupted.
 
-### STEP 9 - Delegate in Spec-Aware Mode
+### STEP 10 - Delegate in Spec-Aware Mode
 
 Invoke the chosen workflow with `--spec <slug>`. Pass only the task's slice (description, satisfies, dependencies) plus the relevant `plan.md` sections. **Do not** pass the entire `tasks.md`.
 
@@ -92,7 +107,7 @@ The delegated workflow:
 
 Surface clarifying questions to the user; do not answer on their behalf.
 
-### STEP 10 - Mark Outcome
+### STEP 11 - Mark Outcome
 
 | Outcome              | Action                                                                                                |
 | -------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -101,9 +116,9 @@ Surface clarifying questions to the user; do not answer on their behalf.
 | Spec gap surfaced    | Leave `[~]`. Append **Proposed Spec Amendment** to revisions. Stop the loop.                          |
 | User aborted mid-task| Leave `[~]`. Revisions notes the abort. Re-invocation resumes here.                                   |
 
-Bump `Last updated` on every change. Then loop to STEP 6 unless `--task` or `--stop-after` says otherwise.
+Bump `Last updated` on every change. Then loop to STEP 7 unless `--task` or `--stop-after` says otherwise.
 
-### STEP 11 - Final Summary
+### STEP 12 - Final Summary
 
 Print: slug, mode, run counts, overall counts, blockers, spec gaps, next command:
 
@@ -131,6 +146,7 @@ Spec implement - <slug> (<mode>)
 - [ ] Loaded `behavioral-principles`, `stack-detect`, `speckit-detect` first
 - [ ] Resolved paths through `spec-artifact-paths`
 - [ ] Aborted if any of spec/plan/tasks missing
+- [ ] Ran checklist gate; required explicit user override on any FAIL
 - [ ] In speckit mode, did not overwrite Spec Kit state
 - [ ] Picked next task by Status + Dependencies, not file order
 - [ ] Marked `[~]` BEFORE delegation

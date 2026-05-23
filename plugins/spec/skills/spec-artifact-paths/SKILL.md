@@ -9,7 +9,7 @@ user-invocable: false
 
 # Spec Artifact Paths
 
-> Composed by `task-spec-*` workflows in standalone mode. In speckit-installed mode, Spec Kit owns paths and this skill is skipped.
+> Composed by `task-spec-*` workflows in standalone mode. In speckit-installed mode, Spec Kit owns paths and this skill is skipped - the consuming workflow reads the active feature directory from `.specify/feature.json` (a JSON file with `{ "feature_directory": "specs/<NNN>-<short-name>" }` written by `/speckit-specify`); if absent, fall back to scanning `specs/` for the most-recently-modified feature directory or ask the user.
 
 ## Rules
 

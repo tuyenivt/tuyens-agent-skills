@@ -41,7 +41,7 @@ If `spec.md` already exists, ask: **replace**, **amend** (preserve, append revis
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** consolidate context into a brief, instruct the user to run `/speckit.specify <brief>`. Post-process by running `Use skill: nfr-specification` and present any missing NFR coverage as additions for user merge - do not silently edit Spec Kit output. Skip to STEP 7.
+**speckit-installed:** consolidate context into a brief, instruct the user to run `/speckit-specify <brief>` (any `before_specify` / `after_specify` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). After the user runs it, read the resolved feature directory from `.specify/feature.json` (Spec Kit writes it there) and load the produced `spec.md`. Post-process by running `Use skill: nfr-specification` and present any missing NFR coverage as additions for user merge - do not silently edit Spec Kit output. Skip to STEP 7.
 
 **standalone:** continue.
 

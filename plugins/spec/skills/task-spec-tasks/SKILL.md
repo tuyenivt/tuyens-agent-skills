@@ -53,7 +53,7 @@ Map plan to spec for traceability:
 
 ### STEP 6 - Branch on Mode
 
-**speckit-installed:** run STEP 7 first so Spec Kit gets the same complexity coverage. Bundle as a brief, instruct user to run `/speckit.tasks`. Post-process by running STEP 9 traceability check; surface gaps as suggestions, no silent edits. Skip to STEP 11.
+**speckit-installed:** run STEP 7 first so Spec Kit gets the same complexity coverage. Bundle as a brief, instruct user to run `/speckit-tasks` (any `before_tasks` / `after_tasks` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by running STEP 9 traceability check; surface gaps as suggestions, no silent edits. Skip to STEP 11.
 
 **standalone:** continue.
 

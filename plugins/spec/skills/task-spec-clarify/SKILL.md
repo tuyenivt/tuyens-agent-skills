@@ -44,7 +44,7 @@ If `spec.md` does not exist, abort and recommend `task-spec-specify`.
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** pre-process by running `spec-review`, instruct the user to run `/speckit.clarify`, then re-run `spec-review` post-clarify and report residual findings. Skip to STEP 8.
+**speckit-installed:** pre-process by running `spec-review`, instruct the user to run `/speckit-clarify` (any `before_clarify` / `after_clarify` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them), then re-run `spec-review` post-clarify and report residual findings. Skip to STEP 8.
 
 **standalone:** continue.
 

@@ -44,7 +44,7 @@ Path is `.specs/constitution.md` (project root, NOT under a feature slug). If it
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** locate Spec Kit's path (typically `.specify/memory/constitution.md`). Instruct user to run `/speckit.constitution`. Post-process by surfacing rules from CLAUDE.md or standards skills not captured by Spec Kit; present as proposed additions, do not silently merge. Skip to STEP 9.
+**speckit-installed:** locate Spec Kit's path (typically `.specify/memory/constitution.md`). Instruct user to run `/speckit-constitution` (any `before_constitution` / `after_constitution` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by surfacing rules from CLAUDE.md or standards skills not captured by Spec Kit; present as proposed additions, do not silently merge. Skip to STEP 9.
 
 **standalone:** continue.
 

@@ -42,7 +42,7 @@ If `analysis.md` exists, default to **amend** (preserve audit trail); offer repl
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** instruct the user to run `/speckit.analyze`. Post-process by running our reverse-traceability check (STEP 6) over Spec Kit's output and append additional findings in a labeled section. Do not silently edit. Skip to STEP 9.
+**speckit-installed:** instruct the user to run `/speckit-analyze` (any `before_analyze` / `after_analyze` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by running our reverse-traceability check (STEP 6) over Spec Kit's output and append additional findings in a labeled section. Do not silently edit. Skip to STEP 9.
 
 **standalone:** continue.
 

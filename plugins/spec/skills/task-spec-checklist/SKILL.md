@@ -48,7 +48,7 @@ Target file = `<checklists_dir>/<theme>.md`. If it exists, default to **amend** 
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** instruct the user to run `/speckit.checklist`. Post-process by re-running `spec-review` and appending uncovered items in a labeled "Marketplace Additions" section. No silent edits. Skip to STEP 8.
+**speckit-installed:** instruct the user to run `/speckit-checklist` (any `before_checklist` / `after_checklist` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by re-running `spec-review` and appending uncovered items in a labeled "Marketplace Additions" section. No silent edits. Skip to STEP 8.
 
 **standalone:** continue.
 

@@ -53,7 +53,7 @@ Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the 
 
 ### STEP 6 - Branch on Mode
 
-**speckit-installed:** pre-process by surfacing implied decisions as a trade-off brief (for each significant decision: name 2-3 viable options, list the dimensions that differ - cost, latency, complexity, lock-in, reversibility - and state the leaning with rationale; mark Decision/Rejected explicitly) and by running `Use skill: nfr-specification` to verify NFRs are plan-actionable. Bundle as a brief, instruct user to run `/speckit.plan`. Post-process by running the cross-check (STEP 9) and surface gaps as suggestions. Skip to STEP 11.
+**speckit-installed:** pre-process by surfacing implied decisions as a trade-off brief (for each significant decision: name 2-3 viable options, list the dimensions that differ - cost, latency, complexity, lock-in, reversibility - and state the leaning with rationale; mark Decision/Rejected explicitly) and by running `Use skill: nfr-specification` to verify NFRs are plan-actionable. Bundle as a brief, instruct user to run `/speckit-plan` (any `before_plan` / `after_plan` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by running the cross-check (STEP 9) and surface gaps as suggestions. Skip to STEP 11.
 
 **standalone:** continue.
 

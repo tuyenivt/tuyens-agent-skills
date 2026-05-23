@@ -1,6 +1,6 @@
 ---
 name: speckit-detect
-description: Detect GitHub Spec Kit install and choose speckit-aware mode (delegate to /speckit.*) vs standalone mode (drive SDD via .specs/<slug>/).
+description: Detect GitHub Spec Kit install and choose speckit-aware mode (delegate to /speckit-*) vs standalone mode (drive SDD via .specs/<slug>/).
 metadata:
   category: spec
   tags: [spec, sdd, speckit, detection, mode-selection]
@@ -43,11 +43,16 @@ evidence:
   specs_dir_present: true | false
   speckit_cli_on_path: true | false
   constitution_present: true | false   # .specify/memory/constitution.md
+  feature_json_present: true | false   # .specify/feature.json (resolved feature directory)
+  feature_json_path: <string or null>  # value of feature_directory if present (e.g., specs/003-user-auth)
+  extensions_yml_present: true | false # .specify/extensions.yml (hook registration)
 notes: |
   Required when both .specify/ and .specs/ exist, or when configuration is unusual.
 next_action_hint: |
-  speckit-installed -> delegate to /speckit.<command>; pre/post-process with our atomics
-  standalone        -> use spec-artifact-paths to resolve .specs/<slug>/* and write artifacts
+  speckit-installed -> delegate to /speckit-<command>; pre/post-process with our atomics.
+                       Read the active feature directory from .specify/feature.json (if present)
+                       rather than inferring it from the git branch name.
+  standalone        -> use spec-artifact-paths to resolve .specs/<slug>/* and write artifacts.
 ```
 
 ## Edge Cases

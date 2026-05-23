@@ -30,10 +30,25 @@ The other plugins in this marketplace are a menu of independent workflows (`task
 
 Each workflow runs in one of two modes, decided by the `speckit-detect` atomic:
 
-- **Speckit-installed** - when `.specify/` exists in the project (or Spec Kit owns artifacts), our workflow delegates to the corresponding `/speckit.*` command and acts as a thin pre/post-processor that injects this marketplace's atomics (`nfr-specification`, `tradeoff-analysis`, `review-blast-radius`, `behavioral-principles`) into the speckit flow. Spec Kit owns the artifacts.
+- **Speckit-installed** - when `.specify/` exists in the project (or Spec Kit owns artifacts), our workflow delegates to the corresponding `/speckit-*` command and acts as a thin pre/post-processor that injects this marketplace's atomics (`nfr-specification`, `tradeoff-analysis`, `review-blast-radius`, `behavioral-principles`) into the speckit flow. Spec Kit owns the artifacts. Path note: Spec Kit writes per-feature artifacts to `specs/<NNN>-<short-name>/` (no leading dot) and records the active path in `.specify/feature.json`. Per-command `before_<cmd>` / `after_<cmd>` hooks from `.specify/extensions.yml` (git auto-commit, branch creation, etc.) fire as part of the delegated call - workflows surface their existence but do not bypass them.
 - **Standalone** - when Spec Kit is not installed, our workflow drives the pipeline itself using the `.specs/<slug>/` artifact convention above.
 
 Detection is evidence-based (marker files plus optional CLI presence on `$PATH`); see `speckit-detect` for the full decision table.
+
+### Command Mapping (Speckit-Installed Mode)
+
+| Our workflow             | Delegates to upstream   |
+| ------------------------ | ----------------------- |
+| `task-spec-constitution` | `/speckit-constitution` |
+| `task-spec-specify`      | `/speckit-specify`      |
+| `task-spec-clarify`      | `/speckit-clarify`      |
+| `task-spec-plan`         | `/speckit-plan`         |
+| `task-spec-tasks`        | `/speckit-tasks`        |
+| `task-spec-analyze`      | `/speckit-analyze`      |
+| `task-spec-checklist`    | `/speckit-checklist`    |
+| `task-spec-implement`    | `/speckit-implement`    |
+
+`task-spec-orchestrate` and `task-spec-evaluate` have no upstream equivalent and run identically in either mode.
 
 ## Workflow Skills
 
@@ -108,4 +123,4 @@ Typical standalone-mode flow for a new feature:
   -> runs each task via the appropriate stack workflow in --spec mode
 ```
 
-In speckit-installed projects, the same commands delegate to `/speckit.specify`, `/speckit.clarify`, etc., with our atomics injected as pre/post-processors.
+In speckit-installed projects, the same commands delegate to `/speckit-specify`, `/speckit-clarify`, etc., with our atomics injected as pre/post-processors. The active feature directory comes from `.specify/feature.json` (written by `/speckit-specify`), not from the git branch name.
