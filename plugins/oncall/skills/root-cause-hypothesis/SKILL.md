@@ -53,12 +53,12 @@ Correlation without a causal mechanism caps confidence at 50%. A stack trace or 
 
 When the input is only a correlation or sparse signals:
 
-1. Generate hypotheses that propose a causal mechanism explaining the correlation - do not restate it
+1. Propose a causal mechanism, not just the correlation
 2. Consider multiple causal directions: A→B, B→A, or C→both
 3. Cap confidence at 50% for correlation-only hypotheses
 4. List the 2-3 specific evidence items that would raise confidence and where to get them (dashboard, log query, CLI command)
 
-This is more useful than a low-confidence guess - it directs the next step.
+This directs the next investigation step instead of guessing.
 
 ### Micro-example
 
@@ -84,8 +84,6 @@ Remaining 10%: unaccounted - missing slow-query log evidence on replica
 ```
 
 ## Output
-
-Always produce one primary, at least one secondary, plus a remaining bucket.
 
 ```
 Primary Hypothesis ({confidence}% confidence):

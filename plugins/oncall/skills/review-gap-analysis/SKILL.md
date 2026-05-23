@@ -21,11 +21,9 @@ Required: incident summary, root cause. Optional: PR diff, review history, CI/CD
 
 ## Rules
 
-- Focus on process gaps, not individual reviewer blame
-- Every gap names a structural fix - "be more careful" is not a fix
-- Distinguish "missed in review" from "not catchable by review"
+- Distinguish "missed in review" from "not catchable by review" - the second needs a different quality gate
 - Cognitive load (PR size, time spent) is a legitimate contributing factor
-- Prioritize by prevention leverage; identify the single highest-leverage fix
+- Identify the single highest-leverage fix among the prioritized gaps
 
 ## Pattern
 
@@ -90,7 +88,6 @@ Enforcement: CI lint flagging retry config changes without pool config review;
 ```
 Bad: "Gap: Test gap. Fix: add more tests."
 ```
-The fix is not enforceable, names no scenario or gate, and could be written without reading the incident.
 
 ## Output
 
@@ -112,13 +109,9 @@ The fix is not enforceable, names no scenario or gate, and could be written with
 {If any aspect was not catchable from a diff, name the missing quality gate (load test, config validation, canary, chaos test). Omit if all gaps were reviewable.}
 ```
 
-If review process was demonstrably adequate and the failure was not reasonably catchable, state that under Non-Reviewable Factors. Every gap must have a structural fix.
-
 ## Avoid
 
-- Blaming individual reviewers
-- "More careful review" as a fix - not scalable, not enforceable
-- Treating review as the only quality gate (consider CI, testing, monitoring, canary, load testing)
+- Blame ("be more careful", "the reviewer should have caught it") - not a structural fix
+- Treating review as the only quality gate when CI, integration tests, monitoring, canary, or load tests would catch the class
 - Listing gaps without causal connection to the specific incident
-- Flat gap lists without priority ranking
 - Ignoring non-reviewable failure modes (config drift, load-dependent, emergent, overruled feedback)

@@ -20,10 +20,9 @@ user-invocable: false
 
 ## Rules
 
-- Isolate the time window before reading log volume
-- Lead with correlation ID tracing when available - fastest path to truth
+- Isolate the time window before reading log volume; alert fire time is not the failure start
 - Quantify - "many errors" is useless; "47 timeouts in 3 min, all on /api/orders, all EU users" is signal
-- When multiple error classes appear together, establish first-appearance ordering - one is almost always causing the other
+- When multiple error classes interleave, establish first-appearance ordering - one is almost always causing the other
 - State what logs confirm, contradict, and cannot resolve
 
 ## Pattern
@@ -44,25 +43,17 @@ If absent: flag as observability gap.
 
 ### Step 3 - Frequency and Distribution
 
-For errors in the window, characterize:
+For errors in the window, characterize rate (per minute, constant/spiking/tapering), affected users (one / segment / all - extract distinct IDs and cross-reference attributes like region, plan, cohort), affected endpoints, error classes (single or mixed), and service distribution.
 
-| Dimension            | What to capture                                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Rate                 | Errors per minute - constant, spiking, tapering                                                            |
-| Affected users       | One user, a segment (extract distinct user IDs, cross-reference with attributes - region, plan, cohort), or all |
-| Affected endpoints   | One route or many                                                                                          |
-| Error classes        | Single class or mixed                                                                                      |
-| Service distribution | One service or many                                                                                        |
-| Timing correlation   | Coincides with deploy, traffic spike, cron job?                                                            |
+Report as a single sentence: *"47 timeout errors in 3 min, all on `/api/orders`, all EU users, starting 14:23 UTC."*
 
-Report distribution as a single sentence: e.g., *"47 timeout errors in 3 min, all on `/api/orders`, all EU users, starting 14:23 UTC immediately after deploy v2.4.1."*
-
-### Step 4 - Multi-Error Sequencing
+### Step 4 - Multi-Error Sequencing and Trigger
 
 When multiple error classes interleave, determine causation direction:
 
 1. **First-appearance ordering**: which class logged first? Earliest type is the likely upstream cause
 2. **Saturation signals**: if an error is a resource-exhaustion type (pool exhausted, queue full, OOM, FD limit, thread pool rejected), check the resource metric leading up - gradual climb confirms exhaustion, sudden jump suggests a burst
+3. **Timing correlation**: does onset coincide with a deploy, traffic spike, cron job, or external dependency event?
 
 Common upstream → downstream chains:
 
@@ -76,21 +67,7 @@ State the chain as: *"{upstream} causes {downstream} because {mechanism}, confir
 
 ### Step 5 - Healthy vs Unhealthy Comparison
 
-Compare windows on:
-
-- **Volume change**: log volume higher or lower
-- **New error classes**: types appearing in failing window absent in healthy
-- **Missing logs**: expected entries absent (e.g., "payment processed" gone = payments not completing)
-- **Latency signals**: duration / elapsed fields shifted
-
-### Step 6 - Key Evidence
-
-Produce a focused evidence set:
-
-- Earliest anomalous log: exact timestamp + message
-- Highest-frequency error: class, count, distribution
-- Likely trigger: what changed just before onset?
-- Confirmed scope: users, endpoints, services affected by log evidence
+Compare windows on volume change, new error classes (absent in healthy), missing expected entries (e.g., "payment processed" gone = payments not completing), and latency signals (duration/elapsed fields shifted).
 
 ## Output
 
@@ -114,12 +91,11 @@ Comparison Window: {healthy period}
 - Error rate: {healthy} → {failing} ({delta})
 - New classes: {list}
 - Missing logs: {list, or "None notable"}
-- {Other notable shifts}
+- Latency shift: {p50/p99 baseline → failing, or "None notable"}
 
 ### Key Evidence
-- Earliest anomaly: {timestamp} - {message}
-- Primary signal: {most diagnostic finding}
-- Likely trigger: {what changed}
+- Earliest anomaly: {timestamp + message}
+- Likely trigger: {deploy / spike / cron / dep event, with timestamp}
 - Confirmed scope: {affected users/endpoints/services}
 
 ### Log Gaps
@@ -128,9 +104,5 @@ Comparison Window: {healthy period}
 
 ## Avoid
 
-- Reading raw log volume without time-window isolation
-- Treating alert firing time as failure start (alert lag is common)
-- Reporting individual lines without frequency context
 - Skipping the healthy comparison - patterns only have meaning relative to baseline
-- Treating interleaved error types as independent - first-appearance ordering usually exposes causation
-- Concluding root cause from logs alone without linking to code or config evidence
+- Concluding root cause from logs alone without linking to code, config, or deploy evidence

@@ -26,11 +26,10 @@ Required: report or symptom. Optional: affected entity (user/order/request ID), 
 
 ## Rules
 
-- Classify the request type before investigating - it determines what evidence to look for
+- Classify the request type before gathering evidence - it determines what to look at
 - Verify expected behavior in code before concluding "bug"
-- Use log and data evidence; do not speculate
-- Investigation depth proportional to impact - a single-user issue does not need system-wide analysis
-- Always produce a clear finding (Bug | Working as designed | Config | Data | Insufficient evidence)
+- Scale investigation depth to blast radius (Step 3), not to ticket volume
+- Always produce a clear finding (Bug | Working as designed | Config | Data | Permission | Insufficient evidence)
 
 ## Workflow
 
@@ -64,16 +63,16 @@ Before concluding "bug", read the code and confirm what the system is *designed*
 
 ### Step 5 - Collect Evidence
 
-| Type                    | Primary evidence                                                                                  | Notes                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Data issue**          | DB state for the entity; API/UI response vs DB; write-path trace; visibility filters             | Check status, date-range (timezone: e.g., "yesterday" in user TZ ≠ UTC date), soft-delete (`deleted_at IS NULL`), pagination limits. Check caching if DB is correct but API is stale. Check recent migrations/schema changes. |
-| **Access / permission** | Role + permission assignments; feature flag for user/cohort; auth token validity and scope       |                                                                                                |
-| **Operational**         | Execution logs for job/scheduler/worker; queue depth; consumer health                             | Verify scheduler ran at all                                                                    |
-| **Unexpected behavior** | Trace specific request via `log-analysis`; identify executed branch; config/flags at the time    |                                                                                                |
-| **Performance**         | Slow query logs; external dependency latency; tie slowness to data shape or traffic pattern via `log-analysis` |                                                                                |
-| **Alert**               | Metric vs threshold over 24h; corroborate with `log-analysis`; check for historical pattern (scheduled load, known flap) |                                                                |
+| Type                    | Primary evidence                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Data issue**          | DB state for the entity; API/UI response vs DB; write-path trace; visibility filters; recent migrations                  |
+| **Access / permission** | Role + permission assignments; feature flag for user/cohort; auth token validity and scope                               |
+| **Operational**         | Execution logs for job/scheduler/worker; queue depth; consumer health; verify the scheduler ran at all                   |
+| **Unexpected behavior** | Trace specific request via `log-analysis`; identify executed branch; config/flags at the time                            |
+| **Performance**         | Slow query logs; external dependency latency; tie slowness to data shape or traffic pattern via `log-analysis`           |
+| **Alert**               | Metric vs threshold over 24h; corroborate with `log-analysis`; check for historical pattern (scheduled load, known flap) |
 
-**Layer isolation (especially for data issues):** if the user complains they cannot see X, verify what the API/UI returned, what the DB contains, and where they diverge - the bug may be in storage, query, cache, or render.
+**Layer isolation (data issues):** verify what the DB contains, what the API/UI returned, and where they diverge - the bug may be in storage, query, cache, or render. Watch for non-atomic writes across services (e.g., webhook side-effect succeeded but state write failed), timezone mismatches in date filters, and soft-delete or pagination scoping silently hiding rows.
 
 ### Step 6 - Finding and Action
 
@@ -93,14 +92,14 @@ Before concluding "bug", read the code and confirm what the system is *designed*
 ## Investigation: {one-line description}
 
 Request Type: {Data | Access | Operational | Unexpected behavior | Performance | Alert}
-Affected Scope: {Single user | N users | Specific feature | All users}
+Affected Scope: {Single user | N users | Tenant/cohort | Specific feature | All users}
 Blast Radius Probe: {Confirmed isolated | Potentially affects N others - method used}
 Time Window: {when}
 
 ### Expected vs Actual
 - Expected: {what should happen}
 - Actual: {what is happening}
-- Verdict: {Bug | Working as designed | Config | Data | Insufficient evidence}
+- Verdict: {Bug | Working as designed | Config | Data | Permission | Insufficient evidence}
 
 ### Evidence
 - {Finding 1 with source - log line, query result, code path, config value}
@@ -129,8 +128,6 @@ Time Window: {when}
 
 ## Avoid
 
-- Treating this as an incident (no blast radius / containment urgency)
-- Concluding "bug" before reading the code
 - Fishing through logs without a hypothesis - state what signal you needed if absent
-- Scope creep - investigate the specific case first, broaden only if evidence points systemic
 - Routing to `task-code-debug` without a stack trace or reproduction path
+- Skipping layer isolation on data issues - "the value is wrong" without naming which layer is incorrect

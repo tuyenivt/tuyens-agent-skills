@@ -51,25 +51,25 @@ Pick from this ladder by speed and safety. Prefer fast reversible actions; avoid
 4. **Circuit breaker** - stop cascading; critical when downstream latency exhausts upstream resources
 5. **Traffic isolation / rate limit** - shed or route to degraded path
 6. **Scale up** - only when resource exhaustion is confirmed and recovery alone is insufficient
-7. **Patch and redeploy** - last resort, only if root cause is clear and the fix is small
+7. **Hotfix** - only when rollback and flag-disable are both unsafe, root cause is clear, and the diff is single-line
 8. **Data repair** - if partial writes occurred
 
 Use skill: `ops-resiliency` for circuit breaker / retry patterns.
 
 ### Step 3 - Classify and Assess Blast Radius
 
-Use skill: `ops-failure-classification`.
-Use skill: `review-blast-radius` for code/data/user dimensions.
-Use skill: `failure-propagation-analysis` to trace cascading paths.
+Use skill: `ops-failure-classification` to name the primary failure class.
+Use skill: `review-blast-radius` to score code/data/user dimensions.
+Use skill: `failure-propagation-analysis` only if cascading is observed across services.
 
-Also assess: shared resource contention (DB, cache, queue, pools), API contract impact, data corruption risk, cross-service propagation.
+Also assess: shared resource contention (DB, cache, queue, pools), API contract impact, data corruption risk.
 
 Apply domain skills only if the classification matches:
 
 - Concurrency: `architecture-concurrency`
 - Data consistency: `architecture-data-consistency`
-- DB performance / N+1: `backend-db-indexing`
-- External dependency / resource exhaustion: `ops-resiliency`
+- Slow query, missing index, N+1: `backend-db-indexing`
+- External dependency, connection pool, or other resource exhaustion: `ops-resiliency`
 
 ### Step 4 - Generate Hypotheses
 
@@ -83,11 +83,11 @@ Each hypothesis must include: suspect component and mechanism, contributing fact
 
 Use skill: `ops-observability`. For each gap: missing signal → diagnostic question it could not answer → concrete addition.
 
-### Step 6 - Systemic Prevention
+### Step 6 - Immediate Prevention Notes
 
-Use skill: `ops-engineering-governance` for process recommendations and `architecture-guardrail` for boundary weaknesses exposed by the incident.
+While the incident is active, capture only the 1-3 highest-leverage prevention items that emerged during diagnosis (architecture guardrail, monitoring add, deploy safeguard). Each: addresses the failure class, assigns priority, states blast radius reduction.
 
-Each recommendation: addresses the failure class (not just this instance), assigns priority, states blast radius reduction. Cover architecture guardrails, monitoring additions, testing improvements, review/runbook updates, deployment safety.
+Full systemic prevention belongs in `task-postmortem` after resolution. Do not run a deep governance review under incident pressure.
 
 ## Output
 
@@ -109,30 +109,19 @@ Affected Services:
 
 ## Root Cause Hypothesis
 
-Primary Suspect:
-Mechanism:
-Triggering Change:
-Contributing Factors:
-Failure Propagation Path:
-Timeline Interpretation: {if symptom lagged trigger, why}
-Confidence: X%
-
-Secondary Suspect:
-Mechanism:
-Confidence: X%
-
-Verification:
-- {one step to confirm or reject primary}
+{From root-cause-hypothesis: primary + secondary blocks with mechanism, evidence, contributing factors, triggering change, timeline interpretation, confidence, verification}
 
 ## Observability Gaps
 
 | Missing Signal | Diagnosis Impact | Recommended Addition |
 | -------------- | ---------------- | -------------------- |
 
-## Long-Term Preventive Actions
+## Immediate Prevention Notes
 
 | Action | Failure Class Prevented | Priority | Blast Radius Reduction |
 | ------ | ----------------------- | -------- | ---------------------- |
+
+(1-3 highest-leverage items only; full prevention belongs in postmortem.)
 
 ## Key Takeaways
 
@@ -147,13 +136,11 @@ Verification:
 - [ ] At least one containment action with ETA appears before diagnosis
 - [ ] Every hypothesis cites evidence and has a verification step
 - [ ] Triggering change identified if evidence exists; propagation path traced
-- [ ] Each prevention action has a priority
-- [ ] Output is actionable without clarification
+- [ ] Prevention notes limited to 1-3 highest-leverage items; deep prevention deferred to postmortem
 
 ## Avoid
 
 - Treating symptoms as root causes
-- Generic debugging ("check the logs", "restart the service")
 - Hypotheses without evidence or verification
-- Prevention that fixes only this instance
+- Running a full governance review while the incident is active
 - Verbose explanations under incident pressure

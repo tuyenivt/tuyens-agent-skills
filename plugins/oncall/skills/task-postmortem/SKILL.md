@@ -22,11 +22,11 @@ Convert a resolved incident into systemic prevention. Run AFTER root cause is kn
 
 ## Depth
 
-| Depth      | When                                                | Sections produced                            |
-| ---------- | --------------------------------------------------- | -------------------------------------------- |
-| `quick`    | SEV3 / low-impact - brief written record            | Overview + 3 action items                    |
-| `standard` | Default - SEV1/SEV2 needing team learning           | All 8 sections                               |
-| `deep`     | Major or recurring failure class, cross-team impact | All 8 sections + Pattern Analysis            |
+| Depth      | When                                                | Sections produced                                              |
+| ---------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| `quick`    | SEV3 / low-impact - brief written record            | Overview, Classification, Guardrails (3 rows max)              |
+| `standard` | Default - SEV1/SEV2 needing team learning           | All sections                                                   |
+| `deep`     | Major or recurring failure class, cross-team impact | All sections + Pattern Analysis                                |
 
 ## Inputs
 
@@ -59,20 +59,24 @@ Apply domain skills based on classification:
 
 - Concurrency: `architecture-concurrency`
 - Data consistency: `architecture-data-consistency`
-- External dependency / resource exhaustion: `ops-resiliency`
-- DB performance: `backend-db-indexing`
+- External dependency, connection pool, or other resource exhaustion: `ops-resiliency`
+- Slow query, missing index, N+1: `backend-db-indexing`
 
-### Step 3 - Systemic Weaknesses
+### Step 3 - Systemic Weaknesses and Architectural Fix
 
-Identify structural conditions that allowed this failure class. Evaluate:
+For each structural condition, name both the weakness and the architectural change that eliminates it:
 
-- Boundary erosion / coupling amplification
-- Shared mutable state, shared resource contention (pools, threads, memory shared across batch and online workloads)
-- Hidden assumptions (e.g., "transactions complete in <1s", "batch runs off-peak")
-- Blast radius amplification - what made impact worse than necessary?
+- Boundary erosion / coupling amplification → boundary enforcement
+- Shared mutable state, shared resource contention (pools, threads, memory shared across batch and online workloads) → per-workload isolation, bulkheads
+- Hidden assumptions ("transactions complete in <1s", "batch runs off-peak") → explicit timeouts, statement budgets
+- Blast radius amplification - what made impact worse than necessary? → circuit breakers, fail-fast paths
 
 Use skill: `review-blast-radius` for propagation scope.
 Use skill: `architecture-guardrail` for boundary violations.
+Use skill: `ops-resiliency` for fault tolerance and resource isolation.
+Use skill: `backend-idempotency` only if duplicate writes or retry-safety was a contributing factor.
+
+Pool/timeout sizing must include concrete numbers (size N, timeout Xs), not directional advice.
 
 ### Step 4 - Review and Process Gaps
 
@@ -82,19 +86,13 @@ Use skill: `review-gap-analysis`.
 
 Use skill: `ops-observability`. For each gap: missing signal → diagnostic question it could not answer → concrete addition (with threshold/trigger).
 
-### Step 6 - Architecture Reinforcement
-
-Use skill: `ops-resiliency` for fault tolerance, `architecture-guardrail` for boundaries, `backend-idempotency` for retry safety.
-
-Evaluate: pool/queue isolation (per workload), explicit statement and transaction timeouts, bulkheads, circuit breakers, idempotent retries, decoupling, shared-state isolation.
-
-### Step 7 - Governance and Process
+### Step 6 - Governance and Process
 
 Use skill: `ops-engineering-governance`.
 
-Cover: review checklist updates, risk-based reviewer requirements, design-doc triggers, ADR updates, chaos experiments, test strategy, PR-size limits, deployment safeguards (canary, flags, progressive rollout).
+Recommend only the governance changes that close a gap surfaced in Steps 3-5. Candidates: review checklist updates, risk-based reviewer requirements, design-doc triggers, ADR updates, chaos experiments, test strategy, PR-size limits, deployment safeguards (canary, flags, progressive rollout). Omit categories with no specific change.
 
-### Step 8 - Guardrails and Persistence (highest leverage)
+### Step 7 - Guardrails and Persistence (highest leverage)
 
 For each new guardrail, name a concrete persistence target so the lesson outlives this document:
 
@@ -129,9 +127,10 @@ Chain (if compound): {root → amplifier → impact}
 System Layer:
 Contributing Factors:
 
-## Systemic Weaknesses
+## Systemic Weaknesses and Architectural Fix
 
-- {Boundary/coupling/shared-resource/hidden-assumption finding} (one bullet each that applies; omit those that do not)
+| Weakness | Structural Change | Failure Class Prevented | Priority |
+| -------- | ----------------- | ----------------------- | -------- |
 
 ## Review and Process Gaps
 
@@ -142,18 +141,9 @@ Contributing Factors:
 | Missing Signal | Detection Impact | Recommended Addition |
 | -------------- | ---------------- | -------------------- |
 
-## Architecture Reinforcement
-
-| Structural Change | Failure Class Prevented | Priority |
-| ----------------- | ----------------------- | -------- |
-
 ## Governance Improvements
 
-- Review process change:
-- Design-doc trigger:
-- ADR update:
-- Chaos scenario:
-- Deployment safeguard:
+- {only the governance changes that close a gap from Steps 3-5; omit empty categories}
 
 ## Guardrails and Persistence
 
@@ -179,17 +169,13 @@ Contributing Factors:
 - [ ] Failure classified by type and layer; compound chain identified if applicable
 - [ ] Triggering change identified with timestamp; deploy-to-symptom lag explained if relevant
 - [ ] MTTR broken into detection / containment / resolution
-- [ ] At least one enforceable guardrail produced (lint, checklist, CI gate, monitor)
-- [ ] Every guardrail row names a concrete persistence target and an exact patch
-- [ ] Each guardrail names which MTTR number it reduces and roughly by how much
-- [ ] Architecture reinforcement includes resource isolation when shared resources were involved
-- [ ] No blame, no narrative, no raw log reproduction
+- [ ] Each systemic weakness paired with a concrete structural change (with sizing values when pools/timeouts apply)
+- [ ] At least one enforceable guardrail produced; every guardrail names a persistence target, exact patch, and which MTTR number it reduces
 
 ## Avoid
 
-- Generic advice ("improve monitoring", "add more tests") - every recommendation must address a failure class
-- Guardrails that live only inside this document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson dies
+- Generic advice ("improve monitoring", "add more tests") that does not name a failure class
+- Guardrails confined to this document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson dies
 - Reporting a single "duration" instead of detection/containment/resolution split
-- Recommending pool/timeout changes without concrete sizing values
 - Ignoring the compound chain: classifying only the immediate failure, not the amplifier
-- Architectural rewrites when targeted fixes suffice
+- Blame, narrative, raw log reproduction, or architectural rewrites when targeted fixes suffice

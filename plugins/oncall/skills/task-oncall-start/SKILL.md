@@ -21,9 +21,9 @@ Two modes:
 
 - "starting my shift", "taking over", "what should I check?" → **Shift-Start**
 - A specific alert, error, ticket, or symptom is provided → **Triage**
+- User already knows it is an active incident → route directly to `incident-root-cause`
+- User already knows it is non-incident investigation → route directly to `oncall-investigate`
 - Ambiguous → ask: "Are you starting your shift, or do you have a specific alert to triage?"
-
-If the user already knows it is an incident, route directly to `incident-root-cause`. If they already know it is non-incident investigation, route to `oncall-investigate`.
 
 ---
 
@@ -102,22 +102,20 @@ Tiebreaker: if a symptom matches both **Performance** and **Active incident**, c
 
 ### Step 3 - Severity
 
-| Severity     | Criteria                                                                                              |
-| ------------ | ----------------------------------------------------------------------------------------------------- |
-| **Critical** | Service fully down, data loss, SLA breached, payment/auth broken                                      |
-| **High**     | Partial outage, >10% of users on critical path, or critical-path latency >2x baseline                 |
-| **Medium**   | Feature broken for a subset, workaround exists, no data loss                                          |
-| **Low**      | Single user, cosmetic, non-critical feature                                                           |
+| Severity     | Criteria                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Service fully down, data loss in progress, SLA already breached, or payment/auth fully broken                     |
+| **High**     | Partial outage on a critical path (payments, auth, checkout), >10% affected, or critical-path latency >2x baseline |
+| **Medium**   | Feature broken for a subset, workaround exists, no data loss                                                      |
+| **Low**      | Single user, cosmetic, non-critical feature                                                                       |
 
 For Critical / High: route immediately. Skip further classification.
 
 ### Step 4 - Scope Check
 
-- Ongoing? → urgency up
-- Data at risk? → Critical regardless of other signals
-- Happened before? → check runbooks and prior postmortems
-- External dependency degraded? → check status pages before assuming internal cause
-- Recent deploy or config change? → rollback may be the fastest resolution
+- Data at risk or ongoing impact → raise severity
+- Recent deploy or config change → rollback is often the fastest resolution
+- Happened before → check runbooks and prior postmortems
 
 ### Step 5 - Route and Package Context
 
@@ -140,7 +138,6 @@ Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-rev
 - Time window: {when did it start?}
 - Affected scope: {who/what is impacted}
 - Recent change: {deploy/config/flag, or "None identified"}
-- Runbook: {Yes - link | No | Unknown}
 
 ### Immediate Action (Critical/High only)
 - [ ] {first thing to do now}
@@ -149,14 +146,11 @@ Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-rev
 ## Self-Check
 
 - [ ] Mode detected (shift-start vs triage); stack detection invoked
-- [ ] Triage: work type and severity assigned; scope check completed; context package ready
+- [ ] Triage: work type and severity assigned; scope check completed; context package names symptom, time window, recent change
 - [ ] Shift-start: handoff reviewed (or absence flagged); health and risks identified
 - [ ] Critical/High routed immediately, no further classification time spent
-- [ ] Output is readable in under 30 seconds
 
 ## Avoid
 
-- Treating every alert as an incident; most oncall work is investigation
 - Routing to `task-code-debug` without a stack trace or reproducible error
 - Skipping the recent-change check - it is the fastest path to resolution for many alerts
-- Assuming "no alerts = healthy" at shift start; check dashboards
