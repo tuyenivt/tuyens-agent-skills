@@ -64,7 +64,7 @@ Read the actual file(s) named in the Inputs table before classifying smells. A r
 
 If the user named only the goal without a target file / module, ask for the target before proceeding. Do not guess.
 
-**Sibling-smell disposition.** Real targets live inside fat modules. If the file containing the target also contains other smells (e.g., the user names `OrderListComponent` but the same file has `bypassSecurityTrustHtml` in `OrderActions` and inline IDOR in `OrderActionsService`), do **not** action them in this plan and do **not** ignore them silently. List under a `Sibling Smells (Out of Scope)` heading, briefly state why each is deferred (separate target, separate severity, separate skill - e.g., security findings belong in `task-angular-review-security`), and recommend follow-up invocations.
+**Sibling-smell disposition.** If the target file contains smells outside the named goal (e.g., `bypassSecurityTrustHtml` in a co-located class), do not action them and do not ignore them silently. List under `Sibling Smells (Out of Scope)` with a one-phrase deferral rationale and a recommended follow-up skill (security findings → `task-angular-review-security`, etc.).
 
 ### Step 3 - Coverage Gate (mandatory)
 
@@ -76,15 +76,11 @@ Refactoring without test coverage is a rewrite with extra steps. Identify the te
 | `Thin`       | Happy path **plus** exactly 1 boundary outcome                                                                                            | Proceed, but the plan **must** include a non-optional `Step 0 - Coverage prerequisite` adding the missing boundaries before any refactor step |
 | `Inadequate` | No tests, or **happy-path-only** (success case alone)                                                                                     | **Refuse to produce Steps 1+.** The only output is the Coverage Gate verdict and a recommendation to run `task-angular-test` first            |
 
-**Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves error handling, empty states, or accessibility - you would be flying blind.
+**Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot tell you whether the refactor preserves error handling, empty states, or accessibility.
 
-**Internal-coupled tests count negatively.** Inspect each test's assertions for `fixture.componentInstance.<internal>`, render-count spies, or signal-name reads that the planned refactor will rename or remove (e.g., a test asserts on `filteredCount$` and Step 6 deletes that observable in favor of a `computed` signal). When this is true, the test will fail on the refactor for an **implementation reason** rather than catch a **behavior regression** - the inverse of what the gate is for. Surface this in the Coverage Gate as `internal-coupled: <test:line> asserts <internal-name> which Step <N> will remove` and require the test to be rewritten as DOM/event assertions in `Step 0 - Coverage prerequisite` before the renaming/extraction step runs. This rule applies even when overall coverage is `Adequate` - one tightly-coupled test against a soon-to-be-deleted internal still blocks the affected step.
+**Internal-coupled tests count negatively.** If a test asserts on `fixture.componentInstance.<internal>`, render-count spies, or signal/observable names the refactor will rename or remove (e.g., asserts on `filteredCount$` while Step 6 replaces it with a `computed`), it fails for an implementation reason, not a behavior regression. Surface as `internal-coupled: <test:line> asserts <internal> removed by Step <N>` and require a DOM/event rewrite in `Step 0 - Coverage prerequisite` before that step runs. Applies even when overall coverage is `Adequate`.
 
-**Output of this step:** explicit coverage status using one of the three labels. Do not proceed past Step 4 if status is `Inadequate`.
-
-**Preview rules when Inadequate.** Step 4's smell catalog still runs to populate the Smells Identified and Sibling Smells (Out of Scope) preview - that is what the catalog is for. The refusal is on producing Steps 1+, not on diagnostic output. The preview helps the author scope the follow-up `task-angular-test` invocation.
-
-**Bug-fix smuggled into a refactor request.** If the user's prose mixes "refactor X" with "and also fix that the filter does not persist on refresh," stop and surface the conflict: refactoring assumes behavior preservation, so a behavior change must either (a) be a separate PR ahead of the refactor, or (b) be explicitly labeled `coupled-fix` in Step 6 with its own test gate. Do not silently fold it into an extraction step.
+**Inadequate preview.** Refusal is on Steps 1+ only - Step 4 catalog still runs to populate `Smells Identified` + `Sibling Smells (Out of Scope)` as a preview that scopes the follow-up `task-angular-test` invocation.
 
 ### Step 4 - Identify Angular Smells
 
@@ -209,7 +205,7 @@ Each refactoring step must be:
 
 **Recipe interleaving.** When more than one Common Recipe applies to a single target, do **not** concatenate the recipes - that produces a 25-step plan. Identify the **primary** refactor (usually the one named in the user's goal), use that recipe as the spine, and fold supporting recipes in as additive sub-steps where dependencies require it. State the primary recipe explicitly via the `Primary recipe:` field. If the spine grows past ~8 steps, split into two plans / two PRs.
 
-**Coupled-fix language.** Sometimes a refactor genuinely depends on a behavior change (e.g., extracting an HTTP service method that derives `ownerId` from the auth context _requires_ adding the auth context lookup, which changes the error mode for unauthenticated callers). Label such steps `coupled-fix` with their own test gate and rationale. This is **not** a bundling violation - it is an explicit prerequisite. Do not silently fold it into an extraction step.
+**Coupled-fix language.** When a refactor genuinely depends on a behavior change (e.g., extracting an HTTP method that derives `ownerId` from auth context requires adding that lookup, changing the unauthenticated-error mode), label the step `coupled-fix` with its own test gate and rationale. Bug-fix smuggled into the user's prose ("refactor X and also fix Y") splits the same way: either a separate PR ahead of the refactor, or an explicit `coupled-fix` step. Never silently fold into an extraction.
 
 **Change-detection-boundary watch.** When converting `BehaviorSubject` + `async` pipe to `signal()` + signal read, OnPush components dirty-check differently. Audit consumers reading the value across change-detection boundaries.
 
@@ -354,7 +350,7 @@ Before finalizing the plan, check:
 [If Thin: list the missing boundary tests; Step 0 below covers them.]
 [If Inadequate: state what coverage must exist before refactor begins, and recommend running `task-angular-test` first. **Stop the workflow here** - omit Blast Radius, Step Sequence, and Verification. You may still produce **Smells Identified** and **Sibling Smells (Out of Scope)** as a *preview*; mark them clearly as preview-only.]
 
-**Coverage prerequisite list shape (when status is `Thin` or `Inadequate`).** List required tests as one row per public entry point with this shape: `entry-point | outcome | recommended layer`. Outcomes cover at minimum: validation failure / invalid input, error state, empty state, loading state, accessibility (when interactive). Layer options: component test (TestBed/ATL), service test (`HttpTestingController`), guard test (`runInInjectionContext`), interceptor test (`provideHttpClient(withInterceptors([...]))`), Playwright E2E. Example: `OrderListComponent | empty-state visible when 0 orders | component test`.
+**Coverage prerequisite list shape (Thin or Inadequate).** One row per public entry point: `entry-point | outcome | layer`. Outcomes: validation failure, error, empty, loading, accessibility (when interactive). Layers: component (TestBed/ATL), service (`HttpTestingController`), guard (`runInInjectionContext`), interceptor (`provideHttpClient(withInterceptors([...]))`), Playwright E2E. Example: `OrderListComponent | empty-state visible when 0 orders | component`.
 
 ## Smells Identified
 
@@ -425,19 +421,15 @@ _Omit this section if the target file has no other smells._
 - [ ] Stack confirmed as Angular (or accepted from parent dispatcher); change-detection mode and SSR status recorded (Step 1)
 - [ ] Target file(s) and matching tests read directly before smell classification - no smells inferred from prose alone (Step 2)
 - [ ] Sibling smells in the target file listed under `Sibling Smells (Out of Scope)` with deferral rationale, or section omitted because none exist (Step 2)
-- [ ] Coverage gate evaluated using the sharp boundaries (`Adequate` / `Thin` / `Inadequate`); plan refused if `Inadequate`; happy-path-only treated as `Inadequate` not `Thin` (Step 3)
-- [ ] Internal-coupled tests audited: each test's assertions checked against the internals the refactor will remove or rename; matches surfaced as `internal-coupled` and pinned to a `Step 0` rewrite (Step 3)
-- [ ] When refusal triggered (Inadequate), Step 4 catalog still ran to produce the Smells preview; not skipped (Step 3)
-- [ ] Bug-fix smuggled into a refactor request was surfaced and split into a separate PR or labeled `coupled-fix` - never silently folded (Step 3)
+- [ ] Coverage gate evaluated with sharp boundaries (`Adequate` / `Thin` / `Inadequate`); happy-path-only treated as `Inadequate`; if `Inadequate`, Steps 1+ refused but Step 4 catalog still ran to produce the preview (Step 3)
+- [ ] Internal-coupled tests audited: assertions checked against internals the refactor will rename/remove; matches surfaced as `internal-coupled` and pinned to a `Step 0` rewrite (Step 3)
 - [ ] Angular-specific smells identified using Step 4 catalog (component, signal/RxJS, service/DI, routing, template, state, accessibility, test) (Step 4)
 - [ ] Cross-module risk (blast radius) stated before proposing steps (Step 5)
-- [ ] `Primary recipe:` named in the output; supporting recipes folded as sub-steps, not concatenated (Step 6)
+- [ ] `Primary recipe:` named; supporting recipes folded as sub-steps, not concatenated; plan length ≤ ~8 steps or split into multiple PRs (Step 6)
 - [ ] Step 0 included if Coverage Gate is `Thin`; omitted if `Adequate` (Output Format)
 - [ ] CD stance and subscription stance stated per step (no silent conversions) (Step 6)
-- [ ] `Step kind:` set to `coupled-fix` for any step that intentionally changes behavior because the refactor depends on it; rationale stated; otherwise `refactor` (Step 6)
-- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, conversions, input removals) (Step 6)
-- [ ] Plan length ≤ ~8 steps, or split into multiple PRs explicitly (Step 6)
-- [ ] No step bundles unrelated cleanup (Step 6)
+- [ ] `Step kind:` set to `coupled-fix` only for steps whose refactor structurally depends on a behavior change; rationale stated; bug-fix prose surfaced, not silently folded (Step 6)
+- [ ] Steps ordered low-risk first (additions, extractions) before high-risk (deletions, conversions, input removals); no bundled unrelated cleanup (Step 6)
 - [ ] Goal explicitly mapped to the end state of the sequence (Step 7)
 
 **Execution-time gates (commitments the plan makes for the implementer):**
@@ -448,16 +440,15 @@ _Omit this section if the target file has no other smells._
 
 ## Avoid
 
-- Proposing a refactor without a test-coverage gate - that's a rewrite, not a refactor
-- Bundling behavior changes with refactoring steps - keep them separate, label clearly
-- Making "while we're here" unrelated cleanups - they belong in their own PR
-- Renaming during a refactor (rename PRs are separate; mixing the two doubles the review surface)
-- Removing a `.subscribe()` without verifying the surrounding logic preserves the original observable behavior - some subscriptions compensate for genuinely external state and removal regresses
-- Migrating `BehaviorSubject` to `signal` without auditing every consumer - external subscribers may need `toObservable(signal)` interop
-- Migrating Default CD to OnPush without first auditing state mutation paths - imperative `this.x = ...` mutations stop reflecting in template
-- Converting class-based guards / interceptors to functional without rewriting their tests for `runInInjectionContext` - tests fail
-- Migrating to standalone without auditing every NgModule consumer - imports cascade
-- Replacing `@for ... track $index` with `track item.id` without verifying every item has a stable id - reactivity breaks silently
-- Replacing input drilling with NgRx as a default - co-located state is often the right answer; service for cross-cutting state, NgRx for app-shared
-- Refactoring a design-system component without a backward-compatibility plan - that is a public API
-- Replacing `getByTestId` queries with `getByRole` queries during a refactor - that is a test improvement, deserves its own PR
+- Proposing a refactor without a coverage gate - that's a rewrite
+- Bundling behavior changes or "while we're here" cleanups into refactoring steps - separate PRs or `coupled-fix` labels
+- Renaming during a refactor - rename PRs stand alone (doubles review surface otherwise)
+- Removing `.subscribe()` without verifying the original observable behavior is preserved
+- Migrating `BehaviorSubject` to `signal` without auditing external subscribers - they may need `toObservable(signal)`
+- Migrating Default CD to OnPush without first auditing imperative `this.x = ...` mutation paths
+- Converting class-based guards / interceptors to functional without rewriting tests for `runInInjectionContext`
+- Migrating to standalone without auditing every NgModule consumer
+- `track $index` → `track item.id` without verifying every item has a stable id
+- Defaulting to NgRx for input drilling - co-located state or a service is often correct
+- Refactoring a design-system component without a backward-compatibility plan
+- Swapping `getByTestId` for `getByRole` during a refactor - that's a test improvement PR

@@ -1,6 +1,6 @@
 ---
 name: angular-routing-patterns
-description: Angular routing: lazy loading, functional route guards, resolvers, nested routes, route animations, SSR with Angular Universal.
+description: Angular routing - lazy loading, functional guards/resolvers, nested routes, signal-based params, route animations, SSR safety.
 metadata:
   category: frontend
   tags: [angular, routing, lazy-loading, guards, resolvers, nested-routes, ssr]
@@ -13,348 +13,138 @@ user-invocable: false
 
 ## When to Use
 
-- Designing route structure for a new feature or application
-- Adding lazy-loaded routes for code splitting
-- Implementing route guards for authentication and authorization
-- Adding route resolvers for pre-fetching data
-- Reviewing routing for correctness and performance
+- Designing or reviewing route structure for a feature or app
+- Adding lazy routes, guards, resolvers, or SSR-safe code
+- Auditing routing for performance, accessibility, and safety
 
 ## Rules
 
-- Every route must define a title for accessibility and SEO
-- Lazy load feature routes with `loadComponent` or `loadChildren` for code splitting
-- Use functional guards and resolvers (not class-based)
-- Route parameters must be validated before use
-- Provide loading indicators during lazy route loading
-- Prefer standalone component routes over NgModule-based routing
+- Standalone components + functional guards/resolvers (no NgModules, no class-based `CanActivate`)
+- Lazy-load non-initial routes via `loadComponent` / `loadChildren`
+- Every route declares a `title` (string or `ResolveFn<string>`)
+- Validate dynamic params before use (treat URL as untrusted)
+- Use `Router` / `routerLink` for navigation; never `window.location`
+- Wildcard `**` route must resolve to a not-found component
 
 ## Patterns
 
-### Route Configuration
+### Route configuration
 
 ```typescript
 // app.routes.ts
 export const routes: Routes = [
-  {
-    path: "",
-    component: HomeComponent,
-    title: "Home",
-  },
+  { path: "", component: HomeComponent, title: "Home" },
   {
     path: "dashboard",
-    loadComponent: () =>
-      import("./dashboard/dashboard.component").then(
-        (m) => m.DashboardComponent,
-      ),
-    title: "Dashboard",
+    loadComponent: () => import("./dashboard/dashboard.component").then(m => m.DashboardComponent),
     canActivate: [authGuard],
+    title: "Dashboard",
     children: [
       {
-        path: "",
-        loadComponent: () =>
-          import("./dashboard/overview/overview.component").then(
-            (m) => m.OverviewComponent,
-          ),
-        title: "Dashboard Overview",
-      },
-      {
-        path: "settings",
-        loadComponent: () =>
-          import("./dashboard/settings/settings.component").then(
-            (m) => m.SettingsComponent,
-          ),
-        title: "Settings",
-      },
-      {
         path: ":teamId",
-        loadComponent: () =>
-          import("./dashboard/team/team.component").then(
-            (m) => m.TeamComponent,
-          ),
+        loadComponent: () => import("./dashboard/team/team.component").then(m => m.TeamComponent),
         resolve: { team: teamResolver },
         title: teamTitleResolver,
       },
     ],
   },
-  {
-    path: "auth",
-    loadChildren: () => import("./auth/auth.routes").then((m) => m.AUTH_ROUTES),
-  },
+  { path: "auth", loadChildren: () => import("./auth/auth.routes").then(m => m.AUTH_ROUTES) },
   {
     path: "**",
-    loadComponent: () =>
-      import("./not-found/not-found.component").then(
-        (m) => m.NotFoundComponent,
-      ),
+    loadComponent: () => import("./not-found/not-found.component").then(m => m.NotFoundComponent),
     title: "Page Not Found",
   },
 ];
 ```
 
-### Feature Routes (loadChildren)
+`loadChildren` points at a child `Routes` array (e.g. `AUTH_ROUTES`) whose entries follow the same shape.
+
+### Functional guards
 
 ```typescript
-// auth/auth.routes.ts
-export const AUTH_ROUTES: Routes = [
-  {
-    path: "login",
-    loadComponent: () =>
-      import("./login/login.component").then((m) => m.LoginComponent),
-    title: "Sign In",
-  },
-  {
-    path: "signup",
-    loadComponent: () =>
-      import("./signup/signup.component").then((m) => m.SignupComponent),
-    title: "Sign Up",
-  },
-  {
-    path: "forgot-password",
-    loadComponent: () =>
-      import("./forgot-password/forgot-password.component").then(
-        (m) => m.ForgotPasswordComponent,
-      ),
-    title: "Reset Password",
-  },
-];
-```
-
-### Functional Route Guards
-
-```typescript
-// guards/auth.guard.ts
 export const authGuard: CanActivateFn = (route, state) => {
-  const authService = inject(AuthService);
+  const auth = inject(AuthService);
   const router = inject(Router);
-
-  if (authService.isAuthenticated()) {
-    return true;
-  }
-
-  return router.createUrlTree(['/auth/login'], {
-    queryParams: { returnUrl: state.url },
-  });
+  return auth.isAuthenticated()
+    ? true
+    : router.createUrlTree(["/auth/login"], { queryParams: { returnUrl: state.url } });
 };
 
-// Role-based guard
-export const roleGuard = (requiredRole: string): CanActivateFn => {
-  return () => {
-    const authService = inject(AuthService);
-    return authService.hasRole(requiredRole);
-  };
-};
+// Parameterised guard - factory returns CanActivateFn
+export const roleGuard = (role: string): CanActivateFn => () => inject(AuthService).hasRole(role);
 
-// Usage in routes:
-{
-  path: 'admin',
-  loadComponent: () => import('./admin/admin.component'),
-  canActivate: [authGuard, roleGuard('admin')],
-}
+// Usage: canActivate: [authGuard, roleGuard("admin")]
 ```
 
-### Functional Resolvers
+Return `true`, `false`, or a `UrlTree` for redirects. Never call `router.navigate()` inside a guard.
+
+### Functional resolvers
 
 ```typescript
-// resolvers/team.resolver.ts
 export const teamResolver: ResolveFn<Team> = (route) => {
-  const teamService = inject(TeamService);
-  const router = inject(Router);
-  const teamId = route.paramMap.get("teamId")!;
-
-  return teamService.getTeam(teamId).pipe(
-    catchError(() => {
-      router.navigate(["/dashboard"]);
-      return EMPTY;
-    }),
+  const teamId = route.paramMap.get("teamId");
+  if (!teamId) return inject(Router).createUrlTree(["/dashboard"]);
+  return inject(TeamService).getTeam(teamId).pipe(
+    catchError(() => { inject(Router).navigate(["/dashboard"]); return EMPTY; }),
   );
 };
 
-// Dynamic title resolver
-export const teamTitleResolver: ResolveFn<string> = (route) => {
-  const teamService = inject(TeamService);
-  const teamId = route.paramMap.get("teamId")!;
-  return teamService
-    .getTeam(teamId)
-    .pipe(map((team) => `${team.name} - Dashboard`));
-};
+// Dynamic title
+export const teamTitleResolver: ResolveFn<string> = (route) =>
+  inject(TeamService).getTeam(route.paramMap.get("teamId")!).pipe(map(t => `${t.name} - Dashboard`));
 ```
 
-### Accessing Route Data in Components
+### Signal-based route data in components
 
 ```typescript
-@Component({
-  template: `
-    @if (team(); as team) {
-      <h2>{{ team.name }}</h2>
-      <p>{{ team.description }}</p>
-    }
-  `,
-})
+@Component({ template: `@if (team(); as t) { <h2>{{ t.name }}</h2> }` })
 export class TeamComponent {
   private readonly route = inject(ActivatedRoute);
-
-  // Signal-based route data access
-  team = toSignal(this.route.data.pipe(map((data) => data["team"] as Team)));
-
-  // Signal-based route params
-  teamId = toSignal(
-    this.route.paramMap.pipe(map((params) => params.get("teamId")!)),
-  );
-
-  // Signal-based query params
-  tab = toSignal(
-    this.route.queryParamMap.pipe(
-      map((params) => params.get("tab") ?? "overview"),
-    ),
-  );
+  team = toSignal(this.route.data.pipe(map(d => d["team"] as Team)));
+  teamId = toSignal(this.route.paramMap.pipe(map(p => p.get("teamId")!)));
+  tab = toSignal(this.route.queryParamMap.pipe(map(p => p.get("tab") ?? "overview")));
 }
 ```
 
-### Router Navigation
+### Navigation
 
 ```typescript
-@Component({
-  imports: [RouterLink, RouterLinkActive],
-  template: `
-    <nav>
-      <a
-        routerLink="/dashboard"
-        routerLinkActive="active"
-        [routerLinkActiveOptions]="{ exact: true }"
-      >
-        Dashboard
-      </a>
-      <a [routerLink]="['/dashboard', teamId()]" routerLinkActive="active">
-        Team
-      </a>
-    </nav>
-  `,
-})
-export class SidebarComponent {
-  private readonly router = inject(Router);
-  teamId = input.required<string>();
+// Template
+<a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Dashboard</a>
+<a [routerLink]="['/dashboard', teamId()]">Team</a>
 
-  navigateToSettings() {
-    this.router.navigate(["/dashboard/settings"], {
-      queryParams: { tab: "profile" },
-    });
-  }
-}
+// Programmatic - merge query params for filters/pagination
+this.router.navigate([], {
+  relativeTo: this.route,
+  queryParams: { page: 1, category },
+  queryParamsHandling: "merge",
+});
 ```
 
-### Route Animations
+### Route animations
+
+Bind `<router-outlet>` to a trigger keyed off `activatedRouteData`; declare animation in `app.config.ts` via `provideAnimations()`.
 
 ```typescript
-// animations.ts
-export const routeAnimations = trigger("routeAnimations", [
-  transition("* <=> *", [
-    query(":enter, :leave", [style({ position: "absolute", width: "100%" })], {
-      optional: true,
-    }),
-    query(":enter", [style({ opacity: 0, transform: "translateX(20px)" })], {
-      optional: true,
-    }),
-    group([
-      query(
-        ":leave",
-        [
-          animate(
-            "200ms ease-out",
-            style({ opacity: 0, transform: "translateX(-20px)" }),
-          ),
-        ],
-        { optional: true },
-      ),
-      query(
-        ":enter",
-        [
-          animate(
-            "300ms 100ms ease-out",
-            style({ opacity: 1, transform: "translateX(0)" }),
-          ),
-        ],
-        { optional: true },
-      ),
-    ]),
-  ]),
-]);
-
 @Component({
-  template: `
-    <main [@routeAnimations]="outlet.activatedRouteData">
-      <router-outlet #outlet="outlet" />
-    </main>
-  `,
-  animations: [routeAnimations],
+  template: `<main [@routeAnimations]="o.activatedRouteData"><router-outlet #o="outlet"/></main>`,
+  animations: [trigger("routeAnimations", [transition("* <=> *", [/* enter/leave queries */])])],
 })
 export class AppComponent {}
 ```
 
-### Route Query Params for Filters and Pagination
+### SSR (Angular Universal)
 
-Persist filter, search, and pagination state in query params so users can bookmark and share URLs:
-
-```typescript
-@Component({
-  template: `
-    <app-filter-bar
-      [category]="category()"
-      (categoryChange)="setParam('category', $event)"
-    />
-    <app-product-grid [products]="products()" />
-    <app-pagination
-      [page]="page()"
-      [total]="totalPages()"
-      (pageChange)="setParam('page', $event.toString())"
-    />
-  `,
-})
-export class ProductListComponent {
-  private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
-
-  category = toSignal(
-    this.route.queryParamMap.pipe(map((p) => p.get("category") ?? "all")),
-    { initialValue: "all" },
-  );
-  page = toSignal(
-    this.route.queryParamMap.pipe(
-      map((p) => parseInt(p.get("page") ?? "1", 10)),
-    ),
-    { initialValue: 1 },
-  );
-
-  setParam(key: string, value: string): void {
-    this.router.navigate([], {
-      queryParams: { [key]: value, ...(key !== "page" ? { page: "1" } : {}) },
-      queryParamsHandling: "merge",
-    });
-  }
-}
-```
-
-### SSR Considerations (Angular Universal)
+Guard browser-only APIs; resolvers and guards run on the server too.
 
 ```typescript
-// Check platform before using browser APIs
-import { isPlatformBrowser, PLATFORM_ID } from "@angular/common";
-
-@Component({})
-export class ChartComponent {
-  private readonly platformId = inject(PLATFORM_ID);
-
-  ngOnInit() {
-    if (isPlatformBrowser(this.platformId)) {
-      // Safe to use window, document, localStorage
-      this.initializeChart();
-    }
-  }
+private readonly platformId = inject(PLATFORM_ID);
+ngOnInit() {
+  if (isPlatformBrowser(this.platformId)) this.initChart(); // window/document/localStorage
 }
 ```
 
 ## Output Format
-
-Consuming workflow skills depend on this structure.
 
 ```
 ## Routing Design
@@ -364,11 +154,11 @@ Consuming workflow skills depend on this structure.
 
 ### Route Map
 
-| Path                 | Component         | Guard      | Resolver   | Lazy   | Title             |
-| -------------------- | ----------------- | ---------- | ---------- | ------ | ----------------- |
-| /                    | HomeComponent     | -          | -          | No     | Home              |
-| /dashboard           | DashboardComponent| authGuard  | -          | Yes    | Dashboard         |
-| /dashboard/:teamId   | TeamComponent     | authGuard  | teamResolver| Yes   | {team.name}       |
+| Path               | Component          | Guard     | Resolver     | Lazy | Title       |
+| ------------------ | ------------------ | --------- | ------------ | ---- | ----------- |
+| /                  | HomeComponent      | -         | -            | No   | Home        |
+| /dashboard         | DashboardComponent | authGuard | -            | Yes  | Dashboard   |
+| /dashboard/:teamId | TeamComponent      | authGuard | teamResolver | Yes  | {team.name} |
 
 ### Recommendations
 
@@ -376,18 +166,17 @@ Consuming workflow skills depend on this structure.
 
 ### Issues Found
 
-- [Severity: High | Medium | Low] {description}
+- [Severity: {High | Medium | Low}] {description}
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 ```
 
 ## Avoid
 
-- Eager loading all routes (use `loadComponent` / `loadChildren` for code splitting)
-- Class-based guards and resolvers (use functional guards with `inject()`)
-- Routes without titles (accessibility and SEO issue)
-- Trusting URL params without validation (security risk)
-- Using `window.location` for navigation instead of the Router (breaks SPA behavior)
-- Nested routes that re-fetch data the parent already resolved (use the resolver data)
-- Wildcard routes without a not-found component
-- Deep nesting without lazy loading (increases initial bundle size)
+- Class-based guards/resolvers or NgModule routing
+- Routes without `title` (a11y + SEO regression)
+- Trusting `:id` params without validation
+- Calling `router.navigate()` inside a guard (return `UrlTree` instead)
+- Re-fetching in a child what a parent resolver already provided
+- Browser APIs in resolvers/guards/`ngOnInit` without `isPlatformBrowser`
+- Deeply nested routes that aren't lazy (inflates initial bundle)

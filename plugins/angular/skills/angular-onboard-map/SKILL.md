@@ -13,135 +13,94 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Angular-specific orientation: workspace structure, change detection model, standalone vs NgModule, RxJS usage, state management, routing.
-- Project has `angular.json` and `package.json` with `@angular/core`.
+- A workflow needs Angular-specific orientation: workspace, change detection, standalone vs NgModule, RxJS, state, routing.
+- Project has `angular.json` and `@angular/core` in `package.json`.
 
 ## Rules
 
-- Identify Angular version (`package.json` `@angular/core`); 21 is current; 17+ has standalone-by-default and signals.
-- Identify standalone vs NgModule: standalone has no `app.module.ts`; bootstrap via `bootstrapApplication(AppComponent, { providers: [...] })` in `main.ts`.
-- Identify change detection model: signal-based (`signal()`/`computed()`/`effect()`), `OnPush`, or default (Zone.js global).
-- Identify state management: NgRx (`@ngrx/*` deps, `store/` directory), NGXS, Akita (legacy), Signal Store (NgRx Signals), or just services with signals/BehaviorSubjects.
-- Identify routing: `provideRouter(routes)` (standalone) or `RouterModule.forRoot(routes)` (NgModule).
+- Identify Angular major version from `package.json` (`@angular/core`). 17+ defaults to standalone and signals; 18+ supports zoneless.
+- Identify bootstrap style: standalone (`bootstrapApplication` in `main.ts`, no `app.module.ts`) vs NgModule (`AppModule` + `platformBrowserDynamic`).
+- Identify change detection: signal-based (`signal()`/`computed()`/`effect()`), `OnPush`, default Zone.js, or zoneless (`provideExperimentalZonelessChangeDetection`).
+- Identify state: NgRx (`@ngrx/store`), NgRx Signals (`@ngrx/signals`), NGXS, Akita (legacy), or services with signals/`BehaviorSubject`.
+- Identify routing: `provideRouter(routes)` (standalone) vs `RouterModule.forRoot(routes)` (NgModule).
+- Identify monorepo: `nx.json` or multi-project `angular.json`.
 
 ## Patterns
 
-### Build Inventory
+### File Inventory
 
-| File                | What it tells you                                                                |
-| ------------------- | -------------------------------------------------------------------------------- |
-| `angular.json`      | Angular CLI workspace; build/serve/test config; multi-project support             |
-| `package.json`      | Angular core/CLI/material versions                                                |
-| `tsconfig.json` + `tsconfig.app.json` + `tsconfig.spec.json` | TS configs split by build target  |
-| `karma.conf.js`     | Karma test runner (legacy default)                                                |
-| `.eslintrc.json` / `eslint.config.js` | ESLint config (replacing TSLint long ago)                       |
-| `nx.json` / `nx-cloud.json` | Nx monorepo config (if applicable)                                       |
+| File / Path                                  | Tells you                                                     |
+| -------------------------------------------- | ------------------------------------------------------------- |
+| `angular.json`                               | CLI workspace, build/serve/test targets, multi-project layout |
+| `package.json`                               | Angular/CLI/Material versions, RxJS, state libs               |
+| `tsconfig*.json`                             | TS configs split by build/spec target                         |
+| `nx.json`                                    | Nx monorepo (if present)                                      |
+| `karma.conf.js` / `jest.config.*`            | Test runner                                                   |
+| `src/main.ts`                                | Bootstrap: `bootstrapApplication` or `platformBrowserDynamic` |
+| `src/app/app.config.ts`                      | Standalone app-level providers (router, http, animations)     |
+| `src/app/app.routes.ts`                      | Route table for `provideRouter`                               |
+| `src/app/app.module.ts` + `*-routing.module.ts` | NgModule legacy roots                                      |
+| `src/app/<feature>/`                         | Feature folders: `*.component.ts`, `*.service.ts`, `*.routes.ts` |
+| `src/environments/`                          | `environment.ts` / `environment.prod.ts`                      |
 
 ### Bootstrap Path
 
-1. Node toolchain: confirm `engines.node` in `package.json`. Angular 17+ requires Node 18.13+.
+1. Node toolchain: confirm `engines.node` in `package.json` (Angular 17+ needs Node 18.13+).
 2. Install: `npm install` (or `pnpm`/`yarn`).
-3. Env: typically via `environment.ts` files (`src/environments/environment.ts` and `environment.prod.ts`); some projects use runtime config loaded at startup.
-4. Run: `ng serve` or `npm start` (often aliases `ng serve --open`); default port 4200.
-5. Verify: `http://localhost:4200`; default app shell.
-6. Build: `ng build` (`--configuration=production` or by default).
-7. Test: `ng test` (Karma + Jasmine; some projects on Jest or Vitest).
-8. E2E: project-specific (Cypress, Playwright; Protractor deprecated).
-
-### Key File Inventory
-
-**Standalone (Angular 17+ default):**
-
-| Location                  | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `src/main.ts`             | `bootstrapApplication(AppComponent, { providers: [...] })`              |
-| `src/app/app.component.ts` | Root component                                                          |
-| `src/app/app.routes.ts`   | Route definitions: `Routes` array passed to `provideRouter`              |
-| `src/app/app.config.ts`   | App-level providers (router, http, animations, custom services)          |
-| `src/app/<feature>/`      | Feature directories with components/services                              |
-| `src/app/<feature>/<feat>.component.ts` | Component (standalone with `imports: [...]`)               |
-| `src/app/<feature>/<feat>.service.ts`   | Service (`@Injectable({ providedIn: 'root' })`)            |
-| `src/app/<feature>/<feat>.routes.ts`    | Feature routes (lazy-loaded via `loadChildren`)            |
-| `src/environments/`       | Environment configs                                                       |
-| `src/styles.css` / `.scss` | Global styles                                                           |
-| `src/assets/`             | Static assets                                                              |
-
-**NgModule (legacy):**
-
-| Location                  | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `src/app/app.module.ts`   | Root NgModule                                                              |
-| `src/app/app-routing.module.ts` | Root routing module                                                  |
-| `src/app/<feature>/<feature>.module.ts` | Feature module                                              |
-| `src/app/<feature>/<feature>-routing.module.ts` | Feature routing                                      |
+3. Configure env: edit `src/environments/environment.ts` (some projects fetch runtime config at startup).
+4. Run: `ng serve` (port 4200).
+5. Test: `ng test` (Karma + Jasmine default; some on Jest/Vitest).
+6. Build: `ng build --configuration=production`.
+7. E2E: Cypress or Playwright (Protractor deprecated).
 
 ### Conventions
 
-- **One concept per file:** component, service, directive, pipe, guard, interceptor each get their own file.
-- **Component naming:** `<name>.component.ts` (with `<name>.component.html` + `<name>.component.scss/css`).
-- **`ChangeDetectionStrategy.OnPush`** common for performance; signal-based components are inherently OnPush-like.
-- **DI lifetimes:** `providedIn: 'root'` (most services), `providedIn: 'any'` (instance per lazy-loaded module - rare), per-component `providers: [...]`.
-- **Reactive Forms** preferred over Template-driven for non-trivial forms.
-- **RxJS:**
-  - `async` pipe in templates (auto-subscribe/unsubscribe).
-  - `takeUntilDestroyed()` operator (Angular 16+) replacing manual `destroy$` patterns.
-  - `inject(DestroyRef)` for explicit cleanup outside components.
-- **HttpClient interceptors** (`HttpInterceptorFn` functional or class-based) for auth, logging, retries.
-- **Tests:** Karma + Jasmine default; Jest/Vitest gaining ground; component tests use `TestBed.createComponent` or `@analog/vitest-angular`.
-- **Linting:** `@angular-eslint/*` rules.
+- One concept per file: component, service, directive, pipe, guard, interceptor.
+- Component triplet: `<name>.component.ts/.html/.scss`.
+- DI lifetimes: `providedIn: 'root'` (most), per-component `providers: [...]`, per-route `providers`.
+- `ChangeDetectionStrategy.OnPush` common; signal-based components behave OnPush-like.
+- Reactive Forms preferred for non-trivial forms.
+- RxJS hygiene: `async` pipe in templates; `takeUntilDestroyed()` (16+) replaces manual `destroy$`; `inject(DestroyRef)` outside components.
+- HTTP: functional `HttpInterceptorFn` interceptors for auth/logging/retries.
+- Templates 17+: control flow blocks (`@if`/`@for`/`@switch`) replacing `*ngIf`/`*ngFor`.
+- Lint: `@angular-eslint/*`.
 
-### Risk Hotspots Specific to Angular
+### Risk Hotspots
 
-- **OnPush + reactivity** (in-place array / object input mutation doesn't trigger CD; pure pipe mutation needs new reference): see `angular-component-patterns`, `angular-signals-patterns`, `task-angular-review`.
-- **RxJS subscription hygiene** (manual `.subscribe()` leaks, cold-observable HTTP duplication, `takeUntilDestroyed` injection-context requirement): see `angular-rxjs-patterns`, `task-angular-review-perf`.
-- **Lifecycle / DI timing** (`@ViewChild` undefined in `ngOnInit` - use `viewChild()` signal or `ngAfterViewInit`; `inject()` only in injection context): see `angular-component-patterns`, `angular-service-patterns`.
-- **Routing** (missing `canActivate` cascading to children, lazy-route configuration drift): see `angular-routing-patterns`.
-- **NgZone reentry** mixing zone-aware and zone-free code; **standalone migration churn** in mid-migration projects: see `task-angular-review`.
-- **`[innerHTML]` XSS**, **`bypassSecurityTrust*` misuse**, **`environment.ts` secret leak**, **open redirect**: see `task-angular-review-security`.
+- **OnPush + mutation**: in-place input mutation skips CD; pure pipes need new refs. See `angular-component-patterns`, `angular-signals-patterns`.
+- **RxJS leaks**: manual `.subscribe()` without teardown, duplicate HTTP from cold observables, `takeUntilDestroyed` outside injection context. See `angular-rxjs-patterns`.
+- **Lifecycle/DI timing**: `@ViewChild` undefined in `ngOnInit` (use `viewChild()` signal or `ngAfterViewInit`); `inject()` only in injection context. See `angular-component-patterns`, `angular-service-patterns`.
+- **Routing**: missing `canActivate` cascades, lazy-route drift. See `angular-routing-patterns`.
+- **Mid-migration churn**: mixed standalone/NgModule, mixed Zone/zoneless. See `task-angular-review`.
+- **Security**: `[innerHTML]` XSS, `bypassSecurityTrust*` misuse, secrets in `environment.ts`, open redirects. See `task-angular-review-security`.
 
 ### First-PR Safe Zones
 
-- New component in existing feature directory.
-- New service with `providedIn: 'root'`.
-- New unit test next to a service.
-- New route in existing routes file.
+Safe: new component in an existing feature, new `providedIn: 'root'` service, new unit test, new route in an existing routes file.
 
-Riskier:
-
-- `app.config.ts` / `app.module.ts` - app-level provider list.
-- HTTP interceptors - apply to every request.
-- Auth guards.
-- Custom change detection strategies in shared components.
-
-### Ecosystem Currency
-
-- Angular 17+ default to standalone components; Angular 18+ has zoneless mode (experimental in 18, stable in 19+).
-- Signals stable since 17; `viewChild()`/`contentChild()` signal-based queries in 17+.
-- Control flow blocks (`@if`, `@for`, `@switch`) replacing `*ngIf`/`*ngFor` in templates.
-- Material 3 design system rolling out; `@angular/material` updated alongside.
-- NgRx 18+ adopting signal-based stores; Signal Store and Component Store coexist.
+Riskier: `app.config.ts`/`app.module.ts` providers, HTTP interceptors, auth guards, shared-component CD strategies.
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** Angular version, standalone vs NgModule, change detection (default/OnPush/signal/zoneless), state management, RxJS-vs-signals split, test framework.
+**Stack and Tooling:** Angular version, bootstrap style, change detection model, state library, RxJS-vs-signals split, test framework, monorepo (Nx) yes/no.
 
-**Local Bootstrap:** `npm install`, env config, `ng serve`, default port, `ng test` for tests.
+**Local Bootstrap:** install command, env file, `ng serve` port, `ng test`, build command.
 
-**Architecture Map:** workspace structure (single project vs Nx), feature directory layout, root config (`app.config.ts` or `app.module.ts`), routing strategy.
+**Architecture Map:** workspace layout, feature directory pattern, root config file (`app.config.ts` or `app.module.ts`), routing API.
 
-**Conventions:** OnPush usage, `inject()` style vs constructor-injection, async pipe vs manual subscribe, takeUntilDestroyed pattern, control flow blocks vs structural directives.
+**Conventions:** OnPush/signal usage, `inject()` vs constructor DI, async pipe vs manual subscribe, `takeUntilDestroyed`, control flow blocks.
 
-**Risk Hotspots:** OnPush mutation, subscription leaks, ViewChild timing, inject() context, cold observable HTTP duplication, NgZone reentry, mid-migration mixed bootstrap.
+**Risk Hotspots:** observed instances from the Risk Hotspots list above.
 
 **First-PR Safe Zones:** scoped to observed structure.
 
 ## Avoid
 
-- Treating Angular 2-12 patterns as current; modern Angular is meaningfully different
-- Recommending NgModule patterns on a standalone project (or vice versa)
-- Listing every dep - focus on the architectural ones
-- Skipping the change detection model identification - it shapes everything
-- Recommending Protractor (deprecated)
-- Confusing `inject()` and constructor injection contexts
+- Treating pre-17 patterns as current.
+- Recommending NgModule patterns on a standalone project (or vice versa).
+- Listing every dependency; name only architectural ones.
+- Skipping change detection identification - it shapes everything else.
+- Recommending Protractor.
+- Confusing `inject()` and constructor injection contexts.

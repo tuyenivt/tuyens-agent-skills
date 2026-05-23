@@ -15,9 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Angular-aware security review that names `[innerHTML]` (XSS surface), `DomSanitizer.bypassSecurityTrust*` (escape hatch around Angular's auto-sanitization), Content Security Policy, functional auth guards (`CanActivateFn` / `CanMatchFn`) backed by server checks, functional HTTP interceptors (`HttpInterceptorFn`) for token injection / CSRF, `environment.ts` secret leakage (compiled into client bundle), open redirect via `Router.navigateByUrl(userInput)`, SSR data exposure (`TransferState` / hydration payload leaking ORM rows into HTML), token storage (httpOnly cookie vs `localStorage`), and Angular-specific risks (template injection via `bypassSecurityTrustHtml`, prototype pollution via spread, JSON serialization of secrets through SSR payload) directly instead of routing through the generic frontend security adapter. Produces findings with attack scenarios and concrete remediations.
-
-This workflow is the stack-specific delegate of `task-code-review-security` for Angular. The core workflow's contract (invocation, diff resolution, output format) is preserved.
+Angular-aware security review covering `[innerHTML]` / `bypassSecurityTrust*` XSS surfaces, CSP, functional `CanActivateFn` / `CanMatchFn` guards backed by server checks, `HttpInterceptorFn` token-scoping and CSRF, `environment.ts` secret leakage into the client bundle, open redirect via `Router.navigateByUrl`, SSR data exposure via `TransferState` / hydration payload, token storage, and prototype pollution. Stack-specific delegate of `task-code-review-security`; preserves its invocation, diff-resolution, and output contract.
 
 ## When to Use
 
@@ -46,19 +44,15 @@ Use these definitions to keep severity consistent across runs - do not invent yo
 | **Medium**   | Hardening gap with mitigating control (CSP missing nonce but `unsafe-inline` for styles only and no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction. Should fix this PR or the next one.                                                                  |
 | **Low**      | Defense-in-depth nice-to-have, dependency advisory below actively-exploited threshold, hardening recommendations without a concrete current attack scenario.                                                                                                                                                |
 
-**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+**Combined-finding rule.** When two or more findings *compose* on the same code path (same component, same route segment with shared guards / providers, same auth flow) into a worse threat than either alone, file them as one finding at the elevated severity and cite each component. Rule of thumb: if the exploit requires both to land, it's one finding; if either is exploitable alone, file separately.
 
-- Missing `CanActivateFn` on a privileged route (High, alone) + `[innerHTML]` on user-controlled input from the same component without sanitizer (High, alone) on the *same component / route* = **Critical** unauth XSS reaching every viewer (anyone navigates to the unguarded route, the page renders attacker-controlled HTML, and the payload runs in every visitor's browser).
-- `bypassSecurityTrustHtml(userInput)` (Critical, alone, by rubric) + the binding rendered on a route reachable from unauthenticated users (High, alone) on the *same component* = **Critical** unauth XSS - cite both because the second piece tells the reader the exploit lands without login.
-- Missing functional auth interceptor token-scoping (High, alone) + token stored in `localStorage` (High, alone) on the *same auth flow* = **Critical** token exfiltration via attacker-controlled host (the unscoped interceptor sends `Authorization` to a third-party URL the attacker controls; XSS-readable storage compounds the impact when combined with `[innerHTML]` elsewhere).
-- SSR `TransferState` populated with a full ORM row including `passwordHash` (Critical, alone, by rubric) + the page reachable without auth on the SSR server (High, alone) = **Critical** mass exfiltration via hydration payload (every cold visit returns the row in HTML).
-- Missing `CanMatchFn` on a lazy admin route (High, alone) + `environment.ts` containing the admin API key (Critical, alone, by rubric) on the *same route bundle* = **Critical** the lazy chunk loads to anyone, exposing the admin client ID + key from the bundle even before backend auth fires.
-- Open redirect via `Router.navigateByUrl(query.returnTo)` (High, alone) + the redirect target receiving session cookie due to `SameSite=Lax` (High, alone) on the *same auth callback* = **Critical** session-token theft via attacker-controlled redirect.
-- `[innerHTML]` on user input (High, alone) + a custom sanitizer that returns `bypassSecurityTrustHtml` for "trusted" markdown without verifying the trust boundary (High, alone) on the *same content pipeline* = **Critical** working XSS (the bypass swallows the sanitizer's protection).
+Illustrative compositions:
 
-The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+- Missing `CanActivateFn` on a privileged route + `[innerHTML]` on user-controlled input in that component = Critical unauth XSS to every viewer.
+- Missing interceptor token-scoping + token in `localStorage` on the same auth flow = Critical token exfiltration (`Authorization` sent to attacker host; XSS-readable storage compounds).
+- SSR `TransferState` populated with full ORM row + page reachable without auth = Critical mass exfiltration via hydration payload.
 
-**Same-handler co-location.** Combining findings requires confirming both land on the *same code path* (same component, same route segment with shared guards / providers, same auth flow). When the diff doesn't make co-location obvious - e.g., the `[innerHTML]` is in `OrderDetailComponent` but the missing auth guard protects a different route segment - file the findings separately at their independent severities and add a one-line `Note: Combined-finding rule applies if both land on the same route / component; verify and merge before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
+**Co-location check.** When the diff doesn't make co-location obvious, file findings separately at their independent severities and add `Note: Combined-finding rule applies if both land on the same route / component; verify before merge` to the lower-severity entry. Do not silently merge or silently keep separate.
 
 ## Invocation
 
@@ -124,22 +118,21 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 **Angular SPA + separate backend (most common):**
 
-- [ ] **Auth library chosen and consistent**: `@auth0/auth0-angular` / `angular-oauth2-oidc` / `keycloak-angular` / `msal-angular` / custom - one path through the codebase, not mixed
-- [ ] **Functional `CanActivateFn` / `CanMatchFn` guards**: new guards use the functional form (`export const authGuard: CanActivateFn = (route, state) => { ... }`); class-based guards in new code are a [Medium] - functional is the modern idiom and works with `provideRouter` cleanly
-- [ ] **Guards are UX, not authorization**: `CanActivateFn` redirects unauthenticated users to login - that is UX. The backend must independently enforce auth on every protected endpoint. A guard without a backend check is a [High] when the surface contains privileged data
-- [ ] **`CanMatchFn` for lazy-loaded guards**: `CanMatchFn` runs before the route matches and prevents the lazy chunk from loading at all (better than `CanActivateFn` which loads the chunk first and then redirects). Flag protected lazy routes using `CanActivate` instead of `CanMatch`
-- [ ] **Token in interceptor**: auth token attached via `HttpInterceptorFn` - flag direct `Authorization` header set in component / service
-- [ ] **Interceptor scopes token to own origin**: `HttpInterceptorFn` checks `req.url` is same-origin or in an allowlist before adding `Authorization` header. Sending the token to a third-party URL leaks credentials; flag interceptors that add token unconditionally
-- [ ] **Token storage**: prefer `httpOnly` cookies set by the backend; if a token must live in JS, document the XSS-recovery story (token rotation, short TTL, refresh via httpOnly cookie). Flag tokens stored in `localStorage` (XSS-readable; a single `[innerHTML]` exploit exfiltrates the token)
-- [ ] **No client-side authorization decisions**: `if (user.role === 'admin') showAdminButton` is fine for UX; `if (user.role === 'admin') fetchAdminData()` is **not** a security control - the backend must reject. Flag any client-side guard not backed by a server check
-- [ ] **Refresh token flow**: refresh via httpOnly cookie POST to backend; never store refresh token in JS
-- [ ] **OAuth callback validation**: `state` / `nonce` validated; redirect URL allowlist; flag custom OAuth implementations that skip these. `angular-oauth2-oidc` does this correctly when used via library API
-- [ ] **`environment.ts` for client identifiers**: OAuth client ID is a public token by design; flag only client _secrets_ (never appropriate in a SPA) or DSN-style values that are actually privileged
+- [ ] **Auth library consistent**: one path (`@auth0/auth0-angular` / `angular-oauth2-oidc` / `keycloak-angular` / `msal-angular` / custom), not mixed
+- [ ] **Functional guards**: new code uses `CanActivateFn` / `CanMatchFn`; class-based guards in new code are [Medium]
+- [ ] **`CanMatchFn` for lazy routes**: `CanMatchFn` blocks the chunk from loading; `CanActivateFn` only redirects after load. Flag protected lazy routes using `CanActivate`
+- [ ] **Guards are UX, not authorization**: backend must enforce on every protected endpoint. A guard without a backend check on privileged data is [High]
+- [ ] **No client-side authorization decisions**: `*ngIf="user.role === 'admin'"` is UX only; `if (role === 'admin') fetchAdminData()` is not a security control. Backend must reject
+- [ ] **Token in interceptor, scoped to own origin**: `HttpInterceptorFn` attaches `Authorization`; checks `req.url` is same-origin / allowlisted before adding. Flag direct headers in components / services and unconditional attachment
+- [ ] **Token storage**: prefer `httpOnly` cookies. Flag tokens in `localStorage` / `sessionStorage` (XSS-readable - any `[innerHTML]` exploit exfiltrates). If JS storage is unavoidable, document rotation + short TTL + httpOnly refresh
+- [ ] **Refresh token**: via httpOnly cookie POST; never in JS
+- [ ] **OAuth callback validation**: `state` / `nonce` validated; redirect URL allowlisted. `angular-oauth2-oidc` library API handles this; flag custom implementations that skip
+- [ ] **`environment.ts` identifiers**: OAuth client ID is public by design - flag only privileged secrets (client secrets, signing keys, DSNs with write scope)
 
-**Angular SSR (server runs Node, has its own auth surface):**
+**Angular SSR (Node server, separate auth surface):**
 
-- [ ] **SSR server does not authenticate the user from server-side context**: cookies pass through SSR, but server-rendered output is shared; flag SSR templates that render per-user data without verifying the cookie / token on the server-side fetch (otherwise per-user content lands in the SSR cache)
-- [ ] **`TransferState` / hydration payload does not leak server-only data**: a server-side resolver fetching `prisma.user.findUnique({ where })` and storing the entire row in `TransferState` serializes into the HTML payload. Flag for DTO projection (`select: { id, name, email }`) at the data layer
+- [ ] **No shared per-user SSR cache**: SSR templates rendering per-user data must verify cookie / token on the server-side fetch (otherwise per-user content leaks into SSR cache)
+- [ ] **`TransferState` / hydration payload**: server resolvers must project to a DTO (`select: { id, name, email }`) - never serialize entire ORM rows into the HTML payload
 
 ### Step 6 - Authorization
 
@@ -150,47 +143,42 @@ This step is a **triage pass**, not a separate findings list. Run through the OW
 
 ### Step 7 - Input Validation and Form Handling
 
-- [ ] **Reactive Forms with validators**: every form uses `FormBuilder` / typed `FormGroup<{...}>` with `Validators.*` and custom validators. Flag template-driven forms in new code unless project-wide convention
-- [ ] **Server validation is the source of truth**: client-side validators are UX; the backend re-validates. Flag any client-only validation for security-sensitive fields (e.g., role assignment, price)
-- [ ] **`URLSearchParams` / route params validated**: route param consumption (`route.params.id` / `inject(ActivatedRoute).snapshot.params['id']`) validated for shape (UUID, integer, slug pattern) before passing to `HttpClient` calls. Backend re-validates; client-side check is UX
-- [ ] **`JSON.parse(userInput)` flowing into objects**: any `JSON.parse` on data from URL params / `postMessage` / external sources spread into a service call is a mass-assignment + prototype-pollution surface. Validate via Zod / typed parser before use
-- [ ] **No `[innerHTML]` on untrusted strings**: any `[innerHTML]="x"` where `x` originates from user input, URL params, or external API must be sanitized via `DomSanitizer.sanitize(SecurityContext.HTML, x)` (which strips dangerous tags) - never `[innerHTML]="markdownService.render(userInput)"` without a sanitizer
-- [ ] **File uploads: type / size / content validated**: client-side checks on `<input type="file">` are UX; backend must validate `File.size`, MIME inferred from content (not `file.type` which is client-controlled). Flag client-only validation for file uploads
+- [ ] **Reactive Forms with validators**: typed `FormGroup<{...}>` + `Validators.*`. Flag template-driven forms in new code unless project convention
+- [ ] **Server validation is source of truth**: client validators are UX; backend re-validates. Flag client-only validation on security-sensitive fields (role, price, tenant)
+- [ ] **Route params validated**: `inject(ActivatedRoute).snapshot.params['id']` checked for shape (UUID / integer / slug) before reaching `HttpClient`. Backend re-validates
+- [ ] **`JSON.parse(userInput)` into objects**: parsing user JSON and spreading into a service call is a mass-assignment + prototype-pollution surface. Validate via Zod / typed parser
+- [ ] **`[innerHTML]` on untrusted strings**: must pass through `DomSanitizer.sanitize(SecurityContext.HTML, x)`; never `[innerHTML]="markdownService.render(userInput)"` without it (see Step 8)
+- [ ] **File uploads**: client checks on `<input type="file">` are UX. Backend must validate size and MIME inferred from content (not `file.type`, which is client-controlled)
 
 ### Step 8 - Common Angular Vulnerability Patterns
 
-- [ ] **`[innerHTML]` audit**: every site must have either a sanitizer in the chain, a code comment justifying why the input is trusted (e.g., "static markdown from the repo, processed at build time"), or use of Angular's `MarkdownPipe` / similar with sanitization on. Never `[innerHTML]="userMarkdown"` without `DomSanitizer.sanitize(SecurityContext.HTML, ...)`. Note Angular's default sanitization on `[innerHTML]` strips scripts but allows attributes - it is not a substitute for a hardened sanitizer like DOMPurify on user content
-- [ ] **`bypassSecurityTrustHtml` / `bypassSecurityTrustResourceUrl` / `bypassSecurityTrustScript` / `bypassSecurityTrustStyle` / `bypassSecurityTrustUrl` audit**: every call has a comment justifying why the input is trusted (build-time content, internal config, etc.). `bypassSecurityTrustHtml(userInput)` is Critical - that's an explicit XSS opt-in. `bypassSecurityTrustResourceUrl` is the iframe / object src vector
-- [ ] **`[href]` / `[src]` / `[routerLink]` from user-controlled URL**: validate scheme is `http(s):` (block `javascript:`, `data:`, `vbscript:`); `<a [href]>` is an XSS vector when href comes from user data with the wrong protocol. URL allowlist for cross-origin nav
-- [ ] **Open redirect**: `Router.navigateByUrl(query.returnTo)` / `window.location.href = userInput` without allowlist or relative-path-only check is an open redirect. Validate: `url.startsWith('/') && !url.startsWith('//')` and not a protocol-relative URL
-- [ ] **`environment.ts` / `environment.prod.ts` for secrets**: any `environment.X` that names an API key with privileged scope, database URL, or signing secret is a Critical finding - these compile into the client bundle and ship to every browser. Server-only secrets live in build-time-injected env vars on the SSR server, never in the client `environment.ts`
-- [ ] **SSR `TransferState` leak**: a server-side `Resolver` / signal init populating `TransferState` with `prisma.user.findUnique({ where })` serializes the entire row (including `passwordHash`, `mfaSecret`) into the HTML payload visible to any client. Project to a DTO at the data-fetch layer
-- [ ] **CSP set with sensible defaults**: `default-src 'self'`; `script-src 'self' 'nonce-XXX' 'strict-dynamic'`; `style-src 'self' 'unsafe-inline'` (Angular Material / scoped styles need; document the trade); `img-src 'self' data: <CDN>`; `connect-src 'self' <API>`; `frame-ancestors 'none'`. Angular SSR / hosting platform delivers via response headers; flag CSP delivered only via `<meta>` (cannot enforce `frame-ancestors`, `report-uri`, `sandbox`)
-- [ ] **CSP wildcards**: `default-src *` or `script-src *` is effectively no CSP. Any wildcard host in `script-src` / `connect-src` / `frame-src` is a finding
-- [ ] **`unsafe-eval` / `unsafe-inline` for scripts**: not allowed in production CSP for `script-src`. Angular AOT-compiled apps do not require `unsafe-eval` (templates compile to render functions at build time); JIT compilation does. Flag JIT mode in production
-- [ ] **`eval` / `new Function(string)` in client**: any occurrence is a critical finding; obfuscation libraries / template engines that use `new Function` flagged
-- [ ] **Prototype pollution via spread**: `Object.assign(target, JSON.parse(userInput))`, `{...defaults, ...userJson}` on data the client received - flag when input source is user-controlled
-- [ ] **`window.addEventListener('message')` validates origin**: missing origin check is universal XSS via parent / iframe
-- [ ] **Third-party scripts**: every dynamically-loaded script (`document.createElement('script')`) justified; SRI (`integrity` attribute) required for any non-first-party script regardless of how it loads - statically declared in `index.html` (`<script src="https://cdn.example.com/widget.js">`) or dynamically injected at runtime; analytics / chat widgets reviewed for what data they exfiltrate
-- [ ] **iframe sandbox**: any `<iframe>` rendering external content includes `sandbox="allow-scripts allow-same-origin..."` with the minimum allowlist; flag `<iframe [src]>` without `sandbox`
-- [ ] **iframe `[src]` from user input**: `<iframe [src]="query.embed">` is a phishing / clickjacking surface even with `sandbox`. Validate against an allowlist of expected hosts
-- [ ] **`window.opener` leak**: external `<a [href] target="_blank">` includes `rel="noopener noreferrer"`; internal `[routerLink]` is fine
+- [ ] **`[innerHTML]` audit**: every binding has a sanitizer in the chain or a comment justifying trusted input. Angular's default sanitization strips scripts but is not a substitute for DOMPurify on user content. Never `[innerHTML]="userMarkdown"` without `DomSanitizer.sanitize(SecurityContext.HTML, ...)`
+- [ ] **`bypassSecurityTrust*` audit**: every call (`Html` / `ResourceUrl` / `Script` / `Style` / `Url`) has a comment justifying trust. `bypassSecurityTrustHtml(userInput)` is Critical (explicit XSS opt-in); `bypassSecurityTrustResourceUrl` is the iframe / object-src vector
+- [ ] **`[href]` / `[src]` / `[routerLink]` from user URL**: validate scheme is `http(s):` (block `javascript:`, `data:`, `vbscript:`); allowlist hosts for cross-origin nav
+- [ ] **Open redirect**: `Router.navigateByUrl(query.returnTo)` / `window.location.href = userInput` requires `url.startsWith('/') && !url.startsWith('//')` (block protocol-relative) or an explicit allowlist
+- [ ] **`environment.ts` secrets**: any entry naming a privileged API key, DB URL, or signing secret is Critical - these compile into the client bundle. Server-only secrets live in build-time env vars on the SSR server
+- [ ] **SSR `TransferState` leak**: a server resolver populating `TransferState` with `prisma.user.findUnique(...)` serializes the row (including `passwordHash`, `mfaSecret`) into the HTML payload. Project to a DTO at the data-fetch layer
+- [ ] **CSP defaults**: `default-src 'self'`; `script-src 'self' 'nonce-XXX' 'strict-dynamic'`; `style-src 'self' 'unsafe-inline'` (document the Angular Material trade); `img-src 'self' data: <CDN>`; `connect-src 'self' <API>`; `frame-ancestors 'none'`. Delivered via response headers; CSP via `<meta>` alone cannot enforce `frame-ancestors` / `report-uri` / `sandbox`
+- [ ] **CSP wildcards / unsafe-eval / unsafe-inline**: any wildcard host in `script-src` / `connect-src` / `frame-src` is a finding; `unsafe-eval` / `unsafe-inline` not allowed in production `script-src` (AOT does not need `unsafe-eval`; flag JIT in production)
+- [ ] **`eval` / `new Function(string)`**: any occurrence is Critical; flag template engines / obfuscators that rely on `new Function`
+- [ ] **Prototype pollution**: `Object.assign(target, JSON.parse(userInput))` or `{...defaults, ...userJson}` on user-controlled input
+- [ ] **`window.addEventListener('message')` origin check**: missing origin check is universal XSS via parent / iframe
+- [ ] **Third-party scripts**: every dynamically-loaded script justified; SRI (`integrity`) required for non-first-party scripts (static or dynamic); analytics / chat widgets reviewed for data exfiltration
+- [ ] **iframe sandbox + `[src]`**: external `<iframe>` includes minimum-allowlist `sandbox`; `<iframe [src]="query.embed">` requires host allowlist even with sandbox
+- [ ] **`window.opener` leak**: external `<a [href] target="_blank">` includes `rel="noopener noreferrer"`
 
 ### Step 9 - Data Protection
 
-- [ ] **PII in client logs / Sentry**: Sentry Angular SDK `beforeSend` strips known sensitive fields (`email`, `password`, `token`, `creditCard`); `Sentry.init({ sendDefaultPii: false })` (default but flag explicit `true`); error handlers do not log entire form values
-- [ ] **No tokens / passwords / PII in URLs**: search params and path params hit logs, browser history, referer headers; POST body to backend is the right channel
-- [ ] **`localStorage` / `sessionStorage` not used for tokens**: XSS-readable; cookies (`httpOnly`) for session, in-memory state (a service signal) for short-lived UI tokens
-- [ ] **TLS enforcement**: `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` set via hosting platform / response headers; HTTP redirected to HTTPS at the edge
-- [ ] **Secrets management**: build-injected env vars come from a secret store (Vault / AWS Secrets Manager / Doppler / hosting platform secrets); flag any literal API key in `environment.ts` checked into git
-- [ ] **Source maps in production**: `angular.json` `"sourceMap": false` for production (or upload-then-strip via Sentry plugin); public source maps leak source-code structure
-
+- [ ] **PII in client logs / Sentry**: `Sentry.init({ sendDefaultPii: false })` and `beforeSend` strip `email` / `password` / `token` / `creditCard`; error handlers do not log entire form values
+- [ ] **No tokens / passwords / PII in URLs**: search and path params hit logs, history, referer; use POST body
+- [ ] **TLS enforcement**: `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` via response headers; HTTP redirected to HTTPS at the edge
+- [ ] **Secrets management**: build-injected env vars come from a secret store (Vault / Secrets Manager / Doppler / hosting); flag literal keys in `environment.ts` in git
+- [ ] **Production source maps**: `angular.json` `"sourceMap": false` (or upload-then-strip via Sentry plugin)
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`.
+Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled review to the report file before ending; print the confirmation line.
 
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
 - Always validate at system boundaries: route params, `URLSearchParams`, `postMessage`, file inputs, external API responses

@@ -13,11 +13,7 @@ user-invocable: true
 
 # Angular Performance Review
 
-## Purpose
-
-Angular-aware performance review that names Core Web Vitals (LCP, INP, CLS), bundle splitting via `loadComponent` / `loadChildren` / `@defer`, change-detection cost (`OnPush` mandate, signal-driven updates, zoneless adoption), `computed` vs method, signal vs `BehaviorSubject` overhead, RxJS subscription discipline (`takeUntilDestroyed`, `async` pipe, `toSignal` + `requireSync`), `NgOptimizedImage`, `provideClientHydration(withHttpTransferCacheOptions(...))`, `TransferState`, NgRx selector memoization, and `@defer` placement directly instead of routing through the generic frontend adapter. Produces findings with measured or estimated impact (LCP delta, bundle delta, CD-cycle delta) and concrete fixes using TypeScript-strict Angular idioms.
-
-This workflow is the stack-specific delegate of `task-code-review-perf` for Angular. The core workflow's contract (invocation, diff resolution, output format) is preserved.
+Stack-specific delegate of `task-code-review-perf` for Angular. Names Angular idioms directly (`OnPush`, signals, `@defer`, `NgOptimizedImage`, `loadComponent`, `provideClientHydration`, HTTP transfer cache, `takeUntilDestroyed`, NgRx selector memoization) rather than routing through the generic frontend adapter. Produces findings with measured or estimated impact (LCP delta, bundle delta, CD-cycle delta) and concrete fixes.
 
 ## When to Use
 
@@ -99,7 +95,7 @@ Canonical CD / signal / RxJS discipline lives in `angular-component-patterns`, `
 - [ ] **OnPush mandate**: new `@Component` without `changeDetection: ChangeDetectionStrategy.OnPush` is [High] - dirties on every Zone event (zone.js) or every signal write (zoneless). Flag only when the diff touches the decorator
 - [ ] **Signal-first new state**: new local state uses `signal()` / `computed()` not `BehaviorSubject` + `async` (manual subscription, Zone bridge, more dirty-checking)
 - [ ] **`computed` over template getter calls**: `{{ expensiveCalc() }}` re-runs every CD cycle - wrap with `computed` for derived signal state
-- [ ] **`effect` misuse**: `effect()` is for side effects (DOM, library sync, logging), not derivation - `effect(() => mySignal.set(...))` is [High], use `computed` / `linkedSignal`. Missing `onCleanup` callback on long-lived effects with subscriptions / intervals / observers leaks. Use `untracked` to break dep tracking when reads shouldn't re-trigger
+- [ ] **`effect` misuse**: side effects only (DOM, library sync, logging). `effect(() => mySignal.set(...))` is [High] - use `computed` / `linkedSignal`. Long-lived effects holding subscriptions / intervals / observers need `onCleanup`; use `untracked` to break dep tracking
 - [ ] **`toSignal` initial value**: missing `initialValue` returns `Signal<T | undefined>` (template handles poorly); use `{ requireSync: true }` when source is `BehaviorSubject` / `ReplaySubject(1)`
 - [ ] **Bare `.subscribe()` in component / directive**: [High] memory leak - use `takeUntilDestroyed()` (injection context required), `async` pipe, or `toSignal`
 - [ ] **`@for` `track`**: `track $index` on a reorderable / filterable / removable list breaks DOM reuse and re-creates child components ([High]); missing `track` is [High]
@@ -184,36 +180,9 @@ This step is intentionally narrow - depth on observability belongs to `task-angu
 
 Anything beyond presence/absence (sample rates, attribution, route segmentation) → `task-angular-review-observability` owns it. Note the gap, do not duplicate the audit here.
 
-
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`.
-
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
-## Self-Check
-
-- [ ] Stack confirmed as Angular; version, change-detection mode (zone.js / zoneless), SSR enabled / disabled, HTTP transfer cache on / off recorded before any configuration-specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] For `pr-ref` mode, the user-run fetch command was surfaced (not executed by the workflow) and the local ref existed before review continued
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Performance surface read directly (changed components, services, route configs, `app.config.ts`, NgRx stores, `@defer` blocks, `angular.json`)
-- [ ] `angular-component-patterns` and `angular-signals-patterns` consulted for change-detection hotspots; `angular-rxjs-patterns` consulted for subscription overhead
-- [ ] OnPush + signal-first audit applied; Default change detection in new components flagged
-- [ ] `effect` vs `computed` vs `linkedSignal` audited; `effect` writing back to signals flagged
-- [ ] RxJS subscription hygiene checked (`takeUntilDestroyed`, `async` pipe, `toSignal`); bare `.subscribe()` in components flagged
-- [ ] `@for` `track`, `@defer` placement / triggers / placeholder reviewed
-- [ ] Bundle deltas assessed for any new `dependencies` entry; tree-shake-friendly imports verified; lazy-loaded route discipline verified for new routes
-- [ ] N+1 fan-out (`forkJoin(items.map(...))`) flagged when present; batched-query alternative recommended
-- [ ] HTTP transfer cache + `TransferState` reviewed for SSR projects; double-fetch on hydration flagged
-- [ ] `shareReplay` / signal cache reviewed for shared HTTP observables; in-template HTTP calls flagged
-- [ ] Core Web Vitals (LCP image / fonts / CLS reservations / INP debounce / `NgOptimizedImage` priority) checked when route or asset code changed
-- [ ] SSR + hydration / `afterNextRender` / browser-API guards reviewed for SSR projects; Vite / non-SSR section skipped on SPA-only projects
-- [ ] Every finding states impact - measured (`LCP: 2.8s -> 1.4s`) when RUM data exists, estimated otherwise (`+45KB gzip on every cold visit to /dashboard`) - never just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 4 + 5; `standard` ran 4-9; `deep` adds capacity guidance and budget plan
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered High > Medium > Low (omitted only when no actionable findings exist)
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+Use skill: `review-report-writer` with `report_type: review-perf`. Write the assembled output to the report file and print the confirmation line.
 
 ## Output Format
 
@@ -232,9 +201,9 @@ Write the fully assembled review output to the report file before ending the ses
 ### High Impact
 
 - **Location:** [file:line]
-- **Issue:** [what the problem is - name the Angular idiom: Default change detection on a list component, bare `.subscribe()` leaking on navigation, missing `track` on `@for`, eager Material Datepicker on a route that uses it once, missing `NgOptimizedImage priority` on hero, SSR re-fetch without HTTP transfer cache, `effect` writing back to a signal, NgRx selector returning fresh object literal each call, etc.]
-- **Impact:** [estimated effect - e.g., "+120KB gzip on every cold visit to /dashboard" or measured "LCP 2.8s -> 1.4s after fix"]
-- **Fix:** [specific Angular change with code example - `changeDetection: OnPush`, `takeUntilDestroyed()`, `loadComponent`, `@defer (on viewport)`, `provideClientHydration(withHttpTransferCacheOptions({}))`, etc.]
+- **Issue:** [what the problem is - name the Angular idiom: Default CD on a list component, bare `.subscribe()` leaking on navigation, missing `track` on `@for`, eager Material Datepicker, missing `NgOptimizedImage priority` on hero, SSR re-fetch without HTTP transfer cache, `effect` writing back to a signal, NgRx selector returning a fresh object literal, etc.]
+- **Impact:** [measured `LCP 2.8s -> 1.4s` when RUM data exists, estimated `+120KB gzip on every cold visit to /dashboard` otherwise - never "this is slow"]
+- **Fix:** [specific Angular change with code - `changeDetection: OnPush`, `takeUntilDestroyed()`, `loadComponent`, `@defer (on viewport)`, `provideClientHydration(withHttpTransferCacheOptions({}))`, etc.]
 
 ### Medium Impact
 
@@ -248,11 +217,11 @@ _Omit sections with no findings._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding - e.g., "Adopt zoneless change detection for the high-frequency interaction routes", "Convert long lists to `cdk-virtual-scroll-viewport`", "Add bundle budget to angular.json"]
+[Structural improvements not tied to a specific finding - e.g., "Adopt zoneless CD for high-frequency interaction routes", "Convert long lists to `cdk-virtual-scroll-viewport`", "Add bundle budget to angular.json"]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, build config change, or perf-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
+Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting refactor, build config, or perf-test work worth spawning a subagent for). Order: High > Medium > Low Impact.
 
 1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `changeDetection: OnPush` to src/app/orders/order-list.component.ts:12 and convert state from BehaviorSubject to signal"]
 2. **[Delegate]** [High] [scope: build] - [one-line action, e.g., "Add bundle budget for /dashboard route - spawn build-config subagent"]
@@ -261,18 +230,24 @@ Prioritized action list. Each item tagged `[Implement]` (localized fix - apply d
 _Omit this section if there are no actionable findings._
 ```
 
+## Self-Check
+
+- [ ] Step 1: Angular stack confirmed; version, CD mode, SSR, HTTP transfer cache recorded
+- [ ] Step 2: `review-precondition-check` ran (or handle received); diff + commit log read once and reused; pr-ref fetch surfaced to user, not executed; `head_matches_current=false` was user-approved (or parent gated)
+- [ ] Step 3: Performance surface read directly (components, services, route configs, `app.config.ts`, NgRx stores, `@defer` blocks, `angular.json`)
+- [ ] Step 4: OnPush + signal-first audit applied; `effect` vs `computed` / `linkedSignal`; RxJS subscription hygiene; `@for track`; NgRx selector stability
+- [ ] Step 5: Bundle deltas for new `dependencies` measured; tree-shake imports verified; lazy-load discipline for new routes
+- [ ] Step 6: SSR HTTP transfer cache + `TransferState` reviewed; `shareReplay` / signal cache for shared observables; in-template HTTP calls flagged; N+1 fan-out flagged
+- [ ] Step 7: Core Web Vitals (LCP image / fonts / CLS reservations / INP debounce / `NgOptimizedImage priority`) checked when route or asset code changed (skipped at `quick` unless touched)
+- [ ] Step 8: SSR + hydration / `afterNextRender` / browser-API guards reviewed for SSR projects; section skipped on SPA-only
+- [ ] Step 9: Observability presence/absence noted; depth delegated to `task-angular-review-observability` (skipped at `quick`)
+- [ ] Step 10: Every finding states measured or estimated impact; findings ordered by impact; depth honored (`quick`=Steps 4+5; `standard`=4-9; `deep`+capacity & budget plan); Next Steps tagged `[Implement]`/`[Delegate]`; report written via `review-report-writer` and confirmation printed
+
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting issues without naming the Angular idiom ("this is slow" vs "Default change detection on a 1000-row `@for` list re-renders every row on every event in the zone")
-- Recommending generic frontend advice when an Angular pattern applies (say "wrap in `@defer (on viewport)`", not "lazy load")
-- Suggesting `computed` everywhere as a default - the cost is cheap but cache invalidation still costs; only use when the value is reused or genuinely derived
-- Approving raw `<img>` for hero / above-the-fold images - `<img ngSrc priority>` via `NgOptimizedImage` is the right tool
-- Approving Default change detection on new components - OnPush + signals is the canonical shape
-- Approving bare `.subscribe()` in components - leak guaranteed
-- Approving `effect` for state derivation - use `computed` / `linkedSignal`
-- Approving `@for` without `track` or with `track $index` on dynamic lists
-- Approving SSR projects without `provideClientHydration` + HTTP transfer cache - first-paint benefit, double-fetch cost
-- Approving full-library Angular Material imports - per-component imports tree-shake
-- Conflating perf review with general code review or security review - delegate those to their workflows
-- Treating high re-render counts as inherently bad - signals + OnPush make CD cheap; only investigate when a profile or interaction lag implicates re-renders
+- Running `git fetch`, `git checkout`, or any state-changing git command - the user must run these
+- Reporting "this is slow" without naming the Angular idiom or stating impact (KB gzip, LCP delta, CD-cycle cost)
+- Recommending generic frontend advice when an Angular pattern applies ("wrap in `@defer (on viewport)`", not "lazy load")
+- Suggesting `computed` as a default - only when the value is reused or genuinely derived
+- Treating high re-render counts as inherently bad - signals + OnPush make CD cheap; investigate only when a profile or interaction lag implicates re-renders
+- Conflating perf review with general code review, security review, or observability audit - delegate those to their workflows

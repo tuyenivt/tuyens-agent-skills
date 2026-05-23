@@ -1,9 +1,9 @@
 ---
 name: angular-component-patterns
-description: Angular component patterns: standalone, signals, input/output, content projection, control flow (@if/@for/@switch), OnPush.
+description: Angular component design - standalone, OnPush, signal inputs/outputs/model, content projection, control flow, @defer.
 metadata:
   category: frontend
-  tags: [angular, components, standalone, signals, content-projection, onpush, typescript]
+  tags: [angular, components, standalone, signals, content-projection, onpush, defer, typescript]
 user-invocable: false
 ---
 
@@ -13,305 +13,145 @@ user-invocable: false
 
 ## When to Use
 
-- Designing component architecture for a new feature
-- Choosing between standalone components and NgModule-based components
-- Implementing content projection, control flow, and OnPush change detection
-- Adding error handling for component subtrees
-- Reviewing component design for reusability and correctness
+- Designing or reviewing component architecture (tree, boundaries, composition)
+- Choosing between content projection, inputs, services, or provide/inject
+- Migrating legacy components to standalone + signals + new control flow
+
+For signal internals (`computed`, `effect`, `toSignal`, `resource`), use `angular-signals-patterns`.
 
 ## Rules
 
-- Standalone components by default - no NgModules for new components
-- OnPush change detection on every component - no exceptions
-- Use signals for component state - avoid manual change detection triggers
-- Content projection over prop-heavy configuration
-- Single responsibility - each component does one thing; split when responsibilities diverge
-- Inputs must be typed - use `input()` / `input.required()` signal-based inputs
-- Outputs must use `output()` function for signal-based event emission
-- Use new control flow syntax (`@if`, `@for`, `@switch`) instead of structural directives (`*ngIf`, `*ngFor`, `*ngSwitch`)
+- Standalone + OnPush for every new component; no NgModules.
+- Signal inputs/outputs only: `input()`, `input.required()`, `output()`, `model()`. No `@Input()`/`@Output()` decorators.
+- New control flow only: `@if`, `@for` (with `track`), `@switch`. No `*ngIf`/`*ngFor`/`*ngSwitch`.
+- One responsibility per component; split when concerns diverge.
+- Compose via content projection (named slots) before adding configuration inputs.
+- Prop drilling stops at 2 levels - escalate to service, projection, or provide/inject.
+- No direct DOM access (`ElementRef.nativeElement`); template-driven only.
 
 ## Patterns
 
-### Standalone Component Structure
-
-**Bad** - NgModule-based component:
-
-```typescript
-@NgModule({
-  declarations: [UserCardComponent],
-  imports: [CommonModule],
-  exports: [UserCardComponent],
-})
-export class UserCardModule {}
-
-@Component({
-  selector: "app-user-card",
-  templateUrl: "./user-card.component.html",
-})
-export class UserCardComponent {
-  @Input() user!: User;
-}
-```
-
-Problem: NgModule boilerplate, indirect dependency management, harder tree-shaking.
-
-**Good** - Standalone component:
-
-```typescript
-@Component({
-  selector: "app-user-card",
-  standalone: true,
-  imports: [DatePipe],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <article class="user-card">
-      <h3>{{ user().name }}</h3>
-      <p>{{ user().email }}</p>
-      <time>{{ user().joinedAt | date: "mediumDate" }}</time>
-    </article>
-  `,
-})
-export class UserCardComponent {
-  user = input.required<User>();
-}
-```
-
-### Signal-Based Inputs and Outputs
+### Standalone + Signal IO
 
 ```typescript
 @Component({
   selector: "app-product-card",
   standalone: true,
+  imports: [CurrencyPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article>
       <h3>{{ product().name }}</h3>
-      <p>{{ formattedPrice() }}</p>
+      <p>{{ product().price | currency }}</p>
       @if (showActions()) {
-        <button (click)="onAddToCart()">Add to Cart</button>
+        <button (click)="addToCart.emit(product())">Add</button>
       }
     </article>
   `,
 })
 export class ProductCardComponent {
-  // Required input
   product = input.required<Product>();
-  // Optional input with default
   showActions = input(true);
-
-  // Computed from inputs (signal-based)
-  formattedPrice = computed(() =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(this.product().price),
-  );
-
-  // Output
   addToCart = output<Product>();
-
-  onAddToCart() {
-    this.addToCart.emit(this.product());
-  }
 }
 ```
 
 ### Model Inputs (Two-Way Binding)
 
-```typescript
-@Component({
-  selector: "app-search-input",
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <input
-      [value]="query()"
-      (input)="query.set($any($event.target).value)"
-      placeholder="Search..."
-    />
-  `,
-})
-export class SearchInputComponent {
-  query = model(""); // two-way bindable signal
-}
+Use `model()` for form-like components that own a value the parent also reads/writes.
 
-// Usage:
+```typescript
+export class SearchInputComponent {
+  query = model("");
+}
 // <app-search-input [(query)]="searchTerm" />
 ```
 
-### Content Projection
+### Content Projection over Configuration
 
-**Bad** - Prop-heavy configuration:
+**Bad** - prop-heavy:
 
 ```typescript
-@Component({
-  template: `
-    <div class="card">
-      <div class="header">{{ title }}</div>
-      <div class="icon">
-        <ng-container *ngComponentOutlet="iconComponent" />
-      </div>
-      <div class="body">{{ content }}</div>
-      <div class="footer">{{ footerText }}</div>
-    </div>
-  `,
-})
-export class CardComponent {
-  @Input() title = "";
-  @Input() content = "";
-  @Input() footerText = "";
-  @Input() iconComponent: any;
-}
+@Input() title = ""; @Input() icon = ""; @Input() footerText = "";
 ```
 
-**Good** - Content projection with named slots:
+**Good** - named slots:
 
 ```typescript
-@Component({
-  selector: "app-card",
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <article class="card">
-      <header class="card-header">
-        <ng-content select="[card-icon]" />
-        <ng-content select="[card-title]" />
-      </header>
-      <div class="card-body">
-        <ng-content />
-      </div>
-      <footer class="card-footer">
-        <ng-content select="[card-footer]" />
-      </footer>
-    </article>
-  `,
-})
-export class CardComponent {}
-
-// Usage:
+template: `
+  <article class="card">
+    <header>
+      <ng-content select="[card-icon]" />
+      <ng-content select="[card-title]" />
+    </header>
+    <div class="body"><ng-content /></div>
+    <footer><ng-content select="[card-footer]" /></footer>
+  </article>
+`;
 // <app-card>
-//   <mat-icon card-icon>shopping_cart</mat-icon>
-//   <h3 card-title>Order #123</h3>
-//   <p>Order details here...</p>
-//   <button card-footer (click)="view()">View</button>
+//   <mat-icon card-icon>cart</mat-icon>
+//   <h3 card-title>Order</h3>
+//   <p>Body</p>
+//   <button card-footer>View</button>
 // </app-card>
 ```
 
-### Control Flow Syntax
+### Control Flow
 
 ```typescript
-@Component({
-  template: `
-    <!-- @if replaces *ngIf -->
-    @if (user(); as user) {
-      <app-user-card [user]="user" />
-    } @else {
-      <app-skeleton />
-    }
+@if (user(); as u) { <app-user-card [user]="u" /> } @else { <app-skeleton /> }
 
-    <!-- @for replaces *ngFor - track is required -->
-    @for (item of items(); track item.id) {
-      <app-item-card [item]="item" />
-    } @empty {
-      <p>No items found</p>
-    }
+@for (item of items(); track item.id) {
+  <app-item-card [item]="item" />
+} @empty {
+  <p>No items</p>
+}
 
-    <!-- @switch replaces *ngSwitch -->
-    @switch (status()) {
-      @case ("loading") {
-        <app-spinner />
-      }
-      @case ("error") {
-        <app-error-state [message]="errorMessage()" />
-      }
-      @case ("success") {
-        <app-content [data]="data()" />
-      }
-    }
-  `,
-})
-export class DashboardComponent {
-  user = input<User | null>(null);
-  items = input.required<Item[]>();
-  status = input.required<"loading" | "error" | "success">();
-  data = input<DashboardData | null>(null);
-  errorMessage = input("");
+@switch (status()) {
+  @case ("loading") { <app-spinner /> }
+  @case ("error")   { <app-error [message]="errorMessage()" /> }
+  @case ("success") { <app-content [data]="data()" /> }
 }
 ```
 
-### OnPush Change Detection
+`track` is required on `@for`. Use a stable id, not `$index`, unless the list is append-only.
 
-OnPush components only re-render when:
+### OnPush Mental Model
 
-1. An input reference changes
-2. A signal value changes
-3. An event handler runs in the component
-4. The `async` pipe receives a new value
-5. `markForCheck()` is called (avoid when possible)
+OnPush re-renders only when: input reference changes, a read signal changes, a template event fires, or `async` pipe emits. Signal-driven components rarely need `markForCheck()`; if you reach for it, the state likely belongs in a signal.
+
+### Deferred Loading (@defer)
 
 ```typescript
-@Component({
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <h2>{{ title() }}</h2>
-    <p>Count: {{ count() }}</p>
-    <button (click)="increment()">+1</button>
-  `,
-})
-export class CounterComponent {
-  title = input("Counter");
-  count = signal(0);
-
-  increment() {
-    this.count.update((c) => c + 1); // triggers change detection via signal
+@for (product of products(); track product.id) {
+  @defer (on viewport) {
+    <app-product-card [product]="product" />
+  } @placeholder {
+    <div class="skeleton"></div>
+  } @loading (minimum 200ms) {
+    <app-spinner />
   }
 }
 ```
 
-**Bad** - Mutating object without signal update:
+| Trigger          | Use for                                |
+| ---------------- | -------------------------------------- |
+| `on viewport`    | Below-the-fold content                 |
+| `on idle`        | Non-critical UI (analytics, ads)       |
+| `on interaction` | Revealed by user action (tabs, modals) |
+| `on hover`       | Prefetch likely navigation             |
+| `on timer(Xms)`  | Delayed loading after page stabilizes  |
+| `when expr`      | Signal/expression-gated loading        |
+
+### Error Surfaces
+
+Angular has no error boundary. Pair a global `ErrorHandler` (reports to logging) with component-level error inputs:
 
 ```typescript
-// This will NOT trigger change detection with OnPush
-this.items.push(newItem); // mutating array reference
-```
-
-**Good** - Creating new reference:
-
-```typescript
-this.items = signal<Item[]>([]);
-// Update with new reference
-this.items.update((items) => [...items, newItem]);
-```
-
-### Error Handling
-
-Angular does not have React-style error boundaries. Use `ErrorHandler` for global error handling and local try-catch in services:
-
-```typescript
-// Global error handler
-@Injectable()
-export class GlobalErrorHandler implements ErrorHandler {
-  constructor(private readonly logger: LoggingService) {}
-
-  handleError(error: unknown): void {
-    this.logger.error("Unhandled error", error);
-    // Report to error tracking service
-  }
-}
-
-// Register in app config
-export const appConfig: ApplicationConfig = {
-  providers: [{ provide: ErrorHandler, useClass: GlobalErrorHandler }],
-};
-
-// Component-level error state
 @Component({
   template: `
     @if (error()) {
-      <div role="alert">
-        <p>{{ error() }}</p>
-        <button (click)="retry()">Try again</button>
-      </div>
+      <div role="alert">{{ error() }} <button (click)="retry.emit()">Retry</button></div>
     } @else {
       <ng-content />
     }
@@ -319,85 +159,38 @@ export const appConfig: ApplicationConfig = {
 })
 export class ErrorStateComponent {
   error = input<string | null>(null);
-  retryAction = output<void>();
-
-  retry() {
-    this.retryAction.emit();
-  }
+  retry = output<void>();
 }
 ```
 
-### Deferred Loading (@defer)
+### Communication Choices
 
-Use `@defer` to lazy-load heavy child components, reducing initial bundle and improving perceived performance:
-
-```typescript
-@Component({
-  template: `
-    <app-header />
-    <app-product-filters />
-
-    @for (product of products(); track product.id) {
-      @defer (on viewport) {
-        <app-product-card [product]="product" />
-      } @placeholder {
-        <div
-          class="product-skeleton h-48 animate-pulse bg-gray-200 rounded-lg"
-        ></div>
-      } @loading (minimum 200ms) {
-        <app-spinner />
-      }
-    }
-  `,
-})
-export class ProductListComponent {
-  products = input.required<Product[]>();
-}
-```
-
-**Trigger options:**
-
-| Trigger          | When to Use                                    |
-| ---------------- | ---------------------------------------------- |
-| `on viewport`    | Below-the-fold content (product cards, charts) |
-| `on idle`        | Non-critical UI (analytics, ads)               |
-| `on interaction` | Content shown after user action (tabs, modals) |
-| `on hover`       | Prefetch on hover (navigation targets)         |
-| `on timer(Xms)`  | Delayed loading after page stabilizes          |
-| `when condition` | Conditional loading based on signal/expression |
-
-### Component Communication Patterns
-
-| Pattern            | When to Use                              | Example                         |
-| ------------------ | ---------------------------------------- | ------------------------------- |
-| Input/Output       | Parent-child, 1-2 levels deep            | Form field to form container    |
-| Model input        | Two-way binding for form-like components | Search input, toggle, slider    |
-| Service (shared)   | Sibling or distant components            | Cart state, notifications       |
-| Content projection | Flexible layout composition              | Card, dialog, layout containers |
-| Inject + provide   | Subtree-scoped configuration             | Theme, feature flags            |
+| Pattern            | Use for                                  |
+| ------------------ | ---------------------------------------- |
+| Input/output       | Parent-child, 1-2 levels                 |
+| `model()`          | Two-way bindable form-like component     |
+| Service (signals)  | Siblings, distant components, app state  |
+| Content projection | Flexible layout composition              |
+| `provide`/`inject` | Subtree-scoped config (theme, flags)     |
 
 ## Output Format
-
-Consuming workflow skills depend on this structure.
 
 ```
 ## Component Design
 
-**Stack:** {detected framework}
-**Component model:** {Standalone | NgModule}
+**Stack:** {framework + Angular version}
 
 ### Component Tree
 
-{ComponentName} (standalone) - {responsibility}
+{Root} (standalone) - {responsibility}
   ├── {ChildA} (standalone) - {responsibility}
   └── {ChildB} (standalone) - {responsibility}
 
 ### Component Specifications
 
-| Component      | Standalone | Inputs                 | State          | Pattern            |
-| -------------- | ---------- | ---------------------- | -------------- | ------------------ |
-| {name}         | Yes        | {key inputs}           | {signal fields}| Content projection |
-| {name}         | Yes        | {key inputs}           | {signal fields}| Simple             |
+| Component | Inputs       | Outputs   | State (signals) | Composition         |
+| --------- | ------------ | --------- | --------------- | ------------------- |
+| {name}    | {key inputs} | {events}  | {signals}       | {projection/defer}  |
 
 ### Recommendations
 
@@ -410,14 +203,13 @@ Consuming workflow skills depend on this structure.
   - Fix: {concrete correction}
 ```
 
+All listed components are standalone + OnPush by default; call out exceptions explicitly.
+
 ## Avoid
 
-- NgModules for new code (use standalone components)
-- Default change detection strategy (always use OnPush)
-- `@Input()` and `@Output()` decorators in new code (use `input()` and `output()` functions)
-- `*ngIf`, `*ngFor`, `*ngSwitch` structural directives (use `@if`, `@for`, `@switch` control flow)
-- Prop drilling through more than 2 levels (use services, content projection, or inject/provide)
-- God components that handle multiple unrelated concerns
-- Direct DOM manipulation with `ElementRef.nativeElement` (use Angular templating)
-- Inline types on complex components (use named interfaces)
-- Deeply nested ternaries in templates (extract to computed signals or sub-components)
+- God components combining unrelated concerns; split by responsibility.
+- Prop drilling past 2 levels.
+- Inline complex types on inputs; use named interfaces.
+- Deeply nested ternaries in templates; extract to `computed()` or sub-components.
+- `markForCheck()` as a fix for stale views; convert the source to a signal.
+- Mixing legacy decorators/structural directives with new APIs in the same component.

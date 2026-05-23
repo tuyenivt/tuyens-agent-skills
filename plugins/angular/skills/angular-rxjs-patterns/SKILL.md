@@ -1,6 +1,6 @@
 ---
 name: angular-rxjs-patterns
-description: RxJS in Angular: async pipe, takeUntilDestroyed, switchMap/mergeMap/concatMap, error handling, multicasting, signals migration.
+description: Review Angular RxJS - subscription cleanup, flattening operators, error handling, multicasting, signals interop.
 metadata:
   category: frontend
   tags: [angular, rxjs, async-pipe, takeUntilDestroyed, switchmap, observables, subscription]
@@ -13,269 +13,136 @@ user-invocable: false
 
 ## When to Use
 
-- Working with observables in Angular components and services
-- Choosing the correct flattening operator (switchMap, mergeMap, concatMap, exhaustMap)
-- Managing subscriptions and preventing memory leaks
-- Handling errors in observable chains
-- Deciding between RxJS and signals for a given use case
+- Observables in Angular components or services
+- Choosing a flattening operator (switchMap/mergeMap/concatMap/exhaustMap)
+- Subscription cleanup, multicasting, error handling
+- Deciding between RxJS and signals
 
 ## Rules
 
-- Never subscribe manually in components without cleanup - use `async` pipe, `toSignal()`, or `takeUntilDestroyed`
-- Choose the correct flattening operator based on cancellation semantics
-- Handle errors at the appropriate level - do not let errors propagate to crash the component
-- Use `shareReplay` for observables consumed by multiple subscribers
-- Prefer signals over observables for component-local state
-- Use `takeUntilDestroyed` from `@angular/core/rxjs-interop` for cleanup in components
+- Never subscribe in components without cleanup. Use `async` pipe, `toSignal()`, or `takeUntilDestroyed()`.
+- Pick the flattening operator by cancellation semantics (see table).
+- Handle errors so the UI shows a state; never swallow into `EMPTY` silently.
+- Multicast shared HTTP/state with `shareReplay({ bufferSize: 1, refCount: true })`.
+- Prefer signals for component-local state; keep RxJS for streams and complex async timing.
 
 ## Patterns
 
-### Subscription Management
+### Subscription cleanup
 
-**Bad** - Manual subscribe without cleanup:
+**Bad** - leaks on destroy:
 
 ```typescript
-@Component({})
-export class UserListComponent implements OnInit {
-  users: User[] = [];
-
-  ngOnInit() {
-    this.userService.getUsers().subscribe((users) => {
-      this.users = users; // memory leak - no unsubscribe
-    });
-  }
+ngOnInit() {
+  this.userService.getUsers().subscribe(users => this.users = users);
 }
 ```
 
-**Good** - Option 1: async pipe (template-driven):
+**Good** - pick one:
 
 ```typescript
-@Component({
-  imports: [AsyncPipe],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (users$ | async; as users) {
-      @for (user of users; track user.id) {
-        <app-user-card [user]="user" />
-      }
-    } @else {
-      <app-spinner />
-    }
-  `,
-})
-export class UserListComponent {
-  private readonly userService = inject(UserService);
-  users$ = this.userService.getUsers();
-}
-```
+// async pipe (template)
+users$ = this.userService.getUsers();
 
-**Good** - Option 2: toSignal (signal-based):
+// toSignal (preferred for one-shot HTTP)
+users = toSignal(this.userService.getUsers());
 
-```typescript
-@Component({
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (users(); as users) {
-      @for (user of users; track user.id) {
-        <app-user-card [user]="user" />
-      }
-    } @else {
-      <app-spinner />
-    }
-  `,
-})
-export class UserListComponent {
-  private readonly userService = inject(UserService);
-  users = toSignal(this.userService.getUsers());
-}
-```
-
-**Good** - Option 3: takeUntilDestroyed (imperative):
-
-```typescript
-@Component({})
-export class DashboardComponent {
-  private readonly destroyRef = inject(DestroyRef);
-
-  ngOnInit() {
-    this.notificationService.notifications$
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(notification => {
-        this.showToast(notification);
-      });
-  }
-}
-
-// In constructor context, no DestroyRef needed:
+// takeUntilDestroyed (imperative side effects)
 constructor() {
-  someObservable$
-    .pipe(takeUntilDestroyed()) // auto-injects DestroyRef
-    .subscribe(value => this.handleValue(value));
+  this.notifications$
+    .pipe(takeUntilDestroyed())          // auto-injects DestroyRef in injection context
+    .subscribe(n => this.showToast(n));
 }
 ```
 
-### Flattening Operator Selection
+Outside an injection context, pass `DestroyRef`: `takeUntilDestroyed(inject(DestroyRef))`.
 
-| Operator     | Behavior                          | When to Use                                      |
+### Flattening operator selection
+
+| Operator     | Behavior                          | Use for                                          |
 | ------------ | --------------------------------- | ------------------------------------------------ |
 | `switchMap`  | Cancels previous inner observable | Search, autocomplete, navigation (latest wins)   |
-| `mergeMap`   | Runs all in parallel              | Independent actions (favorite, delete batch)     |
-| `concatMap`  | Queues sequentially               | Order matters (form saves, sequential API calls) |
+| `mergeMap`   | Runs in parallel                  | Independent actions (batch delete, favorite)     |
+| `concatMap`  | Queues sequentially               | Order matters (sequential saves)                 |
 | `exhaustMap` | Ignores new until current done    | Prevent double-submit (login, payment)           |
 
-**switchMap - Search (cancel previous):**
-
 ```typescript
-searchResults$ = this.searchControl.valueChanges.pipe(
+// search: cancel stale requests
+results$ = this.searchControl.valueChanges.pipe(
   debounceTime(300),
   distinctUntilChanged(),
-  filter((term) => term.length >= 2),
-  switchMap((term) => this.searchService.search(term)), // cancels stale requests
+  filter(t => t.length >= 2),
+  switchMap(t => this.searchService.search(t)),
 );
-```
 
-**concatMap - Sequential saves:**
-
-```typescript
-saveAll(items: Item[]): Observable<Item[]> {
-  return from(items).pipe(
-    concatMap(item => this.http.put<Item>(`/api/items/${item.id}`, item)),
-    toArray(),
-  );
-}
-```
-
-**exhaustMap - Prevent double submit:**
-
-```typescript
-@Component({
-  template: ` <button (click)="submit$.next()">Submit</button> `,
-})
-export class PaymentComponent {
-  submit$ = new Subject<void>();
-
-  private readonly payment$ = this.submit$.pipe(
-    exhaustMap(() => this.paymentService.processPayment(this.formData())),
+// submit: ignore clicks while in-flight
+submit$ = new Subject<void>();
+constructor() {
+  this.submit$.pipe(
+    exhaustMap(() => this.paymentService.process(this.formData())),
     takeUntilDestroyed(),
-  );
-
-  constructor() {
-    this.payment$.subscribe({
-      next: (result) => this.handleSuccess(result),
-      error: (err) => this.handleError(err),
-    });
-  }
+  ).subscribe({ next: r => this.onSuccess(r), error: e => this.onError(e) });
 }
 ```
 
-### Error Handling
+### Error handling
 
-**Component-level error handling:**
+Surface error state to the template; do not swallow.
 
 ```typescript
-@Component({
-  template: `
-    @switch (state()) {
-      @case ("loading") {
-        <app-spinner />
-      }
-      @case ("error") {
-        <app-error-state [message]="errorMessage()" (retry)="load()" />
-      }
-      @case ("success") {
-        <app-user-list [users]="users()" />
-      }
-      @case ("empty") {
-        <app-empty-state message="No users found" />
-      }
-    }
-  `,
-})
-export class UserPageComponent {
-  private readonly userService = inject(UserService);
+state = signal<'loading' | 'error' | 'success' | 'empty'>('loading');
 
-  state = signal<"loading" | "error" | "success" | "empty">("loading");
-  users = signal<User[]>([]);
-  errorMessage = signal("");
-
-  constructor() {
-    this.load();
-  }
-
-  load() {
-    this.state.set("loading");
-    this.userService
-      .getUsers()
-      .pipe(takeUntilDestroyed())
-      .subscribe({
-        next: (users) => {
-          this.users.set(users);
-          this.state.set(users.length > 0 ? "success" : "empty");
-        },
-        error: (err) => {
-          this.errorMessage.set(err.message ?? "Failed to load users");
-          this.state.set("error");
-        },
-      });
-  }
+load() {
+  this.state.set('loading');
+  this.userService.getUsers().pipe(takeUntilDestroyed()).subscribe({
+    next: users => {
+      this.users.set(users);
+      this.state.set(users.length ? 'success' : 'empty');
+    },
+    error: err => {
+      this.errorMessage.set(err.message ?? 'Failed to load users');
+      this.state.set('error');
+    },
+  });
 }
 ```
 
-**Retry with backoff:**
+Retry transient failures with backoff:
 
 ```typescript
-getUsers(): Observable<User[]> {
-  return this.http.get<User[]>('/api/users').pipe(
-    retry({
-      count: 3,
-      delay: (error, retryCount) => timer(Math.pow(2, retryCount) * 1000),
-    }),
-  );
-}
+this.http.get<User[]>('/api/users').pipe(
+  retry({ count: 3, delay: (_, n) => timer(2 ** n * 1000) }),
+);
 ```
 
 ### Multicasting
 
 ```typescript
-@Injectable({ providedIn: "root" })
-export class ConfigService {
-  // shareReplay caches the last emission for late subscribers
-  readonly config$ = this.http
-    .get<AppConfig>("/api/config")
-    .pipe(shareReplay({ bufferSize: 1, refCount: true }));
-
-  constructor(private readonly http: HttpClient) {}
-}
+readonly config$ = this.http.get<AppConfig>('/api/config').pipe(
+  shareReplay({ bufferSize: 1, refCount: true }),  // refCount lets GC reclaim when unused
+);
 ```
 
-### Combining Observables
+### Combining
 
 ```typescript
-// combineLatest - wait for all, re-emit on any change
-dashboard$ = combineLatest({
-  users: this.userService.getUsers(),
-  orders: this.orderService.getOrders(),
-  stats: this.statsService.getStats(),
-});
+// combineLatest: re-emits on any change (live dashboards)
+dashboard$ = combineLatest({ users: users$, orders: orders$ });
 
-// forkJoin - wait for all to complete (one-shot)
-initialData$ = forkJoin({
-  users: this.userService.getUsers(),
-  categories: this.categoryService.getCategories(),
-});
+// forkJoin: waits for all to complete (one-shot init)
+initial$ = forkJoin({ users: users$, categories: categories$ });
 ```
 
-### When to Use RxJS vs Signals
+### RxJS vs signals
 
 | Use Case                              | Prefer          | Reason                              |
 | ------------------------------------- | --------------- | ----------------------------------- |
-| Component-local state                 | Signal          | Simpler, no subscription management |
-| Derived/computed values               | computed()      | Automatic dependency tracking       |
-| HTTP response (one-shot)              | toSignal()      | Convert to signal at component edge |
-| Signal-dependent async data           | resource()      | Built-in loading/error states (19+) |
-| Streams (WebSocket, events)           | RxJS            | Built for continuous event streams  |
-| Complex async flows (retry, debounce) | RxJS            | Operators handle complex timing     |
-| Template rendering                    | Signal or async | Both work; signals are simpler      |
+| Component-local state                 | signal          | No subscription management          |
+| Derived values                        | computed()      | Automatic dependency tracking       |
+| One-shot HTTP                         | toSignal()      | Convert at component edge           |
+| Signal-dependent async (Angular 19+)  | resource()      | Built-in loading/error states       |
+| Streams (WebSocket, events)           | RxJS            | Continuous event streams            |
+| Complex timing (retry, debounce)      | RxJS            | Operators handle timing             |
 
 ## Output Format
 
@@ -289,8 +156,8 @@ Consuming workflow skills depend on this structure.
 
 ### Observable Patterns
 
-| Observable          | Source          | Flattening     | Cleanup           |
-| ------------------- | --------------- | -------------- | ----------------- |
+| Observable          | Source          | Flattening      | Cleanup           |
+| ------------------- | --------------- | --------------- | ----------------- |
 | {name}              | {HTTP/Subject}  | {switchMap/etc} | {async/toSignal}  |
 
 ### Subscription Management
@@ -312,11 +179,9 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Manual `subscribe()` in components without cleanup (memory leak)
-- Using `switchMap` for mutations (cancels in-flight saves)
-- Using `mergeMap` for search/autocomplete (stale results appear after current)
-- `subscribe()` inside `subscribe()` (nested subscriptions - use flattening operators)
-- Catching errors and returning `EMPTY` without notifying the user
-- Using `Subject` when a signal would suffice for component-local state
-- `shareReplay` without `refCount: true` (prevents garbage collection)
-- Subscribing to the same observable multiple times without multicasting
+- `switchMap` for mutations (cancels in-flight saves) -- use `concatMap` or `exhaustMap`.
+- `mergeMap` for search (stale results overwrite latest) -- use `switchMap`.
+- Nested `subscribe()` inside `subscribe()` -- use a flattening operator.
+- `catchError(() => EMPTY)` without surfacing state to the user.
+- `shareReplay` without `refCount: true` (subscription never drops, blocks GC).
+- `Subject` for component-local state a signal would handle.
