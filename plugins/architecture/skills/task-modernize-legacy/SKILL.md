@@ -66,32 +66,20 @@ Before analysis, confirm the modernization scope:
 
 ### 1. Legacy System Assessment
 
-**Understand the legacy system deeply before planning its replacement.**
+Understand the legacy system deeply before planning its replacement.
 
-Use skill: `stack-detect` to identify the current technology stack.
-Use skill: `architecture-guardrail` to assess current architecture quality.
+Use skill: `stack-detect` for the current stack.
+Use skill: `architecture-guardrail` for current boundary quality.
 
-Analyze:
-
-- **Technology profile** -- language, framework, runtime, dependencies, versions
-- **Architecture pattern** -- monolith, layered, event-driven, stored procedures, etc.
-- **System capabilities** -- what the system does (feature inventory)
-- **Integration points** -- external systems, APIs, file feeds, databases shared with other systems
-- **Technical debt inventory** -- known issues, workarounds, deprecated dependencies
-- **Operational profile** -- how it runs (hosting, deployment, monitoring, on-call burden)
-- **Knowledge concentration** -- who understands the system, bus factor, documentation quality
-- **Scaling limits** -- what prevents the system from scaling (language, framework, architecture, data layer)
+Capture: tech profile (language/framework/runtime/versions), architecture pattern, capability inventory, integration points, technical debt, operational profile, knowledge concentration (bus factor), and scaling limits with named cause. These feed Sections 2-5 and the Capability Inventory table in the Output.
 
 ### 2. Modernization Driver Analysis
 
-**Validate that modernization is the right solution.**
+Not every legacy system needs modernization. Validate the driver:
 
-Not every legacy system needs modernization. Assess:
-
-- **Driver specificity** -- is the pain caused by the technology, or by poor practices that would follow to any stack?
-- **Cost of doing nothing** -- what happens if the system stays on the current stack for 2 more years?
-- **Modernization ROI** -- investment required vs. expected benefit (hiring, velocity, scaling, cost)
-- **Alternative approaches** -- would incremental refactoring on the current stack solve the problem cheaper?
+- Is the pain caused by the technology, or by practices that follow to any stack?
+- What is the cost of doing nothing for 2 more years?
+- Would incremental refactoring on the current stack solve it cheaper?
 
 Produce a modernization justification:
 
@@ -123,37 +111,17 @@ If the user has not specified a target stack, evaluate 2-3 realistic options:
 | Migration complexity | Low / Med / High    | Low / Med / High    | Low / Med / High    |
 | Long-term viability  | Strong / Uncertain  | Strong / Uncertain  | Strong / Uncertain  |
 
-For each option, state:
-
-- Why it fits the requirements
-- What trade-offs it introduces
-- What risks are specific to this choice
-- Estimated migration effort relative to other options
-
-If the user has specified a target stack, validate the choice against these criteria and flag any concerns.
+Per option: why it fits, trade-offs, choice-specific risks, relative migration effort. If a target was already chosen, validate against these criteria and flag concerns rather than skip the analysis.
 
 ### 4. Behavioral Inventory
 
-[standard: produce a summary of key undocumented behaviors; deep: produce the full behavioral matrix below]
+The legacy system's behavior is the specification. Capture it before rewriting.
 
-**The legacy system's behavior is the specification. Capture it.**
+[standard: summary of key undocumented behaviors. deep: full behavioral matrix below.]
 
-Before rewriting anything, inventory the legacy system's behavior:
+Capture across: documented vs. undocumented behaviors, edge cases and workarounds, integration contracts (exact request/response, error codes), business rules in code (validation, calculation, state machines), business rules in DB (triggers, stored procedures, computed columns).
 
-- **Documented behaviors** -- features described in specs, user docs, or tests
-- **Undocumented behaviors** -- logic that exists in code but has no documentation
-- **Edge cases and workarounds** -- special handling for specific customers, data patterns, or error conditions
-- **Integration contracts** -- exact request/response formats, error codes, timing expectations
-- **Business rules in code** -- validation rules, calculation logic, state machines embedded in application code
-- **Business rules in database** -- triggers, stored procedures, constraints, computed columns
-
-Discovery methods:
-
-1. **Existing test suites** -- extract behavioral contracts from tests
-2. **Production traffic analysis** -- log request/response patterns to discover real usage
-3. **Code reading** -- systematic review of legacy code for business rules
-4. **Stakeholder interviews** -- ask domain experts about expected behaviors
-5. **Shadow testing** -- run new system alongside legacy and compare outputs
+Discovery methods (use multiple): existing tests, production traffic analysis, code reading, stakeholder interviews, shadow testing against legacy.
 
 For deep depth, produce a behavioral matrix:
 
@@ -179,15 +147,7 @@ Choose the primary migration approach:
 | Parallel run          | Must verify behavioral equivalence before cutover      | Expensive (run two systems); highest confidence   |
 | Component extraction  | One module has clear boundaries, extract and rewrite   | Smallest scope; good starting point               |
 
-For each migration phase:
-
-- **Capability migrated** -- what moves from legacy to new system
-- **Prerequisites** -- what must be in place (routing layer, data sync, tests)
-- **Behavioral verification** -- how to confirm the new implementation matches legacy
-- **Traffic migration** -- how traffic shifts from legacy to new system
-- **Data migration** -- how data moves or stays accessible (see Section 6)
-- **Rollback plan** -- how to revert to legacy if the migration fails
-- **Duration estimate** -- rough timeline
+Per phase, the Output template specifies the fields: capability, prerequisites, behavioral verification, traffic migration, data migration, rollback, duration. Every phase needs a rollback path and behavioral verification (shadow/replay/diff) - matching legacy is the gate.
 
 Migration order heuristics:
 
@@ -199,34 +159,20 @@ Migration order heuristics:
 
 ### 6. Data Migration and Coexistence
 
-**Data outlives code. Plan the data transition carefully.**
+Data outlives code. Plan the transition carefully.
 
 Use skill: `architecture-data-consistency` for consistency during migration.
 Use skill: `ops-backward-compatibility` for schema compatibility.
 
-Address:
+Address: schema evolution (legacy -> modern), who is the source of truth during coexistence, sync strategy (CDC, dual-write, shared DB with ACL, API-mediated), historical-data scope (full migrate vs. archive + cutover date), and post-migration integrity validation.
 
-- **Schema evolution** -- legacy schema to modern schema (normalization, type changes, naming conventions)
-- **Data access during coexistence** -- both legacy and new system need data; who is the source of truth?
-- **Data sync strategy** -- CDC, dual-write, shared database with access control, or API-mediated access
-- **Historical data** -- migrate all history or archive and start fresh with cutover date
-- **Data validation** -- how to verify data integrity after migration
+**Calendar-critical systems:** For mandatory processing windows (payroll 1st/15th, month-end closes, regulatory deadlines), identify blackout periods explicitly and schedule risky phases between them with at least a 3-business-day pre-blackout freeze.
 
-**Calendar-critical systems:** For systems with mandatory processing windows (payroll on the 1st/15th, month-end closes, regulatory reporting deadlines), explicitly identify blackout periods during which no data migration, schema change, or cutover may occur. Schedule all risky migration phases in the windows between these dates, and add a "pre-blackout freeze" buffer of at least 3 business days.
-
-This section focuses on application-level data coexistence. For detailed database migration planning (schema changes, zero-downtime DDL, rollback scripts), use `task-db-migration`.
+For detailed schema-change planning (zero-downtime DDL, rollback scripts), use `task-db-migration`.
 
 ### 7. Team and Knowledge Transition
 
-**Technology changes require people changes.**
-
-Address:
-
-- **Skills gap analysis** -- what skills the team needs for the target stack
-- **Training plan** -- how the team learns the new stack (training, pairing, pilot projects)
-- **Knowledge extraction** -- how domain knowledge in legacy code is captured before it is replaced
-- **Staffing model during migration** -- who maintains legacy while others build new
-- **Transition timeline** -- when the team stops maintaining legacy and fully operates new system
+Technology changes require people changes. Plan: skills gap to target stack, training approach (training/pairing/pilot), domain-knowledge extraction from legacy code, staffing model during migration (who maintains legacy while others build new), and the cutover when the team stops maintaining legacy. The Team Transition table in the Output template is the contract.
 
 ### 8. Risk Analysis
 
@@ -234,22 +180,7 @@ Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
 Use skill: `ops-resiliency` for mitigation patterns.
 
-Analyze modernization-specific risks:
-
-- **Behavioral divergence** -- new system behaves differently from legacy in subtle ways
-- **Second system effect** -- temptation to over-engineer the replacement
-- **Migration fatigue** -- multi-year migration loses momentum and funding
-- **Knowledge loss** -- legacy experts leave before domain knowledge is transferred
-- **Coexistence complexity** -- running two systems is operationally expensive
-- **Sunk cost trap** -- legacy investment makes it hard to commit to replacement
-- **Scope creep** -- modernization becomes an excuse to add features, delaying delivery
-
-For each high-risk scenario:
-
-- State the risk
-- State the likelihood (High / Medium / Low)
-- State the impact
-- State the mitigation
+Modernization-specific risks: behavioral divergence, second-system effect (over-engineering the replacement), migration fatigue (multi-year initiatives lose momentum), knowledge loss (legacy experts leave), coexistence cost, sunk-cost trap, scope creep (rewrite + new features doubles risk). Per high-risk scenario: likelihood, impact, mitigation.
 
 ## Review Mode
 

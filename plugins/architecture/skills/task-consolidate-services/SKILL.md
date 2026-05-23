@@ -82,11 +82,7 @@ Use smell detection to find merge candidates:
 | Proxy service           | Service adds no logic, just forwards requests                   | Remove the proxy, connect directly           |
 | Team mismatch           | One person maintains 5+ services                                | Consolidate to match team capacity           |
 
-For each smell detected, document:
-
-- Which services exhibit the smell
-- Evidence (call frequency, deploy coupling, shared tables)
-- Merge recommendation
+Per smell detected: services affected, evidence (call frequency, deploy coupling, shared tables), recommendation. The Smells Detected table in the Output template is the contract.
 
 ### 3. Merge Candidates and Grouping
 
@@ -95,15 +91,7 @@ For each smell detected, document:
 Use skill: `system-boundary-design` for boundary redesign.
 Use skill: `tradeoff-analysis` for merge vs keep-separate decisions on borderline candidates.
 
-For each merge group:
-
-- **Services to merge** -- which services combine
-- **Resulting service** -- name, responsibility, data ownership
-- **Merge justification** -- which smells this resolves
-- **Boundary improvement** -- how the new boundary is better than the split
-- **What stays separate** -- services that should NOT be merged and why
-
-Produce a merge map:
+Per merge group: which services combine, resulting service (name, responsibility, data ownership), smells resolved, boundary improvement vs. the split. Also list services that stay separate and why. Produce a merge map:
 
 | Merge Group      | Services Merging             | Resulting Service | Justification               |
 | ---------------- | ---------------------------- | ----------------- | --------------------------- |
@@ -117,22 +105,16 @@ Produce a merge map:
 Use skill: `architecture-data-consistency` for consistency during migration.
 Use skill: `ops-backward-compatibility` for schema change safety.
 
-For each merge group:
+Per merge group: current layout (DBs/schemas/tables), target unified schema, migration strategy, consistency during transition.
 
-- **Current data layout** -- separate databases, schemas, or tables per service
-- **Target data layout** -- unified schema in merged service's database
-- **Migration strategy**:
-  - **Already shared database** (services read/write the same DB): no data migration needed - focus on schema cleanup, removing artificial service boundaries, and merging ORM models. This is the simplest consolidation case.
-  - Same DB engine, separate databases: schema merge with migration scripts
-  - Different DB engines: pick target engine, migrate data
-  - Event-sourced services: merge event stores or project to unified store
-- **Data migration phases**:
-  1. Dual-read: merged service reads from both sources
-  2. Data migration: copy/transform data to unified schema
-  3. Dual-write: write to both during transition
-  4. Cutover: switch to unified schema, stop dual operations
-  5. Cleanup: remove old schemas, sync jobs, compatibility code
-- **Consistency during transition** -- how to handle reads/writes while migrating
+**Migration strategy by case:**
+
+- **Already shared DB** (services share one instance): no data migration - schema cleanup, remove artificial boundaries, merge ORM models. Simplest case; do not apply the full 5-phase template.
+- **Same engine, separate DBs:** schema merge with migration scripts.
+- **Different engines:** pick target, migrate data.
+- **Event-sourced:** merge event stores or project to a unified store.
+
+**Full 5-phase template** (only when data physically relocates): dual-read -> migrate/transform -> dual-write -> cutover -> cleanup.
 
 ### 5. Consolidation Phasing [standard/deep only]
 
@@ -152,15 +134,7 @@ Determine merge order:
 | Team readiness  | Same team owns both services        | Different teams, coordination needed  |
 | Consumer impact | Internal consumers only             | External API consumers                |
 
-For each consolidation phase:
-
-- **What merges** -- which services combine in this phase
-- **Prerequisites** -- what must be in place
-- **API migration** -- how consumers migrate from old endpoints to new
-- **Data migration** -- how data reunifies (see Section 4)
-- **Traffic routing** -- how traffic shifts from old services to merged service
-- **Verification** -- how to confirm the merge succeeded
-- **Rollback** -- how to revert if the merge fails
+Per phase, the Output template specifies the fields: what merges, prerequisites, API migration, data migration, routing, verification, rollback. Every phase needs a rollback path - undoing a merge is harder than undoing a split.
 
 ### 6. Consumer Migration [standard/deep only]
 
@@ -169,36 +143,20 @@ For each consolidation phase:
 Use skill: `ops-backward-compatibility` for API compatibility.
 Use skill: `ops-feature-flags` for consumer routing.
 
-For each merged service:
+Per merged service: affected consumers, strategy, deprecation timeline, coordination plan.
 
-- **Affected consumers** -- who calls the services being merged
-- **API consolidation strategy**:
-  - Facade: merged service exposes old APIs temporarily, routes internally
-  - Versioned: new unified API alongside old endpoints, deprecation timeline
-  - Direct: consumers update to new API (only if few consumers, coordinated deploy)
-- **Deprecation timeline** -- when old endpoints are removed
-- **Consumer communication** -- how to notify and coordinate with consumer teams
+**API consolidation strategies:**
+
+- **Facade:** merged service exposes old APIs temporarily, routes internally. Lowest consumer disruption.
+- **Versioned:** new unified API alongside old endpoints with a deprecation window.
+- **Direct:** consumers update to new API. Only safe with few consumers and coordinated deploys.
 
 ### 7. Risk Analysis
 
 Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
 
-Analyze consolidation-specific risks:
-
-- **Blast radius increase** -- merged service failure now affects more capabilities
-- **Scaling mismatch** -- merged capabilities may have different scaling needs
-- **Deploy coupling** -- previously independent deploys now coupled
-- **Data migration risk** -- data loss or corruption during reunification
-- **Rollback complexity** -- undoing a merge is harder than undoing a split
-- **Team ownership** -- who owns the merged service if original services had different owners
-
-For each high-risk scenario:
-
-- State the risk
-- State the blast radius
-- State the mitigation
-- State the rollback approach
+Consolidation-specific risks: blast-radius increase (merged service failure affects more capabilities), scaling mismatch (different sub-capability needs), deploy coupling (formerly independent), data migration loss/corruption, rollback complexity (undoing a merge is expensive), team ownership ambiguity. Per high-risk scenario: blast radius, mitigation, rollback.
 
 ## Review Mode
 

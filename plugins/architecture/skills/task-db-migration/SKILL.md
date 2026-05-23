@@ -109,40 +109,20 @@ Flag any step with an exclusive lock on a table larger than estimated threshold 
 
 ### Step 3 - Expand-Contract Strategy
 
-For any change that is not purely additive, apply expand-contract to eliminate the coupling between schema change and code deploy.
+Apply to any change that is not purely additive (renames, type changes, table splits, constraint additions on existing data).
 
-**The three phases:**
+| Phase | Schema state | App state |
+| ----- | ------------ | --------- |
+| **Expand** | Add new column/table; keep old | Dual-write old + new; read old |
+| **Migrate** | New populated and validated | Read flips to new after verification |
+| **Contract** | Drop old in separate deploy | Stop dual-write; verify no readers/writers reference old |
 
-**Expand phase** -- schema becomes compatible with both old and new application code:
+**PostgreSQL: adding NOT NULL on large tables.** Validating with a full scan acquires ACCESS EXCLUSIVE. Use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking) whenever validating against >1M rows. Sequence: nullable column -> dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT`.
 
-- Add the new column / table / index
-- Keep the old column / table in place
-- Application writes to both old and new (dual-write)
-- Application reads from old (new column may have nulls)
+Skip expand-contract only when: the change is purely additive, or downtime is explicitly acceptable and scheduled.
 
-**Migrate phase** -- backfill data into new structure while both are live:
-
-- Backfill old data into new column / table in batches
-- Validate completeness and correctness before proceeding
-- Application begins reading from new once backfill is complete and verified
-
-**Contract phase** -- remove the old structure once all readers and writers use the new:
-
-- Remove dual-write from application code
-- Verify no readers or writers reference old column / table (search codebase and logs)
-- Drop old column / table in a separate deployment
-
-Apply this pattern to: column renames, type changes, table splits, constraint additions on existing data.
-
-**Adding NOT NULL on large tables (PostgreSQL):** validating with a full scan acquires ACCESS EXCLUSIVE. Use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking) whenever validating against >1M rows. Sequence: nullable column -> app dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT`.
-
-Skip expand-contract only when:
-
-- The change is purely additive (new nullable column, new table with no existing data dependency)
-- Downtime is explicitly acceptable and scheduled
-
-Use skill: `ops-release-safety` to plan the deploy ordering across expand, migrate, and contract phases.
-Use skill: `dependency-impact-analysis` for multi-service deployment ordering.
+Use skill: `ops-release-safety` for deploy ordering across phases.
+Use skill: `dependency-impact-analysis` for multi-service ordering.
 
 ### Step 4 - Backfill Planning
 
@@ -171,14 +151,7 @@ Recommend a backfill approach:
 
 ### Step 5 - Rollback Plan
 
-Define rollback procedures for each phase of the migration. Rollback must be designed before the migration runs.
-
-For each phase, answer:
-
-1. **What does rollback require?** (schema revert, data revert, code revert)
-2. **Is rollback data-safe?** (have rows been written that cannot be un-written without data loss?)
-3. **What is the rollback time estimate?** (seconds / minutes / hours)
-4. **What is the rollback trigger?** (error rate threshold, timeout, explicit abort signal)
+Per phase: what rollback requires (schema/data/code), data safety (any rows that cannot be un-written without loss), time estimate, trigger condition. Designed before the migration runs.
 
 **Rollback complexity by change type:**
 
@@ -198,15 +171,7 @@ Use skill: `review-blast-radius` to assess the impact if the rollback itself fai
 
 ### Step 6 - Execution Plan
 
-Produce the phased execution plan with ordered steps.
-
-For each step, state:
-
-- **Action**: What to run (migration script, application deploy, backfill job, etc.)
-- **Pre-condition**: What must be true before this step runs
-- **Lock risk**: Lock acquired, estimated duration
-- **Rollback**: How to undo this step specifically
-- **Validation**: How to confirm this step succeeded before proceeding
+For each step: action, pre-condition, lock acquired with duration, step-level rollback, concrete validation that confirms success before the next step. Vague validation ("verify the migration ran") is not acceptable on Blocker-risk steps.
 
 ## Review Mode
 

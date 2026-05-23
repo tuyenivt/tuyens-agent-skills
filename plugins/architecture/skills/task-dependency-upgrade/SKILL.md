@@ -60,9 +60,7 @@ This shapes:
 
 ### Step 2 - Breaking Change Analysis
 
-**Version numbering caveat:** Do not assume that minor version bumps (X.minor.patch) are safe. Some ecosystems (Spring Boot, Django, Rails) regularly introduce breaking changes in minor releases. Always read the full changelog and dedicated migration guide for every version in the upgrade path, including intermediate minor versions.
-
-Analyze the changelog and migration guide for the target version:
+Do not assume minor version bumps are safe. Ecosystems like Spring Boot, Django, and Rails regularly ship breaking changes in minor releases. Read the full changelog and migration guide for every version in the path, including intermediates.
 
 Categorize breaking changes by type:
 
@@ -75,38 +73,21 @@ Categorize breaking changes by type:
 | Transitive dep upgrade | Pulled-in dependency version change causing indirect conflicts | Dependency resolution        |
 | Runtime requirement    | New minimum JVM version, OS library, or build tool version     | Infrastructure change        |
 
-For each breaking change relevant to this codebase:
+Per change relevant to the codebase: change, migration action, effort (S/M/L/XL).
 
-- State the change
-- State the migration action
-- State the effort (S/M/L/XL per change)
-
-Use skill: `ops-backward-compatibility` to assess API and data contract impact.
+Use skill: `ops-backward-compatibility` for API and data contract impact.
 
 ### Step 3 - Compatibility Check
 
-Identify conflicts with other dependencies in the graph:
+Surface conflicts: transitive dependency version mismatches, build-tool minimums (Gradle/Maven/Bundler/npm), runtime minimums (JDK, Node, Python, Ruby), test library compatibility. Mark each as resolvable, needs-its-own-upgrade, or blocker.
 
-- Transitive dependency version conflicts (A requires X 2.x, B requires X 3.x)
-- Build tool version requirements (new version requires newer Gradle/Maven/Bundler/npm)
-- Runtime version requirements (new JDK, Ruby, Node.js, Python version needed)
-- Test library compatibility (test framework may need a version bump too)
+Use skill: `dependency-impact-analysis` for deployment ordering when multiple components must upgrade together.
 
-State each conflict and whether it can be resolved, needs its own upgrade, or is a blocker.
-
-Use skill: `dependency-impact-analysis` to assess deployment ordering if multiple components must upgrade together.
-
-**Multi-dependency upgrades:** When upgrading multiple dependencies simultaneously (e.g., framework + runtime + type system), assess interaction effects between the upgrades. Upgrades that are individually safe may conflict when combined. For each pair of concurrent upgrades, check whether the target version of one is compatible with the target version of the other, and whether a specific upgrade order is required. If interaction risk is high, recommend sequencing the upgrades across separate PRs rather than a single batch.
+**Multi-dependency upgrades:** When bumping several deps at once (framework + runtime + type system), check pairwise compatibility - individually safe upgrades can conflict when combined. If interaction risk is high, sequence across separate PRs rather than one batch.
 
 ### Step 4 - Security Assessment
 
-Assess whether this upgrade addresses known vulnerabilities:
-
-- List CVEs addressed by the target version (if this is a security-motivated upgrade)
-- Assess whether staying on the current version introduces unacceptable security risk
-- Note if the current version has reached end-of-life (no security patches)
-
-If the upgrade is not security-motivated, note the security status of the current version.
+State the security status of the current version regardless of whether the upgrade is security-motivated: EOL status, named CVEs the target version fixes, risk of staying. If listing CVEs, cite source rather than speculating.
 
 ### Step 5 - Migration Effort Estimate
 
@@ -129,11 +110,7 @@ Size guidance:
 
 ### Step 6 - Risk Assessment
 
-Use skill: `review-blast-radius` to assess upgrade risk:
-
-- Which features and flows depend on this dependency?
-- What is the blast radius if the upgrade introduces a regression?
-- Are there canary or feature-flag options to limit rollout exposure?
+Use skill: `review-blast-radius` for upgrade risk: affected features/flows, blast radius of a regression, canary or feature-flag options for limited rollout exposure.
 
 | Risk Factor         | Level             | Notes                                     |
 | ------------------- | ----------------- | ----------------------------------------- |
@@ -144,16 +121,11 @@ Use skill: `review-blast-radius` to assess upgrade risk:
 
 ### Step 7 - Rollback Plan
 
-Use skill: `ops-release-safety` for rollback patterns and deployment risk assessment.
+Use skill: `ops-release-safety` for rollback patterns.
 
-Define the rollback procedure before the upgrade starts:
+Define before the upgrade starts: trigger (specific signal - error rate, latency, failed smoke), procedure, data compatibility (schema/config/message-format changes complicate rollback), time window.
 
-- **Rollback trigger**: What signals indicate the upgrade should be rolled back (error rate, latency, failed smoke tests)
-- **Rollback procedure**: Steps to revert to the previous version
-- **Data compatibility**: Whether the upgrade changes any persistent data format that makes rollback complex
-- **Time window**: How long after deploy is rollback still feasible
-
-If the upgrade changes database schema, configuration format, or message format, note the expand-contract strategy needed.
+If the upgrade changes schema, config, or message format, an expand-contract strategy is required - "just revert" no longer works.
 
 ### Step 8 - Go / No-Go Recommendation
 

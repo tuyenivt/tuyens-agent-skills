@@ -64,64 +64,29 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 ### 1. Current State Assessment
 
-**Run first. Understand before you decompose.**
+Run first. Understand the monolith before decomposing it.
 
-Use skill: `stack-detect` to identify the technology stack.
+Use skill: `stack-detect` for the current stack.
 Use skill: `architecture-guardrail` to assess current boundary quality.
 
-Analyze:
-
-- **System overview** -- what the monolith does, its age, team structure
-- **Module inventory** -- logical modules, their responsibilities, rough size
-- **Data model** -- major entities, which modules access which tables
-- **Coupling hotspots** -- modules with the most cross-dependencies
-- **Deployment profile** -- deploy frequency, deploy duration, rollback frequency
-- **Pain points** -- what is motivating decomposition (be specific)
-
-Produce a coupling matrix:
-
-| Module | Depends On          | Depended On By      | Shared Tables | Coupling Level |
-| ------ | ------------------- | ------------------- | ------------- | -------------- |
-| Orders | Inventory, Payments | Shipping, Reporting | orders, items | High           |
+Capture deploy frequency/duration/rollback frequency (this gates Section 4's cadence check) and specific pain points (vague drivers produce vague plans). The coupling matrix in the Output template is the artifact.
 
 ### 2. Domain Decomposition
 
-**Identify bounded contexts before drawing service lines.**
+Identify bounded contexts before drawing service lines.
 
 Use skill: `system-boundary-design` for formal boundary modeling.
 
-Define:
-
-- **Bounded contexts** -- business capability clusters with clear data ownership
-- **Context map** -- relationships between bounded contexts (upstream/downstream, conformist, ACL)
-- **Entity ownership** -- which context owns which entities
-- **Shared kernel** -- entities or logic shared across contexts (minimize this)
-- **Domain events** -- key events that cross context boundaries
-
-For each bounded context:
-
-- Name and business capability
-- Owned entities
-- Inbound dependencies (who calls this context)
-- Outbound dependencies (what this context calls)
-- Data access pattern (read-heavy, write-heavy, mixed)
+Per context: owned entities, in/out dependencies, data access pattern. Surface shared-kernel entities explicitly (minimize) and the cross-context domain events that will eventually become integration contracts.
 
 ### 3. Target Architecture
 
-Define the end state.
-
-Use skill: `architecture-landscape` if the monolith integrates with other systems or the migration affects org-wide services -- build the surrounding landscape before defining target service boundaries to ensure the new service lines account for org-wide coupling.
+Use skill: `architecture-landscape` when the migration affects org-wide services - build the surrounding landscape before drawing target boundaries.
 Use skill: `architecture-data-consistency` for inter-service consistency strategy.
 Use skill: `ops-resiliency` for fault tolerance between services.
 Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
-Define:
-
-- **Service inventory** -- target services, their responsibilities, data ownership
-- **Communication model** -- sync (REST/gRPC) vs async (events) per interaction
-- **Data ownership** -- one service owns each entity; no shared databases
-- **Integration patterns** -- API gateway, service mesh, event bus, anti-corruption layers
-- **Consistency model** -- which interactions require strong consistency vs eventual
+One service owns each entity (no shared databases in steady state). Name the communication model per interaction (sync vs async) and the consistency requirement (strong vs eventual). The service-inventory table in the Output template is the contract.
 
 ### 4. Extraction Order and Phasing
 
@@ -159,43 +124,18 @@ Determine extraction order using these criteria:
 | Team readiness          | Team experienced with target stack                  | Team needs training             |
 | Bounded context clarity | Clear domain boundary                               | Fuzzy boundary, shared logic    |
 
-For each extraction phase:
-
-- **What is extracted** -- module/capability being moved
-- **Prerequisites** -- what must be in place before extraction starts
-- **Data migration strategy** -- how data ownership transfers (see Section 5)
-- **Coexistence plan** -- how monolith and new service interact during transition
-- **Verification criteria** -- what proves the extraction succeeded
-- **Rollback plan** -- how to revert if extraction fails
-- **Estimated duration** -- rough timeline for this phase
+Per phase, the Output template specifies the fields: what extracts, prerequisites, data strategy, coexistence, verification, rollback, duration. Every phase must have a rollback path.
 
 ### 5. Data Ownership Transfer
 
-**The hardest part of decomposition. Plan explicitly.**
+The hardest part. Plan explicitly per extracted service.
 
 Use skill: `architecture-data-consistency` for consistency during migration.
 Use skill: `ops-backward-compatibility` for schema change safety.
 
-For each extracted service's data:
+**Migration paths:** shared DB -> schema separation -> separate DB; CDC or dual-write for sync; reconciliation job to detect drift. State the consistency guarantee during transition.
 
-- **Current state** -- where the data lives now (shared DB, monolith tables)
-- **Target state** -- service owns its database/schema
-- **Migration strategy**:
-  - Shared DB -> schema separation (same DB, different schemas, enforced boundaries)
-  - Schema separation -> separate DB (when ready for full isolation)
-  - CDC/event sourcing for data sync during transition
-  - Dual-write period with reconciliation
-- **Transition period** -- how long both systems access the data
-- **Consistency guarantee** -- what consistency model applies during transition
-- **Reconciliation** -- how to detect and fix data drift between systems
-
-Data migration phases per entity:
-
-1. **Read path migration** -- new service reads from own store (populated by CDC/sync)
-2. **Write path migration** -- new service becomes the write authority
-3. **Legacy read removal** -- monolith stops reading directly, uses service API
-4. **Legacy write removal** -- monolith stops writing, routes through service
-5. **Sync removal** -- CDC/dual-write removed after full migration
+**Per-entity phases:** new service read path (from CDC) -> new service write authority -> remove monolith reads -> remove monolith writes -> remove sync infrastructure.
 
 ### 6. Failure and Risk Analysis
 
@@ -203,33 +143,13 @@ Use skill: `ops-failure-classification` for failure categorization.
 Use skill: `failure-propagation-analysis` for cascading failure assessment.
 Use skill: `ops-resiliency` for mitigation patterns.
 
-Analyze risks specific to decomposition:
-
-- **Distributed transaction risk** -- operations that were atomic in monolith become distributed
-- **Latency amplification** -- in-process calls become network calls
-- **Data consistency during transition** -- dual-write conflicts, replication lag
-- **Partial extraction failure** -- service extracted but monolith still has coupling
-- **Operational complexity increase** -- more services = more deployments, monitoring, debugging
-- **Team cognitive load** -- can the team operate the new distributed system
-
-For each high-risk scenario:
-
-- State the risk
-- State the blast radius
-- State the mitigation
-- State the rollback approach
+Decomposition-specific risks: distributed transactions (formerly atomic), latency amplification (in-process -> network), dual-write conflicts during transition, partial-extraction smell (service exists but monolith still couples to it), operational overhead, team cognitive load. Per risk: blast radius, mitigation, rollback approach.
 
 ### 7. Observability and Verification
 
 Use skill: `ops-observability` for monitoring patterns.
 
-Define:
-
-- **Migration dashboard** -- what to monitor during each extraction phase
-- **Comparison metrics** -- how to compare monolith vs service behavior (latency, errors, data)
-- **Distributed tracing** -- trace spans across monolith and new services during coexistence
-- **Data reconciliation** -- automated checks for data consistency between systems
-- **Success criteria** -- measurable signals that an extraction phase is complete
+A migration dashboard tracks per-phase: comparison metrics (latency/error/data divergence between monolith and service), distributed traces spanning both, automated reconciliation jobs for data drift, and measurable success criteria for phase completion.
 
 ### 8. Migration Governance
 
@@ -237,13 +157,7 @@ Use skill: `ops-engineering-governance` for process guardrails.
 Use skill: `ops-release-safety` for rollout safety.
 Use skill: `ops-feature-flags` for migration feature flag strategy.
 
-Define:
-
-- **Decision gates** -- who approves proceeding to next extraction phase
-- **Rollback triggers** -- what conditions force a rollback
-- **Feature flag strategy** -- flags for routing traffic between monolith and service
-- **Communication plan** -- how to keep stakeholders informed of migration progress
-- **Cleanup discipline** -- removing monolith code, sync jobs, and compatibility shims after extraction
+Name: decision gates (who approves each phase), rollback triggers (specific conditions), feature flags for traffic routing, and cleanup discipline (removing monolith code and sync infrastructure post-extraction - tech debt is the predictable outcome otherwise).
 
 ## Review Mode
 

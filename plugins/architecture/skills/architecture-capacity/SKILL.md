@@ -20,23 +20,23 @@ user-invocable: false
 
 ## Rules
 
-- Base estimates on stated traffic assumptions, not guesses
-- Identify the bottleneck -- the component that saturates first determines system capacity
-- State assumptions explicitly so estimates can be updated when assumptions change
-- Distinguish steady-state load from burst load
-- Account for headroom -- plan for 2-3x current peak, not exactly current peak
+- Base estimates on stated traffic assumptions; state them explicitly so they can be revised
+- Identify the bottleneck (lowest saturation point) - it determines system capacity
+- Distinguish steady-state from burst load
+- Plan for 2-3x current peak, not exactly current peak
+- External rate limits (payment gateways, SaaS APIs) are hard ceilings - no internal scaling lifts them
 
 ## Pattern
 
-### Capacity Estimation Steps
+### Estimation Steps
 
-1. **Traffic profile** -- requests per second (RPS) at steady state and peak
-2. **Per-request cost** -- CPU time, memory, DB queries, network calls per request type
-3. **Resource budget** -- available CPU, memory, connections, throughput per component
-4. **External dependencies** -- Identify external API rate limits (payment gateways, third-party services, SaaS APIs) as hard ceilings that cannot be scaled by adding internal resources. The overall system throughput is capped by the lowest external rate limit on the critical path.
-5. **Saturation point** -- at what RPS does each component hit its limit
-6. **Bottleneck** -- the component with the lowest saturation point
-7. **Scaling strategy** -- how to increase the bottleneck's capacity
+1. Traffic profile: RPS at steady state and peak
+2. Per-request cost: CPU, memory, DB queries, network calls
+3. Resource budget per component: CPU, memory, connections, throughput
+4. External rate limits on the critical path (hard ceilings)
+5. Saturation point per component
+6. Bottleneck = lowest saturation point
+7. Scaling strategy to raise the bottleneck
 
 ### Good: Specific estimation with bottleneck identification
 

@@ -18,36 +18,24 @@ user-invocable: false
 - Reducing database load for frequently accessed queries
 - Improving response latency for hot paths
 
-## Universal Principles (All Stacks)
+## Rules
 
-- Cache reads, not writes - cache should reflect source of truth
-- Every cache entry must have a TTL - no indefinite caching
-- Define an invalidation strategy before adding a cache
+- Cache reads, not writes; cache reflects source of truth
+- Every cache entry has a TTL
+- Define invalidation strategy before adding a cache
 - Cache DTOs / response objects, never ORM entities or mutable objects
-- Monitor cache hit rate - below 80% means the cache may not be effective
-- Consider thundering herd on cache eviction (use cache stampede protection)
+- Hit rate below 80% means the cache may not be effective
+- Address stampede protection for popular keys
 
 ---
 
-## Caching Strategies
+## Strategies
 
-### Cache-Aside (Lazy Loading)
+**Cache-aside (lazy loading)** - default. App checks cache; on miss, fetch from source, store with TTL, return.
 
-The most common pattern - application checks cache first, falls back to source:
+**Write-through** - write to cache and source together. Always fresh; adds write latency.
 
-1. Check cache for key
-2. On hit: return cached value
-3. On miss: fetch from source, store in cache with TTL, return value
-
-### Write-Through
-
-Write to cache and source simultaneously - ensures cache is always fresh but adds write latency.
-
-### Cache Invalidation
-
-- **TTL-based**: Set expiration time; simplest approach
-- **Event-based**: Invalidate on write/update events; more complex but fresher
-- **Version-based**: Include version in cache key; new version = new key
+**Invalidation** - TTL (simplest), event-based (fresher, more complex), or version-based (new version = new key).
 
 ### Cache Stampede Prevention
 
@@ -180,47 +168,19 @@ Omit Opportunities if no caching additions are recommended. Omit "No Issues Foun
 
 ---
 
-## Response Optimization
+## Response Payload
 
-Reducing payload size complements caching - smaller responses mean faster cache reads and lower bandwidth.
+Smaller responses cache faster and consume less memory. Cache DTOs (records/dataclasses/structs), never ORM entities. Project at the query layer (select only needed columns; avoid eager-loading everything). Use the framework's serialization mechanism (DTOs, serializer classes, response structs) to drop nulls and control field visibility per context.
 
-### Response Shaping
-
-- Use dedicated response objects separate from data layer entities - never expose ORM entities directly
-- Include only the fields the consumer needs
-- Exclude internal fields (audit timestamps, soft-delete flags, internal IDs) unless explicitly needed
-- Control field visibility per response context (list view vs detail view)
-
-### Query-Level Projection
-
-- Select only needed columns in database queries (not `SELECT *`)
-- Load only required associations/relationships (avoid eager-loading everything)
-- Use the ORM's projection capabilities to fetch partial records
-
-### Serialization Control
-
-- Exclude null or empty fields from JSON output when appropriate
-- Use conditional serialization for fields that are only relevant in certain contexts
-- Use the framework's serialization mechanism for response shaping (DTOs/records, serializer classes, response structs with field tags, etc.)
-
-### Stack-Specific Response Optimization
-
-After loading stack-detect, apply response optimization using the idioms of the detected ecosystem:
-
-- Use the framework's serialization mechanism for response shaping
-- Use the ORM's projection or select API for query-level optimization
-- Apply the framework's conditional serialization features (e.g., JSON views, serializer contexts, field exclusion tags)
+For full REST payload conventions (pagination, field selection, errors) see `backend-api-guidelines`.
 
 ---
 
-## Avoid (All Stacks)
+## Avoid
 
 - Caching mutable objects or ORM entities (stale shared state)
-- Cache without TTL (unbounded memory growth)
-- Cache without invalidation strategy (stale data served indefinitely)
+- Cache without TTL (unbounded memory)
+- Cache without invalidation strategy (indefinite staleness)
 - Caching write-heavy data (low hit rate, high invalidation churn)
-- Ignoring cache stampede on popular keys (use locking or singleflight)
-- Exposing ORM entities / model objects in API responses
-- Deep nesting in response schemas
-- Unpaginated collection endpoints
-- Over-fetching from the database when only a subset of fields is needed
+- Ignoring stampede on popular keys
+- Exposing ORM entities in API responses

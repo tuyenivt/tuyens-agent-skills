@@ -23,11 +23,13 @@ user-invocable: false
 - Boundaries are defined by data ownership, not code structure (packages are not boundaries)
 - Every boundary has an explicit contract (API, event, shared-nothing) and a failure-isolation guarantee
 - One module owns each entity exclusively; cross-boundary access goes through API or event - never direct DB queries
-- Shared mutable state across boundaries is a smell; make it explicit if intentional
+- Shared mutable state across boundaries is a smell; if intentional, make it explicit
 
 ## Pattern
 
-### Bad: boundary without ownership or isolation
+### Boundary entry (good vs bad)
+
+**Bad** - no ownership or isolation:
 
 ```
 Module: OrderService
@@ -35,14 +37,14 @@ Does: Order stuff
 Uses: Some tables in the shared database
 ```
 
-### Good: explicit ownership and isolation
+**Good** - explicit ownership and isolation:
 
 ```
 Module: OrderService
 Owns: Order, OrderLineItem, OrderStatus
 Exposes: POST /orders, GET /orders/{id}, OrderCreatedEvent, OrderCompletedEvent
-Hidden: Internal order state machine, pricing calculation logic, DB schema
-Failure Isolation: OrderService failure does not affect PaymentService reads; pending payments remain in queue
+Hidden: Internal state machine, pricing calculation, DB schema
+Failure Isolation: OrderService failure does not affect PaymentService reads; pending payments remain queued
 ```
 
 ### Boundary Communication

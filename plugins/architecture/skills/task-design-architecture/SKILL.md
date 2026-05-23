@@ -126,378 +126,102 @@ Use skill: `ops-engineering-governance` to verify alignment with existing engine
 
 ### 2. System Context and Boundary Definition
 
-Define the system's position in the broader architecture.
-
-Use skill: `architecture-guardrail` to establish boundary rules.
-Use skill: `review-blast-radius` to assess failure propagation scope per boundary.
 Use skill: `system-boundary-design` for formal boundary modeling.
+Use skill: `architecture-guardrail` for boundary rules.
+Use skill: `review-blast-radius` for failure propagation scope.
 
-Define:
-
-- **System context** -- what this system is and what surrounds it
-- **Upstream dependencies** -- services, data sources, and event producers this system consumes
-- **Downstream consumers** -- services, clients, and event consumers that depend on this system
-- **Internal module boundaries** -- logical decomposition within the system
-- **Data ownership** -- which module owns which data entities
-- **API contracts** -- what this system exposes and guarantees to consumers
-
-For each boundary, state:
-
-- What crosses the boundary (data, commands, events)
-- What must NOT cross the boundary (domain internals, implementation details)
-- Failure isolation guarantee (does a failure in A propagate to B?)
+For each boundary state: what crosses (data, commands, events), what must NOT cross (domain internals), failure isolation guarantee.
 
 ### 3. Architecture Overview
-
-Provide the high-level component design.
 
 Use skill: `architecture-data-consistency` for consistency boundary design.
 Use skill: `backend-idempotency` for retry safety at integration points.
 Use skill: `backend-caching` for caching strategy and invalidation.
 Use skill: `ops-resiliency` for fault tolerance and REST client integration patterns.
 
-Define:
-
-- **Component breakdown** -- named components with single-sentence responsibilities
-- **Communication model** -- sync (REST/gRPC) vs async (events/messages) per interaction
-- **Transaction boundaries** -- which operations share a transaction, which use eventual consistency
-- **Idempotency requirements** -- which operations must be idempotent and why
-- **Caching strategy** -- what is cached, invalidation approach, staleness tolerance
-- **Integration patterns** -- how external dependencies are consumed (client, adapter, anti-corruption layer)
-
-For each component, briefly state:
-
-- What it does
-- What it owns (data, state)
-- What it depends on
-- How it fails (primary failure mode)
+For each component, state: what it owns (data, state), what it depends on, primary failure mode. The component, communication, and caching tables in the Output template are the contract.
 
 ### 4. Data and Consistency Model
-
-Define data flow and consistency guarantees.
 
 Use skill: `architecture-data-consistency` for consistency strategy selection.
 Use skill: `backend-db-indexing` for data access patterns and index strategy.
 
-Define:
-
-- **Data flow** -- how data moves through the system (request path, event path, batch path)
-- **Consistency model** -- strong consistency vs eventual consistency per data boundary
-- **Distributed consistency strategy** -- outbox pattern, saga, or compensating transactions if applicable
-- **Schema evolution strategy** -- how data schemas change without breaking consumers
-- **Data access patterns** -- read/write ratio, query patterns, hot paths
-
-For each data boundary:
-
-- State the consistency guarantee
-- State what happens during partial failure (data in inconsistent state?)
-- State the recovery mechanism
+For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The consistency-boundaries table in the Output template is the contract.
 
 ### 5. Failure Mode and Risk Analysis
 
-Analyze how the design fails.
-
-Use skill: `ops-failure-classification` to categorize failure types per component.
-Use skill: `failure-propagation-analysis` to trace cascading failure paths.
-Use skill: `review-blast-radius` to assess impact scope per failure scenario.
+Use skill: `ops-failure-classification` for failure type categorization.
+Use skill: `failure-propagation-analysis` for cascading paths.
+Use skill: `review-blast-radius` for impact scope per scenario.
 Use skill: `ops-resiliency` for mitigation patterns.
-Use skill: `architecture-concurrency` for concurrency risk assessment.
+Use skill: `architecture-concurrency` for concurrency risk.
 
-Analyze per component boundary:
-
-- **Failure scenarios** -- what can go wrong (dependency down, data corruption, resource exhaustion)
-- **Cascading failure risk** -- can a failure in A take down B?
-- **Concurrency risk** -- race conditions, contention, concurrency model compatibility
-- **Resource contention** -- connection pools, thread pools, memory, disk
-- **Backpressure risk** -- what happens when a consumer is slower than a producer
-- **Retry amplification risk** -- can retries compound load during partial failure
-
-For each high-risk scenario:
-
-- State the failure mode
-- State the blast radius (Narrow / Moderate / Wide)
-- State the mitigation (circuit breaker, fallback, bulkhead, timeout)
+For each high-risk scenario: failure mode, blast radius (Narrow / Moderate / Wide), mitigation. Cover backpressure and retry amplification explicitly - hand-waved retry storms are a common cause of cascading failure.
 
 ### 6. Observability Plan
 
-Define what signals the system must produce from day one.
-
 Use skill: `ops-observability` for logging, metrics, and tracing patterns.
 
-Define:
-
-- **Structured logging** -- what events are logged, correlation ID strategy
-- **Metrics** -- RED metrics (Rate, Errors, Duration) per component boundary
-- **Distributed tracing** -- trace span coverage across service boundaries
-- **Health checks** -- liveness and readiness probes, dependency health
-- **Alerting signals** -- what conditions trigger alerts, severity classification
-- **SLO candidates** -- which metrics represent user-facing quality
+Produce: RED metrics per component boundary, trace span coverage across service boundaries, liveness/readiness checks, alert conditions with severity, and at least one SLO candidate tied to user-facing quality. SLO baselines come from Section 1 NFRs.
 
 ### 7. Performance and Capacity Considerations
 
-Estimate capacity requirements and identify bottlenecks.
-
-Use skill: `architecture-capacity` for throughput estimation and scaling analysis.
-Use skill: `backend-caching` for cache-based load reduction and API response optimization.
+Use skill: `architecture-capacity` for throughput estimation and bottleneck identification.
+Use skill: `backend-caching` for cache-based load reduction.
 Use skill: `backend-db-indexing` for query performance.
 
-Estimate:
-
-- **Expected traffic** -- requests per second, concurrent users, burst profile
-- **Throughput assumptions** -- per-component throughput targets
-- **Scaling model** -- horizontal vs vertical, stateless vs stateful constraints
-- **Bottleneck prediction** -- which component saturates first under load
-- **Cost awareness** -- resource cost drivers, cost per request estimate if applicable
+The bottleneck (component saturating first) and the scaling model are non-optional. Name cost drivers when scaling has material cost implications.
 
 ### 8. Deployment and Release Strategy
-
-Define how the system goes to production safely.
 
 Use skill: `ops-release-safety` for rollout and rollback patterns.
 Use skill: `dependency-impact-analysis` for deployment ordering.
 
-Define:
-
-- **Rollout approach** -- canary, blue-green, feature flag, progressive rollout
-- **Backward compatibility** -- API versioning, data format compatibility during transition
-- **Database migration order** -- schema changes before or after code deploy, zero-downtime strategy
-- **Rollback plan** -- what to roll back, in what order, what data is affected
-- **Monitoring during rollout** -- what signals to watch, rollback trigger criteria
-- **Feature flag strategy** -- which capabilities are gated, kill switch design
+The rollback trigger (specific condition, not "if something goes wrong") and the migration order vs. code deploy are the load-bearing decisions. Name the rollout mechanism (canary, blue-green, feature flag) and feature flags by purpose.
 
 ### 9. Trade-Off Analysis
 
-Explicitly document architectural decisions and alternatives.
-
 Use skill: `tradeoff-analysis` for structured decision documentation.
 
-For each significant decision:
-
-- **Decision** -- what was chosen
-- **Alternatives considered** -- what was evaluated
-- **Why this option** -- primary reasons for selection
-- **Why not alternatives** -- specific reasons each was rejected
-- **Trade-off** -- what is sacrificed (complexity, flexibility, performance, cost)
-- **Reversibility** -- how hard is it to change this decision later
-- **Risk** -- what could make this decision wrong
-
-**High-impact decisions:** For any decision with High reversibility cost or significant trade-offs (messaging broker, consistency model, primary storage engine, async vs sync communication), call it out under a **Significant Decisions** subsection of the trade-off table. State that the team should commit the rationale (typically as a project-specific ADR or design-decision note) before implementation begins.
+For each significant decision: chosen option, alternatives, reasons, what is sacrificed, reversibility, risk-of-being-wrong. Flag High-reversibility-cost decisions (messaging broker, consistency model, primary storage, async vs sync) under a **Significant Decisions** subsection and require an ADR before implementation.
 
 ### 10. Guardrails and Review Guidance
-
-Define constraints to enforce during implementation.
 
 Use skill: `architecture-guardrail` for boundary enforcement rules.
 Use skill: `ops-engineering-governance` for evolving existing guardrails.
 
-Define:
-
-- **Architecture constraints** -- rules that implementation must follow (layer boundaries, dependency direction, data ownership)
-- **Review checklist additions** -- specific items reviewers must check for this feature
-- **Drift detection points** -- where to watch for gradual erosion of the design
-- **AI code generation constraints** -- boundaries and patterns that AI-generated code must respect
-
-For each constraint:
-
-- State the rule
-- State what violation looks like
-- State the consequence of violation
+Each constraint must be concrete and detectable: rule, what violation looks like, consequence. "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
 
 ### 11. API Contracts
 
-Define the REST contracts this system exposes. Run for any design that exposes APIs to external clients, other services, or browsers. **Skip with a one-liner only if the system has no public APIs** (e.g., "Internal event-driven worker; no HTTP surface").
+Run for any design exposing APIs to external clients, services, or browsers. Skip with a one-liner only if there is no HTTP surface (e.g., "Internal event-driven worker").
 
-Use skill: `backend-api-guidelines` for HTTP method semantics, naming, pagination, error format, idempotency.
-Use skill: `ops-backward-compatibility` for versioning and contract evolution.
+Use skill: `backend-api-guidelines` for HTTP semantics, naming, pagination, RFC 9457 errors, idempotency, multi-tenancy patterns.
+Use skill: `ops-backward-compatibility` for versioning and breaking-change classification.
 
-For each exposed API surface, define:
-
-**Naming and structure:**
-
-- Plural nouns for resources (`/api/v1/orders`); nested resources for relationships (`/api/v1/orders/{id}/items`); no verbs in URLs
-- Version prefix on every endpoint
-- Consistent casing: kebab-case for URLs, JSON field casing per stack convention
-
-**HTTP method semantics:**
-
-| Method | Purpose                           | Success               | Common Errors |
-| ------ | --------------------------------- | --------------------- | ------------- |
-| GET    | Read                              | 200                   | 404           |
-| POST   | Create                            | 201 + Location header | 400, 409      |
-| PUT    | Full replace                      | 200                   | 404, 400      |
-| PATCH  | Partial update (JSON Merge Patch) | 200                   | 404, 400      |
-| DELETE | Remove                            | 204                   | 404           |
-
-**State transitions** (when resources have a lifecycle):
-
-- Model transitions as sub-resource actions (`POST /orders/{id}/transitions` with `{"to":"pending"}`) or named actions (`POST /orders/{id}/cancel`)
-- Reject arbitrary `status` values via `PUT` - this bypasses state-machine validation
-- Invalid transitions return 422 with the reason
-
-**Idempotency:**
-
-- POST is not idempotent by default
-- For financially or state-sensitive endpoints, support `Idempotency-Key` header; document the deduplication window (e.g., "24 hours")
-
-**Multi-tenancy** (when applicable):
-
-| Pattern                          | Use When                                                | Trade-off                              |
-| -------------------------------- | ------------------------------------------------------- | -------------------------------------- |
-| Path segment                     | Tenant ID must be explicit per request                  | Verbose URLs; clear isolation          |
-| JWT claim                        | Single-tenant context per session                       | Simpler URLs; auth on every endpoint   |
-| Header (`X-Tenant-ID`)           | Pre-authenticated service-to-service                    | Easy to forget; middleware-enforced    |
-
-Per endpoint, verify: tenant isolation (can Tenant A reach Tenant B's data?), tenant-scoped rate limits, admin endpoints explicitly marked.
-
-**Pagination** (mandatory for collections):
-
-- Request: `?page=0&size=20&sort=createdAt,desc`
-- Response envelope: `{ "content": [], "page": { "number", "size", "totalElements", "totalPages" } }`
-- Default size: 20, max: 100
-
-**Error format (RFC 9457, consistent across all endpoints):**
-
-```json
-{
-  "type": "https://api.example.com/errors/validation-failed",
-  "title": "Validation Failed",
-  "status": 400,
-  "detail": "Request body has 2 validation errors",
-  "errors": [{"field": "email", "message": "must be a valid email"}]
-}
-```
-
-**Per-endpoint security:**
-
-- Authentication mechanism (JWT, OAuth2, API key, public) - never blank
-- Authorization (role-based or resource-based / owner check)
-- Rate limit (global or per-tenant)
-- Input validation on all request bodies and params
-- No passwords, tokens, or PII in URLs or logs
-- CORS: allowed origins/methods/headers and preflight caching when consumed by browsers
-
-**Backward compatibility** (when modifying existing APIs):
-
-| Change                           | Impact   |
-| -------------------------------- | -------- |
-| Removed/renamed/retyped field    | BREAKING |
-| Added required request field     | BREAKING |
-| Changed URL path or method       | BREAKING |
-| Narrowed accepted values         | BREAKING |
-| Added optional field (req/resp)  | SAFE     |
-| Added new endpoints              | SAFE     |
-| Widened accepted values          | SAFE     |
-
-For each breaking change: state what breaks, for which consumers, and propose a migration path (versioning, deprecation, dual-write).
+The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone.
 
 ### 12. Diagrams
 
-Produce diagram code that makes the design legible at a glance. Run at `standard` and `deep` depth. **Skip with a one-liner only if** a current diagram already exists and remains accurate, or the design is too narrow to diagram meaningfully (e.g., adding a single nullable column).
+Run at `standard` and `deep`. Skip with a one-liner only if a current accurate diagram exists or the design is too narrow to diagram meaningfully.
 
-Default format: **Mermaid** (renders in GitHub/GitLab markdown). Use **PlantUML** when explicitly requested or when documentation tooling prefers it (e.g., Confluence with the PlantUML plugin).
+Default format: **Mermaid**. Use **PlantUML** only when explicitly requested.
 
-Always include:
-
-- **C4 Container diagram** - shows the major deployable units inside the system and their technology stack
-
-Include when applicable:
-
-- **C4 Context diagram** - if the system has 3+ external interactors that matter to the design
-- **Sequence diagram** - for any flow whose ordering or async/sync semantics are non-obvious (multi-service flow, distributed transaction, event-driven path)
-- **Data flow diagram** - if data takes multiple paths (request, event, batch) through the system
-- **Deployment diagram** - if infrastructure topology is part of the design (multi-region, VPC structure, networking)
+Always: **C4 Container** (major deployable units + tech).
+When applicable: **C4 Context** (3+ external interactors), **Sequence** (non-obvious ordering or async/sync semantics), **Data flow** (multiple paths through the system), **Deployment** (multi-region, VPC, networking).
 
 **Rules:**
 
-- Every element traces to a component, boundary, or relationship defined earlier in this design - never invent elements to "complete" the diagram
-- Stay at one abstraction level per diagram (no Context/Container mixing)
-- State assumptions in Diagram Notes, not silently inside the diagram
-- Mermaid/PlantUML syntax must render unmodified in standard tools
+- Every element traces to a component or boundary from Sections 2-3; never invent elements to "complete" the diagram
+- One abstraction level per diagram (no Context/Container mixing)
+- Diagram Notes (Scope / Assumptions / Next level) accompany each diagram; assumptions go in Notes, not silently inside the diagram
 
-**Mermaid templates:**
+**Mermaid syntax cues:**
 
-C4 Container:
-
-```
-C4Container
-  title Container Diagram - {System Name}
-
-  Person(user, "User", "Description")
-
-  System_Boundary(sys, "System Name") {
-    Container(api, "API Gateway", "Technology", "Description")
-    Container(svc, "Service", "Technology", "Description")
-    ContainerDb(db, "Database", "Technology", "Description")
-    ContainerQueue(q, "Queue", "Technology", "Description")
-  }
-
-  System_Ext(ext, "External System", "Description")
-
-  Rel(user, api, "Uses", "HTTPS")
-  Rel(api, svc, "Routes to", "REST")
-  Rel(svc, db, "Reads/writes", "SQL")
-  Rel(svc, q, "Publishes", "AMQP")
-```
-
-Sequence (use `->>` request, `-->>` response, `--)` async fire-and-forget; `autonumber` always):
-
-```
-sequenceDiagram
-  autonumber
-  actor User
-  participant API as API Gateway
-  participant Service as OrderService
-  participant DB as PostgreSQL
-  participant Queue as Kafka
-
-  User->>API: POST /orders
-  API->>Service: createOrder(command)
-  Service->>DB: INSERT order (txn)
-  DB-->>Service: order_id
-  Service--)Queue: OrderCreated event
-  Service-->>API: 201 Created
-  API-->>User: 201 Created
-```
-
-Data flow (use `LR` for pipelines, `TD` for hierarchies; shapes: `[service]`, `[(db)]`, `([queue])`; dashed arrows for async):
-
-```
-flowchart LR
-  subgraph Ingestion
-    A[API Gateway] --> B[OrderService]
-  end
-  subgraph Processing
-    B --> C[(PostgreSQL)]
-    B -.->|async| D([Kafka: orders])
-    D --> E[FulfillmentService]
-  end
-```
-
-Deployment (nested subgraphs for provider > region > VPC > subnet; show instance counts):
-
-```
-flowchart TD
-  subgraph Cloud["AWS us-east-1"]
-    subgraph VPC["VPC 10.0.0.0/16"]
-      subgraph Public["Public Subnet"]
-        ALB[Application Load Balancer]
-      end
-      subgraph Private["Private Subnet"]
-        ECS[ECS Cluster: OrderService x3]
-        RDS[(RDS PostgreSQL Multi-AZ)]
-      end
-    end
-  end
-  Client([Client]) --> ALB
-  ALB --> ECS
-  ECS --> RDS
-```
-
-**Diagram Notes** (required per diagram):
-
-- **Scope:** what this diagram shows and deliberately omits
-- **Assumptions:** anything inferred from the design that was not explicit
-- **Next level:** which diagram type would show more detail
+- C4 Container: `C4Container` with `Person`, `System_Boundary`, `Container`, `ContainerDb`, `ContainerQueue`, `System_Ext`, `Rel`
+- Sequence: `sequenceDiagram` with `autonumber`; `->>` sync request, `-->>` sync response, `--)` async fire-and-forget
+- Data flow: `flowchart LR` for pipelines, `TD` for hierarchies; shapes `[service]`, `[(db)]`, `([queue])`; dashed arrows for async
+- Deployment: nested `subgraph`s for provider > region > VPC > subnet; include instance counts
 
 ## Output
 
