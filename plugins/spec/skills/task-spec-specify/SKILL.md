@@ -1,6 +1,6 @@
 ---
 name: task-spec-specify
-description: SDD foundation phase - elicit feature requirements (problem, users, stories, AC, NFRs) and write spec.md to .specs/<slug>/. Speckit-aware.
+description: Elicit feature requirements and write spec.md (problem, users, stories, AC, NFRs, out-of-scope) to .specs/<slug>/. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, requirements, specification, foundation]
@@ -8,20 +8,13 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Spec - Specify
 
-Captures the **what** and **why** of a feature as a persistent artifact (`spec.md`) before any architecture work. Downstream phases (`task-spec-clarify/plan/tasks/implement`) consume it; stack workflows can also consume it via `--spec`.
+Captures the **what** and **why** of a feature as a persistent `spec.md` before any architecture work. Downstream phases (`task-spec-clarify/plan/tasks/implement`) consume it; stack workflows consume it via `--spec`.
 
 ## When to Use
 
-For new features, re-specs of drifted features, or producing a portable handoff artifact. Not for: technical design (`task-spec-plan`), system architecture or API design (`task-design-architecture`), bug reports (`task-code-debug`).
-
-## Inputs
-
-- Feature name or short description (required). If only a one-word name with no context, ask for the problem and primary user before proceeding. Do not fabricate stories.
-- Optional explicit slug override.
+For new features, re-specs of drifted features, or producing a portable handoff artifact. Requires a feature name or short description as argument; if only a one-word name is supplied, ask for the problem and primary user before proceeding. Not for: technical design (`task-spec-plan`), system architecture (`task-design-architecture`), bug reports (`task-code-debug`).
 
 ## Workflow
 
@@ -37,56 +30,39 @@ Use skill: speckit-detect
 
 Use skill: spec-artifact-paths
 
-If `spec.md` already exists, ask: **replace**, **amend** (preserve, append revision), or **abort**.
+If `spec.md` already exists, prompt the user: **replace** / **amend** (preserve, append revision entry) / **abort**. Do not overwrite without this choice.
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** consolidate context into a brief, instruct the user to run `/speckit-specify <brief>` (any `before_specify` / `after_specify` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). After the user runs it, read the resolved feature directory from `.specify/feature.json` (Spec Kit writes it there) and load the produced `spec.md`. Post-process by running `Use skill: nfr-specification` and present any missing NFR coverage as additions for user merge - do not silently edit Spec Kit output. Skip to STEP 7.
+**speckit-installed:** summarize the feature request into one paragraph, instruct the user to run `/speckit-specify <paragraph>`, then read the resolved feature path from `.specify/feature.json` and load the produced `spec.md`. Run `Use skill: nfr-specification` and present any missing NFR coverage as a diff for user merge - do not silently edit Spec Kit output. Skip to STEP 6.
 
 **standalone:** continue.
 
-### STEP 5 - Elicit Requirements
+### STEP 5 - Elicit and Write
 
-Ask only what is not already in context. Cover:
+Interview the user on the sections below, asking only what is not already in context. Stack-agnostic; do not load `stack-detect`.
 
-| Section                 | What to elicit                                                                                                                                  |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Problem statement**   | User-facing pain or business gap. Plain language, no implementation hints.                                                                      |
-| **Target users**        | Primary and (if any) secondary roles. Internal/external, authn/anon.                                                                            |
-| **User stories**        | "As a <role>, I want <capability>, so that <value>." One per outcome.                                                                           |
-| **Acceptance criteria** | Falsifiable, measurable. Every story has at least one AC.                                                                                       |
-| **Non-functional**      | Run `Use skill: nfr-specification`. Include only categories with a real requirement; **omit** categories that do not apply (no placeholders).   |
-| **Out of scope**        | Explicit non-goals. Empty out-of-scope is almost always wrong.                                                                                  |
-| **Open questions**      | Items the user could not answer; flagged for `task-spec-clarify`.                                                                               |
+| Section                 | Elicit                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Problem statement**   | User-facing pain or business gap. Plain language, no implementation hints.                            |
+| **Target users**        | Primary and (if any) secondary roles. Internal vs external, authn vs anon.                            |
+| **User stories**        | "As a \<role>, I want \<capability>, so that \<value>." One per outcome.                              |
+| **Acceptance criteria** | Falsifiable, measurable. Every story has >=1 AC. Numeric thresholds where applicable.                 |
+| **Non-functional**      | `Use skill: nfr-specification`. Include only categories with a real requirement; omit the rest.       |
+| **Out of scope**        | Required. List explicit non-goals.                                                                    |
+| **Open questions**      | Items the user could not answer; resolved later by `task-spec-clarify`.                               |
 
-Rules:
-- Surface ambiguity rather than guess. "Fast" -> ask for a number.
-- Never invent stories the user did not ask for.
-- Conflicting answers ("must work offline" + "real-time collaboration") -> stop, surface.
-- If the domain implies a regulatory standard (payments, health, PII), name it and ask.
+Write `spec.md` using the template in **Output Format**. For blocking ambiguity (cannot write the AC at all), embed inline `[NEEDS CLARIFICATION: <question>]`. Everything else goes to **Open Questions** with the assumed default recorded.
 
-### STEP 6 - Write spec.md
+Domain triggers: if the feature touches payments, health data, or PII, name the applicable regulatory standard and ask before assuming scope.
 
-Write the document using the template in **Output Format**. Set the declared name to the slug input.
+### STEP 6 - Summarize
 
-For materially-uncertain answers, embed inline `[NEEDS CLARIFICATION: <question>]` markers. **Cap at 3 markers**, priority: scope > security/privacy > UX > technical detail. Lower-priority candidates go in `Open Questions` (unbounded), with reasonable defaults recorded as assumptions.
-
-### STEP 7 - Inline Quality Validation
-
-1. Write `<checklists_dir>/requirements.md` with standard items: no implementation details, user-value focused, mandatory sections present, no `[NEEDS CLARIFICATION]` left, every AC testable + measurable, every story has ACs, edge cases identified, scope bounded, dependencies/assumptions noted.
-2. Mark each pass/fail by re-reading the spec.
-3. Failures (other than `[NEEDS CLARIFICATION]`) -> edit spec, re-check. **Max 3 iterations**, then record remaining issues in checklist Notes and warn the user.
-4. `[NEEDS CLARIFICATION]` markers -> ask one at a time, update spec verbatim, re-validate.
-
-The checklist is lightweight here; for the full themed pass, users run `task-spec-checklist <slug>` next.
-
-### STEP 8 - Summarize
-
-Print: paths written, story/AC/open-question/marker counts, validation iterations, mode, next command (`task-spec-clarify <slug>` if markers/questions remain, else `task-spec-checklist` or `task-spec-plan`).
+Print: paths written, counts (stories, ACs, open questions, clarification markers), mode, next command - `task-spec-clarify <slug>` if any markers or open questions remain, else `task-spec-checklist <slug>` for the full requirements-quality pass, then `task-spec-plan <slug>`.
 
 ## Output Format
 
-`spec.md` template (standalone mode):
+`spec.md` (standalone mode):
 
 ```markdown
 # Spec - <Feature Name>
@@ -108,7 +84,6 @@ Print: paths written, story/AC/open-question/marker counts, validation iteration
 
 ## Acceptance Criteria
 - **AC1 (S1):** <falsifiable, measurable>
-- **AC2 (S1):** ...
 
 ## Non-Functional Requirements
 <NFR table from nfr-specification. Only categories that apply.>
@@ -126,21 +101,16 @@ Print: paths written, story/AC/open-question/marker counts, validation iteration
 
 ## Self-Check
 
-- [ ] Loaded `behavioral-principles` and `speckit-detect` first
-- [ ] Paths via `spec-artifact-paths`
-- [ ] In speckit mode, presented NFR additions for user merge (no silent edits)
-- [ ] Every story has >=1 AC; every AC falsifiable + measurable
-- [ ] NFR section omits categories that do not apply (no "not required for v1" stubs)
-- [ ] Out-of-scope is non-empty
-- [ ] Conflicts surfaced, not silently resolved
-- [ ] `[NEEDS CLARIFICATION]` markers <=3, prioritized correctly
-- [ ] Inline validation ran; `checklists/requirements.md` written
-- [ ] Summary includes counts, validation results, next command
+- [ ] STEP 1: behavioral-principles loaded
+- [ ] STEP 2: mode resolved via `speckit-detect`
+- [ ] STEP 3: paths via `spec-artifact-paths`; existing `spec.md` handled via replace/amend/abort
+- [ ] STEP 4: in speckit mode, NFR additions surfaced as a diff (no silent edits)
+- [ ] STEP 5: every story has >=1 measurable AC; NFR section omits inapplicable categories; Out of Scope non-empty; `[NEEDS CLARIFICATION]` used only for blocking ambiguity
+- [ ] STEP 6: summary includes counts, mode, and the correct next command
 
 ## Avoid
 
-- Generating code, schemas, API contracts, or technology choices (those belong in `task-spec-plan`).
-- Inventing stories or ACs the user did not request.
-- Vague AC verbs without measurable thresholds.
-- Overwriting `spec.md` without offering replace/amend/abort.
-- NFR subsections like "not required for v1" - omit the category entirely.
+- Generating code, schemas, API contracts, or technology choices (belongs in `task-spec-plan`).
+- Vague AC verbs ("fast", "easy", "robust") without a measurable threshold.
+- NFR placeholders like "not required for v1" - omit the category instead.
+- Editing Spec Kit output silently in speckit-installed mode.

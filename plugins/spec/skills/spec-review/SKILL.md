@@ -1,6 +1,6 @@
 ---
 name: spec-review
-description: Audit spec.md for requirements-quality - unmeasurable AC, missing NFR coverage, conflicts, ambiguity, out-of-scope leakage; structured findings.
+description: Audit spec.md for unmeasurable acceptance criteria, missing NFR coverage, conflicts, out-of-scope leakage; emit structured findings.
 metadata:
   category: spec
   tags: [spec, sdd, review, requirements-quality, ambiguity]
@@ -9,37 +9,87 @@ user-invocable: false
 
 # Spec Review
 
-> Composed by `task-spec-clarify`, `task-spec-analyze`, `task-spec-checklist`. Reviews **English**, not code.
+> Composed by `task-spec-clarify`, `task-spec-analyze`, `task-spec-checklist`.
+
+## When to Use
+
+Auditing `spec.md` for requirements quality before planning. Output is consumed by clarify/analyze/checklist workflows that route on `severity` and `category`.
 
 ## Rules
 
-- Every finding cites `location` (heading or line range) and `excerpt`. Un-cited feedback is rejected.
-- Severity (`blocker | major | minor`) and `category` are required - consumers route on them.
-- Propose questions in `suggested_clarification`, not inline fixes.
-- Conflicts are always `blocker`. Out-of-scope leakage is always `major`.
-- Zero findings is a valid outcome - do not invent issues.
+- Every finding cites `location` (heading or line range) and verbatim `excerpt`. Un-cited feedback is rejected.
+- `severity` and `category` are required and assigned by the rubric below - no defaults, no inline overrides.
+- Propose questions in `suggested_clarification`, never inline fixes or implementation choices.
+- NFR exception: an explicit "not applicable, because X" satisfies that NFR category.
 
-## Review Categories
+## Patterns
 
-| Category                     | What to flag                                                                                          | Default severity |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------- |
-| `acceptance-measurability`   | Vague verbs / missing units / subjective qualifiers ("fast", "many", "intuitive")                     | major            |
-| `nfr-coverage`               | Missing performance, availability, scalability, security, observability; compliance/a11y when implied | major            |
-| `conflict`                   | Requirements that cannot simultaneously hold                                                          | blocker          |
-| `ambiguity`                  | Unclear pronouns, undefined domain terms, unexpanded acronyms                                         | minor (major if it changes implementation) |
-| `out-of-scope`               | Item appears both in Out-of-Scope and in ACs/Stories                                                  | major            |
-| `weak-story`                 | Story missing role/motivation/value, or AC not traceable to any story                                 | major (minor if cosmetic) |
+### Severity Rubric (hard rules)
 
-NFR exception: an explicit "not applicable, because X" is acceptable and not flagged.
+| Severity | Trigger |
+| -------- | ------- |
+| `blocker` | Internal contradiction (ACs/NFRs that cannot simultaneously hold); a user story with zero ACs; stub spec (< 3 ACs or no NFRs section) |
+| `major` | Unmeasurable AC; any NFR category from the checklist missing without "n-a-because-X"; out-of-scope leakage; weak story (missing role/want/value, or AC not traceable to any story) |
+| `minor` | Vague language that doesn't change implementation; undefined-but-obvious term; cosmetic gap |
 
-**AC measurability example.**
-Bad: "The API should respond quickly under load."
-Good: "p95 latency < 200ms under sustained 500 RPS for 5 minutes."
+### NFR Coverage Checklist
+
+Reviewer marks each as `covered`, `missing`, or `n-a-because-<reason>`:
+
+- performance
+- availability
+- scalability
+- security
+- observability
+- compliance (when domain implies regulatory scope)
+- accessibility (when domain implies user-facing UI)
+
+Any `missing` produces a `nfr-coverage` finding at `major`.
+
+### Category Examples
+
+**`acceptance-measurability`**
+- Bad: "API responds quickly under load."
+- Good: "p95 < 200ms at 500 RPS sustained 5 min."
+
+**`conflict`**
+- Bad: AC1 "All uploads are public." + NFR "All user data is private by default."
+- Good: AC1 scoped to "avatar uploads"; NFR carves out "profile media is public-by-design."
+
+**`out-of-scope`**
+- Bad: Out-of-Scope lists "admin moderation"; Story 3 says "admin can ban a user."
+- Good: Remove from Out-of-Scope or remove from Story 3 - cannot be both.
+
+**`weak-story`**
+- Bad: "User uploads avatar."
+- Good: "As a registered user, I want to upload an avatar so my profile is recognisable."
+
+### Status Decision
+
+- `needs-rewrite` iff `blockers >= 1`.
+- `needs-clarification` iff `blockers == 0` and `majors >= 1`.
+- `pass` otherwise (minors do not change status).
+
+### Edge Cases
+
+- **`spec.md` missing**: one finding pointing at the absent file, `status: needs-rewrite`.
+- **Stub spec**: emit one `blocker` of category `acceptance-measurability` or `nfr-coverage` as appropriate; do not nitpick.
+- **Non-standard structure**: review what exists; flag missing standard sections via the rubric.
+- **Duplicates**: consolidate into one finding with multiple `location` entries.
 
 ## Output Format
 
 ```yaml
 spec_path: <root>/.specs/<slug>/spec.md
+reviewed_at: <ISO-8601 UTC, e.g. 2026-05-23T14:30:00Z>
+nfr_coverage:
+  performance: covered | missing | n-a-because-<reason>
+  availability: covered | missing | n-a-because-<reason>
+  scalability: covered | missing | n-a-because-<reason>
+  security: covered | missing | n-a-because-<reason>
+  observability: covered | missing | n-a-because-<reason>
+  compliance: covered | missing | n-a-because-<reason>
+  accessibility: covered | missing | n-a-because-<reason>
 findings:
   - id: F-001
     severity: blocker | major | minor
@@ -57,17 +107,9 @@ summary:
   status: pass | needs-clarification | needs-rewrite
 ```
 
-`status`: `needs-rewrite` if any blockers; else `needs-clarification` if any majors/minors; else `pass`.
-
-## Edge Cases
-
-- **`spec.md` missing**: return `needs-rewrite` with a single finding pointing to the absent file. Do not fabricate.
-- **Stub spec** (<20 lines, no sections): `needs-rewrite`; do not nitpick a placeholder.
-- **Non-standard structure**: review what's there; flag missing standard sections rather than failing.
-- **Duplicate findings**: consolidate into one entry with multiple `location` references.
-
 ## Avoid
 
-- Reviewing prose style or grammar.
+- Reviewing prose style, grammar, or code (this skill reviews English).
 - Proposing implementation choices (those belong in `plan.md`).
-- Flagging optional sections (e.g., a11y for a CLI-only feature) - read the domain first.
+- Flagging optional NFRs (e.g., a11y for a CLI-only feature) without first checking the domain.
+- Letting minors drive `status` away from `pass`.

@@ -1,6 +1,6 @@
 ---
 name: task-spec-constitution
-description: Generate or update project-level `.specs/constitution.md` with engineering principles, coding standards, governance, review rules. Speckit-aware.
+description: Generate or update project-level `.specs/constitution.md` with engineering principles, standards, governance, review rules. Speckit-aware.
 metadata:
   category: spec
   tags: [spec, sdd, constitution, governance, principles]
@@ -8,23 +8,13 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Spec - Constitution
 
 Produces a project-wide `.specs/constitution.md` - one rulebook per repo, not per feature. Where `behavioral-principles` governs how Claude reasons, the constitution governs what the **project** demands of its code, contributors, and reviewers. Synthesizes from `CLAUDE.md` plus installed standards skills.
 
 ## When to Use
 
-Bootstrapping SDD on an established repo, onboarding new contributors, after a significant policy change (compliance, security baseline, release process), or pre-handoff. Not for: per-feature requirements (`task-spec-specify`), feature architecture (`task-spec-plan`), runtime governance (CI/hooks), or Claude reasoning rules (`behavioral-principles`).
-
-## Inputs
-
-- `--scope <area>`: limit to `backend | frontend | ops | security`. Default covers all installed standards skills.
-- `--from-claude-md-only`: ignore standards skills, use CLAUDE.md alone.
-- Optional explicit constitution path override.
-
-If neither CLAUDE.md nor standards skills are present, ask the user for at least three durable rules (one each: code quality, ops, review) before producing anything. Do not fabricate.
+Bootstrapping SDD on an established repo, onboarding contributors, after a significant policy change (compliance, security baseline, release process), or pre-handoff. Not for: per-feature requirements (`task-spec-specify`), feature architecture (`task-spec-plan`), runtime governance (CI/hooks), or Claude reasoning rules (`behavioral-principles`).
 
 ## Workflow
 
@@ -40,62 +30,63 @@ Use skill: speckit-detect
 
 Use skill: spec-artifact-paths
 
-Path is `.specs/constitution.md` (project root, NOT under a feature slug). If it exists, default to **amend**; offer replace/abort.
+Target is `.specs/constitution.md` at project root (NOT under a feature slug). If it exists, default to **amend**; offer replace/abort. Record `amend` vs `create` - STEP 7 branches on it.
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** locate Spec Kit's path (typically `.specify/memory/constitution.md`). Instruct user to run `/speckit-constitution` (any `before_constitution` / `after_constitution` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by surfacing rules from CLAUDE.md or standards skills not captured by Spec Kit; present as proposed additions, do not silently merge. Skip to STEP 9.
+**speckit-installed:** delegate to `/speckit-constitution` (its registered hooks fire normally). Post-process by surfacing rules from CLAUDE.md or standards skills not captured upstream as **proposed additions**; never silently merge. Skip to STEP 9.
 
 **standalone:** continue.
 
 ### STEP 5 - Inventory Inputs
 
 Read:
-- Repo `CLAUDE.md` (especially Tech Stack, Behavioral Principles, Post-Change Checklist, Writing Conventions).
-- `behavioral-principles` (universal reasoning - **do not duplicate** into the constitution).
-- Every installed standards skill in scope: `backend-coding-standards`, `backend-api-guidelines`, `ops-*`, `frontend-accessibility`, `architecture-guardrail`, plus per-stack standards atomics.
+- Repo `CLAUDE.md` - especially Tech Stack, Behavioral Principles, Post-Change Checklist, Writing Conventions.
+- Every installed standards/governance skill (names containing `coding-standards`, `api-guidelines`, `governance`, `accessibility`, `guardrail`, `db-*`, `ops-*`, `release-*`, `observability`).
 
-`--scope` filters; `--from-claude-md-only` restricts to CLAUDE.md.
+Flags:
+- `--scope {backend | frontend | ops | security}` filters which skills are read.
+- `--from-claude-md-only` ignores skills entirely.
+
+If neither CLAUDE.md nor any standards skill is present, stop and ask the user for at least three durable rules (one each from code quality, ops, review) before producing anything. Do not fabricate.
 
 ### STEP 6 - Synthesize
 
 Each rule must be:
-- Stated as a constraint (must / must not / measurable target), not a suggestion.
-- Sourced (cite CLAUDE.md section, skill name, or user input - so future readers can trace it).
-- Not duplicating `behavioral-principles` content.
+- A constraint (must / must not / measurable target), not a suggestion.
+- Sourced - cite the CLAUDE.md section, skill name, or user input, with the date the source was last touched.
+- Quoted from the source, not paraphrased. Drift accumulates with each restatement.
 
-Canonical sections (omit any with no rules):
+If sources disagree, stop and ask. Never silently pick a side.
 
-| Section                     | Purpose                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Identity**                | What this project is, who it serves, what it deliberately is not. Anchors every other rule.           |
-| **Tech Stack Commitments**  | Languages, runtimes, frameworks, databases. Pinned where stability matters.                            |
-| **Code Quality**            | Style, layering, DI conventions, immutability defaults, lint baselines.                                |
-| **API and Contract Rules**  | REST/RPC conventions, versioning, deprecation, error model.                                            |
-| **Data and Persistence**    | Migration policy, index requirements, retention, encryption.                                           |
-| **Security and Compliance** | Authn/authz baseline, secret-handling, regulatory regimes (PCI/HIPAA/SOC2/GDPR).                       |
-| **Operability**             | Observability minimums, SLO discipline, runbooks, feature-flag policy.                                 |
-| **Release and Rollback**    | Deploy posture, rollback contract, backward-compatibility window.                                      |
-| **Review and Governance**   | What changes require ADRs, review depth thresholds, blast-radius gates, sign-off matrix.               |
-| **Out of Constitution**     | Decisions deliberately left to feature-level - surfaces what is intentionally flexible.                |
+Canonical sections - omit any with no rules:
 
-Synthesis rules:
-- **Surface conflicts.** If sources disagree, stop and ask - never silently pick a side.
-- **Quote, do not paraphrase.** Drift accumulates with each restatement.
-- **Date-stamp the source citation.**
-- **No rule without a source.** Surface uncited candidates for explicit user endorsement.
+| Section                     | Purpose                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| **Identity**                | What this project is, who it serves, what it deliberately is not.             |
+| **Tech Stack Commitments**  | Languages, runtimes, frameworks, databases. Pin where stability matters.      |
+| **Code Quality**            | Style, layering, DI conventions, immutability defaults, lint baselines.       |
+| **API and Contract Rules**  | REST/RPC conventions, versioning, deprecation, error model.                   |
+| **Data and Persistence**    | Migration policy, index requirements, retention, encryption.                  |
+| **Security and Compliance** | Authn/authz baseline, secret-handling, regulatory regimes.                    |
+| **Operability**             | Observability minimums, SLO discipline, runbooks, feature-flag policy.        |
+| **Release and Rollback**    | Deploy posture, rollback contract, backward-compatibility window.             |
+| **Review and Governance**   | What changes require ADRs, review depth, blast-radius gates, sign-off matrix. |
+| **Out of Constitution**     | Decisions deliberately left to feature-level.                                 |
 
-### STEP 7 - Reconcile (amend mode)
+### STEP 7 - Reconcile (amend mode only)
 
-Diff synthesized rules against existing file. Categorize each as `unchanged | changed | added | removed`.
+Only when STEP 3 found an existing file. Diff synthesized rules against the file; categorize each as `unchanged | changed | added | removed`.
 
-- `changed` rules: place both versions under "Pending Reconciliation" within the section; ask the user. Never silently overwrite.
-- `removed` rules: move to **Archived** appendix with reason and date. Never delete.
+- `changed`: place both versions under "Pending Reconciliation" within the section; ask the user. Never silently overwrite.
+- `removed`: move to **Archived** appendix with reason and date. Never delete.
 - Never reorder existing sections silently.
 
 ### STEP 8 - Write constitution.md
 
-**Constitution Version (semantic):**
+Write the file at the path from STEP 3 using the Output Format template.
+
+Version (semantic):
 - **MAJOR:** principle removed/redefined or governance broken backward-incompatibly.
 - **MINOR:** new principle/section, or materially expanded guidance.
 - **PATCH:** clarification, wording, typo.
@@ -104,90 +95,77 @@ If the bump type is ambiguous, propose your reasoning and chosen bump in chat be
 
 ### STEP 9 - Sync Impact Report and Propagation Scan
 
-Prepend (or refresh) a Sync Impact Report as an HTML comment at the top of `constitution.md`:
-- Version change `<old> -> <new>`
-- Modified principles (with renames)
-- Added / removed sections
-- Downstream propagation results (per table below)
-- Deferred TODOs (`TODO(<FIELD>): <reason>`)
+Prepend (or refresh) a Sync Impact Report as an HTML comment at the top of `constitution.md`: version change `<old> -> <new>`, modified principles, added/removed sections, propagation results, deferred TODOs (`TODO(<FIELD>): <reason>`).
 
-Propagation scan (surface findings only - never auto-edit):
+Propagation scan - surface findings only, never auto-edit. Each row marked `updated` or `pending` with the file path:
 
-| Target                                          | Check                                                                          |
-| ----------------------------------------------- | ------------------------------------------------------------------------------ |
-| `.specs/<slug>/spec.md`                         | AC/NFR contradicting a new/changed principle - flag for `task-spec-clarify`    |
-| `.specs/<slug>/plan.md`                         | Architecture or tech-stack pin conflicting with new constitution               |
-| `CLAUDE.md`                                     | Tech Stack or Behavioral Principles drift from new constitution                |
-| `.specify/templates/*` (speckit mode)           | Plan/spec/tasks template references that became stale                          |
-
-Each result marked `updated` or `pending` with the file path. The user (not this workflow) edits the affected artifacts.
+| Target                                | Check                                                                          | Mode       |
+| ------------------------------------- | ------------------------------------------------------------------------------ | ---------- |
+| `.specs/<slug>/spec.md`               | AC/NFR contradicting a new/changed principle - flag for `task-spec-clarify`    | both       |
+| `.specs/<slug>/plan.md`               | Architecture or tech-stack pin conflicting with new constitution               | both       |
+| `CLAUDE.md`                           | Tech Stack or Behavioral Principles drift                                      | both       |
+| `.specify/templates/*`                | Plan/spec/tasks template references that became stale                          | speckit    |
 
 ### STEP 10 - Summarize
 
-Print path, sections + rule counts, sources synthesized, mode, conflicts, version bump, propagation status, next command:
-- First-time: `task-spec-specify <feature>` (constitution is now live).
-- Pending reconciliations: resolve, then re-run in amend mode.
+Print: path, section + rule counts, sources synthesized, mode, conflicts, version bump, propagation status, and next command:
+- First-time: `task-spec-specify <feature>`.
+- Pending reconciliations: resolve, then re-run.
 - speckit mode with proposed additions: user merges manually.
 
 ## Output Format
 
 ```markdown
 <!--
-Sync Impact Report:
-- Version change: v0.1.0 -> v0.2.0
+Sync Impact Report (template - replace all <placeholders>):
+- Version change: <old> -> <new>
 - Modified principles: <list, with renames>
 - Added sections: <list>
 - Removed sections: <list>
 - Downstream propagation:
-  - .specs/<slug>/spec.md       pending (AC4 may conflict with new compliance principle)
-  - CLAUDE.md                    updated (Tech Stack synced)
-  - .specify/templates/plan-template.md  pending (Constitution Check block stale)
-- Deferred TODOs: TODO(RATIFICATION_DATE): unknown adoption date
+  - .specs/<slug>/spec.md       <updated | pending> (<reason>)
+  - CLAUDE.md                   <updated | pending> (<reason>)
+  - .specify/templates/plan-template.md  <updated | pending> (<reason>)  # speckit only
+- Deferred TODOs: TODO(<FIELD>): <reason>
 -->
 
 # Project Constitution
 
-- **Constitution Version:** v0.2.0
-- **Ratification date:** <YYYY-MM-DD or TODO>
+- **Constitution Version:** v<MAJOR.MINOR.PATCH>
+- **Ratification date:** <YYYY-MM-DD or TODO(RATIFICATION_DATE)>
 - **Last amended:** <YYYY-MM-DD>
-- **Sources synthesized:** CLAUDE.md, behavioral-principles, backend-coding-standards, ops-engineering-governance, frontend-accessibility
-- **Scope:** all | backend | frontend | ops | security
+- **Sources synthesized:** <comma-separated list, each with last-touched date>
+- **Scope:** <all | backend | frontend | ops | security>
 
 ## Identity
 <One paragraph: what this project is, who it serves, what it is not.>
 
 ## Tech Stack Commitments
-- **Language:** Java 21+ (pinned)         _(source: CLAUDE.md#tech-stack)_
-- **Framework:** Spring Boot 3.5+         _(source: CLAUDE.md#tech-stack)_
-- **Database:** PostgreSQL 17+            _(source: CLAUDE.md#tech-stack)_
+- **Language:** Java 21+ (pinned)  _(CLAUDE.md#tech-stack, 2026-04-12)_
+- **Framework:** Spring Boot 3.5+  _(CLAUDE.md#tech-stack, 2026-04-12)_
+- **Database:** PostgreSQL 17+     _(CLAUDE.md#tech-stack, 2026-04-12)_
 
 ## Code Quality
-- Constructor injection only; no field `@Autowired`   _(source: backend-coding-standards#di)_
-- Records for DTOs; classes for JPA entities          _(source: backend-coding-standards#dto)_
+- Constructor injection only; no field `@Autowired`   _(backend-coding-standards#di, 2026-03-01)_
 
 ## API and Contract Rules
-- Public endpoints versioned `/api/v1/...`            _(source: backend-api-guidelines#versioning)_
-- Breaking changes via deprecation window of N releases _(source: ops-engineering-governance#deprecation)_
+- Public endpoints versioned `/api/v1/...`            _(backend-api-guidelines#versioning, 2026-02-18)_
 
 ## Data and Persistence
-- Schema changes follow expand-then-contract          _(source: backend-db-migration)_
-- Every FK column is indexed                          _(source: backend-db-indexing)_
+- Schema changes follow expand-then-contract          _(backend-db-migration, 2026-01-30)_
 
 ## Security and Compliance
-- Compliance regimes: <PCI-DSS, GDPR>                 _(source: <CLAUDE.md or user-confirmed>)_
-- Secrets injected via <vault / env / KMS>            _(source: ops-engineering-governance#secrets)_
+- Compliance regimes: <PCI-DSS, GDPR>                 _(CLAUDE.md or user-confirmed, <date>)_
 
 ## Operability
-- Every endpoint emits structured logs with trace IDs _(source: ops-observability)_
-- Critical paths have SLOs with measurement method    _(source: nfr-specification#slo)_
+- Every endpoint emits structured logs with trace IDs _(ops-observability, 2026-03-22)_
 
 ## Release and Rollback
-- Default deploy: rolling / canary 5% -> 50% -> 100%  _(source: ops-release-safety)_
-- Rollback target: 5 minutes                          _(source: ops-release-safety)_
+- Default deploy: rolling / canary 5% -> 50% -> 100%  _(ops-release-safety, 2026-04-02)_
+- Rollback target: 5 minutes                          _(ops-release-safety, 2026-04-02)_
 
 ## Review and Governance
-- ADRs required for: data-model changes, new external dependencies, security-boundary changes  _(source: ops-engineering-governance#adrs)_
-- Code review depth aligns with `task-code-review`    _(source: task-code-review)_
+- ADRs required for: data-model changes, new external dependencies, security-boundary changes  _(ops-engineering-governance#adrs, 2026-03-15)_
 
 ## Out of Constitution
 <Decisions deliberately left to feature-level.>
@@ -196,30 +174,25 @@ Sync Impact Report:
 - <YYYY-MM-DD>: <change> (by `task-spec-constitution` | manual)
 
 ## Archived
-(Houses rules removed in later amend passes; never deleted, only archived with reason + date.)
+(Rules removed in later amend passes; archived with reason + date, never deleted.)
 ```
 
 ## Self-Check
 
-- [ ] Loaded `behavioral-principles` and `speckit-detect` first
-- [ ] Path resolved at project root (NOT under a feature slug)
-- [ ] In speckit mode, additions surfaced for manual merge (no silent edits)
-- [ ] Inputs inventoried explicitly (CLAUDE.md + every standards skill in scope)
-- [ ] Every rule has a source citation; no fabrication
-- [ ] Conflicts surfaced, not silently resolved
-- [ ] Amend mode: changed rules in "Pending Reconciliation"; removed rules in "Archived"; never deleted
-- [ ] No content duplicated from `behavioral-principles`
-- [ ] Empty sections omitted
-- [ ] Version bumped per MAJOR/MINOR/PATCH semantics (ambiguous bumps justified in chat)
-- [ ] Sync Impact Report and propagation scan completed (findings surfaced, not auto-edited)
-- [ ] Summary includes counts, sources, conflicts, version, propagation status, next command
+- [ ] STEP 1-3 ran; path resolved at project root; amend vs create recorded
+- [ ] STEP 4: speckit mode produced proposed additions only (no silent merges)
+- [ ] STEP 5: inputs inventoried; missing-input case handled explicitly
+- [ ] STEP 6: every rule has a dated source citation, quoted not paraphrased; conflicts surfaced
+- [ ] STEP 7: amend mode only - changed rules under "Pending Reconciliation", removed rules under "Archived"
+- [ ] STEP 8: file written; version bump justified when ambiguous
+- [ ] STEP 9: Sync Impact Report prepended; propagation findings surfaced, never auto-edited
+- [ ] STEP 10: summary lists counts, sources, conflicts, version, propagation, next command
 
 ## Avoid
 
-- Producing a constitution from thin air.
-- Paraphrasing source rules.
-- Overwriting without amend/replace/abort offer.
+- Fabricating rules without a source.
+- Paraphrasing source rules instead of quoting them.
 - Silently dropping a rule whose source was removed - archive it.
+- Treating the constitution as feature-scoped (one file per repo, at project root).
+- Capturing aspirational goals ("we should add tests") instead of rules in force.
 - Including reasoning rules ("think before acting") - those belong in `behavioral-principles`.
-- Treating the constitution as feature-scoped (one file per repo).
-- Listing aspirational rules ("we should add tests") - capture rules in force, not goals.

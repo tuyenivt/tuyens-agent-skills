@@ -1,6 +1,6 @@
 ---
 name: speckit-detect
-description: Detect GitHub Spec Kit install and choose speckit-aware mode (delegate to /speckit-*) vs standalone mode (drive SDD via .specs/<slug>/).
+description: Detect GitHub Spec Kit install via .specify/ markers; pick speckit-installed (delegate /speckit-*) or standalone (.specs/<slug>/) mode.
 metadata:
   category: spec
   tags: [spec, sdd, speckit, detection, mode-selection]
@@ -9,30 +9,30 @@ user-invocable: false
 
 # Speckit Detection
 
-> Composed by `task-spec-*` workflows. Run once per workflow run, after `behavioral-principles`. Read-only.
+Composed by `task-spec-*` workflows after `behavioral-principles`. Emits a mode plus structured evidence the workflow uses to delegate or self-drive.
+
+## When to Use
+
+Once per workflow run, before any artifact read or write. Never user-invoked.
 
 ## Rules
 
-- Evidence-based only: marker files or CLI presence. Never infer from project name or chat.
-- Output mode + evidence so the consuming workflow can explain itself.
-- If `.specify/` exists at all, prefer **speckit-installed** (Spec Kit owns artifacts).
-- CLI on `$PATH` alone is not enough: project must also have `.specify/`.
+- Detect against the repo root: `git rev-parse --show-toplevel` if available, else cwd. Do not walk up.
+- `.specify/` is **well-formed** iff it contains at least one of `memory/constitution.md`, `feature.json`, `extensions.yml`. Well-formed -> `speckit-installed`. Otherwise -> `standalone`.
+- Evidence is marker files only. CLI on `$PATH` is not evidence and is not recorded.
+- If `.specify/feature.json` points at a missing directory, stay `speckit-installed`, warn via `notes`, and leave `feature_json_path` null.
+- Re-detect every run; never cache.
 
 ## Decision Table
 
-| `.specify/` | `.specs/` | Mode               | Note                                                      |
-| ----------- | --------- | ------------------ | --------------------------------------------------------- |
-| present     | -         | speckit-installed  | -                                                         |
-| present     | present   | speckit-installed  | Flag duplication; existing `.specs/` not silently dropped |
-| absent      | present   | standalone         | -                                                         |
-| absent      | absent    | standalone         | New project; first write creates `.specs/`                |
-| partial     | -         | standalone         | Recommend `speckit init` if user intended speckit mode    |
-
-CLI check (informational, recorded in evidence):
-
-```bash
-command -v speckit >/dev/null 2>&1 && echo "speckit-cli-present"
-```
+| `.specify/`        | `.specs/` | Mode              | Note                                                     |
+| ------------------ | --------- | ----------------- | -------------------------------------------------------- |
+| well-formed        | absent    | speckit-installed | -                                                        |
+| well-formed        | present   | speckit-installed | Warn in `notes`; existing `.specs/` not silently dropped |
+| present, malformed | absent    | standalone        | Recommend `speckit init` if speckit mode was intended    |
+| present, malformed | present   | standalone        | Warn in `notes`; treat malformed `.specify/` as noise    |
+| absent             | present   | standalone        | -                                                        |
+| absent             | absent    | standalone        | New project; first write creates `.specs/`               |
 
 ## Output Format
 
@@ -40,28 +40,30 @@ command -v speckit >/dev/null 2>&1 && echo "speckit-cli-present"
 mode: speckit-installed | standalone
 evidence:
   specify_dir_present: true | false
+  specify_well_formed: true | false
   specs_dir_present: true | false
-  speckit_cli_on_path: true | false
-  constitution_present: true | false   # .specify/memory/constitution.md
-  feature_json_present: true | false   # .specify/feature.json (resolved feature directory)
-  feature_json_path: <string or null>  # value of feature_directory if present (e.g., specs/003-user-auth)
-  extensions_yml_present: true | false # .specify/extensions.yml (hook registration)
-notes: |
-  Required when both .specify/ and .specs/ exist, or when configuration is unusual.
-next_action_hint: |
-  speckit-installed -> delegate to /speckit-<command>; pre/post-process with our atomics.
-                       Read the active feature directory from .specify/feature.json (if present)
-                       rather than inferring it from the git branch name.
-  standalone        -> use spec-artifact-paths to resolve .specs/<slug>/* and write artifacts.
+  constitution_present: true | false    # .specify/memory/constitution.md
+  feature_json_present: true | false    # .specify/feature.json
+  feature_json_path: <string or null>   # only if file exists AND target dir exists
+  extensions_yml_present: true | false  # .specify/extensions.yml
+delegate_target: /speckit-<cmd> | null  # set in speckit-installed mode, null otherwise
+artifact_root: .specs/<slug> | specs/<NNN>-<name>
+notes: <free text>                      # optional; non-fatal warnings only
 ```
 
-## Edge Cases
+Micro-example (dual-present case):
 
-- **Monorepo:** detect against the workflow's working directory; if sub-projects diverge, ask which scope applies.
-- **Ambiguous `.specify/`** (empty or partial): treat as standalone, surface the ambiguity.
+```yaml
+mode: speckit-installed
+evidence:
+  specify_well_formed: true
+  feature_json_path: specs/003-user-auth
+delegate_target: /speckit-plan
+notes: Both .specify/ and .specs/ present; existing .specs/ left untouched.
+```
 
 ## Avoid
 
-- State-changing commands during detection (`speckit init`, etc.).
-- Picking a mode based on what the workflow wants vs. what the project shows.
-- Caching across separate workflow runs (re-detect every run).
+- State-changing commands during detection (`speckit init`, file creation).
+- Inferring mode from project name, branch, or chat content.
+- Recording CLI-on-PATH or any signal the decision table does not consume.

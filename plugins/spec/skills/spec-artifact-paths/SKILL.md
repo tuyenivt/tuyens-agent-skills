@@ -1,6 +1,6 @@
 ---
 name: spec-artifact-paths
-description: Resolve canonical .specs/<slug>/ artifact paths (spec, plan, tasks, analysis, evaluation, handoffs); slugify names, create dirs on first write.
+description: Resolve .specs/<slug>/ artifact paths (spec, plan, tasks, analysis, evaluation, handoffs); derive slugs; surface existence. Read-only.
 metadata:
   category: spec
   tags: [spec, sdd, artifacts, paths, filesystem]
@@ -9,71 +9,77 @@ user-invocable: false
 
 # Spec Artifact Paths
 
-> Composed by `task-spec-*` workflows in standalone mode. In speckit-installed mode, Spec Kit owns paths and this skill is skipped - the consuming workflow reads the active feature directory from `.specify/feature.json` (a JSON file with `{ "feature_directory": "specs/<NNN>-<short-name>" }` written by `/speckit-specify`); if absent, fall back to scanning `specs/` for the most-recently-modified feature directory or ask the user.
+Standalone-mode resolver for SDD artifacts. The consuming workflow has already chosen standalone mode via `speckit-detect`; in speckit-installed mode this skill is skipped.
+
+## When to Use
+
+A spec workflow needs canonical paths for a feature's artifacts before reading or writing them.
 
 ## Rules
 
-- Slug is deterministic: lowercase, hyphen-separated, alphanumeric, max 60 chars.
-- Resolution is read-only. Directories are created only by the *writer*, not by path resolution.
-- Existing artifacts are surfaced via `exists: true`, never overwritten silently.
-- Workflows reference logical names from the Path Contract; never hardcode `.specs/` strings.
+- Slug derivation is deterministic and idempotent.
+- Resolution is read-only - never creates directories or files; the writer creates the directory tree on first write.
+- Collisions abort. Non-blocking observations go in `notes`.
+- Workflows reference logical names (`spec`, `plan`, ...) from the Path Contract, never raw `.specs/` strings.
 
 ## Slug Derivation
 
-1. Lowercase.
+1. Lowercase the input.
 2. Replace runs of non-`[a-z0-9]` with a single `-`.
 3. Trim leading/trailing `-`.
-4. Truncate to 60; if mid-word, trim back to previous `-`.
-5. Empty result -> fail and ask the user for an explicit slug.
+4. If length > 60, trim back to the last `-` at or before position 60; if that would leave < 20 chars, hard-cut at 60 instead.
+5. Empty result -> abort and ask the user for an explicit slug.
 
-| Input                                | Slug                              |
-| ------------------------------------ | --------------------------------- |
-| `User Profile Avatar Upload`         | `user-profile-avatar-upload`      |
-| `Add 2FA (TOTP) for staff accounts`  | `add-2fa-totp-for-staff-accounts` |
-| `Re-architect billing -> events bus` | `re-architect-billing-events-bus` |
+A pre-formed slug is accepted unchanged iff re-running the algorithm on it yields the same string.
+
+| Input                                       | Slug                              |
+| ------------------------------------------- | --------------------------------- |
+| `User Profile Avatar Upload`                | `user-profile-avatar-upload`      |
+| `Add 2FA (TOTP) for staff accounts`         | `add-2fa-totp-for-staff-accounts` |
+| `Re-architect billing -> events bus`        | `re-architect-billing-events-bus` |
+| `supercalifragilisticexpialidocious-feature-name-extended` (>60) | `supercalifragilisticexpialidocious-feature-name` (trim to last `-` <= 60) |
 
 ## Path Contract
 
-`<root>` = project root. `<slug>` = derived slug. `constitution` is project-wide; everything else is per-feature.
+`<root>` = project root (nearest ancestor containing `.git/` or `CLAUDE.md`; else cwd, recorded in `notes`). `constitution` is project-wide; everything else is per-feature.
 
-| Logical Name     | Path                                     | Writer                   |
-| ---------------- | ---------------------------------------- | ------------------------ |
-| `constitution`   | `<root>/.specs/constitution.md`          | `task-spec-constitution` |
-| `spec`           | `<root>/.specs/<slug>/spec.md`           | `task-spec-specify`      |
-| `clarifications` | `<root>/.specs/<slug>/clarifications.md` | `task-spec-clarify`      |
-| `plan`           | `<root>/.specs/<slug>/plan.md`           | `task-spec-plan`         |
-| `tasks`          | `<root>/.specs/<slug>/tasks.md`          | `task-spec-tasks`        |
-| `analysis`       | `<root>/.specs/<slug>/analysis.md`       | `task-spec-analyze`      |
-| `checklists_dir` | `<root>/.specs/<slug>/checklists/`       | `task-spec-checklist`    |
-| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         | `task-spec-orchestrate`  |
-| `evaluation`     | `<root>/.specs/<slug>/evaluation.md`     | `task-spec-evaluate`     |
+| Logical Name     | Path                                     |
+| ---------------- | ---------------------------------------- |
+| `constitution`   | `<root>/.specs/constitution.md`          |
+| `spec`           | `<root>/.specs/<slug>/spec.md`           |
+| `clarifications` | `<root>/.specs/<slug>/clarifications.md` |
+| `plan`           | `<root>/.specs/<slug>/plan.md`           |
+| `tasks`          | `<root>/.specs/<slug>/tasks.md`          |
+| `analysis`       | `<root>/.specs/<slug>/analysis.md`       |
+| `checklists_dir` | `<root>/.specs/<slug>/checklists/`       |
+| `handoffs_dir`   | `<root>/.specs/<slug>/handoffs/`         |
+| `evaluation`     | `<root>/.specs/<slug>/evaluation.md`     |
 
-Future relocation of the convention (e.g., to `docs/specs/`) is a single change to this table.
+Existence semantics: file entries are `true` iff the file exists; directory entries are `true` iff the directory exists (contents irrelevant).
 
 ## Output Format
 
 ```yaml
 slug: <derived-slug>
-root: <project-root-absolute-path>
-paths:                # one entry per logical name in the contract
+root: <absolute-project-root>
+paths:                # one entry per logical name
   spec: <root>/.specs/<slug>/spec.md
   ...
-existence:            # one entry per logical name; true/false
+existence:            # one entry per logical name; true | false
   spec: true
   ...
-notes: |
-  Required when an existing slug's spec.md declares a different feature name,
-  or when .specs/ contains files outside the documented contract.
+notes: |              # optional; omit if empty
+  Non-blocking observations only (e.g., root fallback to cwd,
+  unrecognized files under .specs/<slug>/).
 ```
 
 ## Edge Cases
 
-- **Slug collision** (existing `spec.md` declares a different name): stop and ask reuse / rename / abort.
-- **No detectable project root** (no `.git/`, no `CLAUDE.md`): use cwd and record it in `notes`.
-- **User passes a pre-formed slug**: pass through unchanged if already valid.
+- **Slug collision** (existing `spec.md` declares a different feature name): abort with `reuse / rename / abort` prompt; emit no YAML.
+- **No project root marker**: use cwd as `<root>` and record the fallback in `notes`.
+- **Files under `.specs/<slug>/` outside the contract**: surface in `notes`; do not fail.
 
 ## Avoid
 
-- Hardcoding `.specs/` paths anywhere outside this skill.
-- Creating directories during resolution.
-- Falling back to a temp directory on write failure (fail loudly with the OS error).
+- Hardcoding `.specs/` strings outside this skill.
+- Falling back to a temp directory on any failure - propagate the OS error.

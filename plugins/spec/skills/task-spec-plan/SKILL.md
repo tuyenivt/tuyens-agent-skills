@@ -8,20 +8,13 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Spec - Plan
 
 Translates the **what** in `spec.md` into the **how**: a stack-aware implementation plan (`plan.md`) with architecture, data model, API contract, NFR mapping, alternatives, and risks. Stops short of code - that is `task-spec-implement`'s job.
 
 ## When to Use
 
-After `task-spec-specify` (and ideally `task-spec-clarify`). To re-plan a feature whose plan has drifted from the spec. Not for: requirements (`task-spec-specify`), Q&A (`task-spec-clarify`), task generation (`task-spec-tasks`), code (`task-spec-implement`).
-
-## Inputs
-
-- `<slug>` (required). Aborts if `spec.md` missing or has unresolved blockers (recommends `task-spec-clarify`).
-- `--replan` to regenerate when `plan.md` exists; default mode is amend (preserve, append revisions).
+After `task-spec-specify` (and ideally `task-spec-clarify`). Re-plan when `plan.md` has drifted from the spec. Requires `<slug>`. Pass `--replan` to regenerate instead of amend (default is amend: preserve, append revisions). Not for: requirements (`task-spec-specify`), Q&A (`task-spec-clarify`), task generation (`task-spec-tasks`), code (`task-spec-implement`).
 
 ## Workflow
 
@@ -47,15 +40,14 @@ If `plan.md` exists, default to **amend**; offer replace/abort.
 
 ### STEP 5 - Read the Spec
 
-Read `spec.md` and (if present) `clarifications.md`. Extract problem, users, stories, ACs, NFRs, out-of-scope, open questions. If any open question is tagged blocker/major, stop and recommend `task-spec-clarify`.
+Read `spec.md` and (if present) `clarifications.md`. Extract problem, users, stories, ACs, NFRs, out-of-scope, open questions. Abort if `spec.md` is missing or any open question is tagged blocker/major (recommend `task-spec-clarify`).
 
 Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the output - never edit `spec.md`.
 
 ### STEP 6 - Branch on Mode
 
-**speckit-installed:** pre-process by surfacing implied decisions as a trade-off brief (for each significant decision: name 2-3 viable options, list the dimensions that differ - cost, latency, complexity, lock-in, reversibility - and state the leaning with rationale; mark Decision/Rejected explicitly) and by running `Use skill: nfr-specification` to verify NFRs are plan-actionable. Bundle as a brief, instruct user to run `/speckit-plan` (any `before_plan` / `after_plan` hooks registered in `.specify/extensions.yml` will fire as part of that call - do not bypass them). Post-process by running the cross-check (STEP 9) and surface gaps as suggestions. Skip to STEP 11.
-
-**standalone:** continue.
+- **speckit-installed:** apply STEP 7 composition rules as a brief, hand to `/speckit-plan` (any `before_plan` / `after_plan` hooks in `.specify/extensions.yml` fire as part of that call - do not bypass), post-process with STEP 9 cross-check as suggestions, skip to STEP 11.
+- **standalone:** continue.
 
 ### STEP 7 - Compose the Plan
 
@@ -64,8 +56,8 @@ Do not invent requirements. Gaps surface as **Proposed Spec Amendments** in the 
 | **Architecture overview**     | Components, boundaries, data ownership. Stack-aware. Reference any joined system.                                     |
 | **Data model**                | Entities, key fields, relationships, indexes. Migration approach if existing schema is touched.                       |
 | **API contract**              | Endpoints, request/response shapes, error model. Frontend: component contracts, state shape.                          |
-| **NFR mapping**               | `Use skill: nfr-specification` - every spec NFR has a concrete plan element (or explicit waiver).                     |
-| **Alternatives considered**   | For every significant decision: list 2-3 viable options, compare on dimensions that differ (cost, latency, complexity, lock-in, reversibility), state the chosen option with rationale and mark rejected ones with the reason. At least one rejected option each. |
+| **NFR mapping**               | `Use skill: nfr-specification`. Every spec NFR maps to a plan element (or explicit waiver). For quantitative NFRs, run the floor formula (`bits / bandwidth`, `per-request cost * target vs capacity`, `users * size * retention`, storage round-trip floor); flag infeasible budgets as Proposed Spec Amendments. |
+| **Alternatives considered**   | Every significant decision: 2-3 viable options, compared on dimensions that differ (cost, latency, complexity, lock-in, reversibility), chosen option with rationale, at least one rejected option with reason. |
 | **Risks and mitigations**     | Failure modes, rollback strategy, data-loss surfaces. Cross-reference NFRs.                                           |
 | **Decisions worth recording** | Candidate ADRs - list each with rationale; actual ADR authoring is the user's call (typically using the project's ADR template). |
 | **Out of scope (reaffirmed)** | Restate spec's out-of-scope verbatim - prevents tasks from re-introducing exclusions.                                 |
@@ -76,39 +68,22 @@ Composition rules:
 - Fullstack: one plan with labeled backend/frontend sections (not two plans).
 - If `architecture` plugin is installed and the feature is non-trivial, soft-suggest `task-design-architecture`. Do not auto-run.
 
-### STEP 8 - NFR Feasibility Sanity Check
+### STEP 8 - Plan-Spec Cross-Check
 
-Catch arithmetically infeasible NFRs *before* tasks are written. Common failure: a budget that passes inspection but loses to physics (e.g., "p95 upload-to-visible < 2s for 5MB on 10Mbps" - raw transfer is `5MB * 8 / 10Mbps ≈ 4s`, infeasible regardless of plan).
-
-For each quantitative NFR:
-
-| NFR pattern                              | Sanity formula                                                            | If it fails                                                          |
-| ---------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Upload/download latency                  | `file_bits / bandwidth_bps` is the floor                                  | Flag in **Proposed Spec Amendments**: server-side-only? typical files? bandwidth assumption? |
-| Throughput (RPS, writes/sec)             | per-request cost (CPU ms, DB latency) * target vs single-instance capacity | Flag if multi-instance scaling not in plan, or per-request cost too high |
-| Storage volume                           | `users * avg_size * retention` vs budget                                  | Flag if growth conflicts with retention/cost                         |
-| Read latency under cache miss            | storage round-trip + serialization floor                                  | Flag if target is below the floor                                    |
-
-Record each check in the NFR Mapping table's `Feasibility` column. **Do not silently weaken an infeasible NFR** - surface as a Proposed Spec Amendment.
-
-### STEP 9 - Plan-Spec Cross-Check
-
-Verify before writing:
+Gate before writing:
 
 - Every story addressed by an architecture component or API endpoint.
 - Every AC has a plan element testable against it.
-- Every NFR has a plan entry or explicit waiver.
-- Every quantitative NFR survived STEP 8 (or its failure is recorded).
 - No plan element touches out-of-scope.
 - No plan element conflicts with another (e.g., "stateless service" + "in-memory session cache").
 
 For each gap: add the missing element (preferred), stop and ask (if it implies a spec change), or mark as a Proposed Spec Amendment (minor, defer to clarify).
 
-### STEP 10 - Write plan.md
+### STEP 9 - Write plan.md
 
 Append-only in amend mode (new revision section, never delete prior content).
 
-### STEP 11 - Summarize
+### STEP 10 - Summarize
 
 Print path, sections populated, alternatives recorded, ADR candidates, mode, proposed amendments, next command (`task-spec-tasks <slug>`).
 
@@ -151,8 +126,9 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 - **Reversibility:** Easy | Moderate | Hard - <reason>
 
 ## Risks and Mitigations
-| Risk | Likelihood | Impact | Mitigation | Rollback |
-| ---- | ---------- | ------ | ---------- | -------- |
+
+| Risk | Likelihood: {Low\|Med\|High} | Impact: {Low\|Med\|High} | Mitigation | Rollback |
+| ---- | ---------------------------- | ------------------------ | ---------- | -------- |
 
 ## Decisions Worth Recording (Candidate ADRs)
 - **<title>** - <one-line rationale>
@@ -169,18 +145,16 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 
 ## Self-Check
 
-- [ ] Loaded `behavioral-principles`, `stack-detect`, `speckit-detect` first
-- [ ] Paths via `spec-artifact-paths`
-- [ ] Aborted on missing `spec.md` or unresolved blockers
-- [ ] In speckit mode, cross-check surfaced as suggestions (no silent edits)
-- [ ] Every story addressed by an architecture component or API endpoint
-- [ ] Every AC has a testable plan element
-- [ ] Every NFR has a plan entry or explicit waiver
-- [ ] Every quantitative NFR ran through STEP 8; infeasible budgets are Proposed Spec Amendments (not silently absorbed)
-- [ ] Every significant decision has an Alternatives Considered entry with options compared on differing dimensions and explicit chosen/rejected labels
-- [ ] No plan element touches out-of-scope
-- [ ] `spec.md` not edited from this workflow
-- [ ] Summary includes sections, alternatives, ADR candidates, next command
+- [ ] STEP 1: Loaded `behavioral-principles`
+- [ ] STEP 2: Loaded `stack-detect`; flagged `Stack Type: unknown` if undetermined
+- [ ] STEP 3: Loaded `speckit-detect`
+- [ ] STEP 4: Paths resolved via `spec-artifact-paths`; existing `plan.md` triage offered
+- [ ] STEP 5: Aborted on missing `spec.md` or unresolved blockers
+- [ ] STEP 6: Mode branch followed (speckit pre/post-process, or standalone continuation)
+- [ ] STEP 7: Plan composed per table; NFR feasibility floor run on quantitative NFRs; infeasible budgets surfaced as Proposed Spec Amendments
+- [ ] STEP 8: Cross-check passed (stories, ACs, out-of-scope, no internal conflicts)
+- [ ] STEP 9: `plan.md` written; `spec.md` not edited
+- [ ] STEP 10: Summary includes sections, alternatives, ADR candidates, mode, amendments, next command
 
 ## Avoid
 
