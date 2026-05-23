@@ -16,66 +16,61 @@ Produce a ranked debt backlog with explicit fix/spike/defer/accept calls. Audien
 
 - Quarterly planning, post-incident reviews, codebase onboarding, or making the case for debt investment
 - When debt has accumulated and needs triage rather than blanket "fix everything"
-
-## Inputs
-
-Required: a list of debt items (free text, ticket IDs, or file/module names).
-Optional: team pain ratings, recent git log of changed files, capacity constraints.
-
-If pain or change-frequency data is missing, infer from the debt description and surface the assumption.
+- Inputs: a list of debt items (free text, ticket IDs, or file/module names). Optional: team pain ratings, recent git log of changed files, capacity constraints
 
 ## Workflow
 
-### STEP 1 - Behavioral and Stack Setup
+### STEP 1 - Setup
 
 Use skill: `behavioral-principles`.
 Use skill: `stack-detect` (shapes which tooling signals are relevant).
 
 ### STEP 2 - Score Each Item on Three Axes
 
-For every item, assign a level on each axis. Use `review-blast-radius` only for items where coupling is non-obvious from the description.
+For every item, assign a level on each axis. The "If no data, infer from" column applies only when the input is silent on that axis.
 
-| Axis | Narrow / Low | Moderate / Medium | Wide / High |
-| --- | --- | --- | --- |
-| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment path, high-traffic |
-| **Change Frequency** (commits/90d if log given; else infer from description) | <3 - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint |
-| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding |
+| Axis | Narrow / Low | Moderate / Medium | Wide / High | If no data, infer from |
+| --- | --- | --- | --- | --- |
+| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment path, high-traffic | Module name and described scope; auth/payment/billing default to Wide |
+| **Change Frequency** | <3 commits/90d - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint | API handlers / business logic → High; shared utilities → Medium; config / migrations / dead UI → Low |
+| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding | "Slow builds", "flaky tests", "incidents" → High; "confusing", "inconsistent" → Medium; "old", "deprecated", "unused" → Low (unless security) |
 
-**Inference shortcuts when data is missing:**
-- API handlers / business logic → high frequency; config / migrations → low; shared utilities → medium
-- "Slow builds", "flaky tests", "blocks onboarding" → high pain
-- "Confusing", "inconsistent" → medium pain
-- "Old version", "deprecated", "unused" → low pain (unless security)
+Use `Use skill: review-blast-radius` only when coupling is non-obvious from the description. If it returns `Critical`, map to **Wide** here and tag the item `critical-data-risk` in Assumptions.
 
-**Time-sensitive boost.** If an item has a hard external deadline (CVE with known exploit window, vendor EOL, API deprecation cutoff), mark it `time-sensitive` and force its action to **Fix now** regardless of axis scores.
+**Time-sensitive boost.** Mark an item `time-sensitive` and force action to **Fix now** when any apply:
+- Unpatched CVE on a runtime/library/transitive dep
+- Vendor or LTS EOL within 6 months
+- Public API deprecation cutoff with a published date
+- Compliance or contractual deadline
 
 ### STEP 3 - Rank
 
-Sort by `(Blast Radius, Change Frequency, Team Pain)` lexicographically (Wide > Moderate > Narrow, then High > Medium > Low). Time-sensitive items rank above same-priority peers. When one item is S and another is L/XL at the same lex position, the cheaper item ranks first - small fixes shouldn't wait behind structural rewrites.
+Sort by `(Blast Radius, Change Frequency, Team Pain)` lexicographically (Wide > Moderate > Narrow, then High > Medium > Low). Tiebreaks in order:
 
-No numeric score is needed - the three axes already encode priority and a numeric sum tends to invent precision that doesn't exist.
+1. Time-sensitive items rank above non-time-sensitive peers
+2. Cheaper effort (S before L/XL)
 
-If an item bundles two distinct workstreams (e.g., test-suite "fix flakes" + "speed up", or "deprecate API" + "remove API"), split it into separately-ranked entries and note the split in Assumptions.
+If an item bundles two workstreams (e.g., "fix flakes" + "speed up build", or "deprecate API" + "remove API"), split into separately-ranked entries and note the split in Assumptions.
 
 ### STEP 4 - Recommend Action
 
 | Action | When |
 | --- | --- |
-| **Fix now** | Time-sensitive, OR High change frequency + Medium-or-higher pain, OR Wide blast radius with any non-Low secondary signal |
+| **Fix now** | Time-sensitive, OR Wide blast radius with either Change Frequency or Pain at Medium-or-higher, OR High Change Frequency with Medium-or-higher Pain |
 | **Spike** | Impact unclear; needs investigation before committing to a fix size |
-| **Defer** | Workable now; revisit next quarter - including Wide blast radius items that are currently low-pain and low-frequency (e.g., framework upgrades with no deadline) |
-| **Accept** | Cosmetic, stable code, no functional risk - document and move on |
+| **Defer** | Workable now but will degrade; revisit next quarter. Includes Wide-blast-radius items currently low on both other axes (e.g., framework upgrades with no deadline) |
+| **Accept** | Stable code, no functional or security risk - document and move on |
 
-Acceptance and deferral are valid outcomes. Treating all debt as must-fix discredits the triage.
+Defer means "will revisit"; Accept means "will not fix unless conditions change". Pick Accept when there's no plausible future trigger.
 
 ### STEP 5 - Effort for Top Picks
 
-For every "Fix now" and "Spike" item, give an effort:
+For every **Fix now** and **Spike** item, give an effort:
 
 - **S** (<half day): rename, extract, dep bump
 - **M** (1-2 days): refactor a module, add coverage to a class
 - **L** (3-5 days): redesign a component, migrate a pattern
-- **XL** (>5 days): architectural change - scope as a separate epic, do not commit inline
+- **XL** (>5 days): architectural change - emit as a `split epic` flag, not an entry in this backlog
 
 ## Output Format
 
@@ -112,24 +107,31 @@ For every "Fix now" and "Spike" item, give an effort:
 | Item | Why |
 | ---- | --- |
 
+## Split as Separate Epic
+
+- {XL item} - {one-line scope}
+
 ## Assumptions
 
 - {Anything inferred because input was incomplete}
+- {Bundled items split; critical-data-risk tags}
 ```
 
-Every input must appear in exactly one of: ranked backlog, deferred, or accepted. Silent drops are the cardinal error.
+Every input must appear in exactly one of: ranked backlog, deferred, accepted, or split-as-epic. Silent drops are the cardinal error.
 
 ## Self-Check
 
-- [ ] Every item scored on all three axes
-- [ ] Time-sensitive items flagged and forced to Fix now
-- [ ] Ranking follows lex order on (BR, CF, Pain); ties broken by time-sensitivity
-- [ ] Top picks have an action + effort; XL items recommended as separate epics
+- [ ] **Setup:** behavioral-principles + stack-detect loaded
+- [ ] **Score:** every item scored on all three axes; missing data filled from the inference column with the source noted
+- [ ] **Rank:** lex order on (BR, CF, Pain); tiebreaks applied in declared order; time-sensitive items forced to Fix now
+- [ ] **Action:** every item has Fix now / Spike / Defer / Accept; Defer vs Accept distinction respected
+- [ ] **Effort:** every Fix-now and Spike has an effort tier; XL items routed to Split as Separate Epic, not the backlog
 - [ ] No item silently dropped
 
 ## Avoid
 
 - Estimating in calendar days unless asked
-- Recommending fixes for everything - accept and defer are valid
+- Recommending fixes for everything - Accept and Defer are valid
 - Generating refactoring code (use `task-code-refactor`)
 - Ranking on code aesthetics when functional risk is absent
+- Numeric scoring - the three axes already encode priority

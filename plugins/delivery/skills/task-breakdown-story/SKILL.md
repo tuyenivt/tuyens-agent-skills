@@ -10,7 +10,7 @@ user-invocable: true
 
 # Scope Breakdown
 
-Decompose a feature or epic into implementable tasks with dependencies, sizes, and scope flags. Audience: tech leads and senior engineers planning the work. Surface hidden complexity (migrations, backward compat, rollback, observability) before estimating - this is the value of the workflow.
+Decompose a feature or epic into implementable tasks with dependencies, sizes, and scope flags. Audience: tech leads and senior engineers planning the work. Surfaces hidden complexity (migrations, backward compat, rollback, observability) before estimating.
 
 Produces a task plan, not implementation code. For story-level slicing aimed at PM/QA, use `task-breakdown-epic`.
 
@@ -35,7 +35,7 @@ Use skill: `stack-detect`.
 
 ### STEP 2 - Hidden Complexity Scan
 
-Walk this checklist and state which signals apply. Estimating without this scan is the most common failure of the workflow.
+Walk this checklist and state which signals apply. Skipping the scan is the most common failure of the workflow.
 
 | Signal | Look for |
 | --- | --- |
@@ -46,7 +46,7 @@ Walk this checklist and state which signals apply. Estimating without this scan 
 | Third-party integrations | External APIs, webhooks, SDKs |
 | Idempotency | Operations must tolerate retries (webhooks, payments, queues) |
 | State machine | Lifecycle states + transition rules |
-| Domain calculations | Billing proration, tax, shipping - likely needs a spike |
+| Domain calculations | Billing proration, tax, shipping |
 | Backward compatibility | Old and new behavior coexist during rollout |
 | Rollback | Can it be reverted? What data would be inconsistent? |
 | Feature flag | Risk warrants gradual rollout or kill switch |
@@ -54,12 +54,14 @@ Walk this checklist and state which signals apply. Estimating without this scan 
 | Test surface | Integration, contract, load, webhook simulation |
 | Deploy coordination | Cross-service or cross-team ordering |
 
-For signals that apply, load the relevant deep-dive only when material:
+For each signal that applies, load the relevant deep-dive when material:
+
 - DB changes → `Use skill: backend-db-migration`
 - Schema or API contract changes → `Use skill: ops-backward-compatibility`
-- Cross-service contracts → `Use skill: dependency-impact-analysis`
+- Cross-service or cross-module dependencies → `Use skill: dependency-impact-analysis`
 - Flag-gated rollout → `Use skill: ops-feature-flags`
-- Use `Use skill: review-change-risk` and `review-blast-radius` to size the riskiest tasks
+- Riskiest task by blast radius → `Use skill: review-blast-radius`
+- Riskiest task by change risk → `Use skill: review-change-risk`
 
 ### STEP 3 - Generate Tasks
 
@@ -74,12 +76,12 @@ Group by phase; include only the phases that apply:
 Each task:
 
 - **Name** - action-oriented ("Implement X", "Add Y", "Migrate Z"); never "Backend work" or "Testing"
-- **Type** - implementation | infrastructure | data | validation | ops
+- **Type** - one of: `implementation`, `infrastructure`, `data`, `validation`, `ops`
 - **Description** - one or two sentences; what to build, not how
 - **Depends on** - task name(s) or none
-- **Size** - S (½d) / M (1-2d) / L (3-5d) / XL (>5d, recommend breaking down)
-- **Complexity signals** - only when size is non-obvious or L/XL (justify the size)
-- **Scope** - only flag `nice-to-have` or `risk-reduction`; default is must-have, no need to repeat
+- **Size** - S (<1d) / M (1-2d) / L (3-5d) / XL (>5d, recommend breaking down)
+- **Complexity signals** - required when size is >= L; cite which Step 2 signals justify it
+- **Scope** - only flag `nice-to-have` or `risk-reduction`; otherwise omit
 
 ### STEP 4 - Dependency Order and Critical Path
 
@@ -92,19 +94,19 @@ Numbered sequence with blocking relationships:
 4. Task D (requires: A, B)
 ```
 
-Critical path = longest chain of dependent tasks. Name the chain; do not sum T-shirt sizes (that's meaningless math).
+Critical path = longest chain of dependent tasks. Name the chain; do not sum sizes.
 
 ### STEP 5 - Scope and Risk Flags
 
-Surface flags at feature level, with one of: **proceed** / **de-scope** / **add spike** / **split epic**.
+Surface feature-level flags, each with a verdict from: `proceed`, `de-scope`, `add spike`, `split epic`.
 
 - **Scope creep:** nice-to-have items stakeholders may assume are must-have; work discovered during the scan that wasn't in the original ask; XL tasks that should be a separate epic
-- **Hidden risks:** L/XL tasks on the critical path; data tasks with rollback complexity; integration blocked on external teams; tasks with unclear complexity (needs a spike)
+- **Hidden risks:** L/XL tasks on the critical path; data tasks with rollback complexity; integration blocked on external teams; tasks with unclear complexity (needs a spike); domain-calculation tasks (billing, tax, shipping)
 
-When recommending a spike, define it with three things so it is actionable:
+When the verdict is `add spike`, define it with three fields:
 - **Question:** the specific unknown ("Can we query X without a full table scan at 10M rows?")
 - **Done condition:** what the spike must produce ("Working POC with measured latency, or documented reason it cannot work")
-- **Time-box:** maximum time before it concludes with a finding ("½ day; if not resolved, escalate and de-scope")
+- **Time-box:** maximum time before it concludes with a finding ("4 hours; if not resolved, escalate and de-scope")
 
 ## Output Format
 
@@ -121,12 +123,12 @@ When recommending a spike, define it with three things so it is actionable:
 ### Foundation
 
 #### <Task>
-- **Type:** infrastructure / data / implementation / validation / ops
+- **Type:** implementation | infrastructure | data | validation | ops
 - **Description:** what to build
 - **Depends on:** task(s) or none
 - **Size:** S / M / L / XL
-- **Complexity signals:** only when size is L/XL or non-obvious
-- **Scope:** only when nice-to-have or risk-reduction (omit for must-have)
+- **Complexity signals:** required when Size >= L
+- **Scope:** only when nice-to-have or risk-reduction
 
 [repeat per task; omit phases with no tasks]
 
@@ -138,7 +140,7 @@ When recommending a spike, define it with three things so it is actionable:
 
 ## Scope and Risk Flags
 
-- **<flag>:** <recommendation>
+- **<flag>:** <proceed | de-scope | add spike | split epic> - <one-line rationale>
 
 ## Spikes
 
@@ -154,12 +156,11 @@ When recommending a spike, define it with three things so it is actionable:
 
 ## Self-Check
 
-- [ ] Complexity scan completed before any task was sized
-- [ ] Every task has type, size, dependency
-- [ ] XL tasks recommended for breakdown; sizes ≥L cite complexity signals
-- [ ] Nice-to-have / risk-reduction flagged; everything else implicit must-have
-- [ ] Critical path named; hidden ops/observability/rollback tasks present
-- [ ] Spikes defined with Question + Done + Time-box (or none)
+- [ ] **Setup:** behavioral-principles + stack-detect loaded
+- [ ] **Scan:** every applicable Step 2 signal listed before any task was sized; material deep-dive atomics loaded
+- [ ] **Tasks:** each task has Name, Type (from enum), Description, Depends-on, Size; sizes >= L cite complexity signals; XL tasks recommended for breakdown; Scope flagged only when nice-to-have / risk-reduction
+- [ ] **Dependencies:** critical path named; Ops Readiness phase includes observability/rollback tasks when relevant
+- [ ] **Flags:** each flag carries a verdict from the enum; spikes (if any) have Question + Done + Time-box
 
 ## Avoid
 
@@ -168,5 +169,5 @@ When recommending a spike, define it with three things so it is actionable:
 - Estimating without the complexity scan
 - Generic task names ("Backend", "Testing")
 - Treating all tasks as must-have when scope hasn't been agreed
-- Tasks without dependency statements - sequence matters
+- Tasks without dependency statements
 - Summing T-shirt sizes

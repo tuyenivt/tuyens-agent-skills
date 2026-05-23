@@ -1,6 +1,6 @@
 ---
 name: task-release-notes
-description: Generate stakeholder release notes from git commits or PR list: features/fixes/breaking/internal, user impact, rollback and risk section.
+description: Compose dual-audience release notes from a commit range or PR list; categorize changes, classify risk, produce risk register and rollback.
 metadata:
   category: planning
   tags: [release, changelog, release-notes, rollout, rollback, communication]
@@ -36,16 +36,22 @@ When the release contains many unrelated high-risk changes, run per logical batc
 | Deploy target | No | Shapes rollback section |
 | Known follow-ups | No | Surfaced as "Known Limitations" |
 
-If the range is empty or unresolvable, stop and ask - don't produce an empty note.
+Stop and ask when:
+- The range is empty or unresolvable
+- The range has no previous tag and no caller-supplied lower bound
+- Commits reference PR numbers that don't resolve (list which); partial resolution is acceptable only if the caller confirms
 
 ## Workflow
 
-### STEP 1 - Setup
+### STEP 1 - Behavioral Setup
 
 Use skill: `behavioral-principles`.
+
+### STEP 2 - Stack Detect
+
 Use skill: `stack-detect` (shapes which rollback patterns apply).
 
-### STEP 2 - Categorize
+### STEP 3 - Categorize
 
 Place every change in exactly one bucket. No "Other" - force a real category.
 
@@ -53,33 +59,37 @@ Place every change in exactly one bucket. No "Other" - force a real category.
 | --- | --- |
 | **Breaking** | Removed/renamed public APIs, schema removals, behavior changes requiring consumer action |
 | **Features** | New user-facing capability, endpoints, or UI |
-| **Improvements** | Performance, UX polish, observability, expanded existing capability |
+| **Improvements** | Performance, UX polish, observability, expanded existing capability. Pure schema/data changes with no API surface (e.g., NOT NULL backfill) land here and always trigger Risk Register evaluation. |
 | **Fixes** | User-visible bugs corrected |
 | **Security** | Security fixes, CVE patches, hardening |
 | **Internal** | Refactors, tests, CI, dep bumps with no behavior change. Drop entirely for `external` audience. |
 | **Deprecations** | Marked for removal in a future release (already-removed features go in Breaking) |
 
-### STEP 3 - Risk and Rollback
+### STEP 4 - Risk, Rollout, and Rollback
 
-Classify rollout risk for changes in Breaking / Features / Improvements / Fixes / Security. Use `Use skill: review-blast-radius` and `review-change-risk` for changes that touch data, auth, money, or external contracts.
+Load `Use skill: ops-release-safety` to ground the rollout strategy and detection signals.
 
-Load the deep-dive only when relevant:
+For each change touching data, auth, money, or external contracts, load:
+- `Use skill: review-blast-radius` to assign the blast radius
+- `Use skill: review-change-risk` when blast radius is Wide or Critical (sets `Reversibility` for the row)
+
+Conditional deep-dives:
 - Migrations present → `Use skill: backend-db-migration`
 - API contract or schema changes → `Use skill: ops-backward-compatibility`
-- Cross-service contracts → `Use skill: dependency-impact-analysis`
-- Flag-gated → `Use skill: ops-feature-flags` (rollback-via-flag-flip)
-- For higher-risk changes → `Use skill: ops-release-safety` to map to a rollback strategy and detection signal
+- Security or dependency changes → `Use skill: dependency-impact-analysis`
+- Flag-gated rollout → `Use skill: ops-feature-flags` (rollback-via-flag-flip; flag lifecycle and expiry debt go to Known Limitations)
 
-**Risk Register rule.** Each Wide or Critical blast-radius change gets a row. Moderate changes get a row only when they carry material rollout context (migration, flag, large table). Narrow changes are covered by the Default Rollback paragraph - listing them dilutes the signal.
+**Risk Register rule.** Each Wide or Critical blast-radius change gets a row. Moderate changes get a row only when they carry material rollout context (migration, flag, large table). Narrow changes are covered by the Default Rollback paragraph.
 
-Each Risk Register row needs:
-- **What could break** - failure mode in user-visible terms
-- **Detection signal** - specific dashboard/alert/log filter (not "monitor for issues")
-- **Rollback step** - revert deploy / flip flag / reverse migration
-- **Data impact** - does rollback restore prior state cleanly, or does new-code data persist
-- **Owner** - team or individual
+Map `review-blast-radius` output to Risk Register columns:
+- `Blast Radius` → `Blast Radius`
+- `Code` + `Data` impact → `What Could Break`
+- `Reversibility` → `Data Impact` (clean if reversible without data loss; dirty otherwise)
+- Detection signal: use `ops-release-safety` Rollback Triggers if available; otherwise emit `<dashboard: TBD>` and list in Assumptions
 
-### STEP 4 - Compose
+Each Risk Register row needs: What could break, Detection signal, Rollback step, Data impact, Owner.
+
+### STEP 5 - Compose
 
 For **Breaking**, lead with the consumer's migration step ("Callers must now pass `region` on `POST /orders`"), not the internal change. Cite by PR number, not SHA.
 
@@ -130,7 +140,7 @@ Never paste raw commit messages or PR titles unedited:
 
 ## Known Limitations
 
-- Deferred items the team intentionally did not ship. Omit if none.
+- Deferred items the team intentionally did not ship; flagged features with no expiry. Omit if none.
 
 ## Rollout & Rollback
 
@@ -155,17 +165,15 @@ Never paste raw commit messages or PR titles unedited:
 - Anything inferred because input was incomplete. Omit if none.
 ```
 
-Omit empty categories from the final document. Rollout & Rollback is mandatory - even "Revert deploy, no data steps required" is a valid Default Rollback.
+Omit empty categories. Rollout & Rollback is mandatory - even "Revert deploy, no data steps required" is a valid Default Rollback.
 
 ## Self-Check
 
-- [ ] Every change categorized exactly once; no "Other" bucket
-- [ ] Breaking changes at the top, leading with consumer action
-- [ ] Wide/Critical (and material Moderate) changes have a Risk Register row with all six columns
-- [ ] Default Rollback paragraph present
-- [ ] Migration Notes present iff migrations ship
-- [ ] `external` audience: Internal and CI-only items dropped; Highlights written for non-engineer
-- [ ] No raw commit messages or unedited PR titles
+- [ ] **Behavioral:** behavioral-principles loaded
+- [ ] **Stack:** stack-detect loaded
+- [ ] **Categorize:** every change in exactly one bucket; no "Other"; Internal dropped for `external`; Highlights written for non-engineer when audience is `external` or `both`
+- [ ] **Risk:** ops-release-safety loaded; Rollout strategy chosen; Wide/Critical + material Moderate have a Risk Register row mapped from review-blast-radius; Default Rollback present; Migration Notes present iff migrations ship; Detection Signal is concrete or `TBD` with Assumption
+- [ ] **Compose:** Breaking changes at the top leading with consumer action; PRs cited by number not SHA; no raw commit messages or unedited titles
 
 ## Avoid
 

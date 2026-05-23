@@ -10,7 +10,7 @@ user-invocable: true
 
 # Story Slicing
 
-Produce vertically-sliced, demoable user stories ready for sprint commitment. Audience: PM, QA, devs taking the work. For engineering task graphs with phases and dependencies, use `task-breakdown-story` instead.
+Produce vertically-sliced, demoable user stories ready for sprint commitment. For engineering task graphs with phases and dependencies, use `task-breakdown-story` instead.
 
 ## When to Use
 
@@ -25,10 +25,11 @@ Ask before slicing if **primary user** or **outcome** is missing - inventing the
 
 ## Workflow
 
-### STEP 1 - Setup
+### STEP 1 - Behavioral Setup
 
 Use skill: `behavioral-principles`.
-Use skill: `stack-detect` (shapes which slicing axes apply, e.g. mobile/web split).
+
+This workflow is stack-agnostic and does not load `stack-detect`.
 
 ### STEP 2 - Frame the Feature
 
@@ -36,7 +37,7 @@ Restate as one sentence: **"As a <user>, I want to <capability>, so that <outcom
 
 ### STEP 3 - Pick a Slicing Pattern
 
-Pick the axis that produces the most independent, demoable slices. Name it; briefly note why others were rejected. If the feature spans multiple actors (e.g., end-user + admin), expect User-roles slicing as either the primary axis or a secondary cut alongside another pattern.
+Pick the **primary** axis and optionally a **secondary** cut (most multi-actor or multi-surface features need both). Name each axis; briefly note why others were rejected.
 
 | Pattern | Cut along… | Use when |
 | --- | --- | --- |
@@ -49,7 +50,7 @@ Pick the axis that produces the most independent, demoable slices. Name it; brie
 | **CRUD ops** | Read → Create → Update → Delete | Read-only is often demoable on its own |
 | **Defer the wow** | Functional → polished | Visual polish must not block functional value |
 
-**Anti-pattern: layered slicing** ("backend story" / "frontend story"). Not demoable on their own. If the only honest slicing feels layered, the feature may already be one story.
+If the only honest slicing feels layered (backend-only / frontend-only), the feature may already be one story - see Avoid.
 
 ### STEP 4 - Produce the Slices
 
@@ -57,19 +58,20 @@ Each story:
 
 - **Title** - imperative, user-facing ("Member can save a draft order", not "Add draft persistence")
 - **Story** - As a <user>, I want to <capability>, so that <outcome>
-- **Acceptance Criteria** - 1-5 Given/When/Then bullets covering happy path + at least one edge case
+- **Acceptance Criteria** - 1-3 Given/When/Then bullets. Include at least one edge-case AC unless the story is genuinely single-path (size XS).
 - **Demo** - one sentence on what's shown in sprint review
 - **Size** - XS (<1d) / S (1-2d) / M (3-5d). No L/XL - re-slice instead.
 - **Depends on** - story #N, external (<what>), or none (default and preferred)
 - **Out of scope** - what is intentionally deferred (prevents scope drift)
+- **Safety** - only when a slice carries irreversible side effects or rides a feature flag; one line summarizing the risk and gating
 
-If a slice involves auth, payments, or data migration, also load `Use skill: review-blast-radius` and surface the safety note in Assumptions. If any slice ships behind a flag, load `Use skill: ops-feature-flags` and capture the gating in Assumptions.
+If any story has a Safety line, load `Use skill: review-blast-radius` (irreversible side effects) or `Use skill: ops-feature-flags` (flagged rollout) to ground the note.
 
 ### STEP 5 - Sequence and INVEST Pass
 
 Order so the highest-value slices come first. For each story confirm it can ship and demo without later siblings; if not, name the blocker or re-slice.
 
-INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable, **E**stimable, **S**mall, **T**estable. Flag any story failing one and re-slice or document the exception.
+INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable, **E**stimable, **S**mall, **T**estable. Flag any story failing one and re-slice or document the exception as: `#N fails <axis> (<reason>); accepted because <justification>`.
 
 ## Output Format
 
@@ -78,7 +80,8 @@ INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable,
 
 > As a <user>, I want to <capability>, so that <outcome>.
 
-**Slicing pattern:** <pattern> - <why; one sentence>
+**Primary axis:** <pattern> - <why; one sentence>
+**Secondary axis:** <pattern or none>
 **Rejected:** <pattern> (<reason>); <pattern> (<reason>)
 
 ## Stories
@@ -93,6 +96,7 @@ INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable,
 - **Size:** XS / S / M
 - **Depends on:** none | #N | external (<what>)
 - **Out of scope:** <list>
+- **Safety:** <only when irreversible or flag-gated>
 
 [repeat per story]
 
@@ -106,27 +110,27 @@ INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable,
 
 ## INVEST Exceptions
 
-Only list stories that fail an INVEST axis with the chosen action (re-slice / accept exception). Omit if all pass.
+- #N fails <axis> (<reason>); accepted because <justification>
+
+Omit if all pass.
 
 ## Assumptions and Open Questions
 
 - Assumptions made due to missing input
 - Questions whose answers would change slicing
-- Safety / flag notes from review-blast-radius or ops-feature-flags if loaded
 ```
 
 ## Self-Check
 
-- [ ] Primary user named (asked, not invented)
-- [ ] Slicing pattern named; alternatives noted
-- [ ] Every story has Given/When/Then ACs (happy + edge), a Demo, a size (XS/S/M only), and an Out-of-scope line
-- [ ] No layered (backend-only / frontend-only) stories
-- [ ] Sequencing identifies the first demoable slice
-- [ ] INVEST exceptions documented (or none)
+- [ ] **Setup:** behavioral-principles loaded
+- [ ] **Frame:** primary user named (asked, not invented); one-sentence frame produced
+- [ ] **Pattern:** primary axis named; secondary or "none" stated; rejected alternatives listed
+- [ ] **Slices:** every story has Title, Story, AC, Demo, Size (XS/S/M), Depends-on, Out-of-scope; Safety line present iff slice is irreversible or flag-gated
+- [ ] **Sequence + INVEST:** first demoable slice identified; INVEST exceptions documented (or none)
 
 ## Avoid
 
-- Layered slices - not demoable
+- Layered slices (backend-only / frontend-only) - not demoable
 - "Setup" or "infrastructure" stories - those are tasks inside a story
 - ACs as implementation hints ("Use Redis") instead of observable behavior
 - Treating ACs as test cases - ACs are agreement of done; tests verify them
