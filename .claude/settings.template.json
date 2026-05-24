@@ -128,8 +128,6 @@
       "Bash(git reset:*)",
       "Bash(git checkout:*)",
       "Bash(git clean -f:*)",
-      "Bash(docker run:*)",
-      "Bash(docker exec:*)",
       "Bash(Set-Content:*)",
       "Bash(Add-Content:*)",
       "WebFetch",
