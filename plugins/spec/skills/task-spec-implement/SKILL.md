@@ -10,18 +10,18 @@ user-invocable: true
 
 # Spec - Implement
 
-Drives `tasks.md` to working code one task at a time, delegating to stack workflows in `--spec` mode. Status mutates in `tasks.md` at every transition, so the workflow is resumable: re-invocation reopens an in-progress `[~]` or picks the next ready `[ ]`. Stops on the first failure, blocker, or surfaced spec gap.
+Drives `tasks.md` to working code one task at a time, delegating to stack workflows in `--spec` mode. Status mutates at every transition so the workflow is resumable: re-invocation reopens an in-progress `[~]` or picks the next ready `[ ]`.
 
 ## When to Use
 
-After `task-spec-tasks`, or to resume an interrupted run. Not for: requirements (`task-spec-specify`), planning (`task-spec-plan`), one-off feature work outside SDD, or bug fixes (`task-code-debug`).
+After `task-spec-tasks`, or to resume an interrupted run.
 
 **Inputs**
 
 - `<slug>` (required) - reads `.specs/<slug>/{spec,plan,tasks}.md`.
 - `--task <ID>` - run one task and exit.
-- `--dry-run` - print the planned delegation, do not mutate.
-- `--stop-after <ID>` - halt after that task completes (staged review).
+- `--dry-run` - print the planned delegation, do not mutate. With `--task`, prints only that one.
+- `--stop-after <ID>` - halt after that task completes.
 
 ## Workflow
 
@@ -41,60 +41,80 @@ Use skill: speckit-detect
 
 Use skill: spec-artifact-paths
 
-Abort cleanly if any of `spec.md`, `plan.md`, `tasks.md` is missing, naming the missing file and the upstream workflow that produces it.
+Abort if any of `spec.md`, `plan.md`, `tasks.md` is missing, naming the missing file and the upstream workflow that produces it.
 
 ### STEP 5 - Checklist Gate
 
-If `.specs/<slug>/checklists/` exists, count `- [ ]` vs `- [x]/[X]` per file and render a table with columns: `Checklist | Total | Completed | Incomplete | Status` (PASS when Incomplete=0). Any FAIL halts the run and asks: "Proceed with incomplete checklists?" - only an explicit yes continues. No `checklists/` directory: proceed silently.
+If `.specs/<slug>/checklists/` exists, count `- [ ]` vs `- [x]/[X]` per file and render `Checklist | Total | Completed | Incomplete | Status` (PASS when Incomplete=0). Any FAIL halts the run and asks "Proceed with incomplete checklists?" - only an explicit yes continues.
 
 ### STEP 6 - Branch on Mode
 
-**speckit-installed:** instruct the user to run `/speckit-implement` (its registered hooks and checklist gate fire there - do not duplicate or bypass them). Reconcile Spec Kit's task state into our schema only if asked. Skip to STEP 12.
+**speckit-installed**: instruct the user to run `/speckit-implement`. Replace STEP 12 with: "Delegated to /speckit-implement; no state mutated here."
 
-**standalone:** continue.
+**standalone**: continue.
 
 ### STEP 7 - Pick Next Task
 
-Selection order:
-
 | Flag             | Pick                                                            |
 | ---------------- | --------------------------------------------------------------- |
-| `--task <ID>`    | That task. Error if missing or already `[x]`.                   |
+| `--task <ID>`    | That task. Error if missing or already `[x]`. If a different task is `[~]`, warn and continue; the resume breadcrumb survives. |
 | (default)        | First `[~]`; else first `[ ]` whose `Depends on:` are all `[x]`. |
 
-If nothing is selectable because dependencies are unfinished, list them and stop. If every task is `[x]`, print "all tasks complete" and exit. On `--dry-run`, print the chosen task and planned delegation, then exit.
+If nothing is selectable, list unfinished deps and stop. If every task is `[x]`, exit. On `--dry-run`, print and exit.
 
 ### STEP 8 - Resolve Delegation Target
 
-Map task `Type` to `task-<stack>-implement`:
+Stack-name -> workflow mapping:
 
-| Task Type                  | Workflow                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------- |
-| `data` / `service` / `api` | `task-<backend>-implement` (spring, kotlin, dotnet, python, rails, node, go, rust, laravel) |
-| `frontend`                 | `task-<frontend>-implement` (react, vue, angular)                                     |
-| `validation`               | Same workflow as the task it validates.                                               |
-| `ops`                      | No workflow. Run inline with `ops-*` and per-stack atomics. Do not invent one.        |
+| Stack         | Workflow                  |
+| ------------- | ------------------------- |
+| `java`        | `task-spring-implement`   |
+| `kotlin`      | `task-kotlin-implement`   |
+| `dotnet`      | `task-dotnet-implement`   |
+| `python`      | `task-python-implement`   |
+| `ruby`        | `task-rails-implement`    |
+| `node`        | `task-node-implement`     |
+| `go`          | `task-go-implement`       |
+| `rust`        | `task-rust-implement`     |
+| `php`         | `task-laravel-implement`  |
+| `react`       | `task-react-implement`    |
+| `vue`         | `task-vue-implement`      |
+| `angular`     | `task-angular-implement`  |
 
-For fullstack ambiguity, read `plan.md`'s API contract section. If still ambiguous, ask once and remember for the rest of the run. If the detected stack has no `task-<stack>-implement`, stop and surface the gap - do not silently substitute.
+By task `Type`:
+
+| Type                        | Delegate                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| `data` / `service` / `api`  | Backend workflow per the table above.                                                 |
+| `frontend`                  | Frontend workflow per the table above.                                                |
+| `validation`                | Same workflow as the task it validates (read `Validates:` field, else last `Depends on:` entry). |
+| `ops`                       | No workflow. Run inline with `ops-*` and per-stack atomics.                           |
+
+For fullstack ambiguity, read `plan.md`'s API contract section. If still ambiguous, ask once and remember for the rest of the run. If the detected stack has no implement workflow, stop and surface the gap.
 
 ### STEP 9 - Mark In Progress
 
-Mutate `tasks.md`: `[ ]` -> `[~]`. Append a Revisions entry (task ID, timestamp, `task-spec-implement`). The `[~]` is the resume breadcrumb.
+Mutate `tasks.md`: `[ ]` -> `[~]` (first run on this task) OR append a `resume` Revisions entry (re-run on an existing `[~]`). Never append a duplicate `[~]` entry. Bump `Last updated`.
+
+Revisions entry format:
+```
+<YYYY-MM-DD HH:MM>: T<NN> -> [~] (start | resume) (by task-spec-implement)
+```
 
 ### STEP 10 - Delegate
 
-Invoke the chosen workflow with `--spec <slug>`, passing only the task's slice (description, `Satisfies`, `Depends on`) and the relevant `plan.md` sections - not the full `tasks.md`. The delegate's spec-aware behavior is contracted by `spec-aware-preamble`; trust it. Surface clarifying questions to the user; do not answer for them.
+If `Type: ops`, execute inline using the listed `ops-*` skills; do not invoke a delegate workflow. Otherwise, invoke the chosen workflow with `--spec <slug>`, passing only the task's slice (description, `Satisfies`, `Depends on`) and the relevant `plan.md` sections - not the full `tasks.md`. The delegate's spec-aware behavior is contracted by `spec-aware-preamble`. Surface clarifying questions to the user; do not answer for them.
 
 ### STEP 11 - Mark Outcome
 
 | Outcome              | Action                                                                              |
 | -------------------- | ----------------------------------------------------------------------------------- |
-| Clean completion     | `[~]` -> `[x]`.                                                                     |
+| Clean completion     | `[~]` -> `[x]`. Revisions: `T<NN> -> [x] (complete)`.                               |
 | Blocked / errored    | Leave `[~]`. Revisions captures the blocker. Stop the loop.                         |
-| Spec gap surfaced    | Leave `[~]`. Append **Proposed Spec Amendment** to revisions. Stop the loop.        |
+| Spec gap surfaced    | Leave `[~]`. Append **Proposed Spec Amendment** to Revisions. Stop the loop.        |
 | User aborted         | Leave `[~]`. Revisions notes the abort.                                             |
 
-Every mutation in STEP 9 or STEP 11 also bumps `Last updated`. Never edit `spec.md` or `plan.md` from here; amendments are proposals only. Never add or reword downstream tasks - that is `task-spec-tasks`'s job.
+Bump `Last updated` on every mutation. Never edit `spec.md` or `plan.md` (amendments are proposals only). Never add or reword downstream tasks.
 
 Loop to STEP 7 unless `--task` ran or `--stop-after` matched.
 
@@ -104,14 +124,13 @@ Loop to STEP 7 unless `--task` ran or `--stop-after` matched.
 Spec implement - <slug> (<mode>)
   This run:    completed=<n> in_progress=<n> blocked=<n>
   Overall:     [x]=<n> [~]=<n> [ ]=<n>
-  Stack:       <detected stack>
+  Stack:       <stack-detect name>  (workflow: <task-*-implement>)
   Blockers:    <T<NN>: reason  |  none>
   Spec gaps:   <T<NN>: proposed amendment  |  none>
   Next:        <command>
 ```
 
 Next-command rules:
-
 - Tasks remain, no blocker: `task-spec-implement <slug>` (resume).
 - Blocker: address, then resume.
 - Spec amendment: `task-spec-clarify <slug>` -> `task-spec-plan <slug>` -> resume.
@@ -121,23 +140,26 @@ Next-command rules:
 
 Primary output is the mutated `tasks.md` (status flips + Revisions entries + `Last updated`). Chat output is the STEP 12 summary block verbatim.
 
+Example `tasks.md` row:
+```
+- [ ] T03 [US1] Add OrderRepository in src/repo/order_repo.<ext> - data, S, must-have. Satisfies AC1. Deps: T02. Validates: -
+```
+
 ## Self-Check
 
-- [ ] STEP 1-3: loaded `behavioral-principles`, `stack-detect`, `speckit-detect`
-- [ ] STEP 4: aborted with the upstream workflow name if any artifact missing
-- [ ] STEP 5: ran checklist gate; FAIL required explicit user yes
-- [ ] STEP 6: in speckit mode, delegated to `/speckit-implement` without overwriting its state
+- [ ] STEP 1-4: behavioral-principles, stack-detect, speckit-detect, paths loaded; aborted with upstream name if any artifact missing
+- [ ] STEP 5: checklist gate ran; FAIL required explicit yes
+- [ ] STEP 6: in speckit mode, delegated to `/speckit-implement` and skipped STEP 12
 - [ ] STEP 7: picked `[~]` before `[ ]`; respected dependencies
-- [ ] STEP 8: chose a real `task-<stack>-implement`; surfaced gap if none exists
-- [ ] STEP 9: marked `[~]` before delegating
-- [ ] STEP 10: passed `--spec <slug>` and only the task's slice
+- [ ] STEP 8: resolved a real workflow via the stack table, or ran inline for `ops`
+- [ ] STEP 9: marked `[~]` (or appended `resume` entry on re-run; no duplicate `[~]`)
+- [ ] STEP 10: passed `--spec <slug>` and only the task's slice; ops ran inline
 - [ ] STEP 11: marked `[x]` only on clean completion; did not edit spec/plan or reword tasks
 - [ ] STEP 12: summary includes counts, blockers, spec gaps, next command
 
 ## Avoid
 
 - Skipping `[~]` tasks when resuming.
-- Looping past a blocker.
 - Editing `spec.md`, `plan.md`, or downstream task descriptions.
 - Bulk-flipping status after the fact (mutate at the transition).
 - Re-running GATHER/DESIGN inside the delegate.

@@ -10,15 +10,11 @@ user-invocable: true
 
 # Spec - Clarify
 
-Surface ambiguous, conflicting, missing, or unmeasurable items in an existing `spec.md`; resolve them via one-question-at-a-time Q&A; append the session to `clarifications.md`; revise `spec.md`.
-
 Invocation: `/task-spec-clarify <slug> [--blockers-only | --all] [--non-interactive]`
 
 ## When to Use
 
-- After `task-spec-specify` reports open questions, or before `task-spec-plan` if the spec feels ambiguous.
-- When a spec has aged and may have drifted from current intent.
-- Not for: authoring from scratch (use `task-spec-specify`), code review, architectural decisions.
+After `task-spec-specify` reports open questions, before `task-spec-plan` if the spec feels ambiguous, or when a spec has aged. Not for authoring from scratch.
 
 Scope flags:
 
@@ -28,7 +24,7 @@ Scope flags:
 | `--blockers-only` | blocker                 |
 | `--all`           | blocker + major + minor |
 
-`--non-interactive` emits the findings list and exits without Q&A or file writes.
+`--non-interactive` emits the filtered findings list and exits without Q&A or writes.
 
 ## Workflow
 
@@ -43,30 +39,39 @@ Use skill: spec-artifact-paths
 
 If `.specs/<slug>/spec.md` is missing, abort and recommend `task-spec-specify`.
 
-If mode is **speckit-installed**: run `spec-review` (pre-pass), instruct the user to run `/speckit-clarify` (any `before_clarify`/`after_clarify` hooks in `.specify/extensions.yml` fire as part of that call -- do not bypass), then jump to STEP 6 with `spec-review` re-run as the post-pass.
+If mode is **speckit-installed**: run `spec-review` (pre-pass), instruct the user to run `/speckit-clarify`. The Revisions entry on `spec.md` is owned by `/speckit-clarify`. Jump to STEP 6 (re-run `spec-review` as the post-pass).
 
 ### STEP 3 - Review
 
 Use skill: spec-review
 
-Filter findings by the scope flag (table above). Each finding must carry a stable `id` (e.g., `F-001`) emitted by `spec-review`; questions reference it.
+Filter findings by the scope flag. Each finding carries a stable `id` from `spec-review`.
 
-- `summary.status == pass`: print "spec clean at requested scope", jump to STEP 6. Do not invent questions.
-- `summary.status == needs-rewrite` (any blocker): present blockers and stop. Recommend manual restructuring or `task-spec-specify` in amend mode. Do not Q&A around structural blockers.
+- `summary.status == pass`: print "spec clean at requested scope", jump to STEP 6.
+- `summary.status == needs-rewrite` (any blocker): present blockers and stop. Recommend manual restructuring or `task-spec-specify` amend.
 
-If `--non-interactive`: emit the filtered findings list and exit. Do not modify files.
+If `--non-interactive`: emit the filtered findings list and exit.
 
 ### STEP 4 - Ask, Capture, Resolve
 
-For each finding, severity order, **one question at a time, no batching**:
+For each finding (severity order; within tier, by finding id ascending), **one question at a time**:
 
-1. Ask the finding's `suggested_clarification` (refine wording if it reads awkwardly).
+1. Ask the finding's `suggested_clarification`.
 2. Record the answer verbatim.
-3. Classify the answer:
-   - `resolved` - concrete, applicable to the spec.
-   - `deferred` - user explicitly defers ("don't know yet").
-   - `declined` - user rejects the question as out-of-scope or wrong premise.
-4. If a `resolved` answer contradicts another section of `spec.md`, stop the loop, present both texts, and ask which wins before continuing. Do not silently append.
+3. Classify:
+   - `resolved` - answer is specific enough to drop into the spec verbatim (a number, an enum value, a named actor, a defined term). Hedges ("maybe", "around", "TBD") -> treat as `deferred`.
+   - `deferred` - user defers, hedges, or answers "depends on X" where X is unresolved.
+   - `declined` - user rejects premise or marks out-of-scope.
+4. Before classifying `resolved`, scan spec sections referenced by the finding's `location` neighborhood (same heading + any AC/NFR mentioning the same noun). If the answer negates or narrows an existing statement, pause: quote both texts and ask "which wins?". Record the chosen text; mark the loser for revision.
+
+Examples:
+
+```
+Q: "What is the max upload size for AC4 ('fast' uploads)?"
+A: "5MB"           -> resolved
+A: "depends on plan tier" -> deferred
+A: "not a concern for this feature" -> declined
+```
 
 ### STEP 5 - Write Artifacts
 
@@ -85,18 +90,21 @@ For each finding, severity order, **one question at a time, no batching**:
 **`spec.md`**:
 
 - Apply each `resolved` answer to its target section.
-- `deferred` -> `Open Questions` (add the section if missing; do not duplicate).
-- `declined` -> leave the spec untouched.
-- Bump `Last updated`.
-- Append a `## Revisions` entry: `<YYYY-MM-DD>: Resolved <N> findings via task-spec-clarify. Updated: <sections>. Deferred: <N>. Declined: <N>. (See clarifications.md.)`
+- `deferred` -> append to `## Open Questions` (create at H2 immediately above `## Revisions` if absent; do not duplicate).
+- `declined` -> spec untouched.
+- Bump `Last updated: YYYY-MM-DD`.
+- Append a `## Revisions` entry:
+  ```
+  <YYYY-MM-DD>: task-spec-clarify session. Resolved=<N> (IDs: F-00x, F-00y -> sections <heading or AC-id>). Deferred=<N> (IDs). Declined=<N> (IDs). See clarifications.md session <timestamp>.
+  ```
 
 ### STEP 6 - Re-Review and Recommend
 
-Re-run `spec-review`. Use the post-pass status as the final status:
+Re-run `spec-review`. Final status = post-pass status.
 
-- `pass` -> recommend `task-spec-plan <slug>`.
-- `needs-clarification` -> recommend another clarify pass (suggest `--all` if previous was default).
-- `needs-rewrite` -> recommend manual restructuring.
+- `pass` -> `task-spec-plan <slug>`.
+- `needs-clarification` -> another clarify pass (suggest `--all` if previous was default).
+- `needs-rewrite` -> manual restructuring.
 
 ## Output Format
 
@@ -108,20 +116,19 @@ Spec clarify - <slug> (<mode>)
   Next:       task-spec-plan <slug>   |   task-spec-clarify <slug> --all   |   manual rewrite
 ```
 
-In `--non-interactive` mode, omit the `Updated:` line and replace `Status:` with the pre-pass status.
+`--non-interactive` omits `Updated:` and reports the pre-pass status.
 
 ## Self-Check
 
-- [ ] STEP 1: loaded `behavioral-principles`.
-- [ ] STEP 2: detected mode, resolved paths, aborted cleanly if `spec.md` missing; speckit mode did not duplicate Spec Kit edits.
-- [ ] STEP 3: drove questions from `spec-review` findings; stopped on `needs-rewrite`; honored `--non-interactive`.
-- [ ] STEP 4: one question at a time; verbatim answers; surfaced contradictions before appending.
-- [ ] STEP 5: `clarifications.md` append-only; `spec.md` carries a `Revisions` entry referencing `clarifications.md`.
-- [ ] STEP 6: re-ran `spec-review` and reported the post-pass status.
+- [ ] STEP 1-2: behavioral-principles loaded; mode detected; aborted if `spec.md` missing
+- [ ] STEP 3: drove questions from `spec-review` findings; stopped on `needs-rewrite`; honored `--non-interactive`
+- [ ] STEP 4: one question at a time, severity then id order; verbatim answers; surfaced contradictions before appending
+- [ ] STEP 5: `clarifications.md` append-only; `spec.md` `Revisions` entry references `clarifications.md` session
+- [ ] STEP 6: re-ran `spec-review`; reported post-pass status
 
 ## Avoid
 
 - Inventing ambiguities not present in `spec-review` output.
 - Batching questions.
 - Editing `spec.md` without a `Revisions` entry.
-- Auto-looping `task-spec-clarify` on `needs-clarification` -- the user decides.
+- Auto-looping `task-spec-clarify` on `needs-clarification` - the user decides.

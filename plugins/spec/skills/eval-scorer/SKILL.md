@@ -11,40 +11,47 @@ user-invocable: false
 
 ## When to Use
 
-Composed by `task-spec-evaluate` after `eval-test-runner` and `eval-spec-coverage` have produced their structured outputs. Pure aggregation: never runs tests, never re-derives coverage, never decides whether to loop (that is `fix-loop-controller`'s job).
+Composed by `task-spec-evaluate` after `eval-test-runner` and `eval-spec-coverage`. Pure aggregation.
 
 ## Rules
 
-- Fixed weights: Test 30, Coverage 50, Review 20. Coverage outweighs tests because acceptance criteria encode user-visible behavior; tests may be green yet miss ACs.
-- Hard-fail signals override the weighted score: any of `ac_violated > 0`, `out_of_scope_drift > 0`, `nfr_failed > 0`, `test_run.status in {fail, timeout, error}`, or `review_blockers > 0` blocks `pass` regardless of score.
-- Blocker count dominates review status: any `review_blockers > 0` is treated as a failed review regardless of envelope `status`.
+- Fixed weights: Test 30, Coverage 50, Review 20. Coverage outweighs tests because ACs encode user-visible behavior; tests may be green yet miss ACs.
+- Hard-fail = `spec_coverage.hard_fail_inputs` non-zero OR `test_run.status in {fail, timeout, error, no-tests-collected}` OR `review_blockers > 0`. Hard-fail blocks `pass` regardless of score.
+- Hard-fail never promotes to `fail` here. `fix-loop-controller` owns iteration-cap escalation.
+- Blocker count dominates review status: any `review_blockers > 0` is a failed review regardless of envelope `status`.
 
 ## Inputs
 
 | Bundle           | Fields used                                                                                                |
 | ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| `test_run`       | `status` (pass / fail / timeout / error / no-runner-detected), `passed`, `failed`, `errored`, `notes`      |
-| `spec_coverage`  | `ac_total`, `covered_full`, `covered_by_code_only`, `ac_violated`, `nfr_total`, `nfr_verified`, `nfr_partially_verified`, `nfr_failed`, `drift_count` |
+| `test_run`       | `status`, `counts.{passed, failed, errored}`, `notes`                                                      |
+| `spec_coverage`  | `acceptance_criteria[].verdict`, `nfrs[].verdict`, `summary.*`, `hard_fail_inputs`                         |
 | `review_verdicts`| optional list from `handoffs/*-review-*.md`: `status`, `blockers[]`, `suggestions[]`, `proposed_amendments[]` |
 | `thresholds`     | optional caller override; may tighten the pass band only, never widen it                                   |
 
-`covered_by_code_only` = AC implemented and behaviorally exercised by tests, but not explicitly asserted against the AC text (partial credit 0.7).
+Derive locally from per-AC/per-NFR verdicts:
+- `covered_full = count(verdict == "covered")`
+- `covered_by_code_only = count(verdict == "covered-by-code-only")`
+- `nfr_verified_full = count(verdict == "verified")`
+- `nfr_partially_verified = count(verdict == "partially-verified")`
 
-## Patterns
+`covered_by_code_only` is partial credit 0.7.
 
-### Sub-Scores
+**Multiple review envelopes**: take the worst - max blocker count across envelopes; any non-`complete` status escalates.
+
+## Sub-Scores
 
 ```text
 # Test (weight 30)
 test_score = 100 * passed / max(passed + failed + errored, 1)
-# test_run.notes == "no tests collected" -> test_score = 0 (no evidence of behavior)
+# test_run.status == no-tests-collected -> test_score = 0
 
 # Coverage (weight 50)
 ac_score       = 100 * (covered_full + 0.7 * covered_by_code_only) / max(ac_total, 1)
-nfr_score      = 100 * (nfr_verified + 0.5 * nfr_partially_verified) / max(nfr_total, 1)
+nfr_score      = 100 * (nfr_verified_full + 0.5 * nfr_partially_verified) / max(nfr_total, 1)
 coverage_score = 0.7 * ac_score + 0.3 * nfr_score
 
-# Review (weight 20) - evaluated top-down, first match wins
+# Review (weight 20) - top-down, first match wins
 review_blockers > 0                           -> max(0, 80 - 15 * blockers)
 status in {blocked, needs-clarification}      -> null  (escalate)
 no review envelope present                    -> null  (redistribute)
@@ -56,23 +63,29 @@ overall_score = round(0.30 * test_score + 0.50 * coverage_score + 0.20 * review_
 
 ### Weight Redistribution
 
-When `review_score` is `null`, redistribute its 20 to the remaining components proportionally: `test 37.5, coverage 62.5`. When `test_run.status == no-runner-detected`, redistribute test's 30 the same way: `coverage 71.4, review 28.6` (and if review is also `null`, coverage absorbs everything at weight 100).
+- `review_score == null`: `test 37.5, coverage 62.5`.
+- `test_run.status == no-runner-detected`: `coverage 71.4, review 28.6`. If review also null: `coverage 100`.
 
 ### Status Bands
 
 | Status      | Conditions                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------------ |
-| `pass`      | `overall_score >= 85` AND zero hard-fail triggers AND `test_run.status == pass`                  |
-| `needs-fix` | `60 <= overall_score < 85`, OR any hard-fail trigger present                                     |
+| `pass`      | `overall_score >= 85` AND no hard-fail AND `test_run.status == pass`                             |
+| `needs-fix` | `60 <= overall_score < 85`, OR any hard-fail                                                     |
 | `fail`      | `overall_score < 60`                                                                             |
 
-Hard-fail triggers force at least `needs-fix`. They never promote to `fail` here - `fix-loop-controller` owns iteration-cap escalation.
+Structural hard-fails (ac_violated, drift, nfr_failed) surface as `needs-fix` so `fix-loop-controller` can attempt remediation within the iteration cap; only iteration-cap exhaustion at the controller promotes to escalate/fail.
+
+### Worked Example
+
+`test 18/2/0; ac_total=4, covered_full=2, covered_by_code_only=1; nfr 2/2; drift=1; blockers=1`.
+`test=90`, `ac=67.5`, `nfr=100`, `coverage=77.25`, `review=65`, `overall=round(27 + 38.625 + 13)=79`. Hard-fail triggers: drift (`out_of_scope_drift`), test fail, review_blockers. Status: `needs-fix`.
 
 ### Edge Cases
 
-- `ac_total == 0`: spec has no ACs. Status `needs-fix`, append `"no acceptance criteria in spec.md"` to `hard_fail_triggers`, recommend `task-spec-clarify`.
-- `nfr_total == 0`: `nfr_score = 100` (vacuously satisfied); add `signals.notes` flagging that the score is structurally optimistic.
-- Review `status == complete` with non-empty `proposed_amendments`: keep computed `review_score`, append `"amendments pending"` to `recommendation`.
+- `ac_total == 0`: status `needs-fix`, append `no-acceptance-criteria` to `hard_fail_triggers`, recommend `task-spec-clarify`.
+- `nfr_total == 0`: `nfr_score = 100` (vacuously satisfied); flag in `signals.notes`.
+- `review_verdicts` is empty list (not null): treat as null, redistribute weight.
 
 ## Output Format
 
@@ -90,17 +103,16 @@ score:
     nfr_verified: <int>
     nfr_failed: <int>
     drift_count: <int>
-    test_status: pass | fail | timeout | error | no-runner-detected
+    test_status: pass | fail | timeout | error | no-runner-detected | no-tests-collected
     review_blockers: <int | null>
-    notes: [<string>, ...]       # empty list when none
-  hard_fail_triggers: [<string>, ...]   # empty list when none
+    notes: [<string>, ...]
+  hard_fail_triggers: [<string>, ...]   # spec_coverage.hard_fail_reasons verbatim, plus test_run.<status> and review_blockers:<n> when scorer-owned
   blocking_issues: [<string>, ...]      # one-line summaries, cap 10
-  recommendation: <one sentence>        # e.g. "loop and fix auth blocker" / "escalate" / "ship it"
+  recommendation: <one sentence>        # e.g., "loop on <top blocker category>" / "escalate: <reason>" / "ship"
 ```
 
 ## Avoid
 
-- Smoothing over hard-fail signals (no `pass` at any score if `ac_violated > 0` or blockers exist).
-- Re-running tests or re-deriving coverage; the runner and coverage atomics own those.
-- Treating an absent review envelope as zero; it is `null` and the weight is redistributed.
-- Encoding iteration-cap promotion to `fail` here; that is `fix-loop-controller`'s decision.
+- Smoothing over hard-fail signals (no `pass` if any hard-fail trigger).
+- Re-running tests or re-deriving coverage (upstream owns those).
+- Treating an absent review envelope as zero; it is `null` and weight redistributes.

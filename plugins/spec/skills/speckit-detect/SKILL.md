@@ -13,15 +13,17 @@ Composed by `task-spec-*` workflows after `behavioral-principles`. Emits a mode 
 
 ## When to Use
 
-Once per workflow run, before any artifact read or write. Never user-invoked.
+Once per workflow run, before any artifact read or write.
 
 ## Rules
 
-- Detect against the repo root: `git rev-parse --show-toplevel` if available, else cwd. Do not walk up.
-- `.specify/` is **well-formed** iff it contains at least one of `memory/constitution.md`, `feature.json`, `extensions.yml`. Well-formed -> `speckit-installed`. Otherwise -> `standalone`.
-- Evidence is marker files only. CLI on `$PATH` is not evidence and is not recorded.
-- If `.specify/feature.json` points at a missing directory, stay `speckit-installed`, warn via `notes`, and leave `feature_json_path` null.
+- Project root resolves via `spec-artifact-paths`' rule (nearest ancestor containing `.git/`, then `CLAUDE.md`, else cwd). Both skills must agree on root.
+- `.specify/` is **well-formed** iff at least one of `memory/constitution.md`, `feature.json` (parseable JSON), `extensions.yml` (parseable YAML) exists and is non-empty. Well-formed -> `speckit-installed`. Else -> `standalone`.
+- Evidence is marker files only. CLI on `$PATH` is never evidence.
+- If `feature.json` points at a missing directory, stay `speckit-installed`, set `feature_json_path: null`, append a `notes` warning.
 - Re-detect every run; never cache.
+- `delegate_target` is the calling workflow's slash command (e.g., `task-spec-plan` -> `/speckit-plan`). Detection never infers it from chat content.
+- When multiple warnings apply, emit them as separate lines in `notes`; never drop a warning to stay terse.
 
 ## Decision Table
 
@@ -44,11 +46,11 @@ evidence:
   specs_dir_present: true | false
   constitution_present: true | false    # .specify/memory/constitution.md
   feature_json_present: true | false    # .specify/feature.json
-  feature_json_path: <string or null>   # only if file exists AND target dir exists
+  feature_json_path: <string or null>   # path string when feature.json exists AND target dir exists; null otherwise
   extensions_yml_present: true | false  # .specify/extensions.yml
-delegate_target: /speckit-<cmd> | null  # set in speckit-installed mode, null otherwise
-artifact_root: .specs/<slug> | specs/<NNN>-<name>
-notes: <free text>                      # optional; non-fatal warnings only
+delegate_target: /speckit-<cmd> | null  # caller's slash command in speckit-installed mode; null in standalone
+artifact_root: .specs/ | specs/         # standalone: .specs/ (slug appended by spec-artifact-paths); speckit: specs/ (NNN-name from feature.json)
+notes: <free text>                      # optional; non-fatal warnings, one per line
 ```
 
 Micro-example (dual-present case):
@@ -56,14 +58,21 @@ Micro-example (dual-present case):
 ```yaml
 mode: speckit-installed
 evidence:
+  specify_dir_present: true
   specify_well_formed: true
-  feature_json_path: specs/003-user-auth
+  specs_dir_present: true
+  constitution_present: true
+  feature_json_present: true
+  feature_json_path: null
+  extensions_yml_present: false
 delegate_target: /speckit-plan
-notes: Both .specify/ and .specs/ present; existing .specs/ left untouched.
+artifact_root: specs/
+notes: |
+  feature.json target dir missing.
+  .specs/ also present; not modified.
 ```
 
 ## Avoid
 
 - State-changing commands during detection (`speckit init`, file creation).
 - Inferring mode from project name, branch, or chat content.
-- Recording CLI-on-PATH or any signal the decision table does not consume.

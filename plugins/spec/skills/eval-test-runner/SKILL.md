@@ -7,40 +7,42 @@ metadata:
 user-invocable: false
 ---
 
+# Eval - Test Runner
+
 > Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
-Composed by `task-spec-evaluate` to produce one measurement of the project's tests after implementation. One invocation, one data point. Not for routine dev loops, CI orchestration, or test generation.
+Composed by `task-spec-evaluate` to produce one measurement of the test suite. One invocation, one data point.
 
 ## Rules
 
-- Test command comes from the table below or an explicit `test_command` override. Never guess from filenames.
-- Capture both stdout and stderr (many runners report failures to stderr).
-- Read-only execution: no installs, no source/config/lockfile edits, no service startup.
-- `timeout` is its own status, not `fail`. One run is one data point - do not retry flakes.
-- Counts come from the runner's machine-readable output when available (XML/JSON), else stdout parsing.
+- Command comes from the selection table or an explicit `test_command` override; never guess from filenames.
+- Read-only: no installs, no source/config/lockfile edits, no service startup.
+- `timeout` is its own status; do not retry to filter flakes.
+- Counts come from the runner's machine-readable output (XML/JSON) when available, else stdout parsing.
+- When `notes` records a truncation or fallback, use the literal tokens `truncated`, `no-tests-collected`, `parser-fallback`, `missing-dependency` so downstream skills key off them.
 
-## Patterns
+## Inputs
 
-### Inputs
+| Field             | Default                            | Notes                                                         |
+| ----------------- | ---------------------------------- | ------------------------------------------------------------- |
+| `test_command`    | from selection table               | Override wins; override also disables slow-stack escalation   |
+| `timeout_seconds` | 300 (slow stacks 900; hard cap 1800)| -                                                            |
+| `test_filter`     | none                               | Pass-through to runner (`-k`, `--match`, `--testNamePattern`) |
 
-| Field             | Default                          | Notes                                                         |
-| ----------------- | -------------------------------- | ------------------------------------------------------------- |
-| `test_command`    | from selection table             | Override wins over detection                                  |
-| `timeout_seconds` | 300 (slow stacks below: 900)     | Hard cap 1800                                                 |
-| `test_filter`     | none                             | Pass-through to runner (`-k`, `--match`, `--testNamePattern`) |
+**Slow-stack signal** (set `timeout_seconds: 900` unless overridden): `pom.xml`/`build.gradle*` lists `testcontainers`; `karma.conf.*` or `playwright.config.*` exists; Django settings reference a non-SQLite default DB and tests are not run with `--keepdb`.
 
-Slow-stack defaults (set `timeout_seconds: 900` unless overridden): Testcontainers-enabled Java/Kotlin, Karma, Playwright, Django with live DB.
+## Test Command Selection
 
-### Test Command Selection
+Read `stack-detect.Test framework` first; fall back to file signals below.
 
 | Stack signal                  | Command                                                  |
 | ----------------------------- | -------------------------------------------------------- |
 | Java + Maven                  | `./mvnw -B test`                                         |
 | Java/Kotlin + Gradle          | `./gradlew --no-daemon test`                             |
 | .NET                          | `dotnet test --logger trx`                               |
-| Python + pytest               | `pytest -q --tb=short`                                   |
+| Python + pytest               | `pytest -ra --tb=short --no-header`                      |
 | Python + Django               | `python manage.py test --verbosity=2`                    |
 | Node + npm                    | `npm test`                                               |
 | Node + pnpm                   | `pnpm test`                                              |
@@ -48,49 +50,49 @@ Slow-stack defaults (set `timeout_seconds: 900` unless overridden): Testcontaine
 | Go                            | `go test ./... -json`                                    |
 | Rust                          | `cargo test --no-fail-fast`                              |
 | PHP + Laravel                 | `php artisan test`                                       |
-| Ruby + Rails (Minitest)       | `bin/rails test`                                         |
 | Ruby + RSpec                  | `bundle exec rspec`                                      |
+| Ruby + Minitest               | `bin/rails test`                                         |
 | Frontend + Vitest             | `vitest run --reporter=json`                             |
 | Frontend + Jest               | `jest --json`                                            |
 | Frontend + Angular/Karma      | `ng test --watch=false --browsers=ChromeHeadless`        |
 
-Playwright/Cypress e2e: skip unless the caller passes an explicit `test_command`; they exceed even slow-stack timeouts. No match and no override -> `status: no-runner-detected`.
+Playwright/Cypress e2e: skip unless caller passes `test_command`. No match and no override -> `status: no-runner-detected`.
 
-Disambiguation for Ruby: if both `spec/` and `test/` exist, prefer RSpec when `Gemfile.lock` lists `rspec-rails`, else Minitest.
+**Ruby disambiguation**: prefer RSpec when `Gemfile.lock` (or, if absent, `Gemfile`) declares `rspec-rails`; else Minitest. When both gems are declared, prefer the runner whose `*_spec.rb` / `*_test.rb` files are more recently modified; record choice in `notes`.
 
-### Counts and Coverage Sources
+**Windows/Git Bash**: shell wrappers (`./mvnw`, `./gradlew`, `bin/rails`) run via Git Bash. If only `.cmd`/`.bat` variants ship, classify as `error` (binary missing) - never substitute. Use `python` if on PATH, else fall back to `py`; record in `notes`.
 
-- Java/Maven: `target/surefire-reports/TEST-*.xml`. Coverage from `target/site/jacoco/jacoco.xml` if present.
-- Gradle: `build/test-results/test/*.xml`. Coverage from `build/reports/jacoco/test/jacocoTestReport.xml`.
-- .NET: trx file under `TestResults/`. Coverage from `coverage.cobertura.xml` if `--collect:"XPlat Code Coverage"` was added by override.
-- pytest: stdout `=== N passed, N failed ===` line; coverage from `.coverage` only if `pytest-cov` was invoked by override.
-- Go: parse `-json` stream (`Action: pass|fail|skip`); coverage requires `-coverprofile` override.
-- JSON reporters (Vitest, Jest): parse `numTotalTests`, `numFailedTests`, `coverageMap` if present.
+## Counts and Coverage Sources
 
-If the runner emits no coverage data, set `coverage: null`. Never substitute `0`.
+- Java/Maven: `target/surefire-reports/TEST-*.xml`; coverage from `target/site/jacoco/jacoco.xml`.
+- Gradle: `build/test-results/test/*.xml`; coverage from `build/reports/jacoco/test/jacocoTestReport.xml`.
+- .NET: trx under `TestResults/`; coverage from `coverage.cobertura.xml` if `--collect:"XPlat Code Coverage"` set by override.
+- pytest: stdout summary line; coverage from `.coverage` only if `pytest-cov` invoked by override. `N deselected` counts as `skipped` when `test_filter` is set.
+- Go `-json`: count only events where `Test` is set AND `Action in {pass, fail, skip}`. Package-level events (no `Test`) are ignored. Coverage requires `-coverprofile` override.
+- JSON reporters (Vitest, Jest): `numTotalTests`, `numFailedTests`, `coverageMap` if present.
 
-### `failures[].file` Derivation
+If the runner emits no coverage data, `coverage: null` (never `0`).
 
-In order, first that resolves wins:
-1. File path from the runner's report (XML/JSON `file` or `location`).
-2. Source path derived from a fully-qualified class name (`com.acme.UserService` -> `src/main/java/com/acme/UserService.java`) if the file exists.
-3. Omit the field.
+## `failures[].file` Derivation
 
-### Truncation
+First that resolves wins:
+1. File path from runner report (XML/JSON `file` or `location`).
+2. Source path from a fully-qualified class name (`com.acme.UserService` -> `src/main/java/com/acme/UserService.java`; also `src/main/kotlin/...`; multi-module Gradle `*/src/main/java/...`) if the file exists.
+3. For Python: prefer runner-reported `file:line`; do not derive from module names.
+4. Otherwise omit the field.
 
-`raw_output_excerpt`: last 30 lines of combined stdout+stderr, then truncate to 2KB if still larger. Record both cuts in `notes` when they fire.
-
-### Status Semantics
+## Status Semantics
 
 | Status               | Trigger                                                                       |
 | -------------------- | ----------------------------------------------------------------------------- |
-| `pass`               | Exit 0 and zero failures/errors. Also when 0 tests collected (note it)        |
-| `fail`               | Non-zero exit or any failure/error reported by the runner                     |
+| `pass`               | Exit 0 and zero failures/errors with >=1 test collected                       |
+| `no-tests-collected` | Exit 0 and runner reports 0 collected; `notes` MUST include `no-tests-collected` |
+| `fail`               | Non-zero exit or any failure/error reported                                   |
 | `timeout`            | Wall clock exceeded `timeout_seconds`                                         |
 | `no-runner-detected` | No table match and no override                                                |
 | `error`              | Runner could not be invoked (binary missing, services unavailable, OOM)       |
 
-Tests requiring services (DB, Redis, Docker) that fail to connect: `error`, name the missing dependency in `notes`. Do not start services.
+Tests needing services (DB, Redis, Docker) that fail to connect: `error` with `missing-dependency` in `notes`.
 
 ## Output Format
 
@@ -98,25 +100,24 @@ Tests requiring services (DB, Redis, Docker) that fail to connect: `error`, name
 test_run:
   command: <full command line>
   cwd: <working directory>
-  status: pass | fail | timeout | no-runner-detected | error
+  status: pass | no-tests-collected | fail | timeout | no-runner-detected | error
   exit_code: <int or null>
   duration_seconds: <float>
   counts: { passed: <int>, failed: <int>, skipped: <int>, errored: <int> }
   failures:
-    - name: <test id>
+    - name: <test id>             # required; downstream skills key off this
       message: <one-line summary>
-      file: <path:line>          # omit when not derivable
+      file: <path:line>           # omit when not derivable
   coverage:                       # null when runner emitted none
     lines_covered: <int>
     lines_total: <int>
     percent: <float>
-  raw_output_excerpt: <see Truncation>
-  notes: <parser fallback, truncation, missing dependency, "no tests collected">
+  raw_output_excerpt: <last 2KB of stdout+stderr; prepend "... [truncated] " when cut>
+  notes: <one or more tokens from {truncated, no-tests-collected, parser-fallback, missing-dependency:<name>}, plus free text>
 ```
 
 ## Avoid
 
 - Inventing a test command when no stack entry matches.
 - Auto-installing dependencies or starting services to make a run succeed.
-- Retrying a failed test to filter flakes.
 - Multi-package monorepo iteration - one invocation runs one command; the workflow loops.

@@ -10,19 +10,19 @@ user-invocable: true
 
 # Spec - Checklist
 
-Generate a themed requirements-quality checklist for `spec.md`. Output is an append-only file under `.specs/<slug>/checklists/<theme>.md`.
+Generate a themed requirements-quality checklist for `spec.md`. Output is append-only under `.specs/<slug>/checklists/<theme>.md`.
 
 ## When to Use
 
 After `task-spec-specify` (and ideally `task-spec-clarify`), before `task-spec-plan`. Also for stakeholder sign-off, contributor onboarding, or a fresh quality pass on an aged spec.
 
-Not for: cross-artifact consistency (`task-spec-analyze` covers spec <-> plan <-> tasks), requirements elicitation (`task-spec-specify`), Q&A (`task-spec-clarify`), or code review. This skill inspects the internal quality of `spec.md` only.
+Not for cross-artifact consistency (`task-spec-analyze`), requirements elicitation, Q&A, or code review.
 
 ## Arguments
 
 - `<slug>` (required).
 - `--theme <name>` - one of `requirements` (default), `ux`, `api`, `security`, `performance`, `accessibility`. Filename = `<theme>.md`.
-- `--strict` - any finding (including minors) downgrades verdict to `fail`.
+- `--strict` - any finding of any severity downgrades verdict to `fail`.
 - `--non-interactive` - skip next-command suggestion.
 
 ## Workflow
@@ -43,14 +43,15 @@ Target = `<checklists_dir>/<theme>.md`. If `spec.md` is missing or a stub, abort
 
 ### STEP 4 - Branch on Mode
 
-- **speckit-installed:** instruct the user to run `/speckit-checklist`. `before_checklist`/`after_checklist` hooks in `.specify/extensions.yml` fire as part of that call - do not bypass them. After it runs, post-process by re-running `spec-review` and appending uncovered items in a labeled `### Marketplace Additions` section of the speckit-produced file. Skip to STEP 8.
-- **standalone:** continue.
+**speckit-installed**: instruct the user to run `/speckit-checklist`. After it runs, re-run `spec-review` and append uncovered items in a labeled `### Marketplace Additions` section of the speckit-produced file. Skip to STEP 8.
+
+**standalone**: continue.
 
 ### STEP 5 - Audit the Spec
 
 Use skill: spec-review
 
-If `summary.status == needs-rewrite`, abort: print blockers + recommendation (`task-spec-clarify` or `task-spec-specify` amend). Do not write a checklist - a broken spec cannot be meaningfully checklisted.
+If `summary.status == needs-rewrite`, abort: print blockers + recommendation (`task-spec-clarify` or `task-spec-specify` amend). A broken spec cannot be meaningfully checklisted.
 
 ### STEP 6 - Build the Checklist
 
@@ -59,13 +60,13 @@ Categories for `--theme requirements` (six canonical; emit all):
 | Category                          | Passes when                                                                       |
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | Acceptance criteria measurability | Every AC has a measurable threshold; no vague verbs                               |
-| NFR coverage                      | Every applicable category present with concrete targets, or explicitly waived     |
+| NFR coverage                      | Every applicable category present with concrete targets, or explicitly waived. **Applicable** = spec's feature domain implies the category (UI -> accessibility, persistent data -> security) |
 | Conflict-freeness                 | No two requirements contradict                                                    |
 | Ambiguity                         | No undefined pronouns/jargon; domain terms defined inline or in glossary          |
 | Out-of-scope clarity              | Out-of-Scope section non-empty and explicit                                       |
 | Story strength                    | Every story uses "As a <role>, I want <capability>, so that <value>." with both   |
 
-Categories for other themes - filter `spec-review` findings by domain keyword, then emit one category per finding cluster:
+Categories for other themes - filter `spec-review` findings by domain keyword:
 
 - `ux`: visual hierarchy, interaction states, fallback states, a11y basics
 - `api`: error contracts, rate limits, auth, versioning
@@ -73,22 +74,20 @@ Categories for other themes - filter `spec-review` findings by domain keyword, t
 - `performance`: quantified metrics, load profile, degradation
 - `accessibility`: WCAG conformance level, keyboard, contrast, screen reader
 
-For each category: emit one passing item if no findings, one failing item per cluster otherwise. Each failing item lists the finding ID, severity, and remediation pointer.
+For each category: one passing item if no findings; otherwise **one failing item per distinct spec-review finding (1:1 with finding ID)**. Each failing item lists the finding ID, severity, and remediation pointer.
 
 ### Item Rules
 
-- Question form. "Are X defined?", "Is `<vague term>` quantified?", "Can `<criterion>` be objectively measured?"
-- End with a dimension tag: `[Completeness]`, `[Clarity]`, `[Consistency]`, `[Measurability]`, `[Coverage]`, `[Edge Case]`, `[Ambiguity]`, `[Conflict]`, `[Assumption]`, `[Gap]`.
-- Cite a spec ref (`[Spec §FR-1]`) or a `[Gap]` marker. No uncited items.
-- IDs: `CHK001`, `CHK002`, ..., monotonic across amend sessions.
-- Never start with `Verify`/`Test`/`Confirm`/`Check that the system ...` - those are implementation tests, not requirements tests.
+- Question form ("Are X defined?", "Is `<vague term>` quantified?").
+- End with a dimension tag: `[Completeness | Clarity | Consistency | Measurability | Coverage | Edge Case | Ambiguity | Conflict | Assumption | Gap]`.
+- Cite a spec ref (`[Spec §FR-1]`) or a `[Gap]` marker.
+- IDs: `CHK001`, `CHK002`, ..., monotonic across amend sessions. Before assigning, scan all prior sessions for the highest `CHK###` and continue from `N+1`.
+- Never start with `Verify`/`Test`/`Confirm`/`Check that the system ...` - those are implementation tests.
 
-Bad: `- [ ] Verify the upload button works.` (implementation test)
-Good: `- [ ] Is "fast" in AC4 quantified with a specific latency target? [Clarity, Spec §AC4]` (requirement test)
+Bad: `- [ ] Verify the upload button works.`
+Good: `- [ ] Is "fast" in AC4 quantified with a specific latency target? [Clarity, Spec §AC4]`
 
 ### Verdict
-
-Mirror `spec-review` status:
 
 | Spec-review status   | Checklist verdict   |
 | -------------------- | ------------------- |
@@ -96,18 +95,18 @@ Mirror `spec-review` status:
 | `needs-clarification`| `conditional pass`  |
 | `needs-rewrite`      | (aborted at STEP 5) |
 
-`--strict` overrides: any minor present -> `fail`.
+`--strict`: any finding of any severity -> `fail`.
 
 ### STEP 7 - Write Themed File
 
-Append-only. Prepend a new `## Session <YYYY-MM-DD HH:MM>` block under the existing header. Preserve prior sessions verbatim.
+Append-only. Prepend a new `## Session <YYYY-MM-DD HH:MM>` block under the existing header.
 
 ### STEP 8 - Summarize
 
-Print path, per-category pass/fail, verdict, and (unless `--non-interactive`) the next command:
+Print path, per-category pass/fail, verdict, and (unless `--non-interactive`) next command:
 
 - `pass` -> `task-spec-plan <slug>`
-- `conditional pass` -> reviewer sign-off, then `task-spec-plan`; or `task-spec-clarify` to lift to `pass`
+- `conditional pass` -> choose `task-spec-clarify` when findings are answerable questions; choose sign-off when the team accepts the gaps; then `task-spec-plan`.
 - `fail` (`--strict` only) -> `task-spec-clarify <slug>`, then re-run
 
 ## Output Format
@@ -121,7 +120,6 @@ Print path, per-category pass/fail, verdict, and (unless `--non-interactive`) th
 ## Session <YYYY-MM-DD HH:MM>
 
 - **Verdict:** conditional pass
-- **Reviewer:** (name or self-review)
 
 ### Acceptance Criteria Measurability
 - [ ] CHK001 - Is "fast" in AC4 quantified with a specific latency target? [Measurability, Spec §AC4]
@@ -134,32 +132,20 @@ Print path, per-category pass/fail, verdict, and (unless `--non-interactive`) th
 ### Conflict-Freeness
 - [x] CHK003 - Are requirements free of internal contradictions? [Consistency, Spec §all]
 
-### Ambiguity
-- [ ] CHK004 - Is the referent of "they" in AC2/AC3 explicitly disambiguated? [Ambiguity, Spec §AC2-AC3]
-  - Finding F-003 (major). Remediation: `task-spec-clarify`.
-
-### Out-of-Scope Clarity
-- [x] CHK005 - Is the Out-of-Scope section non-empty and explicit? [Completeness, Spec §Out-of-Scope]
-
-### Story Strength
-- [x] CHK006 - Does every story use "As a / I want / so that" with concrete role + value? [Completeness, Spec §User-Stories]
-
 ### Summary
 - Categories passing: 3 / 6
 - Findings: blockers=0 majors=3 minors=0
 - Verdict: conditional pass
 ```
 
-In speckit mode, the file is the one Spec Kit produced; append only the `### Marketplace Additions` block listing items this plugin flagged that Spec Kit's checklist missed.
+In speckit mode, append only the `### Marketplace Additions` block.
 
 ## Self-Check
 
-- [ ] STEP 1: loaded `behavioral-principles`
-- [ ] STEP 2: ran `speckit-detect` and branched correctly
-- [ ] STEP 3: resolved paths; aborted on missing/stub `spec.md`
-- [ ] STEP 4: in speckit mode, only appended a labeled `Marketplace Additions` block - no silent edits
+- [ ] STEP 1-3: behavioral-principles loaded; mode detected; paths resolved; aborted on missing/stub `spec.md`
+- [ ] STEP 4: speckit mode appended only a labeled `Marketplace Additions` block
 - [ ] STEP 5: ran `spec-review`; aborted on `needs-rewrite`
-- [ ] STEP 6: every item is question form, cites a spec ref or `[Gap]`, ends with a dimension tag, has a monotonic `CHK###` ID
+- [ ] STEP 6: every item is question form, cites a spec ref or `[Gap]`, ends with a dimension tag, has a monotonic `CHK###` ID (scanned prior sessions)
 - [ ] STEP 7: file is append-only with a fresh `## Session` block
 - [ ] STEP 8: printed verdict and next-command (unless `--non-interactive`)
 
@@ -167,5 +153,4 @@ In speckit mode, the file is the one Spec Kit produced; append only the `### Mar
 
 - Inventing items not grounded in `spec-review` findings.
 - Producing a checklist for a `needs-rewrite` spec.
-- Editing `spec.md` directly - route fixes through `task-spec-clarify`.
-- Treating "no findings" as suspicious - a clean spec passes.
+- Editing `spec.md` directly.

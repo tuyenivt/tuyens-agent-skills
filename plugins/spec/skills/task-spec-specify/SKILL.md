@@ -10,11 +10,13 @@ user-invocable: true
 
 # Spec - Specify
 
-Captures the **what** and **why** of a feature as a persistent `spec.md` before any architecture work. Downstream phases (`task-spec-clarify/plan/tasks/implement`) consume it; stack workflows consume it via `--spec`.
+Captures the **what** and **why** of a feature as a persistent `spec.md`.
 
 ## When to Use
 
-For new features, re-specs of drifted features, or producing a portable handoff artifact. Requires a feature name or short description as argument; if only a one-word name is supplied, ask for the problem and primary user before proceeding. Not for: technical design (`task-spec-plan`), system architecture (`task-design-architecture`), bug reports (`task-code-debug`).
+New features, re-specs of drifted features, or producing a portable handoff artifact. Requires a feature argument; if the argument does not convey a target user and an outcome, ask for both before STEP 5.
+
+Not for technical design (`task-spec-plan`), system architecture (`task-design-architecture`), or bug reports (`task-code-debug`).
 
 ## Workflow
 
@@ -30,17 +32,17 @@ Use skill: speckit-detect
 
 Use skill: spec-artifact-paths
 
-If `spec.md` already exists, prompt the user: **replace** / **amend** (preserve, append revision entry) / **abort**. Do not overwrite without this choice.
+If `spec.md` already exists, prompt: **replace** / **amend** (preserve, append revision entry) / **abort**.
 
 ### STEP 4 - Branch on Mode
 
-**speckit-installed:** summarize the feature request into one paragraph, instruct the user to run `/speckit-specify <paragraph>`, then read the resolved feature path from `.specify/feature.json` and load the produced `spec.md`. Run `Use skill: nfr-specification` and present any missing NFR coverage as a diff for user merge - do not silently edit Spec Kit output. Skip to STEP 6.
+**speckit-installed**: summarize the feature into one paragraph, instruct the user to run `/speckit-specify <paragraph>`. After it returns, read `.specify/feature.json`, load the produced `spec.md`. Run `Use skill: nfr-specification` and present missing NFR coverage as a diff for user merge. Skip to STEP 6.
 
-**standalone:** continue.
+**standalone**: continue to STEP 5.
 
 ### STEP 5 - Elicit and Write
 
-Interview the user on the sections below, asking only what is not already in context. Stack-agnostic; do not load `stack-detect`.
+Interview the user on the sections below, asking only what is not already in chat history, CLAUDE.md, or related specs.
 
 | Section                 | Elicit                                                                                                |
 | ----------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -48,27 +50,33 @@ Interview the user on the sections below, asking only what is not already in con
 | **Target users**        | Primary and (if any) secondary roles. Internal vs external, authn vs anon.                            |
 | **User stories**        | "As a \<role>, I want \<capability>, so that \<value>." One per outcome.                              |
 | **Acceptance criteria** | Falsifiable, measurable. Every story has >=1 AC. Numeric thresholds where applicable.                 |
-| **Non-functional**      | `Use skill: nfr-specification`. Include only categories with a real requirement; omit the rest.       |
+| **Non-functional**      | `Use skill: nfr-specification`. Include only categories with a real requirement.                      |
+| **Domain triggers**     | If the feature touches payments, health data, or PII, name the applicable regulation and ask before assuming scope. |
 | **Out of scope**        | Required. List explicit non-goals.                                                                    |
 | **Open questions**      | Items the user could not answer; resolved later by `task-spec-clarify`.                               |
 
-Write `spec.md` using the template in **Output Format**. For blocking ambiguity (cannot write the AC at all), embed inline `[NEEDS CLARIFICATION: <question>]`. Everything else goes to **Open Questions** with the assumed default recorded.
+Ambiguity routing:
+- `[NEEDS CLARIFICATION: <question>]` only when no reasonable default exists and downstream planning would pick arbitrarily.
+- Open Question with `Assumed default: <value>` when a reasonable default can be recorded for later override.
 
-Domain triggers: if the feature touches payments, health data, or PII, name the applicable regulatory standard and ask before assuming scope.
+Open Question entry format (shared with `task-spec-clarify`):
+
+```
+**Q<N>:** <text>
+   Assumed default: <value | none>
+   Source: specify | clarify
+```
 
 ### STEP 6 - Summarize
 
-Print: paths written, counts (stories, ACs, open questions, clarification markers), mode, next command - `task-spec-clarify <slug>` if any markers or open questions remain, else `task-spec-checklist <slug>` for the full requirements-quality pass, then `task-spec-plan <slug>`.
+Print: paths written, counts (stories, ACs, open questions, clarification markers), mode, next command - `task-spec-clarify <slug>` if any markers or open questions remain, else `task-spec-checklist <slug>` then `task-spec-plan <slug>`.
 
 ## Output Format
-
-`spec.md` (standalone mode):
 
 ```markdown
 # Spec - <Feature Name>
 
 - **Slug:** <slug>
-- **Status:** draft | clarified | planned | implementing | complete
 - **Created:** <YYYY-MM-DD>
 - **Last updated:** <YYYY-MM-DD>
 
@@ -92,25 +100,27 @@ Print: paths written, counts (stories, ACs, open questions, clarification marker
 - <Explicit non-goal>
 
 ## Open Questions
-- **Q1:** <text> - to be resolved in `task-spec-clarify`.
+- **Q1:** <text>
+   Assumed default: <value | none>
+   Source: specify
 
 ## Revisions
-(Empty on first write; amend mode appends dated entries.)
 - <YYYY-MM-DD>: <change> (by `task-spec-clarify` | `task-spec-specify` amend | manual)
 ```
 
 ## Self-Check
 
-- [ ] STEP 1: behavioral-principles loaded
-- [ ] STEP 2: mode resolved via `speckit-detect`
-- [ ] STEP 3: paths via `spec-artifact-paths`; existing `spec.md` handled via replace/amend/abort
+- [ ] STEP 1-3: behavioral-principles loaded; mode resolved; existing `spec.md` handled via replace/amend/abort
 - [ ] STEP 4: in speckit mode, NFR additions surfaced as a diff (no silent edits)
-- [ ] STEP 5: every story has >=1 measurable AC; NFR section omits inapplicable categories; Out of Scope non-empty; `[NEEDS CLARIFICATION]` used only for blocking ambiguity
+- [ ] STEP 5a: every story has >=1 measurable AC
+- [ ] STEP 5b: NFR section omits inapplicable categories
+- [ ] STEP 5c: Out of Scope non-empty
+- [ ] STEP 5d: `[NEEDS CLARIFICATION]` used only for blocking ambiguity; defaultable items go to Open Questions
 - [ ] STEP 6: summary includes counts, mode, and the correct next command
 
 ## Avoid
 
 - Generating code, schemas, API contracts, or technology choices (belongs in `task-spec-plan`).
-- Vague AC verbs ("fast", "easy", "robust") without a measurable threshold.
+- Vague AC verbs ("fast", "easy") without a measurable threshold.
 - NFR placeholders like "not required for v1" - omit the category instead.
 - Editing Spec Kit output silently in speckit-installed mode.

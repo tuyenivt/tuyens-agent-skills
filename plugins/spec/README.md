@@ -33,7 +33,7 @@ Each workflow runs in one of two modes, decided by the `speckit-detect` atomic:
 - **Speckit-installed** - when `.specify/` exists in the project (or Spec Kit owns artifacts), our workflow delegates to the corresponding `/speckit-*` command and acts as a thin pre/post-processor that injects this marketplace's atomics (`nfr-specification`, `tradeoff-analysis`, `review-blast-radius`, `behavioral-principles`) into the speckit flow. Spec Kit owns the artifacts. Path note: Spec Kit writes per-feature artifacts to `specs/<NNN>-<short-name>/` (no leading dot) and records the active path in `.specify/feature.json`. Per-command `before_<cmd>` / `after_<cmd>` hooks from `.specify/extensions.yml` (git auto-commit, branch creation, etc.) fire as part of the delegated call - workflows surface their existence but do not bypass them.
 - **Standalone** - when Spec Kit is not installed, our workflow drives the pipeline itself using the `.specs/<slug>/` artifact convention above.
 
-Detection is evidence-based (marker files plus optional CLI presence on `$PATH`); see `speckit-detect` for the full decision table.
+Detection is evidence-based (`.specify/` marker files only); see `speckit-detect` for the full decision table.
 
 ### Command Mapping (Speckit-Installed Mode)
 
@@ -73,8 +73,8 @@ Nine atomic skills provide focused patterns used by spec workflows and spec-awar
 
 | Skill                    | Description                                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `speckit-detect`         | Detect whether Spec Kit is installed (`.specify/` directory or `speckit` CLI on `$PATH`); choose mode                                                                                                                    |
-| `spec-artifact-paths`    | Resolve `.specs/<slug>/*` paths, derive slugs, create directories on first write                                                                                                                                         |
+| `speckit-detect`         | Detect whether Spec Kit is installed via `.specify/` marker files; choose `speckit-installed` or `standalone` mode                                                                                                       |
+| `spec-artifact-paths`    | Resolve `.specs/<slug>/*` paths, derive slugs, surface existence (read-only; writers create directories)                                                                                                                 |
 | `spec-review`            | Audit `spec.md` for unmeasurable acceptance criteria, missing NFR coverage, conflicting requirements                                                                                                                     |
 | `spec-aware-preamble`    | Detect whether the current feature has `.specs/<slug>/` artifacts; emit a mode (`no-spec`, `spec-only`, `spec+plan`, `full-spec`) for stack workflows to branch on, replacing GATHER/DESIGN with spec-as-source-of-truth |
 | `agent-handoff-contract` | Define the YAML envelope every agent step writes to `.specs/<slug>/handoffs/<NN>-<step>-<agent>.md` during orchestrated multi-agent runs - the filesystem is the orchestration bus                                       |

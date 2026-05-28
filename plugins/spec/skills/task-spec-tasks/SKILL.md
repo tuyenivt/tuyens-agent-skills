@@ -10,13 +10,13 @@ user-invocable: true
 
 # Spec - Tasks
 
-Decompose a stable `plan.md` into an ordered `tasks.md` that `task-spec-implement` (or stack `task-*` workflows in `--spec` mode) executes one task at a time.
+Decompose `plan.md` into an ordered `tasks.md` that `task-spec-implement` (or stack `task-*-implement` in `--spec` mode) executes one task at a time.
 
 ## When to Use
 
-After `task-spec-plan`, to re-task a plan that changed materially, or before `task-spec-implement`. Requires `<slug>`; abort with the upstream recommendation if `plan.md` or `spec.md` is missing. If plan carries unresolved Proposed Spec Amendments, ask: task against current plan or pause for `task-spec-clarify`. Pass `--retask` to regenerate; default is amend.
+After `task-spec-plan`, or before `task-spec-implement`. Requires `<slug>`; abort if `plan.md` or `spec.md` is missing. If `plan.md` carries unresolved Proposed Spec Amendments, ask: task against current plan or pause for `task-spec-clarify`. Pass `--retask` to regenerate; default is amend.
 
-Not for: sprint planning (`task-breakdown-story` in `delivery`), requirements (`task-spec-specify`), architecture (`task-spec-plan`), code (`task-spec-implement`).
+Not for sprint planning (`task-breakdown-story` in `delivery`), requirements, architecture, or code.
 
 ## Workflow
 
@@ -37,13 +37,17 @@ If `tasks.md` exists, default to amend; offer replace/abort. Replacing a `tasks.
 
 ### STEP 4 - Read Plan and Spec; Build Traceability Map
 
-Map plan -> spec:
+Read `plan.md`'s Risks and Alternatives sections first to avoid duplicate complexity analysis in STEP 5. Map:
 - Plan API contract entry -> ACs it satisfies.
 - Data-model change -> migration phase (expand / backfill / contract).
 - NFR with verification -> validation task.
-- Spec out-of-scope -> hard fence; tasks must not re-introduce.
+- Spec out-of-scope -> hard fence.
+
+If `analysis.md` exists for this slug, read its Traceability Matrix; reuse it and flag deltas only.
 
 ### STEP 5 - Complexity Signal Scan
+
+Skip atomics whose findings `plan.md` already recorded (rerun only if plan is >7 days old or marked stale).
 
 Use skill: review-change-risk
 Use skill: review-blast-radius
@@ -51,15 +55,13 @@ Use skill: dependency-impact-analysis
 Use skill: ops-backward-compatibility
 
 Conditional:
-- Use skill: backend-db-migration (if plan touches schema)
-- Use skill: ops-feature-flags (if high risk or gradual rollout)
-
-Signals drive task size and surface tasks otherwise missed (migrations, observability, rollback verification, contract tests).
+- Use skill: backend-db-migration (plan touches schema)
+- Use skill: ops-feature-flags (high risk or gradual rollout)
 
 ### STEP 6 - Mode Branch
 
-- **speckit-installed:** bundle the STEP 5 signals as a brief, instruct user to run `/speckit-tasks` (any `before_tasks`/`after_tasks` hooks in `.specify/extensions.yml` fire as part of that call; do not bypass). After upstream runs, perform STEP 7 (traceability) against Spec Kit's `tasks.md` and surface gaps as suggestions; no silent edits. Skip to STEP 9.
-- **standalone:** continue to STEP 7.
+- **speckit-installed**: bundle STEP 5 signals as a brief, instruct user to run `/speckit-tasks`. After upstream runs, perform STEP 9 (traceability gate) against Spec Kit's `tasks.md` and surface gaps as suggestions. Skip to STEP 10.
+- **standalone**: continue to STEP 7.
 
 ### STEP 7 - Generate Tasks
 
@@ -72,9 +74,9 @@ Organize by user story:
 | **3+. User Story `<n>`**    | One phase per story (P1, P2, ...). Order within: data -> service -> api/frontend -> validation. Independent. | `[USn]`     |
 | **Final. Polish**           | Cross-cutting: observability, runbooks, perf tuning, contract-phase migrations, flag cleanup              | none        |
 
-MVP = Setup + Foundational + US1. Cross-story prerequisites hoist to Foundational. Each story phase must be independently completable.
+MVP = Setup + Foundational + US1. A prerequisite hoists to Foundational iff >=2 story phases import or extend it; single-story prerequisites stay in that story phase.
 
-Per task (one-line format - the ONLY rendering; never duplicate as a `### T<NNN>` detail block):
+Per task (one-line format - the ONLY rendering):
 
 ```
 - [ ] T<NNN> [P?] [US?] <Name with exact target file path> - <type>, <size>, <scope>. Satisfies <ACs/NFRs>. Deps: <ids|none>.
@@ -82,24 +84,23 @@ Per task (one-line format - the ONLY rendering; never duplicate as a `### T<NNN>
 ```
 
 Fields:
-- **type:** `data | service | api | frontend | validation | ops`
-- **size:** `S | M | L | XL` (relative; XL flags for further breakdown)
-- **scope:** `must-have | nice-to-have | risk-reduction`
-- **`[P]`:** parallel-safe (disjoint files AND no incomplete dependencies)
+- **type**: `data | service | api | frontend | validation | ops`
+- **size**: `S | M | L | XL` (relative within this feature; XL flags for further breakdown)
+- **scope**: `must-have` (blocks an AC) | `nice-to-have` (improves UX/perf without blocking an AC) | `risk-reduction` (mitigates a risk/NFR, e.g., load test, rollback drill)
+- **`[P]`**: target files do not overlap with any other `[P]` task in the same phase, AND all Deps are in earlier phases (not same-phase peers)
 
 Rules:
-- Every task carries `Satisfies` (AC IDs or NFR category). No traceability -> plan bug or scope creep; flag, do not silently include.
-- Validation tasks pair with the code they cover, in the same phase. Tests are not a trailing afterthought.
-- If `delivery` is installed and the breakdown spans sprints, soft-suggest `task-breakdown-story`; do not auto-run.
+- Every task carries `Satisfies` (AC IDs or `NFR-<category>`). No traceability -> plan bug or scope creep; flag.
+- Validation tasks pair with the code they cover, in the same phase.
+- If `delivery` is installed AND the breakdown exceeds one sprint (>10 must-have tasks or >2 story phases sized L+), STOP and recommend the user run `task-breakdown-story` first; this workflow consumes that output.
 
 ### STEP 8 - Critical Path and MVP
 
-- **Critical path:** longest dependent chain across the feature.
-- **MVP scope:** explicit Setup + Foundational + US1 so the user can ship before starting US2.
+- **Critical path**: longest dependent chain.
+- **MVP scope**: Setup + Foundational + US1.
 
 ### STEP 9 - Traceability Gate
 
-Before writing, verify and resolve:
 - Every AC is `Satisfies`-targeted by >=1 task.
 - Every NFR with a verification has a matching validation task.
 - Every plan endpoint has implementation + validation tasks.
@@ -110,7 +111,7 @@ Fix gaps by: adding the missing task (preferred), stopping to ask (if it implies
 
 ### STEP 10 - Write tasks.md and Summarize
 
-Amend mode is append-only and preserves completed-task markers. Print: path, task count, phase breakdown, XL count, must-have count, critical path, mode, proposed plan amendments, next command (`task-spec-implement <slug>`).
+Amend mode is append-only and preserves completed-task markers. Self-Check covers what to print.
 
 ## Output Format
 
@@ -118,7 +119,6 @@ Amend mode is append-only and preserves completed-task markers. Print: path, tas
 # Tasks - <Feature Name>
 
 - **Slug:** <slug>
-- **Status:** draft | implementing | complete
 - **Stack:** <detected stack> (or `unknown`)
 - **Created:** <YYYY-MM-DD>
 - **Last updated:** <YYYY-MM-DD>
@@ -127,31 +127,21 @@ Amend mode is append-only and preserves completed-task markers. Print: path, tas
 - <Signal>: <impact>
 
 ## Phase 1 - Setup
-- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
-- [ ] T002 [P] Configure linting in tooling/ - ops, S, must-have. Satisfies NFR-Setup. Deps: none.
+- [ ] T001 Create project structure per implementation plan - ops, S, must-have. Satisfies bootstrap (no AC). Deps: none.
 
 ## Phase 2 - Foundational
-(blocking prerequisites for ALL user stories)
 - [ ] T005 Apply expand-phase migration in db/migrations/2026XX_add_users.sql - data, S, must-have. Satisfies AC1, AC3. Deps: T001.
-- [ ] T006 [P] Add feature-flag scaffolding in src/flags/ - ops, S, risk-reduction. Satisfies NFR-Rollout. Deps: T001.
 
 ## Phase 3 - User Story 1 (P1) - <Story Title>
 **Story goal:** <one line>
 **Independent test criteria:** <how to verify US1 alone>
 
-- [ ] T010 [P] [US1] Create User model in src/models/user.ts - data, S, must-have. Satisfies AC1, AC3. Deps: T005.
-- [ ] T011 [US1] Implement UserService in src/services/user_service.ts - service, M, must-have. Satisfies AC1, AC4. Deps: T010.
+- [ ] T010 [P] [US1] Create User model in src/models/user.<ext> - data, S, must-have. Satisfies AC1, AC3. Deps: T005.
+- [ ] T011 [US1] Implement UserService in src/services/user_service.<ext> - service, M, must-have. Satisfies AC1, AC4. Deps: T010.
       Coordinates validation, persistence, and password hashing.
-- [ ] T012 [US1] Add validation tests in tests/services/user_service.test.ts - validation, S, must-have. Satisfies AC1, AC4. Deps: T011.
 
 ## Phase N - Polish
-(observability, runbooks, contract-phase migrations, deprecations, flag cleanup)
-
-## Dependency Order
-1. T001 (Setup, no deps)
-2. T002 [P] (parallel with T001)
-3. T005 (requires T001)
-...
+- [ ] T040 [P] Add p95 latency load test in tests/perf/checkout_load.<ext> - validation, M, risk-reduction. Satisfies NFR-performance. Deps: T020.
 
 **Critical path:** T001 -> T005 -> T010 -> T011 -> T020
 **MVP scope:** Phase 1 + Phase 2 + Phase 3 (US1).
@@ -160,7 +150,7 @@ Amend mode is append-only and preserves completed-task markers. Print: path, tas
 | AC / NFR                    | Tasks                |
 | --------------------------- | -------------------- |
 | AC1                         | T010, T011           |
-| NFR-Performance (p95 200ms) | T011, T020 (load)    |
+| NFR-performance (p95 200ms) | T011, T040           |
 
 ## Proposed Plan Amendments
 <Empty if none.>
@@ -171,23 +161,21 @@ Amend mode is append-only and preserves completed-task markers. Print: path, tas
 
 ## Self-Check
 
-- [ ] STEP 1-2: behavioral-principles and stack-detect loaded
-- [ ] STEP 3: speckit-detect + spec-artifact-paths resolved; replace/amend confirmed if tasks.md exists
-- [ ] STEP 4: aborted on missing plan.md/spec.md; traceability map built; out-of-scope fenced
-- [ ] STEP 5: complexity atomics ran (migration/flag atomics ran when conditions matched)
-- [ ] STEP 6: in speckit mode, gaps surfaced as suggestions only - no silent edits
-- [ ] STEP 7: phases organized by story; `[USn]` only on story-phase tasks; `[P]` only on disjoint-file + no-dep-ahead tasks; every task has file path and all fields; validation pairs with code; XL flagged
+- [ ] STEP 1-3: behavioral-principles, stack-detect, mode, paths loaded; replace/amend confirmed if `tasks.md` exists
+- [ ] STEP 4: aborted on missing plan/spec; traceability map built; reused `analysis.md` matrix if present
+- [ ] STEP 5: skipped atomics already recorded in plan; conditional atomics ran when conditions matched
+- [ ] STEP 6: in speckit mode, gaps surfaced as suggestions only
+- [ ] STEP 7: phases by story; `[USn]` only on story-phase tasks; `[P]` per disjoint-files rule; every task has file path and all fields; validation pairs with code; XL flagged
 - [ ] STEP 8: critical path and MVP scope identified
-- [ ] STEP 9: every AC has >=1 task; every NFR verification has validation task; graph acyclic; no out-of-scope touched; no cross-story deps (hoist to Foundational)
-- [ ] STEP 10: amend-mode append-only; summary prints counts, critical path, MVP, next command
+- [ ] STEP 9: every AC covered; every NFR validation present; graph acyclic; no out-of-scope touched
+- [ ] STEP 10: amend-mode append-only; summary prints task count, phase breakdown, XL count, must-have count, critical path, mode, amendments, next command (`task-spec-implement <slug>`)
 
 ## Avoid
 
-- Duplicating each task as one-line checkbox AND `### T<NNN>` detail block.
+- Duplicating each task as one-line checkbox AND a `### T<NNN>` detail block.
 - Implementation code in task descriptions (what, not how).
 - Tasks without `Satisfies` traceability or without an exact file path.
-- Calendar-time estimates instead of S/M/L/XL unless asked.
+- Fabricating NFR IDs (e.g., `NFR-Setup`) when none exist in spec.
 - Treating tests as a single trailing task.
 - Editing `plan.md` from this workflow.
-- Auto-running `task-breakdown-story` (soft-suggest only).
-- Overwriting a `tasks.md` containing non-`[ ]` markers without explicit confirmation.
+- Auto-running `task-breakdown-story`.
