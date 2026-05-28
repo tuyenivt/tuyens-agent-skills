@@ -9,23 +9,24 @@ user-invocable: false
 
 # Log Analysis
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
 - Active incident investigation
 - Tracing a specific request across services
 - Investigating a user report or support ticket via log evidence
 - Comparing healthy vs unhealthy time windows
+- Skip when a single error class with obvious cause is already known - go straight to fix
 
 ## Rules
 
 - Isolate the time window before reading log volume; alert fire time is not the failure start
-- Quantify - "many errors" is useless; "47 timeouts in 3 min, all on /api/orders, all EU users" is signal
 - When multiple error classes interleave, establish first-appearance ordering - one is almost always causing the other
-- State what logs confirm, contradict, and cannot resolve
+- For each finding, mark it `confirmed by logs`, `contradicted by logs`, or `requires non-log evidence` - the third category populates the Log Gaps output section
 
-## Pattern
+## Patterns
+
+Bad: "Errors started around 2pm and there were lots of timeouts."
+Good: "Errors started 14:23:22 UTC (8 min before alert). 47 timeouts in 3 min on `/api/orders`, all EU users; concurrent pool-exhaustion errors starting 40s later."
 
 ### Step 1 - Time-Window Isolation
 
@@ -37,15 +38,13 @@ Default window: 5-10 min around onset. If the window has >2000 lines or spans >1
 
 ### Step 2 - Correlation Tracing
 
-If trace/request IDs are present: extract from the failing case, follow chronologically across services, identify where the chain breaks (missing span = likely failure point), note ID propagation gaps.
-
-If absent: flag as observability gap.
+- **Full IDs present**: extract from the failing case, follow chronologically across services, identify where the chain breaks (missing span = likely failure point).
+- **Partial IDs** (e.g., on app logs but missing on probes, dependencies, or DB queries): trace what exists; the boundary where IDs drop IS the observability gap - name it.
+- **No IDs**: flag as observability gap; fall back to timestamp + user-id + endpoint co-occurrence.
 
 ### Step 3 - Frequency and Distribution
 
-For errors in the window, characterize rate (per minute, constant/spiking/tapering), affected users (one / segment / all - extract distinct IDs and cross-reference attributes like region, plan, cohort), affected endpoints, error classes (single or mixed), and service distribution.
-
-Report as a single sentence: *"47 timeout errors in 3 min, all on `/api/orders`, all EU users, starting 14:23 UTC."*
+For errors in the window, characterize rate (per minute, constant/spiking/tapering), affected users (one / segment / all - extract distinct IDs and cross-reference attributes like region, plan, cohort), affected endpoints, error classes (single or mixed), and service distribution. Fill the Error Distribution block in the output template.
 
 ### Step 4 - Multi-Error Sequencing and Trigger
 
@@ -60,8 +59,11 @@ Common upstream → downstream chains:
 | Upstream                  | Downstream                | Mechanism                                                                |
 | ------------------------- | ------------------------- | ------------------------------------------------------------------------ |
 | Dependency timeout        | Connection pool exhausted | Slow responses hold connections, starving the pool                       |
+| Slow DB query             | App pool exhausted        | Long-held connections not freed for next request                         |
 | Connection pool exhausted | Request timeout / 503     | New requests cannot acquire a connection                                 |
 | Memory pressure           | GC pause → timeouts       | Long pauses look like dependency failures                                |
+| Rate limit on dependency  | Cascading retries         | Backoff amplifies load on the limited resource                           |
+| Deploy rollout            | Mixed-version errors      | New code-path errors absent from old replicas during canary              |
 
 State the chain as: *"{upstream} causes {downstream} because {mechanism}, confirmed by {evidence}."*
 
@@ -85,7 +87,7 @@ Comparison Window: {healthy period}
 - Scope: {users / endpoints / services}
 - Classes: {type and count for each}
 - Causal chain: {upstream → downstream + mechanism, or "Single class"}
-- Trigger: {what correlates with onset}
+- Trigger: {deploy / traffic spike / cron / external dep degradation / config change / unknown, with timestamp}
 
 ### Healthy vs Unhealthy
 - Error rate: {healthy} → {failing} ({delta})

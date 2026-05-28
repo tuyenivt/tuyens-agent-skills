@@ -17,36 +17,35 @@ user-invocable: false
 
 ## Inputs
 
-Required: incident summary, root cause. Optional: PR diff, review history, CI/CD details, test coverage, deploy pipeline. Handle partial inputs - state what is missing if it weakens analysis.
+Required: incident summary, root cause. Optional: PR diff, review history, CI/CD details, test coverage, deploy pipeline.
 
 ## Rules
 
 - Distinguish "missed in review" from "not catchable by review" - the second needs a different quality gate
-- Cognitive load (PR size, time spent) is a legitimate contributing factor
-- Identify the single highest-leverage fix among the prioritized gaps
+- Categories overlap on common shapes (fast review of large PR hits Review-attention + Cognitive-load + Checklist); pick the dominant category and fold the others into its causal link, do not produce duplicate rows
+- Cap output at 3-5 distinct gaps; single highest-leverage fix is the load-bearing output
 
-## Pattern
+## Patterns
 
 ### Gap Categories
 
 | Category               | Question                                                                                             |
 | ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| Review-attention       | Was the risky path reviewed at all, or with enough context to assess risk? (rubber-stamp / under-informed) |
+| Review-attention       | Was the risky path reviewed at all, or with enough context to assess risk? (rubber-stamp / under-informed; absorbs Cognitive-load when PR size/speed drove the inattention) |
 | Checklist              | Was there a prompt that would have surfaced this risk?                                                |
 | Expertise              | Did the reviewer have domain knowledge for this failure type?                                         |
-| Cognitive load         | Was the PR too large or fast to review effectively?                                                   |
 | Automated-gate         | Would automation (lint, static analysis, EXPLAIN, integration test, monitoring, canary) have caught it? |
-| Resilience-pattern     | Were timeouts, retries, circuit breakers, bulkheads checked for all external calls and shared resources? |
+| Resilience-pattern     | Were timeouts, retries, circuit breakers, bulkheads checked for all external calls and shared resources (timeouts, retries, breakers, bulkheads, deadlines, contexts depending on stack)? |
 
 ### Step 1 - Trace Failure to Introduction Point
 
-Identify the introducing change (PR, commit, config, deploy). If no PR exists (config drift, traffic growth, latent bug), classify as a process coverage gap and skip to Step 4 with the appropriate non-reviewable category.
+Identify the introducing change (PR, commit, config, deploy). If no PR exists (config drift, traffic growth, latent bug), classify as a process coverage gap and skip to Step 3 (non-reviewable identification).
 
 Map the causal chain: from the change to the production failure. Example: *"PR added retry → retry holds connections longer → pool exhausted under load → cascading timeouts."* This shows what a reviewer would have needed to reason about.
 
 ### Step 2 - Evaluate Each Category
 
-Apply every category in the table - do not stop at the first gap. For each gap:
+Walk every category, then collapse overlaps so each distinct finding appears once. For each gap:
 
 1. **Type** - which category
 2. **Causal link** - how this gap connects to the production failure (closing it would have prevented or reduced the incident)
@@ -69,25 +68,14 @@ For these, the question shifts from "why didn't review catch it?" to "what quali
 | P2       | Closing this gap catches this failure class earlier                    |
 | P3       | Improves general review quality, not specific to this class            |
 
-Focus recommendations on P0 and P1.
+If multiple gaps qualify as P0, the one named in **Highest-Leverage Fix** is the single closure that closes the most other P0/P1 gaps as a side effect. Focus recommendations on P0 and P1.
 
-### Good vs Bad
+### Bad vs Good
 
-```
-Good:
-Gap: Resilience-pattern (P0 - prevents incident)
-Causal link: PR added 3x retry without timeout adjustment. Retry holds connection 90s
-  → pool of 40 exhausted in 4 min under load → cascading timeouts.
-Why: No checklist item requires verifying timeout budget when retry logic changes.
-Fix: Checklist item: "When retry/timeout changes, verify pool sizing and total budget
-  under expected concurrency."
-Enforcement: CI lint flagging retry config changes without pool config review;
-  mandatory load test for resilience-config PRs.
-```
+Bad: blame-shaped ("Reviewer should have been more careful") or untestable ("Add more tests"). Bad: misclassifying a load-dependent failure as Review-attention when it is actually Non-Reviewable.
 
-```
-Bad: "Gap: Test gap. Fix: add more tests."
-```
+Good: structural and enforceable - names the failure class, points to a specific check, and ties the fix to a target file or CI step. Example:
+- Gap: Resilience-pattern (P0). Causal link: retry change without timeout budget → pool drain. Fix: CI lint flagging retry config changes without pool config review; mandatory load test for resilience-config PRs.
 
 ## Output
 
@@ -99,14 +87,16 @@ Bad: "Gap: Test gap. Fix: add more tests."
 
 ### Gaps Identified
 
+3-5 distinct rows; overlapping signals collapsed into one row.
+
 | # | Type | Priority | Causal Link | Why It Existed | Fix | Enforcement |
 | - | ---- | -------- | ----------- | -------------- | --- | ----------- |
 
 ### Highest-Leverage Fix
-{Single gap closure with greatest prevention impact, and why}
+{Single gap closure with greatest prevention impact, and why. When composed by task-postmortem, this row plus the top 1-2 P0/P1 rows are what gets surfaced upward.}
 
 ### Non-Reviewable Factors
-{If any aspect was not catchable from a diff, name the missing quality gate (load test, config validation, canary, chaos test). Omit if all gaps were reviewable.}
+For load-dependent, config-drift, emergent, or overruled-feedback failures, this section is the load-bearing output - name the missing quality gate (load test, config validation, canary, chaos test). Omit only if every gap was catchable from a diff.
 ```
 
 ## Avoid

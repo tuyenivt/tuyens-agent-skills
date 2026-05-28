@@ -1,6 +1,6 @@
 ---
 name: backend-api-guidelines
-description: REST API design: resource naming, HTTP methods, error handling, pagination. Auto-detects stack and adapts patterns.
+description: Review REST API design for resource naming, HTTP methods, status codes, pagination, errors, versioning, and idempotency. Stack-adaptive.
 metadata:
   category: governance
   tags: [api, rest, http, conventions, multi-stack]
@@ -13,70 +13,82 @@ user-invocable: false
 
 ## When to Use
 
-- Designing new REST API endpoints
+- Designing new REST endpoints
 - Reviewing API contracts for consistency
-- Ensuring backward-compatible API evolution
+- Planning backward-compatible API evolution
 
-## Universal Rules (All Stacks)
+## Rules
 
-- Resource names are plural nouns, lowercase, hyphen-separated (`/order-items`)
-- Use HTTP methods correctly: GET (read), POST (create), PUT (full replace), PATCH (partial update), DELETE (remove)
-- Return appropriate HTTP status codes: 200, 201, 204, 400, 401, 403, 404, 409, 422, 500
-- Error responses follow RFC 9457 (Problem Details): `type`, `title`, `status`, `detail`, `instance`
-- Never expose internal IDs, stack traces, or implementation details in error responses
-- Paginate all collection endpoints - never return unbounded lists. Use cursor-based pagination for large or frequently updated datasets (stable ordering, no skipped rows); use offset-based only for small datasets with infrequent mutations.
-- Version APIs when making breaking changes (`/v1/`, `/v2/` or header-based). Deprecate old versions with a sunset date in the response header (`Sunset: Sat, 01 Jan 2027 00:00:00 GMT`).
-- Never expose ORM entities / model objects directly in responses - always use DTOs / serializers / response structs
-- Resource identifiers belong in the URL path (`/users/123`), not in query parameters (`/users?id=123`). Query parameters are for filtering, sorting, and pagination on collection endpoints.
-- For non-idempotent POST endpoints (payments, order creation, message sends), support an `Idempotency-Key` header. Store the key + response for the deduplication window (typically 24h). Return the same response on replay without re-executing the operation.
+- Resource paths are plural nouns, lowercase, hyphen-separated (`/order-items`). No verbs in paths.
+- Methods: GET reads, POST creates, PUT replaces, PATCH partial-updates, DELETE removes.
+- Status codes: 200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 500. Used consistently.
+- Errors follow RFC 9457 (Problem Details): `type`, `title`, `status`, `detail`, `instance`. Never leak stack traces or internal IDs.
+- Responses use DTOs / serializers / response structs. Never return ORM entities directly.
+- Resource IDs live in path segments (`/users/123`). Query params are for filtering, sorting, pagination on collections.
+- Paginate every collection. Use cursor-based for large or write-heavy datasets; offset only for small, stable ones.
+- Version on breaking change (`/v1/`, `/v2/` or header). Mark deprecated versions with `Sunset` header.
+- Non-idempotent POST endpoints (payments, order creation, message sends) accept an `Idempotency-Key` header; cache the response for the dedup window (typically 24h).
+- Validate input at the boundary using the framework's mechanism (annotations, struct tags, strong params, schema validators).
+- Rate limit at the gateway or middleware, never inside business logic. Return `429` with `Retry-After` and `X-RateLimit-*` headers. Limit by API key or user, not IP.
 
----
+## Patterns
 
-## Endpoint Design Principles
+### Resource identifiers in the path
 
-### Request Handling
+```
+# Bad - identifier in query string
+GET /users?id=123
 
-- Validate all input at the API boundary using the framework's validation mechanism (annotations, struct tags, strong parameters, schema validators, etc.)
-- Use the framework's standard request binding/parsing approach
-- Return appropriate error responses for validation failures
+# Good - identifier in path
+GET /users/123
+```
 
-### Response Shaping
+### Error response (RFC 9457)
 
-- Always use dedicated response objects (DTOs, serializers, response structs) - never return ORM/model objects directly
-- Use projection queries to fetch only needed fields from the data layer
-- Paginate collection endpoints with consistent pagination metadata
+```
+# Bad - leaks internals, ad-hoc shape
+{ "status": "error", "msg": "NullPointerException at OrderService.java:42" }
 
-### Rate Limiting
+# Good - Problem Details
+{
+  "type": "https://api.example.com/errors/order-not-found",
+  "title": "Order not found",
+  "status": 404,
+  "detail": "No order with the given ID exists for this account.",
+  "instance": "/v1/orders/123"
+}
+```
 
-- Apply rate limiting at the API gateway or middleware level, not inside business logic
-- Return `429 Too Many Requests` with `Retry-After` header (seconds until the client can retry)
-- Include rate limit headers in responses: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
-- Use token bucket or sliding window algorithms - fixed window has burst-at-boundary issues
-- Rate limit by API key or authenticated user, not by IP alone (IPs are shared behind NATs/proxies)
+### Pagination shape
 
-### Conventions
+```
+# Bad - offset on a high-write collection, no metadata
+GET /events?page=500&size=20
 
-- Use the framework's standard routing and controller/handler patterns
-- Apply global error handling to ensure consistent error response format across all endpoints
-- Use middleware for cross-cutting concerns (auth, logging, CORS, rate limiting)
+# Good - cursor with stable ordering
+GET /events?cursor=eyJpZCI6MTIzNDV9&limit=20
+-> { "items": [...], "next_cursor": "eyJpZCI6MTIzNjV9" }
+```
 
-## Stack-Specific Guidance
+### Idempotent POST
 
-After loading stack-detect, apply API patterns using the idioms of the detected ecosystem:
+```
+# Bad - retry creates duplicate charge
+POST /payments  { amount: 100 }
 
-- Use the framework's standard controller/handler declaration pattern for endpoints
-- Apply the framework's validation mechanism (e.g., annotation-based validation, struct tag validation, strong parameters, schema libraries)
-- Use the ecosystem's pagination library or pattern for collection endpoints
-- Configure global error handling using the framework's standard mechanism (e.g., error handler middleware, controller advice, rescue handlers)
-- Follow the JSON field naming convention standard for the detected ecosystem (camelCase, snake_case, etc.)
+# Good - retry returns cached response
+POST /payments
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+{ amount: 100 }
+```
 
-If the detected stack is unfamiliar, apply the universal rules above and recommend the user consult their framework's API documentation.
+### Stack-specific application
 
----
+After stack-detect, apply these patterns using the detected ecosystem's idioms: standard controller/handler declaration, native validation mechanism, ecosystem pagination library, global error handler, and JSON field naming convention (camelCase vs snake_case). If the stack is unfamiliar, apply the universal rules and recommend the user consult their framework's API documentation.
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to surface API violations consistently.
+Consuming workflows parse this structure.
 
 ```
 ## API Guidelines Assessment
@@ -85,30 +97,26 @@ Consuming workflow skills depend on this structure to surface API violations con
 
 ### Violations
 
-- [Severity: High | Medium | Low] {endpoint or file:line if available} - {description of violation}
-  - Rule: {the API guideline rule violated}
+- [Severity: High | Medium | Low] {endpoint or file:line} - {description}
+  - Rule: {the rule violated}
   - Fix: {concrete correction using the detected stack's idioms}
 
 ### No Violations Found
 
-{State explicitly if API design is compliant - do not omit this section silently}
+{State explicitly if compliant - do not omit this section silently}
 ```
 
-**Severity guidance:**
+**Severity:**
 
-- **High**: ORM entity exposed in response, missing input validation, no error response format, non-idempotent financial POST without `Idempotency-Key` support
-- **Medium**: Wrong HTTP method or status code, missing pagination on collection endpoint, offset pagination on high-volume mutable collection
-- **Low**: Naming inconsistency (e.g., mixed camelCase/snake_case), missing API version header, missing `Sunset` header on deprecated endpoint
+- **High**: ORM entity exposed, missing input validation, missing error format, non-idempotent financial POST without `Idempotency-Key`
+- **Medium**: Wrong method or status code, missing pagination, offset pagination on high-write collection
+- **Low**: Field naming drift, missing version header, missing `Sunset` on deprecated endpoint
 
 Omit "No Violations Found" if violations were listed.
 
-## Avoid (All Stacks)
+## Avoid
 
-- Verbs in endpoint paths (`/getOrder`, `/createOrder`)
-- Exposing ORM/entity objects directly in API responses
-- Inconsistent status codes across endpoints
-- Missing pagination on collection endpoints
-- Error responses that leak stack traces or internal details
-- Generic success envelopes (`{status: "success", data: {...}}`) - return the resource directly with HTTP status code conveying success/failure; reserve structured wrappers for error responses (RFC 9457)
-- Using PUT for partial field updates - PUT replaces the entire resource; use PATCH for partial updates
-- Resource identifiers in query parameters instead of URL path segments
+- Verbs in paths (`/getOrder`, `/createOrder`)
+- Generic success envelopes (`{status:"success", data:{...}}`) - return the resource directly; reserve envelopes for errors (RFC 9457)
+- PUT for partial updates (PUT replaces; use PATCH)
+- Same-release deployment of a breaking API change without versioning

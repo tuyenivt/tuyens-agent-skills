@@ -21,34 +21,27 @@ Two modes:
 
 - "starting my shift", "taking over", "what should I check?" → **Shift-Start**
 - A specific alert, error, ticket, or symptom is provided → **Triage**
-- User already knows it is an active incident → route directly to `incident-root-cause`
-- User already knows it is non-incident investigation → route directly to `oncall-investigate`
 - Ambiguous → ask: "Are you starting your shift, or do you have a specific alert to triage?"
 
 ---
 
 ## Shift-Start Mode
 
-Goal: build situational awareness before anything fires.
+Goal: build situational awareness before anything fires. Stack-agnostic - skip `stack-detect`.
 
-### Step 1 - Detect Stack
+### Step 1 - Review Handoff
 
-Use skill: `stack-detect`
+Check: open incidents AND incidents resolved in last 72h, known flaky alerts, in-progress investigations, active workarounds, escalation contacts. If no handoff notes exist, flag as a process gap.
 
-### Step 2 - Review Handoff
-
-Check: open or recently resolved incidents (24-72h), known flaky alerts, in-progress investigations, active workarounds, escalation contacts. If no handoff notes exist, flag it as a process gap.
-
-### Step 3 - Assess Health and Risks
+### Step 2 - Assess Health and Risks
 
 | Area               | What to check                                              | Source                                            |
 | ------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
-| Open incidents     | Any active or recently resolved                            | Incident tracker, PagerDuty, Slack                |
-| Error rates        | Current vs. baseline for owned services                    | APM (Datadog, New Relic, Grafana)                 |
+| Open incidents     | Active or unacknowledged pages                             | Incident tracker, PagerDuty, Slack                |
+| Error rates        | Current vs. baseline for owned services                    | APM                                               |
 | Recent deploys     | Shipped in last 24-48h, including unvalidated production traffic | CI/CD log, release channel                  |
-| Pending alerts     | Unacknowledged or unresolved                               | PagerDuty                                         |
 | Queue health       | Depth, consumer lag, DLQ size                              | Broker dashboard, queue metrics                   |
-| Dependencies       | Status pages for critical third parties                    | Stripe, AWS, Twilio, etc.                         |
+| Dependencies       | Status pages for critical third parties                    | Payment, cloud, comms, identity providers         |
 | Scheduled changes  | Maintenance, migrations, cron during your window           | Change calendar                                   |
 
 Identify risks not yet alerting: elevated error rates, unvalidated deploys, upcoming jobs that may trigger pages.
@@ -64,9 +57,11 @@ Previous Oncall: {name or "Unknown"}
 
 ### Handoff Review
 - Open incidents: {list or "None"}
+- Recently resolved (72h): {list with severity + time + status, or "None"}
 - Known flaky alerts: {list or "None"}
 - In-progress investigations: {list or "None"}
 - Active workarounds: {list or "None"}
+- Escalation contacts: {list, or "Not documented - flag as gap"}
 
 ### Current Health
 - Error rates: {normal / elevated for {service} / unknown}
@@ -98,18 +93,9 @@ Use skill: `stack-detect`
 | **Performance**            | Slow response, high latency, timeout (no outage)                                       | `oncall-investigate` or `task-code-review-perf` |
 | **Alert investigation**    | Alert fired, unclear if real or false positive                                         | `oncall-investigate`                            |
 
-Tiebreaker: if a symptom matches both **Performance** and **Active incident**, choose Active incident when user-visible impact is ongoing OR multiple users are affected; otherwise Performance.
-
 ### Step 3 - Severity
 
-| Severity     | Criteria                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Service fully down, data loss in progress, SLA already breached, or payment/auth fully broken                     |
-| **High**     | Partial outage on a critical path (payments, auth, checkout), >10% affected, or critical-path latency >2x baseline |
-| **Medium**   | Feature broken for a subset, workaround exists, no data loss                                                      |
-| **Low**      | Single user, cosmetic, non-critical feature                                                                       |
-
-For Critical / High: route immediately. Skip further classification.
+Use the severity table in `incident-root-cause` Step 1. For triage routing, only the Critical/High distinction matters - route immediately, skip further classification.
 
 ### Step 4 - Scope Check
 
@@ -145,12 +131,17 @@ Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-rev
 
 ## Self-Check
 
-- [ ] Mode detected (shift-start vs triage); stack detection invoked
-- [ ] Triage: work type and severity assigned; scope check completed; context package names symptom, time window, recent change
-- [ ] Shift-start: handoff reviewed (or absence flagged); health and risks identified
-- [ ] Critical/High routed immediately, no further classification time spent
+- [ ] Mode detected (Shift-Start vs Triage)
+- [ ] Triage: stack detected; work type classified
+- [ ] Triage: severity assigned; Critical/High routed without further classification time
+- [ ] Triage: scope check completed (data risk, recent change, prior occurrence)
+- [ ] Triage: context package names symptom, time window, affected scope, recent change
+- [ ] Shift-Start: handoff reviewed (or absence flagged as gap)
+- [ ] Shift-Start: health table walked; known risks identified
 
 ## Avoid
 
-- Routing to `task-code-debug` without a stack trace or reproducible error
-- Skipping the recent-change check - it is the fastest path to resolution for many alerts
+- Re-classifying when the user has already stated the work type - route directly
+- Spending classification time on Critical/High before containment routing
+- Producing a Shift-Start summary with empty sections rather than naming the missing input as a gap
+- Inventing stack details in Shift-Start - the workflow is stack-agnostic

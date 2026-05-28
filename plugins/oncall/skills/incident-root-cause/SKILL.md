@@ -13,20 +13,11 @@ user-invocable: false
 
 ## When to Use
 
-Active production incident, on-call triage, cascading failure diagnosis. Containment is the priority; analysis exists to enable containment, not gate it.
+Active production incident, on-call triage, cascading failure diagnosis.
 
 ## Inputs
 
-Required: error or stack trace. Optional: log snippets, recent PR diff, metrics summary, config snapshot, deploy metadata, service map. When evidence is thin, frame from what is available, recommend containment by error class, and list the 3-5 evidence items needed to raise confidence.
-
-## Output Contract
-
-- Containment recommendations come first; every containment action includes ETA in minutes
-- Every hypothesis cites observable evidence and includes a verification step
-- Blast radius classified explicitly: Narrow | Moderate | Wide | Critical
-- Each prevention action has a priority: immediate | next sprint | quarterly
-- Findings ordered by urgency: containment > hypothesis > gaps > prevention
-- Omit empty sections; no debugging walkthroughs, no code-style commentary
+Required: error or stack trace. Optional: log snippets, recent PR diff, metrics summary, config snapshot, deploy metadata, service map. When evidence is thin, recommend containment by error class and list the 3-5 evidence items needed to raise confidence.
 
 ## Workflow
 
@@ -43,7 +34,7 @@ Extract: symptom onset, duration, affected services with status (degraded/down/h
 
 ### Step 2 - Recommend Containment
 
-Pick from this ladder by speed and safety. Prefer fast reversible actions; avoid patching under pressure.
+Pick from this ladder by speed and safety. Prefer fast reversible actions; avoid patching under pressure. Every action includes ETA in minutes.
 
 1. **Resource recovery** - restart affected instances; resize pool/thread limits if runtime-configurable; drain slow consumers
 2. **Rollback** - if recent deploy correlates. Use skill: `ops-backward-compatibility` to verify rollback safety (schema/contract changes)
@@ -51,33 +42,28 @@ Pick from this ladder by speed and safety. Prefer fast reversible actions; avoid
 4. **Circuit breaker** - stop cascading; critical when downstream latency exhausts upstream resources
 5. **Traffic isolation / rate limit** - shed or route to degraded path
 6. **Scale up** - only when resource exhaustion is confirmed and recovery alone is insufficient
-7. **Hotfix** - only when rollback and flag-disable are both unsafe, root cause is clear, and the diff is single-line
+7. **Hotfix** - only when rollback and flag-disable are unsafe, root cause is verified, and the diff is minimal with no schema/contract change
 8. **Data repair** - if partial writes occurred
+
+When multiple rungs apply, run rollback (if deploy correlates) and circuit breaker (if downstream latency is the amplifier) concurrently. Lower rungs (scale, hotfix) only after the top three have been tried or ruled out.
 
 Use skill: `ops-resiliency` for circuit breaker / retry patterns.
 
 ### Step 3 - Classify and Assess Blast Radius
 
 Use skill: `ops-failure-classification` to name the primary failure class.
-Use skill: `review-blast-radius` to score code/data/user dimensions.
-Use skill: `failure-propagation-analysis` only if cascading is observed across services.
+Use skill: `review-blast-radius` to score code/data/user dimensions. Classify explicitly: Narrow | Moderate | Wide | Critical.
+Use skill: `failure-propagation-analysis` if the failure spans more than one component (service, pool, or queue boundary).
 
 Also assess: shared resource contention (DB, cache, queue, pools), API contract impact, data corruption risk.
 
-Apply domain skills only if the classification matches:
-
-- Concurrency: `architecture-concurrency`
-- Data consistency: `architecture-data-consistency`
-- Slow query, missing index, N+1: `backend-db-indexing`
-- External dependency, connection pool, or other resource exhaustion: `ops-resiliency`
+Apply the domain skill named by the classification output. (Note: `architecture-concurrency` only for genuine race/lock incidents, not pool exhaustion - those go to `ops-resiliency`.)
 
 ### Step 4 - Generate Hypotheses
 
-Use skill: `root-cause-hypothesis`.
+Use skill: `root-cause-hypothesis`. If a recent PR diff is provided, use skill: `review-change-risk` first to score the triggering change. If propagation across services was observed in Step 3, the hypothesis should include a propagation path.
 
-If a recent PR diff is provided, use skill: `review-change-risk` to score the triggering change before forming hypotheses.
-
-Each hypothesis must include: suspect component and mechanism, contributing factors (distinct from root cause), triggering change, propagation path, timeline interpretation if there is a deploy-to-symptom lag, confidence with evidence balance, and one concrete verification step.
+If signals conflict (deploy timestamp vs. degradation onset, region split vs. global change), produce two hypotheses with explicit confidence and a verification step that discriminates them.
 
 ### Step 5 - Observability Gaps
 
@@ -85,9 +71,9 @@ Use skill: `ops-observability`. For each gap: missing signal → diagnostic ques
 
 ### Step 6 - Immediate Prevention Notes
 
-While the incident is active, capture only the 1-3 highest-leverage prevention items that emerged during diagnosis (architecture guardrail, monitoring add, deploy safeguard). Each: addresses the failure class, assigns priority, states blast radius reduction.
+Capture only items the on-call team can start within the next hour that prevent recurrence in the current incident window (e.g., shipping the per-attempt timeout, enabling the breaker flag). Each: addresses the failure class, has priority `immediate | next sprint | quarterly`, states blast radius reduction.
 
-Full systemic prevention belongs in `task-postmortem` after resolution. Do not run a deep governance review under incident pressure.
+Do not produce a guardrail/persistence table - that's `task-postmortem` Step 7.
 
 ## Output
 
@@ -122,21 +108,18 @@ Affected Services:
 | ------ | ----------------------- | -------- | ---------------------- |
 
 (1-3 highest-leverage items only; full prevention belongs in postmortem.)
-
-## Key Takeaways
-
-3-5 staff-level insights about the system, not just the incident.
 ```
 
 ## Self-Check
 
 - [ ] Severity assigned with justification; onset and duration stated (or marked unknown)
 - [ ] Affected services enumerated with individual status
-- [ ] Blast radius classified before any hypothesis
+- [ ] Blast radius classified (Narrow/Moderate/Wide/Critical) before any hypothesis
 - [ ] At least one containment action with ETA appears before diagnosis
 - [ ] Every hypothesis cites evidence and has a verification step
-- [ ] Triggering change identified if evidence exists; propagation path traced
-- [ ] Prevention notes limited to 1-3 highest-leverage items; deep prevention deferred to postmortem
+- [ ] Triggering change identified if evidence exists; propagation path traced when cascading
+- [ ] Prevention notes limited to 1-3 immediate-actionable items; guardrail/persistence deferred to postmortem
+- [ ] Empty sections omitted
 
 ## Avoid
 

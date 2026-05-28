@@ -22,21 +22,20 @@ Convert a resolved incident into systemic prevention. Run AFTER root cause is kn
 
 ## Depth
 
-| Depth      | When                                                | Sections produced                                              |
-| ---------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| `quick`    | SEV3 / low-impact - brief written record            | Overview, Classification, Guardrails (3 rows max)              |
-| `standard` | Default - SEV1/SEV2 needing team learning           | All sections                                                   |
-| `deep`     | Major or recurring failure class, cross-team impact | All sections + Pattern Analysis                                |
+| Depth      | When                                                | Sections produced                                                        |
+| ---------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `quick`    | SEV3 / low-impact - brief written record            | Overview (no MTTR breakdown required), Classification, Guardrails (3 rows max) |
+| `standard` | Default - SEV1/SEV2 needing team learning           | All sections                                                             |
+| `deep`     | Major or recurring failure class, cross-team impact | All sections + Pattern Analysis (requires prior-incident input)          |
 
 ## Inputs
 
-Required: incident summary (what/severity/duration/impact), root cause analysis. Optional: timeline, logs, recent PR diff, deploy metadata, containment actions, business impact, prior incidents (required for `deep`). State what is missing if it weakens analysis.
+Required: incident summary (what/severity/duration/impact), root cause. Optional: timeline, logs, recent PR diff, deploy metadata, containment actions, business impact. State what is missing if it weakens analysis.
 
 ## Rules
 
-- Every recommendation addresses a failure class, not just this instance
-- Output enforceable guardrails (lint, CI gate, checklist, monitor), not wishes
-- Order findings by leverage: guardrails > architecture > governance > observability
+- Each recommendation addresses a failure class and names an enforceable mechanism (lint, CI gate, checklist, monitor)
+- Resource-budget primitives (pool sizes, timeouts, retry budgets, circuit breaker thresholds, queue depths, concurrency limits) must include concrete numbers, not directional advice
 - Omit empty sections; no blame, no narrative, no raw logs
 
 ## Workflow
@@ -51,32 +50,20 @@ Capture failure type, severity, user impact, duration, triggering change (with t
 
 ### Step 2 - Failure Classification
 
-Use skill: `ops-failure-classification`.
+If `incident-root-cause` output was provided, ingest its Failure Classification and Blast Radius. Re-run `ops-failure-classification` only if classification was thin or contested.
 
 Most production incidents are compound: identify the chain (root → amplifier → user impact). Example: "Long-running transaction (root) → connection pool drain (amplifier) → cascading 503 (impact)."
 
-Apply domain skills based on classification:
-
-- Concurrency: `architecture-concurrency`
-- Data consistency: `architecture-data-consistency`
-- External dependency, connection pool, or other resource exhaustion: `ops-resiliency`
-- Slow query, missing index, N+1: `backend-db-indexing`
+Apply the domain skill named by the classification.
 
 ### Step 3 - Systemic Weaknesses and Architectural Fix
 
-For each structural condition, name both the weakness and the architectural change that eliminates it:
-
-- Boundary erosion / coupling amplification → boundary enforcement
-- Shared mutable state, shared resource contention (pools, threads, memory shared across batch and online workloads) → per-workload isolation, bulkheads
-- Hidden assumptions ("transactions complete in <1s", "batch runs off-peak") → explicit timeouts, statement budgets
-- Blast radius amplification - what made impact worse than necessary? → circuit breakers, fail-fast paths
+For each structural condition, name both the weakness and the architectural change that eliminates it (boundary erosion → boundary enforcement; shared mutable state / resource contention → per-workload isolation, bulkheads; hidden assumptions → explicit timeouts, statement budgets; blast radius amplification → circuit breakers, fail-fast paths).
 
 Use skill: `review-blast-radius` for propagation scope.
 Use skill: `architecture-guardrail` for boundary violations.
 Use skill: `ops-resiliency` for fault tolerance and resource isolation.
 Use skill: `backend-idempotency` only if duplicate writes or retry-safety was a contributing factor.
-
-Pool/timeout sizing must include concrete numbers (size N, timeout Xs), not directional advice.
 
 ### Step 4 - Review and Process Gaps
 
@@ -84,7 +71,7 @@ Use skill: `review-gap-analysis`.
 
 ### Step 5 - Observability Improvements
 
-Use skill: `ops-observability`. For each gap: missing signal → diagnostic question it could not answer → concrete addition (with threshold/trigger).
+Use skill: `ops-observability`. For each gap: missing signal → diagnostic question it could not answer → concrete addition (with threshold/trigger). If `incident-root-cause` already produced Observability Gaps, list only additions; do not restate.
 
 ### Step 6 - Governance and Process
 
@@ -96,15 +83,18 @@ Recommend only the governance changes that close a gap surfaced in Steps 3-5. Ca
 
 For each new guardrail, name a concrete persistence target so the lesson outlives this document:
 
-| Target                                                       | Use when                                              | Patch shape                                                          |
-| ------------------------------------------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------- |
-| Stack-specific skill (`rails-*`, `node-*`, ...)              | Rule encodes a framework pattern                      | New bullet under `## Rules` or `## Patterns` with bad/good pair      |
-| Stack-agnostic core skill (`ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks                  | New bullet in the relevant core skill                                |
-| Project `CLAUDE.md`                                          | Project-specific policy that does not generalize      | Entry under `## Lessons from Incidents` (create if absent)           |
-| Review checklist / CI gate                                   | Mechanically enforceable                              | Concrete file + check name + failure message                         |
-| Runbook                                                      | Recovery procedure, not prevention                    | New runbook entry                                                    |
+| Target                                                                 | Use when                                              | Patch shape                                                          |
+| ---------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| Stack-specific skill (`<stack>-<concern>`)                             | Rule encodes a framework pattern                      | New bullet under `## Rules` or `## Patterns` with bad/good pair      |
+| Stack-agnostic core skill (`ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks                            | New bullet in the relevant core skill                                |
+| Project `CLAUDE.md`                                                    | Project-specific policy that does not generalize      | Entry under `## Lessons from Incidents` (create if absent)           |
+| Review checklist / CI gate                                             | Mechanically enforceable                              | Concrete file + check name + failure message                         |
+| Alerting rule / monitoring-as-code                                     | Mechanically enforceable detection signal             | New alert definition with threshold + window                         |
 
-For each guardrail produce: target file + insertion point + exact text. State which MTTR number it would have reduced and roughly by how much. If a guardrail does not fit any target, the rule is too vague - tighten or drop.
+For each guardrail produce: target file + insertion point + exact text. State which MTTR number it would have reduced and roughly by how much.
+
+Bad: "Add monitoring for pool exhaustion; improve review process for risky changes."
+Good: "Emit `db.pool.acquire.wait` histogram; alert p99 > 200ms for 1 min. Patch: `plugins/core/skills/ops-observability/SKILL.md` Patterns. CODEOWNERS: `**/*retry* @sre`."
 
 ## Output
 
@@ -118,6 +108,7 @@ Duration:
 Triggering Change: {deploy/config/batch/traffic - with timestamp}
 Timeline: {triggering → first symptom → detection → containment → resolution}
 MTTR: detection gap {X}, containment lag {Y}, resolution lag {Z}
+Detection Gap Flag: {yes if > 5 min, else no}
 Containment Actions:
 
 ## Failure Classification
@@ -168,14 +159,16 @@ Contributing Factors:
 
 - [ ] Failure classified by type and layer; compound chain identified if applicable
 - [ ] Triggering change identified with timestamp; deploy-to-symptom lag explained if relevant
-- [ ] MTTR broken into detection / containment / resolution
-- [ ] Each systemic weakness paired with a concrete structural change (with sizing values when pools/timeouts apply)
+- [ ] MTTR broken into detection / containment / resolution; detection-gap flag set
+- [ ] Each systemic weakness paired with a concrete structural change (resource-budget primitives carry numbers)
+- [ ] Top 1-3 review/process gaps named with structural fix
+- [ ] Each observability gap names missing signal → diagnostic question → concrete threshold/trigger
+- [ ] Governance items only included when closing a gap from Steps 3-5; empty categories omitted
 - [ ] At least one enforceable guardrail produced; every guardrail names a persistence target, exact patch, and which MTTR number it reduces
 
 ## Avoid
 
 - Generic advice ("improve monitoring", "add more tests") that does not name a failure class
-- Guardrails confined to this document - if no skill, `CLAUDE.md`, or CI gate is patched, the lesson dies
 - Reporting a single "duration" instead of detection/containment/resolution split
 - Ignoring the compound chain: classifying only the immediate failure, not the amplifier
 - Blame, narrative, raw log reproduction, or architectural rewrites when targeted fixes suffice

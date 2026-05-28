@@ -9,35 +9,21 @@ user-invocable: false
 
 # Root Cause Hypothesis
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
-- After failure classification and propagation analysis
-- Forming structured hypotheses to guide investigation
-- Communicating incident status to stakeholders
+Whenever ranked hypotheses with calibrated confidence are needed; typically after failure classification and propagation analysis.
 
 ## Rules
 
-- Every hypothesis cites specific evidence and includes a verification step
-- Always produce a primary plus at least one secondary
 - Confidence percentages plus a "remaining" bucket sum to 100%
 - For intermittent failures, the mechanism must explain why the failure only sometimes occurs (threshold, race, load-dependent trigger, cache expiry, replication lag accumulation)
+- Timeline field is required when there is a deploy-to-symptom lag; omit otherwise
 
-## Pattern
+## Patterns
 
-### Evidence Categories
+### Evidence Value
 
-| Evidence         | Diagnostic Value | Notes                                                                            |
-| ---------------- | ---------------- | -------------------------------------------------------------------------------- |
-| Stack trace      | High             | Points to exact failure location                                                 |
-| Metric timeline  | High             | Correlates failure with system state change                                      |
-| Resource metric  | High             | CPU, memory, pool, disk - quantifies state                                       |
-| Recent deploy    | Medium-High      | Strong temporal correlation                                                      |
-| Log pattern      | Medium           | Depends on log quality                                                           |
-| Config diff      | Medium           | Often overlooked; high impact when relevant                                      |
-| Topology context | Medium           | Replica roles, routing, failover - explains why only some paths fail             |
-| User report      | Low-Medium       | Useful for symptoms, unreliable for cause                                        |
+High-value: stack traces, metric timelines, resource metrics at the failure point. Medium: deploy correlation, config diffs, topology context. Low: log patterns, user reports.
 
 ### Confidence Calibration
 
@@ -47,41 +33,11 @@ user-invocable: false
 | 40-69%   | Strong correlation with plausible mechanism but no direct proof                                                      |
 | 15-39%   | Circumstantial / speculative: pattern matches a known mode but key evidence is missing or contradictory              |
 
-Correlation without a causal mechanism caps confidence at 50%. A stack trace or resource metric at the exact failure point adds 20-30% over correlation alone.
+Start at 50% for correlation + plausible mechanism. +20-30% for a resource metric or stack trace at the failure point. Cap at 90% without a fix-and-confirm test.
 
 ### When Evidence Is Thin
 
-When the input is only a correlation or sparse signals:
-
-1. Propose a causal mechanism, not just the correlation
-2. Consider multiple causal directions: A→B, B→A, or C→both
-3. Cap confidence at 50% for correlation-only hypotheses
-4. List the 2-3 specific evidence items that would raise confidence and where to get them (dashboard, log query, CLI command)
-
-This directs the next investigation step instead of guessing.
-
-### Micro-example
-
-```
-Primary (75%): OrderService payment pool exhaustion
-Mechanism: PR #482 added 3x retry without timeout adjustment. Retry holds connections,
-  pool (size 40) drains in 4 min under peak load. Intermittent because exhaustion only
-  occurs once concurrent payment requests exceed pool size.
-Evidence for: HikariCP active=40/40, payment-gateway p99=12s, deploy 2h before onset
-Evidence against: No code change in OrderService itself
-Contributing factors: No pool acquisition timeout, no circuit breaker on payment calls
-Triggering change: PR #482 (retry logic without timeout budget)
-Timeline: 15-min lag deploy→symptom because retry amplification only saturates at peak (~200 req/min)
-Verification: Diff payment p99 and pool active count vs deploy time
-
-Secondary (15%): RDS connection limit
-Mechanism: Leaked connections from incomplete transactions hit max_connections
-Evidence for: Some connection timeout errors; no idle-in-transaction timeout configured
-Evidence against: RDS connections metric at 60% utilization
-Verification: Query pg_stat_activity for idle-in-transaction connections
-
-Remaining 10%: unaccounted - missing slow-query log evidence on replica
-```
+Propose a causal mechanism, not just the correlation. Consider multiple causal directions: A→B, B→A, or C→both. List the 2-3 specific evidence items that would raise confidence and where to get them.
 
 ## Output
 
@@ -112,7 +68,6 @@ Remaining ({remaining}%): unexplained.
 
 - Anchoring on the first hypothesis without considering alternatives
 - Restating a correlation as a mechanism (e.g., "high CPU correlates with 503s" is a correlation, not a mechanism)
-- Hypotheses without verification steps
 - Generic debugging suggestions instead of specific suspects
-- Ignoring DB topology (primary vs replica, read routing, replication lag) when DB signals are present
+- Ignoring topology context (DB primary/replica, cache tiers, regional routing, sharded queues) when signals point to a layered subsystem
 - Hypotheses spanning multiple system layers without tracing the causal chain between layers

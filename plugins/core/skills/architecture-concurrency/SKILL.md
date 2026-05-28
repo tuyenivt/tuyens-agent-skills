@@ -1,6 +1,6 @@
 ---
 name: architecture-concurrency
-description: Concurrency patterns adapted to the detected project stack - threading models, synchronization primitives, and safe concurrency practices.
+description: Review concurrency design across stacks - threading models, synchronization primitives, database locking, async pitfalls, and safe parallelism.
 metadata:
   category: architecture
   tags: [concurrency, threading, parallelism, multi-stack]
@@ -13,75 +13,94 @@ user-invocable: false
 
 ## When to Use
 
-- Designing concurrent or parallel processing in any backend service
-- Reviewing code that uses threads, goroutines, coroutines, locks, or background workers
-- Migrating from thread-per-request to lightweight concurrency models
-- Evaluating shared mutable state and synchronization strategies
+- Designing concurrent or parallel processing in a backend service
+- Reviewing code using threads, goroutines, coroutines, locks, or background workers
+- Evaluating shared mutable state, contention, or cancellation behavior
+- Deciding between in-process, database-level, or distributed coordination
 
-## Universal Principles
+## Rules
 
-- Prefer the concurrency primitive native to the detected stack
-- Shared mutable state is dangerous in every language - minimize it
-- Always define cancellation/timeout boundaries for concurrent work
-- Test concurrent code under contention, not just happy path
-- Unbounded concurrency is a resource leak - always limit parallelism
+- Use the concurrency primitive native to the detected stack; do not mix paradigms inside a module without cause
+- Bound every concurrent workload - pool size, semaphore, or queue. Unbounded fan-out is a resource leak
+- Every concurrent unit must have a cancellation or timeout boundary
+- Minimize shared mutable state; when unavoidable, protect it with the ecosystem's idiomatic mechanism
+- In-process locks do not coordinate across instances - use database or distributed locks for cross-process races
+- Distributed locks always carry a TTL; prefer idempotent operations over locks when feasible
 
----
+## Patterns
 
-## Concurrency Model Categories
+### Identify the Model
 
-Every language has a primary concurrency model. After loading stack-detect, identify which model the detected stack uses:
+After `stack-detect`, classify the runtime's primary model and reason about issues using its vocabulary:
 
-### Thread-Based Concurrency
+| Model                      | Primitive                    | Sync mechanisms                       | Common hazards                                                  |
+| -------------------------- | ---------------------------- | ------------------------------------- | --------------------------------------------------------------- |
+| Thread-based               | OS / virtual thread          | mutex, semaphore, monitor             | deadlock, lock contention, pool starvation, thread pinning      |
+| Coroutine / lightweight    | coroutine, task, goroutine   | channel, async/await, structured scope | blocking call in async context, lost cancellation, backpressure |
+| Process / actor            | process, actor               | message passing, mailboxes            | message ordering, serialization cost, supervision gaps          |
 
-- OS threads or virtual/lightweight threads managed by the runtime
-- Synchronization via locks, mutexes, semaphores
-- Key concerns: thread pinning, lock contention, deadlocks, pool sizing
-- Examples of ecosystems: Java (Virtual Threads), .NET (async/await with thread pool), Ruby (GVL-constrained threads)
+If the runtime has well-known constraints (GIL-style global locks, thread pinning under certain locks, blocking-call restrictions in async runtimes), name them in the assessment.
 
-### Coroutine/Lightweight-Task Concurrency
+### Database-Level Concurrency
 
-- Runtime-managed lightweight tasks that yield cooperatively
-- Synchronization via channels, async/await, structured concurrency
-- Key concerns: blocking in async context, cancellation propagation, backpressure
-- Examples of ecosystems: Go (goroutines + channels), Kotlin (coroutines), Elixir (processes), Python (asyncio), Rust (async/await with tokio)
+In-process locks protect one process. When multiple instances mutate the same row, coordinate in the database:
 
-### Process-Based Concurrency
+| Strategy            | Mechanism                                          | Use when                                       |
+| ------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Pessimistic         | `SELECT ... FOR UPDATE` row lock until commit      | Short transactions, high contention            |
+| Optimistic          | Version column checked at UPDATE; retry on conflict | Read-heavy, low contention                     |
+| Serializable        | DB aborts conflicting transactions                  | Multi-row invariants                           |
+| Advisory lock       | DB-managed app-level lock (e.g. `pg_advisory_lock`)| Cross-process coordination without row locking |
 
-- Separate OS processes or isolated runtime actors
-- Communication via message passing, shared-nothing architecture
-- Key concerns: serialization overhead, message ordering, supervision trees
-- Examples of ecosystems: Elixir/Erlang (BEAM processes), Ruby (forked workers)
+Bad - in-process mutex for a cross-instance race:
 
-## Stack-Specific Guidance
+```
+mu.Lock()
+inv := db.Get(productID)
+if inv.Qty >= n { db.Set(productID, inv.Qty - n) }
+mu.Unlock()
+```
 
-After loading stack-detect, apply concurrency patterns using the primitives and constraints of the detected stack:
+Two instances both read, both decrement, oversell.
 
-- **Identify the concurrency primitive**: What is the lightweight unit of concurrent work? (thread, goroutine, coroutine, process, task, fiber)
-- **Identify synchronization mechanisms**: What does the ecosystem use for coordination? (mutexes, channels, actors, async/await)
-- **Identify known constraints**: Does the runtime have limitations? (e.g., GIL/GVL preventing true thread parallelism, thread pinning with certain lock types, blocking calls in async runtimes)
-- **Identify pool sizing guidance**: What are the recommended pool sizes for the detected runtime's concurrency model?
+Good - conditional update is the lock:
 
-If the detected stack is unfamiliar, apply the universal principles above and recommend the user consult their runtime's concurrency documentation.
+```
+UPDATE inventory
+   SET qty = qty - :n, version = version + 1
+ WHERE product_id = :id AND version = :v AND qty >= :n
+```
 
----
+Zero rows affected means conflict or insufficient stock - retry or fail.
+
+### Distributed Coordination
+
+- Idempotency keys for webhook and event deduplication - preferred over locks
+- `SET NX` with TTL for simple distributed locks when idempotency is not possible
+- A crashed holder must not stall the system - TTL is mandatory
+
+### Testing for Contention
+
+Concurrency bugs surface only under contention:
+
+- Stress test: N parallel actors hitting shared state; assert invariants
+- Latch/barrier: start all actors simultaneously to maximize the contention window
+- Enable the runtime's race detector during tests where one exists
+- Every concurrent test has a timeout - a deadlock must fail the test, not hang CI
 
 ## Output Format
-
-Consuming workflow skills depend on this structure to surface concurrency issues consistently.
 
 ```
 ## Concurrency Assessment
 
 **Stack:** {detected language / framework}
-**Concurrency model:** {Thread-based | Coroutine/Lightweight-task | Process-based}
+**Concurrency model:** {Thread-based | Coroutine/Lightweight | Process/Actor}
 **Primary primitive:** {thread | goroutine | coroutine | process | task | fiber}
 
 ### Issues
 
-- [Severity: High | Medium | Low] {file:line if available} - {description of issue}
-  - Anti-pattern: {which anti-pattern from the list applies}
-  - Risk: {data race | deadlock | goroutine leak | blocking in async context | etc.}
+- [Severity: High | Medium | Low] {file:line if available} - {description}
+  - Risk: {data race | deadlock | resource leak | blocking in async context | cross-instance race | etc.}
   - Fix: {concrete correction using the detected stack's idioms}
 
 ### No Issues Found
@@ -89,79 +108,18 @@ Consuming workflow skills depend on this structure to surface concurrency issues
 {State explicitly if concurrency usage is safe - do not omit this section silently}
 ```
 
-**Severity guidance:**
+Severity:
 
-- **High**: Data race, deadlock risk, or unbounded concurrency with resource leak potential
-- **Medium**: Blocking call inside cooperative concurrency context, missing cancellation
-- **Low**: Style drift from the detected stack's idiomatic concurrency approach
+- **High**: data race, deadlock risk, unbounded concurrency, in-process lock used for a cross-instance race
+- **Medium**: blocking call in cooperative context, missing cancellation or timeout, distributed lock without TTL
+- **Low**: idiomatic drift from the detected stack's conventions
 
-Omit "No Issues Found" if issues were listed.
+Omit "No Issues Found" only when issues were listed.
 
-## Database-Level Concurrency
+## Avoid
 
-When concurrent requests modify the same database rows, in-process synchronization (mutexes, channels) is insufficient because the race spans multiple application instances. Use database-level strategies:
-
-| Strategy               | Mechanism                                                        | When to Use                                          |
-| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- |
-| Pessimistic locking    | `SELECT ... FOR UPDATE` - holds row lock until transaction end   | Short-lived transactions with high contention        |
-| Optimistic locking     | Version column checked at UPDATE time; retry on conflict         | Read-heavy workloads, low contention                 |
-| Serializable isolation | Database detects and aborts conflicting transactions             | Complex invariants across multiple rows              |
-| Advisory locks         | Application-level locks managed by DB (e.g., `pg_advisory_lock`) | Cross-process coordination without row-level locking |
-
-**Bad** - In-process mutex for a database race:
-
-```
-// This mutex only protects within a single process instance
-mu.Lock()
-inventory := db.GetInventory(productID)
-if inventory.Qty >= orderQty {
-    db.SetInventory(productID, inventory.Qty - orderQty)
-}
-mu.Unlock()
-```
-
-Problem: Two application instances can both read the same inventory and both decrement, overselling the product.
-
-**Good** - Database-level optimistic locking:
-
-```
-// Version column prevents lost updates across all instances
-result := db.Exec(
-    "UPDATE inventory SET qty = qty - ?, version = version + 1 WHERE product_id = ? AND version = ? AND qty >= ?",
-    orderQty, productID, currentVersion, orderQty,
-)
-if result.RowsAffected == 0 {
-    // Conflict or insufficient stock - retry or fail
-}
-```
-
-### Distributed Locking
-
-When mutual exclusion must span multiple application instances (e.g., webhook deduplication, scheduled job coordination):
-
-- Redis `SET NX` with TTL for simple distributed locks
-- Idempotency keys for webhook and event deduplication (preferred over distributed locks when possible)
-- Distributed locks are inherently fragile - prefer idempotent operations over lock-based coordination when the design allows it
-- If using distributed locks, always set a TTL to prevent deadlocks from crashed holders
-
-## Testing Concurrent Code
-
-Concurrency bugs often manifest only under contention. Test strategies that surface them:
-
-- **Stress testing**: Run N concurrent operations against shared state and verify invariants hold (e.g., counter matches expected value, no duplicate inserts)
-- **Deterministic scheduling**: Use test harnesses that control goroutine/coroutine/thread scheduling to force specific interleavings (where the ecosystem supports it)
-- **Race detection**: Enable the runtime's race detector during tests (e.g., `go test -race`, ThreadSanitizer, `--cfg tokio_unstable` for Tokio)
-- **Latch-based tests**: Use countdown latches or barriers to ensure all concurrent actors start simultaneously, maximizing contention window
-- **Timeout assertions**: Every concurrent test must have a timeout - a deadlock should fail the test, not hang the CI pipeline
-
-## Anti-Patterns (All Stacks)
-
-- Shared mutable state without explicit synchronization
-- Unbounded concurrency (always limit parallelism)
-- Fire-and-forget work without error handling or cancellation
-- Testing concurrent code only on the happy path
-- Mixing concurrency paradigms unnecessarily within a single module
-- Using blocking operations inside lightweight/cooperative concurrency contexts
-- Ignoring cancellation/timeout propagation across concurrent boundaries
-- Using in-process mutexes/locks for database-level race conditions (does not protect across multiple application instances)
-- Distributed locks without TTL (deadlock risk if the lock holder crashes)
+- Mixing concurrency paradigms inside one module without justification
+- Fire-and-forget work with no error path or cancellation
+- Treating in-process mutexes as protection against cross-instance races
+- Distributed locks where idempotency would suffice
+- Validating concurrent code only on the happy path
