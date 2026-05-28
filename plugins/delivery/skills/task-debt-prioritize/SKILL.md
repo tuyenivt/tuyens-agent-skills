@@ -10,20 +10,24 @@ user-invocable: true
 
 # Technical Debt Triage
 
-Produce a ranked debt backlog with explicit fix/spike/defer/accept calls. Audience: tech leads sizing the next quarter's debt budget. Not for writing the refactor itself (use `task-code-refactor`).
+Produce a ranked debt backlog with explicit fix/spike/defer/accept calls. Audience: tech leads sizing the next quarter's debt budget. Not for writing the refactor itself.
 
 ## When to Use
 
-- Quarterly planning, post-incident reviews, codebase onboarding, or making the case for debt investment
+- Quarterly planning, post-incident reviews, codebase onboarding, making the case for debt investment
 - When debt has accumulated and needs triage rather than blanket "fix everything"
-- Inputs: a list of debt items (free text, ticket IDs, or file/module names). Optional: team pain ratings, recent git log of changed files, capacity constraints
+
+## Inputs
+
+Required: a list of debt items (free text, ticket IDs, or file/module names).
+Optional: team pain ratings, recent git log of changed files, capacity constraints.
 
 ## Workflow
 
 ### STEP 1 - Setup
 
 Use skill: `behavioral-principles`.
-Use skill: `stack-detect` (shapes which tooling signals are relevant).
+Use skill: `stack-detect`. Stack output shapes the inference column (frontend vs backend vs infra) and the effort tiers.
 
 ### STEP 2 - Score Each Item on Three Axes
 
@@ -31,24 +35,27 @@ For every item, assign a level on each axis. The "If no data, infer from" column
 
 | Axis | Narrow / Low | Moderate / Medium | Wide / High | If no data, infer from |
 | --- | --- | --- | --- | --- |
-| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment path, high-traffic | Module name and described scope; auth/payment/billing default to Wide |
-| **Change Frequency** | <3 commits/90d - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint | API handlers / business logic → High; shared utilities → Medium; config / migrations / dead UI → Low |
-| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding | "Slow builds", "flaky tests", "incidents" → High; "confusing", "inconsistent" → Medium; "old", "deprecated", "unused" → Low (unless security) |
+| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment/billing path, high-traffic | Module name and described scope; auth/payment/billing default to Wide; checkout → Wide |
+| **Change Frequency** | <3 commits/90d - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint | Backend API handlers / business logic → High; shared utilities → Medium; admin UI / config / migrations / dead UI → Low |
+| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding | "Slow builds", "flaky", "incidents", "blocks merges", "takes hours" → High; "confusing", "inconsistent" → Medium; "old", "deprecated", "unused" → Low (unless security applies) |
 
-Use `Use skill: review-blast-radius` only when coupling is non-obvious from the description. If it returns `Critical`, map to **Wide** here and tag the item `critical-data-risk` in Assumptions.
+Use `Use skill: review-blast-radius` only when coupling is non-obvious. If it returns `Critical`, map to **Wide** and tag the item `critical-data-risk` in Assumptions.
 
-**Time-sensitive boost.** Mark an item `time-sensitive` and force action to **Fix now** when any apply:
-- Unpatched CVE on a runtime/library/transitive dep
-- Vendor or LTS EOL within 6 months
+**Security inference.** Mark `time-sensitive` (forces Fix now) and treat as Wide blast radius when any apply, including via reasonable inference from item text:
+- Named CVE or "vulnerability"
+- Deprecated runtime/library/framework version with publicly documented CVEs (e.g., Log4j 1.x, jQuery <3.5, EOL Node majors, EOL Postgres) - even if input doesn't name the CVE
+- Vendor or LTS EOL within 6 months of today's date (inclusive)
 - Public API deprecation cutoff with a published date
 - Compliance or contractual deadline
+
+When inferring a CVE without explicit mention, note the assumption: `Assumed time-sensitive: <library> has documented CVEs at this version; ask if you want it reclassified.`
 
 ### STEP 3 - Rank
 
 Sort by `(Blast Radius, Change Frequency, Team Pain)` lexicographically (Wide > Moderate > Narrow, then High > Medium > Low). Tiebreaks in order:
 
 1. Time-sensitive items rank above non-time-sensitive peers
-2. Cheaper effort (S before L/XL)
+2. Cheaper effort (S before L, L before XL)
 
 If an item bundles two workstreams (e.g., "fix flakes" + "speed up build", or "deprecate API" + "remove API"), split into separately-ranked entries and note the split in Assumptions.
 
@@ -56,46 +63,51 @@ If an item bundles two workstreams (e.g., "fix flakes" + "speed up build", or "d
 
 | Action | When |
 | --- | --- |
-| **Fix now** | Time-sensitive, OR Wide blast radius with either Change Frequency or Pain at Medium-or-higher, OR High Change Frequency with Medium-or-higher Pain |
-| **Spike** | Impact unclear; needs investigation before committing to a fix size |
+| **Fix now** | Time-sensitive, OR Wide blast radius with Change Frequency or Pain at Medium+, OR High Change Frequency with Medium+ Pain |
+| **Spike** | Impact unclear; needs investigation before sizing |
 | **Defer** | Workable now but will degrade; revisit next quarter. Includes Wide-blast-radius items currently low on both other axes (e.g., framework upgrades with no deadline) |
 | **Accept** | Stable code, no functional or security risk - document and move on |
 
-Defer means "will revisit"; Accept means "will not fix unless conditions change". Pick Accept when there's no plausible future trigger.
+Defer means "will revisit"; Accept means "will not fix unless conditions change". Pick Accept only when there is no plausible future trigger.
 
-### STEP 5 - Effort for Top Picks
+### STEP 5 - Effort
 
-For every **Fix now** and **Spike** item, give an effort:
+For every **Fix now** and **Spike** item, assign an effort tier:
 
 - **S** (<half day): rename, extract, dep bump
-- **M** (1-2 days): refactor a module, add coverage to a class
-- **L** (3-5 days): redesign a component, migrate a pattern
-- **XL** (>5 days): architectural change - emit as a `split epic` flag, not an entry in this backlog
+- **M** (1-2 days): refactor a module, add coverage to a class, add structured logging to a service
+- **L** (3-5 days): redesign a component, migrate a pattern, runtime upgrade
+- **XL** (>5 days): architectural change
+
+XL Fix-now items stay in the **Top Priorities** list (do not silently drop) and additionally appear in **Split as Separate Epic** with a scoping note. Their presence in both sections is intentional: the ranking shows urgency, the split section shows the planning unit.
 
 ## Output Format
 
 ```markdown
 # Technical Debt Triage
 
-**Stack:** {detected} | **Items:** {count} | **Date:** {today}
+**Stack:** <detected> | **Items:** <count> | **Date:** <YYYY-MM-DD>
 
 ## Ranked Backlog
 
 | Rank | Debt Item | Blast Radius | Change Freq | Team Pain | Action | Effort |
 | ---- | --------- | ------------ | ----------- | --------- | ------ | ------ |
 | 1    | …         | Wide         | High        | High      | Fix now | M      |
+| 2    | …         | Wide         | High        | High      | Fix now | XL → split |
+| 3    | …         | Moderate     | Medium      | High      | Fix now | M      |
+| 4    | …         | Narrow       | Low         | Low       | Accept  | -      |
 
 ## Top Priorities
 
-### 1. {Item}
+### 1. <Item>
 
-- **Location:** {file/module}
-- **Type:** complexity | coverage | coupling | dependency | security | performance | docs
-- **Axes:** Wide / High / High - {one-line rationale per axis}
+- **Location:** <file/module>
+- **Type:** complexity | coverage | coupling | dependency | security | performance | observability | docs
+- **Axes:** Wide / High / High - <one-line rationale per axis>
 - **Action:** Fix now (effort: M)
-- **Why now:** {one sentence on why this beats #2}
+- **Why now:** <one sentence on why this beats the next item>
 
-[repeat for top 5; or fewer if the backlog is small]
+[repeat for top 5 or fewer]
 
 ## Deferred
 
@@ -109,29 +121,29 @@ For every **Fix now** and **Spike** item, give an effort:
 
 ## Split as Separate Epic
 
-- {XL item} - {one-line scope}
+- <XL item> - <scoping note: what carve-out makes this plannable>
 
 ## Assumptions
 
-- {Anything inferred because input was incomplete}
-- {Bundled items split; critical-data-risk tags}
+- <inferences made because input was incomplete, e.g., assumed CVE on deprecated library>
+- <bundled items split; critical-data-risk tags>
 ```
 
-Every input must appear in exactly one of: ranked backlog, deferred, accepted, or split-as-epic. Silent drops are the cardinal error.
+Type enum is derived from the item's nature: tests/coverage gaps → `coverage`; god classes/cycles → `coupling`; library/runtime → `dependency`; vulnerable code/CVE → `security`; slow code → `performance`; missing logs/metrics → `observability`; high cyclomatic / unclear code → `complexity`; missing docs → `docs`.
+
+Every input must appear exactly once across the ranked backlog (incl. XL Fix-now), Deferred, Accepted, or Split as Separate Epic. Silent drops are the cardinal error.
 
 ## Self-Check
 
-- [ ] **Setup:** behavioral-principles + stack-detect loaded
-- [ ] **Score:** every item scored on all three axes; missing data filled from the inference column with the source noted
-- [ ] **Rank:** lex order on (BR, CF, Pain); tiebreaks applied in declared order; time-sensitive items forced to Fix now
-- [ ] **Action:** every item has Fix now / Spike / Defer / Accept; Defer vs Accept distinction respected
-- [ ] **Effort:** every Fix-now and Spike has an effort tier; XL items routed to Split as Separate Epic, not the backlog
-- [ ] No item silently dropped
+- [ ] **Score:** every item scored on all three axes; missing data filled from the inference column with the source noted; security inferences flagged in Assumptions
+- [ ] **Rank:** lex order on (BR, CF, Pain) with declared tiebreaks; time-sensitive forced to Fix now
+- [ ] **Action and Effort:** every item has Fix-now / Spike / Defer / Accept; Fix-now and Spike carry effort; XL Fix-now appears in both Top Priorities and Split as Separate Epic
+- [ ] **Coverage:** no item silently dropped
 
 ## Avoid
 
 - Estimating in calendar days unless asked
 - Recommending fixes for everything - Accept and Defer are valid
-- Generating refactoring code (use `task-code-refactor`)
+- Generating refactoring code
 - Ranking on code aesthetics when functional risk is absent
 - Numeric scoring - the three axes already encode priority

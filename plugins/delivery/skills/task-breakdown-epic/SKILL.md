@@ -21,7 +21,10 @@ Produce vertically-sliced, demoable user stories ready for sprint commitment. Fo
 ## Inputs
 
 Required: a feature or epic description.
-Ask before slicing if **primary user** or **outcome** is missing - inventing them produces useless stories. A "user" can be an engineer, internal admin, API consumer, or end customer; the slicing pattern depends on which.
+
+Ask before slicing when **primary user** or **outcome** is missing or generic ("so users are happy"). A "user" can be an engineer, internal admin, API consumer, or end customer; the slicing pattern depends on which. When the epic spans multiple primary users, name them all and either slice per-user (User roles pattern) or pick one as primary and defer the others to Out-of-scope.
+
+Echo the user's vocabulary ("customer" stays "customer", not silently promoted to "member") unless the user states the mapping.
 
 ## Workflow
 
@@ -29,15 +32,13 @@ Ask before slicing if **primary user** or **outcome** is missing - inventing the
 
 Use skill: `behavioral-principles`.
 
-This workflow is stack-agnostic and does not load `stack-detect`.
-
 ### STEP 2 - Frame the Feature
 
 Restate as one sentence: **"As a <user>, I want to <capability>, so that <outcome>."** State assumptions explicitly when input was thin.
 
 ### STEP 3 - Pick a Slicing Pattern
 
-Pick the **primary** axis and optionally a **secondary** cut (most multi-actor or multi-surface features need both). Name each axis; briefly note why others were rejected.
+Pick a **primary** axis. Add a **secondary** axis only when the primary alone produces stories that still cover multiple actors or surfaces. Name each axis; briefly note why others were rejected.
 
 | Pattern | Cut along… | Use when |
 | --- | --- | --- |
@@ -56,22 +57,37 @@ If the only honest slicing feels layered (backend-only / frontend-only), the fea
 
 Each story:
 
-- **Title** - imperative, user-facing ("Member can save a draft order", not "Add draft persistence")
-- **Story** - As a <user>, I want to <capability>, so that <outcome>
-- **Acceptance Criteria** - 1-3 Given/When/Then bullets. Include at least one edge-case AC unless the story is genuinely single-path (size XS).
+- **Title** - imperative, user-facing. Example: "Member can save a draft order" (good); "Add draft persistence" (bad - implementation framing)
+- **Story** - `As a <user>, I want to <capability>, so that <outcome>`
+- **Acceptance Criteria** - 1-3 Given/When/Then bullets describing observable behavior, not implementation. Include at least one edge-case AC unless the story is single-path (size XS).
 - **Demo** - one sentence on what's shown in sprint review
-- **Size** - XS (<1d) / S (1-2d) / M (3-5d). No L/XL - re-slice instead.
-- **Depends on** - story #N, external (<what>), or none (default and preferred)
-- **Out of scope** - what is intentionally deferred (prevents scope drift)
-- **Safety** - only when a slice carries irreversible side effects or rides a feature flag; one line summarizing the risk and gating
+- **Size** - XS (<1d) / S (1-2d) / M (3-5d), focused engineering effort. No L/XL - re-slice instead. If your team estimates in story points, map XS=1, S=2-3, M=5.
+- **Depends on** - story #N (sequencing only), external (<what>), or none. Sequencing deps do not violate Independence.
+- **Out of scope** - what is intentionally deferred
+- **Safety** - one line, only when the slice carries an irreversible side effect (data loss, money movement, external notification) AND is not gated by an existing safety net. Pure flag-gating without an irreversible action does not require a Safety line.
 
-If any story has a Safety line, load `Use skill: review-blast-radius` (irreversible side effects) or `Use skill: ops-feature-flags` (flagged rollout) to ground the note.
+When any story has a Safety line: load `Use skill: review-blast-radius` to ground the risk wording; load `Use skill: ops-feature-flags` if a flag is the proposed gate.
+
+Micro-example of one slice:
+
+```
+### 1. Member can save a draft order
+
+- **Story:** As a member, I want to save my cart as a draft, so that I can finish ordering later.
+- **AC:**
+  - Given a cart with items, when the member taps "Save draft", then the draft appears under "My drafts" with all items preserved
+  - Given a saved draft, when the member resumes it, then the cart is restored exactly as saved
+- **Demo:** Add items, save draft, log out, log in, resume - cart restored.
+- **Size:** S
+- **Depends on:** none
+- **Out of scope:** sharing drafts; auto-save; expiry
+```
 
 ### STEP 5 - Sequence and INVEST Pass
 
-Order so the highest-value slices come first. For each story confirm it can ship and demo without later siblings; if not, name the blocker or re-slice.
+Order stories so highest-value lands first, but identify the **first demoable slice** as the smallest story that proves the concept end-to-end - it may sequence before higher-value stories when those need it as a foundation.
 
-INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable, **E**stimable, **S**mall, **T**estable. Flag any story failing one and re-slice or document the exception as: `#N fails <axis> (<reason>); accepted because <justification>`.
+INVEST validation - **I**ndependent (no semantic coupling; pure sequencing is fine), **N**egotiable, **V**aluable, **E**stimable, **S**mall, **T**estable. Flag any story failing one and re-slice or document: `#N fails <axis> (<reason>); accepted because <justification>`.
 
 ## Output Format
 
@@ -96,7 +112,7 @@ INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable,
 - **Size:** XS / S / M
 - **Depends on:** none | #N | external (<what>)
 - **Out of scope:** <list>
-- **Safety:** <only when irreversible or flag-gated>
+- **Safety:** <only when irreversible and ungated>
 
 [repeat per story]
 
@@ -106,7 +122,7 @@ INVEST is the validation rubric - **I**ndependent, **N**egotiable, **V**aluable,
 2. #2 (parallel with #1)
 3. #3 (after #1)
 
-**First demoable slice:** #N - the smallest story that proves the concept end-to-end.
+**First demoable slice:** #N - <why this is the smallest end-to-end proof>
 
 ## INVEST Exceptions
 
@@ -123,15 +139,16 @@ Omit if all pass.
 ## Self-Check
 
 - [ ] **Setup:** behavioral-principles loaded
-- [ ] **Frame:** primary user named (asked, not invented); one-sentence frame produced
+- [ ] **Frame:** primary user named (asked, not invented); user vocabulary preserved; one-sentence frame produced
 - [ ] **Pattern:** primary axis named; secondary or "none" stated; rejected alternatives listed
-- [ ] **Slices:** every story has Title, Story, AC, Demo, Size (XS/S/M), Depends-on, Out-of-scope; Safety line present iff slice is irreversible or flag-gated
+- [ ] **Slices:** every story has Title, Story, AC (observable behavior), Demo, Size (XS/S/M), Depends-on, Out-of-scope; Safety line present iff irreversible AND ungated
 - [ ] **Sequence + INVEST:** first demoable slice identified; INVEST exceptions documented (or none)
+- [ ] **Assumptions and Open Questions** section populated when input was thin
 
 ## Avoid
 
 - Layered slices (backend-only / frontend-only) - not demoable
 - "Setup" or "infrastructure" stories - those are tasks inside a story
-- ACs as implementation hints ("Use Redis") instead of observable behavior
-- Treating ACs as test cases - ACs are agreement of done; tests verify them
-- Inventing a primary user
+- ACs written as implementation hints ("Use Redis") instead of observable behavior
+- Treating Given/When/Then ACs as test cases - ACs are the agreement of done; tests verify them
+- Inventing or silently renaming the primary user

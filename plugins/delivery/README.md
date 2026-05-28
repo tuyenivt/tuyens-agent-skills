@@ -24,8 +24,8 @@ No plugin-local atomics. All atomic skills used by delivery workflows live in th
 | Core Atomic                  | Used By                                                             |
 | ---------------------------- | ------------------------------------------------------------------- |
 | `behavioral-principles`      | all workflow skills                                                 |
-| `stack-detect`               | `task-breakdown-story`, `task-release-notes`                        |
-| `review-blast-radius`        | `task-breakdown-epic`, `task-breakdown-story`, `task-release-notes` |
+| `stack-detect`               | `task-breakdown-story`, `task-debt-prioritize`, `task-release-notes` |
+| `review-blast-radius`        | `task-breakdown-epic`, `task-breakdown-story`, `task-debt-prioritize`, `task-release-notes` |
 | `review-change-risk`         | `task-breakdown-story`, `task-release-notes`                        |
 | `ops-backward-compatibility` | `task-breakdown-story`, `task-release-notes`                        |
 | `ops-release-safety`         | `task-release-notes`                                                |
