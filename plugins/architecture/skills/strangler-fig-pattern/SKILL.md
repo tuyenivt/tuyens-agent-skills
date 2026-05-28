@@ -20,8 +20,8 @@ user-invocable: false
 
 ## Rules
 
-- Legacy and new systems coexist throughout migration; rollback to legacy is possible at every stage until decommission
-- Every migrated capability passes a verification gate before promotion
+- Legacy and new coexist throughout; rollback to legacy is possible at every stage until decommission
+- Every migrated capability passes a verification gate before promotion to higher traffic
 - Data consistency between legacy and new is addressed explicitly per phase
 - Migration order is set by risk and dependency, not convenience or team preference
 
@@ -29,15 +29,11 @@ user-invocable: false
 
 ### Five phases
 
-**1. Intercept** - Place a routing layer (proxy, gateway, facade) in front of legacy. All traffic still flows to legacy. Establish baseline metrics (latency, error rate, throughput) per capability and verify the routing layer adds no observable degradation.
-
-**2. Build** - Implement the target capability in the new system, running alongside legacy with no production traffic. Validate functional correctness with tests and shadow traffic if possible. Establish dual-write or data-sync strategy if data ownership is migrating.
-
-**3. Route** - Gradually shift traffic from legacy to new. Start with lowest-risk segment (internal users, read-only operations, low-volume endpoints). Use feature flags or traffic percentage to control rollout. Compare responses (shadow comparison or canary metrics). Promote only when error rate and latency stay within baseline and data consistency holds.
-
-**4. Verify and Expand** - Confirm data consistency, monitor edge cases that surface at higher percentages, expand to the next capability only after the current is stable at 100%. Update routing to point migrated capability directly at the new system.
-
-**5. Decommission** - Verify zero traffic to legacy for migrated capabilities. Remove legacy code paths, data sync jobs, compatibility shims, routing rules, and feature flags. Archive legacy documentation.
+1. **Intercept** - place a routing layer (proxy, gateway, facade) in front of legacy. All traffic still flows to legacy. Establish baseline metrics (latency, error rate, throughput) per capability and verify the routing layer adds no observable degradation.
+2. **Build** - implement the target capability in the new system alongside legacy with no production traffic. Validate with tests and shadow traffic if possible. Establish dual-write or data-sync if data ownership is migrating.
+3. **Route** - shift traffic gradually. Start with the lowest-risk segment (internal users, read-only operations, low-volume endpoints). Use feature flags or traffic percentage. Compare responses (shadow or canary). Promote only when error rate and latency stay within baseline and data consistency holds.
+4. **Verify** - confirm parity at the current traffic share before advancing. The verification gate (below) is the promotion criterion. Edge cases that surface at higher percentages must be addressed before moving on; only after the capability is stable at 100% does the next capability enter Route.
+5. **Decommission** - verify zero traffic to legacy for migrated capabilities. Remove legacy code paths, data sync jobs, compatibility shims, routing rules, and feature flags. Archive legacy documentation.
 
 ### Routing Strategy
 
@@ -59,20 +55,20 @@ user-invocable: false
 | Batch sync                | Freshness tolerance is hours/days             | Stale data, sync job failures             |
 | Full migration            | Clean cutover possible for data partition     | Requires downtime or careful coordination |
 
-### Migration Order
+### Default Migration Order
 
-Default order, adapt to context: stateless read-only → stateless writes → stateful with simple data models → complex domain operations → shared infrastructure (auth, logging, config) last because its blast radius is widest.
+Stateless read-only -> stateless writes -> stateful with simple data models -> complex domain operations -> shared infrastructure (auth, logging, config) last because its blast radius is widest.
 
 ### Verification Gate
 
-Before promoting each migrated capability:
+Promote a capability only when all hold:
 
-- [ ] Functional parity confirmed (same inputs produce equivalent outputs)
-- [ ] Error rate and latency within baseline thresholds
-- [ ] Data consistency verified (no loss, no duplicates)
-- [ ] Rollback tested and confirmed working
-- [ ] Downstream consumers unaffected
-- [ ] Production-traffic edge cases handled
+- Functional parity confirmed (same inputs produce equivalent outputs)
+- Error rate and latency within baseline thresholds
+- Data consistency verified (no loss, no duplicates)
+- Rollback tested and confirmed working
+- Downstream consumers unaffected
+- Production-traffic edge cases handled
 
 ### Example phase entry
 

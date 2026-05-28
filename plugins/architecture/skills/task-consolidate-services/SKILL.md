@@ -44,9 +44,9 @@ For inputs naming only 1-3 specific services, skip the full landscape map and fo
 
 | Depth      | When to Use                                           | Sections Produced                                     |
 | ---------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `quick`    | Initial assessment, "which services should merge?"    | Smell detection + merge candidates + top risks        |
+| `quick`    | Initial assessment, "which services should merge?"    | Smell detection + merge candidates + top risks (skips Section 1; uses provided inventory directly) |
 | `standard` | Default -- consolidation plan for leadership sign-off | All 7 sections                                        |
-| `deep`     | Large service mesh, multi-team ownership              | All 7 sections + dependency deep-dive + latency model |
+| `deep`     | Large service mesh, multi-team ownership              | All 7 sections + dependency deep-dive (per merge group, transitive call/data dependencies) + latency model (synchronous call chain p50/p99 per critical path) |
 
 ## Rules
 
@@ -78,8 +78,7 @@ Use smell detection to find merge candidates:
 | Shared database         | Multiple services read/write the same tables                    | No real boundary; merge or fix ownership     |
 | Circular dependencies   | A -> B -> A call chains                                         | Boundary drawn in wrong place                |
 | Distributed transaction | Saga/2PC for what was a single DB transaction in monolith       | Artificial split; merge restores atomicity   |
-| Single consumer         | Service exists only because one other service calls it          | Inline into the consumer                     |
-| Proxy service           | Service adds no logic, just forwards requests                   | Remove the proxy, connect directly           |
+| Single consumer / proxy | Service exists only because one caller exists, or adds no logic beyond forwarding | Inline into the consumer or remove the proxy |
 | Team mismatch           | One person maintains 5+ services                                | Consolidate to match team capacity           |
 
 Per smell detected: services affected, evidence (call frequency, deploy coupling, shared tables), recommendation. The Smells Detected table in the Output template is the contract.
@@ -114,7 +113,7 @@ Per merge group: current layout (DBs/schemas/tables), target unified schema, mig
 - **Different engines:** pick target, migrate data.
 - **Event-sourced:** merge event stores or project to a unified store.
 
-**Full 5-phase template** (only when data physically relocates): dual-read -> migrate/transform -> dual-write -> cutover -> cleanup.
+**Full 5-phase template** (only when data physically relocates): dual-read -> migrate/transform -> dual-write -> cutover -> cleanup. State per phase: schema/data state, app behavior, verification, rollback.
 
 ### 5. Consolidation Phasing [standard/deep only]
 

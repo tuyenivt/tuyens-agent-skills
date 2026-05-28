@@ -13,24 +13,24 @@ user-invocable: false
 
 ## When to Use
 
-Two or more architecture proposals exist for the same problem space - including:
+Two or more proposals exist for the same problem space, including:
 
 - A new proposal vs. an existing design doc
-- A team deciding between architecture styles (event-driven vs request-driven) even when no formal proposals exist; treat each option as a proposal
+- A team deciding between architecture styles (event-driven vs request-driven) - treat each option as a proposal
 - An ADR with three or more considered alternatives
 
 ## Rules
 
-- Apply the same criteria to every proposal; missing information scores lower, not skipped
+- Apply the same criteria to every proposal; missing information scores **Not addressed**, not skipped
 - Every score cites proposal evidence, not assumption
-- A tie is not a valid output - state a winner with reasoning
-- Flag scope mismatch before comparing; if one proposal addresses fewer than three criteria, weight the recommendation accordingly
+- A tie is not a valid output - declare a winner with reasoning
+- Distinguish scope mismatch (proposals solving different problems) from coverage gap (proposal omits criteria) - flag scope mismatch before comparing
 
 ## Pattern
 
-Score each proposal on the six-criterion rubric defined in `architecture-review-lens` Section 6 (Boundary clarity, Failure containment, Consistency model, Operability, Reversibility, Cost and complexity). Use the same **Strong / Adequate / Weak / Not addressed** levels, each with a 1-2 sentence evidence citation.
+Score each proposal on the six criteria from `architecture-review-lens` Section 6 (Boundary clarity, Failure containment, Consistency model, Operability, Reversibility, Cost and complexity) at **Strong / Adequate / Weak / Not addressed / N/A**, each with a 1-2 sentence evidence citation.
 
-Then identify (a) the criterion each proposal is strongest and weakest on, and (b) any conflicting assumptions (different problem scope, different constraints).
+Identify per proposal: the criterion it is strongest and weakest on, and any conflicting assumptions (different scope, different constraints).
 
 ## Output Format
 
@@ -45,7 +45,7 @@ Then identify (a) the criterion each proposal is strongest and weakest on, and (
 
 ### Scope Check
 
-{Are all proposals addressing the same problem? If not, state the scope difference before proceeding.}
+{Are all proposals addressing the same problem and constraints? If not, state the scope difference before proceeding.}
 
 ### Comparison Matrix
 
@@ -62,23 +62,22 @@ Then identify (a) the criterion each proposal is strongest and weakest on, and (
 
 **Recommended: Proposal {X}**
 
-Primary reasons:
-
 - {Criterion where it is strongest and why that matters most for this problem}
 - {Second differentiator}
 
 Key trade-off accepted: {what Proposal X is weaker on, and why that is acceptable in context}
 
-Conditions: {gaps in the recommended proposal that must be addressed before adoption}
+### Conditions for Adoption
+
+{Gaps in the recommended proposal that must be addressed before adoption. Omit if none.}
 
 ### What to Take from Rejected Proposals
 
-- From Proposal {Y}: {specific element worth incorporating}
-- From Proposal {Z}: {if applicable}
+{Specific element worth incorporating, per rejected proposal. Omit the section if nothing is worth carrying over.}
 ```
 
 ## Avoid
 
 - Recommending a hybrid when one proposal is clearly stronger - hybrids dodge the decision
-- Treating "more detail" as "stronger" - a concise proposal may outrank a verbose one
+- Treating "more detail" as "stronger" - a concise proposal can outrank a verbose one
 - Defaulting to the most recent or polished proposal; evaluate substance

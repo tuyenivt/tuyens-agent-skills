@@ -20,14 +20,14 @@ user-invocable: false
 
 ## Rules
 
-- Boundaries are defined by data ownership, not code structure (packages are not boundaries)
-- Every boundary has an explicit contract (API, event, shared-nothing) and a failure-isolation guarantee
-- One module owns each entity exclusively; cross-boundary access goes through API or event - never direct DB queries
+- Boundaries are defined by data ownership, not code structure - packages alone are not boundaries
+- Each boundary has an explicit contract (API, event, shared-nothing) and a failure-isolation guarantee
+- One module owns each entity exclusively; cross-boundary access goes through API or event, never direct DB queries
 - Shared mutable state across boundaries is a smell; if intentional, make it explicit
 
 ## Pattern
 
-### Boundary entry (good vs bad)
+### Boundary entry
 
 **Bad** - no ownership or isolation:
 
@@ -47,7 +47,7 @@ Hidden: Internal state machine, pricing calculation, DB schema
 Failure Isolation: OrderService failure does not affect PaymentService reads; pending payments remain queued
 ```
 
-### Boundary Communication
+### Communication patterns
 
 | Pattern          | Use When                               | Trade-off                        |
 | ---------------- | -------------------------------------- | -------------------------------- |
@@ -56,11 +56,11 @@ Failure Isolation: OrderService failure does not affect PaymentService reads; pe
 | Shared cache     | Read-heavy, staleness acceptable       | Invalidation risk, stale reads   |
 | Data replication | Consumer needs local query flexibility | Sync lag, storage cost           |
 
-### Decomposition Signals
+### Decomposition signals
 
-**Split when**: two teams need independent deploys; data ownership is clearly separable; failure in one part should not affect the other; scaling requirements differ significantly.
+**Split when** two teams need independent deploys, data ownership is clearly separable, failure in one part should not affect the other, or scaling requirements differ significantly.
 
-**Keep together when**: strong transactional consistency is required between entities; data is tightly coupled and queried together; splitting would require distributed transactions.
+**Keep together when** strong transactional consistency is required between entities, data is tightly coupled and queried together, or splitting would force distributed transactions.
 
 ## Output Format
 
@@ -78,13 +78,9 @@ Failure Isolation: OrderService failure does not affect PaymentService reads; pe
 | From     | To       | Pattern                               | Data Exchanged | Trade-off                        |
 | -------- | -------- | ------------------------------------- | -------------- | -------------------------------- |
 | {module} | {module} | Sync API / Async event / Shared cache | {what crosses} | {coupling, latency, consistency} |
-
-### Data Ownership Summary
-
-| Entity   | Owning Boundary | Access Method for Others         | Consistency Model |
-| -------- | --------------- | -------------------------------- | ----------------- |
-| {entity} | {boundary}      | API / Event subscription / Cache | Strong / Eventual |
 ```
+
+Cross-boundary consistency strategy belongs in `architecture-data-consistency` output, not here.
 
 ## Avoid
 

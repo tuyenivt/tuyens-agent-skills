@@ -43,13 +43,12 @@ Handle partial inputs gracefully. When row counts or schema are missing, state a
 
 ## Rules
 
-- Rollback designed before the migration runs, not after it fails; flag any phase needing backup restore
+- Rollback designed before the migration runs; flag any phase needing backup restore
 - Every lock-acquiring operation states lock type and estimated duration
-- Expand-contract is the default for zero-downtime; skip only with explicit justification
-- Backfill is always batched and idempotent - never unbounded UPDATE on a production table
+- Expand-contract is the default for zero-downtime; skip only with explicit downtime authorization
+- Backfill is batched and idempotent - never unbounded UPDATE on a production table
 - Application code stays backward compatible with old and new schema during transition
 - Flag multi-service deployment ordering when schemas are shared
-- State missing inputs rather than guessing; omit empty sections
 
 ## Migration Planning Model
 

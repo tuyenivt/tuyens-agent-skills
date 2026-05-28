@@ -82,21 +82,7 @@ Handle partial inputs gracefully. When input is missing, state assumptions expli
 | `standard` | Default - pre-implementation design for Staff/Principal sign-off                 | All 12 sections (API contracts, C4 Container diagram included)         |
 | `deep`     | Large cross-team changes, capacity-sensitive systems, or post-incident redesigns | All 12 sections + capacity model + failure simulation + extra diagrams |
 
-**Quick depth produces:**
-
-- Problem framing (functional scope, NFRs, constraints)
-- System boundary sketch (modules, data ownership, one sentence per component)
-- Top 1-2 trade-offs with reasoning
-- Skips API contracts (Section 11) and diagrams (Section 12)
-
-**Deep depth adds (on top of standard):**
-
-- Capacity model with per-component throughput estimates and saturation point
-- Failure simulation: walk through 2-3 cascading failure scenarios end-to-end
-- Evolution notes: what changes if traffic doubles or a key dependency is removed
-- Additional diagrams beyond C4 Container: sequence diagrams for every non-trivial flow, data flow, deployment topology
-
-Default: `standard`. If the user asks for a "quick design check" or "rough architecture", use `quick`. If they ask for "full design" or "staff-level review", use `standard` or `deep`.
+Default: `standard`. Use `quick` for "rough architecture" or "is this direction sensible"; use `deep` for cross-team changes, capacity-sensitive systems, or post-incident redesigns. Deep adds the Capacity Model, Failure Simulation, and Evolution Notes sections in the Output template plus extra diagrams beyond C4 Container.
 
 ## Rules
 
@@ -121,8 +107,6 @@ Capture:
 - **Assumptions** -- what is assumed true but not yet validated
 
 Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
-
-Use skill: `ops-engineering-governance` to verify alignment with existing engineering standards and design governance triggers.
 
 ### 2. System Context and Boundary Definition
 
@@ -216,12 +200,7 @@ When applicable: **C4 Context** (3+ external interactors), **Sequence** (non-obv
 - One abstraction level per diagram (no Context/Container mixing)
 - Diagram Notes (Scope / Assumptions / Next level) accompany each diagram; assumptions go in Notes, not silently inside the diagram
 
-**Mermaid syntax cues:**
-
-- C4 Container: `C4Container` with `Person`, `System_Boundary`, `Container`, `ContainerDb`, `ContainerQueue`, `System_Ext`, `Rel`
-- Sequence: `sequenceDiagram` with `autonumber`; `->>` sync request, `-->>` sync response, `--)` async fire-and-forget
-- Data flow: `flowchart LR` for pipelines, `TD` for hierarchies; shapes `[service]`, `[(db)]`, `([queue])`; dashed arrows for async
-- Deployment: nested `subgraph`s for provider > region > VPC > subnet; include instance counts
+Use Mermaid's standard syntax: `C4Container` for C4, `sequenceDiagram` with `autonumber` for sequence, `flowchart LR/TD` for data flow, nested `subgraph` blocks for deployment topology.
 
 ## Output
 
@@ -416,19 +395,19 @@ _Skip with a one-liner if a current diagram already exists or the design is too 
 ### Container Diagram (C4)
 
 ```mermaid
-{C4Container code per Section 12 template}
+{Mermaid C4Container code showing major deployable units, data stores, queues, and external systems}
 ```
 
 ### Sequence Diagram - {Flow name} _(when ordering or async/sync semantics are non-obvious)_
 
 ```mermaid
-{sequenceDiagram code per Section 12 template}
+{Mermaid sequenceDiagram code for the flow}
 ```
 
 ### Data Flow / Deployment _(include when applicable)_
 
 ```mermaid
-{flowchart code per Section 12 template}
+{Mermaid flowchart or deployment subgraph code}
 ```
 
 ### Diagram Notes

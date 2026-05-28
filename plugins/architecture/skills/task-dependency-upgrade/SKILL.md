@@ -93,13 +93,12 @@ State the security status of the current version regardless of whether the upgra
 
 Aggregate the effort from Step 2 and any compatibility work from Step 3:
 
-| Component                | Effort   | Notes                             |
-| ------------------------ | -------- | --------------------------------- |
-| Breaking change fixes    | S/M/L/XL | Per change or aggregate           |
-| Compatibility resolution | S/M/L/XL | Transitive conflicts, build tool  |
-| Test update              | S/M/L/XL | Test library compat, new patterns |
-| Validation               | S/M/L/XL | Integration tests, smoke tests    |
-| **Total**                | S/M/L/XL | Combined estimate                 |
+| Component                | Effort   | Notes                                          |
+| ------------------------ | -------- | ---------------------------------------------- |
+| Breaking change fixes    | S/M/L/XL | Per change or aggregate                        |
+| Compatibility resolution | S/M/L/XL | Transitive conflicts, build tool               |
+| Test and validation      | S/M/L/XL | Test library compat, integration + smoke tests |
+| **Total**                | S/M/L/XL | Combined estimate                              |
 
 Size guidance:
 
@@ -203,13 +202,12 @@ Output header: `# Upgrade Assessment Review` and use the output structure define
 
 ## Migration Effort Breakdown
 
-| Component                | Effort         | Notes                           |
-| ------------------------ | -------------- | ------------------------------- |
-| Breaking change fixes    | {S/M/L/XL}     | {count of changes}              |
-| Compatibility resolution | {S/M/L/XL}     | {what needs resolving}          |
-| Test updates             | {S/M/L/XL}     | {scope of test impact}          |
-| Validation               | {S/M/L/XL}     | {integration / smoke test plan} |
-| **Total**                | **{S/M/L/XL}** |                                 |
+| Component                | Effort         | Notes                                          |
+| ------------------------ | -------------- | ---------------------------------------------- |
+| Breaking change fixes    | {S/M/L/XL}     | {count of changes}                             |
+| Compatibility resolution | {S/M/L/XL}     | {what needs resolving}                         |
+| Test and validation      | {S/M/L/XL}     | {scope of test + integration/smoke test plan}  |
+| **Total**                | **{S/M/L/XL}** |                                                |
 
 ## Risk Assessment
 

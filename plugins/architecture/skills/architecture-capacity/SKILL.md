@@ -13,50 +13,20 @@ user-invocable: false
 
 ## When to Use
 
-- During architecture design to estimate resource requirements
-- When predicting which component saturates first under load
-- When choosing between horizontal and vertical scaling strategies
-- When justifying infrastructure cost or capacity decisions
+- Estimating resource requirements during architecture design
+- Predicting which component saturates first under load
+- Choosing between horizontal, vertical, and partitioning strategies
+- Justifying infrastructure cost or capacity decisions
 
 ## Rules
 
-- Base estimates on stated traffic assumptions; state them explicitly so they can be revised
-- Identify the bottleneck (lowest saturation point) - it determines system capacity
-- Distinguish steady-state from burst load
-- Plan for 2-3x current peak, not exactly current peak
+- State traffic assumptions explicitly (steady-state and peak); estimates without assumptions are unverifiable
+- Identify the bottleneck (lowest saturation point) - it sets system capacity
+- Plan headroom at 2-3x peak; sizing for current peak leaves no margin for growth or burst
 - External rate limits (payment gateways, SaaS APIs) are hard ceilings - no internal scaling lifts them
+- Throughput and latency are independent; a system can be high-throughput and high-latency simultaneously
 
 ## Pattern
-
-### Estimation Steps
-
-1. Traffic profile: RPS at steady state and peak
-2. Per-request cost: CPU, memory, DB queries, network calls
-3. Resource budget per component: CPU, memory, connections, throughput
-4. External rate limits on the critical path (hard ceilings)
-5. Saturation point per component
-6. Bottleneck = lowest saturation point
-7. Scaling strategy to raise the bottleneck
-
-### Good: Specific estimation with bottleneck identification
-
-```
-Traffic: 500 RPS steady, 2000 RPS peak (flash sale)
-Order creation path:
-  - API gateway: 10000 RPS capacity -> not bottleneck
-  - OrderService: 1 DB write + 1 event publish per request, ~50ms each -> 800 RPS per instance
-  - PostgreSQL: 40 connection pool, ~50ms per write -> 800 writes/sec -> saturates at 800 RPS
-  - Kafka: 50000 messages/sec -> not bottleneck
-Bottleneck: PostgreSQL write throughput at 800 RPS
-Scaling: Read replicas do not help (write-heavy). Options: connection pool tuning, write batching, or DB sharding
-Headroom: 2x peak = 4000 RPS; need 5 OrderService instances + DB write optimization
-```
-
-### Bad: Vague capacity statement
-
-```
-The system should scale to handle high traffic. We can add more instances if needed.
-```
 
 ### Scaling Models
 
@@ -68,39 +38,16 @@ The system should scale to handle high traffic. We can add more instances if nee
 | Caching                 | Read-heavy, staleness acceptable         | Invalidation complexity           |
 | Async offload           | Work can be deferred                     | Eventual consistency              |
 
-### Queue Depth Estimation
+### Saturation Math
 
-For async workloads, estimate whether consumers can keep up with producers during sustained peaks:
+- **Pool throughput**: `pool_size / avg_query_duration`. Saturated pools queue or reject - increase pool size (up to DB max), reduce query time, offload reads, or add a connection pooler (PgBouncer, ProxySQL, equivalent for the stack).
+- **Async backlog**: `(producer_rate - consumer_rate) x burst_duration` = peak backlog. Recovery time: `backlog / (consumer_rate - steady_producer_rate)`. If recovery exceeds the interval between peaks, consumers cannot keep up.
 
-```
-Producer rate (peak): 2000 msg/s for 60s burst
-Consumer rate: 500 msg/s per consumer x 3 consumers = 1500 msg/s
-Deficit during peak: 2000 - 1500 = 500 msg/s
-Backlog after 60s peak: 500 x 60 = 30,000 messages
-Recovery time: 30,000 / (1500 - 500) = 30 seconds (assuming producer drops to 500 msg/s steady)
-```
+### Anti-pattern
 
-If the backlog exceeds the queue's memory/disk limit, the producer blocks or drops messages. Size the queue to hold at least one full peak burst. If recovery time exceeds the interval between peaks, the system cannot keep up and requires more consumers or producer-side throttling.
+> "The system should scale to handle high traffic. We can add more instances if needed."
 
-### Connection Pool Saturation
-
-Max throughput through a connection pool:
-
-```
-pool_throughput = pool_size / avg_query_duration
-Example: 100 connections / 50ms avg = 2,000 queries/sec
-```
-
-When saturated: new requests queue (if pool has wait queue) or fail immediately (if no wait queue or timeout reached).
-Mitigation: increase pool size (up to DB max_connections limit), reduce query duration, offload reads to replicas, add connection pooler (PgBouncer, ProxySQL).
-
-### Cost Awareness
-
-For each scaling decision, note:
-
-- Resource type and unit cost (compute, storage, network)
-- Cost growth model (linear, super-linear, step function)
-- Cost optimization opportunity (reserved instances, spot, right-sizing)
+No bottleneck named, no saturation point, no scaling model. Unverifiable.
 
 ## Output Format
 
@@ -121,15 +68,14 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 
 ### Scaling Recommendation
 
-{Primary recommendation with rationale - horizontal / vertical / sharding / async offload}
+{Primary recommendation - horizontal / vertical / sharding / async offload - with rationale citing the bottleneck}
 
-### Queue Depth (if async workload)
+### Queue Depth (async workloads only)
 
-- Producer rate: {N/s}
-- Consumer rate: {N/s per consumer} x {consumer count} = {total consumer rate/s}
-- Steady-state queue depth: 0 (if consumer rate > producer rate)
-- Peak backlog accumulation: ({peak producer rate} - {total consumer rate}) x {peak duration seconds} = {N messages}
-- Time to clear backlog after peak: {backlog} / ({total consumer rate} - {steady producer rate}) = {duration}
+- Producer rate (peak): {N/s}
+- Consumer rate: {N/s/consumer} x {consumers} = {total/s}
+- Peak backlog: ({peak} - {total}) x {burst seconds} = {N messages}
+- Recovery time: {backlog} / ({total} - {steady producer}) = {duration}
 - Max queue depth before back-pressure: {N messages}
 
 ### Assumptions
@@ -138,12 +84,10 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 - {stated assumption 2}
 ```
 
-Omit "Queue Depth" for synchronous workloads. Always state assumptions explicitly so the model can be updated when traffic patterns change.
+Omit "Queue Depth" for synchronous workloads.
 
 ## Avoid
 
-- Capacity estimates without stated assumptions
-- Ignoring the bottleneck ("just add more instances")
-- Planning for exactly current peak with no headroom
-- Conflating throughput with latency (high throughput does not mean low latency)
-- Ignoring burst patterns that exceed steady-state by 5-10x
+- Estimates without stated assumptions
+- "Just add more instances" without naming the bottleneck
+- Sizing for current peak with no headroom for burst or growth

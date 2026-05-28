@@ -58,7 +58,6 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 - Plan data ownership transfer explicitly per service; shared databases are tackled first
 - Extraction order is set by risk and dependency analysis, not convenience
 - No implementation code; omit empty sections
-- If target stack differs from monolith, add an interoperability section in Section 3 (serialization contracts, client library strategy, contract testing)
 
 ## Migration Model
 
@@ -87,6 +86,8 @@ Use skill: `ops-resiliency` for fault tolerance between services.
 Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
 One service owns each entity (no shared databases in steady state). Name the communication model per interaction (sync vs async) and the consistency requirement (strong vs eventual). The service-inventory table in the Output template is the contract.
+
+If the target stack differs from the monolith, add an interoperability subsection covering serialization contracts, client-library strategy, and contract testing across the language boundary.
 
 ### 4. Extraction Order and Phasing
 
@@ -218,7 +219,9 @@ Pain Points:
 
 ### Context Map
 
-[Upstream/downstream relationships, conformist/ACL boundaries]
+| Upstream Context | Downstream Context | Relationship                                         |
+| ---------------- | ------------------ | ---------------------------------------------------- |
+| {name}           | {name}             | Customer/Supplier, Conformist, ACL, Shared Kernel    |
 
 ### Domain Events
 

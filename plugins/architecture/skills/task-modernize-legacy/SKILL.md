@@ -256,11 +256,19 @@ Recommendation: Modernize / Incremental improvement / Defer
 | Trade-off    | {what is sacrificed}         |
 | Risk         | {what could make this wrong} |
 
-## 4. Behavioral Inventory (deep only - summary for standard)
+## 4. Behavioral Inventory
 
-Key undocumented behaviors discovered:
-Business rules in database:
-Edge cases requiring special handling:
+**Standard depth** - prose summary:
+
+- Key undocumented behaviors discovered:
+- Business rules in database (triggers, stored procedures, computed columns):
+- Edge cases requiring special handling:
+
+**Deep depth** - add the full matrix:
+
+| Capability   | Documented | Has Tests | Undocumented Behaviors | Migration Risk |
+| ------------ | ---------- | --------- | ---------------------- | -------------- |
+| {capability} | Yes/No     | Good/Partial/None | {behavior}     | Low/Med/High   |
 
 ## 5. Migration Plan
 
