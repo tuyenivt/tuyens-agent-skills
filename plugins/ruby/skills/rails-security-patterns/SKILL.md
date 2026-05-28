@@ -85,7 +85,7 @@ end
 user = User.authenticate_by(email: params[:email], password: params[:password])
 ```
 
-`User.find_by(email:).then(&.:authenticate)` leaks existence via timing (fast when user missing).
+`User.find_by(email: ...)&.authenticate(...)` leaks existence via timing (fast when user missing).
 
 **Devise + JWT** (API):
 
@@ -95,9 +95,12 @@ class User < ApplicationRecord
          :jwt_authenticatable, jwt_revocation_strategy: JwtDenylist
 end
 
-config.jwt do |jwt|
-  jwt.secret = Rails.application.credentials.devise_jwt_secret_key!
-  jwt.expiration_time = 1.hour.to_i
+# config/initializers/devise.rb
+Devise.setup do |config|
+  config.jwt do |jwt|
+    jwt.secret = Rails.application.credentials.devise_jwt_secret_key!
+    jwt.expiration_time = 1.hour.to_i
+  end
 end
 ```
 

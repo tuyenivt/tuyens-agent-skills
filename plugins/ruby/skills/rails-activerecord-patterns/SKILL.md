@@ -18,11 +18,6 @@ user-invocable: false
 - Placing callbacks: `after_save` (in-transaction) vs `after_commit` (post-commit)
 - Adding DB-specific columns (MySQL JSON / functional indexes; PG JSONB / arrays / partial indexes)
 
-Cross-references:
-- Chunk shape, memory safety, OOM mitigations -> `rails-batch-processing-patterns`
-- Advisory locks, leader election, isolation tiers -> `rails-db-locking-patterns`
-- Pool sizing across Puma/Sidekiq/CLI -> `rails-connection-pool-sizing`
-
 ## Rules
 
 - Default associations to lazy loading; eager load explicitly per query

@@ -178,18 +178,13 @@ end
 
 ## Self-Check
 
-- [ ] Error classified before any fix proposed
+- [ ] Error classified via Step 2 table; matching atomic skill consulted
 - [ ] Reproduction attempted; if not feasible, that limitation is stated and confidence lowered
 - [ ] Root cause references file:line; confidence stated
 - [ ] Before/after fix is minimal and addresses root cause
 - [ ] Rails conventions preserved - strong params, services, Pundit not bypassed
-- [ ] Prevention step included
-- [ ] Migration-lock: PG / MySQL skill referenced as appropriate
-- [ ] Sidekiq: idempotency and retry state checked
-- [ ] `Rack::Timeout` / `ConnectionTimeoutError`: `rails-connection-pool-sizing` referenced
-- [ ] OOM-kill / `NoMemoryError` / `History list length`: `rails-batch-processing-patterns` referenced
-- [ ] `Lock wait timeout` / `Deadlock`: `rails-db-locking-patterns` referenced; lock-by-PK and isolation considered
-- [ ] "Wrong behaviour, no error" cases: `rails-implicit-config-audit` consulted
+- [ ] Prevention step included (RSpec, validation, lint, or config)
+- [ ] "Wrong behaviour, no error" cases consulted `rails-implicit-config-audit` before tracing data path
 
 ## Avoid
 

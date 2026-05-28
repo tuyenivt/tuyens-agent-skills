@@ -235,13 +235,6 @@ Order.in_batches(of: 1_000) do |batch|
 end
 ```
 
-### Cross-cuts
-
-- `rails-db-locking-patterns`: chunked transactions bound advisory-lock and row-lock hold times
-- `rails-work-splitter-patterns`: each shard uses the chunked-transaction shape
-- `rails-rake-task-patterns` / `rails-sidekiq-patterns`: long tasks and jobs use chunked transactions; the job is the unit of retry
-- `rails-connection-pool-sizing`: a long batch holds one connection for its duration
-
 ## Output Format
 
 ```

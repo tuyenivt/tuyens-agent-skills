@@ -16,12 +16,6 @@ user-invocable: false
 - Diagnosing "ran twice", `ActiveJob::DeserializationError`, lock-wait cascades from jobs
 - Deploy-time job versioning, graceful shutdown, payload sizing
 
-Cross-references:
-- DB pool sizing per worker thread -> `rails-connection-pool-sizing`
-- RSS growth, jemalloc, `WorkerKiller`, chunked transactions inside jobs -> `rails-batch-processing-patterns`
-- Locking, isolation tiers, advisory locks -> `rails-db-locking-patterns`
-- Bulk push, work-splitter fan-out -> `rails-work-splitter-patterns`
-
 ## Rules
 
 - Every job idempotent - check state before acting

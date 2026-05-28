@@ -339,22 +339,6 @@ end
 
 Use one or the other per spec - cassettes + stubs interact confusingly. Default: WebMock for client unit specs, VCR for service/request specs that exercise the integration.
 
-### Shared Examples
-
-```ruby
-RSpec.shared_examples "a paginated endpoint" do
-  it "returns pagination metadata" do
-    expect(json_response).to include("meta" => include("total", "page", "per_page"))
-  end
-end
-
-it_behaves_like "a paginated endpoint"
-```
-
-### `let` vs `let!`
-
-`let` is lazy (evaluates on first reference). `let!` is eager (before each example). Use `let!` when the record must exist even if not referenced in the test.
-
 ## Output Format
 
 ```

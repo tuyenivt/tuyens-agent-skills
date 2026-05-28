@@ -103,14 +103,6 @@ Safe: new RESTful route + controller + view; new field with safe-default migrati
 
 Riskier: initializers (run once at boot); existing migrations (never edit; create new); concerns shared across many models/controllers; Devise/Warden config.
 
-### Ecosystem Currency
-
-- Ruby 3.3+ standard, 3.4 latest, 3.2 minimum for modern Rails
-- Rails 7.2+ for new projects; Rails 8.0 introduces Solid Queue, Solid Cache, Solid Cable
-- Importmap-rails default in Rails 7+; jsbundling-rails common for richer JS
-- Propshaft replacing Sprockets (Rails 8 default)
-- Solid Queue replacing Sidekiq in some new projects (no Redis required)
-
 ## Output Format
 
 Inject into `task-onboard` sections:
@@ -134,4 +126,3 @@ Inject into `task-onboard` sections:
 - Listing every gem in Gemfile - focus on architecture-changing ones
 - Missing the master.key requirement
 - Recommending Sprockets when project uses Propshaft
-- Ignoring Solid Queue/Cache/Cable in Rails 8 projects
