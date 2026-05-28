@@ -1,6 +1,6 @@
 ---
 name: nfr-specification
-description: Elicit and structure Non-Functional Requirements from business context into measurable SLOs and constraints
+description: Elicit Non-Functional Requirements from business context into measurable SLOs, constraints, conflicts, and gaps across six quality categories.
 metadata:
   category: architecture
   tags: [architecture, nfr, slo, requirements, quality-attributes]
@@ -9,70 +9,70 @@ user-invocable: false
 
 # NFR Specification
 
-> This atomic is composed by workflows - do not invoke directly. Primary consumer: `task-design-architecture` Section 1.
-
 ## When to Use
 
-- Before architecture design to convert vague quality expectations into measurable targets
-- When business context exists but NFRs are implicit or missing
-- When SLO baselines are needed to drive observability and capacity planning sections
-- Output feeds directly into `task-design-architecture` (Section 1 and 6) and `tradeoff-analysis` as constraint inputs
+- Converting vague quality expectations ("fast", "reliable") into measurable targets before architecture design
+- Producing SLO baselines that observability and capacity planning will reference
+- Surfacing conflicting or missing quality requirements early
 
 ## Rules
 
-- Every NFR must produce at least one measurable threshold - no vague statements ("must be fast")
-- SLOs must state the measurement method, not just the target value
-- Compliance and security NFRs must name the specific standard or regulation, not generic categories
-- Conflicting NFRs must be surfaced explicitly - do not silently pick one
-- Missing NFRs are as important as stated ones - call out gaps
-- When business context implies a regulatory domain (payments, healthcare, personal data), name the likely compliance standard and ask for confirmation rather than omitting it
+- Every NFR produces at least one measurable threshold - never "must be fast"
+- Each SLO states the measurement method, not just the target value
+- Compliance and security NFRs name the specific standard, not a generic category
+- Surface conflicting NFRs explicitly - do not silently pick one
+- Surface gaps explicitly - unstated NFRs become hidden assumptions
+- When business context implies a regulated domain (payments, healthcare, personal data), name the likely standard and ask for confirmation rather than omit it
+- State confidence when the business context underdetermines a target - do not invent precision
 
-## Pattern
+## Patterns
 
-### NFR Categories
+### Six NFR Categories
 
-Elicit NFRs across these six categories. For each, extract from business context or ask:
+Elicit across all six. For each, extract from context or ask.
 
 **Performance**
 
-- Latency targets: p50, p95, p99 thresholds per operation type (read vs write vs batch)
+- Latency: p50 / p95 / p99 per operation class (read / write / batch)
 - Throughput: requests per second at peak, sustained, and burst
-- Response time budget: breakdown across system layers if multi-service
+- Response budget: breakdown across layers if multi-service
 
 **Availability**
 
-- Uptime target: expressed as SLO percentage and maximum allowed downtime per month
-- Recovery objectives: RTO (recovery time objective) and RPO (recovery point objective)
+- Uptime SLO and maximum allowed downtime per month
+- RTO (recovery time objective) and RPO (recovery point objective)
 - Planned maintenance window: allowed or zero-downtime required
 
 **Scalability**
 
-- Current scale: users, data volume, request rate today
-- Growth projection: expected scale in 12 months and 3 years
-- Scaling model: horizontal, vertical, or both; stateless or stateful constraints
+- Today's scale: users, data volume, request rate
+- Growth: 12-month and 3-year projections
+- Scaling model: horizontal / vertical / mixed; stateless or stateful constraints
 
 **Security**
 
-- Authentication mechanism required (JWT, OAuth2, mTLS, API key)
-- Authorization model (RBAC, ABAC, resource-owner checks)
-- Data sensitivity: PII, PCI, PHI classification and handling requirements
-- Compliance standards: GDPR, SOC 2, PCI-DSS, HIPAA - name specifically
+- Authentication mechanism (JWT, OAuth2, mTLS, API key)
+- Authorization model (RBAC, ABAC, resource-owner)
+- Data sensitivity classification: PII / PCI / PHI / none
+- Compliance standards by name: GDPR, SOC 2, PCI-DSS, HIPAA - or "none identified"
 
 **Operability**
 
-- Deployment model: zero-downtime required, canary/blue-green acceptable, maintenance window allowed
-- Observability requirements: logging retention, metrics granularity, tracing coverage
-- On-call expectations: MTTR target, alert response SLA
+- Deployment model: zero-downtime / canary / blue-green / maintenance window
+- Observability: log retention, metrics granularity, tracing coverage
+- On-call: MTTR target, alert response SLA
 
 **Data**
 
-- Consistency model required: strong or eventual; which operations need which
-- Data retention: how long data must be kept, archival vs deletion policy
-- Volume: expected data growth rate, storage budget
+- Consistency model per operation class (strong / eventual / mixed)
+- Retention: duration, archival vs deletion
+- Volume growth rate and storage budget
 
-### Output Format
+### Distinguish SLO from SLA
 
-Produce an NFR table and a constraints list:
+SLOs are internal targets that drive design and alerting. SLAs are contractual obligations to customers with penalties. Record them as separate rows when both exist.
+
+## Output Format
 
 ```markdown
 ## Non-Functional Requirements
@@ -90,7 +90,7 @@ Produce an NFR table and a constraints list:
 | Metric     | Target   | Measurement              |
 | ---------- | -------- | ------------------------ |
 | Uptime SLO | 99.9%    | Rolling 30-day window    |
-| RTO        | < 15 min | From alert to restored   |
+| RTO        | < 15 min | Alert to restored        |
 | RPO        | < 5 min  | Max data loss on failure |
 
 ### Scalability
@@ -111,7 +111,7 @@ Compliance: {standards or "none identified"}
 Deployment: {zero-downtime / maintenance window allowed}
 MTTR target: {minutes}
 Log retention: {days}
-Tracing coverage: {percentage of requests traced or specific services}
+Tracing coverage: {percentage of requests or specific services}
 Metrics granularity: {per-second / per-minute / per-5-minute}
 
 ### Data
@@ -122,17 +122,19 @@ Volume growth: {estimate}
 
 ## NFR Conflicts
 
-[List any conflicting NFRs - e.g., "strong consistency requirement conflicts with 99.9% availability target under network partition"]
+[List conflicts - e.g. "strong consistency target conflicts with 99.9% availability under network partition"]
 
 ## NFR Gaps
 
-[List NFRs not specified that are important for this system type - e.g., "no RPO stated for a write-heavy system"]
+[List NFRs not specified that matter for this system type - e.g. "no RPO stated for a write-heavy system"]
 ```
+
+Always produce all six sections plus Conflicts and Gaps. If a category has no business signal, state "not specified" and list it in Gaps.
 
 ## Avoid
 
 - Accepting "as fast as possible" or "always available" - push for numbers
 - Treating NFRs as a checklist - each must connect to a design decision
-- Omitting the gap section - unstated NFRs become hidden assumptions
-- Conflating SLOs (targets) with SLAs (contractual obligations) - keep them separate
-- Specifying NFRs more precisely than the business context justifies - state confidence level
+- Omitting the Gaps section - unstated NFRs become hidden assumptions
+- Conflating SLOs with SLAs
+- Inventing precision the business context does not support

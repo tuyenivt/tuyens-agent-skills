@@ -1,6 +1,6 @@
 ---
 name: ops-backward-compatibility
-description: API, event, and data contract backward compatibility assessment. Auto-detects project stack and adapts compatibility checks to the detected ecosystem.
+description: Assess API, event, and DB schema changes for consumer breakage and produce expand-contract migration plans.
 metadata:
   category: ops
   tags: [compatibility, api, contracts, migration, deployment, multi-stack]
@@ -13,89 +13,76 @@ user-invocable: false
 
 ## When to Use
 
-- Before deploying changes that modify public APIs, event schemas, or database schemas
-- When assessing whether a change requires coordinated deployment across consumers
-- When planning expand-and-contract migrations for breaking changes
-- When evaluating dual-write or dual-read requirements during rollout
+- Before deploying changes to public APIs, event schemas, or database schemas
+- When assessing consumer impact and coordinated-deploy requirements
+- When planning expand-contract migrations or dual-write/dual-read transitions
 
 ## Rules
 
-- Every public contract change must be assessed for consumer impact before deployment
-- Additive changes are safe; modifications and removals are breaking until proven otherwise
-- Breaking changes require an expand-contract migration plan with explicit transition period
-- Event schema changes must maintain backward compatibility for at least one consumer release cycle
-- Database schema changes must be compatible with both current and previous code versions during rolling deployment
-- Do not assume consumers deserialize leniently - verify
+- Additive optional changes are safe; modifications and removals are breaking until proven otherwise.
+- Breaking changes require an expand-contract plan with an explicit transition period.
+- Schema changes must be compatible with both current and previous code during rolling deploy.
+- Event schema changes must hold backward compatibility for at least one consumer release cycle.
+- "No external callers found" requires evidence (a search); absence of search is not evidence.
 
-## Pattern
+## Patterns
 
-### Compatibility Assessment Matrix (All Stacks)
+### Compatibility Matrix
 
-| Contract Type | Change Kind            | Compatible | Action Required                                                                              |
-| ------------- | ---------------------- | ---------- | -------------------------------------------------------------------------------------------- |
-| REST API      | Add optional field     | Yes        | Deploy provider first                                                                        |
-| REST API      | Add required field     | No         | Version API or expand-contract                                                               |
-| REST API      | Remove field           | No         | Verify no consumers read it, then remove                                                     |
-| REST API      | Rename field           | No         | Add new + deprecate old + remove later                                                       |
-| REST API      | Change field type      | No         | Version API                                                                                  |
-| REST API      | Change endpoint path   | No         | Redirect old + deploy new                                                                    |
-| Event schema  | Add optional field     | Yes        | Consumers must tolerate unknown fields                                                       |
-| Event schema  | Remove field           | No         | Verify no consumers, two-phase removal                                                       |
-| Event schema  | Change field semantics | No         | New event type or versioned schema                                                           |
-| Event schema  | Add required field     | No         | Expand-contract: add as optional first, consumers update to handle it, then enforce required |
-| DB schema     | Add nullable column    | Yes        | Migration then code                                                                          |
-| DB schema     | Add NOT NULL column    | No         | Add nullable + backfill + add constraint                                                     |
-| DB schema     | Drop column            | No         | Remove code reads + verify + drop                                                            |
-| DB schema     | Rename column          | No         | Add new + migrate + drop old                                                                 |
-| DB schema     | Change column type     | No         | Expand-contract migration                                                                    |
+| Contract     | Change                       | Compatible | Action                                                  |
+| ------------ | ---------------------------- | ---------- | ------------------------------------------------------- |
+| REST API     | Add optional field           | Yes        | Deploy provider first                                   |
+| REST API     | Add required field           | No         | Version or expand-contract (optional first, then enforce) |
+| REST API     | Remove / rename field        | No         | Add new, deprecate old, verify zero reads, then remove  |
+| REST API     | Change field type or path    | No         | Version the API                                         |
+| Event schema | Add optional field           | Yes        | Consumers must tolerate unknown fields                  |
+| Event schema | Add required field           | No         | Optional first, consumers update, then enforce required |
+| Event schema | Remove field / change meaning | No         | Two-phase removal or new event type                     |
+| DB schema    | Add nullable column / index  | Yes        | Migration then code                                     |
+| DB schema    | Add NOT NULL column          | No         | Nullable + backfill + add constraint                    |
+| DB schema    | Drop / rename column         | No         | Stop reads in code + verify + migrate                   |
+| DB schema    | Change column type           | No         | Expand-contract migration                               |
 
-### Stack-Specific Guidance
+### Contract Scope
 
-After loading stack-detect, apply compatibility checks using the idioms of the detected ecosystem:
+Identify the consumer surface before classifying severity:
 
-- **DTO/response changes**: Adding fields to response objects is generally safe; removing or renaming breaks clients. The specific mechanism varies by framework (records, serializers, structs, schemas).
-- **Input validation changes**: Making a previously optional field required is a breaking change in any framework's validation layer.
-- **Data layer changes**: Entity/model changes must be paired with the ecosystem's migration tool - never use auto-schema-update in production.
-- **Internal event changes**: Event schema changes within the application affect all subscribers/listeners - assess impact within the detected framework's event system.
-- **Module/package interface changes**: Renaming or removing public APIs (exported functions, public methods, interface methods) is breaking. In some ecosystems (e.g., Go modules), module path changes require major version bumps.
+- **HTTP-exposed**: backs a public endpoint. Renaming or removing is breaking for API consumers.
+- **Shared library**: consumed by other services via compile-time or runtime binding. Treat like an HTTP contract.
+- **Internal-only**: called only within the same service. Refactor freely after confirming no reflection, dynamic dispatch, or external test coverage.
 
-### Code Contract vs HTTP Contract
+### Stack Adaptation
 
-Distinguish the scope of the contract break:
+After `stack-detect`, map changes to the ecosystem's serialization and migration mechanisms (DTOs/records/structs/schemas, framework validation, migration tool). Two universals hold regardless of stack:
 
-- **HTTP-exposed contract**: A method that backs an HTTP endpoint - renaming or removing it is a breaking change for API consumers.
-- **Internal code contract**: A public method called only within the same service - may be refactored freely without consumer coordination, but verify it is not called via reflection, dynamic dispatch, or tested directly by consumers.
-- **Shared library contract**: A method in a library consumed by other services - treat like an HTTP contract even without HTTP; consumers depend on the method signature at compile-time or runtime.
+- Making a previously optional input required is breaking at the validation layer.
+- Entity/model changes must use the ecosystem's migration tool; never auto-schema-update in production.
 
-When the scope is unclear, search for callers before classifying. "No external callers found" is evidence; absence of search is not.
-
-If the detected stack is unfamiliar, apply the universal compatibility matrix above and recommend the user verify against their framework's serialization and migration documentation.
+If the stack is unfamiliar, apply the matrix above and flag a recommendation to verify against the framework's docs.
 
 ### Dual-Write / Dual-Read Assessment
 
-When a change modifies data storage or event format:
+For storage or event-format changes, answer four questions:
 
-1. **Identify transition period** - time window where old and new versions coexist
-2. **Dual-write needed?** - must the new code write both old and new format?
-3. **Dual-read needed?** - must the new code read both old and new format?
-4. **Backfill needed?** - must existing data be migrated to the new format?
-5. **Cleanup needed?** - when and how to remove old format support?
+1. Transition window: how long do old and new versions coexist?
+2. Dual-write: does new code write both formats?
+3. Dual-read: does new code read both formats?
+4. Backfill + cleanup: is existing data migrated, and when is old-format support removed?
 
-### Good: Explicit compatibility assessment with migration plan
+### Good
 
 ```
 Change: Rename OrderDTO.total -> OrderDTO.totalAmount
-Consumer impact: CustomerPortal, ReportingService, MobileAPI
-Compatibility: Breaking -- field rename
-
-Migration plan:
-  Phase 1: Add totalAmount field, keep total (both populated) -- deploy provider
-  Phase 2: Migrate consumers to read totalAmount -- deploy consumers
-  Phase 3: Deprecate total field, stop populating -- verify no reads
-  Phase 4: Remove total field -- next release cycle
+Consumers: CustomerPortal, ReportingService, MobileAPI
+Compatibility: Breaking (field rename)
+Plan:
+  1. Add totalAmount, keep total (dual-write) - deploy provider
+  2. Migrate consumers to read totalAmount
+  3. Stop populating total - verify no reads
+  4. Remove total - next release cycle
 ```
 
-### Bad: Compatibility assumption without consumer analysis
+### Bad
 
 ```
 Renamed the field. It is just a rename, should be fine.
@@ -103,7 +90,7 @@ Renamed the field. It is just a rename, should be fine.
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to surface compatibility breaks and required migration plans.
+Consuming workflow skills parse this structure to surface breaks and migration plans.
 
 ```
 ## Backward Compatibility Assessment
@@ -120,22 +107,20 @@ Consuming workflow skills depend on this structure to surface compatibility brea
 
 **{Contract type}: {change description}**
 - Consumers affected: {list or "unknown - verify before deploy"}
-- Migration plan: {expand-contract phases or "use expand-contract - see task-db-migration"}
+- Migration plan: {expand-contract phases}
 - Dual-write needed: Yes / No
 - Dual-read needed: Yes / No
 
 ### No Breaking Changes
 
-{State explicitly if all changes are backward compatible - do not omit this section silently}
+{State explicitly if all changes are backward compatible - do not omit silently.}
 ```
 
-Omit "No Breaking Changes" if breaking changes were listed. Always produce the Changes Assessed table even when all changes are compatible.
+Always produce the Changes Assessed table even when all changes are compatible. Omit "No Breaking Changes" if breaking changes were listed.
 
 ## Avoid
 
-- Assuming field additions are always safe (required fields break consumers)
-- Breaking changes without an expand-contract plan
-- Removing fields without verifying zero consumer usage
-- Event schema changes without backward compatibility window
-- Database migrations that require simultaneous code deployment
-- Skipping dual-write assessment for data format changes
+- Treating all field additions as safe (required fields break consumers).
+- Removing fields without verifying zero consumer usage.
+- Breaking changes without an expand-contract plan or dual-write/read assessment.
+- Migrations that require simultaneous code deployment.

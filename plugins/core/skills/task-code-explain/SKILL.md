@@ -8,296 +8,225 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Code Explain
 
-## Purpose
-
-Targeted code explanation for a specific file, function, class, or module:
-
-- **What it does** - the observable behavior from the caller's perspective
-- **Where it sits in the flow** - what triggers it, what runs before and after
-- **Why it exists** - the business or technical reason this code is here
-- **Non-obvious gotchas** - behavior that will surprise an engineer unfamiliar with this code
-- **Key invariants** - assumptions the code depends on that are not enforced by the type system
-- **Change impact preview** - what the engineer must double-check before modifying
-
-This skill explains existing code so an engineer picking up a ticket can modify it safely. It does not review the code for quality, suggest refactoring, or generate new code.
+Targeted explanation of an existing code unit so an engineer can modify it safely. Not a quality review, refactor, or code-generation skill.
 
 ## When to Use
 
-- Understanding unfamiliar code during a review or while picking up a ticket
+- Picking up a ticket in unfamiliar code
 - Debugging a module you did not write
 - Preparing to modify or extend code you need to understand first
-- Explaining code to a teammate or in documentation
 
-## Not For
-
-- Mapping a whole codebase or large subsystem - use `task-onboard` (architecture, conventions, hotspots)
-- Code quality review - use `task-code-review`
-- Broken or crashing code - use `task-code-debug`
+**Not for:** whole-codebase map (`task-onboard`), quality review (`task-code-review`), broken code (`task-code-debug`).
 
 ## Inputs
 
-| Input             | Required | Description                                                               |
-| ----------------- | -------- | ------------------------------------------------------------------------- |
-| Code target       | Yes      | File path, function name, class name, or pasted code block                |
-| Explanation depth | No       | `quick`, `standard` (default), or `deep`                                  |
-| Caller context    | No       | What the caller is trying to do (shapes what to emphasize)                |
-| Known confusion   | No       | Specific aspect that is unclear (focus explanation there)                 |
+| Input         | Required | Notes                                                       |
+| ------------- | -------- | ----------------------------------------------------------- |
+| Code target   | Yes      | File path, symbol name, or pasted code                      |
+| Depth         | No       | `quick`, `standard` (default), or `deep`                    |
+| Caller intent | No       | What the caller is trying to do; shapes emphasis            |
 
-Default depth: `standard`. Infer from caller context: onboarding -> `deep`; debugging triage -> `quick`.
+Infer depth from intent: onboarding -> `deep`; debug triage -> `quick`.
 
 ## Workflow
 
-### Step 1 - Detect Stack and Load Stack-Specific Atomic (when available)
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
+Use skill: `behavioral-principles`.
 
-If the detected stack matches the table below, load the corresponding atomic. The atomic injects stack-specific signals into the universal explanation produced by Steps 2-9 below. If the stack is unknown, skip this step and produce a universal explanation.
+### Step 2 - Detect Stack and Load Stack Atomic
 
-| Detected stack       | Load atomic              |
-| -------------------- | ------------------------ |
-| Java / Spring Boot   | `spring-code-explain`    |
-| Kotlin / Spring Boot | `kotlin-code-explain`    |
-| Python               | `python-code-explain`    |
-| Ruby / Rails         | `rails-code-explain`     |
-| Node.js / TypeScript | `node-code-explain`      |
-| Go / Gin             | `go-code-explain`        |
-| Rust / Axum          | `rust-code-explain`      |
-| .NET / ASP.NET Core  | `dotnet-code-explain`    |
-| PHP / Laravel        | `laravel-code-explain`   |
-| React                | `react-code-explain`     |
-| Vue                  | `vue-code-explain`       |
-| Angular              | `angular-code-explain`   |
+Use skill: `stack-detect`.
 
-Read the target code fully before proceeding.
+If the detected stack matches, load the atomic. It injects stack-specific signals into the universal sections produced below. If unknown, produce a universal explanation.
 
-### Step 2 - Purpose Summary (all depths)
+| Stack                | Atomic                  |
+| -------------------- | ----------------------- |
+| Java / Spring Boot   | `spring-code-explain`   |
+| Kotlin / Spring Boot | `kotlin-code-explain`   |
+| Python               | `python-code-explain`   |
+| Ruby / Rails         | `rails-code-explain`    |
+| Node.js / TypeScript | `node-code-explain`     |
+| Go / Gin             | `go-code-explain`       |
+| Rust / Axum          | `rust-code-explain`     |
+| .NET / ASP.NET Core  | `dotnet-code-explain`   |
+| PHP / Laravel        | `laravel-code-explain`  |
+| React                | `react-code-explain`    |
+| Vue                  | `vue-code-explain`      |
+| Angular              | `angular-code-explain`  |
 
-State in two to four sentences:
+Read the target code fully before producing any explanation.
 
-- What this code does from the perspective of its caller or user
-- What problem it solves or what responsibility it owns
-- What it explicitly does NOT do (scope boundary)
+### Step 3 - Purpose (all depths)
 
-### Step 3 - Flow Context (standard and deep)
+Two to four sentences: what it does from the caller's perspective, what responsibility it owns, and what it explicitly does NOT do.
 
-Reconstruct where this code sits in the larger story:
+### Step 4 - Flow Context (standard, deep)
 
-- **Triggered by:** HTTP route, event handler, scheduled job, CLI entry, framework lifecycle, parent component render. Trace upstream until you reach a recognizable entry point.
-- **Runs before this:** upstream code that prepares state, validates, or authorizes.
-- **Runs after this:** downstream code that consumes the output or side effects.
-- **Frequency / criticality:** hot path, background job, edge case, one-time bootstrap.
-- **Inbound callers (grep):** run a grep for the function/class/module name across the codebase. List concrete callers (file:line). If callers are in many places, summarize the shape.
+- **Triggered by:** HTTP route, event, scheduled job, lifecycle hook, parent render. Trace upstream until a recognizable entry point.
+- **Runs before / after this:** upstream that prepares state; downstream that consumes output or side effects.
+- **Frequency:** hot path, background, edge case.
+- **Inbound callers:** grep the symbol name. Cite concrete `file:line`. If callers cannot be enumerated (DI, dynamic dispatch, framework auto-wiring), record under Confidence Gaps.
 
-When a stack-specific atomic was loaded, inject its **Flow Context** signals here (e.g., Spring stereotype, NestJS DI scope, FastAPI dependency tree, Rails filter chain).
+Inject stack-atomic Flow Context signals if loaded (e.g., Spring stereotype, FastAPI dependency tree, Rails filter chain).
 
-If callers cannot be determined (dynamic dispatch, framework auto-wiring, external API entry), say so under Confidence Gaps.
+### Step 5 - Why It Exists (standard, deep)
 
-### Step 4 - Why It Exists (standard and deep)
+Domain reason (what business problem) and technical reason (what constraint forced this shape). If inferable only, mark under Confidence Gaps.
 
-State the business or technical reason this code is here:
+### Step 6 - Structure and Data Flow (standard, deep)
 
-- **Domain reason:** what product or business problem this solves
-- **Technical reason:** what architectural constraint forced this shape
+Entry points, key branches, external calls (DB/cache/queue/HTTP), return values, side effects. For complex flows, trace one representative path end-to-end.
 
-If the reason is not inferable, mark under Confidence Gaps rather than guessing.
+Use skill: `architecture-guardrail` to spot layer-boundary violations.
 
-### Step 5 - Structure and Data Flow (standard and deep)
+### Step 7 - Non-Obvious Behavior (standard, deep)
 
-Explain how the code is organized internally:
+Surface what will surprise a careful reader. Universal categories:
 
-- **Entry points:** public methods, event handlers, HTTP handlers, constructors
-- **Data flow:** how data moves through the code; what transforms, validates, persists it
-- **Key branches:** main conditional paths and what triggers each
-- **External calls:** databases, caches, queues, HTTP, other services
-- **Return values / side effects:** what the caller gets back; what state this changes
+| Type                | Examples                                                              |
+| ------------------- | --------------------------------------------------------------------- |
+| Silent failures     | Returns null/empty instead of throwing; swallowed exceptions          |
+| Hidden state        | Behavior changes with DB flags, feature toggles, request context      |
+| Ordering            | Method A must precede B; init order matters                           |
+| Thread safety       | Not thread-safe; requires external synchronization                    |
+| Mutability          | Mutates input; returns shared mutable reference                       |
+| Implicit retries    | Internal retry amplifies downstream load                              |
+| Async traps         | Blocking in async context; unhandled rejection; fire-and-forget       |
+| Lazy / caching      | Deferred computation; cached result; cache not invalidated on writes  |
+| Framework magic     | Lifecycle injection (covered by stack atomic when loaded)             |
 
-For complex flows, trace one representative path end-to-end.
-
-Use skill: `architecture-guardrail` to identify whether the code respects expected layer boundaries.
-
-### Step 6 - Non-Obvious Behavior and Gotchas (standard and deep)
-
-Surface behavior that will surprise a developer who has not read the code carefully. Universal gotcha categories:
-
-| Type                      | Examples                                                                                  |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| Silent failures           | Returns null/empty instead of throwing; swallows exceptions                               |
-| Hidden state dependencies | Behavior changes based on external state (DB flags, feature toggles, request context)     |
-| Ordering requirements     | Method A must be called before method B; initialization order matters                     |
-| Thread safety assumptions | Not thread-safe; requires external synchronization                                        |
-| Mutability surprises      | Modifies the input parameter; returns a shared mutable reference                          |
-| Implicit retries          | Retries internally; can amplify downstream load                                           |
-| Async traps               | Blocking call inside async context; unhandled rejection paths; fire-and-forget effects    |
-| Lazy evaluation           | Computation deferred; result differs by access timing                                     |
-| Caching behavior          | Result cached; stale data may return; cache not invalidated on writes                     |
-| Framework magic           | Behavior injected by framework lifecycle (handled by stack-specific atomic when loaded)   |
-
-When a stack-specific atomic was loaded, inject its **Non-Obvious Behavior** signals here (Spring AOP self-invocation, Kotlin platform types, Python sync I/O blocking event loop, Rails callback events, React stale closures, etc.).
+Inject stack-atomic Non-Obvious signals if loaded (Spring AOP self-invocation, Kotlin platform types, Rails callbacks, React stale closures, etc.).
 
 Use skill: `architecture-concurrency` if concurrency gotchas are present.
 
-### Step 7 - Key Invariants (standard and deep)
+### Step 8 - Key Invariants (standard, deep)
 
-State assumptions the code depends on that are NOT enforced by types or compiler:
-
-- Preconditions the caller must satisfy
-- Postconditions the caller can rely on
-- Environmental assumptions (DB state, config values, init order)
-- Data shape assumptions not captured in types
-
-Format each as:
+Assumptions NOT enforced by types or compiler. Format:
 
 > **Invariant:** [statement]
 > **If violated:** [what breaks]
 
-When a stack-specific atomic was loaded, inject its **Key Invariants** signals here.
+Inject stack-atomic Key Invariant signals if loaded.
 
-### Step 8 - Change Impact Preview (standard and deep)
+### Step 9 - Change Impact Preview (standard, deep)
 
-Frame as checks to perform, not changes to make:
+Frame as checks, not edits:
 
-- **If you change the logic / behavior:** which callers from Step 3 must be re-verified, which tests likely cover this path
-- **If you change the return shape or signature:** which call sites must be updated, which serialization or API boundary is affected
-- **If you change the side effects:** which downstream consumers (DB tables written, events published, caches invalidated, logs/metrics emitted) are affected
-- **If you change timing or ordering:** which async jobs, retries, or sequenced operations may break
-- **If you remove or rename this:** which features or flows depend on it
-- **Tests to run / add:** existing test files that exercise this code, gaps that should be covered
+- **Logic change:** which callers from Step 4 to re-verify; which tests likely cover this path
+- **Signature / return shape:** call sites to update; serialization or API boundary affected
+- **Side effects:** DB tables, events, caches, logs, metrics affected
+- **Timing / ordering:** async jobs, retries, sequenced operations at risk
+- **Remove / rename:** features or flows that depend on it
+- **Tests:** existing test files that exercise this code; coverage gaps
 
-When a stack-specific atomic was loaded, inject its **Change Impact Preview** signals here.
+Inject stack-atomic Change Impact signals if loaded.
 
-### Step 9 - Confidence Gaps (standard and deep)
+### Step 10 - Confidence Gaps (standard, deep)
 
-State explicitly where the explanation is inferred rather than verified:
+State where the explanation is inferred rather than verified, and what specific check would confirm it.
 
-- "Callers cannot be enumerated - invoked via reflection / DI auto-wiring / dynamic dispatch. Verify by [specific check]."
-- "Likely part of the authentication flow based on naming and imports, but the entry point was not located. Confirm by tracing from `AuthController`."
-- "Business reason inferred from method name; no comments or ticket reference found."
+### Step 11 - Design Intent (deep only)
 
-### Step 10 - Design Intent (deep only)
+Pattern in use and why; alternatives traded off; constraints that shaped the design (performance, backward compat, framework); what would force a redesign.
 
-Explain why the code is structured this way - the design decisions embedded in the implementation:
-
-- What pattern is being implemented and why (repository, strategy, decorator, etc.)
-- What alternatives were likely considered and what this approach trades off
-- What constraints shaped the design (performance, backward compatibility, framework requirements)
-- What would need to change if a key assumption changed
-
-Use skill: `complexity-review` to assess whether complexity is accidental or essential.
+Use skill: `complexity-review` to judge whether complexity is essential or accidental.
 
 ## Output Format
 
-### Quick Depth
+### Quick depth
 
 ```markdown
-## [Target Name]
+## [Target]
 
-**What it does:** [2-4 sentence summary]
+**What it does:** [2-4 sentences]
 
 **Key gotchas:**
-
 - [Gotcha 1]
 - [Gotcha 2]
 ```
 
-### Standard Depth (default)
+### Standard depth (default)
 
 ```markdown
-## [Target Name]
+## [Target]
 
-**What it does:** [2-4 sentence summary]
-**Scope boundary:** [What it explicitly does NOT handle]
+**What it does:** [2-4 sentences]
+**Scope boundary:** [what it does NOT handle]
 **Stack:** [language / framework, or "unknown"]
 
 ### Flow Context
-
-- **Triggered by:** [HTTP route / event / job / lifecycle hook / parent caller]
-- **Runs before this:** [upstream]
-- **Runs after this:** [downstream]
-- **Frequency:** [hot path / background / edge case]
+- **Triggered by:** [route / event / job / hook / parent]
+- **Runs before / after:** [upstream] / [downstream]
+- **Frequency:** [hot path / background / edge]
 - **Inbound callers:**
-  - `path/to/file.ext:LINE` - [brief caller context]
+  - `path/to/file.ext:LINE` - [context]
 
 ### Why It Exists
-
-[2-3 sentences: domain reason and/or technical reason]
+[domain and/or technical reason]
 
 ### Data Flow
-
-[Entry points, key branches, external calls, return/side effects]
+[entry points, branches, external calls, return/side effects]
 
 ### Non-Obvious Behavior
-
-| Behavior | Detail                  |
-| -------- | ----------------------- |
-| [Type]   | [What happens and when] |
+| Behavior | Detail |
+| -------- | ------ |
+| [Type]   | [What and when] |
 
 ### Key Invariants
-
 - **Invariant:** [statement] - **If violated:** [consequence]
 
 ### Change Impact Preview
-
-- **If you change the logic:** re-verify [`caller.ext:LINE`], run [test file]
-- **If you change the return shape:** update [call sites], affects [API/serialization boundary]
-- **If you change the side effects:** affects [DB table / event / cache / log]
-- **If you change timing or ordering:** may break [async job / retry / sequence]
-- **If you remove or rename this:** depended on by [feature / flow]
-- **Tests to run / add:** [existing test files], [coverage gaps]
+- **Logic:** re-verify [`caller.ext:LINE`]; run [test file]
+- **Signature:** update [call sites]; affects [boundary]
+- **Side effects:** affects [DB / event / cache / log]
+- **Timing:** may break [async / retry / sequence]
+- **Remove / rename:** depended on by [feature]
+- **Tests:** [existing files], [coverage gaps]
 
 ### Confidence Gaps
-
-- [Where inferred rather than verified, and how to confirm]
+- [Where inferred; how to confirm]
 ```
 
-### Deep Depth
+### Deep depth
 
-Add to standard depth:
+Standard, plus:
 
 ```markdown
 ### Design Intent
-
-[Pattern used, trade-offs, constraints that shaped the design]
+[pattern, tradeoffs, constraints]
 
 ### Complexity Assessment
-
-[Whether complexity is essential or accidental; what could be simplified without loss]
+[essential vs accidental; what could be simplified without loss]
 ```
 
 ## Output Constraints
 
-- No code review findings or refactoring suggestions unless explicitly asked
-- No generated code
 - Omit sections with nothing to say
-- Match depth to requested level - do not over-explain for `quick`
-- Omit obvious observations - high-signal content only
+- Match depth to request - do not over-explain at `quick`
+- No code review findings, refactoring suggestions, or generated code
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded
-- [ ] `stack-detect` ran; stack-specific atomic loaded if available; otherwise universal explanation
-- [ ] Code was read before explaining - no explanation from names alone
-- [ ] Purpose stated from the caller's perspective with scope boundary
-- [ ] Flow Context populated; inbound callers grepped (or marked under Confidence Gaps)
-- [ ] Stack-specific signals injected into Flow Context, Non-Obvious Behavior, Key Invariants, and Change Impact Preview when atomic was loaded
-- [ ] Why It Exists stated, or marked under Confidence Gaps
-- [ ] Data flow covers entry points, branches, external calls, side effects
-- [ ] Non-obvious behavior explicitly flagged
-- [ ] Key invariants named with violation consequence
-- [ ] Change Impact Preview lists concrete checks tied to actual callers and side effects
-- [ ] Confidence Gaps section present where any item was inferred
-- [ ] Explanation specific to this code, not a generic description of the pattern
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: `stack-detect` ran; stack atomic loaded if available; code read before explaining
+- [ ] Step 3: Purpose from caller's perspective with scope boundary
+- [ ] Step 4: Flow Context populated; inbound callers grepped or marked in Gaps; stack signals injected
+- [ ] Step 5: Why It Exists stated or marked in Gaps
+- [ ] Step 6: Data flow covers entry points, branches, external calls, side effects
+- [ ] Step 7: Non-obvious behavior flagged; stack signals injected
+- [ ] Step 8: Invariants named with violation consequence; stack signals injected
+- [ ] Step 9: Change Impact lists concrete checks tied to real callers; stack signals injected
+- [ ] Step 10: Confidence Gaps present wherever inferred
+- [ ] Step 11 (deep only): Design Intent and Complexity Assessment
 
 ## Avoid
 
-- Reviewing the code for quality or suggesting improvements (use `task-code-review`)
-- Prescribing refactors in Change Impact ("prefer adding a new function instead") - list checks, not edits
-- Explaining from function signatures or names without reading the implementation
-- Listing inbound callers as "discoverable in IDE" - actually grep and cite file:line
-- Stating a business reason that is not supported by the code, comments, or surrounding context
-- Generic descriptions ("this is a service layer") without concrete specifics
-- Burying gotchas in prose where they will be missed
-- Generating new code or proposing refactoring
+- Reviewing for quality or suggesting refactors - list checks, not edits
+- Explaining from signatures or names without reading the body
+- Listing callers as "find in IDE" - grep and cite `file:line`
+- Asserting a business reason unsupported by code, comments, or context
+- Generic descriptions ("this is a service layer") without specifics
+- Burying gotchas in prose where they get missed

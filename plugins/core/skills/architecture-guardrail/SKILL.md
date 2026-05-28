@@ -1,6 +1,6 @@
 ---
 name: architecture-guardrail
-description: Layer violation and boundary erosion detection for structural integrity. Auto-detects project stack and adapts guardrails to the detected ecosystem.
+description: Detect layer violations, coupling, boundary erosion, and structural drift in code changes; adapt findings to the detected stack.
 metadata:
   category: governance
   tags: [architecture, boundaries, coupling, layer-violations, multi-stack]
@@ -13,96 +13,77 @@ user-invocable: false
 
 ## When to Use
 
-- During code review to detect structural drift
-- When changes introduce new dependencies between modules
-- When code bypasses established abstractions or layers
-- When reviewing changes to shared or core modules
+- Reviewing changes for structural drift, not style
+- New dependencies between modules, packages, or layers
+- Code that bypasses an established abstraction
+- Changes to shared, core, or cross-cutting modules
 
 ## Rules
 
-- Focus on structural integrity, not implementation style
-- Flag violations only when they cross established boundaries
-- Distinguish intentional refactoring from accidental drift
-- One boundary violation is more important than ten style issues
+- Flag only violations that cross an established boundary; ignore style
+- Distinguish intentional refactor from accidental drift - check commit message and adjacent code
+- One structural violation outweighs many cosmetic issues
+- Use the conventions already present in the codebase as the baseline, not a generic ideal
 
-## Pattern
+## Patterns
 
-### Layer Violations - Universal Principles
+### Layer Violations
 
-Common layer violations regardless of framework:
-
-- Presentation → Data access (skipping business logic layer)
-- Business logic → Presentation (reverse dependency)
-- Domain objects in API responses (skipping response shaping)
-- Business logic in presentation layer (responsibility leak)
-- Infrastructure concerns in domain layer
-
-Most backend frameworks follow a layered architecture pattern:
+Most backend codebases follow some form of:
 
 ```
-Presentation (Controllers/Handlers) → Service/Business Logic → Data Access (Repository/ORM)
+Presentation (Controller / Handler) -> Service / Domain -> Data Access (Repo / ORM / Query)
 ```
 
-**Violation detection**: When code in the presentation layer directly accesses the data layer, or when business logic appears in controllers/handlers instead of the service layer, flag it as a layer violation.
+Flag when the change:
 
-### Stack-Specific Guidance
+- Calls data access directly from presentation, skipping the service layer
+- Puts business logic in controllers, handlers, views, templates, or callbacks
+- Returns domain or ORM entities directly in API responses
+- Pushes presentation or transport concerns into the domain layer
+- Pulls infrastructure (HTTP, broker, DB driver) into the domain layer
 
-After loading stack-detect, apply layer violation detection using the idioms of the detected stack. For example:
+After `stack-detect`, translate these into the detected ecosystem's vocabulary - controllers, handlers, actions, resolvers, route functions, components. Framework-specific patterns (fat controllers, fat models, business logic in callbacks or migrations, queries in templates) are concrete instances of these violations.
 
-- In frameworks with annotation/decorator-based architectures (e.g., Spring, NestJS), controllers should delegate to service classes, not access repositories directly
-- In MVC frameworks (e.g., Rails, Django, Phoenix), controllers/actions should be thin - business logic belongs in service objects or model methods
-- In handler-based architectures (e.g., Go HTTP frameworks, Express), handlers should delegate to service packages, not perform business logic or direct DB access
-- In Laravel, controllers should be thin - delegate business logic to service/action classes, not Eloquent models directly. Avoid fat models with business logic in accessors/mutators, business logic in migrations, or direct DB queries in Blade views
-- Framework-specific violations (e.g., fat controllers, business logic in callbacks, circular package imports) should be detected based on the conventions of the detected ecosystem
+If the stack is unfamiliar, apply the universal layering above and recommend the user verify against the framework's documentation.
 
-If the detected stack is unfamiliar, apply the universal layering principles above and recommend the user verify against their framework's documentation.
+### Module Coupling
 
-### Module Coupling (All Stacks)
-
-Detect new coupling between previously independent modules:
-
-- Direct imports across module boundaries instead of through defined interfaces
+- Direct cross-module imports that bypass a defined interface
 - Shared mutable state between modules
-- Circular dependencies (A → B → A)
-- Feature module depending on another feature module's internals
-- Cross-runtime imports: frontend code importing backend modules or vice versa in a monorepo (breaks build, leaks server internals to client bundle)
+- Circular dependencies (A -> B -> A)
+- Feature module reaching into another feature module's internals
+- Cross-runtime imports in a monorepo - server code in a client bundle or vice versa
 
-### Boundary Erosion (All Stacks)
+### Boundary Erosion
 
-Detect gradual weakening of established abstractions:
+- "Just one more" public method added to an internal class
+- Implementation types leaking through return values
+- Configuration read directly instead of through an abstraction
+- Shared "utils" or "common" module growing past ~20 files or mixing domains - signals a missing domain boundary; split or extract
 
-- Adding "just one more" public method to an internal class/module
-- Exposing implementation details through return types
-- Domain logic leaking into infrastructure layer
-- Configuration values used directly instead of through abstraction
-- Shared utility module growing unbounded (>20 files or mixed domains) - indicates missing domain boundaries. Split into domain-specific utility modules or extract into proper service/library packages.
+### Drift
 
-### Drift Detection (All Stacks)
+- New code that contradicts the existing module structure
+- Inconsistent package or directory layout within one module
+- Mixed architectural styles - some modules use ports/adapters, the new code does not
 
-Compare change patterns against established conventions:
-
-- New code that contradicts existing module structure
-- Inconsistent package/directory organization within the same module
-- Mixed architectural styles (some modules use ports/adapters, new code does not)
-
-### Good: Specific guardrail finding
+Good - specific, localized, references the existing convention:
 
 ```
-[High] order-service/app/controllers/orders_controller.rb:45
-- Issue: Controller directly queries Payment model, bypassing PaymentService
-- Impact: Creates hidden coupling between order and payment modules
-- Drift: Existing pattern uses inter-service communication via PaymentClient
+[High] orders/controllers/orders.rb:45
+- Issue: Controller calls Payment.find_by(...), bypassing PaymentService
+- Impact: Hidden coupling between orders and payments modules
+- Drift: Existing pattern routes payment access through PaymentClient
 ```
 
-### Bad: Vague architectural concern
+Bad - vague:
 
 ```
 [Suggestion] The architecture could be improved.
 ```
 
 ## Output Format
-
-This is the contract that consuming workflow skills depend on. Produce findings in this structure so callers can integrate results consistently.
 
 ```
 ## Architecture Guardrail Findings
@@ -122,17 +103,17 @@ This is the contract that consuming workflow skills depend on. Produce findings 
 {State explicitly if no violations detected - do not omit this section silently}
 ```
 
-**Severity guidance:**
+Severity:
 
-- **High**: Direct layer bypass or circular dependency (e.g., controller queries DB directly)
-- **Medium**: New coupling between previously independent modules, boundary erosion
-- **Low**: Drift from established conventions with limited structural impact
+- **High**: layer bypass, circular dependency, cross-runtime import
+- **Medium**: new cross-module coupling, boundary erosion
+- **Low**: convention drift with limited structural impact
 
-Omit "No Violations Found" if violations were listed. Never omit this section entirely - consuming skills use its presence to confirm the check ran.
+Omit "No Violations Found" only when violations were listed. Never omit the section entirely - consuming skills use its presence to confirm the check ran.
 
 ## Avoid
 
-- Flagging intentional architectural decisions as violations
-- Enforcing a specific architecture style not established in the project
+- Flagging an intentional architectural decision as drift
+- Enforcing a style the project has not adopted
 - Treating all coupling as equally harmful
-- Missing the forest for the trees - one structural violation matters more than many style issues
+- Losing one structural finding under a pile of style nits

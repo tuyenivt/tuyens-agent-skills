@@ -1,6 +1,6 @@
 ---
 name: backend-db-indexing
-description: Database index strategy and query optimization: composite column ordering, covering indexes, partial indexes, when to add indexes.
+description: Design and review database indexes - composite column ordering, covering indexes, partial indexes, expression indexes, query patterns.
 metadata:
   category: performance
   tags: [database, indexing, queries, optimization]
@@ -14,162 +14,128 @@ user-invocable: false
 ## When to Use
 
 - Optimizing frequently executed queries
-- Improving JOIN performance
-- Speeding up search operations
+- Improving JOIN and ORDER BY performance
+- Diagnosing why an index is not being used
 
 ## Rules
 
-- Index foreign keys for JOIN performance
-- Index search columns and filter conditions
-- Index join condition columns
-- Avoid over-indexing (increases write overhead)
-- Avoid indexing low-cardinality columns
-- Align indexes with actual query patterns
-- Monitor slow queries regularly
-- Review index usage periodically for maintenance
+- Index foreign keys, JOIN columns, and frequent WHERE/ORDER BY predicates.
+- Align indexes with actual query patterns - inspect EXPLAIN, not intuition.
+- Composite indexes: equality columns first, range columns last.
+- Functions on indexed columns disable the index - rewrite the query or add an expression index.
+- Avoid indexing low-cardinality columns (a few distinct values - optimizer prefers scan).
+- Avoid duplicate or overlapping indexes - a composite `(a, b)` already covers single-column lookups on `a`.
+- Always include lock risk when recommending a new index (callers use it for migration planning).
 
-## Pattern
+## Patterns
 
-Bad - Missing indexes:
-
-```sql
--- Slow query without indexes
-SELECT u.* FROM users u
-WHERE u.status = 'active' AND u.created_at > NOW() - INTERVAL '30 days'
-```
-
-Good - Indexed columns:
+### Function on indexed column
 
 ```sql
-CREATE INDEX idx_users_status ON users(status);
-CREATE INDEX idx_users_created ON users(created_at);
-CREATE INDEX idx_users_status_created ON users(status, created_at);
-```
-
-### Common Index Pitfalls
-
-**1. Function on indexed column kills the index**
-
-Applying a function to an indexed column prevents the query planner from using the index:
-
-```sql
--- BAD: function on column, index not used
+-- Bad - function disables the index
 WHERE created_at::date = '2024-01-01'
 WHERE LOWER(email) = 'user@example.com'
-WHERE DATE_TRUNC('day', created_at) = '2024-01-01'
 
--- GOOD: rewrite to avoid function, or use a functional/expression index
+-- Good - rewrite as range, or use an expression index
 WHERE created_at >= '2024-01-01' AND created_at < '2024-01-02'
-CREATE INDEX idx_users_email_lower ON users(LOWER(email));  -- expression index
+CREATE INDEX idx_users_email_lower ON users(LOWER(email));
 ```
 
-**2. Composite index column ordering must match query predicates**
+### Composite column order
 
-A composite index `(col_a, col_b)` is only used when `col_a` is in the WHERE clause. Querying on `col_b` alone does a full scan:
+A composite index is traversed left-to-right. Only the leading column(s) can be used in isolation.
 
 ```sql
 -- Index: (user_id, status)
--- Uses index: WHERE user_id = ? AND status = ?
--- Uses index (leading column only): WHERE user_id = ?
--- Does NOT use index (non-leading column): WHERE status = ?  <- full table scan
+-- Uses index:     WHERE user_id = ? AND status = ?
+-- Uses index:     WHERE user_id = ?
+-- Full scan:      WHERE status = ?      <- non-leading column alone
 
--- Fix: if queries filter on status alone, add a separate index on (status)
-CREATE INDEX idx_orders_status ON orders(status);
+-- Fix: add a separate index on (status) if that query is hot
 ```
 
-**3. Equality columns before range columns in composite indexes**
-
-When a query combines equality (`=`) and range (`>`, `<`, `BETWEEN`, `ORDER BY`) predicates, place equality columns first:
+### Equality before range
 
 ```sql
 -- Query: WHERE status = 'active' AND created_at > '2024-01-01' ORDER BY created_at
--- GOOD: equality first, then range
+
+-- Good - equality narrows, range scans within
 CREATE INDEX idx_users_status_created ON users(status, created_at);
--- BAD: range first - cannot skip-scan to equality
+
+-- Bad - range first prevents skip to equality
 CREATE INDEX idx_users_created_status ON users(created_at, status);
 ```
 
-The index is traversed left-to-right. Equality columns narrow to exact nodes; range columns then scan within that subset.
+### Covering index (INCLUDE)
 
-**4. Covering indexes (INCLUDE clause)**
-
-A covering index includes all columns a query needs, eliminating the table lookup (index-only scan):
+Includes non-key columns in the leaf, enabling index-only scans without table lookup.
 
 ```sql
 -- Query: SELECT email, name FROM users WHERE status = 'active'
--- Without covering index: index scan on status -> table lookup for email, name
--- With covering index: index-only scan, no table lookup
 CREATE INDEX idx_users_status_covering ON users(status) INCLUDE (email, name);
 ```
 
-Use covering indexes for high-frequency read queries where the table lookup is the bottleneck. INCLUDE columns are stored in the index leaf pages but not used for key ordering, so they do not increase the index tree depth.
+Use for high-frequency read queries where the heap lookup is the bottleneck. `INCLUDE` is supported on PostgreSQL 11+, SQL Server 2005+, and MySQL 8.0.13+. On older engines, add the columns to the key instead.
 
-**Note:** `INCLUDE` is supported in PostgreSQL 11+, SQL Server 2005+, and MySQL 8.0.13+ (as functional equivalent via index extensions). For older versions, add columns to the index key instead.
+### Partial index (WHERE on index)
 
-**5. Partial indexes (WHERE clause on index)**
-
-A partial index indexes only rows matching a condition, reducing index size and write overhead:
+Indexes only rows matching a predicate - smaller index, lower write overhead.
 
 ```sql
--- Only 5% of orders are 'pending', but queries filter on them constantly
+-- Hot subset
 CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
 
--- Only index non-deleted rows (soft-delete pattern)
+-- Soft-delete pattern
 CREATE INDEX idx_users_active ON users(email) WHERE deleted_at IS NULL;
 ```
 
-Use partial indexes when queries consistently filter to a small subset of rows. The query's WHERE clause must match or be a subset of the index's WHERE clause for the planner to use it.
+The query's WHERE must match or be a subset of the index's WHERE. Supported on PostgreSQL and SQLite; MySQL offers prefix indexes as a partial alternative.
 
-**Note:** Partial indexes are supported in PostgreSQL and SQLite. MySQL does not support partial indexes but offers prefix indexes as a partial alternative.
+### Diagnosing "index exists but query scans"
 
-**6. Diagnosing "index exists but query still scans"**
+Check, in order:
 
-When an existing index is not being used, check for:
-- Function applied to indexed column (see above)
-- Low cardinality (DB optimizer chooses scan over index for < ~5% selectivity)
-- Query planner statistics stale (run ANALYZE)
-- Index column order doesn't match WHERE predicates (composite index pitfall)
-- Index type mismatch (B-tree index on a JSON/array column requires GIN)
-- Partial index WHERE clause does not match query filter
+- Function applied to the indexed column
+- Composite column order does not match WHERE predicates
+- Low selectivity (planner picks scan under ~5%)
+- Stale planner statistics - run `ANALYZE`
+- Index type mismatch (B-tree on JSON / array needs GIN)
+- Partial index WHERE does not match the query's filter
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to surface index gaps and lock risks consistently.
+Consuming workflows parse this structure.
 
 ```
 ## Database Indexing Assessment
 
 ### Missing Indexes
 
-- [Severity: High | Medium | Low] {table.column(s)} - {description of gap}
-  - Query pattern: {the WHERE / JOIN / ORDER BY that needs this index}
+- [Severity: High | Medium | Low] {table.column(s)} - {gap description}
+  - Query pattern: {WHERE / JOIN / ORDER BY needing the index}
   - Recommended index: {CREATE INDEX statement or ORM equivalent}
   - Lock risk: {Low - additive online | Medium - large table, use CONCURRENTLY | High - blocks writes}
 
 ### Existing Index Issues
 
-- {table.index_name} - {over-indexed / low-cardinality / unused} - {recommendation}
+- {table.index_name} - {over-indexed | low-cardinality | unused | duplicate} - {recommendation}
 
 ### No Issues Found
 
 {State explicitly if indexing is adequate - do not omit this section silently}
 ```
 
-**Severity guidance:**
+**Severity:**
 
-- **High**: Missing index on a high-traffic query or foreign key on a large table
-- **Medium**: Missing composite index causing partial scan on a moderate-traffic path
-- **Low**: Low-cardinality index that adds write overhead with minimal read benefit
+- **High**: Missing index on a high-traffic query or FK on a large table
+- **Medium**: Missing composite causing partial scan on moderate-traffic path
+- **Low**: Low-cardinality index with write cost and no read benefit
 
-Always include Lock risk for every recommended index - callers use this for migration planning.
+Lock risk is mandatory on every recommendation.
 
 ## Avoid
 
-- Indexing every column (each index adds write overhead and storage)
-- Indexes on low-cardinality columns (status with 3 values - optimizer prefers full scan)
-- Missing indexes on foreign keys used in JOINs
-- Duplicate or overlapping indexes (e.g., `(a)` and `(a, b)` - the composite covers single-column lookups on `a`)
-- Indexes on frequently updated columns without measuring read vs write trade-off
-- Leaving unused indexes in place (they consume write I/O and storage with zero benefit - check `pg_stat_user_indexes` or equivalent)
-- Range column before equality column in composite indexes
-- Using `SELECT *` and expecting covering indexes to help (they only help when selected columns are in the index)
+- Indexing every column - each index adds write and storage cost
+- Leaving unused indexes in place (`pg_stat_user_indexes` or equivalent reveals them)
+- Indexing frequently updated columns without measuring read vs write trade-off
+- Using `SELECT *` and expecting a covering index to help - covering only works for the listed columns

@@ -1,6 +1,6 @@
 ---
 name: complexity-review
-description: Complexity assessment: cyclomatic complexity, cognitive load, abstraction depth. Auto-detects stack and adapts thresholds.
+description: Flag cyclomatic and cognitive complexity, long methods, deep nesting, oversized files, parameter bloat. Stack-aware thresholds.
 metadata:
   category: governance
   tags: [complexity, review, maintainability, multi-stack]
@@ -13,111 +13,74 @@ user-invocable: false
 
 ## When to Use
 
-- During code review to flag overly complex methods or modules
-- When refactoring to identify simplification targets
-- When evaluating whether a design is over-engineered
+- Code review to flag overly complex methods, classes, or modules
+- Refactoring planning to identify simplification targets
+- Evaluating whether a design is over-engineered
 
-## Universal Rules (All Stacks)
+## Rules
 
-- Flag methods/functions with cyclomatic complexity > 10
-- Flag files/classes with > 300 lines (indicates SRP violation)
-- Flag call chains deeper than 3 levels of abstraction
-- Complexity must justify itself - simple problems deserve simple solutions
-- Prefer flat control flow over deeply nested conditionals
+- Flag at thresholds; do not enforce them as absolutes. Context can justify exceeding any threshold.
+- Report cognitive complexity alongside cyclomatic. Cyclomatic counts branches; cognitive captures reading difficulty.
+- Calibrate thresholds to the detected stack's norms (Ruby methods are shorter than Java).
+- When multiple signals fire on the same unit, fix the highest-severity signal first.
 
----
+## Patterns
 
-## Complexity Signals
+### Signal Table
 
-Common complexity signals across all ecosystems:
+| Signal                            | Default Threshold      | Fix                                                        |
+| --------------------------------- | ---------------------- | ---------------------------------------------------------- |
+| Cyclomatic complexity             | > 10                   | Extract by responsibility; replace conditionals with table lookup or polymorphism |
+| Cognitive complexity              | > 15                   | Flatten nesting; collapse boolean chains; split mixed concerns |
+| Method/function length            | > 20-40 lines          | Extract methods by responsibility                          |
+| File/class/module size            | > 200-300 lines        | Split by responsibility (likely SRP violation)             |
+| Nesting depth                     | > 3 levels             | Guard clauses, early returns, pattern matching             |
+| Parameter count                   | > 5                    | Parameter object, builder, or rebalance responsibilities   |
+| Branch chain (switch / if-else)   | > 10 branches          | Map lookup, strategy, or polymorphism                      |
+| Inheritance/mixin depth           | > 3-4 levels           | Composition over inheritance                               |
+| External calls per method         | > 3                    | Extract orchestration layer; explicit error handling per call |
+| Error-handling complexity         | Broad catch-all, empty catch, nested try > 2 | Specific exception types, Result/Either, error handler delegation |
 
-| Signal                                           | Threshold                                                                                        | Fix                                                                                        |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Long method/function                             | > 20-40 lines (varies by language convention)                                                    | Extract methods/functions by responsibility                                                |
-| Deeply nested conditionals                       | > 3 levels                                                                                       | Guard clauses, early returns, pattern matching                                             |
-| Large file/class/module                          | > 200-300 lines                                                                                  | Split by responsibility                                                                    |
-| Function/method/constructor with many parameters | > 5 params                                                                                       | Facade or reorganize responsibilities                                                      |
-| Long switch/case or if-else chain                | > 10 branches                                                                                    | Map lookup, strategy pattern, or polymorphism                                              |
-| Deep inheritance/mixin chain                     | > 3-4 levels                                                                                     | Composition over inheritance; extract cross-cutting behavior into mixins or decorators     |
-| Error handling complexity                        | Broad catch-all (bare except, catch(Exception)), empty catch blocks, nested try/catch > 2 levels | Specific exception types, error handler delegation, Result/Either types                    |
-| External service calls in one method             | > 3 calls                                                                                        | Coordinator pattern - extract to orchestration layer with explicit error handling per call |
+Cognitive complexity adds: +1 per nesting level, +1 per structural break (early return, break, continue), +1 per boolean operator sequence.
 
-Note: Exact thresholds vary by ecosystem. Some languages are naturally more verbose than others. After loading stack-detect, calibrate thresholds to the norms of the detected language.
+### Severity
 
-### Cognitive Complexity
+- **High**: cyclomatic > 15, file > 400 lines, nesting > 4, or any signal blocking comprehension
+- **Medium**: cyclomatic 10-15, file 300-400 lines, nesting > 3
+- **Low**: approaching threshold but not yet a maintenance burden
 
-Cyclomatic complexity counts decision points; cognitive complexity measures how hard the code is to read. Cognitive complexity increases with:
+### Refactor Priority
 
-- Each nesting level: `+1` per level for conditionals and loops
-- Structural complexity breaks (early `return`, `break`, `continue`, `goto`): `+1`
-- Boolean operator sequences (`&&`, `||`): `+1` per unique sequence
+When several signals fire together, address in order: (1) externalize service calls, (2) flatten nesting with guard clauses, (3) extract by responsibility. Each step often removes downstream signals.
 
-Flag high cognitive complexity (estimated > 15) even when cyclomatic complexity is within threshold - deeply nested code with few branches is still hard to reason about.
+### Stack Calibration
 
-### Refactoring Priority
-
-When multiple complexity signals fire simultaneously, fix in this order:
-
-1. **External service calls first** - extract into named wrapper methods with explicit timeout/error handling per call
-2. **Guard clauses** - invert nested conditionals into early returns to flatten nesting
-3. **Extract by responsibility** - split long methods into focused single-purpose functions
-
-## Simplification Patterns
-
-Universal simplification strategies:
-
-- **Guard clauses and early returns**: Eliminate nesting by returning early on error conditions
-- **Pattern matching**: Use the language's pattern matching feature (if available) instead of nested if/else
-- **Validation delegation**: Move input validation to the framework's validation layer instead of manual checks
-- **Centralized error handling**: Use the framework's global error handling instead of per-endpoint try/catch
-- **Extraction**: Extract complex logic into focused, named functions/methods with single responsibilities
-- **Callback/hook simplification**: If the framework uses callback patterns, prefer explicit orchestration over long callback chains
-
-## Stack-Specific Guidance
-
-After loading stack-detect, apply complexity review using the conventions of the detected ecosystem:
-
-- Calibrate method/function length thresholds to the language's norm (e.g., methods tend to be shorter in Ruby than in Java)
-- Use the ecosystem's standard linting/analysis tools for complexity metrics
-- Apply the framework's recommended patterns for reducing controller/handler complexity (service extraction, middleware, etc.)
-- Identify framework-specific complexity signals (e.g., callback chains, middleware stacking, overly wide interfaces)
-
-If the detected stack is unfamiliar, apply the universal thresholds above and recommend the user consult their ecosystem's linting tools for calibrated thresholds.
-
----
+After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack's standard linting/analysis tool for measured metrics. Use universal thresholds if the stack is unknown and recommend a calibrated tool.
 
 ## Output Format
-
-Consuming workflow skills depend on this structure to surface complexity issues consistently.
 
 ```
 ## Complexity Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {language / framework}
 
 ### Issues
 
-- [Severity: High | Medium | Low] {file:line or function/class name} - {description of complexity issue}
-  - Signal: {which signal triggered - cyclomatic complexity | file size | nesting depth | abstraction depth}
-  - Measured: {e.g., "cyclomatic complexity 18, threshold 10" or "347 lines, threshold 300"}
-  - Simplification: {concrete pattern from the detected stack - guard clauses, extraction, etc.}
+- [Severity: High | Medium | Low] {file:line or symbol} - {one-line description}
+  - Signal: {signal name from table}
+  - Measured: {e.g., "cyclomatic 18, threshold 10"}
+  - Simplification: {concrete fix from Patterns}
 
 ### No Issues Found
 
-{State explicitly if complexity is within acceptable thresholds - do not omit this section silently}
+{Include only when no issues were listed. State that complexity is within thresholds.}
 ```
 
-**Severity guidance:**
+Omit "No Issues Found" when issues are listed.
 
-- **High**: Cyclomatic complexity > 15, or file > 400 lines, or abstraction depth > 4 levels
-- **Medium**: Cyclomatic complexity 10-15, or file 300-400 lines, or nesting > 3 levels
-- **Low**: Approaching thresholds but not yet a maintenance burden
+## Avoid
 
-Omit "No Issues Found" if issues were listed.
-
-## Avoid (All Stacks)
-
-- Complexity metrics as absolute rules - context matters
-- Refactoring stable, well-tested code solely to reduce metrics
-- Premature abstraction to "reduce complexity" (adds indirection complexity)
-- Ignoring cognitive complexity in favor of only cyclomatic complexity
+- Treating thresholds as absolutes; well-tested stable code may exceed them
+- Premature abstraction that trades branch complexity for indirection complexity
+- Reporting cyclomatic complexity without cognitive complexity
+- Refactoring solely to satisfy metrics

@@ -1,6 +1,6 @@
 ---
 name: ops-engineering-governance
-description: Engineering process, governance improvement, and guardrail evolution for incident prevention
+description: Convert incident lessons into enforceable guardrails and prioritized process improvements that target failure classes.
 metadata:
   category: governance
   tags: [governance, process, review, deployment, testing, incident, prevention, guardrails, enforcement]
@@ -13,117 +13,36 @@ user-invocable: false
 
 ## When to Use
 
-- During postmortem to recommend process improvements
-- When identifying governance gaps that contributed to a production failure
-- When strengthening engineering processes after a pattern of related incidents
-- When evaluating deployment, review, or testing process effectiveness
-- When converting incident lessons into enforceable guardrails
-- When reviewing guardrail effectiveness across multiple incidents
-- After root cause analysis is complete and containment is in place
-- When identifying patterns across multiple related incidents for systemic prevention
+- During postmortem, after root cause is identified and containment is in place
+- When converting incident lessons into enforceable guardrails or process changes
+- When reviewing guardrail effectiveness across a pattern of related incidents
 
 ## Rules
 
-- Process changes must be proportional to the risk they mitigate
-- Every recommendation must be actionable and assignable
-- Prevention must address the class of failure, not just the specific instance
-- Include both technical and process improvements
-- Prefer structural enforcement over behavioral expectations
-- Balance safety with development velocity -- do not over-process low-risk areas
-- Prioritize by blast radius reduction potential
-- Guardrails must target failure classes, not specific incidents
-- Every guardrail must be enforceable (automated or structurally embedded)
-- Do not propose guardrails that cannot be verified
+- Target the failure **class**, not the specific incident.
+- Every guardrail must be enforceable (automated, structural, or alert-backed) and verifiable.
+- Every process change must be actionable, assignable, and tied to a trigger condition.
+- Match the weight of the control to the risk it mitigates; prefer structural enforcement over "be careful".
+- Prioritize by blast-radius reduction; do not ship an unbounded improvement wishlist.
 
-## Pattern
+## Patterns
 
-### Governance & Prevention Matrix
+### Governance Areas
 
-| Area                   | Governance Focus                                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Review process         | Checklist updates, risk-based review triggers, ADR creation, merge policy enforcement (required approvals, branch protection) |
-| Dependency governance  | New external dependency approval, security scanning (CVE check), license compliance, dependency ownership                     |
-| Architecture guardrail | Boundary enforcement, isolation, bulkheading                                                                                  |
-| Observability          | Missing signals that would have caught this earlier                                                                           |
-| Testing                | Coverage gaps, chaos experiment design, missing test types                                                                    |
-| Deployment safety      | Canary, feature flags, progressive rollout, rollback automation                                                               |
-| Capacity / deps        | Pool sizing, timeout budgets, circuit breakers, rate limiting                                                                 |
-| Operational readiness  | Runbook updates, on-call training, incident playbooks                                                                         |
-| Process improvement    | Review checklist update, runbook addition, knowledge sharing                                                                  |
-
-### Recommendation Structure
-
-For each recommendation:
-
-1. **What** -- specific process change
-2. **Why** -- which failure class or gap it addresses
-3. **Trigger** -- when this process activates (change scope, risk level, module affected)
-4. **Owner** -- who is responsible for implementation (role, not individual)
-5. **Priority** -- immediate / next sprint / quarterly
-
-### Good: Specific governance improvement with trigger
-
-```
-What: Require design doc for changes that modify transaction boundaries or add new async flows
-Why: Transaction boundary changes have caused 3 incidents in the last quarter; review alone is insufficient for assessing distributed state impact
-Trigger: PR modifies @Transactional annotations, adds new event publishers, or changes message consumer logic
-Owner: Tech lead for affected module
-Priority: next sprint
-```
-
-### Good: Specific prevention tied to failure class
-
-```
-1. Add connection pool circuit breaker (Priority: immediate)
-   What: Configure HikariCP leak detection (30s) and add circuit breaker on payment-gateway client
-   Why: Prevents connection pool exhaustion from slow downstream dependencies
-   Blast radius reduction: Isolates payment failures from order and cart flows
-
-2. Add timeout budget enforcement (Priority: next sprint)
-   What: Set total request timeout = sum(downstream timeouts) + 20% buffer, fail fast when budget exceeded
-   Why: Prevents retry amplification from consuming full connection pool
-   Blast radius reduction: Bounds cascading latency at the integration boundary
-```
-
-### Bad: Vague process suggestion
-
-```
-We should have better design reviews for important changes.
-```
-
-### Design Doc Triggers
-
-Recommend mandatory design documentation when changes involve:
-
-- Transaction boundary modifications across services
-- New async flows or event-driven communication
-- Data model changes affecting multiple consumers
-- New external dependency integration
-- Changes to authentication or authorization model
-- Infrastructure topology changes
-
-### Chaos Experiment Design
-
-For each proposed chaos experiment:
-
-- **Hypothesis** -- what failure mode is being validated
-- **Injection** -- specific fault to introduce (latency, error, resource limit)
-- **Expected behavior** -- how the system should respond (fallback, graceful degradation)
-- **Blast radius control** -- how to limit experiment impact
-
-### Guardrail Definition
-
-When proposing new or strengthened guardrails, define each with:
-
-| Field                   | Description                                              |
-| ----------------------- | -------------------------------------------------------- |
-| Rule                    | Specific, enforceable constraint                         |
-| Scope                   | Where it applies (code review, CI, deployment, runtime)  |
-| Enforcement mechanism   | How it is checked (lint rule, CI gate, alert, checklist) |
-| Failure class prevented | Category of failure this guards against                  |
-| Priority                | immediate / next sprint / quarterly                      |
+| Area               | Focus                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Review process     | Risk-based review triggers, ADR/design-doc requirements, branch protection             |
+| Dependency control | New-dependency approval, CVE scanning, license compliance, ownership                   |
+| Architecture       | Boundary enforcement, isolation, bulkheading                                           |
+| Observability      | Missing signals that would have detected the failure earlier                           |
+| Testing            | Coverage gaps, chaos experiment design, missing test types                             |
+| Deployment safety  | Canary, feature flags, progressive rollout, rollback automation                        |
+| Capacity / deps    | Pool sizing, timeout budgets, circuit breakers, rate limiting                          |
+| Operational        | Runbooks, on-call training, incident playbooks                                         |
 
 ### Enforcement Tiers
+
+Prefer higher-tier enforcement. If only manual is feasible, pair it with a plan to automate.
 
 | Tier       | Mechanism                  | Reliability |
 | ---------- | -------------------------- | ----------- |
@@ -132,36 +51,53 @@ When proposing new or strengthened guardrails, define each with:
 | Monitored  | Alert, dashboard, SLO      | Medium      |
 | Manual     | Checklist, review policy   | Low         |
 
-Prefer higher-tier enforcement. If only manual enforcement is possible, pair it with a plan to automate.
+### Guardrail Definition
 
-### Good: Enforceable guardrail with clear scope
+| Field                   | Description                                              |
+| ----------------------- | -------------------------------------------------------- |
+| Rule                    | Specific, enforceable constraint                         |
+| Scope                   | Where it applies (code review, CI, deployment, runtime)  |
+| Enforcement             | How it is checked (lint rule, CI gate, alert, checklist) |
+| Failure class prevented | Category of failure this guards against                  |
+| Priority                | immediate / next sprint / quarterly                      |
+
+Categorize each guardrail as **new** (no rule covers this class), **strengthen** (existing rule too weak), **automate** (manual rule needs CI enforcement), or **broaden** (rule exists but missed the affected area).
+
+### Process Improvement Structure
+
+For each process change, specify: **What** (the change), **Why** (failure class addressed), **Trigger** (when the process activates), **Owner** (role, not individual), **Priority**.
+
+Mandatory design-doc triggers include: transaction boundary changes across services, new async/event flows, data model changes with multiple consumers, new external dependency, auth/authz changes, infrastructure topology changes.
+
+### Good: Enforceable guardrail
 
 ```
 Rule: All external service calls must have a circuit breaker configured
 Scope: Code review + CI
-Enforcement: Custom ArchUnit test that verifies @CircuitBreaker on all REST client methods
+Enforcement: ArchUnit test verifies @CircuitBreaker on all REST client methods
 Failure class prevented: Cascading failure from external dependency timeout
 Priority: immediate
 ```
 
-### Bad: Vague unenforceable suggestion
+### Good: Specific process change with trigger
 
 ```
-Rule: Be more careful with external service calls
+What: Require design doc for changes that modify transaction boundaries or add new async flows
+Why: Three transaction-boundary incidents last quarter; review alone misses distributed-state impact
+Trigger: PR modifies @Transactional, adds event publishers, or changes consumer logic
+Owner: Tech lead for affected module
+Priority: next sprint
 ```
 
-### Guardrail Evolution Triggers
+### Bad: Behavioral expectation, no structure
 
-When proposing guardrail changes, categorize the change:
-
-- **New guardrail** -- no existing rule covers this failure class
-- **Strengthen existing** -- existing guardrail was too weak or narrow
-- **Automate existing** -- manual guardrail needs automated enforcement
-- **Broaden scope** -- guardrail exists but did not apply to the affected area
+```
+We should be more careful with external service calls and do better design reviews.
+```
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to surface actionable, prioritized governance improvements.
+Consuming workflow skills parse this structure to surface actionable, prioritized governance improvements.
 
 ```
 ## Engineering Governance Recommendations
@@ -175,29 +111,23 @@ Consuming workflow skills depend on this structure to surface actionable, priori
 ### Process Improvements
 
 - **[Priority: immediate | next sprint | quarterly]** {What}: {specific process change}
-  - Why: {failure class or gap it addresses}
+  - Why: {failure class addressed}
   - Trigger: {when this process activates}
   - Owner: {role responsible}
 
 ### No Recommendations
 
-{State explicitly if no governance improvements are needed - do not omit this section silently}
+{State explicitly if no governance improvements are needed - do not omit silently.}
 ```
 
-Every guardrail must have an enforcement mechanism. Every process improvement must have a trigger and owner. Omit "No Recommendations" if recommendations were listed.
+Every guardrail needs an enforcement mechanism. Every process improvement needs a trigger and owner. Omit "No Recommendations" if recommendations were listed.
 
 ## Avoid
 
-- Process changes disproportionate to the risk (heavyweight process for low-risk areas)
-- Behavioral expectations without structural support ("be more careful" is not a process)
-- Governance changes that only apply to the specific incident, not the failure class
-- Adding process without removing or streamlining existing overhead
-- Ignoring the cost of process on development velocity
-- Guardrails that cannot be verified or enforced
-- Rules so broad they generate false positives and get ignored
-- Manual-only enforcement for critical failure classes
-- Adding guardrails without removing or consolidating obsolete ones
-- Recommendations that only fix the specific instance, not the failure class
-- Unbounded improvement wishlists without prioritization
-- Ignoring process and human factors (runbooks, training, review checklists)
-- Proposing architectural rewrites when targeted fixes suffice
+- Behavioral expectations without structural support ("be more careful").
+- Guardrails so broad they generate false positives and get ignored.
+- Manual-only enforcement for critical failure classes.
+- Adding guardrails without retiring obsolete ones.
+- Recommendations that fix the specific instance, not the failure class.
+- Heavyweight process applied to low-risk areas, or unbounded wishlists.
+- Architectural rewrites when targeted fixes suffice.

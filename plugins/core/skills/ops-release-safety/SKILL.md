@@ -1,9 +1,9 @@
 ---
 name: ops-release-safety
-description: Rollout, rollback, and deployment risk patterns
+description: Plan rollout strategy, rollback triggers, and schema-deploy ordering for safe production releases.
 metadata:
   category: ops
-  tags: [deployment, rollout, rollback, canary, feature-flags]
+  tags: [deployment, rollout, rollback, canary, schema-deploy, multi-service]
 user-invocable: false
 ---
 
@@ -13,94 +13,69 @@ user-invocable: false
 
 ## When to Use
 
-- During architecture design to plan deployment strategy
-- When designing rollback capability for a new feature
-- When evaluating deployment risk for schema changes or data migrations
-- When planning feature flag strategies for progressive rollout
+- Designing deployment strategy for a new feature or risky change
+- Planning rollback capability and triggers before ship
+- Evaluating deploy risk for schema changes, data migrations, or multi-service rollouts
 
 ## Rules
 
-- Every deployment must have a rollback plan before it ships
-- Database migrations must be backward compatible with the previous code version
-- Feature flags for high-risk changes -- decouple deploy from release
-- Canary or progressive rollout for changes with wide blast radius
-- Monitor error rate and latency during rollout; define automatic rollback triggers
+- Every deployment ships with a rollback plan, defined before merge.
+- Code must run against both the previous and the new schema during rolling deploy.
+- Changes with wide blast radius use canary or progressive rollout, not big-bang.
+- Rollback triggers are observable thresholds (error rate, latency, saturation), not judgement calls.
+- Destructive migrations (DROP / RENAME) deploy **after** the code that stops reading the column is live and verified.
+- Code that requires populated data in a new column deploys **after** the backfill is verified complete.
 
-## Pattern
+## Patterns
 
 ### Rollout Strategies
 
-| Strategy       | Use When                               | Rollback Speed | Risk |
-| -------------- | -------------------------------------- | -------------- | ---- |
-| Feature flag   | High-risk logic, gradual user exposure | Instant        | Low  |
-| Canary         | Infrastructure or performance changes  | Fast (minutes) | Low  |
-| Blue-green     | Full environment swap needed           | Fast (minutes) | Med  |
-| Rolling update | Low-risk, stateless services           | Moderate       | Med  |
-| Big bang       | Never (avoid)                          | Slow           | High |
+| Strategy       | Use When                                | Rollback Speed | Risk |
+| -------------- | --------------------------------------- | -------------- | ---- |
+| Feature flag   | High-risk logic, gradual user exposure  | Instant        | Low  |
+| Canary         | Infrastructure or performance changes   | Fast (minutes) | Low  |
+| Blue-green     | Full environment swap needed            | Fast (minutes) | Med  |
+| Rolling update | Low-risk, stateless services            | Moderate       | Med  |
+| Big bang       | Never (avoid)                           | Slow           | High |
 
-### Database Migration Safety
+For flag-gated rollouts, use skill: `ops-feature-flags` for stage sequencing, promotion criteria, rollback triggers, and cleanup.
 
-**Rule**: Code must work with both old and new schema during rolling deployment.
+### Schema Deploy Sequencing
 
-Use skill: `backend-db-migration` for expand-contract sequencing, lock risk assessment, and backfill safety rules.
-Use skill: `ops-backward-compatibility` for application-level compatibility and consumer impact during transition.
+Verify deploy order explicitly for any change that combines a migration with code changes.
 
-**Deployment sequence validation:**
+| Change         | Correct order                            | Wrong order (flag as High)                        |
+| -------------- | ---------------------------------------- | ------------------------------------------------- |
+| Add column     | Migration -> code                        | Code first (references non-existent column)       |
+| Drop column    | Code stops reading -> migration          | Migration first (code breaks on missing column)   |
+| Rename column  | Expand-contract; never single-step       | Rename + code change in same deploy               |
+| Add index      | Migration first; additive                | N/A                                               |
+| Backfill-read  | Migration -> backfill -> verify -> code  | Code deployed before backfill verified            |
 
-For any change that includes both a schema migration and code changes, verify the deploy order explicitly:
-
-| Change type   | Correct order                               | Wrong order (flag as High risk)                   |
-| ------------- | ------------------------------------------- | ------------------------------------------------- |
-| Add column    | Migration first, then code                  | Code first (code references non-existent column)  |
-| Drop column   | Code first (stop reading), then migration   | Migration first (code breaks when column is gone) |
-| Rename column | Expand-contract required; never single-step | Rename migration + code in same deploy            |
-| Add index     | Migration first (additive)                  | N/A - additive, no ordering constraint            |
-
-Flag any plan where a destructive migration (DROP COLUMN, DROP TABLE, RENAME) is deployed before or simultaneously with the code change that removes the reference. The safe sequence is always: deploy code that tolerates the absence → verify no reads/writes → run destructive migration.
-
-**Backfill-before-read pattern:**
-
-When new code requires populated data in a new column (not just the column's existence), the deploy sequence must include a backfill phase:
-
-1. Add nullable column (migration) - deploy
-2. Deploy and run backfill job to populate existing rows
-3. Verify backfill is complete (no NULL values in rows that need data)
-4. Deploy code that reads the column
-
-Never deploy code that assumes a column is populated before the backfill is verified complete. Flag this sequence violation as High risk.
+Use skill: `ops-backward-compatibility` for the full compatibility matrix and dual-write/dual-read assessment.
+Use skill: `backend-db-migration` for expand-contract phasing, lock-risk analysis, and backfill mechanics.
 
 ### Multi-Service Schema Changes
 
-When multiple services read from the same database table, schema changes require cross-service coordination:
+When multiple services read from the same table, schema changes require coordination:
 
-- **Additive changes** (new nullable column, new table): Deploy migration first - other services will ignore the new column. No coordination needed.
-- **Behavioral changes** (new NOT NULL constraint, new default): Verify all reading services tolerate the new behavior before applying the migration.
-- **Destructive changes** (drop column, rename): Deploy all consuming services to stop reading the column first, verify no reads/writes from any service, then apply the migration.
-- **Document affected services** in the rollout plan: list every service that reads from or writes to the affected table and its required deploy order.
+- **Additive** (nullable column, new table): migration first; readers ignore. No coordination needed.
+- **Behavioral** (new NOT NULL, new default): verify every reader tolerates the new behavior before applying.
+- **Destructive** (drop, rename): deploy all readers to stop using the column, verify zero reads/writes, then migrate.
+- **Document affected services** in the rollout plan: list every service that touches the table and its required deploy order.
 
-### Feature Flag Design
-
-Use skill: `ops-feature-flags` for flag lifecycle, gradual rollout strategy, rollback procedures, and cleanup discipline.
-
-Key patterns:
-
-- **Kill switch** -- disable feature instantly without deploy
-- **Percentage rollout** -- expose to N% of users, increase gradually
-- **User targeting** -- enable for internal users or beta cohort first
-- **Time-boxed** -- flags must have an expiry; remove after full rollout
-
-### Good: Specific rollout plan with rollback trigger
+### Good
 
 ```
-Rollout: Canary to 5% of traffic for 30 minutes
-Monitor: p99 latency < 500ms, error rate < 0.1%
-Rollback trigger: error rate > 0.5% or p99 > 2s for 5 minutes
+Rollout: Canary to 5% for 30 min
+Monitor: p99 latency < 500 ms, error rate < 0.1%
+Rollback trigger: error rate > 0.5% OR p99 > 2 s for 5 min
 Rollback action: revert to previous deployment version
 DB migration: additive only (new nullable column), backward compatible
-Feature flag: ENABLE_NEW_PRICING gated for internal users first, then 10% -> 50% -> 100% over 3 days
+Feature flag: ENABLE_NEW_PRICING - internal -> 10% -> 50% -> 100% over 3 days
 ```
 
-### Bad: No rollback plan
+### Bad
 
 ```
 Deploy to all instances. If something breaks, we will fix it.
@@ -108,7 +83,7 @@ Deploy to all instances. If something breaks, we will fix it.
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to produce actionable rollout and rollback plans.
+Consuming workflow skills parse this structure to produce actionable rollout and rollback plans.
 
 ```
 ## Release Safety Assessment
@@ -137,17 +112,16 @@ Consuming workflow skills depend on this structure to produce actionable rollout
 
 ### No Risks Found
 
-{State explicitly if the release has no identified safety risks - do not omit this section silently}
+{State explicitly if no safety risks are identified - do not omit silently.}
 ```
 
-Always produce Rollout Plan, Rollback Triggers, and Rollback Plan - these three are mandatory. Omit "No Risks Found" if risks were listed.
+Rollout Plan, Rollback Triggers, and Rollback Plan are mandatory. Omit "No Risks Found" if risks were listed.
 
 ## Avoid
 
-- Deploying without a rollback plan
-- Schema migrations that break the previous code version
-- Big-bang deployments for high-blast-radius changes
-- Feature flags without expiry dates (flag debt)
-- Rollback plans that require data migration to undo
-- Deploying code that assumes a column is populated before backfill is verified complete
-- Schema changes affecting tables read by multiple services without documenting the affected services and deploy order
+- Deploying without a rollback plan, or with one that requires data migration to undo.
+- Schema migrations that break the previous code version.
+- Destructive migrations applied before the code that stops referencing them is live.
+- Code that assumes a column is populated before backfill is verified.
+- Multi-service schema changes without an explicit, documented service deploy order.
+- Big-bang deploys for high-blast-radius changes.

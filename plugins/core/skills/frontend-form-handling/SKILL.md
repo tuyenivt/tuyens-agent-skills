@@ -13,20 +13,21 @@ user-invocable: false
 
 ## When to Use
 
-- Building forms with validation requirements
-- Implementing multi-step wizards or complex form flows
-- Reviewing form UX patterns (error display, dirty tracking, submission handling)
-- Choosing a form library for the project
+- Building forms with validation
+- Implementing multi-step wizards
+- Reviewing form UX (errors, dirty tracking, submission)
+- Choosing a form library
 
 ## Rules
 
-- Every form input must have a visible label - never use placeholder as the only label
-- Validation must run on blur for individual fields and on submit for the full form - not on every keystroke
-- Error messages must be specific ("Password must be at least 8 characters"), not generic ("Invalid input")
-- Server-side validation errors must be displayed inline next to the relevant field
-- Forms must prevent double submission (disable button + show loading state during submit)
-- Dirty tracking must warn users before navigating away from unsaved changes
-- Multi-step forms must preserve state across steps and allow backward navigation without data loss
+- Every input has a visible label; placeholder is never the only label
+- Validate on blur per field, on submit for the whole form; re-validate on change once a field shows an error
+- Error messages are specific ("Password must be at least 8 characters"), never "Invalid input"
+- Server validation errors map back to the originating field inline
+- Prevent double submission (disable submit button + show loading state)
+- Warn before navigation when the form is dirty
+- Multi-step forms preserve state across steps; backward nav never destroys data
+- Never persist sensitive fields (card data, CVV, SSN) to local/session storage
 
 ---
 
@@ -34,188 +35,120 @@ user-invocable: false
 
 ### Form Library Selection
 
-| Library                | Framework | Best For                                         |
-| ---------------------- | --------- | ------------------------------------------------ |
-| React Hook Form        | React     | Performance-focused, uncontrolled inputs         |
-| Formik                 | React     | Controlled inputs, simpler mental model          |
-| VeeValidate            | Vue       | Composition API integration, Zod/Yup support     |
-| FormKit                | Vue       | Opinionated, accessible forms with theming       |
-| Angular Reactive Forms | Angular   | Built-in, type-safe, observable-based            |
-| Native HTML            | Any       | Simple forms (1-3 fields, no complex validation) |
+| Library                | Best For                                         |
+| ---------------------- | ------------------------------------------------ |
+| React Hook Form + Zod  | React: performance, uncontrolled inputs, schema  |
+| VeeValidate + Zod      | Vue: Composition API, schema validation          |
+| Angular Reactive Forms | Angular: type-safe FormGroup/FormControl         |
+| Native HTML            | Trivial forms (1-3 fields, no complex rules)     |
 
-Use a schema validation library (Zod, Yup, Valibot) for validation rules - share schemas between client and server.
+Share a schema (Zod, Yup, Valibot) between client and server so validation rules don't drift.
 
-### Validation Strategy
-
-**Bad** - Validate on every keystroke:
+### Validation Timing
 
 ```
-// Fires validation on every character typed
-<input onChange={(e) => {
-  setValue(e.target.value)
-  validate(e.target.value)  // "P" -> "Pa" -> "Pas" -> error shown immediately
-}} />
-```
+// Bad: validates on every keystroke - errors shown while typing
+<input onChange={e => { setValue(e.target.value); validate(e.target.value) }} />
 
-Problem: Shows errors while the user is still typing, creating a frustrating experience.
-
-**Good** - Validate on blur, re-validate on change after first error:
-
-```
-// Show error only after user leaves the field
-// Once an error is shown, re-validate on change so it clears immediately when fixed
+// Good: validate on blur; once a field has an error, re-validate on change so it clears as soon as fixed
 <input
   onBlur={() => validateField("email")}
-  onChange={(e) => {
+  onChange={e => {
     setValue(e.target.value)
-    if (fieldHasError("email")) validateField("email")  // re-validate only if already showing error
+    if (fieldHasError("email")) validateField("email")
   }}
 />
 ```
 
 ### Error Display
 
-**Field-level errors:**
+Field-level:
+- Display directly below the input
+- `aria-describedby` linking input to error
+- Pair red color with an icon or prefix (never color alone)
+- Clear the error as soon as the user fixes the input
 
-- Display directly below the input field
-- Use `aria-describedby` to associate error with input
-- Use red color AND an icon/prefix (not color alone)
-- Clear the error as soon as the user fixes it
-
-**Form-level errors (server errors):**
-
-- Display at the top of the form in an error summary
-- Include links to the specific fields with errors
-- Use `role="alert"` for the error summary
-- Move focus to the error summary on submission failure
+Form-level (server errors):
+- Error summary at the top with `role="alert"`
+- Include links to each errored field
+- Move focus to the summary on submission failure
 
 ```html
-<!-- Accessible error display -->
 <label for="email">Email</label>
-<input
-  id="email"
-  type="email"
-  aria-invalid="true"
-  aria-describedby="email-error"
-/>
+<input id="email" type="email" aria-invalid="true" aria-describedby="email-error" />
 <p id="email-error" role="alert">Please enter a valid email address</p>
 ```
 
-### Submission Handling
+### Submission Flow
+
+1. Disable submit button, show loading state
+2. Run client validation; on failure, show errors and focus the first errored field
+3. Send request
+4. Success: feedback, redirect or reset
+5. Server error: map field errors back to inputs, show summary, re-enable button
+6. Network error: show retry option, preserve form data, re-enable button
 
 ```
-1. User clicks submit
-2. Disable submit button, show loading indicator
-3. Run client-side validation
-4. If invalid: show errors, re-enable button, focus first error field
-5. If valid: send request to server
-6. On success: show success feedback, redirect or reset form
-7. On server error: map server field errors to form fields, show error summary, re-enable button
-8. On network error: show retry option, re-enable button, preserve form data
-```
-
-**Bad** - No double-submit protection:
-
-```
-<button onClick={submitForm}>Submit</button>
-```
-
-**Good** - Protected submission:
-
-```
-<button
-  onClick={submitForm}
-  disabled={isSubmitting}
-  aria-busy={isSubmitting}
->
+<button onClick={submit} disabled={isSubmitting} aria-busy={isSubmitting}>
   {isSubmitting ? "Submitting..." : "Submit"}
 </button>
 ```
 
-### Multi-Step Forms (Wizards)
+### Multi-Step Forms
 
-**State management:**
-
-- Store all step data in a single form state object (not per-step state)
-- Validate each step's fields on "Next" before advancing - validate only the current step's fields (React Hook Form: `trigger(["field1", "field2"])`; Angular: validate the nested `FormGroup` for that step)
-- Allow "Back" navigation without losing entered data
-- Show step progress indicator with step labels
-
-**Navigation pattern:**
-
-```
-1. Step indicator: [1. Contact] -> [2. Address] -> [3. Review] -> [4. Confirm]
-2. "Next" validates current step fields only
-3. "Back" preserves all data, does not re-validate
-4. "Review" step shows all entered data with "Edit" links per section
-5. Final submit sends all accumulated data
-```
-
-**Persistence:**
-
-- For long forms: save draft to localStorage/sessionStorage on each step change
-- Restore from storage on page reload with a "Resume where you left off?" prompt
-- Clear storage on successful submission
-- **Sensitive fields (payment, PCI, SSN):** Never persist to localStorage or sessionStorage. Use payment provider tokenization (Stripe Elements, Braintree Drop-in) so raw card data never enters your form state. Clear sensitive field values from the form state object when navigating away from that step.
+- Single form-state object across steps (not per-step state)
+- "Next" validates only the current step's fields (e.g., RHF `trigger(["field"])`; Angular nested `FormGroup`)
+- "Back" preserves all data without re-validating
+- Review step lists entered data with per-section "Edit" links
+- For long forms: save draft to localStorage on step change; restore with a "Resume?" prompt; clear on success
 
 ### Sensitive Field Handling
 
-Forms that collect payment, identity, or other sensitive data require additional precautions:
+Payment, identity, PCI data require extra care:
 
-- **Tokenize, do not store:** Use payment provider embedded widgets (Stripe Elements, Braintree Drop-in, PayPal buttons) that handle card data in their own iframe - raw card numbers should never touch your form state or your server
-- **Exclude from persistence:** When persisting multi-step form data to localStorage, explicitly omit sensitive fields. Only persist non-sensitive steps (personal info, address) and re-collect sensitive input if the user returns
-- **Clear on navigation:** When the user navigates away from a step containing sensitive fields, clear those values from the form state object
-- **Autocomplete attributes:** Use appropriate `autocomplete` values (`cc-number`, `cc-exp`, `cc-csc`) to help browsers autofill securely, but never prefill these from your own storage
+- **Tokenize**: use provider widgets (Stripe Elements, Braintree Drop-in) so raw card data stays in their iframe, never in your form state or server
+- **Never persist**: exclude sensitive fields from any draft persistence; clear them from form state on navigation
+- **Use proper `autocomplete`**: `cc-number`, `cc-exp`, `cc-csc` so browsers autofill securely; never prefill from your own storage
 
 ### Dirty Tracking
 
-Warn users before they lose unsaved changes:
-
 ```
-// Detect unsaved changes
-const isDirty = formState.isDirty  // from form library
-
-// Browser navigation (back/forward, close tab)
+// Browser nav (close tab, back/forward)
 useEffect(() => {
-  if (isDirty) {
-    const handler = (e) => { e.preventDefault() }
-    window.addEventListener("beforeunload", handler)
-    return () => window.removeEventListener("beforeunload", handler)
-  }
+  if (!isDirty) return
+  const handler = e => e.preventDefault()
+  window.addEventListener("beforeunload", handler)
+  return () => window.removeEventListener("beforeunload", handler)
 }, [isDirty])
 
-// SPA navigation (route change)
-// Use router's navigation guard (React Router blocker, Vue Router beforeRouteLeave, Angular CanDeactivate)
+// SPA route changes: use the router's guard (React Router blocker, Vue Router beforeRouteLeave, Angular CanDeactivate)
 ```
 
 ### Schema-Based Validation
 
-Share validation schemas between client and server:
-
 ```
-// Shared schema (e.g., Zod)
+// Shared schema - used both client and server
 const userSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  name: z.string().min(1, "Name is required"),
 })
 
-// Client: used by form library's resolver
+// Client
 const form = useForm({ resolver: zodResolver(userSchema) })
 
-// Server: used for request validation
+// Server
 const parsed = userSchema.safeParse(req.body)
 ```
 
 ## Stack-Specific Guidance
 
-After loading stack-detect, apply form patterns using the libraries and idioms of the detected ecosystem:
+After `stack-detect`, apply patterns using ecosystem idioms:
 
-- **React**: React Hook Form + Zod resolver (primary), Formik + Yup for simpler cases, `useActionState` for Server Action forms (React 19+/Next.js)
-- **Vue**: VeeValidate + Zod (primary), FormKit for opinionated accessible forms, `useField`/`useForm` composables
-- **Angular**: Reactive Forms with typed FormGroup/FormControl, built-in validators + custom validators, `CanDeactivate` guard for dirty tracking
+- **React**: React Hook Form + Zod resolver; `useActionState` for Server Action forms (React 19+/Next.js)
+- **Vue**: VeeValidate + Zod, or FormKit for opinionated accessible forms
+- **Angular**: Typed Reactive Forms, custom validators, `CanDeactivate` for dirty tracking
 
-If the detected stack is unfamiliar, apply the universal patterns above and recommend the user consult their framework's form documentation.
+For unknown stacks, apply universal patterns and point the user to the framework's form docs.
 
 ---
 
@@ -232,9 +165,9 @@ Consuming workflow skills depend on this structure.
 
 ### Form Design
 
-| Form                | Fields | Validation        | Multi-step | Dirty Tracking |
-| ------------------- | ------ | ----------------- | ---------- | -------------- |
-| {form name}         | {count}| {client + server} | {Yes | No} | {Yes | No}     |
+| Form        | Fields  | Validation        | Multi-step | Dirty Tracking |
+| ----------- | ------- | ----------------- | ---------- | -------------- |
+| {form name} | {count} | {client + server} | {Yes | No} | {Yes | No}     |
 
 ### Recommendations
 
@@ -242,7 +175,7 @@ Consuming workflow skills depend on this structure.
 
 ### Issues Found
 
-- [Severity: High | Medium | Low] {description of form handling issue}
+- [Severity: High | Medium | Low] {description}
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
 
@@ -255,14 +188,14 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Using placeholder text as the only label (disappears on input, poor accessibility)
-- Validating on every keystroke (frustrating UX, shows errors while user is still typing)
-- Generic error messages like "Invalid input" or "Error" (unhelpful, user cannot fix the issue)
-- Allowing double submission (no button disable during submit)
-- Losing form data on navigation without warning (dirty tracking missing)
-- Client-only validation without server validation (security risk, can be bypassed)
-- Resetting the entire form on a single field's server error (data loss)
-- Multi-step forms that lose data on "Back" navigation (broken UX)
-- Showing all validation errors on page load before user interaction (overwhelming)
-- Persisting sensitive form data (payment card numbers, CVV, SSN) to localStorage or sessionStorage (PCI compliance violation)
-- Handling raw card data in your form state instead of using payment provider tokenization (Stripe Elements, Braintree)
+- Placeholder as the only label
+- Validating on every keystroke
+- Generic errors like "Invalid input" or "Error"
+- Allowing double submission (no disable during submit)
+- Losing form data on navigation without warning
+- Client-only validation without server enforcement
+- Resetting the entire form on a single field's server error
+- Multi-step forms that drop data on "Back"
+- Showing all validation errors on page load
+- Persisting sensitive data (card numbers, CVV, SSN) to local/session storage
+- Handling raw card data in form state instead of using provider tokenization

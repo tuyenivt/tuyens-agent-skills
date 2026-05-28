@@ -1,6 +1,6 @@
 ---
 name: backend-db-migration
-description: Zero-downtime database migration patterns: expand-contract phasing, lock risk assessment, backfill safety, rollback plan.
+description: Plan zero-downtime schema changes - expand-contract phasing, lock risk, batched backfill, deploy ordering, rollback. Stack-adaptive.
 metadata:
   category: data
   tags: [database, migration, zero-downtime, expand-contract, lock-risk, backfill, multi-stack]
@@ -9,174 +9,160 @@ user-invocable: false
 
 # DB Migration Safety
 
-> Load `Use skill: stack-detect` first to identify the database engine and migration tool in use.
+> Load `Use skill: stack-detect` first to identify the database engine and migration tool.
 
 ## When to Use
 
 - Planning any schema change on a production database
-- Evaluating whether a migration is safe to run without downtime
-- Designing an expand-contract migration sequence
-- Estimating lock risk and backfill duration before committing to a migration
+- Estimating lock risk and backfill duration before committing
+- Designing an expand-contract sequence for renames, type changes, or drops
 
-## Core Patterns
+## Rules
 
-### Expand-Contract (Default Strategy)
+- Expand-contract is the default for every non-additive change.
+- Backfills are always batched (100-1000 rows, idempotent, monitorable). Never unbounded.
+- Application code is backward compatible with both schemas across the transition window.
+- Rollback plan is designed before the migration runs.
+- Never deploy a migration and the code that depends on it in the same release - rolling deploys leave old instances running against the new schema.
+- Flag any migration requiring a database restore to roll back - those are go/no-go decisions.
+- Lock risk must be stated for every recommendation.
 
-For any non-additive change (rename, type change, drop, add NOT NULL), use three phases:
+## Patterns
 
-**Phase 1 - Expand**: Add the new structure alongside the old. Application handles both.
+### Lock risk by change type
 
-**Phase 2 - Migrate**: Backfill data from old to new. Validate completeness before proceeding.
-
-**Phase 3 - Contract**: Remove the old structure once all code uses the new.
-
-Skip expand-contract only when:
-
-- The change is purely additive (new nullable column, new table with no existing data dependency)
-- Downtime is explicitly scheduled and acceptable
-
-### Lock Risk by Change Type
-
-| Change                              | Lock Risk | Zero-Downtime Strategy                    |
+| Change                              | Lock Risk | Strategy                                  |
 | ----------------------------------- | --------- | ----------------------------------------- |
-| Add nullable column (no default)    | Low       | Single phase, safe                        |
+| Add nullable column (no default)    | Low       | Single phase                              |
 | Add column with default (modern DB) | Low       | Single phase, metadata-only               |
 | Add column with default (old DB)    | High      | Table rewrite - use expand-contract       |
 | Create index                        | High      | Use `CONCURRENTLY` or online DDL          |
 | Add NOT NULL constraint             | High      | Backfill nulls first, then add constraint |
-| Add unique constraint               | High      | Validate data uniqueness first            |
+| Add unique constraint               | High      | Validate uniqueness first                 |
 | Add foreign key                     | High      | Validate referential integrity first      |
 | Rename column                       | Very High | Expand-contract required                  |
 | Change column type                  | Very High | Expand-contract required                  |
-| Drop column                         | High      | Remove all code references first          |
-| Drop table                          | High      | Remove all references first               |
+| Drop column / table                 | High      | Remove all references first               |
 
-Flag any operation with an exclusive lock on a table estimated above 1M rows as high risk.
+Any exclusive-lock operation on a table > 1M rows is high risk by default.
 
-### PostgreSQL: Zero-Downtime NOT NULL Constraint Addition
+### Expand-contract (default for non-additive)
 
-For PostgreSQL tables with >1M rows, `ADD COLUMN col NOT NULL` takes an exclusive table lock for the full backfill duration. Use this 4-step sequence instead:
+1. **Expand**: add the new structure alongside the old; deploy app that handles both.
+2. **Migrate**: backfill old to new in batches; validate completeness.
+3. **Contract**: deploy app using only the new structure; drop the old.
+
+Skip only when the change is purely additive, or downtime is scheduled.
+
+### Adding NOT NULL on a large table (PostgreSQL example)
+
+The naive `ADD COLUMN NOT NULL` takes an exclusive lock for the full backfill. Split it:
 
 ```sql
--- Step 1: Add column as nullable (fast, no lock)
+-- 1. Add nullable (fast, no lock)
 ALTER TABLE orders ADD COLUMN tenant_id UUID;
 
--- Step 2: Backfill in batches (run as background job)
-UPDATE orders SET tenant_id = 'default-tenant-uuid'
+-- 2. Backfill in batches (background job)
+UPDATE orders SET tenant_id = :default_tenant
 WHERE id BETWEEN :start AND :end AND tenant_id IS NULL;
 
--- Step 3: Add constraint as NOT VALID (validates new rows only - no full table scan)
+-- 3. Add constraint NOT VALID (validates new rows only)
 ALTER TABLE orders ADD CONSTRAINT orders_tenant_id_not_null
   CHECK (tenant_id IS NOT NULL) NOT VALID;
 
--- Step 4: Validate existing rows in background (ShareUpdateExclusiveLock - allows concurrent reads/writes)
+-- 4. Validate existing rows (ShareUpdateExclusiveLock - concurrent reads/writes OK)
 ALTER TABLE orders VALIDATE CONSTRAINT orders_tenant_id_not_null;
 ```
 
-Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding any constraint (NOT NULL, CHECK, FK) to a table with >1M rows. The `VALIDATE CONSTRAINT` step acquires only a `ShareUpdateExclusiveLock`, allowing concurrent reads and writes. This applies to PostgreSQL; MySQL and SQL Server have different online DDL mechanisms (check stack-detect Database field).
+Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding NOT NULL, CHECK, or FK to a large PostgreSQL table. MySQL and SQL Server have different online DDL mechanisms - check the detected database.
 
-### Backfill Safety Rules
-
-**Never run unbounded updates on production tables:**
+### Backfill: bounded batches
 
 ```sql
--- DANGEROUS
+-- Bad - unbounded UPDATE locks the table
 UPDATE large_table SET new_col = old_col WHERE new_col IS NULL;
 
--- SAFE: batch in a loop until 0 rows updated
+-- Good - bounded, idempotent, loop until 0 rows
 UPDATE table SET new_col = old_col
-WHERE id BETWEEN :start AND :end
-  AND new_col IS NULL
+WHERE id BETWEEN :start AND :end AND new_col IS NULL
 LIMIT 1000;
 ```
 
-Backfill requirements:
+For tables > 100K rows, prefer a background job over an in-migration script.
 
-- Always batch: 100-1000 rows per batch depending on row width and table hotness
-- Must be idempotent: safe to re-run after failure
-- Prefer a background job over an in-migration script for tables >100K rows
-- Monitor progress with a row count query between batches
+### Unique constraint without blocking
 
-### Deploy Ordering
+```sql
+-- Bad - ACCESS EXCLUSIVE lock blocks all traffic
+ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);
 
-**Additive changes (add column, add table):**
+-- Good (PostgreSQL) - build concurrently, then attach
+CREATE UNIQUE INDEX CONCURRENTLY idx_users_email ON users(email);
+ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users_email;
+```
 
-1. Deploy migration (schema change)
-2. Deploy application code that uses the new structure
+### Deploy ordering
 
-**Non-additive changes (rename, type change, drop):**
+**Additive** (new column, new table):
 
-1. Deploy application code that handles both old and new schema (expand)
-2. Deploy migration (add new structure)
-3. Deploy backfill
-4. Deploy application code that uses only new schema
-5. Deploy migration to remove old structure (contract)
+1. Deploy migration
+2. Deploy code using the new structure
 
-**Never deploy migration and application code that requires the migration atomically** - rolling deployments mean some instances still run old code after the migration runs.
+**Non-additive** (rename, type change, drop):
 
-### Ordering Multiple Migrations
+1. Deploy code that reads/writes both schemas (expand)
+2. Deploy migration adding the new structure
+3. Run backfill
+4. Deploy code that uses only the new schema
+5. Deploy migration dropping the old (contract)
 
-When planning multiple schema changes in the same release:
-- Additive, fast operations first (new nullable columns, new tables)
-- Long-running operations (backfills, CONCURRENTLY indexes) as separate, independently deployable migrations
+### Ordering multiple migrations in one release
+
+- Additive, fast operations first
+- Long-running (backfill, `CONCURRENTLY` index) as separate, independently deployable steps
 - Destructive operations last, after a verification period
-- Never bundle a fast DDL with a slow backfill in the same migration file
+- Never bundle a fast DDL with a slow backfill in one file
 
 ## Output Format
 
-When surfacing migration safety analysis:
-
-```markdown
+```
 ## Migration Safety Assessment
 
 **Change type**: [additive | non-additive | destructive]
 **Strategy**: [single-phase | expand-contract | scheduled downtime]
-**Lock risk**: [Low | Medium | High] - [reason]
+**Lock risk**: [Low | Medium | High | Very High] - {reason}
 **Backfill required**: [Yes - estimated N rows | No]
 
 ## Phases
 
 ### Phase 1: Expand
 
-- Action: [what to run]
-- Lock risk: [type and estimated duration]
-- Rollback: [how to undo]
+- Action: {what to run}
+- Lock risk: {type and estimated duration}
+- Rollback: {how to undo}
 
 ### Phase 2: Migrate (if applicable)
 
-- Backfill: [batch size, estimated duration, idempotent: yes/no]
-- Rollback: [how to undo]
+- Backfill: {batch size, estimated duration, idempotent: yes/no}
+- Rollback: {how to undo}
 
 ### Phase 3: Contract (if applicable)
 
-- Action: [what to drop]
-- Pre-condition: [all readers/writers removed, verified]
-- Rollback: [restore from backup | not needed]
+- Action: {what to drop}
+- Pre-condition: {readers/writers removed and verified}
+- Rollback: {restore from backup | not needed}
 
 ## Risks
 
-- [Any high-risk operations called out explicitly]
+- {high-risk operations called out explicitly}
 ```
-
-## Rules
-
-- Rollback plan designed before the migration runs, not after it fails
-- Expand-contract is the default for all non-additive changes
-- Backfill operations must always be batched - never unbounded
-- Application code must be backward compatible with both schemas during the transition window
-- Flag changes requiring a database restore to roll back - these are go/no-go decision points
 
 ## Avoid
 
-- Running ALTER TABLE with exclusive lock on large tables during peak traffic
-- Deploying migration and application code that depends on it in the same release (rolling deploys mean old code runs against new schema)
-- Unbounded UPDATE or DELETE on production tables (always batch by ID range)
-- Skipping expand-contract for renames or type changes ("it's just a rename" causes downtime)
-- Adding NOT NULL constraints directly on large PostgreSQL tables (use NOT VALID + VALIDATE CONSTRAINT)
-- Assuming CREATE INDEX is fast on large tables (use CONCURRENTLY or online DDL)
-- Running destructive migrations (DROP COLUMN/TABLE) before confirming zero reads/writes to the old structure
-
-**Unique constraint vs. unique index:**
-- `CREATE UNIQUE INDEX CONCURRENTLY` does not block reads/writes (preferred for zero-downtime)
-- `ALTER TABLE ADD CONSTRAINT ... UNIQUE` takes ACCESS EXCLUSIVE lock (blocks everything)
-- Preferred approach: create the index CONCURRENTLY first, then attach it as a constraint: `ALTER TABLE ADD CONSTRAINT ... UNIQUE USING INDEX idx_name`
+- Exclusive-lock ALTER TABLE on large tables during peak traffic
+- Deploying a migration and dependent code in the same release
+- Unbounded UPDATE or DELETE on production tables
+- Skipping expand-contract for renames or type changes ("just a rename")
+- Direct NOT NULL on large PostgreSQL tables (use `NOT VALID` + `VALIDATE CONSTRAINT`)
+- Assuming `CREATE INDEX` is fast on large tables (use `CONCURRENTLY` or online DDL)
+- Destructive migrations before confirming zero traffic to the old structure

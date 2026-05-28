@@ -1,6 +1,6 @@
 ---
 name: dependency-impact-analysis
-description: Dependency graph analysis: deployment ordering, breaking change detection, compatibility impact across libraries and services.
+description: Map consumers of a changed contract, classify breaking vs additive, derive deployment ordering for shared libraries and services.
 metadata:
   category: ops
   tags: [deployment, dependencies, impact, ordering, compatibility]
@@ -13,86 +13,74 @@ user-invocable: false
 
 ## When to Use
 
-- When a change affects shared libraries, APIs, or data contracts consumed by other services
-- When planning deployment order for multi-service changes
-- When upgrading a dependency that multiple services consume
-- When assessing whether a change requires coordinated deployment
+- Change affects shared libraries, APIs, events, or data contracts consumed elsewhere
+- Planning deployment order for multi-service or multi-module changes
+- Upgrading a dependency consumed by multiple services
+- Deciding whether the change needs coordinated rollout
 
 ## Rules
 
-- Map the dependency graph before assessing impact
-- Changes to shared contracts require consumer impact assessment
-- Deployment order must respect the dependency direction
-- Breaking changes require a compatibility migration plan -- use skill: `ops-backward-compatibility` for expand-contract mechanics
-- Do not assume consumers will update immediately
+- Map the dependency graph before classifying impact.
+- Classify breaking vs additive per consumer, not in aggregate.
+- Deployment order respects dependency direction: additive provider-first, removal consumer-first.
+- Breaking changes require an expand-contract migration plan (see `ops-backward-compatibility`).
+- Treat minor version bumps as potentially breaking until release notes prove otherwise.
 
-## Pattern
+## Patterns
 
 ### Dependency Mapping
 
 For each changed component, identify:
 
-1. **Direct consumers** -- services that call or import this component
-2. **Transitive consumers** -- services that depend on direct consumers
-3. **Contract type** -- API, event schema, shared library, database view
-4. **Coupling strength** -- compile-time (strong) vs runtime (weak) vs event (loose)
+1. **Direct consumers** - services/modules that import or call it
+2. **Transitive consumers** - those that depend on direct consumers
+3. **Contract type** - API, event schema, shared library, DB view
+4. **Coupling** - compile-time (strong), runtime (weak), event (loose)
 
 ### Impact Classification
 
-| Change Type             | Consumer Impact     | Deployment Constraint                                                                                  |
-| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ |
-| Additive (new field)    | None if optional    | Deploy provider first                                                                                  |
-| Modification (rename)   | Breaking            | Use skill: `ops-backward-compatibility`                                                                |
-| Removal (drop field)    | Breaking            | Verify no consumers, then remove                                                                       |
-| Behavioral (logic)      | Depends on contract | Canary with consumer monitoring                                                                        |
-| Performance (latency)   | Cascading risk      | Load test with consumer traffic                                                                        |
-| Version upgrade (minor) | Possibly breaking   | Check release notes for deprecations/removals; minor versions can contain breaking changes in practice |
-| Version upgrade (major) | Breaking            | Compatibility matrix review + upgrade one module/service first before rolling to all                   |
+| Change Type             | Consumer Impact     | Deployment Constraint                                          |
+| ----------------------- | ------------------- | -------------------------------------------------------------- |
+| Additive (new field)    | None if optional    | Provider first; consumers update at their pace                 |
+| Modification (rename)   | Breaking            | Expand-contract via `ops-backward-compatibility`               |
+| Removal (drop field)    | Breaking            | Verify no consumers, then remove                               |
+| Behavioral (logic)      | Contract-dependent  | Canary with consumer monitoring                                |
+| Performance (latency)   | Cascading risk      | Load test with consumer traffic profile                        |
+| Version upgrade (minor) | Possibly breaking   | Check release notes for deprecations and behavior changes      |
+| Version upgrade (major) | Breaking            | Compatibility matrix; upgrade one module first                 |
 
-### Dependency Version Upgrade Impact
+### Version Upgrade Specifics
 
-When the change is a version upgrade rather than a code change, the standard consumer-mapping approach still applies, but the impact surface is different:
+- **Transitive conflicts**: new version may require updated transitives (e.g., framework requiring newer runtime). Check against each module.
+- **Phased rollout**: in monorepos with a shared parent, upgrade one module and run its tests before propagating.
+- **Deprecated APIs**: flag consumer usage of newly deprecated APIs; they may be removed in the next major.
+- **Blocker strategies** when no compatible transitive exists: **wait** (imminent release), **swap** to a compatible alternative, **shim** if surface is small, **fork** as last resort. Document the strategy and removal condition.
 
-1. **Transitive dependency conflicts**: The new version may require different transitive dependencies (e.g., Spring Boot 3.5 requires Java 21 minimum). Check the upgraded library's requirements against each module's runtime.
-2. **Minor version breaking changes**: Treat minor version bumps as potentially breaking - check the official migration guide and release notes for deprecated APIs, removed defaults, or behavior changes.
-3. **Phased rollout for shared parent dependencies**: In a monorepo with a shared parent POM or root build file, upgrade one module first and run its full test suite before propagating to other modules.
-4. **Deprecated API removal window**: If consumers use APIs that are deprecated in the new version, flag them - they may be removed in the next major version.
+### Deployment Ordering Rules
 
-**Upgrade blockers:** When a transitive dependency has no version compatible with the target upgrade:
-- **Wait**: Monitor the dependency's release timeline; defer the upgrade if a compatible release is imminent
-- **Find alternative**: Replace the incompatible dependency with a compatible alternative that provides equivalent functionality
-- **Shim/bridge**: Use a compatibility adapter if the incompatible API surface is small
-- **Fork (last resort)**: Maintain a patched fork temporarily; track the upstream for when a compatible version is released
+- Provider before consumer for additive changes
+- Consumer before provider for removals
+- Simultaneous only when feature-flagged on both sides
+- Expand-contract for breaking changes
 
-Document the blocker, the chosen strategy, and the conditions under which the workaround can be removed.
-
-### Deployment Ordering
-
-- **Provider before consumer** for additive changes
-- **Consumer before provider** for removal changes
-- **Simultaneous** only when feature-flagged on both sides
-- **Expand-contract** for breaking changes -- see skill: `ops-backward-compatibility` for detailed migration plan
-
-### Good: Specific impact with deployment order
+### Good
 
 ```
-Changed: OrderService API - added shippingEstimate field to GET /orders/{id}
+Changed: OrderService GET /orders/{id} - added optional shippingEstimate
 Direct consumers: FulfillmentService, CustomerPortal, AdminDashboard
-Impact: Additive (new optional field) - no breaking change
-Deployment order: OrderService first, consumers update at their own pace
+Impact: Additive - no breaking change
+Order: Deploy OrderService first; consumers update at own pace
 Risk: FulfillmentService strict deserialization may reject unknown fields
-Mitigation: Verify FulfillmentService uses lenient JSON parsing before deploy
+Mitigation: Confirm lenient JSON parsing before deploy
 ```
 
-### Bad: Impact without consumer analysis
+### Bad
 
 ```
 Changed the Order API. Should be fine for everyone.
 ```
 
 ## Output Format
-
-Consuming workflow skills depend on this structure to determine deployment ordering and consumer impact.
 
 ```
 ## Dependency Impact Assessment
@@ -105,26 +93,24 @@ Consuming workflow skills depend on this structure to determine deployment order
 
 ### Deployment Order
 
-{ordered list, e.g.:}
-1. Deploy {provider} first - additive change, consumers update at own pace
-2. Notify {consumer list} of upcoming breaking change
-3. Deploy {consumer} after {provider} has been running for {N} days
+1. {step with reason}
+2. {step with reason}
 
 ### Breaking Changes Requiring Migration
 
-{For each breaking change: reference `ops-backward-compatibility` for expand-contract plan}
+{For each: reference `ops-backward-compatibility` for the expand-contract plan, or "none"}
 
 ### No Impact
 
-{State explicitly if the change has no consumer impact - do not omit this section silently}
+{Include only when the change has no consumer impact}
 ```
 
-Always produce the Consumers Affected table. Omit "No Impact" if impact was found.
+Always produce the Consumers Affected table. Omit "No Impact" when impact was found.
 
 ## Avoid
 
 - Deploying provider changes without mapping consumers
-- Assuming all consumers handle new fields gracefully
-- Breaking changes without a migration plan (see skill: `ops-backward-compatibility`)
+- Assuming consumers handle new fields gracefully
+- Breaking changes without a migration plan
 - Deploying consumer before provider for additive changes
-- Ignoring transitive dependency impact
+- Ignoring transitive consumers

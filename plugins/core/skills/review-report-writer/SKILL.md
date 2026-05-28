@@ -1,6 +1,6 @@
 ---
 name: review-report-writer
-description: Write a completed review report to a Markdown file named by review type and branch. Final step of all task-*-review* workflows.
+description: Write completed review report to Markdown file named by review type and branch. Final step of every task-*-review* workflow.
 metadata:
   category: review
   tags: [review, report, output, file]
@@ -11,26 +11,26 @@ user-invocable: false
 
 ## When to Use
 
-Called as the final step of every `task-*-review*` workflow after all findings have been assembled. Persists the review output to a file so the user can read it without scrolling back through the session console.
+Final step of every `task-*-review*` workflow after findings have been assembled. Persists the full review so the user can read it without scrolling the session console.
 
 ## Rules
 
-- Determine the current branch name using `git rev-parse --abbrev-ref HEAD`.
-- Sanitize the branch name for use in a filename: replace `/` and any character that is not alphanumeric, `-`, or `_` with `-`; collapse consecutive `-` into one; strip leading and trailing `-`.
-- Construct the output filename using the `report_type` input:
-  - `review` - `review-<branch>.md`
-  - `review-perf` - `review-perf-<branch>.md`
-  - `review-security` - `review-security-<branch>.md`
-  - `review-observability` - `review-observability-<branch>.md`
-- Write the complete review output (the full assembled report, not a summary) to the filename in the current working directory.
-- After writing, print a one-line confirmation to the session console:
+- Determine the current branch with `git rev-parse --abbrev-ref HEAD`. On detached HEAD, use `detached` as the branch segment.
+- Sanitize the branch for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`.
+- Build the filename from `report_type`:
+  - `review` -> `review-<branch>.md`
+  - `review-perf` -> `review-perf-<branch>.md`
+  - `review-security` -> `review-security-<branch>.md`
+  - `review-observability` -> `review-observability-<branch>.md`
+- Write the full assembled report (not a summary) to that filename in the current working directory.
+- Print one confirmation line to the console after writing:
 
   ```
   Report written to <filename>
   ```
 
-- Do not truncate or summarize the report when writing to file - write the full output exactly as assembled.
-- If the branch cannot be determined (detached HEAD), use `detached` as the branch name segment.
+- Run no git command other than `git rev-parse --abbrev-ref HEAD`.
+- Overwrite without prompting if the file exists - re-runs on the same branch replace prior output.
 
 ## Output Format
 
@@ -42,7 +42,6 @@ The file contains the full review report in the workflow's standard Output Forma
 
 ## Avoid
 
-- Writing a partial or summarized report - always write the complete assembled output
-- Creating subdirectories - always write to the current working directory
-- Overwriting silently if the file already exists without noting it (a second review run on the same branch simply overwrites; no special handling needed)
-- Running any git command other than `git rev-parse --abbrev-ref HEAD`
+- Writing a partial or summarized report
+- Creating subdirectories
+- Running any git command beyond `git rev-parse --abbrev-ref HEAD`

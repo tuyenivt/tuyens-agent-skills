@@ -13,20 +13,18 @@ user-invocable: false
 
 ## When to Use
 
-- Building new UI components or pages
-- Reviewing existing components for accessibility compliance
+- Building or reviewing UI components for WCAG 2.1 AA compliance
 - Adding keyboard navigation or focus management to interactive elements
-- Ensuring WCAG 2.1 AA compliance before release
+- Auditing pages before release
 
 ## Rules
 
-- Every interactive element must be keyboard accessible - no mouse-only interactions
-- Every form input must have a visible, programmatically associated label
-- Every image must have an `alt` attribute - decorative images use `alt=""`
-- Color must not be the only means of conveying information
-- Focus must be visible and follow a logical order
-- ARIA is a last resort - use native HTML elements first (`button`, `nav`, `dialog`, not `div` with `role`)
-- Dynamic content updates must be announced to screen readers via live regions or focus management
+- Use native HTML semantics first (`button`, `a`, `nav`, `dialog`); ARIA only when no native element fits
+- Every interactive element must be keyboard-operable and have a visible focus indicator
+- Every form input must have a programmatically associated visible label
+- Every image must have `alt` (decorative: `alt=""`)
+- Never convey information by color alone
+- Dynamic content updates must be announced (live regions or focus management)
 
 ---
 
@@ -34,134 +32,92 @@ user-invocable: false
 
 ### Semantic HTML First
 
-**Bad** - Div-based interactive elements:
-
 ```html
+<!-- Bad: not keyboard accessible, no role, no focus -->
 <div class="btn" onclick="submit()">Submit</div>
-<div class="nav">
-  <div class="nav-item" onclick="navigate('/')">Home</div>
-</div>
-```
 
-Problem: Not keyboard accessible, no role announced, no focus management.
-
-**Good** - Native semantic elements:
-
-```html
+<!-- Good -->
 <button type="submit">Submit</button>
-<nav aria-label="Main navigation">
-  <a href="/">Home</a>
-</nav>
 ```
 
 ### ARIA Usage
 
-Use ARIA only when no native HTML element provides the semantics needed:
+ARIA only when no native element provides the semantics. Never duplicate native roles (`role="button"` on `<button>`).
 
-| Need                   | Use Native Element | ARIA Fallback (only if native is impossible)                          |
-| ---------------------- | ------------------ | --------------------------------------------------------------------- |
-| Button                 | `<button>`         | `role="button"` + `tabindex="0"` + keydown                            |
-| Navigation             | `<nav>`            | `role="navigation"`                                                   |
-| Dialog/modal           | `<dialog>`         | `role="dialog"` + `aria-modal="true"`                                 |
-| Tab interface          | None exists        | `role="tablist"` + `role="tab"` + `role="tabpanel"`                   |
-| Live update            | None exists        | `aria-live="polite"` or `aria-live="assertive"`                       |
-| Expandable section     | `<details>`        | `aria-expanded` + `aria-controls`                                     |
-| Custom dropdown/select | `<select>`         | `role="listbox"` + `role="option"` children + `aria-activedescendant` |
+| Need               | Native       | ARIA Fallback                                       |
+| ------------------ | ------------ | --------------------------------------------------- |
+| Button             | `<button>`   | `role="button"` + `tabindex="0"` + keydown          |
+| Dialog/modal       | `<dialog>`   | `role="dialog"` + `aria-modal="true"`               |
+| Expandable section | `<details>`  | `aria-expanded` + `aria-controls`                   |
+| Custom select      | `<select>`   | `role="listbox"` + `role="option"`                  |
+| Tabs               | (none)       | `role="tablist"` + `role="tab"` + `role="tabpanel"` |
+| Live update        | (none)       | `aria-live="polite"` or `"assertive"`               |
 
-**Key ARIA rules:**
-
-- Never use `role="button"` on a `<button>` - it already has the role
-- `aria-label` overrides visible text - use `aria-labelledby` to reference visible labels
-- `aria-hidden="true"` removes the element from the accessibility tree entirely - never use on focusable elements
+Key rules:
+- `aria-label` overrides visible text; prefer `aria-labelledby` referencing the visible label
+- Never put `aria-hidden="true"` on focusable elements (creates ghost focus targets)
 
 ### Keyboard Navigation
 
-Every interactive component must support keyboard operation:
-
-| Component               | Expected Keys                                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------------------------- |
-| Button                  | Enter, Space to activate                                                                       |
-| Link                    | Enter to follow                                                                                |
-| Menu                    | Arrow keys to navigate, Enter to select, Escape to close                                       |
-| Dialog                  | Escape to close, Tab trapped within dialog                                                     |
-| Tabs                    | Arrow keys to switch tabs, Tab to enter/exit tab list                                          |
-| Combobox                | Arrow keys to navigate, Enter to select, Escape to close                                       |
-| Listbox/Custom Dropdown | Arrow keys to navigate options, Enter to select, Escape to close, Type-ahead to jump to option |
-| Checkbox                | Space to toggle                                                                                |
+| Component        | Expected Keys                                                |
+| ---------------- | ------------------------------------------------------------ |
+| Button/Checkbox  | Enter/Space to activate or toggle                            |
+| Link             | Enter to follow                                              |
+| Menu/Combobox    | Arrows to navigate, Enter to select, Escape to close         |
+| Dialog           | Escape to close, Tab trapped within                          |
+| Tabs             | Arrows to switch, Tab to enter/exit                          |
+| Listbox          | Arrows, Enter, Escape, type-ahead                            |
 
 ### Focus Management
 
-**Focus trapping** - Modals and dialogs must trap focus:
+Modals/dialogs:
+1. Save previously focused element
+2. Move focus to first focusable in dialog
+3. Trap Tab/Shift+Tab within dialog
+4. On close, restore focus to saved element
 
-```
-// When dialog opens:
-1. Save the previously focused element
-2. Move focus to the first focusable element in the dialog
-3. Trap Tab/Shift+Tab within the dialog
-4. On close: restore focus to the saved element
-```
+After dynamic changes: move focus to next item (deletion), main heading (SPA route change), or trigger (toast dismissed).
 
-**Focus restoration** - After dynamic content changes:
+Provide a "Skip to main content" link as the first focusable element.
 
-- Deleted item in list: move focus to the next item, or the previous if last
-- Route change in SPA: move focus to the main content heading or skip-link target
-- Toast/notification dismissed: return focus to the trigger
+### Color and Status
 
-**Skip links** - Provide "Skip to main content" link as the first focusable element:
+- Text contrast: 4.5:1 normal, 3:1 large (18px+ or 14px+ bold)
+- UI component contrast: 3:1 against adjacent colors
+- Never use color alone for state - pair with text/icon
 
 ```html
-<a href="#main-content" class="sr-only focus:not-sr-only"
-  >Skip to main content</a
->
-```
+<!-- Bad: color-only success -->
+<button style={{color: success ? "green" : "red"}}>Add to Cart</button>
 
-### Inline Action Status Announcements
-
-**Bad** - Status communicated only by color change:
-
-```
-<button style={success ? {color: "green"} : {color: "red"}}>Add to Cart</button>
-```
-
-Problem: Color-only status is invisible to screen readers and users with color vision deficiency.
-
-**Good** - Status announced with text and aria-live:
-
-```
+<!-- Good: status announced -->
 <button onClick={addToCart}>Add to Cart</button>
-<span role="status" aria-live="polite">{status === "success" ? "Added to cart" : status === "error" ? "Failed to add - try again" : ""}</span>
+<span role="status" aria-live="polite">{statusMessage}</span>
 ```
-
-### Color and Contrast
-
-- **Text contrast**: Minimum 4.5:1 for normal text, 3:1 for large text (18px+ or 14px+ bold)
-- **UI component contrast**: Minimum 3:1 against adjacent colors for interactive elements and their states
-- **Do not rely on color alone**: Use text labels, icons, or patterns alongside color (e.g., error states need both red color and an error icon/text)
 
 ### Forms
 
-- Every input must have a visible `<label>` associated via `for`/`id` or wrapping
-- Required fields must be indicated both visually and programmatically (`aria-required="true"` or `required`)
-- Error messages must be associated with their input (`aria-describedby` pointing to the error element)
-- Error messages must be announced (via `aria-live` region or by moving focus to the error summary)
-- Group related inputs with `<fieldset>` and `<legend>`
+- Visible `<label>` associated via `for`/`id` or wrapping
+- Required: both visual indicator and `required`/`aria-required="true"`
+- Errors associated with input via `aria-describedby`; announce via `aria-live` or focus the error summary
+- Group related inputs with `<fieldset>` + `<legend>`
 
 ### Dynamic Content
 
-- Toast notifications: use `role="status"` or `aria-live="polite"`
-- Urgent alerts: use `role="alert"` or `aria-live="assertive"` - use sparingly
-- Loading states: announce with `aria-busy="true"` on the updating region, or use `aria-live` to announce completion
-- Infinite scroll: provide a "Load more" button alternative; announce new content count
+- Toasts: `role="status"` or `aria-live="polite"`
+- Urgent alerts: `role="alert"` or `aria-live="assertive"` (use sparingly)
+- Loading: `aria-busy="true"` on the updating region
+- Infinite scroll: provide a "Load more" button alternative
 
 ## Stack-Specific Guidance
 
-After loading stack-detect, apply accessibility patterns using the tools and conventions of the detected ecosystem:
+After `stack-detect`, apply patterns using ecosystem idioms. Common bindings:
 
-- **React**: Use `jsx-a11y` ESLint plugin, `<Fragment>` to avoid extra wrapper divs, `useId()` for stable `id`/`for` pairing, React's `<dialog>` support or Radix/Headless UI for accessible primitives
-- **Vue**: Use `vue-a11y` ESLint plugin, Headless UI Vue or Radix Vue for accessible primitives, `<Teleport>` for modal focus management
-- **Angular**: Use Angular CDK a11y module (`FocusTrap`, `LiveAnnouncer`, `FocusMonitor`), Angular Material components (accessible by default), `cdkTrapFocus` directive for modals
+- **React**: `jsx-a11y` ESLint plugin, `useId()` for label pairing, Radix or Headless UI for accessible primitives
+- **Vue**: `vue-a11y` ESLint plugin, Radix Vue or Headless UI Vue, `<Teleport>` for modals
+- **Angular**: Angular CDK `a11y` module (`FocusTrap`, `LiveAnnouncer`, `cdkTrapFocus`), Angular Material
 
-If the detected stack is unfamiliar, apply the universal patterns above and recommend the user consult their framework's accessibility documentation.
+For unknown stacks, apply the universal patterns and point the user to the framework's a11y docs.
 
 ---
 
@@ -177,9 +133,9 @@ Consuming workflow skills depend on this structure.
 
 ### Audit Results
 
-| Issue                    | WCAG Criterion | Severity          | Element/Component      |
-| ------------------------ | -------------- | ----------------- | ---------------------- |
-| {description}            | {e.g., 1.1.1}  | {Critical | Major | Minor} | {component or selector} |
+| Issue         | WCAG Criterion | Severity                   | Element/Component       |
+| ------------- | -------------- | -------------------------- | ----------------------- |
+| {description} | {e.g., 1.1.1}  | {Critical | Major | Minor} | {component or selector} |
 
 ### Recommendations
 
@@ -194,12 +150,10 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Using `div` or `span` for interactive elements instead of `button`, `a`, `input`
-- Adding ARIA attributes to elements that already have native semantics (redundant ARIA)
-- Using `tabindex` values greater than 0 (breaks natural tab order)
-- Hiding focus indicators (`outline: none`) without providing a visible alternative
-- Using `aria-hidden="true"` on focusable elements (creates ghost focus targets)
-- Relying on color alone to indicate state (errors, success, active)
-- Using `placeholder` as a substitute for `<label>` (disappears on input, poor contrast)
-- Auto-focusing elements on page load without user intent (disorienting for screen reader users)
-- Using `title` attribute as the only accessible name (not reliably announced)
+- `div`/`span` for interactive elements instead of `button`, `a`, `input`
+- Redundant ARIA on elements that already have native semantics
+- `tabindex > 0` (breaks natural tab order)
+- Hiding focus indicators (`outline: none`) without a visible replacement
+- `aria-hidden="true"` on focusable elements
+- Color-only state, `placeholder` as the only label, `title` as the only accessible name
+- Auto-focusing on page load without user intent

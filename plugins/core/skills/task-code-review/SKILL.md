@@ -8,43 +8,37 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
-
 # Code Review (Router)
 
-This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review`, `task-rails-review`, `task-react-review`). The stack workflow runs Phases A-E with framework-specific correctness, architecture, AI-quality, and maintainability checks (Rails: Zeitwerk, callback abuse, fat controllers; Spring: layering, transaction placement; React: hooks, context boundaries) and spawns its own perf / security / observability subagents in parallel for any extra scope.
-
-For unknown stacks, this skill falls back to a minimal generic review protocol.
+Detects the project stack and delegates to the matching stack-specific review workflow (`task-{stack}-review`). For unknown stacks, runs a minimal generic Phases A-E review.
 
 ## When to Use
 
-- Pull request reviews and pre-merge risk assessment
-- Code change reviews before merge
-- Post-AI-generation quality gate
+- PR review, pre-merge risk assessment, post-AI-generation quality gate.
 
-**Not for:** Architecture/design review of new systems, security-only audits (use `task-code-review-security`), performance-only review (use `task-code-review-perf`), observability-only review (use `task-code-review-observability`).
+**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`).
 
 ## Invocation
 
-Accepts the same arguments as the stack-specific review umbrellas:
+`/task-code-review [<branch> | pr-<N>] [+perf | +security | +observability | full | core-only] [quick | standard | deep] [--base <branch>] [--spec <slug>]`
 
-| Invocation                   | Meaning                                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `/task-code-review`          | Review current branch vs its base (fails fast on trunk branches)                              |
-| `/task-code-review <branch>` | Review `<branch>` vs its base (3-dot diff)                                                    |
-| `/task-code-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs `git fetch` first)             |
-
-Scope flags (`+perf`, `+security`, `+observability`, `full`, `core-only`) and depth flags (`quick`, `standard`, `deep`) and `--base <branch>` compose with any of the above and are forwarded to the dispatched stack workflow.
+All flags are forwarded to the dispatched stack workflow.
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`. Universal and unconditional.
+
+### Step 2 - Spec-Aware Preamble (conditional)
+
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the diff, use skill: `spec-aware-preamble` (from the `spec` plugin) and propagate spec context to the dispatched workflow.
+
+### Step 3 - Detect Stack
 
 Use skill: `stack-detect`.
 
-### Step 2 - Dispatch to Stack Workflow
+### Step 4 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to           |
 | -------------------- | --------------------- |
@@ -61,49 +55,27 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review`     |
 | Angular              | `task-angular-review` |
 
-When delegating, forward the user's full invocation (target ref, `--base`, scope flags, depth flags) and any spec context. The stack umbrella owns precondition checks, diff resolution, and parallel subagent dispatch for non-Core scopes.
+Forward the user's invocation verbatim (target ref, `--base`, scope, depth, spec context). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 5-6.**
 
-If matched, stop. Do not run Step 3.
+### Step 5 - Generic Fallback (unknown stack only)
 
-### Step 3 - Generic Fallback (unknown stack only)
+Use skill: `review-precondition-check` with the user's argument (default: current branch). On failure, surface the message verbatim and stop. On success, read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
 
-Run only when Step 2 finds no match. This is a minimum-viable review that works for any language.
+**Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`. If the precondition check stops with a fail-fast message, surface it verbatim and stop.
+**Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Suggestion] minimum; [High] for critical paths).
 
-**Phase A - Risk Snapshot (run first):**
+**Phase C - Architecture Guardrails.** Use skill: `architecture-guardrail` for layer violations, new coupling, circular dependency risk, boundary erosion.
 
-- Use skill: `review-pr-risk` for cross-cutting risk signals
-- Use skill: `review-blast-radius` for failure propagation scope
-- State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level findings
+**Phase D - AI-Generated Code Quality.** Use skill: `complexity-review` for over-abstraction, premature generalization, redundant mapping layers, speculative config.
 
-If Risk Level is Low and Blast Radius is Narrow and the change does not touch architecture-relevant files (auth, middleware, API contracts, shared libraries), produce a streamlined output with Phase B findings only.
+**Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Phase B - Correctness and Safety:**
+**Extra scopes.** If `+perf`, `+security`, `+observability`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by severity (highest wins on duplicates); preserve `file:line` citations.
 
-- Logical correctness, error handling, edge cases affecting state integrity
-- Backward compatibility (use skill: `ops-backward-compatibility` for migration PRs)
-- Unsafe shared state mutation, transaction boundary correctness
-- **Test coverage finding:** If logic is added/modified without tests, raise as an explicit named finding (at least [Suggestion]; [High] for critical paths)
-- Use skill: `ops-resiliency` for error handling and fault tolerance
-- Use skill: `backend-api-guidelines` if the change touches API contracts
-- Use skill: `architecture-concurrency` if concurrency patterns are present
+### Step 6 - Write Report
 
-**Phase C - Architecture Guardrails:**
-
-Use skill: `architecture-guardrail` to detect layer violations, new coupling, circular dependency risk, boundary erosion. For multi-service PRs, check API contract compatibility and deployment ordering.
-
-**Phase D - AI-Generated Code Quality:**
-
-Use skill: `complexity-review` to detect over-abstraction, premature generalization, redundant mapping layers, speculative configurability.
-
-**Phase E - Maintainability:**
-
-Naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers. Use skill: `backend-coding-standards` (backend) and `ops-observability` (logging/metrics/tracing coverage).
-
-**Extra scopes:** if `+perf`, `+security`, `+observability`, or `full` was passed, spawn the corresponding `task-code-review-*` workflow as a subagent with the read-once diff/log and pre-detected stack. Run subagents in parallel; merge findings by severity (highest wins on duplicates), preserve `file:line` citations.
-
-**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review`.
+Use skill: `review-report-writer` with `report_type: review`.
 
 ## Feedback Labels
 
@@ -114,13 +86,11 @@ Naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URL
 | [Suggestion] | Would improve - non-blocking                |
 | [Question]   | Need clarity from author                    |
 
-No `[Nitpick]` or `[Praise]` labels.
+No `[Nitpick]` or `[Praise]`.
 
 ## Output Format
 
-When dispatched (Step 2 matched): the stack-specific workflow owns the output.
-
-When fallback runs (Step 3):
+When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 
 ```markdown
 ## Summary
@@ -136,10 +106,10 @@ When fallback runs (Step 3):
 
 ### [Blocker] file:line
 
-- Issue: [what is wrong]
-- Impact: [user-visible or operational consequence]
-- System Risk: [why this is system-level, not just a local bug]
-- Fix: [concrete code change or approach]
+- Issue:
+- Impact:
+- System Risk:
+- Fix:
 
 ### [High] file:line
 
@@ -174,23 +144,19 @@ _Omit sections with no findings._
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded before any other step
-- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
-- [ ] `stack-detect` ran at Step 1
-- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped; user's flags and spec context were forwarded
-- [ ] If no stack matched, Step 3 fallback ran Phases A-E and any requested extra scopes
-- [ ] Risk level and blast radius stated before any line-level findings
-- [ ] Every Blocker states a system risk, not just a code observation
-- [ ] Missing tests raised as a named finding
-- [ ] Findings ordered Blocker > High > Suggestion > Question; no purely stylistic findings without a project standard
-- [ ] Review report written to file via `review-report-writer`
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
+- [ ] Step 3: `stack-detect` ran
+- [ ] Step 4: if matched, stack workflow ran with all flags and spec context forwarded; Steps 5-6 skipped
+- [ ] Step 5: if no match, Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Blocker > High > Suggestion > Question
+- [ ] Step 6: report written via `review-report-writer` (fallback path only)
 
 ## Avoid
 
-- Running both Step 2 dispatch and Step 3 fallback
-- Producing your own findings when a stack workflow was dispatched
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow
+- Running both Step 4 dispatch and Step 5 fallback
+- Producing findings when a stack workflow was dispatched
+- State-changing git commands (`fetch`, `checkout`, `merge`)
 - Reviewing without reading the full diff first
-- Nitpicking style where no project standard exists
-- Blocking on personal preference rather than correctness, risk, or maintainability
-- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists
+- Stylistic nits without a project standard
+- Blocking on personal preference over correctness, risk, or maintainability
+- Treating the fallback as equivalent to a stack workflow

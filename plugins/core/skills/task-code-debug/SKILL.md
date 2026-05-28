@@ -8,37 +8,34 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
-
 # Code Debug (Router)
 
-This skill is a thin dispatcher. It detects the project stack and delegates the workflow to the matching stack-specific skill (e.g., `task-spring-debug`, `task-rails-debug`, `task-react-debug`). The stack workflow names ecosystem-specific exception classes, runtime tooling, and gotchas directly.
-
-For unknown stacks, this skill falls back to a minimal generic debug protocol so any project can still use the command.
+Detects the project stack and delegates to the matching stack-specific debug workflow. Falls back to a generic protocol for unknown stacks.
 
 ## When to Use
 
-- Broken or crashing code with a stack trace, exception, or error log
-- Test failures or build errors
-- Unexpected behavior that used to work correctly
+- Stack trace, exception, error log, test failure, or build error
+- Unexpected behavior that used to work
 
-**Not for:** Understanding working code (use `task-code-explain`), production incidents with service degradation (use `/task-oncall-start`), performance analysis without a concrete error (use `task-code-review-perf`).
+**Not for:** understanding working code (`task-code-explain`), production incidents (`task-oncall-start`), performance without a concrete error (`task-code-review-perf`).
 
 ## Inputs
 
-Paste any of: stack trace, error message, relevant log lines, test failure output, or a description of unexpected behavior with reproduction steps.
-
-If the user provides only a vague description ("it's broken") with no error output, ask for the specific error before proceeding. Do not guess.
+The error itself: stack trace, error message, log lines, test output, or reproduction steps. If the user gives only "it's broken" with no signal, ask for the error before guessing.
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`.
+
+**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` and propagate spec context to the dispatched workflow.
+
+### Step 2 - Detect Stack
 
 Use skill: `stack-detect`.
 
-### Step 2 - Dispatch to Stack Workflow
+### Step 3 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to          |
 | -------------------- | -------------------- |
@@ -55,97 +52,90 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-debug`     |
 | Angular              | `task-angular-debug` |
 
-If matched, delegate, propagate spec context, and stop. Do not run Step 3.
+On match: delegate, stop. Skip Step 4.
 
-### Step 3 - Generic Fallback (unknown stack only)
+### Step 4 - Generic Fallback (unknown stack only)
 
-Run only when Step 2 finds no match.
+**Classify** the error class with confidence (HIGH / MEDIUM / LOW):
 
-**CLASSIFY** the error class before reading code:
+| Class                 | Signals                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| Null/missing value    | NullPointerException, AttributeError NoneType, undefined, nil deref    |
+| Type mismatch         | ClassCastException, TypeError, assertion failed                        |
+| Constraint violation  | UniqueViolation, IntegrityError, FK, NOT NULL                          |
+| Connection failure    | Connection refused, timeout, pool exhausted, host unreachable          |
+| Auth / permission     | 401, 403, token expired, permission denied                             |
+| Config / env          | Missing env var, file not found, wrong path                            |
+| Concurrency           | Data race, deadlock, stale read, lost update                           |
+| Async / event loop    | Unhandled promise rejection, blocking call in async context            |
+| Build / import        | Module not found, circular dependency, compilation error               |
+| Logic / regression    | No error thrown but output is wrong; "it worked before"                |
+| Rendering / hydration | Hydration mismatch, white screen, SSR/CSR divergence                   |
+| State / reactivity    | Stale state, infinite re-render, reactivity lost                       |
+| Chunk loading         | Chunk failed, dynamic import error                                     |
 
-| Class                  | Signals                                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Null/missing value     | NullPointerException, AttributeError NoneType, undefined property access, nil dereference                          |
-| Type mismatch          | ClassCastException, TypeError, type assertion failed                                                               |
-| Constraint violation   | UniqueViolation, IntegrityError, foreign key, NOT NULL                                                             |
-| Connection failure     | Connection refused, timeout, pool exhausted, host unreachable                                                      |
-| Auth / permission      | 401, 403, token expired, permission denied                                                                         |
-| Config / env           | Missing environment variable, file not found, wrong path                                                           |
-| Concurrency            | Data race, deadlock, stale read, lost update                                                                       |
-| Async / event loop     | Unhandled promise rejection, blocking call in async context                                                        |
-| Build / import         | Module not found, circular dependency, compilation error                                                           |
-| Logic / regression     | No error thrown but output is wrong; "it worked before"                                                            |
-| Rendering / hydration  | Hydration mismatch, white screen, SSR/CSR divergence                                                               |
-| State / reactivity     | Stale state, infinite re-render, reactivity lost                                                                   |
-| Bundle / chunk loading | Chunk loading failed, dynamic import error                                                                         |
+For intermittent errors, hypothesize the operational cause (load, deploy, GC) before reading code.
 
-State the class and confidence (HIGH / MEDIUM / LOW).
+**Locate** the failing line:
 
-For intermittent errors, analyze frequency, timing correlation (peak load, deploys, GC), and hypothesize the operational cause before reading code.
+1. Read stack trace top-down; first frame in application code is the starting point.
+2. Open the file; read the failing function and its callers.
+3. Trace the data path back to where the bad value originates.
+4. Name the exact line and variable.
 
-**LOCATE** the failing line:
+**Root cause** - state **why**, not just what. Tie the symptom to the upstream condition that produces it. State confidence; if LOW, list what would raise it.
 
-1. Read the stack trace top-to-bottom. The first frame in **application code** (not framework internals) is the starting point.
-2. Open the source file. Read the failing function and its callers.
-3. Trace the data path: where does the bad value or state originate?
-4. Identify the exact line and variable responsible.
+- Bad: "the value is null"
+- Good: "the value is null because the query returns no rows when X is true, and the caller assumes a result always exists"
 
-**ROOT CAUSE** - state **why**, not just what:
+**Fix** - minimal before/after addressing the root cause. No refactoring. If multiple fixes exist, recommend one with tradeoffs.
 
-- Not "the value is null" - "the value is null because the query returns no rows when condition X is true, and the caller assumes a result always exists"
-- Not "connection refused" - "DB_HOST defaults to localhost but the service runs in Docker where the DB is on a different network"
-
-State confidence. If LOW, list what additional information would raise it.
-
-**FIX** - minimal before/after change addressing the root cause. No refactoring. If multiple fixes are possible, recommend one with tradeoffs.
-
-**PREVENT** - one concrete prevention step: a test that would have caught this, a static analysis rule, a guard clause, or a monitoring signal.
+**Prevent** - one concrete step: a test that would have caught this, a static check, a guard clause, or a monitoring signal.
 
 ## Output Format
 
-When dispatched (Step 2 matched): the stack-specific workflow owns the output.
+When dispatched (Step 3): the stack workflow owns the output.
 
-When fallback runs (Step 3):
+When fallback runs (Step 4):
 
 ```markdown
 ## Classification
 
-**Error class:** [class from table]
+**Error class:** [class]
 **Confidence:** HIGH | MEDIUM | LOW
 
 ## Root Cause
 
 **File:** [file:line]
-**Why:** [root cause with full causal chain]
+**Why:** [causal chain]
 **Confidence:** HIGH | MEDIUM | LOW
-[If LOW: what additional information would raise confidence]
+[If LOW: what would raise it]
 
 ## Fix
 
 **Before:**
-[code snippet]
+[code]
 
 **After:**
-[code snippet showing the minimal fix]
+[code]
 
 ## Prevention
 
-- [One concrete prevention step]
+- [One concrete step]
 ```
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded before any other step
-- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
-- [ ] `stack-detect` ran at Step 1
-- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
-- [ ] If no stack matched, Step 3 fallback produced CLASSIFY/ROOT CAUSE/FIX/PREVENT
-- [ ] Insufficient input was challenged with a request for more detail, not guessed at
+- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 2: `stack-detect` ran
+- [ ] Step 3: stack matched -> dispatched and stopped; Step 4 skipped
+- [ ] Step 4: stack unmatched -> fallback produced Classify / Locate / Root Cause / Fix / Prevent
+- [ ] Vague input was challenged, not guessed at
 
 ## Avoid
 
-- Running both Step 2 dispatch and Step 3 fallback (one or the other, never both)
-- Producing your own findings when a stack workflow was dispatched
-- Proposing a fix before understanding the root cause
-- Treating symptoms instead of root cause (adding a null check without explaining why the value is null)
-- Treating the fallback as equivalent to a stack workflow - it is a temporary bridge for unsupported stacks; install the matching language plugin when one exists
+- Running both Step 3 dispatch and Step 4 fallback
+- Producing findings yourself when a stack workflow was dispatched
+- Proposing a fix before stating the root cause
+- Treating symptoms (adding a null check) instead of cause (why is it null)
+- Treating the fallback as equivalent to a stack workflow - install the matching language plugin when one exists

@@ -8,175 +8,146 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the change being shipped, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, derive the PR Summary from `spec.md`'s problem statement, the Test Plan from acceptance criteria, and the linked context from `plan.md`'s Decisions Worth Recording - do not re-elicit any of these from the user. Reference the slug and the completed task IDs from `tasks.md`. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
-
 # PR Description Generator
 
-## Purpose
-
-Turn a git diff into a complete, reviewer-ready pull request description in one command:
-
-- **Title** - concise, imperative, under 72 characters
-- **Summary** - what changed and why (not how)
-- **Risk classification** - helps reviewers calibrate attention
-- **Test plan** - what to verify before merging
-- **Linked context** - tickets, ADRs, related PRs surfaced from commit messages and the repo context file
-
-This skill writes the PR description. It does not open or submit the PR.
+Turns a git diff into a reviewer-ready PR description: title, summary, risk, test plan, linked context. Writes the description; does not open or submit the PR.
 
 ## When to Use
 
-- After finishing a feature, fix, or refactor branch and before opening the PR
-- When you want a consistent, complete PR description without writing it manually
-- When the diff is large and you need a clear summary to orient reviewers
+- After finishing a feature, fix, or refactor branch, before opening the PR
+- When the diff is large and reviewers need a clear summary
+- When you want a consistent format without writing it by hand
 
-**Not for:** Reviewing code quality (use `task-code-review`), release planning (use `task-release-plan`).
+**Not for:** code-quality review (`task-code-review`), release planning (`task-release-plan`).
 
 ## Inputs
 
-| Input                    | Required | Source                                                        |
-| ------------------------ | -------- | ------------------------------------------------------------- |
-| Git diff or file list    | Yes      | `git diff <base>...HEAD` or paste diff directly               |
-| Commit messages          | Yes      | `git log <base>...HEAD --oneline`                             |
-| Ticket / issue reference | No       | Branch name, commit message, or user-provided (e.g. JIRA-123) |
-| ADR references           | No       | Mentioned in commit messages or `docs/adr/` directory         |
-| Related PRs              | No       | User-provided or referenced in commit messages                |
+| Input                | Required | Source                                          |
+| -------------------- | -------- | ----------------------------------------------- |
+| Git diff / file list | Yes      | `git diff <base>...HEAD` or pasted              |
+| Commit messages      | Yes      | `git log <base>...HEAD --oneline`               |
+| Ticket reference     | No       | Branch name, commit message, or user-supplied   |
+| ADR references       | No       | Commit messages or `docs/adr/`                  |
+| Related PRs          | No       | Commit messages or user-supplied                |
 
-The base branch is detected in Step 1 - the user does not need to supply it unless detection fails.
+The base branch is detected in Step 2; the user does not supply it unless detection fails.
 
 ## Workflow
 
-### Step 1 - Resolve Branch and Base
+### Step 1 - Behavioral Principles
 
-Establish the `(base_ref, head_ref)` pair before any diff is read. PR creation runs against the current feature branch only - there is no `pr-<N>` mode here.
+Use skill: `behavioral-principles`.
 
-1. **Resolve head:** `head_ref = HEAD`; capture `current_branch = git rev-parse --abbrev-ref HEAD`.
-2. **Reject trunk heads:** if `current_branch` matches `main`, `master`, `develop`, or `trunk` (case-insensitive), stop:
+**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the change being shipped, load `Use skill: spec-aware-preamble`. When a spec is loaded, derive Summary from `spec.md`'s problem statement, Test Plan from acceptance criteria, and Linked Context from `plan.md`'s Decisions Worth Recording. Reference the slug and completed task IDs from `tasks.md`. Do not re-elicit these from the user. Never edit `spec.md`, `plan.md`, or `tasks.md`.
+
+### Step 2 - Resolve Branch and Base
+
+Establish `(base_ref, head_ref)` before any diff is read. PR creation runs against the current feature branch only.
+
+1. **Resolve head:** `head_ref = HEAD`; `current_branch = git rev-parse --abbrev-ref HEAD`.
+2. **Reject trunk heads:** if `current_branch` is `main`, `master`, `develop`, or `trunk` (case-insensitive), stop:
 
    ```text
-   You are on `<current_branch>`, which is a trunk branch. There is nothing scoped to describe in a PR.
-
-   Switch to your feature branch (`git checkout <feature-branch>`) and re-run.
+   You are on `<current_branch>`, a trunk branch. Nothing scoped to describe.
+   Switch to your feature branch and re-run.
    ```
 
-3. **Detect base:** resolve `base_ref` in this order, stopping at the first that succeeds:
-   1. `git symbolic-ref refs/remotes/origin/HEAD` (typically `refs/remotes/origin/main`).
-   2. `git rev-parse --verify origin/main`, then `origin/master`, then `origin/develop`.
-   3. `git rev-parse --verify main`, then `master`, then `develop`.
-4. **Ask only if ambiguous:** if none of the above resolve, ask the user which branch is the base. Do not silently pick.
+3. **Detect base** in order; first that succeeds wins:
+   1. `git symbolic-ref refs/remotes/origin/HEAD`
+   2. `git rev-parse --verify origin/main`, then `origin/master`, then `origin/develop`
+   3. `git rev-parse --verify main`, then `master`, then `develop`
+4. **Ask only if ambiguous:** if none resolve, ask the user. Do not pick silently.
 
-Record `base_ref` (a name, e.g. `origin/main`) for use in Step 3. The consuming diff/log commands use `<base_ref>...HEAD`.
+Record `base_ref` for Step 4.
 
-### Step 2 - Detect Stack
+### Step 3 - Detect Stack
 
-Use skill: `stack-detect` to identify language, framework, and tooling. This informs test plan language (e.g., "run `./gradlew test`" vs `pytest` vs `go test ./...`).
+Use skill: `stack-detect` to inform test commands in the test plan (e.g., `./gradlew test`, `pytest`, `go test ./...`).
 
-### Step 3 - Gather Context
+### Step 4 - Gather Context
 
-Using `base_ref` from Step 1, run or ask for:
+Run or accept:
 
-1. **Diff**: `git diff <base_ref>...HEAD` (or supplied by user)
-2. **Commits**: `git log <base_ref>...HEAD --oneline --no-merges`
-3. **Branch name**: `current_branch` from Step 1
-4. **Changed files**: `git diff <base_ref>...HEAD --name-only`
+1. `git diff <base_ref>...HEAD`
+2. `git log <base_ref>...HEAD --oneline --no-merges`
+3. `current_branch` from Step 2
+4. `git diff <base_ref>...HEAD --name-only`
 
-If the diff is empty (no commits ahead of base), stop and tell the user there is nothing to describe.
+If the diff is empty, stop and tell the user.
 
-Extract from the above:
+Extract from above:
 
-- **Ticket references**: patterns like `PROJ-123`, `#123`, `closes #`, `fixes #`, `resolves #` in branch name or commit messages
-- **ADR references**: mentions of `ADR-`, `adr/`, or `docs/decisions/` in commits or diff
-- **Related PRs**: mentions of `PR #`, `pull/`, or sibling branch names in commits
+- **Tickets:** `PROJ-123`, `#123`, `closes #`, `fixes #`, `resolves #` in branch or commits
+- **ADRs:** `ADR-`, `adr/`, `docs/decisions/` mentions
+- **Related PRs:** `PR #`, `pull/`, sibling branch names in commits
 
-### Step 4 - Classify Risk
+### Step 5 - Classify Risk
 
-Use skill: `review-pr-risk`
-
-Produce a single-line risk output:
+Use skill: `review-pr-risk`. Produce one line that appears verbatim in the description:
 
 ```
 Risk: Low | Medium | High | Critical  -  [1-2 sentence rationale]
 ```
 
-This appears verbatim in the PR description to orient reviewers immediately.
+### Step 6 - Write the PR Description
 
-### Step 5 - Write PR Description
+Compose using the Output Format below.
 
-Compose the description following the Output Format below.
+**Title:**
+- Imperative ("Add", "Fix", "Refactor") - not "Added" / "Adding"
+- Under 72 characters; no ticket number (goes in body)
+- Format: `<type>: <what changed>` where type is `feat`, `fix`, `refactor`, `perf`, `chore`, `docs`, or `test`
 
-**Title rules:**
+**Summary:**
+- Explain the *why* (problem, motivation) more than the *what* (mechanics)
+- 3-5 bullets, each starting with a verb
+- Reference ticket/ADR inline only if essential context
 
-- Imperative mood: "Add", "Fix", "Refactor", "Remove", "Update" - not "Added" or "Adding"
-- Under 72 characters
-- No ticket number in the title (goes in the body)
-- Format: `<type>: <what changed>` where type is one of: `feat`, `fix`, `refactor`, `perf`, `chore`, `docs`, `test`
+**Test Plan:**
+- Concrete, runnable steps. Include the exact test command for the detected stack.
+- Manual verification for UI/API changes; migration steps when applicable.
+- New infrastructure dependency (Redis, DB, broker): include the setup step (e.g., `docker-compose up -d redis`).
 
-**Summary rules:**
+**Checklist:** include only items relevant to this PR; omit non-applicable items.
 
-- Explain the _why_ (motivation, problem being solved) more than the _what_ (code mechanics)
-- 3-5 bullet points; each starts with a verb
-- Do not re-describe the diff line by line
-- Reference the ticket/ADR inline if it provides essential context
+### Step 7 - Surface Linked Context
 
-**Test Plan rules:**
-
-- Concrete, runnable steps - not "test it works"
-- Include the exact test command for the detected stack
-- Add manual verification steps for UI/API changes
-- Add migration steps if a DB migration is included
-- If the change introduces a new infrastructure dependency (Redis, database, message broker), include the dependency setup step in the test plan (e.g., "Ensure Redis is running: `docker-compose up -d redis`")
-
-**Checklist rules:**
-
-- Only include items relevant to this specific PR
-- Skip items that don't apply (don't list empty boxes for non-applicable items)
-
-### Step 6 - Surface Linked Context
-
-At the bottom of the PR description, add a **Linked Context** section only if at least one of the following exists:
-
-- A ticket reference was found → link as `Closes PROJ-123` / `Ref #123`
-- An ADR reference was found → link by title if resolvable, otherwise by path
-- A related PR was found → reference by number or branch name
-
-If nothing was found, omit the section entirely - do not add empty placeholders.
+Add a **Linked Context** section only if at least one of: ticket reference, ADR reference, related PR. If none found, omit entirely - no empty placeholders.
 
 ## Output Format
 
 ```markdown
-## [type]: [concise imperative title under 72 chars]
+## [type]: [imperative title under 72 chars]
 
 ### Summary
 
-- [Why this change was needed / what problem it solves]
+- [Why this change was needed / problem solved]
 - [What changed at a high level - domain, layer, component]
-- [Any notable design decision or trade-off made]
+- [Notable design decision or tradeoff]
 
 ### Risk
 
-**[Low | Medium | High | Critical]** - [1-2 sentence rationale based on change signals]
+**[Low | Medium | High | Critical]** - [1-2 sentence rationale]
 
 ### Test Plan
 
-- [ ] Run tests: `[stack-appropriate test command]`
-- [ ] [Manual verification step 1 - e.g., "Call POST /api/v1/orders and verify 201 response"]
-- [ ] [Manual verification step 2 - e.g., "Check that existing orders are unaffected"]
-- [ ] [Migration step if applicable - e.g., "Run `./gradlew flywayMigrate` on staging before deploying"]
+- [ ] Run tests: `[stack-appropriate command]`
+- [ ] [Manual verification step 1 - e.g., "POST /api/v1/orders returns 201"]
+- [ ] [Manual verification step 2]
+- [ ] [Migration step if applicable - e.g., "Run `./gradlew flywayMigrate` on staging before deploy"]
 
 ### Deployment Notes
 
-_{Include only if the change has deployment-time implications: new infrastructure dependencies, configuration changes, behavioral changes to existing endpoints, or feature flag requirements. Omit entirely if not applicable.}_
+_{Include only when there are deployment-time implications: new infrastructure dependency, config change, behavior change to existing endpoints, or feature flag. Otherwise omit.}_
 
-- {deployment consideration}
+- {consideration}
 
 ### Checklist
 
-- [ ] Tests added or updated for new behaviour
+- [ ] Tests added or updated for new behavior
 - [ ] No secrets, tokens, or PII introduced
 - [ ] Migration is reversible (if applicable)
-- [ ] Breaking API changes are documented (if applicable)
+- [ ] Breaking API changes documented (if applicable)
 
 ### Linked Context
 
@@ -185,39 +156,31 @@ ADR: [ADR title or path]
 Related: #[PR number or branch]
 ```
 
-### Output Constraints
+## Output Constraints
 
 - Title is the first line with `##` prefix - not a separate field
-- Risk always appears before Test Plan - it frames reviewer attention
-- Omit any section that has no content (e.g., omit Linked Context if nothing found)
-- Do not include implementation details visible in the diff - orient reviewers, don't duplicate the diff
-- Test plan must include at least one runnable command for the detected stack
-- Keep total PR description under 400 words - reviewers read it, not file it
-
-## Rules
-
-- Never invent ticket IDs or ADR titles that don't appear in the git context
-- If the diff is empty or the branch has no commits ahead of base, say so and stop
-- If the diff is too large to summarize meaningfully (500+ files), ask the user to scope the input
-- Do not include personal opinions about code quality - this is documentation, not review
-- Risk classification from Step 4 must be the only risk assessment - do not add a second one inline
+- Risk appears before Test Plan
+- Omit sections with no content
+- No line-by-line diff description - orient reviewers, do not duplicate the diff
+- Test plan includes at least one runnable command for the detected stack
+- Total description under 400 words
 
 ## Self-Check
 
-- [ ] Branch and base resolved in Step 1; trunk-branch HEAD rejected; base auto-detected (or asked for when ambiguous)
-- [ ] Stack detected in Step 2 and reflected in the test plan
-- [ ] Diff and commits gathered using the resolved `base_ref`, not a hardcoded `main`
-- [ ] Title is imperative mood, under 72 characters, with type prefix
-- [ ] Summary explains the "why" not the "how" - no line-by-line diff description
-- [ ] Risk classification present with rationale
-- [ ] Test plan includes at least one runnable command for the detected stack
-- [ ] Linked context references real ticket IDs, ADRs, or PRs found in git context - nothing invented
-- [ ] Empty sections omitted; total description under 400 words
+- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 2: branch and base resolved; trunk-branch HEAD rejected; base auto-detected or asked when ambiguous
+- [ ] Step 3: stack detected and reflected in test plan command
+- [ ] Step 4: diff and commits gathered against resolved `base_ref`, not hardcoded `main`
+- [ ] Step 5: risk classification present with rationale
+- [ ] Step 6: title imperative, under 72 chars, type-prefixed; summary explains *why*, not *how*; test plan has at least one runnable command
+- [ ] Step 7: Linked Context only when real references exist; nothing invented
+- [ ] Empty sections omitted; total under 400 words
 
 ## Avoid
 
 - Inventing ticket IDs, ADR titles, or PR references not found in git context
-- Duplicating the diff in the summary - orient reviewers, don't re-describe the code
-- Writing test plans with vague steps ("test it works") instead of concrete commands
-- Including personal opinions about code quality - this is documentation, not review
-- Adding empty placeholder sections (Linked Context with no content)
+- Duplicating the diff in the summary - orient, do not re-describe
+- Vague test plans ("test it works") instead of concrete commands
+- Personal opinions about code quality - this is documentation, not review
+- Empty placeholder sections (Linked Context with no content)
+- Adding a second inline risk rating after Step 5's classification

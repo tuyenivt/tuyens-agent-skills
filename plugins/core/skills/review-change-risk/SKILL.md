@@ -1,6 +1,6 @@
 ---
 name: review-change-risk
-description: Pre-implementation risk domain classification for proposed changes
+description: Classify risk domains for a proposed change before code exists. Use for architecture proposals, migration plans, refactor plans.
 metadata:
   category: governance
   tags: [risk-assessment, change-analysis, pre-implementation, classification]
@@ -13,129 +13,108 @@ user-invocable: false
 
 ## When to Use
 
-- Before implementation, when classifying risk domains for a proposed change
-- When evaluating architecture proposals, migration plans, or refactor plans that do not yet have a PR
-- When `review-pr-risk` is insufficient because no code diff exists yet
-- As the first step in a pre-implementation risk assessment to frame risk domains
+- Pre-implementation: architecture proposals, migration plans, refactor plans, design docs
+- When no diff exists yet, so `review-pr-risk` cannot apply
+- As the framing step for downstream design and review
+
+If a diff exists, use `review-pr-risk` instead; use both when both apply.
 
 ## Rules
 
-- Classify by risk domain, not by code signal -- this skill works on proposals, not diffs
-- A change may have multiple primary and secondary risk domains
-- Risk level is determined by the highest-severity domain, adjusted by domain count
-- Every classification must state the evidence or signal that supports it
-- Do not classify risk as Low unless no high-impact domain is triggered
-- Shared mutable state amplifies risk level by one tier
+- Classify by risk domain, not code signal - this skill works on proposals.
+- A change may trigger multiple primary and secondary domains.
+- Every domain triggered must cite the evidence that triggered it.
+- Shared mutable state amplifies the overall level by one tier.
+- Never classify Low when any high-severity domain is triggered.
 
-## Pattern
+## Patterns
 
 ### Risk Domain Table
 
-| Domain                   | Trigger Signals                                                                                         | Default Severity |
-| ------------------------ | ------------------------------------------------------------------------------------------------------- | ---------------- |
-| Data                     | Schema migration, data model change, new entity, column type change                                     | High             |
-| Concurrency              | Shared mutable state, new locking, thread pool change, concurrency model migration                      | High             |
-| Transaction boundary     | Transaction scope change, new distributed transaction, isolation level change                           | High             |
-| Async/event              | New event flow, new consumer, event schema change, ordering assumption                                  | Medium           |
-| External integration     | New third-party API, modified integration contract, new outbound dependency                             | Medium           |
-| Dependency upgrade       | Major version bump, framework upgrade, transitive dependency change                                     | Medium           |
-| Performance              | New hot path, query pattern change, cache invalidation change, connection pool                          | Medium           |
-| Security                 | Auth change, new endpoint exposure, data access scope change, secret management, TLS/cert config change | High             |
-| Configuration management | Config shared across environments, environment variable pollution, config used as base for prod         | High             |
-| Architecture drift       | Boundary erosion, layer violation, new cross-module dependency, ownership shift                         | Medium           |
-| Deployment               | Non-reversible migration, multi-step deploy, config-dependent rollout                                   | Medium           |
+| Domain                   | Trigger Signals                                                                              | Default Severity |
+| ------------------------ | -------------------------------------------------------------------------------------------- | ---------------- |
+| Data                     | Schema migration, model change, new entity, column type change                               | High             |
+| Concurrency              | Shared mutable state, new locking, thread pool change, concurrency model migration           | High             |
+| Transaction boundary     | Scope change, new distributed transaction, isolation level change                            | High             |
+| Security                 | Auth change, new exposure, access scope change, secret management, TLS/cert config           | High             |
+| Configuration            | Config shared across environments, env-var pollution, prod-derived config                    | High             |
+| Async/event              | New event flow, new consumer, event schema change, ordering assumption                       | Medium           |
+| External integration     | New third-party API, modified contract, new outbound dependency                              | Medium           |
+| Dependency upgrade       | Major version bump, framework upgrade, transitive change                                     | Medium           |
+| Performance              | New hot path, query pattern change, cache invalidation change, pool change                   | Medium           |
+| Architecture drift       | Boundary erosion, layer violation, new cross-module dependency, ownership shift              | Medium           |
+| Deployment               | Non-reversible migration, multi-step deploy, config-dependent rollout                        | Medium           |
 
 ### Classification Rules
 
-1. Identify all triggered domains with supporting evidence
-2. Separate into primary (direct, high-confidence signals) and secondary (indirect, lower-confidence)
-3. Determine overall risk level:
+1. Identify triggered domains with evidence.
+2. Mark each as primary (direct, high-confidence) or secondary (indirect, lower-confidence).
+3. Determine overall level:
 
-| Condition                                       | Overall Risk Level |
-| ----------------------------------------------- | ------------------ |
-| No high-severity domain triggered               | Low                |
-| One medium-severity domain triggered            | Medium             |
-| One high-severity domain or 3+ medium triggered | High               |
-| 2+ high-severity domains or shared state + any  | Critical           |
+| Condition                                                          | Overall Level |
+| ------------------------------------------------------------------ | ------------- |
+| No high-severity domain triggered                                  | Low           |
+| One medium domain                                                  | Medium        |
+| One high domain, OR three or more medium domains                   | High          |
+| Two or more high domains, OR shared mutable state plus any domain  | Critical      |
 
-4. Adjust upward by one tier if shared mutable state is involved across domains
+4. Apply +1 tier amplification if shared mutable state is involved across domains (caps at Critical).
 
 ### Good
 
 ```
-Change: Add payment_intent_id column to orders table and integrate Stripe webhook
+Change: Add payment_intent_id column to orders and integrate Stripe webhook
 
-Primary Risk Domains:
-- Data (High) -- schema migration on orders table, high-traffic write path
-- External integration (Medium) -- new Stripe webhook dependency with retry semantics
+Primary:
+- Data (High) - schema migration on a high-traffic write table
+- External integration (Medium) - new Stripe webhook with retry semantics
 
-Secondary Risk Domains:
-- Async/event (Medium) -- webhook introduces async flow with ordering assumptions
-- Deployment (Medium) -- migration must precede code deployment
+Secondary:
+- Async/event (Medium) - webhook introduces ordering assumption
+- Deployment (Medium) - migration must precede code
 
-Shared State: orders table (written by order service and webhook handler)
-Shared State Amplification: Yes -- upgrades overall risk
+Shared State: orders table (order-service + webhook handler)
+Shared State Amplification: Yes
 
 Overall Risk Level: Critical
-Evidence: Two high-severity domains (Data + External integration amplified by shared state)
+Evidence: Two high-severity domains amplified by shared mutable state
 ```
 
 ### Bad
 
 ```
 Change: Add payment_intent_id column to orders table
-
 Risk: Medium
 Reason: It's just a column addition
 ```
 
-Why bad: Ignores integration context, does not identify shared state, does not classify domains, does not provide evidence.
+Why bad: ignores integration context, no shared-state assessment, no domains, no evidence.
 
 ## Output Format
 
-Consuming workflow skills depend on this exact structure. The `Overall Risk Level` line is parsed by callers to gate scope, depth, and escalation decisions.
+Callers parse the `Overall Risk Level` line.
 
 ```
 Overall Risk Level: {Low | Medium | High | Critical}
 
 Primary Risk Domains:
-- {Domain} ({Severity}) -- {1-sentence evidence}
+- {Domain} ({Severity}) - {1-sentence evidence}
 
 Secondary Risk Domains:
-- {Domain} ({Severity}) -- {1-sentence evidence}
+- {Domain} ({Severity}) - {1-sentence evidence}
 
 Shared State: {what shared resource is involved, or "none"}
 Shared State Amplification: Yes / No
 
-Evidence: {key signals that drove the overall classification}
+Evidence: {key signals driving the overall classification}
 ```
 
-**Examples:**
-
-```
-Overall Risk Level: Critical
-
-Primary Risk Domains:
-- Data (High) -- schema migration on orders table, high-traffic write path
-- External integration (Medium) -- new Stripe webhook dependency with retry semantics
-
-Secondary Risk Domains:
-- Async/event (Medium) -- webhook introduces async flow with ordering assumptions
-- Deployment (Medium) -- migration must precede code deployment
-
-Shared State: orders table (written by order-service and webhook handler)
-Shared State Amplification: Yes
-
-Evidence: Two high-severity domains amplified by shared mutable state
-```
-
-Always produce all sections. Use "none" for Secondary Risk Domains and Shared State when not applicable. Never omit Evidence.
+Always produce all sections. Use "none" for Secondary and Shared State when not applicable. Never omit Evidence.
 
 ## Avoid
 
-- Classifying risk without stating supporting evidence
-- Treating all schema changes as equal risk regardless of table traffic
-- Ignoring shared mutable state as a risk amplifier
-- Conflating code quality concerns with systemic risk domains
-- Classifying as Low when multiple medium-severity domains are triggered
-- Using this skill as a replacement for `review-pr-risk` when a code diff exists -- use both for complete coverage
+- Classifying without stating evidence
+- Treating all schema changes as equal risk regardless of traffic
+- Ignoring shared mutable state as an amplifier
+- Conflating code-quality concerns with systemic risk
+- Classifying as Low when several medium domains are triggered

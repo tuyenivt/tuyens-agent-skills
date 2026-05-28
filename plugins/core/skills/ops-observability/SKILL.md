@@ -1,9 +1,9 @@
 ---
 name: ops-observability
-description: Structured logging, metrics, and distributed tracing patterns. Auto-detects project stack and adapts observability guidance to the detected ecosystem.
+description: Structured logging, RED metrics, distributed tracing, SLOs, and symptom-based alerting across stacks.
 metadata:
   category: ops
-  tags: [logging, metrics, tracing, monitoring, multi-stack]
+  tags: [logging, metrics, tracing, monitoring, slo, alerting, multi-stack]
 user-invocable: false
 ---
 
@@ -13,140 +13,107 @@ user-invocable: false
 
 ## When to Use
 
-- Debugging production issues
-- Monitoring application health and performance
-- Understanding distributed system behavior
+- Reviewing logging, metrics, and tracing coverage on a service
+- Identifying gaps that would prevent detecting or diagnosing a production failure
+- Defining SLOs and alerting strategy for a critical path
 
-## Universal Principles (All Stacks)
+## Rules
 
-- Use structured logs (JSON) with consistent fields
-- Include correlation ID in all logs for request tracing
-- Never log sensitive data (passwords, tokens, PII)
-- Implement RED metrics for APIs: Rate, Errors, Duration
-- Track key business metrics
-- Enable distributed tracing and propagate trace context
-- Alert on symptoms, not causes
+- Logs are structured (JSON), with mandatory fields `level`, `service`, `trace_id`, `span_id`.
+- Trace context propagates across every service boundary using a standard header; receiving services create child spans, never new trace IDs.
+- Never log secrets or PII (passwords, tokens, personal data).
+- Every API surface has RED metrics: **R**ate, **E**rrors, **D**uration.
+- Every critical service has an SLO; alerting thresholds without an SLO are arbitrary.
+- Alert on **symptoms** (error rate, latency, saturation), not causes (CPU, memory).
+- Every metric and log signal has a corresponding alert or dashboard; unwatched signals are dead.
 
----
+## Patterns
 
-## Structured Logging
-
-Every ecosystem has a recommended structured logging approach. The universal pattern is:
+### Structured Logging
 
 ```
-// Bad - unstructured, missing context
+// Bad - unstructured, no context
 log("User processed: " + userId)
 
-// Good - structured with mandatory fields
+// Good - structured, correlatable
 log({
   message: "User processed",
   level: "info",
   service: "order-service",
-  trace_id: traceContext.traceId,       // W3C traceparent or equivalent
-  span_id: traceContext.spanId,
-  user_id: user.id,
+  trace_id: ctx.traceId,    // W3C traceparent or equivalent
+  span_id:  ctx.spanId,
+  user_id:  user.id,
   duration_ms: elapsed
 })
 ```
 
-**Mandatory fields for every log entry:** `level`, `service`, `trace_id`, `span_id`. Without `trace_id`/`span_id`, log correlation across services in a distributed trace is impossible.
+### Trace Context Propagation
 
-### Distributed Trace Context Propagation
+Use a standard propagation header end-to-end:
 
-Propagate trace context across service boundaries using standard headers:
+- **W3C `traceparent`** - recommended; OpenTelemetry default
+- **`b3` / `x-b3-traceid`** - Zipkin; common in older Spring Cloud / Istio
+- **`uber-trace-id`** - Jaeger
 
-- **W3C `traceparent`** (recommended, OpenTelemetry default)
-- **`b3` / `x-b3-traceid`** (Zipkin, still common in older Spring Cloud deployments)
-- **`uber-trace-id`** (Jaeger)
+The receiving service extracts incoming context and creates a child span. Use the ecosystem's standard propagator and request-scoped context mechanism (MDC, `context.Context`, contextvars, framework middleware) so trace IDs reach every log line.
 
-The receiving service must extract the incoming trace context and create child spans - not generate a new trace ID. Use the ecosystem's standard propagator (e.g., `W3CTraceContextPropagator` in OTel, Spring Cloud Sleuth/Micrometer Tracing).
-
-### Stack-Specific Guidance
-
-After loading stack-detect, apply structured logging using the libraries and patterns of the detected ecosystem:
-
-- Use the framework's standard or recommended logging library (e.g., SLF4J, log/slog, Rails.logger, Python logging, Elixir Logger, Laravel Log facade / Monolog)
-- **Go**: `log/slog` with `slog.JSONHandler` for structured logging, `context.Context` for request-scoped values and trace propagation, `go.opentelemetry.io/otel` for distributed tracing, `prometheus/client_golang` or OTel metrics for Prometheus-compatible metrics
-- Use the framework's mechanism for request-scoped context propagation (e.g., MDC, context.Context, CurrentAttributes, contextvars, Laravel middleware context)
-- Configure JSON output formatting using the ecosystem's standard encoder or formatter
-
-## Metrics
-
-Instrument **RED metrics** (Rate, Errors, Duration) at every service boundary:
+### RED Metrics
 
 ```
-// Rate: request count by endpoint and status
-http_requests_total{method="POST", endpoint="/api/orders", status="201"}
-
-// Errors: error count by endpoint and error type
-http_errors_total{method="POST", endpoint="/api/orders", error="validation"}
-
-// Duration: latency histogram by endpoint
-http_request_duration_seconds{method="POST", endpoint="/api/orders"}
-  -> track p50, p95, p99 from histogram buckets
+http_requests_total{method, endpoint, status}                    // Rate
+http_errors_total{method, endpoint, error_type}                  // Errors
+http_request_duration_seconds{method, endpoint}  -> p50/p95/p99  // Duration
 ```
-
-**Metric types and when to use each:**
 
 | Type      | Use For                                 | Example                         |
 | --------- | --------------------------------------- | ------------------------------- |
 | Counter   | Cumulative totals that only go up       | Total requests, total errors    |
-| Histogram | Distribution of values (latency, sizes) | Request duration, response size |
+| Histogram | Distribution of values                  | Request duration, response size |
 | Gauge     | Values that go up and down              | Active connections, queue depth |
 
-**Business metrics** -- define at least one metric per critical business operation (e.g., `orders_completed_total`, `payment_success_rate`). These detect revenue-impacting issues that RED metrics alone may miss.
+Define at least one **business metric** per critical operation (e.g., `orders_completed_total`, `payment_success_rate`); RED alone misses revenue-impacting issues.
 
-Use the metrics library standard for the detected ecosystem (e.g., Micrometer, Prometheus client, Yabeda, StatsD).
+### Distributed Tracing
 
-## Distributed Tracing
+Span the key segments of a request:
 
-Add trace spans for key operations to make the request lifecycle visible:
+- Service entry point (framework middleware)
+- Database queries (span per query, attribute = query template, never parameters)
+- External HTTP calls (span per outbound request, attribute = target service)
+- Message publish/consume (link producer to consumer span across async boundaries)
+- Cache reads/writes on hot paths
 
-- **Service entry point** -- automatic span from framework middleware
-- **Database queries** -- span per query with query template (not parameters) as span attribute
-- **External HTTP calls** -- span per outbound request with target service name
-- **Message publish/consume** -- span linking producer to consumer across async boundaries
-- **Cache operations** -- span for cache reads/writes on hot paths
+**Sampling:**
 
-**Sampling strategy** -- tracing every request is expensive at scale. Choose based on traffic volume:
+| Strategy   | Use When                            | Trade-off                       |
+| ---------- | ----------------------------------- | ------------------------------- |
+| Head-based | Moderate traffic; decide at start   | Simple; may miss rare errors    |
+| Tail-based | High traffic; decide after end      | Captures errors/slow; costly    |
+| Always-on  | Low traffic, debugging              | Full visibility; high storage   |
 
-| Strategy   | Use When                                         | Trade-off                             |
-| ---------- | ------------------------------------------------ | ------------------------------------- |
-| Head-based | Moderate traffic; decision made at request start | Simple; may miss rare errors          |
-| Tail-based | High traffic; decision made after request ends   | Captures errors/slow requests; costly |
-| Always-on  | Low traffic or debugging                         | Full visibility; high storage cost    |
+Start head-based at 10-20% for high-traffic services; always sample 100% of errored or slow requests regardless of strategy.
 
-Start with head-based sampling at 10-20% for high-traffic services. Always sample 100% of errored or slow requests regardless of strategy.
+### SLOs and Alerting
 
-Use OpenTelemetry or the ecosystem's standard tracing library. Ensure trace context propagation across service boundaries (see trace context headers above).
+Each critical service defines:
 
-## SLO Definition
+- **SLI** - the measurable signal (success rate, p99 latency)
+- **SLO target** - the threshold (e.g., 99.9% success over 30 days, p99 < 500ms)
+- **Error budget** - `1 - SLO` as allowable failures per window (e.g., 43.8 min/month at 99.9%)
 
-For every critical service, define at minimum:
+Alert on:
 
-- **SLI (Service Level Indicator)**: the measurable signal (e.g., request success rate, p99 latency)
-- **SLO target**: the threshold (e.g., 99.9% success rate over 30 days, p99 < 500ms)
-- **Error budget**: `1 - SLO` expressed as allowable downtime/failures per window (e.g., 43.8 min/month for 99.9%)
+- **Error rate** - SLO burn rate over multi-window (reduces false positives), not individual errors
+- **Latency** - sustained p99 breach (e.g., > 500ms for 5 min)
+- **Saturation** - resource utilization approaching limits (pool > 80%, disk > 90%)
 
-Flag services with no defined SLO as a **High** observability gap - without an SLO, alerting thresholds are arbitrary and error budget burn goes undetected.
+### Stack Adaptation
 
-If the detected stack is unfamiliar, apply the universal principles above and recommend the user consult their ecosystem's observability tooling documentation.
-
-### Alerting Principles
-
-Observability signals are only valuable if someone acts on them. Define alerts for:
-
-- **Error rate:** Alert when error rate exceeds SLO burn rate (not on individual errors)
-- **Latency:** Alert when p99 latency exceeds threshold for sustained period (e.g., > 500ms for 5 minutes)
-- **Saturation:** Alert when resource utilization approaches limits (connection pool > 80%, disk > 90%)
-- Page for **symptoms** (error rate spike, latency degradation), not **causes** (CPU high, memory high)
-- Use multi-window burn rate alerting for SLO-based alerts to reduce false positives
-
----
+After `stack-detect`, apply the patterns using the ecosystem's standard libraries: the framework's logging library configured for JSON output, an OpenTelemetry-compatible tracing library, a Prometheus-compatible metrics library, and the framework's request-scoped context mechanism for trace propagation. If the detected stack is unfamiliar, apply the universal patterns above and recommend the user verify against their ecosystem's observability docs.
 
 ## Output Format
 
-Consuming workflow skills depend on this structure to surface observability gaps consistently.
+Consuming workflow skills parse this structure to surface observability gaps.
 
 ```
 ## Observability Assessment
@@ -156,28 +123,28 @@ Consuming workflow skills depend on this structure to surface observability gaps
 ### Gaps
 
 - [Severity: High | Medium | Low] {component or layer} - {description of gap}
-  - Missing: {what signal is absent - log field, metric, trace span}
-  - Impact: {what becomes invisible or undetectable without it}
+  - Missing: {signal absent - log field, metric, trace span, SLO}
+  - Impact: {what becomes invisible or undetectable}
   - Recommendation: {concrete addition with library/mechanism for the detected stack}
 
 ### No Gaps Found
 
-{State explicitly if observability is adequate - do not omit this section silently}
+{State explicitly if observability is adequate - do not omit silently.}
 ```
 
-**Severity guidance:**
+**Severity:**
 
-- **High**: Gap that would prevent detection of a production failure (e.g., no error rate metric on a critical path)
-- **Medium**: Gap that reduces diagnosis speed (e.g., missing correlation ID on internal calls)
-- **Low**: Nice-to-have signal with no current blind spot (e.g., missing business metric)
+- **High**: gap prevents detecting a production failure (no error rate on critical path, no SLO on critical service, missing trace propagation across boundary).
+- **Medium**: gap slows diagnosis (missing correlation ID on internal calls, no business metric on key flow).
+- **Low**: nice-to-have signal with no current blind spot.
 
 Omit "No Gaps Found" if gaps were listed.
 
-## Avoid (All Stacks)
+## Avoid
 
-- Logging sensitive data (passwords, tokens, PII)
-- Unstructured logs without context
-- Logging too much (noise) or too little (blind spots)
-- Missing correlation IDs across service boundaries
-- Metrics without alerting thresholds defined
-- Observability signals (metrics, logs, traces) without corresponding alerting rules (nobody sees the signals until manual investigation)
+- Logging secrets or PII.
+- Unstructured logs, or logs without `trace_id` / `span_id`.
+- Generating a new trace ID at a service boundary instead of propagating the incoming one.
+- Metrics or traces with no corresponding alert or dashboard.
+- Paging on causes (CPU high, memory high) instead of symptoms (error rate, latency).
+- Defining SLOs in name only, without burn-rate alerting.

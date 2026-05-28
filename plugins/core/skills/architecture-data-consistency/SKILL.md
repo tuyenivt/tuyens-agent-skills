@@ -1,6 +1,6 @@
 ---
 name: architecture-data-consistency
-description: Consistency strategy selection across data boundaries
+description: Select consistency strategy across data boundaries - strong vs eventual, outbox, saga, compensation, schema evolution, anomaly classification.
 metadata:
   category: architecture
   tags: [consistency, distributed-systems, eventual-consistency, saga, outbox]
@@ -13,111 +13,100 @@ user-invocable: false
 
 ## When to Use
 
-- During architecture design to choose consistency models per data boundary
-- When a feature spans multiple services or modules with separate data stores
-- When deciding between strong consistency and eventual consistency
-- When designing compensation or rollback strategies for distributed operations
+- Designing how data flows across services or modules with separate stores
+- Choosing between strong and eventual consistency for a specific boundary
+- Defining compensation, rollback, or recovery for distributed operations
+- Planning schema changes that ship during rolling deployments
 
 ## Rules
 
-- Default to strong consistency within a single module boundary
-- Eventual consistency is a choice, not an accident -- document the staleness tolerance
-- Every eventually consistent boundary must have a defined recovery mechanism
-- Distributed transactions (2PC) are a last resort -- prefer saga or outbox patterns
-- Schema changes must be backward compatible during rolling deployments
+- Default to strong consistency inside a single module boundary
+- Eventual consistency is a choice - document the staleness tolerance and recovery path
+- Distributed transactions (2PC) are a last resort; prefer outbox or saga
+- At-least-once delivery requires idempotent consumers - state the idempotency key
+- Schema changes during rolling deploys must be backward compatible
 
-## Pattern
+## Patterns
 
 ### Consistency Decision Matrix
 
-| Scenario                         | Model            | Pattern                                  |
-| -------------------------------- | ---------------- | ---------------------------------------- |
-| Single DB, single service        | Strong           | Database transaction (framework-managed) |
-| Cross-module, same DB            | Strong (careful) | Shared transaction                       |
-| Cross-service, separate DBs      | Eventual         | Outbox + events                          |
-| Long-running multi-step process  | Eventual         | Saga (orchestrated or choreographed)     |
-| Read-heavy, staleness acceptable | Eventual         | CQRS + async sync                        |
+| Scenario                         | Model            | Pattern                              |
+| -------------------------------- | ---------------- | ------------------------------------ |
+| Single DB, single service        | Strong           | Database transaction                 |
+| Cross-module, same DB            | Strong (careful) | Shared transaction                   |
+| Cross-service, separate DBs      | Eventual         | Outbox + events                      |
+| Long-running multi-step process  | Eventual         | Saga (orchestrated or choreographed) |
+| Read-heavy, staleness acceptable | Eventual         | CQRS + async sync                    |
 
-### Outbox Pattern
+### Outbox
 
-Use when: publishing an event must be atomic with a database write.
+Use when publishing an event must be atomic with a database write.
 
 ```
-1. Write business data + outbox record in same transaction
+1. Write business data + outbox row in same transaction
 2. Background poller or CDC reads outbox
-3. Publish event to message broker
-4. Mark outbox record as published
+3. Publish event; mark row published
 ```
 
-Guarantees: at-least-once delivery. Consumers must be idempotent.
+Guarantee: at-least-once. Consumers must be idempotent.
 
-### Saga Pattern
+### Saga
 
-Use when: a business operation spans multiple services and each must commit or compensate.
+Use when a business operation spans services and each step must commit or compensate.
 
-- **Orchestrated** -- central coordinator drives steps and compensation
-- **Choreographed** -- each service reacts to events and publishes next event
+- **Orchestrated** - central coordinator drives steps and compensation
+- **Choreographed** - services react to events and emit the next event
 
-For each saga step:
+Each step declares: forward action, compensating action, idempotency key.
 
-- Forward action (what it does)
-- Compensating action (how to undo if a later step fails)
-- Idempotency guarantee (safe to retry)
+Step ordering:
 
-**Saga step ordering:**
+- Place compensatable steps first; non-compensatable steps (email, push notification) last
+- Place the most failure-prone step early to minimize compensation scope
+- Identify the **pivot transaction** - the step after which the saga commits to forward-only completion. Steps before the pivot are reversible; steps after must succeed or be retried indefinitely.
+- Example: reserve inventory (compensatable) -> charge payment (pivot) -> send confirmation (forward-only)
 
-- Place compensatable steps before non-compensatable steps (e.g., send email or push notification last - cannot unsend)
-- Place the most likely-to-fail step early to minimize compensation scope
-- Identify the **pivot transaction** - the step after which the saga commits to forward-only completion (no compensation). Steps before the pivot can be compensated; steps after the pivot must succeed or be retried indefinitely.
-- Example ordering: reserve inventory (compensatable) -> charge payment (pivot) -> send confirmation email (non-compensatable, forward-only)
+External API steps:
 
-**External API steps in sagas:**
+- Always send an idempotency key so the call is safe to retry after a network failure
+- Persist the response in the same local transaction as the next state change
+- Compensation is a separate API call (e.g. refund), not a rollback
+- On a lost response, query the external state before compensating - avoid double-refund
 
-When a saga step calls an external API (payment gateway, third-party service):
-
-- Always use an idempotency key on the external API call so it is safe to retry after network failure
-- Store the external API response in the local DB atomically (outbox pattern for the call result)
-- Design compensation as a separate API call (e.g., refund endpoint), not a transaction rollback
-- Handle the "response lost" scenario: the external API may have succeeded even if the HTTP call timed out - check the external status before compensating to avoid double-charging or double-refunding
-
-### Good: Explicit consistency choice with trade-off
+Good - explicit boundary contract:
 
 ```
 Boundary: Order -> Payment
-Model: Eventual consistency via outbox pattern
-Staleness Tolerance: Up to 5 seconds between order creation and payment initiation
-Partial Failure: If payment fails, OrderCompensationService reverts order to PENDING_PAYMENT
-Recovery: Dead-letter queue with manual review for unrecoverable payment failures
+Model: Eventual via outbox
+Staleness: <= 5s between order creation and payment initiation
+Failure: PaymentFailed event reverts Order to PENDING_PAYMENT
+Recovery: DLQ with manual review for unrecoverable failures
 ```
 
-### Bad: Implicit consistency assumption
+Bad - implicit assumption:
 
 ```
-Order creates a payment by calling PaymentService REST API inside the transaction.
+Order calls PaymentService REST inside the transaction.
 ```
 
 ### Eventual Consistency Read Anomalies
 
-When a boundary uses eventual consistency, reads may surface stale or inconsistent state. Classify which anomalies are acceptable:
+For each eventually consistent boundary, name the tolerated anomaly and bound the window. Unknown tolerance is a Medium risk.
 
-| Anomaly      | Cause                                                                | Example                                                               | Acceptable?                                  |
-| ------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------- |
-| Stale read   | Consumer reads before event propagates                               | Order shows PENDING after payment confirmed                           | Tolerable if window is bounded (< 5s)        |
-| Lost update  | Two writers update the same entity concurrently without coordination | Two services both update `order.status`                               | Never acceptable without conflict resolution |
-| Phantom read | Query returns different rows as background saga steps commit         | Payment service sees order as PAID before OrderService commits status | Requires saga step ordering or re-query      |
+| Anomaly      | Cause                                       | Acceptable when                              |
+| ------------ | ------------------------------------------- | -------------------------------------------- |
+| Stale read   | Read before event propagates                | Window is bounded and documented             |
+| Lost update  | Two writers update same entity concurrently | Never without explicit conflict resolution   |
+| Phantom read | Background saga commits between reads       | Saga ordering or re-query strategy in place  |
 
-For each eventually consistent boundary, declare the tolerated anomaly type and the maximum staleness window. Flag "unknown staleness tolerance" as Medium risk.
+### Schema Evolution
 
-### Schema Evolution Strategy
-
-- Additive changes only during rolling deployments (new columns nullable, new fields optional)
-- Rename = add new + migrate + remove old (three-phase)
-- Never remove a column that active code reads
-- Event schema versioning: consumers must tolerate unknown fields
+- Additive only during rolling deploys (new columns nullable, new fields optional)
+- Rename = add new + dual-write/migrate + remove old (three-phase)
+- Never remove a column or field active code reads
+- Event consumers tolerate unknown fields; producers never reuse field IDs
 
 ## Output Format
-
-Consuming workflow skills depend on this structure to surface consistency decisions and gaps.
 
 ```
 ## Data Consistency Assessment
@@ -126,28 +115,27 @@ Consuming workflow skills depend on this structure to surface consistency decisi
 
 | Boundary | Model | Pattern | Staleness Tolerance | Recovery Mechanism |
 | -------- | ----- | ------- | ------------------- | ------------------ |
-| {e.g., Order -> Payment} | {Strong / Eventual} | {transaction / outbox / saga} | {N/A or duration} | {N/A or description} |
+| {e.g. Order -> Payment} | {Strong | Eventual} | {transaction | outbox | saga} | {N/A or duration} | {N/A or description} |
 
 ### Risks
 
-- [Severity: High | Medium | Low] {boundary} - {description of consistency risk}
-  - Issue: {implicit assumption | missing recovery | distributed transaction | schema break}
+- [Severity: High | Medium | Low] {boundary} - {description}
+  - Issue: {implicit assumption | missing recovery | distributed transaction | schema break | unknown staleness}
   - Recommendation: {concrete pattern for the detected stack}
 
 ### No Risks Found
 
-{State explicitly if all boundaries have explicit consistency strategies - do not omit this section silently}
+{State explicitly if all boundaries have explicit strategies - do not omit this section silently}
 ```
 
-Always produce the Boundaries Assessed table. Omit "No Risks Found" if risks were listed.
+Always produce the Boundaries Assessed table. Omit "No Risks Found" only when risks were listed.
 
 ## Avoid
 
 - Assuming strong consistency across service boundaries without distributed transactions
-- Eventual consistency without defining staleness tolerance or recovery
-- Distributed transactions (2PC) when saga or outbox suffices
-- Schema changes that break backward compatibility during deployment
-- Ignoring idempotency requirements for at-least-once delivery patterns
-- Placing non-compensatable steps (email, notification) before compensatable steps in a saga (cannot undo if a later step fails)
-- Calling external APIs within a saga step without an idempotency key (unsafe to retry)
-- Compensating an external API call without first checking its current status (risk of double-refund or reversal of a successful operation)
+- Eventual consistency without a staleness bound or recovery path
+- 2PC when an outbox or saga would suffice
+- Schema changes that break old readers mid-deploy
+- Non-compensatable steps placed before compensatable ones in a saga
+- External API calls in sagas without idempotency keys
+- Compensating an external call without first reading its current state

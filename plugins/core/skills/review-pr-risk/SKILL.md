@@ -1,6 +1,6 @@
 ---
 name: review-pr-risk
-description: Lightweight heuristic PR risk classification based on change signals
+description: Score PR risk in under 30 seconds from diff signals: cross-module, schema, API, security, size. Heuristic framing for code review.
 metadata:
   category: review
   tags: [risk-assessment, pull-request, change-analysis]
@@ -13,58 +13,55 @@ user-invocable: false
 
 ## When to Use
 
-- As the first step in any code review to frame the review scope
-- When evaluating whether a PR needs additional reviewers or testing
-- When triaging review priority across multiple PRs
+- First step in any code review to frame scope and attention
+- Triaging review priority across multiple PRs
+- Deciding whether a PR needs extra reviewers, tests, or splitting
+
+If no diff exists yet (architecture proposal, migration plan), use `review-change-risk` instead.
 
 ## Rules
 
-- This is a heuristic, not a guarantee -- use as a framing tool
-- Run before line-level review to calibrate attention
-- Do not spend more than 30 seconds on this assessment
-- When in doubt, round up (Medium over Low, High over Medium)
+- Heuristic, not a guarantee. Use as framing, not a gate.
+- Run before line-by-line review.
+- Spend at most 30 seconds.
+- When in doubt, round up.
 
-## Pattern
-
-Evaluate these risk signals from the diff, PR description, or prose summary (whatever source is available):
+## Patterns
 
 ### Risk Signals
 
-| Signal                         | Weight | Description                                                 |
+| Signal                         | Weight | Trigger                                                     |
 | ------------------------------ | ------ | ----------------------------------------------------------- |
-| Cross-module changes           | High   | Changes spanning 2+ modules or packages                     |
-| Shared state mutation          | High   | Modifying global state, singletons, or shared caches        |
+| Cross-module changes           | High   | 2+ modules or packages                                      |
+| Shared state mutation          | High   | Global state, singletons, shared caches                     |
 | Database/schema changes        | High   | Migrations, index changes, entity modifications             |
 | Public API changes             | High   | Endpoint signatures, request/response contracts             |
-| Transaction boundary changes   | High   | New/modified transaction boundaries, isolation levels       |
-| Async/event flow changes       | Medium | New event publishers, listeners, message handlers           |
-| Config or feature flag changes | Medium | Application properties, environment config                  |
-| New external dependencies      | Medium | New libraries, external service integrations                |
+| Transaction boundary changes   | High   | New/modified transaction scope or isolation level           |
 | Security-adjacent changes      | High   | Auth, authorization, input validation, crypto               |
-| PR size (lines changed)        | Medium | > 500 lines increases review fatigue and defect miss rate   |
-| Missing test changes           | Medium | High-risk code changes without corresponding test additions |
-| Author unfamiliarity           | Low    | Author's first PR to these modules or to the repository     |
+| Async/event flow changes       | Medium | New publishers, listeners, message handlers                 |
+| Config or feature flag changes | Medium | Application properties, environment config                  |
+| New external dependencies      | Medium | New libraries or external service integrations              |
+| PR size (lines changed)        | Medium | > 500 lines increases miss rate                             |
+| Missing test changes           | Medium | High-risk change with no corresponding tests                |
+| Author unfamiliarity           | Low    | Author's first PR to these modules or the repo              |
 | Test-only changes              | Low    | Only test files modified                                    |
 | Documentation-only changes     | Low    | Only docs/comments modified                                 |
 
 ### Classification
 
-**Low** -- Single module, no shared state, no API/schema changes, adequate tests.
+- **Low** - single module, no shared state, no schema or API change, tests adequate
+- **Medium** - cross-module OR shared state OR config changes, bounded scope
+- **High** - one high-weight signal affecting multiple consumers
+- **Critical** - 2+ high-weight signals, OR migration on a high-traffic table + any high, OR breaking API change + security change
 
-**Medium** -- Cross-module OR shared state OR config changes, but bounded scope.
-
-**High** -- One high-weight signal (API/schema changes, transaction boundary changes, or security-adjacent), affecting multiple consumers.
-
-**Critical** -- Two or more high-weight signals, OR database migration on high-traffic table + any other high signal, OR breaking public API change + security mechanism modification.
-
-### Good: Concise risk output
+### Good
 
 ```
 Risk Level: Medium
 Signals: Cross-module change (order-service, payment-service), new async event flow.
 ```
 
-### Bad: Over-detailed risk analysis
+### Bad
 
 ```
 Risk Level: Medium
@@ -75,34 +72,34 @@ between modules, evaluating the transitive closure of affected components...
 
 ## Output Format
 
-This is the contract that consuming workflow skills depend on. Callers parse the `Risk Level:` line to make routing and framing decisions. Keep it to three lines maximum.
+Callers parse the `Risk Level:` line. Keep to 2-3 lines (4 max).
 
 ```
 Risk Level: {Low | Medium | High | Critical}
-Signals: {comma-separated list of triggered risk signals, 1-2 sentences max}
+Signals: {comma-separated triggered signals, 1-2 sentences max}
 Action: {split PR | add tests before merge | require additional reviewer}
 ```
 
-The `Action:` line is optional - include it only when a specific action is warranted by the risk signals.
+`Action:` is optional - include only when a specific action is warranted.
 
-**Examples:**
+### Examples
 
 ```
 Risk Level: High
-Signals: Public API contract change (POST /orders), database schema migration on orders table.
+Signals: Public API contract change (POST /orders), schema migration on orders table.
 Action: require additional reviewer
 ```
 
 ```
 Risk Level: Low
-Signals: Test-only changes, no shared state or API modifications.
+Signals: Test-only changes, no shared state or API modification.
 ```
 
-Never exceed four lines. Never omit the `Signals:` line - consuming skills use it for reviewer guidance.
+Never exceed four lines. Never omit `Signals:`.
 
 ## Avoid
 
-- Treating this as a formal risk assessment process
-- Spending significant time on the classification
+- Treating this as a formal risk assessment
+- Spending significant time
 - Letting Low risk become an excuse to skip review
 - Conflating risk level with code quality

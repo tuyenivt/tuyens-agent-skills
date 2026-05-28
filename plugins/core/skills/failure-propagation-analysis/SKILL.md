@@ -1,6 +1,6 @@
 ---
 name: failure-propagation-analysis
-description: Trace failure propagation paths across service and system boundaries
+description: Trace cascading failures across services: identify primary failure, propagation channels, shared resources, amplification loops.
 metadata:
   category: ops
   tags: [incident, failure-propagation, cascading, dependencies]
@@ -13,88 +13,68 @@ user-invocable: false
 
 ## When to Use
 
-- When a failure in one component causes degradation in others
-- When the blast radius is moderate or wider
-- When multiple services report errors simultaneously
-- When determining whether a failure is primary or a downstream consequence
+- Failure in one component is degrading others
+- Multiple services report errors simultaneously and the origin is unclear
+- Distinguishing a primary failure from downstream consequences
+- Blast radius is moderate or wider during an incident
 
 ## Rules
 
-- Trace from the earliest observable symptom backward to the origin
-- Distinguish primary failures from cascading consequences
-- Identify every shared resource on the propagation path
-- Map both synchronous and asynchronous propagation channels
+- Trace from the earliest observable symptom backward to the origin.
+- Distinguish primary failures from cascading consequences. Temporal correlation is not causation.
+- Identify every shared resource on the propagation path - these are the containment points.
+- Map both synchronous and asynchronous channels, and check for cycles.
 
-## Pattern
+## Patterns
 
 ### Propagation Channels
 
-Failures propagate through:
+| Channel                  | Mechanism                                                            |
+| ------------------------ | -------------------------------------------------------------------- |
+| Synchronous call         | HTTP/gRPC timeout or error cascading up the call chain               |
+| Connection pool          | Exhaustion in one consumer starves others sharing the pool           |
+| Message queue            | Poison message, consumer lag, dead-letter overflow                   |
+| Shared database          | Lock contention, connection exhaustion, slow query blocking          |
+| Cache                    | Stampede on eviction, stale data driving logic errors                |
+| Circuit breaker          | Open circuit redirecting load to fallback or alternate paths         |
+| Thread/worker pool       | Exhaustion blocking unrelated work on a shared executor              |
+| Event bus                | Failed handler blocking downstream consumers                         |
+| Infrastructure feedback  | Health-check failure triggering restart/scaling that amplifies cause |
 
-| Channel                    | Mechanism                                                                                                                         |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Synchronous call           | HTTP/gRPC timeout or error cascading up the call chain                                                                            |
-| Connection pool            | Exhaustion in one consumer starves others sharing the pool                                                                        |
-| Message queue              | Poison message, consumer lag, dead letter overflow                                                                                |
-| Shared database            | Lock contention, connection exhaustion, slow query blocking                                                                       |
-| Cache                      | Stampede on eviction, stale data causing logic errors                                                                             |
-| Circuit breaker            | Open circuit redirecting load to fallback or alternate paths                                                                      |
-| Thread/virtual thread pool | Exhaustion blocking unrelated work on shared executor                                                                             |
-| Event bus                  | Failed event handler blocking downstream consumers                                                                                |
-| Infrastructure feedback    | Health check failure triggering restart/scaling, load balancer eviction, auto-remediation systems amplifying the original problem |
+### Sync/Async Boundaries
 
-### Sync/Async Boundary Transitions
+Failure mechanism changes when the path crosses a boundary:
 
-When a propagation path crosses a sync/async boundary, the failure mechanism changes:
+- **Sync to async**: producer keeps working; consumer queue grows until back-pressure or memory pressure surfaces at the producer.
+- **Async to sync**: consumers waiting on a slow sync downstream pile up, depleting the worker pool.
 
-- **Sync -> async**: The producing service continues operating; failure manifests as queue backlog accumulation. The consumer's backlog eventually causes memory pressure or back-pressure on the producer's send buffer.
-- **Async -> sync**: Consumers may block waiting for a response from a downstream sync service. If the downstream is slow, consumers accumulate, depleting the worker pool.
-- **Queue backlog as secondary blast radius**: A down consumer (Service C) does not immediately affect the producer (Service B), but if the queue is unbounded, Service B's memory or send buffer will eventually exhaust - trace this path explicitly.
+Trace the path explicitly across the boundary - the secondary blast radius often appears here.
 
 ### Amplification Loops
 
-Propagation can be circular (A -> B -> A), where downstream effects worsen the original failure:
+Propagation can be circular and prevent self-healing:
 
-- Connection pool exhaustion -> health check failure -> autoscaling -> more instances competing for same connection pool -> faster exhaustion
-- Service timeout -> client retries -> increased load on failing service -> more timeouts
-- Memory pressure -> GC pauses -> request timeouts -> retry storm -> more memory pressure
+- Pool exhaustion -> health-check fail -> autoscale -> more instances contending for same pool -> faster exhaustion
+- Timeout -> client retries -> more load on failing service -> more timeouts
+- Memory pressure -> GC pauses -> request timeouts -> retry storm -> more pressure
 
-When mapping propagation, check whether any path forms a cycle. Amplification loops prevent self-healing and can turn a partial outage into a total outage. The containment strategy must break the loop (circuit breaker, retry budget, load shedding) rather than just mitigate a single link.
+When a cycle exists, containment must break the loop (circuit breaker, retry budget, load shedding), not just mitigate a single link.
 
-Example mixed-boundary trace:
-
-```
-1. Service C (consumer) is down
-2. -> Message queue: backlog grows (messages accumulate, no consumer)
-3. -> Queue send buffer: Service B cannot enqueue new messages (back-pressure)
-4. -> Service B: request handlers block waiting to enqueue, thread pool exhausted
-5. -> HTTP call: Service A gets 503s from Service B
-```
-
-### Propagation Map
-
-Trace the failure path as a directed chain:
+### Good
 
 ```
-[Origin] -> [Channel] -> [Affected Component] -> [Channel] -> [Further Impact]
-```
-
-### Good: Specific propagation trace
-
-```
-Propagation Path:
 1. payment-gateway timeout (30s, baseline 500ms)
-2. -> HTTP call: order-service blocked waiting for payment response
-3. -> Connection pool: order-service HikariCP exhausted (40/40 active)
-4. -> Synchronous callers: cart-service and checkout-service getting connection timeout
-5. -> User impact: all checkout flows returning 503
+2. -> HTTP: order-service blocked on payment call
+3. -> Connection pool: order-service HikariCP exhausted (40/40)
+4. -> HTTP: cart-service and checkout-service hitting connection timeouts
+5. -> User: all checkout flows returning 503
 
-Shared Resources Affected: HikariCP pool (order-service), payment-gateway circuit breaker (stayed closed)
-Primary Failure: payment-gateway latency spike
+Shared resources: order-service HikariCP, payment-gateway circuit breaker (stayed closed)
+Primary: payment-gateway latency spike
 Cascading: order-service, cart-service, checkout-service
 ```
 
-### Bad: Listing failures without tracing connections
+### Bad
 
 ```
 Errors seen in: order-service, cart-service, checkout-service, payment-service.
@@ -102,8 +82,6 @@ All services have issues.
 ```
 
 ## Output Format
-
-Consuming workflow skills depend on this structure to understand failure origin and cascading scope. The propagation path is the primary output callers use for containment decisions.
 
 ```
 ## Failure Propagation Analysis
@@ -113,25 +91,24 @@ Consuming workflow skills depend on this structure to understand failure origin 
 
 ### Propagation Path
 
-{numbered chain from origin to observed impact}
-1. {origin component} - {failure mechanism, e.g., "timeout 30s, baseline 500ms"}
-2. -> {channel}: {affected component} - {how it was impacted}
+1. {origin} - {mechanism, e.g., "timeout 30s, baseline 500ms"}
+2. -> {channel}: {affected component} - {impact}
 3. -> {channel}: {further component} - {user-visible impact}
 
 ### Shared Resources on Path
 
-- {resource name}: {how it amplified the propagation}
+- {resource}: {how it amplified propagation}
 
 ### Containment Assessment
 
-{What stopped the propagation or what would have stopped it earlier}
+{What stopped propagation, or what would have stopped it earlier. Name the loop-breaker if a cycle was found.}
 ```
 
-Always produce all sections. Use "none" for Cascading components only when the failure is demonstrably contained. Never skip Shared Resources - shared resources are often the key to containment recommendations.
+Always produce all sections. Use "none" for Cascading only when the failure is demonstrably contained. Never skip Shared Resources - they are the containment levers.
 
 ## Avoid
 
-- Listing affected components without tracing the propagation mechanism
-- Assuming temporal correlation equals causal relationship
-- Ignoring asynchronous propagation paths (events, queues)
+- Listing affected components without tracing the mechanism between them
+- Treating temporal correlation as causation
+- Ignoring asynchronous propagation (events, queues, back-pressure)
 - Treating every error as a primary failure rather than a consequence

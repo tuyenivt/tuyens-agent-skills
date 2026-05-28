@@ -8,33 +8,35 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Performance Review (Router)
 
-This skill is a thin dispatcher. It detects the project stack and delegates to the matching stack-specific skill (e.g., `task-spring-review-perf`, `task-rails-review-perf`, `task-react-review-perf`). The stack workflow names framework-specific perf anti-patterns directly (Rails: N+1 with `includes`/`eager_load`; Spring: `@Transactional(readOnly)` and JPA fetch strategies; React: `React.memo`/`useMemo`/list virtualization).
-
-For unknown stacks, this skill falls back to a minimal generic perf review.
+Detects the project stack and delegates to the matching stack-specific perf review (`task-{stack}-review-perf`). For unknown stacks, runs a minimal generic perf review.
 
 ## When to Use
 
-- Performance issue identification (slow endpoint, slow page, batch job too long, memory growth)
+- Slow endpoint / page / batch job / memory growth investigation
 - Pre-release dedicated perf pass
 - Database query, caching, or rendering optimization
 
-**Not for:** General code review (use `task-code-review`), security review (use `task-code-review-security`), observability gaps (use `task-code-review-observability`).
+**Not for:** General review (`task-code-review`), security (`task-code-review-security`), observability gaps (`task-code-review-observability`).
 
 ## Invocation
 
-Accepts the same diff-targeting arguments as `task-code-review`. Depth flags (`quick`, `standard`, `deep`) compose. When invoked as a subagent of `task-code-review`, the parent passes the precondition handle plus the read-once diff/log; this is forwarded to the dispatched stack workflow.
+`/task-code-review-perf [<branch> | pr-<N>] [quick | standard | deep] [--base <branch>]`
+
+When invoked as a subagent by `task-code-review`, the parent passes the precondition handle and read-once diff/log; forward to the dispatched stack workflow.
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`.
+
+### Step 2 - Detect Stack
 
 Use skill: `stack-detect`.
 
-### Step 2 - Dispatch to Stack Workflow
+### Step 3 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to                |
 | -------------------- | -------------------------- |
@@ -51,78 +53,50 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review-perf`     |
 | Angular              | `task-angular-review-perf` |
 
-If matched, forward arguments and stop. Do not run Step 3.
+Forward arguments and stop. **If matched, skip Steps 4-5.**
 
-### Step 3 - Generic Fallback (unknown stack only)
+### Step 4 - Generic Fallback (unknown stack only)
 
-Use skill: `review-precondition-check` if running standalone (skip if invoked as subagent and parent passed the handle). Read diff and commit log once.
+Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
 
-**Database performance** (Backend / Fullstack):
+Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
 
-- N+1 queries detected; use the ORM's eager-load mechanism to fix
-- Missing indexes on WHERE / ORDER BY columns
-- Over-fetching (select only needed columns); no leading-wildcard LIKE on large tables
-- Pagination present for large datasets; query timeout configured
-- Connection pool sized appropriately
-- Use skill: `backend-db-indexing` for detailed index analysis
+**Database (backend / fullstack).** N+1 detection (recommend the ORM's eager-load mechanism), missing indexes on WHERE/ORDER BY, over-fetching, no leading-wildcard LIKE on large tables, pagination, query timeouts, connection-pool sizing. Use skill: `backend-db-indexing`.
 
-**Concurrency and threading** (Backend / Fullstack):
+**Concurrency (backend / fullstack).** Primitives appropriate for the runtime's threading model, no blocking I/O in cooperative async contexts, thread/worker pool sizing. Use skill: `architecture-concurrency`.
 
-- Concurrency primitives appropriate for the runtime's threading model
-- No blocking I/O inside cooperative async contexts
-- Thread/worker pool sizing matches recommendations
-- Use skill: `architecture-concurrency`
+**Caching (backend / fullstack).** Cache-aside via framework abstraction, TTL on every entry with jitter, explicit invalidation strategy, deterministic key scheme, stampede protection on hot keys, DTOs cached (never ORM entities).
 
-**Caching** (Backend / Fullstack):
+**Memory and I/O.** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
-- Cache-aside applied for read-heavy data via the framework's cache abstraction
-- Every cache entry has a TTL (no indefinite caching); jitter applied to avoid synchronized expiry
-- Invalidation strategy defined (TTL-based, event-based, or version-keyed)
-- Cache key design: `{service}:{entity}:{id}:{version}`, deterministic hashing for query params, no user-controlled input
-- Stampede protection on high-traffic keys (singleflight / lock-based or probabilistic early expiry)
-- DTOs cached, never ORM entities or mutable objects
+**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting. Use skill: `frontend-performance`.
 
-**Memory and I/O:**
+**Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 
-- Streaming for large file/payload processing (not buffering in memory)
-- Timeouts on all external calls; circuit breakers for external services
-- HTTP client instances reused, not created per request
+Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes.
 
-**Frontend performance** (Frontend / Fullstack):
+### Step 5 - Write Report
 
-- Unnecessary re-renders or change-detection cycles
-- Heavy computation in render path (move to memoization or workers)
-- Missing virtualization for long lists (>100 items)
-- Over-fetching, waterfall requests; client-side caching missing
-- Unoptimized images; no lazy loading; no route-level code splitting
-- Use skill: `frontend-performance`
-
-**Stateless design:** no server-side session state; idempotent operations where possible.
-
-**Observability:** RED metrics on critical paths; correlation IDs propagated; histograms for latency. Use skill: `ops-observability`.
-
-**Step 4 - Write Report:** Use skill: `review-report-writer` with `report_type: review-perf`.
+Use skill: `review-report-writer` with `report_type: review-perf`.
 
 ## Output Format
 
-When dispatched (Step 2 matched): the stack-specific workflow owns the output.
-
-When fallback runs (Step 3):
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 ```markdown
 ## Performance Review Summary
 
 **Stack Detected:** unknown (generic fallback applied)
 **Scope:** Backend | Frontend | Fullstack
-**Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+**Overall:** Clean | Issues Found - [High/Medium/Low counts]
 
 ## Findings
 
 ### High Impact
 
 - **Location:** [file:line or component]
-- **Issue:** [what the problem is]
-- **Impact:** [estimated effect, e.g., "N+1 adds ~200ms per request at 1K rows"]
+- **Issue:**
+- **Impact:** [estimated effect with numbers]
 - **Fix:** [specific change with code example if applicable]
 
 ### Medium Impact
@@ -143,18 +117,16 @@ _Omit sections with no findings._
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded before any other step
-- [ ] `stack-detect` ran at Step 1
-- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
-- [ ] If no stack matched, fallback covered DB / concurrency / caching / I/O / frontend (as applicable to Stack Type)
-- [ ] Every finding states estimated impact, not just "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Review report written to file via `review-report-writer`
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: `stack-detect` ran
+- [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped
+- [ ] Step 4: if no match, every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states estimated impact; quick wins separated from structural changes
+- [ ] Step 5: report written via `review-report-writer` (fallback path only)
 
 ## Avoid
 
-- Running both Step 2 dispatch and Step 3 fallback
-- Reporting performance issues without estimated impact
+- Running both Step 3 dispatch and Step 4 fallback
+- Performance findings without estimated impact
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
-- Treating the fallback as a full equivalent of a stack workflow - install the matching language plugin when one exists
+- Treating the fallback as equivalent to a stack workflow

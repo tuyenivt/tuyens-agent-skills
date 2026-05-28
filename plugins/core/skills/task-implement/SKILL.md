@@ -8,40 +8,43 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for this feature, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. The preamble decides between modes (`no-spec`, `spec-only`, `spec+plan`, `full-spec`); follow its contract - skip GATHER (and DESIGN, when `plan.md` is present) and treat the spec as the source of truth. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
+# Feature Implementation (Router)
 
-# Feature Implementation
+Detects the project stack and delegates to the matching implementation workflow. Falls back to a universal GATHER -> DESIGN -> IMPLEMENT -> VALIDATE protocol for unknown stacks.
 
-## Purpose
+## When to Use
 
-Universal entry point for implementing new features that span multiple layers. Detects the project stack and delegates to the appropriate stack-specific workflow. Provides a comprehensive fallback workflow when no stack-specific skill exists.
+- New features spanning multiple layers (API, service, persistence, tests)
+- New routes, pages, or components for a frontend stack
 
-**Not for:** Bug fixes (use `task-code-debug`), refactoring existing code (use `task-code-refactor`), single-file or isolated changes, feature discovery (use `task-spec-write`).
+**Not for:** bug fixes (`task-code-debug`), refactors (`task-code-refactor`), isolated single-file edits, spec authoring (`task-spec-write`).
 
 ## Inputs
 
-| Field               | Required | Description                                              |
-| ------------------- | -------- | -------------------------------------------------------- |
-| Feature description | Yes      | What to build (user story, ticket, or plain description) |
-| Affected layers     | No       | Which layers are in scope (API, DB, jobs, etc.)          |
-| Special constraints | No       | Auth, performance, migration sensitivity, etc.           |
+| Field               | Required | Notes                                                      |
+| ------------------- | -------- | ---------------------------------------------------------- |
+| Feature description | Yes      | User story, ticket, or plain description                   |
+| Affected layers     | No       | API, DB, jobs, UI, etc.                                    |
+| Constraints         | No       | Auth, performance, migration sensitivity                   |
 
-## Steps
+## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Behavioral Principles
 
-Use skill: stack-detect
+Use skill: `behavioral-principles`.
 
-### Step 2 - Delegate to Stack Workflow
+**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles` and `stack-detect`. The preamble selects mode (`no-spec`, `spec-only`, `spec+plan`, `full-spec`) and decides which fallback phases to skip. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
 
-Based on the detected stack, invoke the appropriate workflow:
+### Step 2 - Detect Stack
 
-**Backend stacks:**
+Use skill: `stack-detect`.
 
-| Detected Stack              | Delegate to        |
-| --------------------------- | ------------------ |
+### Step 3 - Delegate to Stack Workflow
+
+**Backend:**
+
+| Detected stack              | Delegate to              |
+| --------------------------- | ------------------------ |
 | Java / Spring Boot          | `task-spring-implement`  |
 | Kotlin / Spring Boot        | `task-kotlin-implement`  |
 | .NET / ASP.NET Core         | `task-dotnet-implement`  |
@@ -52,167 +55,91 @@ Based on the detected stack, invoke the appropriate workflow:
 | Rust / Axum                 | `task-rust-implement`    |
 | PHP / Laravel               | `task-laravel-implement` |
 
-**Frontend stacks:**
+**Frontend:**
 
-| Detected Stack         | Delegate to        |
-| ---------------------- | ------------------ |
+| Detected stack         | Delegate to              |
+| ---------------------- | ------------------------ |
 | React / Next.js / Vite | `task-react-implement`   |
 | Vue / Nuxt / Vite      | `task-vue-implement`     |
 | Angular                | `task-angular-implement` |
 
-**Fullstack projects:** If `Stack Type: fullstack` is detected, determine which side the feature belongs to based on user input. If the feature spans both (e.g., "add a new page with API endpoint"), delegate to the backend workflow for the API layer and the frontend workflow for the UI layer. If unclear, ask the user which side to focus on.
+**Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. If it spans both, delegate backend first for the API contract, then frontend; if parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
-**Fullstack coordination (when the feature spans backend + frontend):**
-1. Run DESIGN for both sides first - agree on the API contract (endpoints, request/response shapes, status codes) before either side begins implementation.
-2. Implement backend first so the frontend can integrate against real endpoints.
-3. If parallel development is needed, define the API contract explicitly and use mock data on the frontend until the backend is ready.
-4. Include an integration test that exercises the full flow from UI action to database persistence.
+On match: delegate, stop. Skip Step 4.
 
-If the detected stack does not match any of the above, proceed with the universal fallback below.
+### Step 4 - Universal Fallback (unknown stack only)
 
-### Step 3 - Universal Fallback (Unknown Stack)
+The fallback adapts to the detected `Stack Type`. Phases are: GATHER -> DESIGN -> IMPLEMENT -> VALIDATE.
 
-If no matching stack workflow exists, implement the feature using universal best practices. The fallback adapts based on the detected `Stack Type`.
+**GATHER** - confirm before proceeding:
 
-#### Fallback for Backend or Unknown Stack Type
+- *Backend / unknown:* feature name and operations; entity relationships and validation; external dependencies; auth per endpoint (public vs protected); async/job needs.
+- *Frontend:* feature behavior and affected pages/routes; component hierarchy and data needs; state scope (local/shared/global/URL); API endpoints to consume; form inputs and validation; accessibility requirements.
 
-**GATHER** - Confirm before proceeding:
+**DESIGN** - propose and wait for explicit approval before generating code:
 
-- Feature name, operations (CRUD / custom actions), affected layers
-- Entity relationships and validation constraints
-- External dependencies or integration points
-- Auth requirements: which endpoints are public vs protected
-- Background job or async processing needs
+- *Backend:* schema changes (entities, fields, indexes for FK and filter columns); service / business logic boundaries and transactions; API contract (method, URI, request/response shapes, status codes); error model.
+- *Frontend:* component tree with responsibilities; routing changes (pages, layouts, guards); state strategy (local, store, URL); data-fetching strategy (hooks, server components, caching); form handling (validation library, submission flow).
 
-**DESIGN** - Propose and wait for explicit approval before generating any code:
+**IMPLEMENT** in order:
 
-- Data model changes (schema, entity fields, indexes for FK and filter columns)
-- Service/business logic structure and transaction boundaries
-- API contract: endpoints (method + URI + request/response shapes + status codes)
-- Error model: how validation failures and not-found cases are communicated
-
-**IMPLEMENT (in order):**
-
-1. **Data layer**: schema migration with indexes; never modify existing columns destructively
-2. **Business logic**: service or domain objects with constructor injection; no business logic in controllers
-3. **API layer**: controllers/routes/handlers; never expose data layer entities directly in API responses - always map to response DTOs or structs
-4. **Auth**: confirm every endpoint has explicit auth - no implicit defaults
-5. **Background jobs** (if applicable): async task processing
-6. **Tests**: unit tests for business logic; integration tests for data layer against a real DB; API tests for routing, serialization, and auth
+- *Backend:* (1) data layer - migration with indexes; never modify columns destructively. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
+- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it. (4) data fetching - loading, error, caching, retry. (5) forms - validation, submission, errors. (6) accessibility - semantic HTML, ARIA, keyboard, focus. (7) tests - component, integration, E2E for critical flows.
 
 **VALIDATE:**
 
-- Run the project's test suite and confirm all pass
-- Confirm the implementation matches the approved design
-- Confirm list endpoints are paginated
+- Run the project test suite; all pass.
+- Implementation matches the approved design.
+- *Backend:* list endpoints paginated.
+- *Frontend:* keyboard navigable, labels present, correct heading hierarchy.
 
-**Output:**
+## Output Format
+
+When dispatched (Step 3): the stack workflow owns the output.
+
+When fallback runs (Step 4), output adapts to Stack Type:
 
 ```markdown
 ## Generated Files
 
+[Backend]
 - [ ] Migration: [path]
 - [ ] Model/Entity: [path]
 - [ ] Service: [path]
 - [ ] Controller/Handler: [path]
-- [ ] DTO/Response types: [path]
-- [ ] Unit tests: [path]
-- [ ] Integration tests: [path]
+- [ ] DTO/Response: [path]
+- [ ] Unit tests / Integration tests: [paths]
 
-## Endpoints
-
-| Method | URI | Status | Description |
-| ------ | --- | ------ | ----------- |
-| ...    | ... | ...    | ...         |
-
-## Tests
-
-- Unit tests: {count}
-- Integration tests: {count}
-```
-
-#### Fallback for Frontend Stack Type
-
-**GATHER** - Confirm before proceeding:
-
-- Feature name, user-facing behavior, and affected pages/routes
-- Component hierarchy and data requirements
-- State management needs (local, shared, global, URL)
-- Data sources: API endpoints to consume, loading/error states
-- Form inputs and validation rules (if applicable)
-- Accessibility requirements
-
-**DESIGN** - Propose and wait for explicit approval before generating any code:
-
-- Component tree with responsibility annotations
-- Routing changes (new pages, layouts, guards)
-- State management approach (local state, store, URL params)
-- Data fetching strategy (hooks/composables, server components, caching)
-- Form handling approach (validation library, submission flow)
-
-**IMPLEMENT (in order):**
-
-1. **Routing**: new routes, layouts, or navigation entries
-2. **Components**: page components, feature components, shared UI components - each with single responsibility
-3. **State management**: local state first, lift or use stores only when sharing is required
-4. **Data fetching**: loading states, error states, caching, retry logic
-5. **Forms** (if applicable): validation, submission, error display
-6. **Accessibility**: semantic HTML, ARIA attributes, keyboard navigation, focus management
-7. **Tests**: component tests for rendering and interaction; integration tests for data flows; E2E for critical user flows
-
-**VALIDATE:**
-
-- Run the project's test suite and confirm all pass
-- Confirm the implementation matches the approved design
-- Verify accessibility (no missing labels, keyboard navigable, correct heading hierarchy)
-
-**Output:**
-
-```markdown
-## Generated Files
-
+[Frontend]
 - [ ] Route/Page: [path]
 - [ ] Components: [paths]
 - [ ] State/Store: [path] (if applicable)
 - [ ] Hooks/Composables: [path] (if applicable)
 - [ ] Tests: [paths]
 
-## Routes
+## Endpoints (backend) / Routes (frontend)
 
-| Path | Component | Guard | Description |
-| ---- | --------- | ----- | ----------- |
-| ...  | ...       | ...   | ...         |
+| Method/Path | Handler/Component | Auth/Guard | Description |
+| ----------- | ----------------- | ---------- | ----------- |
 
 ## Tests
 
-- Component tests: {count}
-- Integration tests: {count}
-- E2E tests: {count}
+- Unit: {count}  Integration: {count}  E2E: {count}
 ```
 
 ## Self-Check
 
-- [ ] Stack detected and stack-specific workflow invoked (or fallback applied with explanation)
-- [ ] Requirements confirmed and design approved before any code generated
-- [ ] **Backend/fullstack**: All layers implemented: migration, model, service, controller, DTOs, tests
-- [ ] **Backend/fullstack**: No data layer entities exposed directly in API responses - DTOs/response structs used
-- [ ] **Backend/fullstack**: Every endpoint has explicit auth; list endpoints are paginated
-- [ ] **Backend/fullstack**: Migration is safe: no destructive column changes without expand-contract sequencing
-- [ ] **Frontend/fullstack**: Components have single responsibility; no business logic in components
-- [ ] **Frontend/fullstack**: State management approach is appropriate (local first, stores only when needed)
-- [ ] **Frontend/fullstack**: Accessibility verified: semantic HTML, keyboard navigable, ARIA labels
-- [ ] Tests pass; file list, route/endpoint table, and test count presented
+- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 2: `stack-detect` ran
+- [ ] Step 3: stack matched -> dispatched and stopped; Step 4 skipped
+- [ ] Step 4 (backend/fullstack): GATHER confirmed; DESIGN approved before code; all layers (migration, model, service, controller, DTOs, tests) present; no entities in API responses; explicit auth per endpoint; list endpoints paginated; migrations non-destructive
+- [ ] Step 4 (frontend/fullstack): GATHER confirmed; DESIGN approved before code; components single-responsibility; state scope appropriate; accessibility verified
+- [ ] Tests pass; file list, route/endpoint table, and test counts presented
 
 ## Avoid
 
-- Generating code before the design is explicitly approved by the user
-- Skipping the data layer (migration, indexes) and jumping straight to business logic
+- Generating code before the user approves the design
+- Skipping the data layer (migration, indexes) and jumping to business logic
 - Exposing ORM entities directly in API responses
-- Leaving endpoints without explicit auth configuration
+- Endpoints without explicit auth configuration
 - Implementing features without tests
-
-## Notes
-
-- This skill is a dispatcher. The depth and quality of the output depends on the delegated stack workflow.
-- For polyglot monorepos or fullstack projects, detect the primary stack and note any secondary stacks. Use `Stack Type` to determine whether to delegate to backend, frontend, or both workflows.
-- If the user wants to skip stack detection (e.g., in a context where it always fails), they can invoke the stack-specific workflow directly.

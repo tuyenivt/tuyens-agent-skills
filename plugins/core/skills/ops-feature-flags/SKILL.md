@@ -1,6 +1,6 @@
 ---
 name: ops-feature-flags
-description: Feature flag lifecycle: flag design, gradual rollout, rollback, and cleanup discipline for release and implementation workflows.
+description: Feature flag lifecycle - design, gradual rollout, rollback triggers, and cleanup discipline for release workflows.
 metadata:
   category: ops
   tags: [feature-flags, rollout, gradual-release, rollback, cleanup, multi-stack]
@@ -13,173 +13,126 @@ user-invocable: false
 
 ## When to Use
 
-- Designing a feature flag for a new feature or risky change
+- Designing a flag for a new feature or risky change
 - Planning a gradual rollout with traffic percentage control
 - Defining rollback criteria tied to observable signals
 - Reviewing flag lifecycle and cleanup discipline
 
-## Flag Lifecycle
+## Rules
 
-Every feature flag goes through four stages. Skipping any stage creates technical debt.
+- Every flag has a single, named owner and a cleanup target set at creation.
+- Every high-risk feature has a **kill switch** that disables it without redeploy.
+- Promotion to the next stage requires meeting promotion criteria; rollback triggers fire on any breach.
+- One flag controls one behavior. Flags that gate multiple behaviors cannot be rolled back cleanly.
+- Flags never bypass auth or security checks.
+- Reaching 100% rollout starts the cleanup clock; remove flag and dead branches within one sprint.
 
-**1. Introduction** - Flag created, feature hidden behind it. Default: off.
+## Patterns
 
-**2. Gradual Rollout** - Flag enabled for increasing percentages of traffic or users.
+### Flag Lifecycle
 
-**3. Full Rollout** - Flag enabled for 100% of traffic. Feature is live.
+Four stages; skipping any creates technical debt.
 
-**4. Cleanup** - Flag and all conditional code removed. This is non-negotiable.
+1. **Introduction** - flag created, feature hidden behind it, default off.
+2. **Gradual Rollout** - enabled for increasing traffic or user cohorts.
+3. **Full Rollout** - 100% of traffic. Feature is live.
+4. **Cleanup** - flag and all conditional code removed.
 
-## Flag Design Patterns
+### Flag Types
 
-### Boolean On/Off Flag (most common)
+| Type            | Shape                                                            | Use For                                |
+| --------------- | ---------------------------------------------------------------- | -------------------------------------- |
+| Boolean on/off  | default false; rollout 0% -> 5% -> 25% -> 100%                   | Simple toggles, gradual rollouts       |
+| User / group    | targeting: internal-users, beta-group, tenant-id-X; default off  | Internal testing, beta, tenant scoping |
+| Kill switch     | default false (feature runs); when true, feature disables        | Emergency disable for high-risk paths  |
 
-```
-flag: feature-X-enabled
-default: false
-rollout: 0% → 5% → 25% → 100%
-```
+### Gradual Rollout
 
-Use for: simple feature toggles, kill switches, gradual rollouts.
+| Risk     | Sequence                              | Soak per Stage      |
+| -------- | ------------------------------------- | ------------------- |
+| Low      | 25% -> 100%                           | 15 min              |
+| Medium   | 5% -> 25% -> 100%                     | 30 min              |
+| High     | 1% -> 5% -> 25% -> 100%               | 1-4 h               |
+| Critical | Internal -> 1% -> 5% -> 25% -> 100%   | 4+ h                |
 
-### User/Group Flag
+**Promotion criteria** (all green before advancing):
 
-```
-flag: feature-X-enabled
-targeting: [internal-users, beta-group, tenant-id-123]
-default: false
-```
-
-Use for: internal testing, beta programs, tenant-specific features.
-
-### Kill Switch
-
-```
-flag: feature-X-kill-switch
-default: false (feature runs normally)
-when true: disables the feature immediately
-```
-
-Use for: emergency disable without redeployment. Every high-risk feature should have one.
-
-## Gradual Rollout Strategy
-
-| Risk Level | Rollout Sequence                | Soak Time per Stage  |
-| ---------- | ------------------------------- | -------------------- |
-| Low        | 25% → 100%                      | 15 minutes           |
-| Medium     | 5% → 25% → 100%                 | 30 minutes per stage |
-| High       | 1% → 5% → 25% → 100%            | 1-4 hours per stage  |
-| Critical   | Internal → 1% → 5% → 25% → 100% | 4+ hours per stage   |
-
-**Promotion criteria** (must be green before advancing):
-
-- Error rate for affected endpoints within baseline ±10%
-- p99 latency within baseline ±20%
+- Error rate within baseline +/-10% for affected endpoints
+- p99 latency within baseline +/-20%
 - No unexpected exceptions in logs
-- Business metrics (if applicable) not degraded
+- Business metrics not degraded
 
-**Rollback trigger** (any of these = disable flag immediately):
+**Rollback triggers** (any one fires immediate disable):
 
-- Error rate exceeds rollback threshold (define before rollout)
-- p99 latency spike >50% above baseline sustained for >5 minutes
+- Error rate exceeds the threshold defined before rollout
+- p99 latency spike >50% above baseline sustained >5 min
 - Data corruption or consistency issue detected
 
-## Rollback Procedure
+### Rollback Procedure
 
-1. Disable the flag (instant, no redeployment required)
-2. Verify error rate returns to baseline (within 2-3 minutes)
-3. Investigate root cause before re-enabling
-4. If flag cannot be disabled cleanly, escalate to code rollback
+1. Disable the flag (instant, no redeploy).
+2. Verify error rate returns to baseline within 2-3 min.
+3. Investigate root cause before re-enabling.
+4. If the flag will not disable cleanly, escalate to code rollback.
 
-**Rollback must be testable before production rollout.** Run through the disable procedure in staging.
+Test the disable procedure in staging before production rollout.
 
-## Cleanup Discipline
+### Flag Interactions
 
-Flags are temporary. Every flag must have:
+For `n` boolean flags in one code path, combinations grow as `2^n`. Limit concurrent flags in a path to 2-3. Document valid combinations, and test the critical ones explicitly when flags modify the same data flow.
 
-- An owner responsible for cleanup
-- A cleanup target date (set when the flag reaches 100% rollout)
-- A ticket in the backlog before full rollout
+### Code Placement
 
-**Cleanup checklist:**
-
-- [ ] Flag removed from feature flag service/config
-- [ ] All `if (flagEnabled)` / `when (flag)` branches removed from code
-- [ ] Dead code branch deleted (not commented out)
-- [ ] Tests updated - no tests should reference the flag after cleanup
-- [ ] Flag documented in changelog if it changed user-visible behavior
-
-**Stale flag risk:** A flag at 100% that is not cleaned up within one sprint becomes invisible technical debt. The conditional code path stays in production, adding cognitive overhead and a future failure surface.
-
-## Flag Interactions
-
-When multiple flags are active in the same code path, behavior combinations grow exponentially (2^n for n boolean flags):
-
-- Document which flag combinations are valid and tested
-- Test critical flag combinations explicitly (especially flags that modify the same data flow)
-- Limit concurrent active flags in a single code path to 2-3 maximum
-- When adding a new flag to a path with existing flags, review how they interact before deployment
-
-## Code-Level Flag Patterns
-
-Keep flag evaluation at the boundary, not scattered through business logic:
-
-**Bad** - Flag conditionals scattered across the codebase:
+Evaluate the flag at the boundary, not inside business logic.
 
 ```
-// 10 files each check the same flag in different ways
-if (flags.newRecommendations) { ... } // in cart.js
-if (flags.newRecommendations) { ... } // in checkout.js
-if (flags.newRecommendations) { ... } // in analytics.js
-```
+// Bad - flag scattered through downstream code
+if (flags.newRecommendations) { ... }   // cart
+if (flags.newRecommendations) { ... }   // checkout
+if (flags.newRecommendations) { ... }   // analytics
 
-**Good** - Single toggle point with strategy pattern:
-
-```
-// One decision point, implementation swapped at the boundary
+// Good - single toggle point, strategy swapped at the boundary
 const engine = flags.newRecommendations
   ? new NewRecommendationEngine()
   : new LegacyRecommendationEngine()
-// All downstream code uses the engine interface, unaware of the flag
+// Downstream code uses the engine interface, unaware of the flag
 ```
 
-## Anti-Patterns
+### Cleanup Checklist
 
-| Anti-Pattern                                                 | Risk                                                   | Fix                                                                                                 |
-| ------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| Flag with no cleanup plan                                    | Accumulates indefinitely                               | Set cleanup date at flag creation                                                                   |
-| Database writes inside flag conditional without dual-write   | Data inconsistency on rollback                         | Use dual-write or separate writes from flag scope                                                   |
-| Flag that bypasses auth or security checks                   | Security gap                                           | Never use flags to bypass security - use separate auth configuration                                |
-| Flag per environment without a single source of truth        | Config drift                                           | Centralize flag state; environment overrides only for testing                                       |
-| Flag that controls multiple unrelated behaviors              | Impossible to roll back cleanly                        | One flag, one behavior                                                                              |
-| Multiple flags in same code path without combination testing | Untested behavior combinations, exponential edge cases | Document flag interactions; test critical combinations; limit concurrent flags to 2-3 per code path |
+- [ ] Flag removed from feature flag service / config
+- [ ] All conditional branches removed from code (deleted, not commented)
+- [ ] Tests no longer reference the flag
+- [ ] Changelog updated if user-visible behavior changed
+
+A flag at 100% that is not cleaned within a sprint becomes invisible technical debt: the dead branch stays in production as cognitive overhead and a future failure surface.
 
 ## Output Format
 
-When designing or reviewing a feature flag:
+Use this template when designing or reviewing a flag.
 
-```markdown
+```
 ## Feature Flag Design
 
-**Flag name**: [descriptive-feature-name-enabled]
-**Type**: [boolean | user-targeting | kill-switch]
-**Default**: [on | off]
-**Owner**: [team or engineer]
-**Cleanup target**: [date or "within 1 sprint of 100% rollout"]
+**Flag name**: {descriptive-feature-name-enabled}
+**Type**: {boolean | user-targeting | kill-switch}
+**Default**: {on | off}
+**Owner**: {team or engineer}
+**Cleanup target**: {date or "within 1 sprint of 100% rollout"}
 
 ## Rollout Plan
 
 | Stage    | Traffic        | Promotion Criteria       | Rollback Trigger      | Soak   |
 | -------- | -------------- | ------------------------ | --------------------- | ------ |
-| Internal | Internal users | No errors                | Any error             | 1 hour |
+| Internal | Internal users | No errors                | Any error             | 1 h    |
 | Canary   | 5%             | Error rate <baseline+10% | Error rate >threshold | 30 min |
 | Broad    | 50%            | Same                     | Same                  | 30 min |
 | Full     | 100%           | Same                     | Same                  | 30 min |
 
 ## Rollback Procedure
 
-1. [Specific flag disable step]
-2. [Verify signal to confirm rollback worked]
+1. {Specific flag disable step}
+2. {Verify signal to confirm rollback worked}
 
 ## Cleanup Checklist
 
@@ -188,3 +141,12 @@ When designing or reviewing a feature flag:
 - [ ] Tests updated
 - [ ] Changelog entry added
 ```
+
+## Avoid
+
+- Flags without a cleanup plan (accumulate indefinitely).
+- DB writes inside a flag conditional without dual-write (rollback corrupts data).
+- Flags that bypass auth or security checks.
+- Per-environment flag state without a single source of truth (config drift).
+- One flag controlling multiple unrelated behaviors (cannot roll back cleanly).
+- More than 2-3 active flags in one code path without combination testing.

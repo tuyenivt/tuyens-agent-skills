@@ -8,317 +8,189 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Codebase Onboarding
 
-## Purpose
-
-Reduce engineer ramp-up from weeks to hours by producing a structured codebase map calibrated to the reader's goal:
-
-- **Stack and tooling** - what the project is built with, in full
-- **Local bootstrap** - the exact path from clone to a running app
-- **Architecture map** - how the system is structured, what owns what
-- **Ecosystem and runtime topology** - where the service lives, who calls it, what it calls, where to watch it
-- **Key patterns and conventions** - how the team writes code here, not how you did it elsewhere
-- **Contribution workflow** - branches, tests, lint hooks, CI, code owners - how a PR actually lands
-- **Risk hotspots and first-PR safe zones** - what to avoid touching first, and where it is safer to start
-- **Operational context** - how it runs, how it deploys, how it fails
-
-This skill reads the codebase. It does not modify any files.
+Produces a structured codebase map calibrated to the reader's goal so engineer ramp-up moves from weeks to hours. Reads the codebase; modifies nothing.
 
 ## When to Use
 
-- First day on a new project or after joining a new team
-- When taking ownership of an unfamiliar service or module
-- Before making the first significant change to a codebase you don't fully know
-- When conducting a due diligence or acquisition code review
+- First day on a new project or service
+- Taking ownership of an unfamiliar module
+- Before the first significant change to an unknown codebase
+- Due diligence / acquisition code review
 
-## Not For
-
-- Explaining a single file, function, class, or module - use `task-code-explain` for that (it gives deep targeted explanation with gotchas, invariants, and data flow for a specific target)
-- Reviewing code quality - use `task-code-review` for that
-- Architecture decision review or proposing new system designs
+**Not for:** explaining a single file or function (`task-code-explain`), code-quality review (`task-code-review`), proposing new architecture.
 
 ## Inputs
 
-| Input             | Required | Source                                                                                 |
-| ----------------- | -------- | -------------------------------------------------------------------------------------- |
-| Root directory    | Yes      | Current working directory (default) or user-specified path                             |
-| Repo context file | No       | Auto-read if present - primary source of declared stack and intent                     |
-| Focus mode        | No       | One of `first-pr`, `architect-survey`, `full` - controls which sections are emphasized |
-| Scope focus       | No       | User-specified module, service, or concern to prioritize                               |
-| Known pain points | No       | User-provided areas of concern ("payments module is a problem")                        |
+| Input             | Required | Notes                                                                       |
+| ----------------- | -------- | --------------------------------------------------------------------------- |
+| Root directory    | Yes      | Current working directory (default) or user path                            |
+| Repo context file | No       | `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` if present - primary stated source  |
+| Focus mode        | No       | `first-pr`, `architect-survey`, `full` (default) - controls emphasis        |
+| Scope focus       | No       | Module, service, or concern to prioritize                                   |
+| Known pain points | No       | User-flagged areas of concern                                               |
 
-If the user provides a scope focus, prioritize that area but still produce the full codebase overview. If no focus is given, cover the entire repository.
+If scope focus is given, prioritize it but still cover the repo.
 
-**Focus mode** controls emphasis (every step still runs to gather context, but output weight shifts):
+**Focus modes** (every step still runs to gather context; output weight shifts):
 
-| Mode               | Audience                              | Emphasis                                                                                     |
-| ------------------ | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `first-pr`         | New engineer shipping their first PR  | Local bootstrap, contribution workflow, first-PR safe zones, recommended files to read first |
-| `architect-survey` | Senior engineer / due diligence       | Architecture, patterns, tech debt, structural risk - the original "map" emphasis             |
-| `full` (default)   | Anyone who wants the complete picture | All sections at equal weight                                                                 |
+| Mode               | Audience                              | Emphasis                                                                                       |
+| ------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `first-pr`         | New engineer shipping first PR        | Local bootstrap, contribution workflow, first-PR safe zones, what to read first                |
+| `architect-survey` | Senior engineer / due diligence       | Architecture, patterns, tech debt, structural risk                                             |
+| `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
-If the user does not state a mode, default to `full` and ask once whether `first-pr` is more useful given their stated goal. Do not silently assume.
+If the user's stated goal implies a mode, confirm rather than defaulting silently.
 
 ## Workflow
 
-### Step 1 - Detect Stack and Load Stack-Specific Atomic (when available)
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect` to identify:
+Use skill: `behavioral-principles`.
 
-- Language and version
-- Primary framework(s) and secondary frameworks
-- Build tool and dependency manager
-- Test framework(s)
-- Database(s) and ORM/query layer
-- Async/messaging infrastructure (if present)
-- Infrastructure-as-code or deployment tooling (if detectable)
+### Step 2 - Detect Stack and Load Atomic
 
-Read the repo context file (`CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` if present), plus `package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs` to fill in gaps.
+Use skill: `stack-detect` to identify language, framework, build tool, test framework, database / ORM, async / messaging, IaC / deployment tooling.
 
-If the detected stack matches the table below, load the corresponding atomic. The atomic injects stack-specific bootstrap commands, key-file inventory, conventions, and risk hotspots into the universal scaffolding produced by Steps 2-10. If the stack is unknown, skip this load and produce a universal-only report.
+Read repo context file (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps.
 
-| Detected stack       | Load atomic              |
-| -------------------- | ------------------------ |
-| Java / Spring Boot   | `spring-onboard-map`     |
-| Kotlin / Spring Boot | `kotlin-onboard-map`     |
-| Python               | `python-onboard-map`     |
-| Ruby / Rails         | `rails-onboard-map`      |
-| Node.js / TypeScript | `node-onboard-map`       |
-| Go / Gin             | `go-onboard-map`         |
-| Rust / Axum          | `rust-onboard-map`       |
-| .NET / ASP.NET Core  | `dotnet-onboard-map`     |
-| PHP / Laravel        | `laravel-onboard-map`    |
-| React                | `react-onboard-map`      |
-| Vue                  | `vue-onboard-map`        |
-| Angular              | `angular-onboard-map`    |
+If detected stack matches, load the atomic. It injects stack-specific bootstrap commands, key files, conventions, and risk hotspots into the matching report sections; do not produce a separate "stack-specific" section.
 
-When an atomic is loaded, its **Stack and Tooling**, **Local Bootstrap**, **Architecture Map**, **Conventions**, **Risk Hotspots**, and **First-PR Safe Zones** signals are merged into the matching sections of the report below. Cite stack-specific findings alongside universal ones - do not produce a separate "stack-specific" section.
+| Detected stack       | Load atomic           |
+| -------------------- | --------------------- |
+| Java / Spring Boot   | `spring-onboard-map`  |
+| Kotlin / Spring Boot | `kotlin-onboard-map`  |
+| Python               | `python-onboard-map`  |
+| Ruby / Rails         | `rails-onboard-map`   |
+| Node.js / TypeScript | `node-onboard-map`    |
+| Go / Gin             | `go-onboard-map`      |
+| Rust / Axum          | `rust-onboard-map`    |
+| .NET / ASP.NET Core  | `dotnet-onboard-map`  |
+| PHP / Laravel        | `laravel-onboard-map` |
+| React                | `react-onboard-map`   |
+| Vue                  | `vue-onboard-map`     |
+| Angular              | `angular-onboard-map` |
 
-Also extract a **one-paragraph system summary** answering: what problem does this system solve, who uses it, and what are its 2-3 main capabilities. Pull from `README.md`, repo context file, top-level package descriptions, or service manifest. If the repo does not state this, mark as `unknown - repo does not declare purpose` rather than inferring from code.
+Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 
-State clearly what was detected vs what was inferred from file presence.
+State explicitly what was *declared* vs *inferred* from file presence.
 
-### Step 2 - Map Repository Structure
+### Step 3 - Map Repository Structure
 
-Explore the top-level directory layout and key subdirectories.
+Explore top-level layout. Identify entry points (`main`, `app`, `server`, `index`, `Program.cs`, `Application.java`), module layout (by domain / layer / feature), configuration files (env, secrets, flags), migration files and tooling, test structure, infrastructure files (`Dockerfile`, `docker-compose.yml`, CI configs, Helm, Terraform).
 
-Identify and describe:
+Produce a **directory map** (top 2-3 levels, one-line annotations per significant directory) plus:
 
-- **Entry points** - `main`, `app`, `server`, `index`, `Program.cs`, `Application.java`, etc.
-- **Module / package layout** - how the codebase is decomposed (by domain, by layer, by feature)
-- **Configuration files** - env files, secrets management, feature flags
-- **Migration files** - location and tooling (Flyway, Alembic, Django, golang-migrate, etc.)
-- **Test structure** - where tests live, how they are organized relative to production code
-- **Infrastructure / deployment** - `Dockerfile`, `docker-compose.yml`, CI pipeline files (`.github/`, `.gitlab-ci.yml`, `Jenkinsfile`), Helm charts, Terraform
+- **Where to look first** - 2-3 high-leverage directories for early reading
+- **Safe to skip initially** - vendored deps, generated code, large fixtures, deprecated modules
 
-Produce a **directory map** showing the top 2-3 levels with a one-line annotation per significant directory.
+### Step 4 - Identify Architecture Pattern
 
-Also surface, for the new engineer:
+Classify based on layout, naming, framework conventions, and detected `Stack Type`.
 
-- **Where to look first** - the 2-3 directories that contain the core domain logic and are highest leverage to read early
-- **Safe to skip initially** - directories that exist (vendor, generated code, legacy modules pending deprecation, large fixture trees) but are not productive starting reading material
+**Backend patterns:** Layered (MVC/MVS) - controller/service/repository folders; Clean/Hexagonal - domain/application/infrastructure separation; Modular monolith - feature modules each containing their own layers; Vertical slice - feature folders with controller+service+model+test; Microservice - multiple deployables; Event-driven - events as primary coupling.
 
-### Step 3 - Identify Architecture Pattern
+**Frontend patterns:** Feature-based - feature folders with components/hooks/tests; Atomic Design - atoms/molecules/organisms; Route-based - pages/routes top-level; Module-based - self-contained modules per feature; Monolith integration - frontend inside a backend framework (Rails views, Django templates, Inertia).
 
-Based on the file layout, naming, key framework conventions, and detected `Stack Type`, classify the dominant architectural pattern:
+State which pattern(s) are used, citing file paths and naming evidence.
 
-**Backend patterns:**
+Use skill: `architecture-guardrail` to spot existing layer violations or boundary erosion.
 
-| Pattern           | Signals                                                                        |
-| ----------------- | ------------------------------------------------------------------------------ |
-| Layered (MVC/MVS) | `controller/`, `service/`, `repository/` or `model/` top-level folders         |
-| Clean / Hexagonal | `domain/`, `application/`, `infrastructure/`, `ports/`, `adapters/` separation |
-| Modular monolith  | Feature-based top-level modules each containing their own layers               |
-| Vertical slice    | Feature folders each containing controller + service + model + test            |
-| Microservice      | Multiple independently deployable services with separate entry points          |
-| Event-driven      | Dominant use of events/messages as primary coupling mechanism                  |
+### Step 5 - Map Key Modules and Data Flows
 
-**Frontend patterns:**
+For each significant module / bounded context: responsibility (one sentence), data entities owned, dependencies (modules, external services), entry points (controllers, consumers, jobs, CLI), data access pattern (ORM, repository, raw queries).
 
-| Pattern              | Signals                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| Feature-based        | Feature folders each containing components + hooks/composables + tests                |
-| Atomic Design        | `atoms/`, `molecules/`, `organisms/`, `templates/`, `pages/` directory structure      |
-| Route-based          | Pages/routes as top-level organization, shared components in separate directory       |
-| Module-based         | `modules/` or `features/` directories with self-contained UI + state + API per module |
-| Monolith integration | Frontend embedded within a backend framework (Rails views, Django templates, Inertia) |
+**External integrations** - third-party services, where integration code lives, credential management, failure handling.
 
-State which pattern(s) are in use, with evidence (file paths, naming conventions observed).
-
-Use skill: `architecture-guardrail` to identify any visible layer violations or boundary erosion already present.
-
-### Step 4 - Map Key Modules and Data Flows
-
-For each significant module or bounded context found:
-
-- **Responsibility** - what this module does in one sentence
-- **Owns** - which data entities or domain objects it is authoritative for
-- **Depends on** - other modules, external services, or shared libraries it calls
-- **Entry points** - controllers, consumers, scheduled jobs, CLI commands
-- **Data access** - ORM entities, repositories, raw queries - what pattern is used
-
-- **External integrations** - third-party services the system depends on (payment providers, email services, analytics, etc.), where the integration code lives, how credentials are managed, and how failures are handled
-
-Identify the **primary request/event flow** for the most important operation in the codebase (e.g., the main user-facing action) and trace it through the layers:
+Trace the **primary request/event flow** end-to-end for the most important operation:
 
 ```
-Request → [Layer 1] → [Layer 2] → [Data store]
-       ↳ [Async side effect via queue/event]
+Request -> [Layer 1] -> [Layer 2] -> [Data store]
+       (async) [Side effect via queue / event]
 ```
 
-### Step 5 - Extract Key Patterns and Conventions
+### Step 6 - Extract Key Patterns and Conventions
 
-Read representative files across the codebase to extract the patterns the team actually uses. Focus on the patterns relevant to the detected `Stack Type`.
+Read representative files. Focus on what applies to the detected `Stack Type`.
 
-**Backend code patterns (when Stack Type is `backend` or `fullstack`):**
+**Backend (when `backend` or `fullstack`):** DI style (constructor / annotation / manual); error handling and propagation; logging (library, structured?, correlation IDs); config loading (env, files, secrets manager); auth and authz enforcement (middleware, annotations, filters); transaction scoping; background jobs (discovery, queue topology, retries, monitoring); caching (library, strategy, invalidation).
 
-- How dependency injection is done (constructor, framework annotation, manual wiring)
-- How errors are handled and propagated
-- How logging is done (library, structured vs unstructured, correlation IDs)
-- How configuration is loaded (env vars, config files, secrets manager)
-- How authentication and authorization are enforced (middleware, annotations, filters)
-- How database transactions are scoped
-- How background jobs or async processing is handled
-- How caching is implemented (library, strategy, invalidation, what is cached and what is not)
-- How async/background processing is structured (task discovery, queue topology, retry configuration, monitoring)
+Use skill: `backend-coding-standards` to compare observations to best practice for the detected stack.
 
-Use skill: `backend-coding-standards` to compare observed patterns against known best practices for the detected stack. Note where the codebase follows conventions and where it diverges.
+**Frontend (when `frontend` or `fullstack`):** component architecture (smart/dumb split, feature components, shared UI); state strategy (local, store/context, URL, server state); data fetching (hooks/composables, server components, global fetch wrapper); routing (file-based vs manual, layouts, guards); styling (CSS modules, Tailwind, styled-components, tokens); form handling; accessibility discipline.
 
-**Frontend code patterns (when Stack Type is `frontend` or `fullstack`):**
+**Tests (all stacks):** unit / integration / E2E split; test data construction (factories, fixtures, builders, MSW); mocking approach; naming conventions.
 
-- Component architecture approach (smart/dumb split, feature components, shared UI library)
-- State management strategy (local state, stores/context, URL state, server state)
-- Data fetching approach (hooks/composables, server components, global fetch wrapper)
-- Routing strategy (file-based, manual configuration, layouts and guards)
-- Styling approach (CSS modules, Tailwind, styled-components, scoped styles, design tokens)
-- Form handling patterns (validation library, submission flow, error display)
-- How accessibility is addressed (semantic HTML discipline, ARIA usage, keyboard navigation)
+**Domain knowledge (all stacks):** key terms (define each in one line), critical invariants (must-never-violate rules - source from validations, assertion-heavy tests, contracts), edge cases that matter (timezones, currency, soft-delete, multi-tenant isolation).
 
-**Test patterns to identify (all stacks):**
+Cap each domain table at 5 most load-bearing items; cite where each is enforced.
 
-- Unit vs integration vs end-to-end split
-- How test data is created (factories, fixtures, builders, MSW handlers)
-- How external dependencies are mocked (library, approach)
-- Test naming conventions
+### Step 7 - Surface Tech Debt and Risk Hotspots
 
-**Domain knowledge to capture (all stacks):**
+Use skill: `complexity-review` and `architecture-guardrail` to detect complexity concentrations and boundary violations.
 
-- **Key concepts and terms** - domain vocabulary that recurs in code or docs (e.g., `Tenant`, `Booking`, `Ledger`); define each in one line
-- **Critical invariants** - things the system must never violate (e.g., "an order's total always equals the sum of its line items", "balance must never go negative outside a tracked overdraft transaction"). Source from comments, validations, assertion-heavy tests, or explicit contracts
-- **Edge cases that matter** - business edge cases visible in code (e.g., timezone handling, currency rounding, soft-delete semantics, multi-tenant isolation rules)
+Scan for:
 
-Cap at the 5 most load-bearing items per category. Cite the file where each is enforced.
+- **Structural:** god classes/modules; layer violations; circular deps; dead code.
+- **Consistency:** mixed architectural patterns; duplicate concerns (two HTTP wrappers); inconsistent error handling; inconsistent logging.
+- **Operational:** missing tests on critical paths; no migration rollback; hardcoded config/secrets; missing health checks.
+- **Complexity hotspots:** files >~300 lines; deeply nested conditionals; high-churn areas from `git log`.
 
-### Step 6 - Surface Tech Debt and Risk Hotspots
+**Common pitfalls** for the new engineer: skipped/disabled tests (`skip`, `xit`, `@Disabled`, `t.Skip`, `pytest.mark.skip`, files named `flaky`); high TODO/FIXME density; module-level side effects (`init()`, top-level imports with effects, framework auto-registration); legacy modules pending deprecation; slow tests excluded from default CI.
 
-Use skill: `complexity-review` to identify complexity concentrations.
-Use skill: `architecture-guardrail` to detect existing boundary violations.
+For each finding: location, signal observed, risk to anyone changing that area.
 
-Scan for these signals:
+### Step 8 - Operational Context
 
-**Structural debt:**
+Local dev setup (`README`, `Makefile`, `docker-compose`, seed scripts); CI/CD (what runs on PR vs merge, deploy targets); deployment model (container, serverless, bare metal, cloud); env config (dev/staging/prod differences, secrets injection); observability (logging, metrics, tracing if detectable); migration trigger strategy.
 
-- God classes or god modules (single file/class doing many unrelated things)
-- Layer violations (e.g., HTTP concerns in service layer, DB queries in controllers)
-- Circular dependencies between modules
-- Dead code or unused modules detectable from naming/imports
+Use skill: `ops-observability` to assess whether observability is production-sufficient.
 
-**Consistency debt:**
+### Step 9 - Local Bootstrap and Smoke Test
 
-- Mixed architectural patterns (some modules use one style, others another)
-- Multiple implementations of the same concern (e.g., two HTTP client wrappers)
-- Inconsistent error handling (some throw, some return error values, some silently swallow)
-- Inconsistent logging (some structured, some `System.out.println`)
+Reconstruct the exact path from clone to running app. A first PR cannot ship without this.
 
-**Operational debt:**
+Read `README.md`, `CONTRIBUTING.md`, `Makefile`, `Justfile`, `docker-compose.yml`, `.env.example`, `package.json` scripts, `bin/`, language task files (`Rakefile`, `manage.py`, `mix.exs`). Capture:
 
-- Missing or insufficient test coverage on critical paths (inferred from test directory inspection)
-- No migration rollback strategy (only `up` migrations, no `down`)
-- Hardcoded configuration or secrets detectable in source
-- Missing health check or liveness endpoint
+- **Prerequisites** - language version (`.tool-versions`, `.nvmrc`, `.python-version`, `go.mod`, build files); required services (DB, Redis, broker); system tools.
+- **Bootstrap sequence** - exact ordered commands: clone -> install -> start deps -> migrate -> seed -> run. Cite each.
+- **Required config** - env vars, example file location, secret sources (1Password, Vault, team handoff).
+- **Smoke check** - health endpoint, default port, login URL, local default credentials.
+- **Common first-run failures** - documented gotchas (port conflicts, native deps, Apple Silicon notes).
 
-**Complexity hotspots:**
+If a step is required but undocumented (e.g., code reads `DATABASE_URL` but no `.env.example`), flag as a documentation gap rather than inventing values.
 
-- Files exceeding ~300 lines (infer from directory counts if exact count unavailable)
-- Functions with deeply nested conditionals or long parameter lists
-- Areas with many recent changes visible from git log (high churn = high risk)
+### Step 10 - Ecosystem and Runtime Topology
 
-**Common pitfalls (signals worth flagging explicitly for a new engineer):**
+Map where the service lives in the wider system. Read CI configs, IaC, deployment manifests, observability references, integration code.
 
-- Tests marked `skip`, `xit`, `@Disabled`, `t.Skip`, `pytest.mark.skip`, or named with `flaky`/`flake` - these are landmines for first-PR CI
-- Modules with TODO/FIXME density above the codebase average
-- Hidden side effects in module-level code (init blocks, top-level imports with side effects, package `init()` functions, framework auto-registration)
-- Legacy modules pending deprecation - usually flagged in README, ADRs, or top-of-file comments
-- Slow tests or slow suites (annotated with `@Tag("slow")`, `slow` markers, or excluded from default CI)
+- **Upstream callers** - clients, sibling services, scheduled triggers, webhooks (from API docs, OpenAPI, route names).
+- **Downstream dependencies** - DBs, caches, queues, third-party APIs, sibling services (from integration code, config keys, IaC).
+- **Environments** - dev / staging / prod targets, URLs/hostnames if discoverable.
+- **Where to watch it** - logs destination (Datadog, CloudWatch, Loki), metrics dashboard, tracing UI, error tracker (Sentry/Rollbar/Bugsnag), alerting channel. Cite paths or config keys; do not invent URLs.
+- **Trace a request locally** - correlation ID header name, request-ID middleware, tracing instrumentation; how to reproduce a prod issue against local.
+- **Deployment platform specifics** - k8s cluster/namespace, Lambda name, ECS service, Heroku app, Vercel project.
+- **Feature flags and env config diffs** - flag library (LaunchDarkly, Unleash, in-house), where defined and read; how dev/staging/prod configs differ.
 
-For each finding: state the location, the signal observed, and the risk it poses to someone making changes there.
+Mark `unknown - not discoverable from the repo` for anything the codebase does not reveal. Do not invent URLs, endpoints, channels.
 
-### Step 7 - Operational Context
+### Step 11 - Contribution Workflow
 
-Identify how the application runs and is operated:
+Capture the path from edit to merge. Read `CONTRIBUTING.md`, `.github/` (PR template, CODEOWNERS, workflows), `.gitlab/`, pre-commit configs (`.pre-commit-config.yaml`, `.husky/`, `lefthook.yml`), lint configs, CI files.
 
-- **Local dev setup** - `README` instructions, `Makefile`, `docker-compose`, seed scripts
-- **CI/CD pipeline** - what runs on PR (lint, test, build), what runs on merge (deploy targets)
-- **Deployment model** - containers, serverless, bare metal, cloud platform (inferred from Dockerfile, IaC)
-- **Environment configuration** - how dev/staging/prod configs differ (env file strategy, secrets injection)
-- **Observability** - logging library and format, metrics endpoint, tracing instrumentation (if detectable)
-- **Database migration strategy** - manual trigger, auto-run on startup, CI step
+- **Branching** - default branch, naming rules, forbidden direct pushes.
+- **PR requirements** - template fields, required reviewers via `CODEOWNERS`, required approvals, required CI checks.
+- **Local quality gates** - pre-commit hooks, linters, formatters, exact commands.
+- **Test commands** - unit / integration / full suite / single file - exact commands cited from `package.json` scripts, Makefile, language conventions.
+- **CI shape** - what runs on PR open vs merge; approximate stages; known slowness/flake.
+- **Module owners** - from `CODEOWNERS` and, where helpful, recent committers (read-only `git log` / `git shortlog`).
+- **Communication channels** - Slack/Teams/mailing list referenced in repo - cite source, do not invent.
+- **Common rejection reasons** - patterns visible in `CONTRIBUTING.md`, PR template, lint configs, recent merged PRs. Cite source.
+- **Reference example PRs** - linked from `README`, `CONTRIBUTING`, or PR template; otherwise omit (do not invent PR numbers).
+- **First-PR safe zones** - cross-reference Step 7 hotspots. List 2-3 well-tested, low-churn, narrow-blast areas; list 2-3 areas to avoid first.
 
-Use skill: `ops-observability` to assess whether the observability setup is sufficient for production operation.
-
-### Step 8 - Local Bootstrap and Smoke Test
-
-Reconstruct the exact path from a fresh clone to a running app. A new engineer cannot ship a first PR until this works.
-
-Read `README.md`, `CONTRIBUTING.md`, `Makefile`, `Justfile`, `docker-compose.yml`, `.env.example`, `package.json` scripts, `bin/` directory, language-specific task files (`Rakefile`, `manage.py`, `mix.exs`, etc.) and capture:
-
-- **Prerequisites** - language version (from `.tool-versions`, `.nvmrc`, `.python-version`, `go.mod`, `pyproject.toml`, build files), required services (DB, Redis, message broker), system tools (Docker, specific CLIs)
-- **Bootstrap sequence** - the ordered command list: clone → install deps → start dependencies → run migrations → seed data → start the app. Cite the exact commands.
-- **Required configuration** - which env vars must be set, where the example file is, which secrets are needed and from where (1Password, Vault, team handoff)
-- **Smoke check** - how to verify the app is running (health endpoint, default port, login URL, default credentials for local)
-- **Common first-run failures** - any documented gotchas (port conflicts, native deps, platform-specific build steps, Apple Silicon notes)
-
-If a step is undocumented but clearly required (e.g., the code reads `DATABASE_URL` but no env file is shown), flag it as a documentation gap rather than inventing the value.
-
-### Step 9 - Ecosystem and Runtime Topology
-
-Map where the service actually lives in the wider system. Read CI configs, infrastructure-as-code, deployment manifests, observability dashboards referenced in code or README, and integration code paths.
-
-Identify:
-
-- **Upstream callers** - clients, sibling services, scheduled triggers, webhooks that send traffic in (from API docs, OpenAPI specs, README, request handlers, route names)
-- **Downstream dependencies** - databases, caches, queues, third-party APIs, internal sibling services this service calls (from integration code, config keys, IaC service references)
-- **Environments** - dev / staging / prod targets, their URLs or hostnames if discoverable from config or deployment manifests, how to reach each
-- **Where to watch it** - logging destination (stdout shipped where? Datadog? CloudWatch? Loki?), metrics dashboard, tracing UI, error tracker (Sentry/Rollbar/Bugsnag), on-call alerting channel - cite paths or config keys, do not invent URLs
-- **How to trace a request locally** - log format and how to find a single request's trail (correlation ID header name, request ID middleware, tracing instrumentation), and how to reproduce a real production issue against a local instance
-- **Deployment platform specifics** - Kubernetes cluster/namespace, Lambda function name, ECS service, Heroku app, Vercel project (whatever the IaC or deployment files reveal)
-- **Feature flags and config differences** - flag library (LaunchDarkly, Unleash, in-house), where flags are defined and read, and how dev / staging / prod configs differ (env file overlays, secrets injection, region-specific config)
-
-State `unknown - not discoverable from the repo` for fields that the codebase does not reveal. Do not invent endpoints or dashboard URLs.
-
-### Step 10 - Contribution Workflow
-
-Capture the path a change takes from edit to merge. A new engineer needs to know the rules before touching code.
-
-Read `CONTRIBUTING.md`, `.github/` (PR template, CODEOWNERS, workflows), `.gitlab/`, `.gitignore`, pre-commit configs (`.pre-commit-config.yaml`, `.husky/`, `lefthook.yml`), lint configs, and CI files.
-
-Identify:
-
-- **Branching convention** - default branch, naming rules (`feature/`, `fix/`, ticket-prefix), forbidden direct pushes
-- **PR requirements** - PR template fields, required reviewers via `CODEOWNERS`, required approvals, required CI checks before merge
-- **Local quality gates** - pre-commit hooks, linters, formatters that will reject the PR if skipped; the commands to run them locally
-- **Test commands** - the exact command to run unit tests, integration tests, the full test suite, and a single test file (cite from `package.json` scripts, Makefile targets, language conventions)
-- **CI pipeline shape** - what runs on PR open, what runs on merge to main, approximate stages (lint → test → build → deploy); flag if CI is slow or known-flaky from README or comments
-- **Module owners** - top contributors per area from `CODEOWNERS` and, where helpful, recent committers (read-only `git log`/`git shortlog` is acceptable)
-- **Communication channels** - Slack/Teams channels, mailing lists, or office-hours referenced in `README.md`, `CONTRIBUTING.md`, or `CODEOWNERS` comments - cite the source, do not invent channel names
-- **What usually gets PRs rejected here** - patterns visible in `CONTRIBUTING.md`, PR template checkboxes, lint configs, or comments in recent merged PRs (e.g., "missing changelog entry", "no test coverage on critical path", "schema change without migration"). Cite source.
-- **Reference example PRs** - if `README.md`, `CONTRIBUTING.md`, or PR template links to canonical "good" example PRs, capture them. Otherwise omit - do not invent PR numbers.
-- **First-PR safe zones** - cross-reference Step 6 risk hotspots: list 2-3 areas that are well-tested, low-churn, and low-blast-radius - good candidates for a first change. List 2-3 areas to avoid touching first.
-
-Use skill: `dependency-impact-analysis` when the user names a candidate first-PR area to estimate its blast radius before they commit to it.
+Use skill: `dependency-impact-analysis` if the user names a candidate first-PR area, to estimate blast radius.
 
 ## Output Format
 
@@ -327,292 +199,206 @@ Use skill: `dependency-impact-analysis` when the user names a candidate first-PR
 
 ## System Summary
 
-[One paragraph: what problem this system solves, who uses it, 2-3 main capabilities. Mark `unknown - repo does not declare purpose` if not stated anywhere.]
+[One paragraph from README / repo context, or `unknown - repo does not declare purpose`]
 
 ## Stack
 
-| Concern    | Technology                      | Confidence        |
-| ---------- | ------------------------------- | ----------------- |
-| Language   | [e.g., Go 1.25]                 | Declared/Inferred |
-| Framework  | [e.g., Gin + GORM]              | Declared/Inferred |
-| Build      | [e.g., Go modules]              | Inferred          |
-| Test       | [e.g., testify + mockery]       | Inferred          |
-| Database   | [e.g., PostgreSQL via GORM]     | Inferred          |
-| Async/Jobs | [e.g., Asynq (Redis)]           | Inferred          |
-| Deployment | [e.g., Docker + GitHub Actions] | Inferred          |
+| Concern    | Technology              | Source              |
+| ---------- | ----------------------- | ------------------- |
+| Language   | [e.g., Go 1.25]         | Declared / Inferred |
+| Framework  | [Gin + GORM]            | Declared / Inferred |
+| Build      | [Go modules]            | Inferred            |
+| Test       | [testify + mockery]     | Inferred            |
+| Database   | [PostgreSQL via GORM]   | Inferred            |
+| Async/Jobs | [Asynq (Redis)]         | Inferred            |
+| Deployment | [Docker + GH Actions]   | Inferred            |
 
 ## Repository Structure
-```
 
 [directory map - top 2-3 levels with one-line annotations]
 
-```
+**Where to look first:** [2-3 paths with reason]
+**Safe to skip initially:** [vendored, generated, fixtures, deprecated]
 
 ## Architecture
 
 **Pattern:** [Layered / Clean / Modular monolith / Vertical slice / Microservice / Event-driven]
-**Evidence:** [2-3 file paths or naming observations that support this classification]
+**Evidence:** [2-3 paths / naming observations]
 
 ### Modules
 
-| Module        | Responsibility       | Data Owned    | Key Dependencies        |
-| ------------- | -------------------- | ------------- | ----------------------- |
-| [name]        | [one sentence]       | [entities]    | [modules / services]    |
+| Module | Responsibility | Data Owned | Dependencies |
+| ------ | -------------- | ---------- | ------------ |
 
 ### Primary Flow
 
-```
-
-[Trace the main request/event through the system layers]
-
-```
+[Trace main request/event through layers]
 
 ## Key Patterns and Conventions
 
-### How This Codebase Does Things
+| Concern         | Pattern               | Example Location |
+| --------------- | --------------------- | ---------------- |
 
-| Concern           | Pattern Observed                                | Location Example         |
-| ----------------- | ----------------------------------------------- | ------------------------ |
-| DI                | [e.g., constructor injection via wire]          | [file path]              |
-| Error handling    | [e.g., wrapped errors with fmt.Errorf %w]       | [file path]              |
-| Logging           | [e.g., slog structured, request-scoped]         | [file path]              |
-| Config            | [e.g., viper + env vars, no hardcoding]         | [file path]              |
-| Auth              | [e.g., JWT middleware on Gin router groups]     | [file path]              |
-| Transactions      | [e.g., GORM WithContext transaction]            | [file path]              |
-| Background jobs   | [e.g., Asynq workers in internal/worker/]       | [file path]              |
-| Components        | [e.g., feature-based, smart/dumb split]         | [file path]              |
-| State management  | [e.g., Zustand stores, local useState]          | [file path]              |
-| Data fetching     | [e.g., TanStack Query with MSW for testing]     | [file path]              |
-| Routing           | [e.g., Next.js App Router, file-based]          | [file path]              |
-| Styling           | [e.g., Tailwind CSS with design tokens]         | [file path]              |
-| Tests             | [e.g., table-driven, mockery mocks]             | [file path]              |
-
-_Include only rows relevant to the detected Stack Type. Omit backend rows for frontend-only projects and vice versa._
+Include only rows relevant to detected `Stack Type`. Sample concerns - backend: DI, error handling, logging, config, auth, transactions, background jobs, caching. Frontend: components, state, data fetching, routing, styling, forms. All: tests.
 
 ## Domain Knowledge
 
-### Key Concepts
+### Key Concepts (cap 5)
 
-| Term       | Definition (one line)        | Defined / Enforced In |
-| ---------- | ---------------------------- | --------------------- |
-| [name]     | [meaning in this codebase]   | [file path]           |
+| Term | Definition | Defined/Enforced In |
+| ---- | ---------- | ------------------- |
 
-### Critical Invariants
+### Critical Invariants (cap 5)
 
-| Invariant                                       | Enforced In           |
-| ----------------------------------------------- | --------------------- |
-| [must-never-violate rule]                       | [file path]           |
+| Invariant | Enforced In |
+| --------- | ----------- |
 
-### Edge Cases That Matter
+### Edge Cases That Matter (cap 5)
 
-- **[Case]**: [what makes it tricky] - [file path]
-
-_Cap each table at 5 most load-bearing items. Omit any subsection if nothing meaningful was found._
-
-## Where to Look First
-
-| Priority | Path             | Why read this early                                          |
-| -------- | ---------------- | ------------------------------------------------------------ |
-| 1        | [path]           | [core domain logic / primary flow entry point / etc.]        |
-| 2        | [path]           | [reason]                                                     |
-
-**Safe to skip initially:** [vendored deps, generated code, large fixtures, deprecated modules - cite paths]
+- **[Case]**: [why tricky] - [file path]
 
 ## Tech Debt and Risk Hotspots
 
-### [High | Medium | Low] - [Short label]
+Order High -> Medium -> Low. For each:
 
-- **Location:** [file or module path]
-- **Signal:** [what was observed]
-- **Risk:** [what breaks or becomes harder if you change this area]
-
-[Repeat per finding, ordered High → Medium → Low]
+- **[Severity]** - [short label]
+- **Location:** [path]  **Signal:** [observed]  **Risk:** [what breaks]
 
 ## Common Pitfalls
 
-Short list of landmines a new engineer should know about before their first PR runs through CI:
-
-- **Skipped or flaky tests**: [paths or test names + the marker used (`@Disabled`, `xit`, etc.)]
-- **Hidden side effects**: [module-level init, package `init()`, framework auto-registration paths]
-- **Legacy / deprecated modules**: [paths flagged for removal]
-- **Slow tests**: [paths or tags + how they are excluded from default CI]
-- **Other gotchas documented in `README` / `CONTRIBUTING`**: [cite source]
+- **Skipped/flaky tests:** [paths + marker]
+- **Hidden side effects:** [module-level init, package `init()`, auto-registration]
+- **Legacy / deprecated:** [paths]
+- **Slow tests:** [paths + tag + how excluded]
+- **Other documented gotchas:** [cite source]
 
 ## Operational Context
 
-| Concern            | Details                                      |
-| ------------------ | -------------------------------------------- |
-| Local setup        | [how to run locally - summary, full detail in Local Quickstart] |
-| CI on PR           | [what runs]                                  |
-| Deploy target      | [platform / mechanism]                       |
-| Config management  | [strategy]                                   |
-| Observability      | [logging/metrics/tracing setup]              |
-| Migration strategy | [how and when migrations run]                |
+| Concern            | Details |
+| ------------------ | ------- |
+| Local setup        | [summary - full in Local Quickstart] |
+| CI on PR           | [what runs] |
+| Deploy target      | [platform / mechanism] |
+| Config             | [strategy] |
+| Observability      | [logging / metrics / tracing] |
+| Migration strategy | [how / when migrations run] |
 
 ## Local Quickstart
 
-**Prerequisites:** [language version + required services + system tools, citing source files like `.tool-versions`, `docker-compose.yml`]
+**Prerequisites:** [language version, services, system tools - cite source files]
 
 **Bootstrap (in order):**
 
 ```
-
-[exact command 1 - e.g., cp .env.example .env]
-[exact command 2 - e.g., docker-compose up -d postgres redis]
-[exact command 3 - e.g., make migrate]
-[exact command 4 - e.g., make seed]
-[exact command 5 - e.g., make dev]
-
+[command 1 - e.g., cp .env.example .env]
+[command 2 - e.g., docker-compose up -d postgres redis]
+[command 3 - e.g., make migrate]
+[command 4 - e.g., make seed]
+[command 5 - e.g., make dev]
 ```
 
-**Required env vars:** [list, with example values or source - flag any missing from .env.example]
-
-**Smoke check:** [how to verify - e.g., `curl localhost:3000/health` returns 200; default login user/pass for local]
-
-**Known first-run gotchas:** [platform-specific notes, port conflicts, native deps - omit section if none documented]
+**Required env vars:** [list with examples / source; flag any missing from `.env.example`]
+**Smoke check:** [verification step - e.g., `curl localhost:3000/health` returns 200]
+**Known first-run gotchas:** [platform notes; omit if none documented]
 
 ## Ecosystem and Runtime Topology
 
-| Concern               | Details                                                           |
-| --------------------- | ----------------------------------------------------------------- |
-| Upstream callers      | [who sends traffic in]                                            |
-| Downstream services   | [DBs, caches, queues, third-party APIs, sibling services]         |
-| Environments          | [dev / staging / prod targets if discoverable, else `unknown`]    |
-| Logs                  | [destination + how to access]                                     |
-| Metrics / dashboards  | [tool + paths/keys cited; `unknown` if not discoverable]          |
-| Tracing               | [tool / instrumentation]                                          |
-| Trace a request       | [correlation ID header, request-ID middleware, tracing setup]     |
-| Reproduce locally     | [steps to replay a prod issue against local instance]             |
-| Error tracking        | [Sentry/Rollbar/etc. + DSN config key]                            |
-| Deployment platform   | [k8s cluster/namespace, Lambda name, ECS service, Heroku app...]  |
-| Feature flags         | [library + where flags are defined and read]                      |
-| Env config diffs      | [how dev / staging / prod configs differ; secrets injection]      |
-| On-call / alerting    | [channel or runbook reference, if any]                            |
+| Concern             | Details (or `unknown - not discoverable from the repo`) |
+| ------------------- | -------------------------------------------------------- |
+| Upstream callers    | |
+| Downstream services | |
+| Environments        | |
+| Logs                | |
+| Metrics / dashboards | |
+| Tracing             | |
+| Trace a request     | |
+| Reproduce locally   | |
+| Error tracking      | |
+| Deployment platform | |
+| Feature flags       | |
+| Env config diffs    | |
+| On-call / alerting  | |
 
 ## Contribution Workflow
 
-| Concern             | Details                                                                |
-| ------------------- | ---------------------------------------------------------------------- |
-| Default branch      | [main / master / trunk]                                                |
-| Branch naming       | [convention, with examples]                                            |
-| PR requirements     | [template fields, required reviewers, required checks]                 |
-| CODEOWNERS          | [path or `none`; cite a few owner mappings]                            |
-| Local quality gates | [pre-commit / hooks / formatters - the exact commands]                 |
-| Test commands       | [unit / integration / full suite / single file - exact commands]       |
-| CI pipeline         | [stages on PR open vs merge; known slowness/flake notes]               |
-| Channels            | [Slack/Teams channel, mailing list - cite source or `none documented`] |
-| Common rejection reasons | [what gets PRs sent back here; cite source]                       |
-| Reference example PRs | [linked from README/CONTRIBUTING/PR template, or `none cited`]       |
+| Concern                | Details |
+| ---------------------- | ------- |
+| Default branch         | |
+| Branch naming          | |
+| PR requirements        | |
+| CODEOWNERS             | [`none` if absent] |
+| Local quality gates    | [exact commands] |
+| Test commands          | [unit / integration / suite / single file] |
+| CI pipeline            | [PR vs merge; slowness/flake] |
+| Channels               | [`none documented` if absent] |
+| Common rejection reasons | [cite source] |
+| Reference example PRs  | [`none cited` if absent] |
 
-### First-PR Safe Zones
+### First-PR Safe Zones (cap 3)
 
-| Area      | Why safe                                  | Suggested entry file |
-| --------- | ----------------------------------------- | -------------------- |
-| [path]    | [well-tested, low churn, narrow blast]    | [file path]          |
+| Area | Why safe | Suggested entry file |
+| ---- | -------- | -------------------- |
 
-### Avoid for First PR
+### Avoid for First PR (cap 3)
 
-| Area      | Why to wait                                          |
-| --------- | ---------------------------------------------------- |
-| [path]    | [high churn / wide blast / weak tests / unowned]     |
+| Area | Why to wait |
+| ---- | ----------- |
 
 ## Onboarding Recommendations
 
-Tailor depth to the requested `Focus` mode. In `first-pr` mode, lead with Mission Framing + First-PR Playbook; in `architect-survey` mode, lead with First-Week Knowledge Gaps; in `full` mode, include all subsections.
+Match the requested Focus. `first-pr`: lead with Mission Framing + First-PR Playbook. `architect-survey`: lead with First-Week Knowledge Gaps; omit First-PR Playbook unless asked. `full`: include all.
 
-### Mission Framing (first-pr mode)
+### Mission Framing (first-pr)
 
-What counts as a valid first PR in this codebase:
+- **Realistic first-PR targets:** [grounded in safe zones - small bug fix in low-churn module, logging improvement, missing test, config tweak]
+- **Suggested timeline:** [based on CI duration / review cadence]
+- **What good looks like here:** [cite reference example PRs or describe expected size/shape]
 
-- **Realistic targets**: [e.g., small bug fix in low-churn module, logging improvement, missing test, config tweak] - grounded in observed safe zones
-- **Suggested timeline**: [e.g., "open PR within 2-3 days of finished local setup"] - based on CI duration and review cadence observed
-- **What a "good" first PR looks like here**: [cite reference example PRs if available; otherwise describe expected size and shape]
+### First-PR Playbook (first-pr, full)
 
-### First-PR Playbook (first-pr mode)
+1. Run locally (Local Quickstart); confirm smoke check.
+2. Pick from First-PR Safe Zones; verify ownership against CODEOWNERS.
+3. Reproduce existing behavior (run tests, hit endpoint or screen).
+4. Trace the code path using Key Patterns.
+5. Make minimal change; add or adjust tests in existing style.
+6. Run local quality gates with the exact Contribution Workflow commands.
+7. Open the PR with the project template; tag CODEOWNERS; preempt Common Rejection Reasons.
 
-Step-by-step path tying the report's findings together:
+### First-Day Checklist (cap 5)
 
-1. Run the project locally (see Local Quickstart) and confirm the smoke check passes
-2. Pick a candidate task from First-PR Safe Zones; verify ownership against CODEOWNERS
-3. Reproduce the existing behavior (run the relevant tests, hit the relevant endpoint or screen)
-4. Trace the code path end to end using the patterns in Key Patterns and Conventions
-5. Make the minimal change and add or adjust tests in the project's existing style
-6. Run local quality gates (lint, format, full test suite) using the exact Contribution Workflow commands
-7. Open the PR using the project's PR template; tag the right CODEOWNERS; address Common Rejection Reasons proactively
+Concrete actions: command or file to read; expected outcome.
 
-### First-Day Checklist (action-oriented, ship-ready)
+### First-Week Knowledge Gaps (cap 5)
 
-1-5 concrete actions to get a working local environment and PR-ready setup:
-
-- **[Action]**: [exact command or file to read; expected outcome]
-
-### First-Week Knowledge Gaps (deeper learning)
-
-1-5 areas of the codebase a new engineer should study before taking on broader work:
-
-- **[Topic]**: [why it matters; suggested reading path - files, modules, or docs]
+Areas to study before broader work: why it matters; suggested reading path.
 
 ## Summary
 
-3-5 bullets covering:
-- Architectural strengths (what the codebase does well)
-- Primary risk areas (where to be careful)
-- Recommended first-PR target (if `Focus: first-pr` was requested)
-- Biggest knowledge gaps to close in the first week
+3-5 bullets: architectural strengths; primary risk areas; recommended first-PR target (if Focus first-pr); biggest knowledge gaps for first week.
 ```
-
-### Output Constraints
-
-- Stack table must distinguish declared (from repo context file) from inferred (from file presence)
-- Architecture classification must cite specific file paths as evidence - no guessing
-- Patterns table must cite a real file path for each pattern - not invented examples
-- Local Quickstart commands must be cited from real files (`Makefile`, `package.json`, `README`, etc.) - never invented
-- System Summary must be cited from `README.md` or repo context file; mark `unknown - repo does not declare purpose` if not stated
-- Ecosystem fields that the repo does not reveal must be marked `unknown - not discoverable from the repo`, never invented URLs
-- Domain Knowledge tables capped at 5 items each; each entry cites the file where the concept or invariant is enforced
-- Communication channels and reference example PRs must cite the source file or be marked `none cited` - never invented
-- Tech debt findings ordered High → Medium → Low
-- First-PR Safe Zones and Avoid lists each capped at 3 items
-- First-PR Playbook is included only in `first-pr` and `full` modes; omit in `architect-survey` mode
-- First-Day Checklist and First-Week Knowledge Gaps each limited to 5 items - prioritize ruthlessly
-- Omit any section where nothing meaningful was found, including First-PR sections in `architect-survey` mode if the user did not request them
-- Do not comment on code style or formatting in tech debt - focus on structural and operational risk
-- Total output should be comprehensive but scannable - use tables over prose wherever possible
-
-## Rules
-
-- Read files, do not modify them
-- Never invent file paths or module names - only report what is observed
-- If a directory or file cannot be read, note it and continue
-- If the codebase is monorepo with multiple services, scope the report to the service the user is focused on, then note other services exist
-- Do not generate code, refactoring plans, or migration plans - produce a map, not a roadmap
 
 ## Self-Check
 
-- [ ] Focus mode acknowledged (`first-pr`, `architect-survey`, or `full`); section emphasis matches
-- [ ] `stack-detect` ran; stack-specific onboard-map atomic loaded if available; signals merged into Stack, Local Quickstart, Architecture, Patterns, Tech Debt, and First-PR Safe Zones sections
-- [ ] System Summary captured (or marked unknown); cites source
-- [ ] Stack table distinguishes declared (from repo context file) from inferred (from file presence)
-- [ ] Repository structure includes "Where to Look First" and "Safe to Skip Initially"
-- [ ] Architecture classification cites specific file paths as evidence
-- [ ] Patterns table references real file paths for each observed pattern
-- [ ] Domain Knowledge captured: key concepts, critical invariants, edge cases - each cited
-- [ ] Local Quickstart commands cited from real files; missing prerequisites flagged as documentation gaps
-- [ ] Ecosystem unknowns marked `unknown - not discoverable from the repo` rather than invented; trace-a-request and feature-flag rows present or omitted with reason
-- [ ] Contribution Workflow includes exact test commands, local quality gates, channels, rejection reasons, and example PRs (or `none cited`)
-- [ ] Common Pitfalls section flags skipped/flaky tests and module-level side effects with concrete locations
-- [ ] First-PR Safe Zones and Avoid lists each have 1-3 entries with concrete reasoning
-- [ ] Tech debt findings ordered High → Medium → Low with concrete locations
-- [ ] In `first-pr` or `full` mode: Mission Framing and First-PR Playbook present
-- [ ] First-Day Checklist and First-Week Knowledge Gaps each limited to 5 items
-- [ ] No invented file paths, module names, commands, URLs, channels, PR numbers, or pattern examples
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: `stack-detect` ran; stack atomic loaded if available; signals merged into Stack, Local Quickstart, Architecture, Patterns, Tech Debt, First-PR sections; System Summary captured or marked unknown
+- [ ] Step 3: directory map plus "Where to look first" and "Safe to skip initially"
+- [ ] Step 4: architecture pattern classified with cited evidence
+- [ ] Step 5: modules table; primary flow traced
+- [ ] Step 6: patterns table cites real paths; Domain Knowledge tables capped at 5, each cited
+- [ ] Step 7: tech debt findings ordered High -> Medium -> Low with concrete locations; pitfalls flagged with markers and paths
+- [ ] Step 8: Operational Context populated
+- [ ] Step 9: Local Quickstart commands cited from real files; missing prerequisites flagged as documentation gaps
+- [ ] Step 10: ecosystem unknowns marked, not invented
+- [ ] Step 11: contribution workflow with exact commands, channels, rejection reasons (or `none cited`); First-PR Safe Zones and Avoid each 1-3 items
+- [ ] Focus mode honored; first-pr playbook included in first-pr/full, omitted otherwise; First-Day Checklist and First-Week Gaps each capped at 5
+- [ ] No invented paths, modules, commands, URLs, channels, PR numbers, or examples
 
 ## Avoid
 
-- Inventing file paths, module names, commands, env var values, or dashboard/environment URLs not observed in the codebase
+- Inventing file paths, module names, commands, env values, dashboard or environment URLs
+- Generating refactoring or migration plans (this produces a map, not a roadmap)
 - Commenting on code style or formatting as tech debt - focus on structural and operational risk
-- Generating refactoring plans or migration strategies (this produces a map, not a roadmap)
-- Over-exploring irrelevant directories (vendor, node_modules, build output)
+- Over-exploring vendor, node_modules, build output
 - Producing an exhaustive inventory instead of a scannable summary
-- Recommending a candidate first-PR area without cross-referencing risk hotspots and CODEOWNERS
-- Skipping the Focus question when the user's stated goal clearly implies one mode (e.g., "I need to ship my first PR") - confirm the mode rather than defaulting silently
+- Recommending a first-PR area without cross-referencing hotspots and CODEOWNERS
+- Defaulting Focus silently when the user's stated goal implies a mode - confirm

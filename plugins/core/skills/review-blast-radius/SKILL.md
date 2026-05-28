@@ -1,6 +1,6 @@
 ---
 name: review-blast-radius
-description: Blast radius of a proposed change: what breaks if it goes wrong, affected modules and services, scope and risk assessment.
+description: Classify scope of impact if a change goes wrong across code, data, user dimensions, with reversibility and mitigation.
 metadata:
   category: review
   tags: [blast-radius, impact-analysis, change-scope]
@@ -13,63 +13,72 @@ user-invocable: false
 
 ## When to Use
 
-- Alongside PR risk analysis to assess impact scope
-- When evaluating changes to shared libraries or core modules
-- When changes touch data persistence, messaging, or API contracts
+- Alongside PR risk to size the impact dimension
+- Changes to shared libraries, core modules, or cross-service contracts
+- Changes touching persistence, messaging, or API schemas
 
 ## Rules
 
-- Focus on what breaks if this change is wrong, not on whether it is wrong
-- Consider both direct consumers and transitive dependents
-- Assess data impact separately from code impact
-- Keep the assessment brief -- one to two sentences per dimension
+- Focus on what breaks if the change is wrong, not on whether it is wrong.
+- Assess code, data, and user dimensions independently.
+- Overall classification is the maximum across dimensions.
+- One sentence per dimension. No prose padding.
+- If a feature flag or backup materially reduces the effective radius, state both the unmitigated and mitigated levels.
 
-## Pattern
+## Patterns
 
-Evaluate blast radius across three dimensions:
+### Dimensions
 
-### 1. Code Scope
+**Code Scope** - who directly or transitively depends on the changed code.
+- Narrow: single feature, single consumer
+- Moderate: multiple features or consumers within one service
+- Wide: shared library, core module, or cross-service contract
 
-Who directly depends on the changed code?
+**Data Scope** - what happens to data if the change has a bug.
+- Narrow: read-only or isolated writes, easily corrected
+- Moderate: writes to shared state but recoverable (soft delete, audit trail)
+- Wide: irreversible writes, corruption risk, no rollback path
 
-- **Narrow** -- Single feature, single consumer, no shared code paths
-- **Moderate** -- Multiple features or consumers within the same service
-- **Wide** -- Shared library, core module, or cross-service contract
+**User Scope** - how many users or systems are affected.
+- Narrow: internal tool, single team
+- Moderate: one product surface, subset of users
+- Wide: all users, public API, external integrations
 
-### 2. Data Scope
+Wide data scope on a core model implies code scope expansion across every API that serializes it - assess both.
 
-What happens to data if this change has a bug?
+### Overall Classification
 
-- **Narrow** -- Read-only or isolated writes, easily correctable
-- **Moderate** -- Writes to shared state, but recoverable (soft deletes, audit trail)
-- **Wide** -- Irreversible writes, data corruption risk, no rollback path
+- **Critical** - Wide data with no rollback, OR public API break affecting external consumers
+- **Wide** - any single dimension is Wide
+- **Moderate** - any single dimension is Moderate
+- **Narrow** - all dimensions Narrow
 
-For schema changes classified as Wide data scope, consult `ops-backward-compatibility` for expand-contract migration mechanics and `backend-db-migration` for lock risk assessment.
+### Reversibility
 
-When the changed component is a core model that appears in API responses, the data scope change implies a code scope expansion on every API that serializes the model. Assess both dimensions together.
+- **Recoverable** - rolled back by redeploy or schema rollback
+- **Conditional** - recoverable within a window (PITR retention, recent backup)
+- **Irreversible** - data destruction with no programmatic rollback
 
-### 3. User Scope
+### Mitigations
 
-How many users or systems are affected?
+Mitigations may reduce the effective radius:
+- Feature flag off: Wide code becomes Narrow until flipped
+- Backup/PITR: Irreversible becomes Conditional
+- Soft delete: Recoverable until purge job runs
 
-- **Narrow** -- Internal tool, single team
-- **Moderate** -- Single product surface, subset of users
-- **Wide** -- All users, public API, external integrations
+When a mitigation materially changes the level, report both states (see template below).
 
-### Classification
-
-Take the **maximum** across all three dimensions.
-
-### Good: Scoped assessment
+### Good
 
 ```
 Blast Radius: Moderate
 Code: Moderate (shared OrderService used by 3 controllers)
 Data: Narrow (read-only endpoint)
 User: Narrow (admin panel only)
+Reversibility: Recoverable
 ```
 
-### Bad: Vague or inflated assessment
+### Bad
 
 ```
 Blast Radius: Wide
@@ -78,38 +87,17 @@ This change could potentially affect many parts of the system.
 
 ## Output Format
 
-This is the contract that consuming workflow skills depend on. Produce output in this exact structure - callers parse the `Blast Radius:` line to make decisions.
+Callers parse the `Blast Radius:` line.
 
 ```
 Blast Radius: {Narrow | Moderate | Wide | Critical}
 Code: {Narrow | Moderate | Wide} ({1-sentence rationale})
 Data: {Narrow | Moderate | Wide} ({1-sentence rationale})
 User: {Narrow | Moderate | Wide} ({1-sentence rationale})
+Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale})
 ```
 
-**Classification rules:**
-
-- Overall `Blast Radius` = maximum across all three dimensions
-- **Critical** = Wide data scope with no rollback path, OR public API break affecting external consumers
-- **Wide** = Shared library, core module, or all-user impact
-- **Moderate** = Multi-feature or multi-consumer, bounded to one service
-- **Narrow** = Single feature, single consumer, easily correctable
-
-### Reversibility and Mitigation
-
-After classifying, assess:
-
-**Reversibility:**
-- **Recoverable** - can roll back the change (schema migration, code deploy)
-- **Conditional** - recoverable within a time window (e.g., database PITR retention, recent backup)
-- **Irreversible** - data destruction, dropped table, purged records - no programmatic rollback path
-
-**Mitigations that reduce effective blast radius:**
-- Feature flag guarding the change: Wide code scope becomes Narrow if flag is off
-- Backup/PITR available: reduces Irreversible data scope to Conditional
-- Soft delete instead of hard delete: Recoverable until purge job runs
-
-Include mitigations in the output when they materially change the risk profile:
+When a mitigation materially changes the level, prepend a mitigated form:
 
 ```
 Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
@@ -117,11 +105,13 @@ Reversibility: Conditional (PITR available for 7 days)
 Mitigation: Gate behind feature flag; verify PITR backup before proceeding
 ```
 
-Always produce all four lines. Use "N/A" for a dimension only if it genuinely does not apply (e.g., Data: N/A for a read-only, stateless change).
+Use "N/A" for a dimension only when it genuinely does not apply (e.g., Data: N/A for a read-only, stateless change). Always produce all five lines.
+
+For Wide data on schema changes, consult `ops-backward-compatibility` for expand-contract and `backend-db-migration` for lock risk.
 
 ## Avoid
 
-- Inflating blast radius without specific evidence
-- Ignoring data impact (the most dangerous dimension)
-- Assessing blast radius without understanding module dependencies
-- Using blast radius to justify blocking low-risk changes
+- Inflating radius without specific evidence
+- Ignoring data impact - the most dangerous dimension
+- Classifying without understanding module dependencies
+- Using blast radius to block low-risk changes

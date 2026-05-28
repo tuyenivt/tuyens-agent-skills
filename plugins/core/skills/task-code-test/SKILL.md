@@ -8,32 +8,36 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles` and propagate the spec context to the dispatched stack workflow.
-
 # Code Test (Router)
 
-This skill is a thin dispatcher. It detects the project stack and delegates the entire workflow to the matching stack-specific skill (e.g., `task-spring-test`, `task-rails-test`, `task-react-test`). The stack workflow names ecosystem idioms (RSpec, JUnit, pytest, Vitest, etc.) and applies framework-aware test patterns directly.
-
-For unknown or unrecognized stacks, this skill falls back to a minimal generic protocol so any project can still use the command.
+Detects the project stack and delegates to the matching stack-specific test workflow (`task-{stack}-test`). For unknown stacks, runs a minimal generic test-pyramid protocol.
 
 ## When to Use
 
-- Test coverage evaluation, test strategy design, generating test scaffolds, test pyramid balance review.
-- Use this entry point when you want one command that adapts to the project. If you already know the stack, calling the stack-specific workflow directly (e.g., `/task-spring-test`) skips the routing layer.
+- Test coverage evaluation, test strategy design, test scaffolding, pyramid balance review.
+- If you already know the stack, call the stack workflow directly (e.g., `/task-spring-test`) to skip routing.
 
-**Not for:** General code quality review (use `task-code-review`), performance review (use `task-code-review-perf`), security review (use `task-code-review-security`).
+**Not for:** General code review (`task-code-review`), performance (`task-code-review-perf`), security (`task-code-review-security`).
+
+## Invocation
+
+`/task-code-test [<file or path>] [--spec <slug>]`
 
 ## Workflow
 
-### Step 1 - Detect Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`.
+
+### Step 2 - Spec-Aware Preamble (conditional)
+
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, use skill: `spec-aware-preamble` (from the `spec` plugin) and propagate spec context to the dispatched workflow.
+
+### Step 3 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 
-### Step 2 - Dispatch to Stack Workflow
-
-If the detected stack matches the table below, delegate the full workflow to the named skill, propagate any spec context, and stop. The dispatched workflow owns the output.
+### Step 4 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to         |
 | -------------------- | ------------------- |
@@ -50,36 +54,28 @@ If the detected stack matches the table below, delegate the full workflow to the
 | Vue                  | `task-vue-test`     |
 | Angular              | `task-angular-test` |
 
-If a match is found, do not run Step 3.
+Forward the user's invocation and spec context. The dispatched workflow owns the output. **If matched, stop. Skip Step 5.**
 
-### Step 3 - Generic Fallback (unknown stack only)
+### Step 5 - Generic Fallback (unknown stack only)
 
-Run only when Step 2 finds no match. This is a minimum-viable test strategy that works for any language.
-
-**Testing pyramid:** Unit (many) → Integration (some) → E2E (few). Most tests should be fast unit tests; integration tests cover boundaries; E2E covers only critical user flows.
-
-**Boundary guidance:**
-
-- **Unit:** pure logic, validation rules, branch-heavy domain code, error handling in isolation.
-- **Integration:** database queries against a real schema, HTTP endpoints end-to-end, external service clients (use stubs or contract tests), auth/authorization filters.
-- **E2E:** critical business flows only (checkout, login, data export). Each E2E test is expensive to maintain - keep this layer small.
+**Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small.
 
 **Prioritization when coverage is low** (do not chase a coverage number):
 
-1. Business-critical paths (revenue, data integrity, auth).
-2. Error-prone areas (recent bug history, complex branching, integration points).
-3. High-change areas (high git churn, shared utilities).
-4. Plumbing and glue code last.
+1. Business-critical paths (revenue, data integrity, auth)
+2. Error-prone areas (recent bug history, complex branching, integration points)
+3. High-change areas (git churn, shared utilities)
+4. Plumbing and glue code last
 
-**Untestable legacy code:** budget a testability refactor (extract dependencies behind interfaces, isolate I/O from logic) before adding tests. Characterization tests pin current behavior before any refactor.
+**Untestable legacy code.** Budget a testability refactor (extract dependencies behind interfaces, isolate I/O from logic) before adding tests. Pin current behavior with characterization tests before any refactor.
 
-**Contract tests** are mandatory for: HTTP APIs consumed by independently-deployed teams, event/message schemas with separate producer/consumer deploys, shared client libraries imported by other services. Cover happy path, provider error (4xx/5xx handling), and forward-compatible schema evolution.
+**Contract tests are mandatory for:** HTTP APIs consumed by independently-deployed teams; event/message schemas with separate producer/consumer deploys; shared client libraries imported by other services. Cover happy path, provider error (4xx/5xx), and forward-compatible schema evolution.
+
+For test scaffolds, use the project's existing test framework if detectable; otherwise state the assumed framework explicitly.
 
 ## Output Format
 
-When dispatched (Step 2 matched): the stack-specific workflow owns the output format. This skill produces no output of its own.
-
-When fallback runs (Step 3): produce the section that matches the user's ask:
+When Step 4 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask:
 
 ```markdown
 ## Test Coverage Assessment
@@ -96,24 +92,22 @@ When fallback runs (Step 3): produce the section that matches the user's ask:
 **Contract testing:** [required / not required - rationale]
 **Gaps to close (prioritized):**
 
-1. [Highest risk gap]
+1. [Highest-risk gap]
 2. ...
 ```
 
-For test scaffolds, produce ready-to-run files using the project's existing test framework if one is detectable; otherwise state the assumed framework explicitly.
-
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded before any other step
-- [ ] Spec-aware preamble loaded when `--spec` was passed or `.specs/<slug>/` exists
-- [ ] `stack-detect` ran at Step 1
-- [ ] If a stack matched, the dispatched workflow ran and Step 3 was skipped
-- [ ] If no stack matched, Step 3 fallback ran and produced a Strategy Doc / Coverage Assessment / Scaffolds appropriate to the user's ask
-- [ ] Spec context (if any) was propagated to the dispatched workflow
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
+- [ ] Step 3: `stack-detect` ran
+- [ ] Step 4: if matched, stack workflow ran with invocation and spec context forwarded; Step 5 skipped
+- [ ] Step 5: if no match, output covers pyramid balance + prioritized gaps (or scaffolds with a stated framework), matching the user's ask
 
 ## Avoid
 
-- Running both Step 2 dispatch and Step 3 fallback (one or the other, never both)
-- Producing your own findings when a stack workflow was dispatched - that workflow owns the output
-- Falling through to Step 3 when stack-detect returned a known stack but the dispatch table entry feels imperfect; the table is authoritative
-- Treating the fallback as a full equivalent of a stack workflow - it is a temporary bridge for unsupported stacks; the user should install the matching language plugin when one exists
+- Running both Step 4 dispatch and Step 5 fallback
+- Producing findings when a stack workflow was dispatched
+- Falling through to Step 5 when stack-detect returned a known stack but the dispatch table entry feels imperfect - the table is authoritative
+- Chasing a coverage number instead of prioritizing by risk
+- Treating the fallback as equivalent to a stack workflow
