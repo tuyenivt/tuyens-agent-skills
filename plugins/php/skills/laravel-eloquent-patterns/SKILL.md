@@ -17,11 +17,12 @@ user-invocable: false
 
 ## Rules
 
-- Typed return types on relationship methods; foreign key constraints in migrations
+- Typed return types on relationship methods; FK constraints in migrations
 - `$fillable` whitelist - never `$guarded = []`
 - Backed enums for status/type columns; never bare strings
-- Eager load relationships accessed in loops; `preventLazyLoading()` in non-prod
-- Never `::all()` on growable tables
+- Eager load any relation accessed in a loop or Resource; column-select where the relation has many columns (`with('user:id,email')`)
+- `Model::shouldBeStrict(! app()->isProduction())` in `AppServiceProvider::boot()` - bundles `preventLazyLoading` + `preventSilentlyDiscardingAttributes` + `preventAccessingMissingAttributes`
+- Never `::all()` on growable tables; use `chunkById` / `lazy` / `cursor` / pagination
 - `whereRaw` / `DB::raw` use parameter bindings, never string interpolation
 - `lockForUpdate()` only inside `DB::transaction()` (otherwise lock releases immediately)
 
@@ -45,6 +46,11 @@ public function roles(): BelongsToMany {
         ->withPivot('assigned_at', 'assigned_by')
         ->withTimestamps();
 }
+
+// hasManyThrough for jump-table reads (Order -> Product via OrderItem)
+public function products(): HasManyThrough {
+    return $this->hasManyThrough(Product::class, OrderItem::class);
+}
 ```
 
 ### Eager loading and N+1 prevention
@@ -53,37 +59,33 @@ public function roles(): BelongsToMany {
 // Bad - N+1
 foreach (Order::all() as $o) echo $o->items->count();
 
-// Good
-foreach (Order::with('items')->get() as $o) echo $o->items->count();
+// Good - eager + column select + DB aggregates
+Order::with(['user:id,email', 'items:id,order_id,qty', 'items.product:id,name'])
+    ->withCount('items')
+    ->withSum('items', 'qty')      // $o->items_sum_qty without loading items
+    ->cursorPaginate(25);
 
-// Variants
-Order::with('items.product')->get();                                    // nested
-Order::with(['items' => fn($q) => $q->where('qty', '>', 1)])->get();   // constrained
-Order::withCount('items')->get();                                       // $o->items_count
-Order::withSum('items', 'qty')->get();                                  // aggregate without loading
+// Constrained eager load
+Order::with(['items' => fn($q) => $q->where('qty', '>', 1)])->get();
 
-// AppServiceProvider::boot()
-Model::preventLazyLoading(! app()->isProduction());
-Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
+// Already-fetched models
+$orders->loadMissing('items');
 ```
 
 ### Scopes
 
 ```php
-// Local scope - reusable, chainable
 public function scopeActive(Builder $q): Builder {
     return $q->where('status', OrderStatus::Active)->whereNull('cancelled_at');
 }
-
 Order::active()->createdBetween($from, $to)->get();
 
-// Global scope - only for universal concerns (e.g., multi-tenant)
+// Global scope - only for universal concerns (tenancy). Bypass with withoutGlobalScope.
 class TenantScope implements Scope {
     public function apply(Builder $b, Model $m): void {
         $b->where('tenant_id', auth()->user()->tenant_id);
     }
 }
-Order::withoutGlobalScope(TenantScope::class)->get(); // bypass when needed
 ```
 
 ### Casts and accessors
@@ -96,123 +98,85 @@ protected function casts(): array {
         'metadata' => 'array',             // JSON column
         'shipped_at' => 'immutable_datetime',
         'is_gift' => 'boolean',
+        'card_number' => 'encrypted',      // AES-256 via APP_KEY
     ];
 }
-
-// Custom accessor/mutator (Laravel 9+)
-protected function fullName(): Attribute {
-    return Attribute::make(
-        get: fn($v, array $attrs) => $attrs['first_name'].' '.$attrs['last_name'],
-        set: fn(string $v) => [
-            'first_name' => str($v)->before(' ')->toString(),
-            'last_name' => str($v)->after(' ')->toString(),
-        ],
-    );
-}
 ```
+
+Custom accessors via `Attribute::make(get: ..., set: ...)` (Laravel 9+); keep them thin - business logic belongs in services.
 
 ### Large datasets
 
-| Method        | Memory | Eager Load | Update-Safe |
-| ------------- | ------ | ---------- | ----------- |
-| `all()`       | High   | Yes        | N/A         |
-| `chunk()`     | Medium | Yes        | No          |
-| `chunkById()` | Medium | Yes        | Yes         |
-| `lazy()`      | Low    | Yes        | No          |
-| `cursor()`    | Lowest | No         | No          |
+| Method        | Memory | Eager Load | Update-Safe | Use When                           |
+| ------------- | ------ | ---------- | ----------- | ---------------------------------- |
+| `chunkById()` | Medium | Yes        | Yes         | Batch updates by stable PK         |
+| `lazy()`      | Low    | Yes        | No          | Stream read with eager relations   |
+| `cursor()`    | Lowest | No         | No          | Stream read, no relations needed   |
 
-```php
-Order::chunkById(1000, function (Collection $orders) { /* safe for updates */ });
-Order::lazy()->each(fn(Order $o) => /* one row at a time */);
-foreach (Order::cursor() as $o) { /* lowest memory, no eager load */ }
-```
+`::all()` excluded - forbidden on growable tables.
 
-### Soft deletes and pruning
+### Soft deletes
 
-```php
-class Order extends Model {
-    use SoftDeletes, Prunable;
-
-    public function prunable(): Builder {
-        return static::where('created_at', '<=', now()->subYear());
-    }
-}
-
-Order::withTrashed()->get();    // include soft-deleted
-Order::onlyTrashed()->get();    // only soft-deleted
-$order->restore();
-$order->forceDelete();
-// Schedule: php artisan model:prune
-```
+`use SoftDeletes` adds a `deleted_at` global scope. `withTrashed()` / `onlyTrashed()` to bypass; `restore()` / `forceDelete()` for lifecycle. Pair with `Prunable` + `php artisan model:prune` for retention. Index `deleted_at` (or composite) on hot tables.
 
 ### MySQL-specific
 
 ```php
-// JSON columns
-$table->json('metadata')->nullable();
+// JSON column query / update
 Order::where('metadata->shipping_method', 'express')->get();
 Order::whereJsonContains('metadata->tags', 'urgent')->get();
 $order->update(['metadata->tracking_id' => 'ABC123']);
 
-// Fulltext
+// Fulltext (replaces LIKE '%term%')
 $table->fullText(['title', 'description']);
 Order::whereFullText(['title', 'description'], 'search term')->get();
 
-// EXPLAIN (dev)
+// EXPLAIN in dev
 Order::where(...)->explain()->dd();
 ```
 
 ### Locking and concurrency
 
 ```php
-// Read-check-write needs pessimistic lock
+// Read-check-write requires pessimistic lock inside transaction
 DB::transaction(function () use ($productId, $qty) {
     $p = Product::lockForUpdate()->findOrFail($productId);
     if ($p->stock < $qty) throw new InsufficientStockException(...);
     $p->decrement('stock', $qty);
 });
 
-// Atomic update (no lock needed for simple inc/dec)
+// Atomic update - no lock needed
 $affected = Product::where('id', $id)
-    ->where('stock', '>=', $qty)  // guard in WHERE
+    ->where('stock', '>=', $qty)
     ->decrement('stock', $qty);
 if ($affected === 0) throw new InsufficientStockException(...);
 ```
 
-| Scenario                     | Strategy                            |
-| ---------------------------- | ----------------------------------- |
-| Simple inc/dec               | Atomic WHERE+UPDATE (no lock)       |
-| Read-check-write (inventory) | `lockForUpdate()` in transaction    |
-| High-contention hot rows     | Atomic update or queue serialization |
-| Optimistic concurrency       | Version column check on update     |
-
-### Aggregates
-
-```php
-// Bad - loads full collection
-$count = $product->reviews->count();
-
-// Good - database aggregate
-Product::withCount('reviews')->withAvg('reviews', 'rating')->paginate();
-// $product->reviews_count, $product->reviews_avg_rating
-
-// Filtered
-Product::withCount(['reviews' => fn($q) => $q->where('rating', '>=', 4)])->get();
-```
+| Scenario                     | Strategy                                              |
+| ---------------------------- | ----------------------------------------------------- |
+| Simple inc/dec               | Atomic `WHERE` + `UPDATE` (no lock)                   |
+| Read-check-write (inventory) | `lockForUpdate()` in transaction                      |
+| High-contention hot rows     | Atomic update or queue serialization                  |
+| Optimistic concurrency       | `where('version', $v)->update(['version' => $v + 1])` |
 
 ### Pagination
 
 | Method             | SQL            | Use When                        |
 | ------------------ | -------------- | ------------------------------- |
-| `paginate()`       | `LIMIT/OFFSET` | Small-medium, need total count  |
-| `simplePaginate()` | `LIMIT/OFFSET` | Medium, no total needed         |
+| `paginate()`       | `LIMIT/OFFSET` | Small-medium, total count needed |
+| `simplePaginate()` | `LIMIT/OFFSET` | Medium, no total                |
 | `cursorPaginate()` | `WHERE id > ?` | Large tables, API endpoints     |
 
-```php
-Order::with('items')->orderBy('id')->cursorPaginate($request->integer('per_page', 25));
-```
+### Index design (consumed by Output Format)
+
+- Every column in `WHERE`, `ORDER BY`, `GROUP BY` is indexed; leftmost-prefix for composites
+- Cursor pagination: index on the cursor column (usually `id` or `(created_at, id)`)
+- Soft-deleted hot tables: include `deleted_at` in composite
+- FK columns get an index automatically via `->constrained()`
 
 ## Output Format
+
+For **design** prompts:
 
 ```
 ## Model Design
@@ -225,14 +189,19 @@ Order::with('items')->orderBy('id')->cursorPaginate($request->integer('per_page'
 | Table | Columns | Type | Reason |
 ```
 
+For **audit** prompts:
+
+```
+## Findings
+| Location | Issue | Query Count Before -> After | Fix |
+```
+
 ## Avoid
 
-- `$guarded = []` (mass assignment vulnerability)
-- Lazy loading in loops; `Model::all()` on growable tables
+- `$guarded = []`; `Model::all()` on growable tables; lazy loading in loops
 - Business logic in accessors/mutators (keep models thin)
 - `whereRaw` / `DB::raw` with interpolated user input
 - Global scopes for non-universal concerns (forgotten exclusions, debug pain)
-- Missing FK constraints; string status columns without backed enums
-- `cursor()` when you need eager loading
+- String status columns without backed enums; missing FK constraints
+- `cursor()` when you need eager loading (use `lazy()`)
 - Decrement without `WHERE` guard or lock (race / negative stock)
-- `lockForUpdate()` outside `DB::transaction()` (lock immediately released)

@@ -18,30 +18,28 @@ user-invocable: false
 
 ## Rules
 
-- API Resources for all responses; never return raw Eloquent models (leaks columns, no shape control)
-- Form Requests for validation; `$request->validated()` not `$request->all()` (mass assignment risk)
-- Controllers stay thin - delegate to services/actions; list endpoints paginate
-- `authorize()` on Form Requests defaults to `false` - set explicitly
-- Webhook endpoints: verify signature, respond 200 fast, process async, ensure idempotency
+- API Resources for every response; never return raw Eloquent models
+- Form Requests for validation; `authorize()` returns an explicit boolean (defaults to `false`)
+- Controllers stay thin: validate, delegate to service/action, return Resource
+- List endpoints paginate; enforce a server-side `per_page` cap (`min:1|max:100`)
+- Webhooks: verify signature, respond 200 fast, process async, dedupe on provider event ID
 
 ## Patterns
 
 ### Resource controllers
 
-Thin: validate via Form Request, delegate to service, return Resource.
+Thin: Form Request validates, service performs work, Resource shapes output. No inline queries.
 
 ```php
 class OrderController extends Controller {
-    public function __construct(private readonly OrderService $orderService) {}
+    public function __construct(private readonly OrderService $orders) {}
 
-    public function index(Request $request): AnonymousResourceCollection {
-        $orders = Order::where('user_id', $request->user()->id)
-            ->with('items')->latest()->paginate();
-        return OrderResource::collection($orders);
+    public function index(IndexOrderRequest $request): AnonymousResourceCollection {
+        return OrderResource::collection($this->orders->listForUser($request));
     }
 
     public function store(StoreOrderRequest $request): OrderResource {
-        $order = $this->orderService->create(CreateOrderDTO::fromRequest($request));
+        $order = $this->orders->create(CreateOrderDTO::fromRequest($request));
         return new OrderResource($order->load('items'));
     }
 
@@ -52,7 +50,7 @@ class OrderController extends Controller {
 
     public function destroy(Order $order): JsonResponse {
         $this->authorize('delete', $order);
-        $this->orderService->cancel($order);
+        $this->orders->cancel($order);
         return response()->json(null, 204);
     }
 }
@@ -68,9 +66,6 @@ Route::apiResource('users.orders', OrderController::class)->scoped(['order' => '
 
 // Custom key
 Route::get('/orders/{order:uuid}', [OrderController::class, 'show']);
-
-// Include soft-deleted
-Route::get('/orders/{order}', [...])->withTrashed();
 ```
 
 ### Form Requests
@@ -90,26 +85,29 @@ class StoreOrderRequest extends FormRequest {
             'items.*.unit_price' => ['required', 'numeric', 'min:0.01'],
         ];
     }
-
-    public function messages(): array {
-        return ['items.min' => 'An order must have at least one item.'];
-    }
 }
 
-// Update: authorize against the bound model
+// Update authorizes against the bound model
 class UpdateOrderRequest extends FormRequest {
     public function authorize(): bool {
         return $this->user()->can('update', $this->route('order'));
     }
+}
+
+// List with per_page cap
+class IndexOrderRequest extends FormRequest {
+    public function authorize(): bool { return true; }
     public function rules(): array {
-        return ['shipping_address' => ['sometimes', 'string', 'max:500']];
+        return [
+            'per_page' => ['integer', 'min:1', 'max:100'],
+            'status' => ['nullable', Rule::enum(OrderStatus::class)],
+            'sort' => ['nullable', Rule::in(['id', 'created_at', 'total'])],
+        ];
     }
 }
 ```
 
 ### API Resources
-
-Control output shape and conditional loading.
 
 ```php
 class OrderResource extends JsonResource {
@@ -142,29 +140,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::apiResource('orders', OrderController::class);
 });
 
-class EnsureOrderOwner {
-    public function handle(Request $request, Closure $next): Response {
-        if ($request->route('order')->user_id !== $request->user()->id) {
-            abort(403, 'You do not own this order.');
-        }
-        return $next($request);
-    }
-}
-
 // bootstrap/app.php (Laravel 11+)
-->withMiddleware(function (Middleware $middleware) {
-    $middleware->alias(['order.owner' => EnsureOrderOwner::class]);
+->withMiddleware(function (Middleware $m) {
+    $m->alias(['order.owner' => EnsureOrderOwner::class]);
 })
-```
-
-### Versioning
-
-Route prefix + controller namespace. Prefer over header versioning for simplicity.
-
-```php
-Route::prefix('v1')->group(fn() => Route::apiResource('orders', V1\OrderController::class));
-Route::prefix('v2')->group(fn() => Route::apiResource('orders', V2\OrderController::class));
-// app/Http/Controllers/V1/OrderController.php, V2/OrderController.php
 ```
 
 ### Pagination
@@ -173,30 +152,31 @@ Route::prefix('v2')->group(fn() => Route::apiResource('orders', V2\OrderControll
 | ------------------ | ----- | -------------- | ------------------------------- |
 | `paginate()`       | Yes   | Slower (COUNT) | Admin panels, known small sets  |
 | `simplePaginate()` | No    | Faster         | "Load more" lists               |
-| `cursorPaginate()` | No    | Fastest        | Infinite scroll, large datasets |
+| `cursorPaginate()` | No    | Fastest        | Infinite scroll, large tables   |
 
-```php
-Order::orderBy('id')->cursorPaginate($request->integer('per_page', 15));
-```
+### Versioning
+
+Route prefix + namespace (`Route::prefix('v1')->group(...)` -> `App\Http\Controllers\V1\OrderController`). Prefer over header versioning.
 
 ### Exception handling
 
+Centralize in `bootstrap/app.php` (Laravel 11+); never per-controller `try/catch` wrapping framework exceptions.
+
 ```php
-// bootstrap/app.php (Laravel 11+)
 ->withExceptions(function (Exceptions $exceptions) {
-    $exceptions->render(function (ModelNotFoundException $e, Request $request) {
-        if ($request->expectsJson()) {
-            return response()->json(['error' => 'Resource not found', 'type' => 'not_found'], 404);
+    $exceptions->render(function (ModelNotFoundException $e, Request $r) {
+        if ($r->expectsJson()) {
+            return response()->json(['error' => 'Resource not found'], 404);
         }
     });
-    $exceptions->render(function (AuthorizationException $e, Request $request) {
-        if ($request->expectsJson()) {
-            return response()->json(['error' => 'Unauthorized', 'type' => 'forbidden'], 403);
+    $exceptions->render(function (AuthorizationException $e, Request $r) {
+        if ($r->expectsJson()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
     });
 })
 
-// Domain exception with correct status code
+// Domain exceptions extend HttpException with correct status
 class InsufficientStockException extends HttpException {
     public function __construct(string $product, int $requested, int $available) {
         parent::__construct(422, "Insufficient stock for {$product}: requested {$requested}, available {$available}");
@@ -206,25 +186,23 @@ class InsufficientStockException extends HttpException {
 
 ### Search and filtering
 
-`when()` keeps optional filters declarative.
+`when()` keeps optional filters declarative. Push into the service / query class; the controller stays thin.
 
 ```php
-public function index(Request $request): AnonymousResourceCollection {
-    $products = Product::query()
-        ->when($request->query('category_id'), fn($q, $v) => $q->where('category_id', $v))
-        ->when($request->query('min_price'),   fn($q, $v) => $q->where('price', '>=', $v))
-        ->when($request->boolean('active_only'), fn($q) => $q->where('is_active', true))
-        ->when($request->query('search'), fn($q, $v) => $q->whereFullText(['name', 'description'], $v))
-        ->with('category')->latest()
-        ->paginate($request->integer('per_page', 15));
-
-    return ProductResource::collection($products);
+public function listForUser(IndexOrderRequest $request): LengthAwarePaginator {
+    return Order::query()
+        ->where('user_id', $request->user()->id)
+        ->when($request->query('status'), fn($q, $v) => $q->where('status', $v))
+        ->when($request->query('search'), fn($q, $v) => $q->whereFullText(['title'], $v))
+        ->with(['items:id,order_id,qty'])
+        ->orderBy($request->validated('sort', 'id'))
+        ->cursorPaginate($request->integer('per_page', 25));
 }
 ```
 
 ### Webhook controllers
 
-External callbacks differ from API endpoints: no Sanctum auth (signature verify instead), respond 200 immediately (provider retries on non-2xx), process async, ensure idempotency.
+External callbacks differ from API endpoints: no Sanctum (signature verify instead), respond 200 fast, process async, dedupe on provider event ID.
 
 ```php
 class StripeWebhookController extends Controller {
@@ -236,23 +214,25 @@ class StripeWebhookController extends Controller {
                 config('services.stripe.webhook_secret'),
             );
         } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            Log::warning('Stripe webhook signature failed', ['ip' => $request->ip()]);
             return response()->json(['error' => 'Invalid signature'], 403);
         }
 
-        ProcessStripeEvent::dispatch($event->type, $event->data->object->toArray());
+        ProcessStripeEvent::dispatch($event->id, $event->type, $event->data->object->toArray());
         return response()->json(['received' => true]);
     }
 }
 
-// Route - no auth middleware, dedicated rate limit, exclude from CSRF
+// Route: no auth, dedicated rate limit, exempt from CSRF
 Route::post('/webhooks/stripe', StripeWebhookController::class)->middleware('throttle:webhook');
-
 RateLimiter::for('webhook', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
 ```
 
-Idempotency: persist `$event->id` and skip duplicates in the queued job.
+Idempotency: persist `$event->id` in a `webhook_events` table with a unique index; in the queued job, `WebhookEvent::firstOrCreate(...)` and skip if already present.
 
 ## Output Format
+
+For **design** prompts:
 
 ```
 ## Endpoints
@@ -268,12 +248,18 @@ Idempotency: persist `$event->id` and skip duplicates in the queued job.
 | Error Type | HTTP Status | Response Body |
 ```
 
+For **audit** prompts:
+
+```
+## Findings
+| Location | Issue | Fix |
+```
+
 ## Avoid
 
-- Raw Eloquent models from controllers (leaks columns, no shape control)
-- Inline validation or `$request->all()` to `Model::create()` (mass assignment)
-- Missing `authorize()` in Form Requests (defaults to `false` - locks legitimate users out)
+- Raw Eloquent models from controllers; inline `$request->validate` or `$request->all()` to `Model::create`
+- Missing `authorize()` in Form Requests (defaults to `false`)
 - N+1 in Resources - eager load before passing to Resource
 - Hardcoded `per_page` with no cap (DoS via huge page sizes)
-- Wrong status codes: 200 on errors, 500 on validation failures, `abort(500)` for business errors
+- Wrong status codes (200 on errors, 500 on validation, `abort(500)` for business errors)
 - Webhooks: synchronous processing, Sanctum auth, missing signature verification

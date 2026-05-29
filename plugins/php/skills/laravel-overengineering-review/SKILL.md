@@ -18,10 +18,10 @@ user-invocable: false
 
 - Every finding cites the constraint making the code redundant: FK, `nullable(false)`, unique index, model cast, Form Request rule, Policy, or framework guarantee.
 - Severity:
-  - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present (record in `Cost:`). Triggers: extra SELECT in a hot path; blanket `catch (\Throwable)` defeating `renderable` mappings; single-impl Repository forcing two-file refactors; synchronous Event + single Listener replacing a direct call.
+  - **Default `[Suggestion]`** - cite the constraint, recommend the edit.
+  - **`[High]`** when a measurable cost is present (record in `Cost:`): extra SELECT in a hot path; blanket `catch (\Throwable)` defeating `renderable` mappings; single-impl Repository / interface forcing two-file refactors; synchronous Event + single Listener replacing a direct call.
   - **`[Question]`** when justification is plausible but not visible in the diff.
-- A redundancy with **visible** justification is not a finding. See `Avoid`.
+- A redundancy with **visible** justification is not a finding.
 
 ## Patterns
 
@@ -32,7 +32,7 @@ Validation stack: **Form Request `rules()` -> Eloquent `$casts` / mutators -> DB
 #### Inline `$request->validate(...)` duplicating a Form Request
 
 ```php
-// Bad - two validation paths for the same payload
+// Bad - two validation paths
 public function store(Request $request) {
     $data = $request->validate(['customer_id' => 'required|integer|exists:customers,id']);
     Order::create($data);
@@ -57,12 +57,6 @@ catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
 #### `$fillable` and `$guarded` set together
 
 Pick one. Allowlist (`$fillable`) fails closed when new columns appear.
-
-```php
-// Bad
-protected $fillable = ['customer_id', 'total'];
-protected $guarded  = ['id'];
-```
 
 ### Category 2: Defensive code for impossible states
 
@@ -113,7 +107,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface {
 // Good - Order::findOrFail($orderId);
 ```
 
-Justified when: a non-Eloquent backend (stored procedure, external API as source of truth), or a test seam Mockery cannot satisfy.
+Justified when: non-Eloquent backend (stored procedure, external API as source of truth), or a test seam Mockery cannot satisfy.
 
 #### Service / action wrapping a single Eloquent call
 
@@ -138,7 +132,7 @@ Justified when: multi-step orchestration, cross-aggregate writes, or external I/
 
 Justified when: the listener implements `ShouldQueue` (retry/latency decoupling), or a second listener exists.
 
-#### `BaseRepository` / `BaseService` parent for one or two children
+#### `BaseRepository` / `BaseService` parent for 1-2 children
 
 Inline until 3+ consumers share genuine cross-cutting behavior.
 
@@ -153,7 +147,6 @@ Pick one; API Resources are Laravel's mapping primitive. Flag `OrderMapper::from
 return [
     'gateway_url' => env('PAYMENT_GATEWAY_URL'),
     'audit'       => (bool) env('PAYMENT_AUDIT', false),  // never read
-    'tracing_tag' => env('PAYMENT_TRACING_TAG'),          // never read
 ];
 ```
 
@@ -161,7 +154,7 @@ Flag only after a repo-wide grep confirms zero `config('...')` read sites - queu
 
 ## Output Format
 
-Findings contribute to the consuming workflow's unified output. One block per finding:
+One block per finding:
 
 ```
 ### [Suggestion | High | Question] file:line

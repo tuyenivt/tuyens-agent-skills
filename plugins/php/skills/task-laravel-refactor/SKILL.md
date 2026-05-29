@@ -43,21 +43,19 @@ Use skill: `behavioral-principles`. Do not skip.
 
 ### Step 2 - Confirm Stack and Detect Surface
 
-Use skill: `stack-detect` to confirm PHP / Laravel (accept pre-confirmed from a parent). If not Laravel, route to `/task-code-refactor`. Record `ORM` (Eloquent / query builder), `Queue` (Redis+Horizon / database / sync), `Auth` (Sanctum / Passport / session), `Tests Framework` (Pest / PHPUnit).
+Use skill: `stack-detect` to confirm PHP / Laravel. If not Laravel, route to `/task-code-refactor`. Record `ORM` (Eloquent / query builder), `Queue` (Redis+Horizon / database / sync), `Auth` (Sanctum / Passport / session), `Tests Framework` (Pest / PHPUnit).
 
-**Input completeness check.** Both **target scope** AND **goal** must be supplied. If only a goal is given, ask for the target - do not guess from git history or the largest controller.
+**Input completeness check.** Both **target scope** AND **goal** must be supplied. If only a goal is given, ask for the target - do not guess.
 
 ### Step 3 - Read the Target
 
-Refactors grounded in prose hallucinate.
-
-1. Read the target file; note method count, longest method, transaction placement (`DB::transaction(...)`, `$model->save()` chains), every external collaborator (`Http::*`, `Event::dispatch`, `dispatch(...)`, `Mail::*`, `Notification::send(...)`)
-2. Read matching tests (`tests/Feature/...`, `tests/Unit/...`); count cases per outcome (happy / validation / external / auth); confirm pint and PHPStan state
+1. Read the target file; note method count, longest method, transaction placement, every external collaborator (`Http::*`, `Event::dispatch`, `dispatch(...)`, `Mail::*`, `Notification::send`)
+2. Read matching tests; count cases per outcome (happy / validation / external / auth); confirm pint and PHPStan state
 3. Read obvious callers - reshaping `public` members without seeing call sites silently breaks them
 
 **Sibling-smell disposition.** When the target file contains other smells, do not action them and do not ignore them silently. List under `Sibling Smells (Out of Scope)` with deferral rationale and recommended follow-up.
 
-**Severity-inversion rule.** When any sibling smell outranks the named target (working SQL injection, `exec($userInput)` RCE, auth bypass, `unserialize($userInput)` on untrusted input), recommend pausing the refactor and routing the security finding first: `Fix before refactor: invoke task-laravel-review-security; refactor PR should branch off the security fix, not main`.
+**Severity-inversion rule.** When any sibling smell outranks the named target (working SQL injection, `exec($userInput)` RCE, auth bypass, `unserialize($userInput)` on untrusted input), recommend pausing the refactor and routing the security finding first.
 
 **Severity-inversion banner.** When the rule fires, render at the top of Coverage Gate (above the verdict): `> **Severity inversion detected.** This file contains <N> sibling smells of higher severity than the named target (<list>). Pause this refactor; route through task-laravel-review-security first; branch the eventual refactor PR off the security fix.`
 
@@ -71,9 +69,9 @@ Refactoring without coverage is a rewrite. Assign one status:
 | `Thin`       | Happy path **plus** exactly 1 boundary outcome                      | Proceed with non-optional `Step 0 - Coverage prerequisite` before any refactor step                        |
 | `Inadequate` | No tests, or happy-path-only                                        | **Refuse Steps 1+.** Output only the verdict and recommend running `task-laravel-test` first               |
 
-Happy-path-only is `Inadequate`, not `Thin` - one success case cannot verify validation, authorization, or error behavior.
+Happy-path-only is `Inadequate`, not `Thin`.
 
-**Wrong-store disqualifier.** `phpunit.xml` with `<env name="DB_CONNECTION" value="sqlite"/>` (or `:memory:`) while prod uses MySQL/PostgreSQL → `Inadequate` regardless of case count. SQLite skips FK enforcement, JSON path queries, fulltext, concurrent updates. Step 0 must migrate affected tests to real MySQL/PostgreSQL.
+**Wrong-store disqualifier.** `phpunit.xml` with `<env name="DB_CONNECTION" value="sqlite"/>` (or `:memory:`) while prod uses MySQL/PostgreSQL → `Inadequate` regardless of case count.
 
 **Lint gate.** `vendor/bin/pint --test` and `composer phpstan` (Larastan L5+) must be clean OR Step 0a must address them. Values: `clean` / `warnings present (Step 0a)` / `not run (no baseline)`.
 
@@ -89,19 +87,19 @@ Signals, not hard rules. Format: `Smell - signal. Risk.`
 
 - Fat Controller - action > 30 lines of orchestration. High
 - Logic in Controller - business rules / calculation in the action. High
-- Direct Eloquent - `Order::where(...)->get()` bypassing services (OK for trivial CRUD). Medium
+- Direct Eloquent - bypassing services (OK for trivial CRUD). Medium
 - Eloquent Model Returned - leaks `password`, `remember_token`, soft-delete cols. High
 - Inline Validation - re-checks rules already in Form Request. Low
 - Per-action `try/catch` - inline error mapping vs `bootstrap/app.php` `withExceptions`. Medium
-- Missing `auth:` middleware - route group lacks `auth:sanctum`/`auth`. High
-- Missing Policy / `$this->authorize` - owner-data action without authz (auth != authz). High
-- `$request->all()` Mass Assignment - opens future fillable changes. High
+- Missing `auth:` middleware - route group lacks auth. High
+- Missing Policy / `$this->authorize` - owner-data action without authz. High
+- `$request->all()` Mass Assignment. High
 
 **Form Request**
 
 - Missing Form Request - inline `$request->validate([...])`. Medium
 - `authorize()` returns `true` - default-allow on user-data endpoint. High
-- Privilege Field in `rules()` - `role`, `is_admin`, `user_id` exposed to client. High
+- Privilege Field in `rules()` - `role`, `is_admin`, `user_id` exposed. High
 - Identity Field in `rules()` - `id` exposed; cache-poisoning. High
 
 **Service / Action**
@@ -110,55 +108,52 @@ Signals, not hard rules. Format: `Smell - signal. Risk.`
 - Anemic Domain - `OrderService::calculateTotal($order)` that belongs as `$order->total()`. Medium
 - Single-Implementation Interface - no mocks, no second impl. Medium
 - Repository Over Eloquent - `findById($id) { return Order::find($id); }`. Medium
-- Container Lookup in Business Code - `app(OrderService::class)` / `resolve(...)` inside a service. Medium
+- Container Lookup in Business Code - `app(...)` / `resolve(...)`. Medium
 - External I/O Inside Transaction - `Http::post(...)` / `dispatch(...)` inside `DB::transaction(...)` without `afterCommit`. High
 - Multiple `save()` per Use Case - >1 `$model->save()` outside a transaction. High
-- `null` from Failure-Capable Op - caller can't distinguish validation vs not-found vs external. Medium
-- Floating `dispatch` - fire-and-forget in transactional contexts without after-commit. High
+- `null` from Failure-Capable Op - caller can't distinguish validation vs not-found. Medium
 
 **Persistence / Eloquent**
 
 - `$guarded = []` on Model - opens every column. Critical (with `$request->all()`) / High
 - Missing `$fillable` - relies on `$guarded` defaults. Medium
 - N+1 Lazy Loading in Blade - `@foreach ($orders ...) {{ $order->user->name }}` without upstream `with('user')`. High
-- N+1 via Per-Iteration `find()` - `Child::where('parent_id', $parent->id)->first()` per loop. High
-- Multi-Relation Eager Load - `with(['items','shipments','history','invoices'])`: one query per relation. Medium
-- `Model::all()` on Growable Table - no `chunk`/`lazy`/`cursor`/`paginate`. High
+- N+1 via Per-Iteration `find()`. High
+- Multi-Relation Eager Load - `with(['items','shipments','history','invoices'])`. Medium
+- `Model::all()` on Growable Table. High
 - `whereRaw($input)` - raw SQL via string interpolation. Critical
 - `orderByRaw($request->input('sort'))` - user-supplied column without allowlist. Critical
 - Long-Running Transaction - `DB::transaction(...)` containing `Http::post(...)`. High
 - Missing FK `->constrained()` - new FK column without `onDelete`. Medium
-- Eloquent as Domain + DTO - same model is domain type and API response type. Medium
+- Eloquent as Domain + DTO. Medium
 
 **Configuration / DI**
 
-- `env()` Outside Config - in services/jobs - breaks `config:cache` (returns null in prod). High
-- Container Lookup - `app(...)` / `resolve(...)` / `App::make(...)` in service/controller/job. Medium
+- `env()` Outside Config - breaks `config:cache` (returns null in prod). High
 - Hardcoded Defaults Inline - rather than `config()`. Medium
-- Single-Implementation Interface - no mock, no second impl. Medium
 - Singleton Capturing Request State - leaks under Octane. High (Octane) / Medium
-- Static Mutable State - `static $cache = []` mutated by request handlers; leaks under Octane. High (Octane) / Medium
+- Static Mutable State - `static $cache = []` mutated by handlers. High (Octane) / Medium
 - New `Client(...)` Per Request - defeats keep-alive. Medium
 
 **Queue / Job**
 
-- Job Constructor Takes Eloquent - `new ProcessPayment($order)` serializes a snapshot; pass `$order->id`. High
-- Dispatched Inside Transaction - without `->afterCommit()`; worker may run before commit. High
-- Missing `$tries`/`$backoff`/`$timeout` - defaults are unbounded retries + 60s timeout. High
-- Missing `failed(Throwable $e)` - DLQ-bound jobs invisible. Medium
+- Job Constructor Takes Eloquent - `new ProcessPayment($order)`. High
+- Dispatched Inside Transaction - without `->afterCommit()`. High
+- Missing `$tries`/`$backoff`/`$timeout`. High
+- Missing `failed(Throwable $e)`. Medium
 - Not Idempotent - `handle()` re-runs side effects when delivered twice. High
-- `QUEUE_CONNECTION=sync` in Prod - defeats every queue guarantee. Critical
+- `QUEUE_CONNECTION=sync` in Prod. Critical
 
 **Tests (when refactor brings tests into scope)**
 
-- SQLite for MySQL/PostgreSQL App - `<env DB_CONNECTION>` is `sqlite` while prod isn't. High
-- `Queue::fake` masking `handle()` - only asserts dispatch. Medium
+- SQLite for MySQL/PostgreSQL App. High
+- `Queue::fake` masking `handle()`. Medium
 - Copy-Paste `it(...)` / `test_*` - cases where Pest `with(...)` / `@dataProvider` would do. Low
 - `dd()` / `dump()` left in tests. Low
 
-**General OO.** Use skill: `backend-coding-standards` for cross-language catalog. Use skill: `complexity-review` when target shows over-engineering (single-impl interfaces, premature factory/strategy, redundant mappers, repository-for-trivial-reads) - simplification opportunities, not extraction opportunities.
+**General OO.** Use skill: `backend-coding-standards` for cross-language catalog. Use skill: `complexity-review` for over-engineering simplification.
 
-**Atomic skill composition.** Cite the matching skill in the relevant step; do not paste content.
+**Atomic skill composition.** Cite the matching skill in the relevant step.
 
 | Signal in target                                                                                                       | Atomic skill                  |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -177,38 +172,24 @@ State: **Narrow** (single file, single caller) / **Moderate** (single namespace,
 
 ### Step 7 - Propose the Step Sequence
 
-Each step: **independently committable** (`php artisan test` + `composer phpstan` + `vendor/bin/pint --test` pass after), **behaviorally invariant** unless labeled `coupled-fix`, **reversible** in one revert, **tested** (new tests when extracting new units).
+Each step: **independently committable** (`php artisan test` + `composer phpstan` + `vendor/bin/pint --test` pass after), **behaviorally invariant** unless labeled `coupled-fix`, **reversible** in one revert, **tested**.
 
-**Recipe interleaving.** Multiple applicable recipes do not concatenate. Identify the **primary** recipe (usually the user's goal), use it as the spine, fold supporting recipes in as additive sub-steps where dependencies require. State `Primary recipe:` explicitly. Past ~8 steps, split into two PRs.
+**Recipe interleaving.** Multiple applicable recipes do not concatenate. Identify the **primary** recipe (usually the user's goal), use it as the spine, fold supporting recipes in as sub-steps. State `Primary recipe:` explicitly. Past ~8 steps, split into two PRs.
 
-**Coupled-fix.** When a refactor genuinely depends on a behavior change (e.g., extracting a service that derives `tenant_id` from `auth()->user()` requires `auth:` middleware on the route), label the step `coupled-fix` with its own test gate and rationale.
+**Coupled-fix.** When a refactor genuinely depends on a behavior change, label the step `coupled-fix` with its own test gate and rationale.
 
 **Per-step stances** (state every step):
 
-- **Transaction stance:** `inside caller's transaction` / `post-commit via ->afterCommit()` / `not transactional`. Never silently move I/O across a transaction boundary.
-- **Mass-assignment stance:** `no change` / `$request->all() → $request->validated()` (cascading: list fields) / `$fillable replacing $guarded = []` / `unchanged`. Never partially convert.
-- **Container stance:** `no change` / `bind` (transient) / `singleton` (one per app) / `scoped` (one per request, L11+) / `static replaced with DI`. A consolidation into singleton must check what state it captures.
-- **Queue stance:** `no change` / `introduces dispatch` (afterCommit + tries/backoff/timeout/failed + scalar ID + idempotency required) / `scalar-ID ctor` / `adds idempotency guard`. Dispatching from inside a transaction without `->afterCommit()` is a defect.
+- **Transaction stance:** `inside caller's transaction` / `post-commit via ->afterCommit()` / `not transactional`
+- **Mass-assignment stance:** `no change` / `$request->all() → $request->validated()` (cascading) / `$fillable replacing $guarded = []` / `unchanged`
+- **Container stance:** `no change` / `bind` / `singleton` / `scoped` (L11+) / `static replaced with DI`
+- **Queue stance:** `no change` / `introduces dispatch` (afterCommit + tries/backoff/timeout/failed + scalar ID + idempotency required) / `scalar-ID ctor` / `adds idempotency guard`
 
 **Common Laravel refactor recipes:**
 
 **Extract action / service from fat controller.** (1) Add `app/Actions/<Feature>/PlaceOrderAction.php` (or `app/Services/OrderService.php`); copy orchestration. (2) Unit test parameterized over success / validation failure / external failure. (3) Controller injects + delegates: `$this->placeOrder->execute($request->validated())`; preserve response shape. (4) Remove original logic; feature tests pass. (5) Feature test asserting action failure surfaces via centralized exception handler.
 
-**Eliminate mass assignment via `$guarded = []` and `$request->all()`.** (1) Identify: `class Order { protected $guarded = []; }` + `Order::create($request->all())`. (2) Replace with explicit `$fillable = ['shipping_address', 'notes', 'items']` - never `user_id`, `tenant_id`, `role`, `is_admin`, `verified_at`, `password`. (3) Add Form Request with `authorize()` + `rules()`:
-```php
-class StoreOrderRequest extends FormRequest {
-    public function authorize(): bool { return $this->user()->can('create', Order::class); }
-    public function rules(): array {
-        return [
-            'shipping_address' => ['required', 'string', 'max:500'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-        ];
-    }
-}
-```
-(4) Bind: `public function store(StoreOrderRequest $request)`; explicit assignment plus server-set fields:
+**Eliminate mass assignment via `$guarded = []` and `$request->all()`.** (1) Identify: `class Order { protected $guarded = []; }` + `Order::create($request->all())`. (2) Replace with explicit `$fillable` - never `user_id`, `tenant_id`, `role`, `is_admin`, `verified_at`, `password`. (3) Add Form Request with `authorize()` + `rules()`. (4) Bind: `public function store(StoreOrderRequest $request)`; explicit assignment plus server-set fields:
 ```php
 $order = (new Order)->fill($request->validated());
 $order->user_id = $request->user()->id;
@@ -217,38 +198,29 @@ $order->save();
 ```
 (5) Feature test injecting `user_id` / `role`; assert stripped (or 422). (6) Audit other unsafe bindings.
 
-**Eliminate Eloquent N+1 in Blade / API Resource.** (1) Identify lazy relation in `@foreach` or Resource `toArray()`. (2) Add `with(...)` upstream: `Order::with(['user', 'items'])->cursorPaginate(25)`. (3) Enable `Model::preventLazyLoading()` in `AppServiceProvider::boot` so remaining lazy loads throw in dev. **Skip if** relation is rarely accessed - use `whenLoaded` in the Resource, eager-load only where needed.
+**Eliminate Eloquent N+1 in Blade / API Resource.** (1) Identify lazy relation in `@foreach` or Resource `toArray()`. (2) Add `with(...)` upstream: `Order::with(['user', 'items'])->cursorPaginate(25)`. (3) Enable `Model::shouldBeStrict()` in `AppServiceProvider::boot` so remaining lazy loads throw in dev.
 
 **Move side effects out of an open DB transaction.** When `Http::post(...)`, `Mail::send(...)`, or `dispatch(...)` runs inside `DB::transaction(...)`, side effect can fire before commit or hold the DB connection. Pick one option; do not stack.
 
-*Option A: Post-commit via `->afterCommit()`* (default). (1) Move side effect out of transaction body; capture inputs, exit, dispatch. (2) Jobs: `dispatch((new ProcessPayment($order->id))->afterCommit())`, or `public bool $afterCommit = true;` on the job. If `QUEUE_AFTER_COMMIT=true` is set globally, remove explicit `withoutCommit()` overrides. (3) Raw HTTP / mail: capture inputs in locals inside the transaction; run after `DB::transaction(...)` returns. (4) Risk: if the side effect must run before commit (rare), use Option B.
+*Option A: Post-commit via `->afterCommit()`* (default). (1) Move side effect out of transaction body; capture inputs, exit, dispatch. (2) Jobs: `dispatch((new ProcessPayment($order->id))->afterCommit())`, or `public bool $afterCommit = true;` on the job. (3) Raw HTTP / mail: capture inputs in locals inside the transaction; run after `DB::transaction(...)` returns. (4) Risk: if the side effect must run before commit (rare), use Option B.
 
-*Option B: Transactional outbox* (when delivery must be exactly-once-after-commit: financial events, audit-required). (1) Add `outbox_messages` table (`id, aggregate_type, aggregate_id, event_type, payload, created_at, processed_at`); index `(processed_at, created_at)`. (2) In the same transaction as the business row, `OutboxMessage::create([...])` - both commit atomically or both roll back. (3) Relay (`Schedule::command('outbox:relay')->everyMinute()->withoutOverlapping()->onOneServer()`): select unprocessed, dispatch the real job / HTTP call / mail, mark `processed_at = now()`. Consumer-side idempotency still required. (4) Trade-off: extra table, relay command, ~minute latency vs. immediate dispatch.
+*Option B: Transactional outbox* (when delivery must be exactly-once-after-commit: financial events, audit-required). (1) Add `outbox_messages` table; index `(processed_at, created_at)`. (2) In the same transaction as the business row, `OutboxMessage::create([...])`. (3) Relay (`Schedule::command('outbox:relay')->everyMinute()->withoutOverlapping()->onOneServer()`): select unprocessed, dispatch, mark `processed_at`. Consumer-side idempotency still required.
 
-**Convert job to scalar IDs and `->afterCommit()`.** (1) Identify: `dispatch(new ProcessPayment($order))` with `public function __construct(public Order $order)`. (2) Scalar ctor: `public function __construct(public int $orderId) {}` and `handle(PaymentService $s) { $s->charge(Order::findOrFail($this->orderId)); }`. (3) Dispatch: `dispatch((new ProcessPayment($order->id))->afterCommit())` or `public bool $afterCommit = true;`. (4) Add `$tries`, `$backoff`, `$timeout`, `failed()`:
-```php
-public int $tries = 3;
-public array $backoff = [10, 60, 300];
-public int $timeout = 120;
-public function failed(Throwable $e): void { Log::error('Payment failed', ['order_id' => $this->orderId, 'exception' => $e]); }
-```
-(5) Job test: real `handle()`, idempotency (twice → one side effect), retry (fail twice, succeed), `failed()` invocation.
+**Convert job to scalar IDs and `->afterCommit()`.** (1) Identify: `dispatch(new ProcessPayment($order))` with `public function __construct(public Order $order)`. (2) Scalar ctor: `public function __construct(public int $orderId) {}` and `handle(PaymentService $s) { $s->charge(Order::findOrFail($this->orderId)); }`. (3) Dispatch: `dispatch((new ProcessPayment($order->id))->afterCommit())`. (4) Add `$tries`, `$backoff`, `$timeout`, `failed()`. (5) Job test: real `handle()`, idempotency (twice → one side effect), retry, `failed()` invocation.
 
-**CancellationToken analog (Laravel).** Queue is at-least-once with explicit retry budget; "cancellation" is `$tries` + `retryUntil()` + `WithoutOverlapping`. (1) Set `$timeout` per job. (2) `public function retryUntil(): DateTime { return now()->addHours(2); }` for time-bounded jobs. (3) `WithoutOverlapping` middleware for resource-bound jobs (per-key serialization). (4) `RateLimited` middleware for third-party-API-bound jobs.
+**Eliminate single-implementation interface.** (1) Confirm no Mockery mock, no second impl, no DI lifetime / decoration need. (2) Consumers use the concrete class. Delete the interface. **Skip if** part of a public API (Composer package) or has a real second impl / mock.
 
-**Eliminate single-implementation interface.** (1) Confirm no Mockery mock, no second impl, no DI lifetime / decoration need. (2) Consumers use the concrete class; `app()->bind(OrderService::class, ...)`. Delete the interface. **Skip if** part of a public API (Composer package) or has a real second impl / mock.
+**Replace repository-over-Eloquent with direct Eloquent.** (1) Identify: `class OrderRepository { public function findById(int $id): ?Order { return Order::find($id); } }`. (2) Callers use `Order::find($id)` directly. (3) Delete the class; remove the binding. **Skip if** the repository abstracts non-Eloquent storage or has multiple impls.
 
-**Replace repository-over-Eloquent with direct Eloquent.** (1) Identify: `class OrderRepository { public function findById(int $id): ?Order { return Order::find($id); } }`. (2) Callers use `Order::find($id)` directly. (3) Delete the class; remove the binding. **Skip if** the repository abstracts non-Eloquent storage (Redis, external API) or has multiple impls.
+**Replace mapper with API Resource.** (1) Identify: `class OrderMapper { public function toResponse(Order $order): array { ... } }`. (2) Replace with `OrderResource extends JsonResource`. (3) Controller: `return OrderResource::make($order);`. (4) Delete mapper + bindings.
 
-**Replace mapper with API Resource.** (1) Identify: `class OrderMapper { public function toResponse(Order $order): array { ... } }`. (2) Replace: `class OrderResource extends JsonResource { public function toArray($request): array { ... } }`. (3) Controller: `return OrderResource::make($order);` (or `::collection(...)`). (4) Delete mapper + bindings. Resources cover `whenLoaded`, conditional fields, pagination meta.
+**Eliminate `env()` outside config files.** (1) Identify: `env('STRIPE_KEY')` in service/controller/job. (2) Add to `config/services.php`. (3) Replace call with `config('services.stripe.key')`. (4) Verify `php artisan config:cache` works.
 
-**Eliminate `env()` outside config files.** (1) Identify: `env('STRIPE_KEY')` in service/controller/job. (2) Add to `config/services.php`: `'stripe' => ['key' => env('STRIPE_KEY'), 'secret' => env('STRIPE_SECRET')]`. (3) Replace call with `config('services.stripe.key')`. (4) Verify `php artisan config:cache` works; Larastan strict rules can enforce.
+**Replace `new GuzzleHttp\Client()` with shared / `Http::*`.** (1) Identify per-request construction. (2) Use `Http::get($url)` (shared handler / connection pool). (3) `Http::timeout(5)->retry(3, 100)->get($url)` per call. (4) SDK-required Guzzle: bind singleton.
 
-**Replace `new GuzzleHttp\Client()` with shared / `Http::*`.** (1) Identify per-request construction: `$client = new \GuzzleHttp\Client();`. (2) Use `Http::get($url)` (shared handler / connection pool). (3) `Http::timeout(5)->retry(3, 100)->get($url)` per call, or via a pending-request macro in `AppServiceProvider`. (4) SDK-required Guzzle (Stripe SDK): bind singleton: `$this->app->singleton(\Stripe\StripeClient::class, fn () => new \Stripe\StripeClient(config('services.stripe.secret')));`.
+**Replace mutable static state with constructor-injected service.** (1) Identify: `class OrderCache { private static array $cache = []; ... }`. (2) Convert to instance + `app()->singleton(OrderCache::class)`. For per-request scope, `app()->scoped(...)` (L11+) so binding resets between requests under Octane. (3) Consumers receive `OrderCache` via constructor. (4) Cross-request isolation test (fresh request → empty cache).
 
-**Replace mutable static state with constructor-injected service.** (1) Identify: `class OrderCache { private static array $cache = []; public static function get(int $id) { ... } }`. (2) Convert to instance + `app()->singleton(OrderCache::class)`. For per-request scope, `app()->scoped(OrderCache::class)` (L11+) so binding resets between requests under Octane. (3) Consumers receive `OrderCache` via constructor. (4) Cross-request isolation test (fresh request → empty cache). (5) Especially dangerous under Octane / FrankenPHP / RoadRunner; flag new static mutable properties even when Octane isn't current.
-
-**Make queue job idempotent.** (1) Job test: same payload twice → side effect once (different `job_id`, same business key). (2) Idempotency guard in `handle()`: dedup table on business key, or `Cache::add($key, true, $ttl)` (atomic), or unique constraint + `INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO NOTHING`. (3) Verify retries on transient failures still complete. (4) Configure `$tries`, `$backoff`, `failed()`; add `retryUntil()` for time-bounded jobs.
+**Make queue job idempotent.** (1) Job test: same payload twice → side effect once (different `job_id`, same business key). (2) Idempotency guard in `handle()`: dedup table on business key, or `Cache::add($key, true, $ttl)` (atomic), or unique constraint + upsert. (3) Verify retries on transient failures still complete. (4) Configure `$tries`, `$backoff`, `failed()`; add `retryUntil()` for time-bounded jobs.
 
 ### Step 8 - Validate Plan Against Goal
 
@@ -276,7 +248,7 @@ Goal achieved at end of sequence; each step reviewable in < 30 minutes; test gat
 
 [Adequate: one sentence on boundary cases. Thin: list missing boundaries; Step 0 covers them. Inadequate: state required coverage; recommend `task-laravel-test`. **Stop here** - omit Blast Radius, Step Sequence, Verification. May still emit **Smells Identified**, **Sibling Smells**, and **Coverage prerequisite list** as preview-only.]
 
-**Coverage prerequisite list shape (Thin or Inadequate).** One row per public entry point: `entry-point | outcome | recommended layer`. Outcomes cover at minimum: validation failure (422), authorization denial (401/403), not-found / IDOR, external-collaborator failure, mass-assignment (privileged field stripped), and (under Octane with static state) cross-request isolation. Layers: feature test (TestCase + RefreshDatabase + real DB), unit test (Mockery), job test (real `handle()` + Queue::fake for dispatch), Policy test, cross-request isolation test. Example: `POST /api/orders | privileged user_id field stripped | feature test`.
+**Coverage prerequisite list shape (Thin or Inadequate).** One row per public entry point: `entry-point | outcome | recommended layer`. Outcomes cover at minimum: validation failure (422), authorization denial (401/403), not-found / IDOR, external-collaborator failure, mass-assignment (privileged field stripped), and (under Octane with static state) cross-request isolation. Example: `POST /api/orders | privileged user_id field stripped | feature test`.
 
 ## Smells Identified
 
@@ -337,11 +309,6 @@ _Other smells in the same file this plan does NOT address. Omit if none._
 - [ ] `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` clean between every step
 - [ ] No bundled unrelated cleanup
 - [ ] Rollback is one revert per step
-- [ ] No I/O silently moved across transaction boundaries
-- [ ] No partial mass-assignment conversion
-- [ ] No new singleton capturing request state; `scoped` used where required under Octane
-- [ ] No new dispatch without `->afterCommit()` (in transaction), `$tries`/`$backoff`/`$timeout`/`failed()`, scalar ID, idempotency
-- [ ] No new mutable static state without Octane cross-request isolation test
 
 ## Out of Scope
 
@@ -350,15 +317,13 @@ _Other smells in the same file this plan does NOT address. Omit if none._
 
 ## Self-Check
 
-Each item maps to one workflow step.
-
-- [ ] **Step 1** - `behavioral-principles` loaded before any other delegation
-- [ ] **Step 2** - Stack confirmed; ORM/queue/auth/test framework recorded; input completeness check ran (target + goal both supplied)
-- [ ] **Step 3** - Target file(s) and matching tests read before classifying; sibling smells listed (or section omitted); severity-inversion banner rendered when sibling smells outrank the target
-- [ ] **Step 4** - Coverage gate evaluated with sharp boundaries; plan refused if `Inadequate`; happy-path-only and SQLite-for-MySQL-app both treated as `Inadequate`; Octane shared-state check applied; lint state recorded
-- [ ] **Step 5** - Smells identified using the catalog; relevant atomic skills (`laravel-eloquent-patterns`, `laravel-api-patterns`, `laravel-queue-patterns`, `laravel-service-patterns`, `laravel-security-patterns`, `laravel-migration-safety`) consulted per the composition table
+- [ ] **Step 1** - `behavioral-principles` loaded
+- [ ] **Step 2** - Stack confirmed; ORM/queue/auth/test framework recorded; input completeness check ran
+- [ ] **Step 3** - Target file(s) and matching tests read; sibling smells listed; severity-inversion banner rendered when applicable
+- [ ] **Step 4** - Coverage gate evaluated; plan refused if `Inadequate`; happy-path-only and SQLite-for-MySQL-app treated as `Inadequate`; Octane shared-state check applied; lint state recorded
+- [ ] **Step 5** - Smells identified using the catalog; relevant atomic skills consulted per composition table
 - [ ] **Step 6** - Blast radius stated before proposing steps
-- [ ] **Step 7** - `Primary recipe:` named; supporting recipes folded as sub-steps; per-step stances stated (transaction, mass-assignment, container, queue); `Step kind:` set to `coupled-fix` with rationale where behavior changes; steps ordered low-risk first; plan ≤ ~8 steps or split; no unrelated cleanup; Step 0 included if `Thin`; Step 0a included if lint not clean
+- [ ] **Step 7** - `Primary recipe:` named; per-step stances stated; `Step kind: coupled-fix` with rationale where behavior changes; steps ordered low-risk first; plan ≤ ~8 steps or split; Step 0 included if `Thin`; Step 0a included if lint not clean
 - [ ] **Step 8** - Goal explicitly mapped to end state of the sequence
 
 **Execution-time gates (commitments to the implementer):**
@@ -372,19 +337,12 @@ Each item maps to one workflow step.
 ## Avoid
 
 - Refactoring without a test-coverage gate - that's a rewrite
-- Introducing shared state without Octane / cross-request isolation tests
 - Bundling behavior changes with refactoring steps
 - "While we're here" unrelated cleanup
 - Renaming during a refactor (separate PR)
-- Removing an interface without a real second use case
-- Swapping Eloquent for query builder (or vice versa) without measured benefit
-- Replacing static mutable state with `$_SESSION` / `Cache::*` carrying the same data globally - same global, extra steps; use DI
+- Refactoring exported `public` symbols in a Composer package without a backward-compatibility plan
 - Moving I/O across a `DB::transaction(...)` boundary without stating the transaction stance
 - Partial `$request->all()` → `$request->validated()` conversion
-- Refactoring exported `public` symbols in a Composer package without a backward-compatibility plan
-- `dispatch(...)` from inside a transaction without `->afterCommit()`
-- New jobs missing `$tries` / `$backoff` / `$timeout` / `failed()`
-- New jobs taking Eloquent models in constructors
-- Replacing `$guarded = []` with another `$guarded = []` - introduce Form Request + `$fillable`
 - Consolidating services into a singleton without checking what state they capture
-- Replacing Form Request validation with inline `$request->validate(...)`
+- Replacing static mutable state with `$_SESSION` / `Cache::*` carrying the same data globally
+- Replacing `$guarded = []` with another `$guarded = []` - introduce Form Request + `$fillable`

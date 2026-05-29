@@ -12,17 +12,16 @@ user-invocable: false
 ## When to Use
 
 - Background processing, retries, batching, chaining, rate limiting
-- Choosing between Redis and database drivers; Horizon setup
+- Choosing Redis vs database driver; Horizon setup
 - NOT for: cron (Laravel Scheduler), synchronous flow, WebSocket events
 
 ## Rules
 
-- Pass scalar IDs to constructors - models serialize stale and bloat the payload
-- Set `$tries`, `$backoff`, `$timeout` on every job (otherwise infinite retries or hung workers)
-- Implement `failed()` - otherwise failures land silently in `failed_jobs`
-- Dispatch inside transactions via `afterCommit()` - jobs race the commit and see uncommitted state
-- Jobs must be idempotent (retries re-run on transient failure)
-- No `sync` driver in production (blocks the request)
+- Pass scalar IDs to constructors - models serialize stale snapshots and bloat payloads
+- Set `$tries`, `$backoff`, `$timeout` on every job; implement `failed()`
+- Dispatch inside `DB::transaction` via `afterCommit()` (or `$afterCommit = true` on job/listener)
+- `handle()` is idempotent (retries re-run on transient failure) - guard on persisted state
+- No `sync` driver in production
 
 ## Patterns
 
@@ -33,14 +32,14 @@ class ProcessPayment implements ShouldQueue {
     use Queueable;
 
     public int $tries = 3;
-    public array $backoff = [10, 60, 300]; // escalating
+    public array $backoff = [10, 60, 300];           // escalating
     public int $timeout = 120;
 
     public function __construct(private readonly int $orderId) {}
 
     public function handle(PaymentService $payments): void {
         $order = Order::findOrFail($this->orderId);
-        if ($order->isPaid()) return;        // idempotent guard
+        if ($order->isPaid()) return;                // idempotent guard
         $payments->charge($order);
     }
 
@@ -48,19 +47,21 @@ class ProcessPayment implements ShouldQueue {
         Notification::route('slack', config('services.slack.webhook'))
             ->notify(new JobFailedNotification($this->orderId, $e));
     }
+
+    public function tags(): array { return ['order:' . $this->orderId]; }    // Horizon search
 }
 ```
 
 ### Dispatching
 
 ```php
-// Bad - job may run before transaction commits, sees no row
+// Bad - races the commit, sees no row
 DB::transaction(function () use ($order) {
     $order->save();
     ProcessPayment::dispatch($order->id);
 });
 
-// Good - afterCommit defers dispatch until commit succeeds
+// Good
 DB::transaction(function () use ($order) {
     $order->save();
     ProcessPayment::dispatch($order->id)->afterCommit();
@@ -68,67 +69,54 @@ DB::transaction(function () use ($order) {
 
 ProcessPayment::dispatch($id)->onQueue('payments');
 SendReminder::dispatch($id)->delay(now()->addMinutes(30));
-
-// Listener-level afterCommit applies to every job it dispatches
-class ProcessOrderPayment {
-    public bool $afterCommit = true;
-    public function handle(OrderCreated $e): void {
-        ProcessPayment::dispatch($e->order->id);
-    }
-}
 ```
 
 ### Retry strategies
 
 | Strategy              | Use When                                | Example                          |
 | --------------------- | --------------------------------------- | -------------------------------- |
-| Fixed tries + backoff | Known transient failures (API timeouts) | `$tries = 3; $backoff = [...]`   |
+| Fixed tries + backoff | Known transient failures                | `$tries = 3; $backoff = [...]`   |
 | `retryUntil()`        | Must complete within time window        | `return now()->addHours(24)`     |
 | Manual `release()`    | Conditional retry per exception         | `$this->release(60)` in `catch`  |
 | `ShouldBeUnique`      | One instance per entity in queue        | Payment per order                |
 
 ```php
 public function retryUntil(): DateTime { return now()->addHours(24); }
-
-public function handle(): void {
-    try { $this->processPayment(); }
-    catch (TemporaryFailureException) { $this->release(60); }
-}
 ```
 
-### Unique jobs
+### Middleware
 
 ```php
-// Bad - two dispatches concurrently charge the same order
-ProcessPayment::dispatch($order->id);
-ProcessPayment::dispatch($order->id);
-
-// Good - ShouldBeUnique locks per orderId
+// Unique by business key
 class ProcessPayment implements ShouldQueue, ShouldBeUnique {
-    use Queueable;
-    public int $uniqueFor = 60; // lock TTL releases on crash
+    public int $uniqueFor = 60;                                 // lock TTL (releases on crash)
     public function uniqueId(): string { return (string) $this->orderId; }
 }
+
+// One running at a time per key (e.g., per-account ledger)
+public function middleware(): array {
+    return [(new WithoutOverlapping($this->accountId))->releaseAfter(30)];
+}
+
+// Third-party API rate limit
+RateLimiter::for('stripe', fn() => Limit::perMinute(100));
+public function middleware(): array { return [new RateLimited('stripe')]; }
 ```
 
 ### Batching
 
 ```php
-Bus::batch([
-    new ProcessPayment($o1->id),
-    new ProcessPayment($o2->id),
-])
-->then(fn(Batch $b) => Log::info('done', ['id' => $b->id]))
-->catch(fn(Batch $b, \Throwable $e) => Log::error('first failure', ['id' => $b->id]))
-->finally(fn(Batch $b) => /* always */)
-->allowFailures()
-->onQueue('payments')
-->dispatch();
+Bus::batch([new ProcessPayment($o1->id), new ProcessPayment($o2->id)])
+    ->then(fn(Batch $b) => Log::info('done', ['id' => $b->id]))
+    ->catch(fn(Batch $b, \Throwable $e) => Log::error('first failure', ['id' => $b->id]))
+    ->allowFailures()
+    ->onQueue('payments')
+    ->dispatch();
 ```
 
 ### Chaining
 
-Sequential jobs; subsequent jobs skip if any fail.
+Sequential; subsequent jobs skip if any fail.
 
 ```php
 Bus::chain([
@@ -136,18 +124,6 @@ Bus::chain([
     new ProcessPayment($order->id),
     new SendConfirmation($order->id),
 ])->onQueue('orders')->dispatch();
-```
-
-### Rate limiting
-
-```php
-// AppServiceProvider::boot()
-RateLimiter::for('emails', fn(object $job) => Limit::perMinute(30));
-
-class SendInvoice implements ShouldQueue {
-    use Queueable;
-    public function middleware(): array { return [new RateLimited('emails')]; }
-}
 ```
 
 ### Driver selection
@@ -158,30 +134,14 @@ class SendInvoice implements ShouldQueue {
 | Performance    | High            | Moderate        |
 | Monitoring     | Horizon         | Manual          |
 | Delayed jobs   | Native          | Polling         |
-| Unique jobs    | Atomic locks    | DB locks        |
 | Best for       | Production      | Small apps, dev |
 
 ```php
 // config/queue.php
 'redis' => [
     'driver' => 'redis', 'connection' => 'default', 'queue' => 'default',
-    'retry_after' => 90,
-    'block_for' => 5, // long-poll to reduce Redis traffic
+    'retry_after' => 90, 'block_for' => 5,
 ],
-
-'database' => [
-    'driver' => 'database', 'table' => 'jobs', 'queue' => 'default',
-    'retry_after' => 90, 'after_commit' => false,
-],
-// php artisan queue:table && queue:failed-table && migrate
-```
-
-### Failed jobs
-
-```bash
-php artisan queue:failed                  # list
-php artisan queue:retry {id|all}          # retry
-php artisan queue:prune-failed --hours=48 # cleanup
 ```
 
 ### Priority queues
@@ -189,7 +149,6 @@ php artisan queue:prune-failed --hours=48 # cleanup
 ```php
 ProcessPayment::dispatch($id)->onQueue('critical');
 SendNewsletter::dispatch($id)->onQueue('low');
-// Worker drains in declared order
 // php artisan queue:work --queue=critical,default,low
 ```
 
@@ -202,7 +161,7 @@ SendNewsletter::dispatch($id)->onQueue('low');
         'supervisor-1' => [
             'connection' => 'redis',
             'queue' => ['critical', 'default', 'low'],
-            'balance' => 'auto',         // shift workers to busiest queue
+            'balance' => 'auto',                              // shift workers to busiest
             'minProcesses' => 1, 'maxProcesses' => 10,
             'tries' => 3, 'timeout' => 120,
         ],
@@ -210,21 +169,9 @@ SendNewsletter::dispatch($id)->onQueue('low');
 ],
 ```
 
-### Idempotency
+### Failed jobs
 
-```php
-// Bad - retry double-charges
-public function handle(PaymentService $p): void {
-    $p->charge(Order::findOrFail($this->orderId));
-}
-
-// Good - guard on persisted state
-public function handle(PaymentService $p): void {
-    $order = Order::findOrFail($this->orderId);
-    if ($order->isPaid()) return;
-    $p->charge($order);
-}
-```
+`php artisan queue:failed | queue:retry {id|all} | queue:prune-failed --hours=48`. Wire `failed()` on every job; monitor `failed_jobs` table or Horizon's failed view.
 
 ## Output Format
 
@@ -248,5 +195,5 @@ Monitoring: {Horizon | manual}
 - Large payloads (pass IDs, refetch in `handle`)
 - Non-idempotent handlers
 - `sync` driver in production
-- Workers without `--memory` cap (OOM)
+- Workers without `--max-time` / `--memory` cap (OOM)
 - Ignoring `failed_jobs` (no monitoring, silent loss)

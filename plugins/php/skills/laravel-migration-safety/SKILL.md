@@ -19,10 +19,9 @@ user-invocable: false
 
 - Every migration ships a reversible `down()`
 - One concern per migration file: schema OR data, never both
-- Multi-step patterns deploy across multiple releases, never in one
-- Test against real MySQL; SQLite hides behavior differences
-- All backfills use `chunkById()`; never `WHERE col IS NULL LIMIT N` loops
-- Review generated migrations before running; defaults are not always safe
+- Multi-step patterns span releases - never a single deploy
+- Test against real MySQL (`<env DB_CONNECTION>mysql</env>` in `phpunit.xml`); SQLite hides locking/JSON/FK behavior
+- Backfills use `chunkById()`; never `WHERE col IS NULL LIMIT N` loops (O(n^2))
 
 ## Patterns
 
@@ -30,36 +29,23 @@ user-invocable: false
 
 | Operation        | < 100K rows         | 100K-1M rows         | > 1M rows                          |
 | ---------------- | ------------------- | -------------------- | ---------------------------------- |
-| Add nullable col | Single migration    | Single migration     | Single migration (instant)         |
-| Add NOT NULL col | Direct with default | 3-step pattern       | 3-step + pt-osc backfill           |
-| Add index        | Standard Schema     | `ALGORITHM=INPLACE`  | `ALGORITHM=INPLACE, LOCK=NONE`     |
-| Rename column    | Expand-contract     | Expand-contract      | Expand-contract + batched backfill |
-| Drop column      | Single migration    | Single migration     | Remove code first, then drop       |
+| Add nullable col | Direct              | Direct (instant)     | Direct (instant)                   |
+| Add NOT NULL col | Direct with default | 3-step               | 3-step; `pt-osc` if no INSTANT path |
+| Add index        | Direct              | `ALGORITHM=INPLACE`  | `ALGORITHM=INPLACE, LOCK=NONE`     |
+| Rename column    | Expand-contract     | Expand-contract      | Expand-contract                    |
+| Drop column      | Direct              | Direct               | Remove code first, then drop       |
 
-### Adding columns
+MySQL 8.0+: NOT NULL with constant DEFAULT is `ALGORITHM=INSTANT`. Use `pt-osc` only when INSTANT/INPLACE aren't possible (column type change, PRIMARY restructure).
 
-Nullable adds are metadata-only in InnoDB (fast, lock-free). NOT NULL with a constant DEFAULT is instant on MySQL 8.0+ (`ALGORITHM=INSTANT`). Otherwise use the 3-step pattern.
+### Adding columns - 3-step pattern
 
-```php
-// Safe - nullable add
-Schema::table('orders', fn (Blueprint $t) =>
-    $t->string('tracking_number', 100)->nullable()->after('status')
-);
-
-// Safe on MySQL 8.0+ - constant default
-$t->string('tracking_number', 100)->default('PENDING');
-
-// Bad - direct NOT NULL on 5M rows locks the table
-$t->string('phone');
-```
-
-3-step pattern when values must be computed per row:
+Use when values must be computed per row.
 
 ```php
-// Migration 1: nullable column
-$t->string('tracking_number', 100)->nullable();
+// Release 1: nullable column
+$t->string('tracking_number', 100)->nullable()->after('status');
 
-// Migration 2: backfill (separate file, separate release)
+// Release 2: backfill (separate file)
 DB::table('orders')
     ->whereNull('tracking_number')
     ->chunkById(1000, function ($orders) {
@@ -69,129 +55,98 @@ DB::table('orders')
         }
     });
 
-// Migration 3: enforce NOT NULL (after backfill confirmed)
+// Release 3: enforce NOT NULL after backfill verified
 $t->string('tracking_number', 100)->nullable(false)->change();
 ```
 
+`->change()` requires `doctrine/dbal` on Laravel < 11.
+
 ### Indexes
 
-InnoDB online DDL keeps reads/writes flowing during index creation. Use raw SQL to pin the algorithm on large tables.
+InnoDB online DDL keeps reads/writes flowing. Pin the algorithm on large tables via raw SQL.
 
 ```php
-// Small table
-$t->index('status');
+$t->index('status');                                       // small
+$t->index(['status', 'created_at']);                       // composite, leftmost-prefix
 
-// Large table - explicit online DDL
-DB::statement('ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE');
-
-// Composite
-$t->index(['status', 'created_at']);
+// Large table
+DB::statement('ALTER TABLE orders ADD INDEX idx_status (status), ALGORITHM=INPLACE, LOCK=NONE');
 ```
 
 ### Foreign keys
 
-Add the column and backfill first; add the constraint last to avoid lock contention.
+Add the column and backfill first; add the constraint last.
 
 ```php
-// 1. Column only
-$t->unsignedBigInteger('product_id')->nullable();
-
-// 2. Backfill (separate migration)
-
-// 3. Constraint (separate migration)
-$t->foreign('product_id')->references('id')->on('products');
+$t->unsignedBigInteger('product_id')->nullable();          // 1. column
+// 2. backfill (separate migration)
+$t->foreign('product_id')->references('id')->on('products'); // 3. constraint
 ```
 
 ### Data migrations
 
-Always `chunkById()` for update-safe iteration. Keep schema and data in separate files.
+Separate file, separate release. Always `chunkById()`.
 
 ```php
-public function up(): void
-{
-    DB::table('orders')
-        ->where('status', 'legacy_pending')
-        ->chunkById(1000, function ($orders) {
-            DB::table('orders')
-                ->whereIn('id', $orders->pluck('id'))
-                ->update(['status' => 'pending']);
-        });
-}
-
-public function down(): void
-{
-    DB::table('orders')->where('status', 'pending')
-        ->update(['status' => 'legacy_pending']);
-}
+DB::table('orders')
+    ->where('status', 'legacy_pending')
+    ->chunkById(1000, function ($orders) {
+        DB::table('orders')
+            ->whereIn('id', $orders->pluck('id'))
+            ->update(['status' => 'pending']);
+    });
 ```
 
-### Renames and drops (expand-contract)
+### Expand-contract for renames and drops
 
-Direct renames break running code mid-deploy. Stage across releases:
+Direct renames break running code mid-deploy. Sequence across releases:
 
-1. Add new column (nullable) - migration
-2. Backfill from old column - data migration
-3. App writes both, reads new - deploy
-4. App stops writing old - deploy
-5. Drop old column - migration in a later release
+1. Add new column (nullable)
+2. Backfill from old column
+3. App dual-writes (old + new), reads new
+4. App stops writing old
+5. Drop old column (later release)
 
 ```php
 // Step 1
 $t->string('recipient_name')->nullable()->after('customer_name');
-
-// Step 2 - backfill via chunkById (see Data migrations)
-
 // Step 5 - later release, after code stops referencing customer_name
 $t->dropColumn('customer_name');
 ```
 
-Table drops follow the same shape: remove all code references first; drop in a later release.
+Table drops follow the same shape.
 
-### Large-table alterations
+### Large-table alterations - external tools
 
-When `ALGORITHM=INPLACE` is insufficient (e.g., column type changes that force rebuild), use external tools:
+When INPLACE/INSTANT isn't possible (column type change forcing rebuild on a 10M+ row table):
 
 - **pt-online-schema-change** (Percona): shadow copy + trigger-based sync + atomic swap
 - **gh-ost** (GitHub): binlog-based, no triggers
 
 ```bash
 pt-online-schema-change --alter "ADD COLUMN tracking_number VARCHAR(100)" \
+    --max-lag=5s --critical-load Threads_running=80 \
     --execute D=mydb,t=orders
 ```
 
 ### Enums
 
-Prefer string column + backed PHP enum. MySQL `ENUM` changes force a table rebuild.
+Prefer string column + backed PHP enum. MySQL `ENUM` forces a rebuild on value change.
 
 ```php
-// Bad - altering values requires rebuild
-$t->enum('status', ['pending', 'active', 'cancelled']);
-
-// Good - DDL-free value evolution
 $t->string('status', 20)->default('pending');
-// cast in model: 'status' => OrderStatus::class
+// model: 'status' => OrderStatus::class
 ```
-
-### Deploy sequencing
-
-Multi-step patterns span releases:
-
-1. **Release 1**: nullable column migration. Existing code ignores it.
-2. **Release 2**: app reads/writes the new column.
-3. **Release 3**: backfill + enforce NOT NULL.
-
-Drops reverse the order: remove code references first, then drop.
 
 ### CI validation
 
-Run `php artisan migrate && migrate:rollback && migrate` against a real MySQL instance. `down()` must reverse `up()` cleanly.
+Run `php artisan migrate && migrate:rollback && migrate` against real MySQL. `down()` must reverse `up()` cleanly.
 
 ## Output Format
 
 ```
 ## Migration Plan
 | Step | Migration File | Operation | Risk Level | Deploy Phase |
-
 Risk Level: {Low | Medium | High | Critical}
 
 ## Deploy Sequence
@@ -204,12 +159,11 @@ Risk Level: {Low | Medium | High | Critical}
 
 ## Avoid
 
-- Mixing schema and data changes in one migration
-- Missing `down()` (irreversible migrations)
+- Mixing schema and data changes in one migration file
+- Missing `down()` (irreversible migration)
 - Direct NOT NULL or rename on large tables (table lock, broken deploys)
-- Dropping columns or tables still referenced by running code
+- Dropping columns/tables still referenced by running code
 - MySQL `ENUM` (rebuild on value change)
-- `WHERE col IS NULL LIMIT N` backfill loops (O(n^2)) - use `chunkById`
+- `WHERE col IS NULL LIMIT N` backfill loops - use `chunkById`
 - Running multi-step migrations in one deployment
-- Testing on SQLite when production is MySQL
-- Adding FK constraints before backfill on large tables
+- Adding FK constraint before backfill on large tables

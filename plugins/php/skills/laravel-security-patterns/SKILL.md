@@ -18,61 +18,62 @@ user-invocable: false
 
 ## Rules
 
-- `$fillable` whitelist on every model; `$guarded = []` is a mass-assignment hole
-- Pass user input through Eloquent or parameter bindings; never interpolate into SQL
-- `Hash::make()` / `Hash::check()` for passwords; md5/sha1 are broken
-- `env()` only inside `config/*.php`; elsewhere use `config()` so `config:cache` works
-- Validate via Form Requests; authorize via Policies, not inline `auth()->id()` checks
-- Rate limit auth routes (login, register, password reset) by IP
-- Verify webhook signatures with `hash_equals()` before trusting payloads; record event IDs for idempotency
+- `$fillable` whitelist on every model; never `$guarded = []`
+- Eloquent or parameter bindings only; never interpolate user input into SQL
+- `Hash::make()` / `Hash::check()` for passwords; `random_bytes` / `Str::random` for tokens
+- `env()` only inside `config/*.php`; runtime code uses `config()` (so `config:cache` works)
+- Validate via Form Requests; authorize via Policies (not inline `auth()->id()` checks)
+- Rate limit `/login`, `/register`, password reset by IP
+- Verify webhook signatures with `hash_equals()`; record event IDs for idempotency
 
 ## Patterns
 
 ### Mass assignment
 
 ```php
-// Bad - any field writable from request
+// Bad
 class Order extends Model { protected $guarded = []; }
-
-// Good - explicit whitelist
-class Order extends Model {
-    protected $fillable = ['user_id', 'status', 'total', 'shipping_address'];
-}
+// Good
+class Order extends Model { protected $fillable = ['status', 'total', 'shipping_address']; }
+// Server-set fields (user_id, tenant_id, role, is_admin) assigned outside fillable
 ```
 
 ### SQL injection
 
 ```php
-// Bad - interpolation
+// Bad
 DB::select("SELECT * FROM orders WHERE status = '$status'");
 Order::whereRaw("status = '$status'")->get();
 
-// Good - bindings (Eloquent preferred)
+// Good
 Order::where('status', $status)->get();
 Order::whereRaw('status = ?', [$status])->get();
 
-// DB::raw is safe only for expressions, not values
+// DB::raw safe for expressions, never values
 Order::select(DB::raw('DATE(created_at) as date'), DB::raw('COUNT(*) as count'))
-    ->where('status', $status)
-    ->groupByRaw('DATE(created_at)')
-    ->get();
+    ->where('status', $status)->groupByRaw('DATE(created_at)')->get();
+
+// User-supplied sort columns: allowlist
+'sort' => ['nullable', Rule::in(['id', 'created_at', 'total'])],
 ```
 
 ### Authentication
 
 ```php
 // Sanctum API tokens with abilities
-$token = $user->createToken('api', ['orders:read', 'orders:write']);
-return ['token' => $token->plainTextToken];
-
+$token = $user->createToken('api', ['orders:read', 'orders:write'], now()->addDays(30));
 Route::middleware('auth:sanctum')->apiResource('orders', OrderController::class);
 if ($user->tokenCan('orders:write')) { /* ... */ }
+
+// Token lifecycle
+Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
+// Schedule: PersonalAccessToken::where('last_used_at', '<', now()->subMonths(3))->delete();
 ```
 
-Sanctum SPA flow (same-site cookie auth):
+Sanctum SPA (same-site cookie auth):
 
-1. `GET /sanctum/csrf-cookie` - sets `XSRF-TOKEN`
-2. `POST /login` - establishes session
+1. `GET /sanctum/csrf-cookie` -> sets `XSRF-TOKEN`
+2. `POST /login` -> session established
 3. Subsequent requests carry the session cookie + `X-XSRF-TOKEN` header
 
 ```php
@@ -80,51 +81,36 @@ Sanctum SPA flow (same-site cookie auth):
 'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', 'localhost:3000')),
 // config/cors.php
 'supports_credentials' => true,
+// config/session.php (cross-site SPA needs same_site=none + secure=true)
+'secure' => true, 'http_only' => true, 'same_site' => 'lax',
 ```
 
-```php
-// Password hashing
-$user->password = Hash::make($request->password);
-$ok = Hash::check($plaintext, $user->password);
-```
-
-| Scenario          | Strategy                              | Package           |
-| ----------------- | ------------------------------------- | ----------------- |
-| Mobile app API    | Sanctum API tokens                    | laravel/sanctum   |
-| SPA (same domain) | Sanctum SPA (session + CSRF)          | laravel/sanctum   |
-| Third-party OAuth | Passport with grants                  | laravel/passport  |
-| Social login      | Socialite                             | laravel/socialite |
-| Tokens + SPA      | Dual Sanctum config (separate guards) | laravel/sanctum   |
+| Scenario          | Strategy                       | Package           |
+| ----------------- | ------------------------------ | ----------------- |
+| Mobile app API    | Sanctum API tokens             | laravel/sanctum   |
+| SPA (same domain) | Sanctum SPA (session + CSRF)   | laravel/sanctum   |
+| Mobile + SPA      | Both - tokens via `auth:sanctum` guard, SPA via session - configure both | laravel/sanctum   |
+| Third-party OAuth | Passport with grants           | laravel/passport  |
+| Social login      | Socialite                      | laravel/socialite |
 
 ### Authorization
 
 ```php
 // Bad - inline check leaks rule into controller
-public function show(Order $order): OrderResource {
-    if ($order->user_id !== auth()->id()) abort(403);
-    return new OrderResource($order);
-}
+if ($order->user_id !== auth()->id()) abort(403);
 
 // Good - policy
-public function show(Order $order): OrderResource {
-    $this->authorize('view', $order);
-    return new OrderResource($order);
-}
-```
+$this->authorize('view', $order);
 
-```php
 class OrderPolicy {
+    public function before(User $user, string $ability): ?bool {
+        return $user->isSuperAdmin() ? true : null;       // super-admin shortcut
+    }
     public function view(User $user, Order $order): bool {
         return $user->id === $order->user_id;
     }
-
     public function update(User $user, Order $order): bool {
-        return $user->id === $order->user_id
-            && $order->status === OrderStatus::Pending;
-    }
-
-    public function create(User $user): bool {
-        return $user->hasVerifiedEmail();
+        return $user->id === $order->user_id && $order->status === OrderStatus::Pending;
     }
 }
 
@@ -132,11 +118,8 @@ class OrderPolicy {
 public function authorize(): bool {
     return $this->user()->can('update', $this->route('order'));
 }
-```
 
-Use Gates for non-resource permissions (admin area, feature flags):
-
-```php
+// Gates for non-resource permissions
 Gate::define('access-admin', fn(User $u) => $u->is_admin);
 Route::middleware('can:access-admin')->group(/* ... */);
 ```
@@ -144,18 +127,15 @@ Route::middleware('can:access-admin')->group(/* ... */);
 ### CSRF and rate limiting
 
 ```php
-// CSRF is on by default for web routes; exempt only webhooks
-->withMiddleware(function (Middleware $middleware) {
-    $middleware->validateCsrfTokens(except: ['webhooks/*']);
+// CSRF on by default for web; exempt only webhooks
+->withMiddleware(function (Middleware $m) {
+    $m->validateCsrfTokens(except: ['webhooks/*']);
 })
-```
 
-```php
 RateLimiter::for('api', fn(Request $r) =>
     Limit::perMinute(60)->by($r->user()?->id ?: $r->ip()));
-
 RateLimiter::for('auth', fn(Request $r) =>
-    Limit::perMinute(5)->by($r->ip()));  // strict for login/register
+    Limit::perMinute(5)->by($r->ip()));
 
 Route::post('/login', LoginController::class)->middleware('throttle:auth');
 ```
@@ -168,11 +148,10 @@ class StoreOrderRequest extends FormRequest {
         return [
             'email' => ['required', 'email:rfc,dns', 'max:255'],
             'total' => ['required', 'numeric', 'min:0.01', 'max:99999.99'],
-            'url'   => ['nullable', 'url:http,https'],  // block javascript:, data:
+            'url'   => ['nullable', 'url:http,https'],         // block javascript:, data:
             'file'  => ['nullable', 'file', 'mimes:pdf,jpg,png', 'max:10240'],
         ];
     }
-
     protected function prepareForValidation(): void {
         $this->merge(['notes' => strip_tags($this->notes ?? '')]);
     }
@@ -196,36 +175,28 @@ return Storage::disk('private')->download($path);
 ```php
 // Bad - env() outside config breaks config:cache
 $key = env('STRIPE_KEY');
-
-// Good - config/services.php reads env; app reads config
+// Good - config reads env; app reads config
 'stripe' => ['key' => env('STRIPE_KEY'), 'secret' => env('STRIPE_SECRET')],
 $key = config('services.stripe.key');
 ```
 
-- `.env` is gitignored; `.env.example` holds placeholders only
-- `php artisan config:cache` in production (forces all `env()` to live in config)
-- `php artisan env:encrypt` for sensitive shared env values (Laravel 9+)
+- `.env` gitignored; `.env.example` has placeholders only
+- `php artisan config:cache` in production
+- `php artisan env:encrypt` for committed encrypted env (Laravel 9+)
 
 ### Session and cookie
 
 ```php
-// config/session.php
-'secure' => true, 'http_only' => true, 'same_site' => 'lax',
-
 // On login / logout
-$request->session()->regenerate();   // after successful login
-$request->session()->invalidate();   // on logout
+$request->session()->regenerate();
+$request->session()->invalidate();
 $request->session()->regenerateToken();
 ```
 
 ### Webhook signature verification
 
 ```php
-// Bad - trusts any payload
-Route::post('/webhooks/stripe', fn(Request $r) =>
-    Order::find($r->json('order_id'))->update(['status' => 'paid']));
-
-// Good - verify before processing
+// Stripe - SDK-verified
 class StripeWebhookController extends Controller {
     public function __invoke(Request $request): JsonResponse {
         try {
@@ -238,29 +209,20 @@ class StripeWebhookController extends Controller {
             Log::warning('Stripe webhook signature failed', ['ip' => $request->ip()]);
             return response()->json(['error' => 'Invalid signature'], 403);
         }
-
-        ProcessStripeEvent::dispatch($event->type, $event->data->object->toArray());
+        ProcessStripeEvent::dispatch($event->id, $event->type, $event->data->object->toArray());
         return response()->json(['received' => true]);
     }
 }
-```
 
-Generic HMAC providers - compare with `hash_equals()` to defeat timing attacks:
-
-```php
-class WebhookSignatureMiddleware {
-    public function handle(Request $request, Closure $next, string $configKey): Response {
-        $expected = hash_hmac('sha256', $request->getContent(),
-            config("services.{$configKey}.webhook_secret"));
-        if (! hash_equals($expected, $request->header('X-Webhook-Signature', ''))) {
-            abort(403, 'Invalid webhook signature');
-        }
-        return $next($request);
-    }
+// Generic HMAC - use hash_equals to defeat timing attacks
+$expected = hash_hmac('sha256', $request->getContent(),
+    config('services.provider.webhook_secret'));
+if (! hash_equals($expected, $request->header('X-Webhook-Signature', ''))) {
+    abort(403, 'Invalid signature');
 }
 ```
 
-Idempotency - providers retry, so dedupe on provider event ID:
+Idempotency - providers retry, dedupe on event ID:
 
 ```php
 public function handle(): void {
@@ -268,28 +230,24 @@ public function handle(): void {
 
     DB::transaction(function () {
         WebhookEvent::create(['provider_event_id' => $this->eventId, 'type' => $this->eventType]);
-        // ... process the event
+        // process
     });
 }
 ```
 
 ### Multi-tenancy
 
-Global scope + tenant-aware policy. Both layers - scope prevents cross-tenant queries, policy prevents privilege escalation within a tenant.
+Two layers: global scope prevents cross-tenant queries; policy prevents privilege escalation within a tenant.
 
 ```php
 class TenantScope implements Scope {
-    public function apply(Builder $builder, Model $model): void {
-        $builder->where('tenant_id', auth()->user()->tenant_id);
+    public function apply(Builder $b, Model $m): void {
+        $b->where('tenant_id', auth()->user()->tenant_id);
     }
 }
-
 class Order extends Model {
-    protected static function booted(): void {
-        static::addGlobalScope(new TenantScope());
-    }
+    protected static function booted(): void { static::addGlobalScope(new TenantScope()); }
 }
-
 class OrderPolicy {
     public function view(User $user, Order $order): bool {
         return $user->tenant_id === $order->tenant_id
@@ -302,8 +260,8 @@ class OrderPolicy {
 
 ```
 ## Auth Configuration
-Strategy: {Sanctum tokens | Sanctum SPA | Passport | Dual}
-Guards: [list of auth guards configured]
+Strategy: {Sanctum tokens | Sanctum SPA | Sanctum dual | Passport}
+Guards: [list]
 
 ## Authorization
 | Resource | Policy | Actions | Role Requirements |
@@ -314,11 +272,10 @@ Guards: [list of auth guards configured]
 
 ## Avoid
 
-- `$guarded = []` (mass assignment); `DB::raw` with interpolated user input (SQL injection)
-- `env()` outside config files (breaks `config:cache`, hard to audit)
-- Inline auth checks in controllers; missing rate limit on `/login`, `/register`, password reset
-- `APP_DEBUG=true` or `CORS allow_origins = ['*']` in production
-- File uploads served from `public/` without access control; real secrets in `.env.example`
+- `$guarded = []`; `DB::raw` with interpolated input; user-supplied sort without allowlist
+- `env()` outside config files
+- Missing rate limit on auth routes; `APP_DEBUG=true` in production
+- File uploads served from `public/` without access control
 - `md5` / `sha1` for passwords; `==` instead of `hash_equals()` for signatures
-- Trusting webhook payloads without signature verification; missing idempotency on retry
-- Missing `email:rfc,dns`; `url` validation without scheme allow-list
+- Webhooks without signature verification or event-ID idempotency
+- `email:rfc,dns` missing; `url` validation without scheme allow-list

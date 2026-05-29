@@ -14,48 +14,39 @@ user-invocable: false
 - Extracting logic from controllers (typically >10-15 lines of orchestration)
 - Multi-model operations; logic reused across HTTP / job / artisan
 - Decoupling side effects via events
-- NOT for: simple CRUD without business rules; database query optimization (use `laravel-eloquent-patterns`)
+- NOT for: simple CRUD without business rules; query optimization (use `laravel-eloquent-patterns`)
 
 ## Rules
 
 - Constructor injection only - never `app()` / `resolve()` in business code
-- DTOs are `readonly` classes - never pass `$request` arrays between layers
+- `readonly` DTOs across layer boundaries - never pass `$request` arrays
 - Events for cross-domain side effects - never call unrelated services directly
-- Jobs dispatched inside transactions must use `afterCommit`
-- No circular dependencies; no god services (>20 methods - split)
+- Jobs dispatched from inside `DB::transaction` use `afterCommit()` (or `$afterCommit = true` on the job/listener)
 - State transitions go through a transition method - never direct `update(['status' => ...])`
 
-### Service vs Action
+### Extraction signals
 
-| Scenario                                  | Use           |
-| ----------------------------------------- | ------------- |
-| Multiple related operations on one domain | Service class |
-| Single operation reused across contexts   | Action class  |
-| Simple CRUD with no business rules        | Controller    |
-| Side effect triggered by domain event     | Listener      |
+| Signal                                            | Extract to                |
+| ------------------------------------------------- | ------------------------- |
+| Controller method >10-15 lines of business logic  | Service or Action         |
+| Same logic in 2+ places (controller, job, command)| Action (invokable)        |
+| Multiple related operations on one domain         | Service class             |
+| Cross-domain side effect (email, search index)    | Event + Listener          |
+| Complex query used in multiple places             | Query scope or repository |
 
 ## Patterns
 
 ### Service class
 
 ```php
-class OrderController extends Controller {
-    public function __construct(private readonly OrderService $orderService) {}
-
-    public function store(StoreOrderRequest $request): OrderResource {
-        $order = $this->orderService->create(CreateOrderDTO::fromRequest($request));
-        return new OrderResource($order);
-    }
-}
-
 class OrderService {
-    public function __construct(private readonly PaymentService $paymentService) {}
+    public function __construct(private readonly PaymentService $payments) {}
 
     public function create(CreateOrderDTO $dto): Order {
         return DB::transaction(function () use ($dto) {
             $order = Order::create($dto->toArray());
             $order->items()->createMany($dto->itemsArray());
-            OrderCreated::dispatch($order);  // event for side effects
+            OrderCreated::dispatch($order);   // listener with $afterCommit=true enqueues jobs
             return $order;
         });
     }
@@ -64,21 +55,15 @@ class OrderService {
 
 ### Action class (invokable)
 
+Single operation reused across contexts.
+
 ```php
 class CreateOrder {
-    public function __construct(private readonly PaymentService $paymentService) {}
-
-    public function __invoke(CreateOrderDTO $dto): Order {
-        return DB::transaction(function () use ($dto) {
-            $order = Order::create([...]);
-            $order->items()->createMany([...]);
-            OrderCreated::dispatch($order);
-            return $order;
-        });
-    }
+    public function __construct(private readonly PaymentService $payments) {}
+    public function __invoke(CreateOrderDTO $dto): Order { /* ... */ }
 }
 
-// Same call from controller, job, artisan command:
+// Called from controller / job / artisan
 $order = app(CreateOrder::class)($dto);
 ```
 
@@ -89,8 +74,7 @@ readonly class CreateOrderDTO {
     public function __construct(
         public int $userId,
         public string $total,
-        /** @var OrderItemDTO[] */
-        public array $items,
+        /** @var OrderItemDTO[] */ public array $items,
     ) {}
 
     public static function fromRequest(StoreOrderRequest $request): self {
@@ -103,7 +87,7 @@ readonly class CreateOrderDTO {
 }
 ```
 
-For projects using `spatie/laravel-data`, the package handles validation + transformation in one class.
+For `spatie/laravel-data`, the package handles validation + transformation in one class.
 
 ### Repository pattern
 
@@ -113,59 +97,43 @@ Justify before adding - Eloquent already abstracts storage. Use when:
 - Multiple data sources need a unified interface
 - Specific test seam Mockery cannot satisfy
 
-```php
-interface OrderRepositoryInterface {
-    public function findById(int $id): ?Order;
-    public function findByUser(int $userId, int $perPage = 15): LengthAwarePaginator;
-}
-
-class EloquentOrderRepository implements OrderRepositoryInterface { /* ... */ }
-
-// AppServiceProvider
-$this->app->bind(OrderRepositoryInterface::class, EloquentOrderRepository::class);
-```
-
-A single-implementation interface backed only by direct Eloquent calls is over-abstraction - call `Order::findOrFail($id)` directly instead.
+A single-implementation interface backed only by direct Eloquent calls is over-abstraction.
 
 ### Dependency injection
 
 ```php
 // Bad - service locator hides dependency
-class OrderService {
-    public function create(array $data): Order {
-        $payment = app(PaymentService::class);  // hidden
-    }
-}
+$payment = app(PaymentService::class);
 
 // Good - constructor injection
 class OrderService {
-    public function __construct(private readonly PaymentService $paymentService) {}
+    public function __construct(private readonly PaymentService $payments) {}
 }
 
-// Service provider
+// Bindings (AppServiceProvider)
 $this->app->bind(OrderRepositoryInterface::class, EloquentOrderRepository::class);
 $this->app->singleton(PaymentGateway::class, fn() =>
     new StripePaymentGateway(config('services.stripe.key'))
 );
 $this->app->when(OrderService::class)
     ->needs(PaymentGateway::class)
-    ->give(StripePaymentGateway::class);  // contextual
+    ->give(StripePaymentGateway::class);
 ```
 
 ### Events and listeners
 
 ```php
-// Bad - direct cross-domain calls inside service
+// Bad - direct cross-domain calls
 class OrderService {
     public function create(...): Order {
         $order = Order::create(...);
-        $this->emailService->sendConfirmation($order);    // cross-domain
-        $this->inventoryService->decrementStock($order);  // cross-domain
+        $this->emailService->sendConfirmation($order);     // cross-domain
+        $this->inventoryService->decrementStock($order);   // cross-domain
         return $order;
     }
 }
 
-// Good - dispatch event; listeners handle side effects
+// Good - event; listeners handle side effects
 class OrderService {
     public function create(...): Order {
         return DB::transaction(function () {
@@ -176,13 +144,7 @@ class OrderService {
     }
 }
 
-class SendOrderConfirmation {
-    public function handle(OrderCreated $event): void {
-        $event->order->user->notify(new OrderConfirmationNotification($event->order));
-    }
-}
-
-// Listener dispatching a job - afterCommit so the job sees committed state
+// Listener dispatching a job - $afterCommit so the job sees committed state
 class ProcessOrderPayment {
     public bool $afterCommit = true;
     public function handle(OrderCreated $event): void {
@@ -215,7 +177,6 @@ class OrderService {
         if (! in_array($to, $allowed, true)) {
             throw new InvalidStatusTransitionException($order->status, $to);
         }
-
         return DB::transaction(function () use ($order, $to) {
             $from = $order->status;
             $order->update(['status' => $to]);
@@ -227,16 +188,6 @@ class OrderService {
 ```
 
 For 6+ states with guards / side-effects per transition, prefer `spatie/laravel-model-states`.
-
-### When to extract
-
-| Signal                                            | Extract to                |
-| ------------------------------------------------- | ------------------------- |
-| Controller method >10-15 lines of business logic  | Service or Action         |
-| Same logic in 2+ places (controller, job, command) | Action class              |
-| Multiple related operations on one domain         | Service class             |
-| Cross-domain side effect (email, notification)    | Event + Listener          |
-| Complex query used in multiple places             | Query scope or repository |
 
 ### File layout
 
@@ -265,10 +216,9 @@ Type: {Service | Action | DTO | Event | Listener}
 - Business logic in controllers or Eloquent accessors/mutators
 - Raw `$request` arrays between layers (use DTOs)
 - `app()` / `resolve()` in business logic
-- God services with 20+ methods
+- God services (>500 lines or >20 methods - split)
 - Direct cross-domain calls (use events)
-- Dispatching jobs inside transactions without `afterCommit`
-- Anemic services that proxy single Eloquent calls (no value added)
-- Circular service dependencies (indicates wrong domain boundary)
+- Anemic services proxying single Eloquent calls (no value added)
 - Direct `update(['status' => ...])` without transition validation
-- Single-implementation interfaces with no test seam or alternative implementation
+- Single-implementation interfaces with no test seam or alternative impl
+- Circular service dependencies (wrong domain boundary)
