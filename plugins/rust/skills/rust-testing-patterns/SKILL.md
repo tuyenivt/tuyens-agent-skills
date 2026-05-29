@@ -19,16 +19,16 @@ user-invocable: false
 
 ## Rules
 
-- Async tests use `#[tokio::test]` - never construct a runtime inside `#[test]`
-- Mock at trait boundaries declared in the consumer module; use `mockall::automock` - do not mock concrete structs
-- Integration tests use `testcontainers` with a fresh container per test (or per-test schema); guard Docker-required tests with `#[ignore]` when Docker is absent
-- Test public API only - if a test needs a `pub(crate)` item, the boundary is wrong
-- No `tokio::time::sleep` for synchronization - use channels, `Notify`, or `tokio::time::pause` + `advance`
-- Tests run in parallel by default; serialize only with `serial_test::serial`, never `--test-threads=1` globally
+- Async tests use `#[tokio::test]`. Never build a `Runtime` inside `#[test]`.
+- Mock at consumer-side traits with `mockall::automock`. Concrete structs are not mockable - extract the trait first.
+- Test through the public API. If a test needs `pub(crate)` or private items, the boundary is wrong.
+- Integration tests use `testcontainers` for a real Postgres; gate with `#[ignore = "requires docker"]` so CI without Docker still passes.
+- Synchronize on signals (`oneshot`, `Notify`, `tokio::time::pause` + `advance`), never wall-clock `sleep`.
+- Tests run in parallel. Isolate state per test (fresh container or unique schema); reach for `#[serial_test::serial]` only when isolation is impossible. Never set `--test-threads=1` globally.
 
 ## Patterns
 
-### Unit Test (inline)
+### Unit Test (inline `mod tests`)
 
 ```rust
 #[cfg(test)]
@@ -60,7 +60,7 @@ async fn returns_not_found() {
 }
 ```
 
-### Handler Test via `tower::ServiceExt::oneshot`
+### Handler Test (`tower::ServiceExt::oneshot`)
 
 ```rust
 #[tokio::test]
@@ -74,7 +74,9 @@ async fn get_user_returns_200() {
 }
 ```
 
-### Integration Test with testcontainers (per-test container)
+`axum-test`'s `TestServer` is an equivalent higher-level option; pick one and stay consistent across the suite.
+
+### Integration Test with testcontainers
 
 ```rust
 #[tokio::test]
@@ -90,17 +92,17 @@ async fn save_and_find_roundtrip() {
 }
 ```
 
-Per-test containers give isolation at the cost of startup time. For larger suites, share a container but give each test a unique schema (`CREATE SCHEMA test_<uuid>`), never a shared static pool with shared tables.
+Container-per-test is simplest. When startup cost dominates, share one container and give each test a unique schema (`CREATE SCHEMA test_<uuid>`); never share tables via a static pool.
 
-### Async Synchronization without `sleep`
+### Synchronize without `sleep`
 
 ```rust
-// Bad: flaky wait
+// Bad: flaky wall-clock wait.
 start_job().await;
 tokio::time::sleep(Duration::from_secs(1)).await;
 assert!(job_done());
 
-// Good: signal completion
+// Good: signal completion.
 let (tx, rx) = tokio::sync::oneshot::channel();
 start_job_with_signal(tx).await;
 rx.await.unwrap();
@@ -109,11 +111,13 @@ assert!(job_done());
 
 ### Property Test with proptest
 
+Use proptest for invariants over a domain (parsers, validators, serde round-trips, ordering), not to re-assert what the type system already guarantees. A test that round-trips an input back to itself proves nothing.
+
 ```rust
 proptest! {
     #[test]
     fn validate_email_never_panics(s in "\\PC{0,100}") {
-        let _ = validate_email(&s);
+        let _ = validate_email(&s);   // invariant: total function
     }
 }
 ```
@@ -124,21 +128,18 @@ When reviewing a test suite, emit one finding per issue:
 
 ```
 Finding: <one-line summary>
-Category: {AsyncRuntime | Mocking | Isolation | Synchronization | Boundary | Coverage | Flakiness}
+Category: {AsyncRuntime | Mocking | Boundary | Isolation | Synchronization}
 Severity: {Critical | Major | Minor}
 Location: <path>:<line>
 Evidence: <code excerpt or pattern reference>
 Fix: <pattern name from this skill> - <one-line corrective action>
 ```
 
-When no issues found in a category, omit it. If Docker is unavailable, mark testcontainers findings `Severity: Major` with `Fix: gate with #[ignore]` rather than dropping integration coverage.
+If Docker is unavailable in CI, mark testcontainers gaps `Severity: Major` with `Fix: gate with #[ignore]` rather than dropping integration coverage.
 
 ## Avoid
 
-- Constructing `tokio::runtime::Runtime` inside `#[test]` - use `#[tokio::test]`
-- Mocking concrete struct types - extract a trait at the consumer boundary
-- Testing `pub(crate)` or private functions directly - test through the public API
-- `tokio::time::sleep` for awaiting async work - use channels, `Notify`, or virtual time
-- `Once`/`OnceCell` for a shared DB pool across tests - state leaks, ordering bugs
-- `--test-threads=1` to mask data races - fix the shared state or use `serial_test::serial` per-test
-- Asserting on log output or error message strings - assert on typed error variants
+- Sharing a `OnceCell`/`Lazy` DB pool across tests - state leaks, order-dependent failures.
+- Asserting on log lines or stringified errors - match typed error variants.
+- Property tests that round-trip an input back to itself or restate the function's type signature.
+- `--test-threads=1` to paper over data races - fix the shared state instead.

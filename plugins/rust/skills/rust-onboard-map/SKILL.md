@@ -1,6 +1,6 @@
 ---
 name: rust-onboard-map
-description: "Map Rust onboarding signals: Cargo workspace, features, tokio/async-std, Axum/Actix, sqlx/sea-orm/diesel, clippy/rustfmt."
+description: "Map Rust onboarding signals: Cargo workspace, features, tokio, Axum/Actix, sqlx/sea-orm/diesel, clippy/rustfmt - injected into task-onboard."
 metadata:
   category: backend
   tags: [onboarding, codebase-map, rust, axum, cargo, tokio]
@@ -9,125 +9,118 @@ user-invocable: false
 
 # Rust Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first. Composed by `task-onboard` when the stack is Rust.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when the stack is Rust. Emits Rust-specific signals into host workflow sections; does not re-establish bootstrap, safe-zone, or operational concepts the host already owns.
 
 ## When to Use
 
-Workflow needs Rust-specific orientation: workspace layout, Cargo features, async runtime, framework, DB layer. Project has `Cargo.toml`.
+`task-onboard` detected Rust (`Cargo.toml` present). Output feeds Stack, Local Quickstart, Architecture, Patterns, Tech Debt, and First-PR sections of the host report.
 
 ## Rules
 
-- Detect single-crate vs workspace first - `[workspace]` in root `Cargo.toml` indicates members; layout and import semantics differ.
-- Detect toolchain: `rust-toolchain.toml` pins exactly; otherwise `Cargo.toml` `rust-version` is a minimum.
-- Detect async runtime - tokio dominant, async-std legacy, smol minor. Runtimes do not mix.
-- Detect framework: Axum (tower-based), Actix-Web (actor), Rocket, Warp, plain hyper.
-- Detect DB layer: sqlx (compile-time SQL + `.sqlx/` cache), sea-orm (active record), diesel (DSL), refinery (migrations only).
-- Detect error stack: `anyhow` (apps, erased) vs `thiserror` (libs, typed enums).
+- Classify layout from root `Cargo.toml`: `[workspace]` present -> workspace (enumerate members and their `[[bin]]`/`[lib]`); else single-crate.
+- Toolchain source: `rust-toolchain.toml` (pinned, exact) vs `Cargo.toml` `rust-version` (minimum). Report which.
+- Runtime is single-valued: tokio | async-std | smol | none. Do not list multiple - mixing is a bug, flag if seen.
+- Framework, DB layer, error stack are each single-valued from `Cargo.toml` deps - pick the dominant one, name overrides explicitly.
+- Per-crate features: list non-default features actually enabled by binary crates or `default-features = false` overrides. Features change which code compiles - silently listing "has features" is useless.
+- `.sqlx/` cache must exist if `sqlx::query!`/`query_as!` macros are used and CI runs offline. Flag mismatch as Tech Debt.
+- Hexagonal/DDD detection: a `domain/` or `core/` crate (or module) with zero `axum`/`sqlx`/`reqwest` imports. Cite by checking its `Cargo.toml` deps, not just the directory name.
 
 ## Patterns
 
-### Build Inventory
+### Detection Signals
 
-| File                  | What it tells you                                              |
-| --------------------- | -------------------------------------------------------------- |
-| `Cargo.toml`          | Crate vs workspace, deps, features, bin/lib type               |
-| `Cargo.lock`          | Locked deps (commit for binaries)                              |
-| `rust-toolchain.toml` | Pinned toolchain, components (clippy, rustfmt), targets        |
-| `.cargo/config.toml`  | Registry, build flags, target-specific options                 |
-| `rustfmt.toml` / `clippy.toml` | Format/lint config                                    |
-| `.sqlx/`              | sqlx offline query cache (must be in sync with code)           |
-| `Dockerfile`          | Often cargo-chef + sccache for layer caching                   |
+| Signal                     | Source                                                       | Maps to                            |
+| -------------------------- | ------------------------------------------------------------ | ---------------------------------- |
+| Workspace                  | `[workspace] members = [...]` in root `Cargo.toml`           | Stack: layout                      |
+| Toolchain pin              | `rust-toolchain.toml` `channel`                              | Stack: language version            |
+| Runtime                    | `tokio` / `async-std` / `smol` in `[dependencies]`           | Stack: async                       |
+| Framework                  | `axum` / `actix-web` / `rocket` / `warp` / `hyper` direct    | Stack: framework                   |
+| DB layer                   | `sqlx` / `sea-orm` / `diesel` direct dep                     | Stack: database                    |
+| Migrations                 | `migrations/` + (`sqlx-cli` / `sea-orm-cli` / `diesel_cli`)  | Operational: migrations            |
+| Error stack                | `thiserror` (libs) + `anyhow` (apps) in deps                 | Patterns: errors                   |
+| Logging                    | `tracing` (+ `tracing-subscriber`) vs `log` + `env_logger`   | Patterns: logging                  |
+| Config                     | `config` / `figment` / `serde` + env + `dotenvy`             | Patterns: config                   |
+| Per-crate bin/lib          | `[[bin]]`, `[lib]`, or `src/main.rs` / `src/lib.rs`          | Architecture: crate roles          |
+| Hexagonal split            | `domain` crate has no web/db deps in its `Cargo.toml`        | Architecture: pattern              |
+| sqlx offline cache         | `.sqlx/*.json` files present                                 | Tech Debt: cache freshness         |
+| Lint/format gates          | `clippy.toml` / `rustfmt.toml` + CI invoking them            | Conventions                        |
 
-### Bootstrap
+### Layout Variants
 
-1. Toolchain: `rustup` reads `rust-toolchain.toml` automatically; confirm `rustc --version`.
-2. Build: `cargo build` (deps from crates.io); `--release` for prod profile.
-3. Local services: `compose.yml` for DB; required env in `.env.example`.
-4. Migrations: sqlx `sqlx migrate run` + `cargo sqlx prepare` | sea-orm `sea-orm-cli migrate up` | diesel `diesel migration run` | refinery `refinery migrate -e DATABASE_URL files`.
-5. Run: `cargo run` or `cargo run --bin <name>` for multi-binary workspaces.
-6. Hot reload: `cargo-watch` (`cargo watch -x run`).
-7. Verify: default port from config; `/health` if instrumented.
+| Variant                | Indicators                                                          |
+| ---------------------- | ------------------------------------------------------------------- |
+| Single-crate, layered  | `src/{handlers,services,repository,models}/`                        |
+| Single-crate, feature  | `src/<feature>/{handler,service,repo,model}.rs` + `mod.rs`          |
+| Workspace multi-binary | `crates/{api,worker,migrate}/` bins + `crates/{core,domain}/` libs  |
+| Hexagonal              | `domain/` pure crate/module; adapters live in `infra/` or `api/`    |
 
-### Key Files
+`src/main.rs` (or `crates/<bin>/src/main.rs`) is wire-up only - config load, `AppState`, server start. Binary crates are not importable; shared code belongs in a library crate or `src/lib.rs`.
 
-**Single-crate**
+### Rust-Typical Risk Hotspots
 
-| Location                                | Purpose                                                |
-| --------------------------------------- | ------------------------------------------------------ |
-| `src/main.rs`                           | Binary entry (or `src/bin/<name>.rs`)                  |
-| `src/lib.rs`                            | Library root (enables tests under `tests/`)            |
-| `src/routes/` or `src/handlers/`        | HTTP handlers                                          |
-| `src/services/`                         | Business logic                                         |
-| `src/models/` or `src/domain/`          | Entities, DTOs                                         |
-| `src/db/` or `src/repository/`          | DB access                                              |
-| `migrations/`                           | SQL migrations (sqlx, refinery)                        |
-| `tests/`                                | Integration tests (each file a separate binary)        |
+Cross-reference and cite path evidence:
 
-**Workspace**
+- `std::sync::Mutex`/`MutexGuard` held across `.await`, blocking calls (`std::fs`, `reqwest::blocking`) on the runtime, detached `tokio::spawn` without `JoinHandle` tracking, mixed runtimes -> `rust-async-patterns`, `rust-concurrency`.
+- `sqlx::query!` strings drifted from `.sqlx/` cache, N+1 from per-row queries in a loop, transactions wrapping HTTP/IO calls -> `rust-db-access`.
+- Side-effect dispatch (Kafka/HTTP) inside an open transaction -> `rust-messaging-patterns`.
+- Mass assignment via `serde_json::from_value` into entity, `unsafe` block without `// SAFETY:` comment, JWT verified without `aud`/`exp`, `Command::new("sh")` -> `rust-security-patterns`.
+- Migration uses `CREATE INDEX` (non-concurrent) on large table, no `lock_timeout`, no expand/contract, missing `cargo sqlx prepare` in CI -> `rust-migration-safety`.
+- Cargo features: `default-features = false` in one consumer but transitively re-enabled by another; feature unification across workspace can quietly pull in heavy deps.
 
-| Location                            | Purpose                                |
-| ----------------------------------- | -------------------------------------- |
-| Root `Cargo.toml`                   | `[workspace] members = [...]`          |
-| `crates/<name>/Cargo.toml`          | Member crate                           |
-| `dep = { path = "..." }`            | Internal cross-crate deps              |
+### Rust-Typical First-PR Areas
 
-### Module Layout
+Safe: new handler in `src/routes/` or new method on an existing service, new integration test in `tests/`, new variant on an app `Error` enum (anyhow apps are even more forgiving), new env var with a default.
 
-- **Layer-module** (small services): `src/{handlers,services,repository,models}/` grouped by stereotype. Easy by stereotype, hard by feature.
-- **Feature-module** (medium+): `src/orders/{handler,service,repository,model}.rs` + `mod.rs` with small `pub use` surface. Cross-feature imports go through service interfaces.
-- **DDD / hexagonal**: `src/<domain>/{domain,application,adapters}/`. `domain/` is pure Rust - no `axum`/`sqlx` imports.
-- **Workspace multi-binary**: `crates/{api,worker,migrate}/` + shared `crates/{core,domain}/`. Each `main.rs` is wire-up only.
-
-`src/main.rs` (or `crates/<bin>/src/main.rs`) is always thin (config, `AppState`, server start). Binary crates are not importable - shared logic belongs in `src/lib.rs` or a library crate.
-
-### Conventions
-
-- **Modules** via `mod` keyword; file tree mirrors module tree. `pub use` re-exports for clean APIs.
-- **Errors:** `anyhow::Error` (apps) for erased `?` flow; `thiserror` derive (libs) for typed enums.
-- **Logging:** `tracing` (spans, structured) standard for async; `log` legacy.
-- **Config:** `config`, `figment`, or `serde` + env; `dotenvy` for `.env` in dev.
-- **Tests:** `#[cfg(test)] mod tests` inline + integration in `tests/`; `#[tokio::test]` for async.
-- **Lint/format:** `cargo clippy`, `cargo fmt`; both gated in CI typically.
-- **Benchmarks:** `criterion` + `cargo bench`.
-
-### Risk Hotspots
-
-- **Async lifetime + cancellation** (sync `MutexGuard` across `.await`, unowned `tokio::spawn`, blocking calls on the runtime, missing `CancellationToken`, mixed runtimes): see `rust-async-patterns`, `rust-concurrency`.
-- **Data access** (N+1, missing `LIMIT`, I/O inside transactions, stale `.sqlx/` cache): see `rust-db-access`.
-- **Background dispatch inside transaction**, payloads carrying owned domain models: see `rust-messaging-patterns`.
-- **Security** (mass assignment, SQL injection, unaudited `unsafe`, JWT misvalidation, `Command::new("sh")`): see `rust-security-patterns`.
-- **Migrations** (concurrent index, lock_timeout, expand-then-contract, missing `cargo sqlx prepare`): see `rust-migration-safety`.
-- **Rust footguns**: `Box<dyn Error>` at domain boundaries, `.clone()` churn on hot paths, feature mismatches across dependents, `unsafe` without `// SAFETY:` comment.
-
-### First-PR Safe Zones
-
-Safe: new handler in `src/routes/`, new integration test in `tests/`, new error variant in app `Error` enum, new env var with safe default.
-
-Riskier: `main.rs` (boot order), Cargo features (cascade across dep graph), schema migrations (irreversible without reverse), `unsafe` blocks (invariant changes cause UB).
-
-### Ecosystem Currency
-
-- Rust 1.94+ latest stable; `async fn` in traits stable since 1.75.
-- Axum 0.7+/0.8; breaking changes between minors common.
-- sqlx 0.7+ with `query!`/`query_as!` macros and `.sqlx/` offline cache.
-- `anyhow` + `thiserror` canonical error pair.
+Riskier: `main.rs` / wire-up (boot ordering), Cargo features (cascade across the workspace dep graph), schema migrations (irreversible without an explicit down), `unsafe` blocks (UB on invariant change), trait signature changes in a published library crate (semver break).
 
 ## Output Format
 
-Inject into `task-onboard` sections:
+Emit the following keyed signals for `task-onboard` to merge into its report sections. Use the exact enums shown; mark `unknown` rather than guessing.
 
-- **Stack and Tooling**: Rust toolchain version, single-crate vs workspace, async runtime, framework, DB layer, migration tool, error stack, logging.
-- **Local Bootstrap**: build command, env file, run command, default port, `cargo sqlx prepare` if sqlx, health-check.
-- **Architecture Map**: workspace members (if any), module layout style, routes/services/db split, `lib.rs` presence.
-- **Conventions**: error pattern, logging, config approach, test layout, clippy/rustfmt status.
-- **Risk Hotspots**: async-mutex-across-await, spawn lifetime, blocking-in-async, `unsafe` usage, sqlx cache freshness, feature fan-out.
-- **First-PR Safe Zones**: scoped to observed structure.
+```
+### Stack and Tooling
+- Layout: {single-crate | workspace(<N> members)}
+- Toolchain: <version> ({pinned via rust-toolchain.toml | min via Cargo.toml rust-version})
+- Runtime: {tokio | async-std | smol | none}
+- Framework: {axum | actix-web | rocket | warp | hyper | none}
+- DB layer: {sqlx | sea-orm | diesel | refinery | none}
+- Migrations: {sqlx-cli | sea-orm-cli | diesel_cli | refinery | none}
+- Error stack: {anyhow | thiserror | anyhow+thiserror | std::error::Error | custom}
+- Logging: {tracing | log | none}
+- Config: {config | figment | serde+env | none}
+- Lint/format gates in CI: {clippy:yes/no, rustfmt:yes/no}
+
+### Local Bootstrap (commands only; host owns narrative)
+- build: `cargo build`
+- run: `cargo run` | `cargo run --bin <name>`
+- migrate: <one of: `sqlx migrate run` | `sea-orm-cli migrate up` | `diesel migration run` | `refinery migrate -e DATABASE_URL files`>
+- sqlx offline prep (if sqlx): `cargo sqlx prepare --workspace`
+- watch (if `cargo-watch` in dev-deps): `cargo watch -x run`
+- default port: <from config or `unknown`>; health: <`/health` if instrumented or `unknown`>
+
+### Architecture
+- Pattern: {layered | feature-module | hexagonal | workspace-multi-binary}
+- Workspace members (if any): <crate -> role (bin|lib) -> purpose one-liner>
+- lib.rs present: {yes | no}; binary entry: <path>
+
+### Conventions
+- Errors: <observed pattern + path>
+- Logging: <library + path>
+- Config: <library + path>
+- Tests: <unit inline / integration in `tests/` / `#[tokio::test]` usage>
+
+### Risk Hotspots (only those observed; cite paths)
+- <hotspot>: <path> -> see `<atomic skill>`
+
+### First-PR Safe Zones (Rust-typical, intersect with observed structure)
+- <area>: <path>
+```
 
 ## Avoid
 
-- Treating async-std and tokio code as interchangeable
-- Glossing over Cargo features - they change which code compiles
-- Recommending `Box<dyn Error>` over typed errors in libraries
-- Skipping `.sqlx/` offline cache freshness for CI
-- Confusing single-crate and workspace import semantics
-- Recommending Actix-Web patterns on an Axum project
+- Listing multiple async runtimes as if interchangeable (mixing is a bug).
+- Reporting "features: present" without naming the enabled features per binary crate.
+- Reproducing host-workflow narrative (bootstrap prose, generic safe-zone definitions, operational sections).
+- Recommending Actix-Web patterns on an Axum project (or vice versa).
+- Treating directory names alone as evidence of hexagonal split - check the crate's `Cargo.toml` deps.
+- Skipping `.sqlx/` freshness check when `sqlx::query!` macros are used.

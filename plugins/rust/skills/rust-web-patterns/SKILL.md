@@ -1,6 +1,6 @@
 ---
 name: rust-web-patterns
-description: "Axum web patterns: router composition, AppState, extractors, validator input, response envelopes, pagination caps, graceful shutdown, health/readiness."
+description: "Axum 0.8 patterns: router/AppState, extractors, validator DTOs, ApiResponse envelopes, capped pagination, graceful shutdown, health/readiness."
 metadata:
   category: backend
   tags: [rust, axum, tower, middleware, routing, http, web]
@@ -9,84 +9,66 @@ user-invocable: false
 
 # Rust Web Patterns (Axum)
 
-> Load `Use skill: stack-detect` first to determine the project stack. For error envelopes and `IntoResponse`, defer to `rust-error-handling`. For JWT validation, password hashing, CORS hardening, and path traversal, defer to `rust-security-patterns`. For async runtime and `spawn_blocking`, defer to `rust-async-patterns`.
+> Load `Use skill: stack-detect` first. Defer error envelopes / `IntoResponse` to `rust-error-handling`; JWT, CORS hardening, password hashing to `rust-security-patterns`; runtime / `spawn_blocking` to `rust-async-patterns`.
 
 ## When to Use
 
-- Structuring a new Axum HTTP service or reviewing an existing one
-- Designing routers, `AppState`, extractors, response envelopes, and pagination
-- Adding health/readiness endpoints and graceful shutdown
-
-Out of scope: error type design, JWT/auth specifics, runtime/concurrency. Reference the sibling skills above.
+- Structuring or reviewing an Axum HTTP service: routers, `AppState`, extractors, response shape, pagination, health, shutdown.
 
 ## Rules
 
-- Handlers orchestrate only - no DB calls, no business logic. Delegate to a service injected via `State`.
+- Handlers orchestrate only: parse input, call a service via `State`, map to response. No DB, no business logic.
 - Validate every request DTO at the handler boundary (`validator::Validate` + `serde`).
-- All endpoints return a typed envelope (`ApiResponse<T>` for success, `AppError` for failure). No ad-hoc `(StatusCode, String)`.
-- List endpoints clamp `page_size` to a server-enforced max. Reject negative `page`.
-- `AppState` is cheaply `Clone` (wrap heavy or non-`Clone` fields in `Arc`). Never hold it behind a `Mutex` for shared data.
-- Routes use Axum 0.8 capture syntax `/users/{id}`. Old `:id` is invalid.
-- Production deploys must implement graceful shutdown via `with_graceful_shutdown` and bind addresses from config.
+- Every endpoint returns `ApiResponse<T>` on success and `AppError` on failure. No bare strings, raw `Json(Vec<_>)`, or ad-hoc `(StatusCode, String)`.
+- List endpoints clamp `page_size` to a server-side max and reject `page < 1`.
+- `AppState` is cheaply `Clone`: wrap heavy or non-`Clone` fields in `Arc`. Never put shared read state behind a `Mutex`.
+- Apply auth on the protected sub-router, not the top-level `Router`.
+- Axum 0.8 route syntax is `/users/{id}`. The `:id` form is a hard error.
+- Production binaries bind from config and shut down via `with_graceful_shutdown`.
 
 ## Patterns
 
-### Router Composition and Layer Order
+### Router composition
 
-Layer order is bottom-up: the last `.layer()` runs first on the request. Apply auth on the protected sub-router, never globally.
+`.layer` is bottom-up: the *last* layer added runs *first*. Auth goes on the protected sub-router so it never wraps `/health`.
 
 ```rust
 fn build_router(state: AppState) -> Router {
-    let public = Router::new()
-        .route("/health", get(health))
-        .route("/ready", get(ready));
-
+    let public = Router::new().route("/health", get(health)).route("/ready", get(ready));
     let api = Router::new()
         .route("/users", get(list_users).post(create_user))
         .route("/users/{id}", get(get_user))
-        .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     Router::new()
         .merge(public)
         .nest("/api/v1", api)
-        .layer(TraceLayer::new_for_http())       // outermost: wraps all requests including 404s
-        .layer(CorsLayer::permissive())          // tighten per rust-security-patterns in prod
+        .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::permissive()) // tighten in prod; see rust-security-patterns
         .with_state(state)
 }
 ```
 
-### AppState Design
+### AppState
 
 ```rust
-// Bad: non-Clone field forces wrapping the whole state in Arc, losing direct field access ergonomics
-struct AppState { service: UserService }
-
-// Good: cheap-Clone wrapper around shared services; PgPool is already Clone
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: PgPool,
-    pub users: Arc<UserService>,
+    pub pool: PgPool,                  // already cheap to clone
+    pub users: Arc<UserService>,       // Arc wraps non-Clone services
     pub config: Arc<Config>,
 }
 ```
 
-Use `FromRef` when handlers want a sub-field directly:
+Use `#[derive(FromRef)]` (or hand-written `FromRef`) so handlers can extract a sub-field directly: `State(svc): State<Arc<UserService>>`.
+
+### Request validation
 
 ```rust
-impl FromRef<AppState> for Arc<UserService> {
-    fn from_ref(s: &AppState) -> Self { s.users.clone() }
-}
-// handler can now take `State(svc): State<Arc<UserService>>`
-```
-
-### Request Validation
-
-```rust
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Deserialize, Validate)]
 pub struct CreateUserRequest {
     #[validate(length(min = 2, max = 100))] pub name: String,
     #[validate(email)] pub email: String,
-    #[validate(range(min = 0, max = 130))] pub age: Option<i32>,
 }
 
 async fn create_user(
@@ -99,20 +81,18 @@ async fn create_user(
 }
 ```
 
-### Pagination with Cap
+### Pagination with cap
 
 ```rust
 const MAX_PAGE_SIZE: i64 = 100;
-const DEFAULT_PAGE_SIZE: i64 = 20;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct ListQuery {
-    #[serde(default = "one")] pub page: i64,
+    #[serde(default = "default_page")] pub page: i64,
     #[serde(default = "default_size")] pub page_size: i64,
-    pub status: Option<String>,
 }
-fn one() -> i64 { 1 }
-fn default_size() -> i64 { DEFAULT_PAGE_SIZE }
+fn default_page() -> i64 { 1 }
+fn default_size() -> i64 { 20 }
 
 impl ListQuery {
     pub fn normalize(&self) -> Result<(i64, i64), AppError> {
@@ -122,9 +102,9 @@ impl ListQuery {
 }
 ```
 
-Bad: `let size = q.page_size.unwrap_or(100);` - no upper bound; a client can request 1M rows.
+Bad: `q.page_size.unwrap_or(100)` - no upper bound; a client can request a million rows.
 
-### Response Envelope
+### Response envelope
 
 ```rust
 #[derive(Serialize)]
@@ -135,12 +115,7 @@ pub struct ApiResponse<T: Serialize> {
 }
 
 #[derive(Serialize)]
-pub struct PaginationMeta {
-    pub page: i64,
-    pub page_size: i64,
-    pub total_items: i64,
-    pub total_pages: i64,
-}
+pub struct PaginationMeta { pub page: i64, pub page_size: i64, pub total_items: i64, pub total_pages: i64 }
 
 impl<T: Serialize> ApiResponse<T> {
     pub fn new(data: T) -> Self { Self { data, meta: None } }
@@ -148,39 +123,37 @@ impl<T: Serialize> ApiResponse<T> {
 }
 ```
 
-Error envelope is defined in `rust-error-handling` via `AppError: IntoResponse`. Do not redefine it here.
+Error envelope lives in `rust-error-handling` (`AppError: IntoResponse`); do not redefine.
 
-### Middleware Structure
+### Middleware
 
-Cross-cutting concerns go in tower layers, not handlers. For auth specifics, see `rust-security-patterns`.
+Cross-cutting concerns belong in tower layers, not handlers.
 
 ```rust
-async fn request_id_middleware(mut req: Request, next: Next) -> Response {
+async fn request_id(mut req: Request, next: Next) -> Response {
     let id = Uuid::new_v4().to_string();
     req.extensions_mut().insert(RequestId(id.clone()));
     let mut resp = next.run(req).await;
-    resp.headers_mut().insert("x-request-id", id.parse().unwrap());
+    if let Ok(v) = HeaderValue::from_str(&id) { resp.headers_mut().insert("x-request-id", v); }
     resp
 }
 ```
 
-### Health and Readiness
+### Health and readiness
 
-Health = process is up. Readiness = dependencies reachable. Kubernetes uses them differently.
+Health = process is alive (no deps). Readiness = dependencies reachable. Kubernetes treats them differently.
 
 ```rust
-async fn health() -> Json<ApiResponse<&'static str>> {
-    Json(ApiResponse::new("ok"))
-}
+async fn health() -> Json<ApiResponse<&'static str>> { Json(ApiResponse::new("ok")) }
 
-async fn ready(State(state): State<AppState>) -> Result<Json<ApiResponse<&'static str>>, AppError> {
-    sqlx::query("SELECT 1").execute(&state.pool).await
+async fn ready(State(s): State<AppState>) -> Result<Json<ApiResponse<&'static str>>, AppError> {
+    sqlx::query("SELECT 1").execute(&s.pool).await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("db not ready: {e}")))?;
     Ok(Json(ApiResponse::new("ready")))
 }
 ```
 
-### Graceful Shutdown
+### Graceful shutdown
 
 ```rust
 async fn serve(app: Router, addr: SocketAddr) -> anyhow::Result<()> {
@@ -222,16 +195,9 @@ Stack Detected: {Axum 0.8+ | Axum 0.7 | Unknown}
 Notes: <unresolved questions, partial info, or "n/a">
 ```
 
-If the framework is not Axum, emit `Stack Detected: Unknown` and apply only the framework-neutral Rules (handler/service separation, validation, envelopes, pagination caps, graceful shutdown).
+Non-Axum stacks: emit `Stack Detected: Unknown` and apply only the framework-neutral Rules (handler/service separation, validation, envelopes, pagination caps, graceful shutdown).
 
 ## Avoid
 
-- Business logic or DB calls in handlers.
-- Skipping `validate()` on request DTOs.
-- Returning bare `String`, raw `Json(Vec<_>)`, or ad-hoc tuples instead of `ApiResponse<T>` / `AppError`.
-- `page_size` without a server-side cap; negative `page` accepted silently.
-- Wrapping `AppState` in `Mutex` for shared read state (use `Arc` on the inner field instead).
-- Applying auth middleware globally instead of on the protected sub-router.
-- Old `/users/:id` route syntax (Axum 0.7) in an 0.8+ project.
-- Bind address or secrets hardcoded in source; missing `with_graceful_shutdown`.
-- Duplicating `AppError`/`IntoResponse` or JWT logic here - see `rust-error-handling`, `rust-security-patterns`.
+- Cross-skill drift: redefining `AppError`/`IntoResponse` or JWT logic here instead of deferring to `rust-error-handling` / `rust-security-patterns`.
+- Global auth layer (covers `/health`); shared-read state behind `Mutex`; bind address or secrets hardcoded in source.

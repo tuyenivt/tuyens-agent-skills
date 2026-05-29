@@ -3,7 +3,7 @@ name: rust-db-access
 description: "Review Rust sqlx data access: compile-time query macros, pool sizing, transactions, N+1, pagination, streaming, statement timeouts."
 metadata:
   category: backend
-  tags: [rust, sqlx, diesel, postgresql, database, connection-pool]
+  tags: [rust, sqlx, postgresql, database, connection-pool]
 user-invocable: false
 ---
 
@@ -13,27 +13,19 @@ user-invocable: false
 
 ## When to Use
 
-- Designing or reviewing the data access layer (sqlx primary, diesel where DSL needed)
+- Designing or reviewing the sqlx data access layer
 - Auditing queries for SQL injection, N+1, pool exhaustion, partial-write risk
 - Sizing connection pools or diagnosing connection-related latency
 
 ## Rules
 
-- Use `sqlx::query!` / `sqlx::query_as!` for static SQL (compile-time checked against schema). Reserve runtime `sqlx::query`/`query_as` for genuinely dynamic SQL.
-- Parameterize every value with `$1`, `$2`. Never `format!` into a SQL string.
-- Create the `PgPool` once at startup with explicit `PgPoolOptions` (max_connections, acquire_timeout, max_lifetime). Share via `Arc` or app state. Never construct per request.
-- Wrap multi-statement mutations in `pool.begin()` + `tx.commit()`. Pass `&mut *tx` as the executor.
-- Set a `statement_timeout` (per-pool via `after_connect` or per-tx via `SET LOCAL`) so a runaway query cannot pin a connection.
-- For unbounded result sets, stream with `.fetch(executor)` instead of `.fetch_all`. For paginated UI, prefer keyset over offset.
-- Commit `.sqlx/` (sqlx 0.7+ offline cache) when `DATABASE_URL` is unavailable at build time. Regenerate via `cargo sqlx prepare` after schema changes.
-
-## When to Use sqlx vs diesel
-
-| Scenario                                                | Use    |
-| ------------------------------------------------------- | ------ |
-| Static SQL, bulk ops, new project                       | sqlx   |
-| Heavily composed query DSL, existing diesel codebase    | diesel |
-| Simple PK lookups                                       | either |
+- Use `sqlx::query!` / `sqlx::query_as!` for static SQL. Reserve runtime `sqlx::query` / `query_as` for genuinely dynamic SQL.
+- Parameterize every value with `$1`, `$2`. Never interpolate into SQL.
+- Build `PgPool` once at startup via `PgPoolOptions` with explicit `max_connections`, `acquire_timeout`, `max_lifetime`. Share through app state (`PgPool` is `Clone` and internally `Arc`).
+- Set a `statement_timeout` per-pool via `after_connect`, or per-tx via `SET LOCAL`, so a runaway query cannot pin a connection.
+- Wrap multi-statement mutations in `pool.begin()` + `tx.commit()`; pass `&mut *tx` as the executor. Do not hold a transaction across slow external I/O (HTTP, queue publish).
+- For unbounded result sets stream with `.fetch(executor)`. For paginated UI prefer keyset over offset on large or active tables.
+- Commit `.sqlx/` offline cache; regenerate via `cargo sqlx prepare` after schema changes.
 
 ## Patterns
 
@@ -52,7 +44,7 @@ let pool = PgPoolOptions::new()
     .connect(&database_url).await?;
 ```
 
-Sizing: `max_connections` <= DB connection limit / (replicas + admin headroom). Start at 25, tune from observed `acquire_timeout` errors. `min_connections` ~20% of max.
+Sizing: `max_connections` <= DB limit / (replicas + admin headroom). Start at 25 and tune from observed `acquire_timeout` errors; `min_connections` ~20% of max.
 
 ### Compile-time checked query
 
@@ -75,7 +67,7 @@ sqlx::query!("UPDATE accounts SET balance = balance - $1 WHERE id = $2", amt, fr
 sqlx::query!("UPDATE accounts SET balance = balance + $1 WHERE id = $2", amt, to)
     .execute(pool).await?;
 
-// Good: atomic with explicit isolation when contention matters
+// Good: atomic, with tx-local timeout for contended writes
 let mut tx = pool.begin().await?;
 sqlx::query!("SET LOCAL statement_timeout = '2s'").execute(&mut *tx).await?;
 sqlx::query!("UPDATE accounts SET balance = balance - $1 WHERE id = $2", amt, from)
@@ -85,7 +77,7 @@ sqlx::query!("UPDATE accounts SET balance = balance + $1 WHERE id = $2", amt, to
 tx.commit().await?;
 ```
 
-Use `RETURNING *` with `fetch_one(&mut *tx)` to capture inserted/updated rows in the same round trip.
+Use `RETURNING ...` with `fetch_one(&mut *tx)` to capture inserted/updated rows in the same round trip.
 
 ### N+1 elimination
 
@@ -149,15 +141,9 @@ Pool Config: {Configured | Defaults | NotFound}
 Compile-Time Coverage: <queries using query!/query_as!> / <total queries>
 ```
 
-If the project uses diesel, replace macro-coverage with `Schema Sync: {generated | manual | stale}`. If stack is non-Postgres (MySQL/SQLite), note dialect substitutions (`?` placeholders, no `ANY($1)`).
-
 ## Avoid
 
-- `format!` / concatenation into SQL strings
-- Constructing `PgPool` per request or per handler
-- `PgPoolOptions::new().connect(...)` without limits or `max_lifetime`
-- Per-row queries in loops - batch with `ANY($1)` or join
-- `fetch_all` on tables that can grow without bound - stream instead
-- Multi-statement mutations without `tx.begin()` / `tx.commit()`
-- Runtime `query_as::<_, T>` for static SQL when the macro form would work
-- Holding a transaction open across slow external I/O (HTTP, queue publish)
+- `PgPoolOptions::new().connect(...)` without limits, `max_lifetime`, or `after_connect` timeout
+- Per-row queries in loops - batch with `ANY($1)` or a join
+- Holding a transaction open across HTTP calls, queue publishes, or other slow I/O
+- Runtime `query_as::<_, T>` for static SQL when the macro form compiles
