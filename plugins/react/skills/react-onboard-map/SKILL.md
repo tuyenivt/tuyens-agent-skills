@@ -56,7 +56,9 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 | `app/<seg>/layout.tsx`          | Nested layout                                    |
 | `app/<seg>/loading.tsx` / `error.tsx` | Suspense fallback / error boundary         |
 | `app/<seg>/route.ts`            | API route handler                                |
+| `app/providers.tsx`             | Conventional `"use client"` provider wrapper (QueryClient, Theme, Auth) imported by `layout.tsx` |
 | `middleware.ts`                 | Edge middleware (auth, redirects, headers)       |
+| `instrumentation.ts`            | OTel / Sentry server registration                |
 
 **Next.js Pages Router (legacy):** `pages/_app.tsx` root, `pages/_document.tsx` shell, `pages/<route>.tsx`, `pages/api/<route>.ts`.
 
@@ -85,8 +87,9 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 - **Identity instability** - inline `{}`/`[]`/`() => ...` in JSX breaking memoization: see `react-component-patterns`.
 - **`"use client"` creep** - boundary placed too high; importing server-only into Client Components: see `react-nextjs-patterns`.
 - **Next fetch caching** - default behavior, `cache: 'no-store'`, `next: { revalidate }`, `unstable_cache`: see `react-data-fetching`.
-- **Hydration mismatch** - timestamps, random IDs, browser-only APIs in render body.
+- **Hydration mismatch** - timestamps, random IDs, browser-only APIs in render body; `next-themes` needs `suppressHydrationWarning` on `<html>`.
 - **Server → Client leaks** - full ORM rows as props, `dangerouslySetInnerHTML` XSS, `NEXT_PUBLIC_*` secret leak, Server Action without auth/Zod: see `task-react-review-security`.
+- **Store-on-server (Next.js + Zustand/Redux)** - module-level stores share state across requests on the server. Instantiate per-request in a provider or keep stores in `"use client"` modules only.
 
 ### First-PR Safe Zones
 

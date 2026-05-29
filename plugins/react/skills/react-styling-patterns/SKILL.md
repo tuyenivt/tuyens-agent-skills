@@ -175,7 +175,7 @@ Dark mode: {class strategy | media query | none}
 
 - [Severity: High | Medium | Low] <one-line issue>
   Location: <file>:<line>
-  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | RSC-Incompat | A11y-Focus | Inline-Style | Important-Override}
+  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | Inline-Style | RSC-Incompat | A11y-Focus | Important-Override}
   Fix: <minimal correction>
 
 ## Recommendations

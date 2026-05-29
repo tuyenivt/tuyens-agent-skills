@@ -57,6 +57,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 }
 ```
 
+**Client-layout smell.** Marking `layout.tsx` `"use client"` purely to hold local state (filter, toggle) collapses the whole subtree client-side.
+
+```tsx
+// Bad - whole subtree forced client to hold one filter string
+"use client";
+export default function Layout({ children }) {
+  const [filter, setFilter] = useState("");
+  return <div><Sidebar filter={filter} onChange={setFilter} />{children}</div>;
+}
+
+// Good - server layout; state lives in the small interactive island
+export default function Layout({ children }: { children: ReactNode }) {
+  return <div><SidebarClient />{children}</div>; // SidebarClient is "use client"
+}
+```
+
 ### Loading and Error UI
 
 ```tsx
@@ -192,6 +208,12 @@ Stack: {Next.js App Router | React Router (Vite) | Other}
 
 - <change with rationale>
 ```
+
+Severity rubric:
+- **Blocker**: route fails to compile/run (e.g., async Client Component, wrong `params` shape), or middleware does DB/heavy work on every edge request.
+- **High**: client layout used for trivial state; missing error boundary on a fetching segment; unvalidated dynamic params reaching ORM.
+- **Medium**: missing loading UI; auth duplicated client-side that middleware/layout should own.
+- **Low**: minor convention drift.
 
 If stack is neither Next.js App Router nor React Router, apply only the stack-neutral Rules (validate params, error/loading boundaries, no `window.location` navigation).
 

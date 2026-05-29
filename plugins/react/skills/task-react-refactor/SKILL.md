@@ -217,11 +217,6 @@ Each step must be: independently committable (`tsc --noEmit` + Vitest pass), beh
 4. If using context, memoize the value (`useMemo(() => ({...}), [deps])`)
 5. Run tests; intermediate layers are simpler
 
-**R5 - Replace `useEffect` for derived state with computed value.**
-1. Identify `useEffect(() => setX(a + b), [a, b])`
-2. Replace with `const x = a + b`; delete `useState` for `x`; delete the effect
-3. Run tests; observable behavior unchanged (prior version had a transient render with stale `x`)
-
 **R6 - Replace `useEffect` for fetching with TanStack Query / Server Component fetch.**
 1. **If on Next.js and parent could be a Server Component:** hoist fetch to parent; pass data as prop; remove the `useEffect`
 2. **Else:** replace with `useQuery({ queryKey, queryFn })`; handle `isLoading` / `error` from the return; set `staleTime` deliberately
@@ -257,31 +252,18 @@ This is `coupled-fix` (refresh, deep links, back button now preserve state - UX 
 3. Test: invalid input rejected with expected error shape; valid input proceeds
 4. Audit other Server Actions in the file - surface as follow-up if not in scope
 
-**R11 - Stabilize context value.**
-1. Memoize: `const value = useMemo(() => ({ a, b, fn }), [a, b, fn])`; `fn` via `useCallback` or hoisted
-2. **Or split** into state / dispatch contexts - dispatch is stable, state changes per action; consumers subscribe to only what they need
-3. Run tests; profile in React DevTools (re-render counts drop)
-
-**R12 - Replace mutable module-level state with injection.**
-1. Move `let cache = {}` / `const handlers = []` into a hook + context, Zustand store, or per-component state
-2. Update consumers to read via the new primitive
-3. Assert cross-test isolation (Vitest test order should not matter)
-
 **R13 - Add accessibility for custom interactive component.**
 1. Identify the violation (`<div onClick>` for a button)
 2. Use the semantic element (`<button>`, `<a>`, `<input>`) or add `role`, `tabIndex`, keydown handler dispatching click on Enter/Space
 3. Add `label` / `aria-label` / `aria-describedby` as needed
 4. `vitest-axe` / `jest-axe` test asserts no violations
 
-**R14 - Virtualize a long list.**
+**Minor recipes** (one-line fixes; cite by name, do not number as spine steps):
 
-Treat as a separate target if the user did not name it - do not bundle silently.
-
-1. Pick primitive: `@tanstack/react-virtual` (modern) or `react-window` (lighter); match project's existing choice
-2. Replace rendered list with virtualizer render path; reserve container height
-3. Verify keyboard navigation, screen reader, scroll restoration still work (use library's accessibility mode)
-4. Tests: `userEvent` keyboard navigation, axe accessibility tree, scroll restoration
-5. Measure LCP / INP before/after
+- **Derived state in effect**: `useEffect(() => setX(a+b), [a,b])` → `const x = a + b`. Delete the state and the effect.
+- **Stabilize context value**: wrap in `useMemo(() => ({...}), deps)`, or split into state / dispatch contexts.
+- **Module-level mutable state**: move `let cache = {}` into a hook + context, store, or per-component state; assert cross-test isolation.
+- **Virtualize a long list**: separate target if not named. `@tanstack/react-virtual` or `react-window`; reserve container height; verify keyboard nav + scroll restoration.
 
 ### Step 8 - Validate Plan Against Goal
 

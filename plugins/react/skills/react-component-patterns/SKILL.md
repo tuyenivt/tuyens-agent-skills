@@ -72,27 +72,9 @@ Vite or other client-only stacks: skip this boundary entirely. Set `Component mo
 </Card>
 ```
 
-### Compound components (shared implicit state)
+### Compound components
 
-Bind parts via context; expose them as static members. Throw if used outside the parent.
-
-```tsx
-const TabsCtx = createContext<{ active: string; setActive: (v: string) => void } | null>(null);
-const useTabs = () => useContext(TabsCtx) ?? (() => { throw new Error("Tabs.* outside <Tabs>"); })();
-
-function Tabs({ defaultTab, children }: { defaultTab: string; children: ReactNode }) {
-  const [active, setActive] = useState(defaultTab);
-  return <TabsCtx value={{ active, setActive }}>{children}</TabsCtx>;
-}
-Tabs.Tab = ({ value, children }: { value: string; children: ReactNode }) => {
-  const { active, setActive } = useTabs();
-  return <button role="tab" aria-selected={active === value} onClick={() => setActive(value)}>{children}</button>;
-};
-Tabs.Panel = ({ value, children }: { value: string; children: ReactNode }) => {
-  const { active } = useTabs();
-  return active === value ? <div role="tabpanel">{children}</div> : null;
-};
-```
+Bind parts via context; expose as static members (`Tabs.Tab`, `Tabs.Panel`). Use when sub-parts must share implicit state. Throw from the consumer hook when the context is null - that's how you signal "used outside parent".
 
 ### Error boundaries
 
@@ -124,18 +106,7 @@ interface DataTableProps {
 
 ### Polymorphic `as` prop
 
-Use only when a single component must render as different elements (Button-as-link, Text-as-h1). Otherwise it adds generics noise for no gain.
-
-```tsx
-type Poly<T extends ElementType, P> = P & { as?: T } & Omit<ComponentPropsWithoutRef<T>, keyof P | "as">;
-
-function Button<T extends ElementType = "button">(
-  { as, variant, children, ...rest }: Poly<T, { variant: "primary" | "secondary"; children: ReactNode }>
-) {
-  const Tag = as ?? "button";
-  return <Tag className={`btn-${variant}`} {...rest}>{children}</Tag>;
-}
-```
+Use only when one component must render as different elements (Button-as-link). Otherwise the generics are noise.
 
 ## Output Format
 
@@ -154,12 +125,15 @@ function Button<T extends ElementType = "button">(
 
 | Component | Type | Props (key) | State | Pattern |
 | --------- | ---- | ----------- | ----- | ------- |
-| {name}    | {Server|Client} | {...} | {none|fields} | {Slot|Compound|Polymorphic|Simple} |
+| {name}    | {Server|Client} | {...} | {none|fields} | {pattern} |
+
+`Pattern` values: `Simple` (no composition concern), `Slot` (accepts `children` or named slots), `Compound` (static sub-members sharing context), `Polymorphic` (`as` prop).
 
 ### Findings
 
 - [Severity: {High | Medium | Low}] {one-line issue}
-  Problem: {what is wrong}
+  Current: {what the code does}
+  Target: {what should happen}
   Fix: {concrete correction; reference Pattern name}
 ```
 

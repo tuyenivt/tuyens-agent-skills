@@ -34,8 +34,10 @@ Steady-state user impact, not "how scary the code looks".
 | Severity   | Definition                                                                                                                                                                                                                  |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **High**   | LCP / INP regression visible to every cold visitor: heavy lib in initial bundle (>50KB gzip, no split), `"use client"` at layout root pulling the tree client-side, hero `<img>` blocking LCP, missing virtualization on 1k+ rows, sync work on input (>200ms INP), hydration mismatch, `force-dynamic` on cacheable route. |
-| **Medium** | Degraded p95 / wasted re-renders: context value rebuilt every render with many consumers, identity-unstable props on `React.memo` child, barrel imports defeating tree-shake, `staleTime: 0` on hot query, CSS-in-JS added to a Tailwind project, missing `next/image`. |
+| **Medium** | Degraded p95 / wasted re-renders: context value rebuilt every render with many consumers, identity-unstable props on `React.memo` child, barrel imports defeating tree-shake, `staleTime: 0` on hot query, CSS-in-JS added to a Tailwind project, missing `next/image` on non-LCP images. |
 | **Low**    | Allocation / churn quick wins: inline style objects on hot rows, `useMemo` on primitives, `console.log` in render, missing `next/font`, missing `loading="lazy"` below-the-fold. |
+
+`next/image` placement: raw `<img>` on the LCP / hero element is High (blocks LCP); raw `<img>` on non-LCP images is Medium.
 
 Tiebreaker: "would RUM flag this on a typical mobile cold visit?" yes -> High; "drag next quarter's perf budget?" yes -> Medium.
 

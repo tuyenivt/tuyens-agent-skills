@@ -105,7 +105,7 @@ Mark each category `yes` or `no signal in diff`.
 
 ### Step 6 - Diff-Specific Checks
 
-Apply against changed files.
+Apply against changed files. **Gate**: only run a sub-block when its Step 5 row is `yes` or its files appear in the diff. Skip sub-blocks whose triggering category is `no signal in diff`. This keeps Step 6 a targeted check, not a full OWASP audit.
 
 **Authn / authz**
 - [ ] Auth library chosen and consistent (Auth.js / Clerk / Lucia / iron-session); not mixed

@@ -194,9 +194,9 @@ Invalidation Coverage: <mutations with invalidation> / <total mutations>
 
 Severity guide:
 - **Critical**: data loss, wrong-user data, unbounded refetch loops.
-- **High**: stale data after writes, race conditions from manual effects.
-- **Medium**: missing empty/error UI, unstable query keys, missing optimistic rollback.
-- **Low**: inline queryFn, default `staleTime: 0` where freshness isn't required.
+- **High**: stale data after writes (missing `invalidateQueries`); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown); race conditions from manual effects.
+- **Medium**: missing empty/error UI; missing optimistic rollback; truly cosmetic key instability (string-vs-array of same data).
+- **Low**: inline `queryFn` closures; default `staleTime: 0` where freshness isn't required.
 
 ## Avoid
 

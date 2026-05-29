@@ -167,6 +167,11 @@ Evidence: <code excerpt>
 Fix: <pattern name from this skill> - <one-line correction>
 ```
 
+Severity rubric:
+- **Critical**: test does not exercise the intended behavior (e.g., `vi.mock` declared inside the test body after import; renders a Server Component in jsdom).
+- **Major**: false confidence risk - wrong-axis assertion (CSS class for behavior), `vi.mock` for HTTP modules instead of MSW, hook tested indirectly through a host, missing boundary coverage on a data path.
+- **Minor**: readability / idiom drift - `getByTestId` over `getByRole`, `waitFor` wrapping a query that should be `findBy*`.
+
 When designing a plan, emit:
 
 ```

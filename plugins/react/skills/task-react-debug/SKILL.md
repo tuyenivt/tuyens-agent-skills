@@ -87,25 +87,15 @@ Match one row; load the listed skill. Stop at the first match.
 | Test failure | Async timing, mock setup, RTL query type (`getBy` vs `findBy`) - Use skill: `react-testing-patterns` |
 | Performance / slow render | Use skill: `frontend-performance` |
 
-### STEP 5 - LOCATE
+### STEP 5 - LOCATE & EXPLAIN
 
-Open the failing file plus ~50 lines of context. Trace upstream: page -> layout -> parent -> failing component, OR fetch -> serialization -> Client prop -> render. Name the layer: Component | Hook | State | Data Fetching | Routing | Build.
+Open the failing file (~50 lines context). Name the layer: Component | Hook | State | Data Fetching | Routing | Build. For stale-data, walk the boundaries the value crosses (server fetch result -> Client prop -> setState -> action return -> query cache). Explain **why**, citing `file:line`. State confidence: HIGH (reproduced or direct evidence), MEDIUM (strong pattern match), LOW (need more info; list what).
 
-For stale-data: instrument each boundary the value crosses (server fetch result, Client prop, state after `setState`, action return, query cache after invalidation) with `console.log` or React DevTools Profiler. Compare expected vs observed shape.
+### STEP 6 - FIX
 
-### STEP 6 - ROOT CAUSE
+Before/after diff, smallest change that resolves the root cause.
 
-Explain **why**, citing `file:line`. State confidence:
-
-- **HIGH** - reproduced or evidence is direct
-- **MEDIUM** - strong pattern match, alternative causes exist
-- **LOW** - need more info; list what
-
-### STEP 7 - FIX
-
-Before/after diff, smallest change that resolves the root cause. Rank alternatives by (1) correctness, (2) change surface, (3) alignment with existing patterns.
-
-### STEP 8 - PREVENT
+### STEP 7 - PREVENT
 
 One guard:
 
@@ -140,10 +130,9 @@ If confidence is LOW, add `## Needs Clarification` listing the missing input.
 - [ ] STEP 2: stack-detect loaded; React major, framework, router, data layer identified
 - [ ] STEP 3: full error or wrong-result spec captured; one clarifying question max if partial
 - [ ] STEP 4: classified into one row before reading code; correct atomic skill loaded
-- [ ] STEP 5: failing file located; layer named; for stale-data, boundaries instrumented
-- [ ] STEP 6: root cause cites file:line; confidence stated
-- [ ] STEP 7: before/after fix is minimal and targets root cause
-- [ ] STEP 8: prevention guard added, or skipped with reason
+- [ ] STEP 5: failing file located; layer named; root cause explained at file:line with confidence
+- [ ] STEP 6: before/after fix is minimal and targets root cause
+- [ ] STEP 7: prevention guard added, or skipped with reason
 
 ## Avoid
 

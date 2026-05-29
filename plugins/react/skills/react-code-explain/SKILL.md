@@ -39,20 +39,17 @@ Not for codebase orientation (use `react-onboard-map`) or framework tutorials.
 
 `'use client'` is a **boundary marker**: every module imported transitively from a client file is client. Server Components can only be passed into Client Components as `children`, not imported.
 
-### Hook trigger taxonomy
+### Hook triggers (one-liners)
 
-| Hook                         | Fires when                                       | Identity stable across renders? |
-| ---------------------------- | ------------------------------------------------ | ------------------------------- |
-| `useState` setter            | called                                           | yes (same fn ref)               |
-| `useEffect(fn, deps)`        | after commit; deps changed (or every render if omitted) | n/a                      |
-| `useLayoutEffect`            | after DOM mutation, before paint                 | n/a                             |
-| `useMemo(fn, deps)`          | render; recomputes on dep change                 | only if deps stable             |
-| `useCallback(fn, deps)`      | render; new fn on dep change                     | only if deps stable             |
-| `useRef(init)`               | mount only for `init`                            | yes (same object ref)           |
-| `useContext(Ctx)`            | when provider's `value` ref changes              | n/a                             |
-| `use(promise)` (R19)         | suspends until resolved                          | n/a                             |
+- `useState` setter: called; setter ref stable.
+- `useEffect(fn, deps)`: after commit; deps changed (or every render if `deps` omitted).
+- `useLayoutEffect`: after DOM mutation, before paint.
+- `useMemo`/`useCallback`: recompute on dep change; stable only if deps stable.
+- `useRef(init)`: `init` runs at mount; same object ref across renders.
+- `useContext(Ctx)` / `use(Ctx)`: rerenders when provider's `value` ref changes.
+- `use(promise)` (R19): suspends until resolved; callable conditionally.
 
-Hooks must run in the same order every render. Conditional/loop/post-return calls violate Rules of Hooks and crash on the next render with a different shape.
+Hooks must run in the same order every render. Conditional/loop/post-return calls violate Rules of Hooks.
 
 ### Effect deps - the bug surface
 
@@ -101,15 +98,9 @@ Good: `const value = useMemo(() => ({ user, setUser }), [user]); <Ctx.Provider v
 - Server Actions (`'use server'`): callable from Client Components, receive `FormData` or args.
 - `<form action={fn}>`: triggers action on submit; works with `useActionState`.
 
-### Data fetching boundary
+### Data fetching - where
 
-| Where                              | Mechanism                                           |
-| ---------------------------------- | --------------------------------------------------- |
-| Server Component                   | top-level `await fetch(...)` with Next cache opts   |
-| Route Handler                      | `Request` -> `Response`                             |
-| Client, declarative                | `useQuery`/`useSWR` (cache, retry, refetch)         |
-| Client, imperative                 | `useEffect` + fetch (manual race/abort handling)    |
-| Client, suspending                 | `use(promise)` inside `<Suspense>`                  |
+Server Component (top-level `await`), Route Handler, `useQuery`/`useSWR`, `useEffect`+fetch (manual race/abort), or `use(promise)` inside `<Suspense>`. Identify which the file uses; do not prescribe.
 
 ## Output Format
 
@@ -118,12 +109,12 @@ This atomic emits signals consumed by `task-code-explain`. Produce exactly four 
 ```
 Flow Context:
 - Kind: {Server Component | Client Component | Route Handler | Custom Hook | Plain module}
-- Boundary: {none | 'use client' at top | imports client-only X}
-- Hooks: <name(deps) -> trigger; ...>
+- Boundary: {none | 'use client' at top | this file imports server-only X | this file imports client-only X}
+- Hooks: <list each call with deps and trigger, e.g., `useState(filters) [setter]; useEffect [orgId, filters.status] (commit, dep change); useEffect [] (mount-only)`>
 - Custom hooks: {none | <list and what each owns>}
 - Context: {none | reads <Ctx>; provides <Ctx>}
 - Data fetching: {none | RSC fetch | route handler | useQuery/useSWR | useEffect+fetch | use(promise)}
-- React 19 features: {none | use() | useActionState | useFormStatus | server action}
+- React 19 features: {none | unknown (version not detectable from file) | use() | useActionState | useFormStatus | server action}
 
 Non-Obvious Behavior:
 - <stale closures / missing deps>

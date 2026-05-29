@@ -34,12 +34,14 @@ user-invocable: false
 | -------------- | ---------------------------------------------------- | ---------------------------------- |
 | useState       | Independent component-local values                   | Toggle, single input               |
 | useReducer     | Related local fields with coupled transitions        | Multi-field form, state machine    |
-| Context        | Low-frequency, app-wide identity values              | Theme, auth user, locale           |
+| Context *or* tiny Zustand | Low-frequency, app-wide identity                | Theme, auth user, locale           |
 | Zustand        | Shared client state across unrelated components      | Cart, toast queue, UI prefs        |
 | Jotai          | Many independent atoms read by different consumers   | Per-row selection in a large grid  |
 | Redux Toolkit  | Large team needing middleware, time-travel, sagas    | Complex workflows, audited apps    |
 | URL            | Shareable, bookmarkable, back-button-safe state      | Filters, sort, page, search query  |
 | TanStack Query | Server data (fetch, cache, revalidate)               | User profile, product list         |
+
+Identity values (theme, auth, locale) work in either Context or a tiny Zustand store. Pick Context when the value is set once at the app shell; pick a store when multiple writers / persistence / devtools matter.
 
 ### useReducer for coupled fields
 

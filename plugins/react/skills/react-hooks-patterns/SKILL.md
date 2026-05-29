@@ -174,11 +174,13 @@ When reviewing hook code, emit one block per finding:
 
 ```
 - Location: <file>:<line> (<hook or component>)
-  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | UnboundedMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
+  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | ConflictingWriters | CallbackIdentityChurn | UnboundedMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
   Severity: {Critical | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
 ```
+
+`ConflictingWriters`: same state mutated by two sources (e.g., incremented in a handler and overwritten by a derivation effect). Usually means the state is derivable and should be computed in render. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; use a ref.
 
 Severity guide:
 - **Critical**: hook called conditionally; memory leak from missing cleanup on long-lived component; race condition setting state after unmount.
@@ -187,12 +189,3 @@ Severity guide:
 - **Low**: unnecessary useMemo/useCallback; overbroad context.
 
 If no issues, emit a single line: `No hook issues found in <scope>.`
-
-## Avoid
-
-- Suppressing `react-hooks/exhaustive-deps` instead of restructuring the closure (deps, ref, or functional update).
-- `useEffect` for data fetching, derived state, or chaining state updates.
-- Fire-and-forget async work in effects -- always cancel via `AbortController` or a cleanup flag.
-- Storing render-relevant state in `useRef` (it will not trigger re-render) or render-irrelevant state in `useState` (causes wasted renders).
-- Wrapping every callback/value in `useCallback`/`useMemo` without a memoized consumer or a profiled hotspot.
-- One context object holding unrelated, differently-updating values -- split by update frequency.

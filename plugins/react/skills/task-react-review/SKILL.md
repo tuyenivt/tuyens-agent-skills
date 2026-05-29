@@ -130,14 +130,13 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - Use skill: `react-nextjs-patterns` (skip on Vite) - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod / `zod-form-data` validation, `'use server'` file exports only actions, Server Action / RSC return values projected to a DTO, `middleware.ts` `matcher` exclusions justified
 - Use skill: `react-routing-patterns` if diff touches `app/**/page.tsx`, `app/**/layout.tsx`, or router config
 
-**Additional React-specific checks the atomics don't own:**
+**Additional React-specific checks (deviation-flagging only; canonical rules live in the atomics above):**
 
-- **Test coverage finding (named, not buried).** PR adds logic without Vitest / Testing Library coverage? At minimum `[Suggestion]`; escalate to `[High]` when critical path: auth UI / session, Server Actions, money / billing UI, form validation, multi-step flows, error boundaries.
-- **ORM-row leak across RSC -> Client.** Full Prisma / Drizzle rows passed as Client Component props serialize internal fields (`passwordHash`, `mfaSecret`, `apiToken`, `refreshToken`, `internal*`, `*Secret`) into HTML. Flag any domain row passed as a prop or returned from a Server Action without DTO projection - regardless of current fields. `[Critical]` when sensitive columns present today.
-- **Authorization vs authentication on Server Actions.** Every mutating `'use server'` calls `await auth()` and scopes by principal in the query (`WHERE id = $1 AND user_id = $2`). Middleware presence is not sufficient. Raw `Object.fromEntries(formData)` into `prisma.x.update({ data })` is mass assignment - `[Blocker]`.
-- **Cross-cutting safety.** `dangerouslySetInnerHTML` on user input without sanitizer (`[Critical]` if user-controllable); open redirect from `redirect(searchParams.get('returnTo'))` without allowlist; `NEXT_PUBLIC_*` carrying secrets (compiled into client bundle, `[Critical]`).
-- **TypeScript strict.** `strict: true` not silently disabled; no `props: any`; `as any` outside test setup is a finding.
-- **Accessibility.** `<input>` paired with `<label>` (`htmlFor` or wrapping); `aria-describedby` for errors; dialogs use `<dialog>` or full ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus) - reach for Radix / shadcn before reinventing key handling; images have explicit `width`/`height` (`next/image` or `<img>`) and `alt` (`alt=""` for decorative).
+- **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage? Minimum `[Suggestion]`; escalate to `[High]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
+- **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
+- **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
+
+ORM-row leak across RSC → Client, missing `auth()`/Zod on Server Actions, `dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*` secret leak — canonical in `react-nextjs-patterns`; cite by name, do not restate.
 
 ### Phase C - React Architecture Guardrails
 

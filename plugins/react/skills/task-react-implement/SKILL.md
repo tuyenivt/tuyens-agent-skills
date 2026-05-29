@@ -32,7 +32,7 @@ lib/<feature>/queries.ts | actions.ts
 types.ts
 ```
 
-**Step 5 - State.** Use skill: `react-state-patterns` + `frontend-state-management`. Categorize: local | shared | global | server | URL | form. Assign owner. Filters and pagination belong in URL state; server data in TanStack Query; no server state in Zustand/Redux.
+**Step 5 - State.** Use skill: `react-state-patterns` (canonical for React-specific guidance) + `frontend-state-management` (framework-neutral; the React skill wins on conflict). Categorize each slice: **local** (one component, `useState`/`useReducer`), **shared** (small subtree, lifted state or scoped context), **global** (cross-feature, Zustand/Redux), **server** (TanStack Query/SWR), **URL** (`searchParams`), **form** (RHF + Zod). Filters and pagination belong in URL state; server data in TanStack Query; no server state in client stores.
 
 **Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 

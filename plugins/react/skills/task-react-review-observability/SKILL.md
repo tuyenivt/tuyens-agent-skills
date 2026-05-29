@@ -82,12 +82,17 @@ Read instrumentation wiring in the framework-appropriate files below, plus every
 - [ ] `tracesSampleRate`, `replaysSessionSampleRate`, `replaysOnErrorSampleRate` set per env; not `1.0` in prod for high-traffic apps
 - [ ] PII scrubbing: `sendDefaultPii: false`; `beforeSend` strips sensitive keys; `Replay` uses `mask`/`block` selectors on PII inputs
 - [ ] `ignoreErrors` entries each commented (ResizeObserver loop, browser-extension noise, navigation network errors)
-- [ ] Error boundary tree:
-  - Next.js App Router: `app/global-error.tsx` (root, `"use client"`, renders `<html>`/`<body>`) **and** `app/**/error.tsx` per segment
-  - Next.js Pages Router: top-level `<ErrorBoundary>` in `_app.tsx`
-  - Vite: root `<Sentry.ErrorBoundary>` or React 19 boundary + per-route `errorElement`
-- [ ] **Boundary explicitly calls `Sentry.captureException(error)`** - Next.js `error.tsx` / `global-error.tsx` do NOT auto-report; a fallback without capture loses the diagnostic (flag High)
+
+**Boundary tree** (cite as one finding when missing):
+
+- [ ] Next.js App Router: `app/global-error.tsx` (root, `"use client"`, renders `<html>`/`<body>`) **and** `app/**/error.tsx` per segment
+- [ ] Next.js Pages Router: top-level `<ErrorBoundary>` in `_app.tsx`
+- [ ] Vite: root `<Sentry.ErrorBoundary>` or React 19 boundary + per-route `errorElement`
+- [ ] **Boundary explicitly calls `Sentry.captureException(error)`** - Next.js `error.tsx` / `global-error.tsx` do NOT auto-report; a fallback without capture loses the diagnostic (High)
 - [ ] User-facing fallback with retry/reset action, not a blank screen
+
+**Source maps and CSP:**
+
 - [ ] Source maps uploaded via Sentry plugin (Next.js / Vite); `productionBrowserSourceMaps: false` (or equivalent) so maps are not served publicly
 - [ ] Sentry Replay vs strict CSP: if `script-src 'self' 'nonce-XXX'` without `'unsafe-inline'`, Replay inline scripts are blocked - flag conflict
 

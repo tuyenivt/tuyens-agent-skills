@@ -151,8 +151,8 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 
 **Which output:**
 
-- "what tests are missing?" / "review coverage" -> Coverage Assessment
-- "write tests for X" / "scaffold tests" -> Test Scaffolds
+- "what tests are missing?" / "review coverage" -> Coverage Assessment (Step 6 pattern detail is reference-only; Step 8 bands drive the output)
+- "write tests for X" / "scaffold tests" -> Test Scaffolds (Step 6 pattern detail is load-bearing)
 - "test strategy" / "test plan" / coverage < 50% without scaffold request -> Strategy Doc
 - Multiple deliverables in one ask -> produce in order separated by `---`: Coverage Assessment, Strategy Doc, Test Scaffolds. Do not silently drop one.
 - Unclear -> Strategy Doc as default.
