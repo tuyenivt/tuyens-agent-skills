@@ -1,6 +1,6 @@
 ---
 name: angular-routing-patterns
-description: Angular routing - lazy loading, functional guards/resolvers, nested routes, signal-based params, route animations, SSR safety.
+description: Angular routing - lazy loading, functional guards/resolvers, nested routes, signal-based params, SSR hydration and TransferState.
 metadata:
   category: frontend
   tags: [angular, routing, lazy-loading, guards, resolvers, nested-routes, ssr]
@@ -14,41 +14,48 @@ user-invocable: false
 ## When to Use
 
 - Designing or reviewing route structure for a feature or app
-- Adding lazy routes, guards, resolvers, or SSR-safe code
+- Adding lazy routes, guards, resolvers, or SSR-safe data flow
 - Auditing routing for performance, accessibility, and safety
 
 ## Rules
 
-- Standalone components + functional guards/resolvers (no NgModules, no class-based `CanActivate`)
-- Lazy-load non-initial routes via `loadComponent` / `loadChildren`
-- Every route declares a `title` (string or `ResolveFn<string>`)
-- Validate dynamic params before use (treat URL as untrusted)
-- Use `Router` / `routerLink` for navigation; never `window.location`
-- Wildcard `**` route must resolve to a not-found component
+- Standalone components + functional guards/resolvers. No NgModules, no class-based guards.
+- Lazy-load non-initial routes via `loadComponent` / `loadChildren`. Use `canMatch` (not `canActivate`) to gate lazy chunk loading.
+- Every route declares a `title` (string or `ResolveFn<string>`).
+- Validate dynamic params before use (treat URL as untrusted).
+- Use `Router` / `routerLink` for navigation; never `window.location`.
+- Wildcard `**` route must resolve to a not-found component.
 
 ## Patterns
 
-### Route configuration
+### Route Configuration
 
 ```typescript
-// app.routes.ts
 export const routes: Routes = [
   { path: "", component: HomeComponent, title: "Home" },
   {
-    path: "dashboard",
-    loadComponent: () => import("./dashboard/dashboard.component").then(m => m.DashboardComponent),
-    canActivate: [authGuard],
-    title: "Dashboard",
+    path: "admin",
+    canMatch: [authGuard, roleGuard("admin")],
+    title: "Admin",
     children: [
+      { path: "", pathMatch: "full", redirectTo: "users" },
       {
-        path: ":teamId",
-        loadComponent: () => import("./dashboard/team/team.component").then(m => m.TeamComponent),
-        resolve: { team: teamResolver },
-        title: teamTitleResolver,
+        path: "users",
+        loadComponent: () => import("./admin/users/users-list.component").then(m => m.UsersListComponent),
+        title: "Users - Admin",
+      },
+      {
+        path: "users/:id",
+        loadComponent: () => import("./admin/users/user-detail.component").then(m => m.UserDetailComponent),
+        resolve: { user: userResolver },
+        title: userTitleResolver,
+      },
+      {
+        path: "settings",
+        loadChildren: () => import("./admin/settings/settings.routes").then(m => m.SETTINGS_ROUTES),
       },
     ],
   },
-  { path: "auth", loadChildren: () => import("./auth/auth.routes").then(m => m.AUTH_ROUTES) },
   {
     path: "**",
     loadComponent: () => import("./not-found/not-found.component").then(m => m.NotFoundComponent),
@@ -57,9 +64,9 @@ export const routes: Routes = [
 ];
 ```
 
-`loadChildren` points at a child `Routes` array (e.g. `AUTH_ROUTES`) whose entries follow the same shape.
+`loadChildren` points at a child `Routes` array (e.g., `SETTINGS_ROUTES`) with the same shape. Use `pathMatch: "full"` + `redirectTo` for default child routes.
 
-### Functional guards
+### Functional Guards
 
 ```typescript
 export const authGuard: CanActivateFn = (route, state) => {
@@ -70,15 +77,15 @@ export const authGuard: CanActivateFn = (route, state) => {
     : router.createUrlTree(["/auth/login"], { queryParams: { returnUrl: state.url } });
 };
 
-// Parameterised guard - factory returns CanActivateFn
+// Parameterised guard
 export const roleGuard = (role: string): CanActivateFn => () => inject(AuthService).hasRole(role);
-
-// Usage: canActivate: [authGuard, roleGuard("admin")]
 ```
 
 Return `true`, `false`, or a `UrlTree` for redirects. Never call `router.navigate()` inside a guard.
 
-### Functional resolvers
+`CanMatchFn` is identical in shape but prevents the lazy chunk from loading - prefer it for auth-gated lazy routes.
+
+### Functional Resolvers
 
 ```typescript
 export const teamResolver: ResolveFn<Team> = (route) => {
@@ -89,31 +96,21 @@ export const teamResolver: ResolveFn<Team> = (route) => {
   );
 };
 
-// Dynamic title
 export const teamTitleResolver: ResolveFn<string> = (route) =>
   inject(TeamService).getTeam(route.paramMap.get("teamId")!).pipe(map(t => `${t.name} - Dashboard`));
 ```
 
-### Signal-based route data in components
+### Signal-Based Route Data
 
 ```typescript
-@Component({ template: `@if (team(); as t) { <h2>{{ t.name }}</h2> }` })
-export class TeamComponent {
-  private readonly route = inject(ActivatedRoute);
-  team = toSignal(this.route.data.pipe(map(d => d["team"] as Team)));
-  teamId = toSignal(this.route.paramMap.pipe(map(p => p.get("teamId")!)));
-  tab = toSignal(this.route.queryParamMap.pipe(map(p => p.get("tab") ?? "overview")));
-}
+private readonly route = inject(ActivatedRoute);
+team = toSignal(this.route.data.pipe(map(d => d["team"] as Team)));
+tab = toSignal(this.route.queryParamMap.pipe(map(p => p.get("tab") ?? "overview")));
 ```
 
-### Navigation
+### Navigation with Query Param Merge
 
 ```typescript
-// Template
-<a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Dashboard</a>
-<a [routerLink]="['/dashboard', teamId()]">Team</a>
-
-// Programmatic - merge query params for filters/pagination
 this.router.navigate([], {
   relativeTo: this.route,
   queryParams: { page: 1, category },
@@ -121,44 +118,48 @@ this.router.navigate([], {
 });
 ```
 
-### Route animations
-
-Bind `<router-outlet>` to a trigger keyed off `activatedRouteData`; declare animation in `app.config.ts` via `provideAnimations()`.
-
-```typescript
-@Component({
-  template: `<main [@routeAnimations]="o.activatedRouteData"><router-outlet #o="outlet"/></main>`,
-  animations: [trigger("routeAnimations", [transition("* <=> *", [/* enter/leave queries */])])],
-})
-export class AppComponent {}
-```
-
 ### SSR (Angular Universal)
 
-Guard browser-only APIs; resolvers and guards run on the server too.
-
 ```typescript
+// app.config.ts - enable hydration + HTTP transfer cache so resolver fetches
+// reuse on the client instead of refiring
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideHttpClient(withFetch()),
+    provideClientHydration(withHttpTransferCacheOptions({})),
+  ],
+};
+
+// Guard browser-only APIs - resolvers and guards run on the server too
 private readonly platformId = inject(PLATFORM_ID);
 ngOnInit() {
-  if (isPlatformBrowser(this.platformId)) this.initChart(); // window/document/localStorage
+  if (isPlatformBrowser(this.platformId)) this.initChart();
 }
 ```
+
+For non-HTTP server-computed data, use `TransferState` to pass from server to client and avoid recomputation on hydration.
 
 ## Output Format
 
 ```
 ## Routing Design
 
-**Stack:** {Angular version}
+**Angular version:** {detected}
 **SSR:** {Yes | No}
 
 ### Route Map
 
-| Path               | Component          | Guard     | Resolver     | Lazy | Title       |
-| ------------------ | ------------------ | --------- | ------------ | ---- | ----------- |
-| /                  | HomeComponent      | -         | -            | No   | Home        |
-| /dashboard         | DashboardComponent | authGuard | -            | Yes  | Dashboard   |
-| /dashboard/:teamId | TeamComponent      | authGuard | teamResolver | Yes  | {team.name} |
+| Path               | Component          | Guard           | Resolver     | Lazy | Title       |
+| ------------------ | ------------------ | --------------- | ------------ | ---- | ----------- |
+| /                  | HomeComponent      | -               | -            | No   | Home        |
+| /admin             | -                  | canMatch:auth+r | -            | -    | Admin       |
+| /admin/users/:id   | UserDetailComponent| -               | userResolver | Yes  | {user.name} |
+
+### SSR Notes (if enabled)
+
+- `provideClientHydration` configured / HTTP transfer cache options
+- Browser-API guards in: {components/resolvers/guards}
 
 ### Recommendations
 
@@ -171,12 +172,15 @@ ngOnInit() {
   - Fix: {concrete correction}
 ```
 
+Omit `Issues Found` for greenfield design; omit `SSR Notes` when SSR is disabled.
+
 ## Avoid
 
 - Class-based guards/resolvers or NgModule routing
+- `canActivate` on lazy routes when `canMatch` would prevent the chunk load
 - Routes without `title` (a11y + SEO regression)
 - Trusting `:id` params without validation
 - Calling `router.navigate()` inside a guard (return `UrlTree` instead)
 - Re-fetching in a child what a parent resolver already provided
-- Browser APIs in resolvers/guards/`ngOnInit` without `isPlatformBrowser`
+- Browser APIs in resolvers/guards/`ngOnInit` without `isPlatformBrowser` / `afterNextRender`
 - Deeply nested routes that aren't lazy (inflates initial bundle)

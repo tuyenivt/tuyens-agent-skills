@@ -21,13 +21,13 @@ For signal internals (`computed`, `effect`, `toSignal`, `resource`), use `angula
 
 ## Rules
 
-- Standalone + OnPush for every new component; no NgModules.
+- Standalone + OnPush for every new component. `standalone: true` is default on Angular 19+; explicit on older versions. No NgModules.
 - Signal inputs/outputs only: `input()`, `input.required()`, `output()`, `model()`. No `@Input()`/`@Output()` decorators.
-- New control flow only: `@if`, `@for` (with `track`), `@switch`. No `*ngIf`/`*ngFor`/`*ngSwitch`.
-- One responsibility per component; split when concerns diverge.
-- Compose via content projection (named slots) before adding configuration inputs.
+- New control flow only: `@if`, `@for` (with `track item.id`, never `$index` on dynamic lists), `@switch`. No `*ngIf`/`*ngFor`/`*ngSwitch`.
+- Prefer content projection (named slots) over `showX`/`showY` boolean flags or configuration props.
 - Prop drilling stops at 2 levels - escalate to service, projection, or provide/inject.
-- No direct DOM access (`ElementRef.nativeElement`); template-driven only.
+- One responsibility per component; split when concerns diverge.
+- No `ElementRef.nativeElement` DOM access; template-driven only.
 
 ## Patterns
 
@@ -36,7 +36,6 @@ For signal internals (`computed`, `effect`, `toSignal`, `resource`), use `angula
 ```typescript
 @Component({
   selector: "app-product-card",
-  standalone: true,
   imports: [CurrencyPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -56,23 +55,26 @@ export class ProductCardComponent {
 }
 ```
 
+Required vs nullable: use `input.required<T>()` and wrap consumers in `@if (x(); as v)`. Reserve `input<T | null>(null)` for genuinely optional data.
+
 ### Model Inputs (Two-Way Binding)
 
-Use `model()` for form-like components that own a value the parent also reads/writes.
+Use `model()` when the parent reads and writes the same value:
 
 ```typescript
-export class SearchInputComponent {
-  query = model("");
-}
-// <app-search-input [(query)]="searchTerm" />
+query = model("");
+// Parent: <app-search-input [(query)]="searchTerm" />
 ```
 
-### Content Projection over Configuration
+### Content Projection over Boolean Flags
 
-**Bad** - prop-heavy:
+**Bad** - boolean flag explosion:
 
 ```typescript
-@Input() title = ""; @Input() icon = ""; @Input() footerText = "";
+@Input() showIcon = false;
+@Input() showActions = true;
+@Input() showFooter = true;
+@Input() theme = "light";
 ```
 
 **Good** - named slots:
@@ -114,54 +116,17 @@ template: `
 }
 ```
 
-`track` is required on `@for`. Use a stable id, not `$index`, unless the list is append-only.
-
-### OnPush Mental Model
-
-OnPush re-renders only when: input reference changes, a read signal changes, a template event fires, or `async` pipe emits. Signal-driven components rarely need `markForCheck()`; if you reach for it, the state likely belongs in a signal.
-
 ### Deferred Loading (@defer)
 
 ```typescript
-@for (product of products(); track product.id) {
-  @defer (on viewport) {
-    <app-product-card [product]="product" />
-  } @placeholder {
-    <div class="skeleton"></div>
-  } @loading (minimum 200ms) {
-    <app-spinner />
-  }
+@defer (on viewport) {
+  <app-chart [data]="data()" />
+} @placeholder {
+  <div class="skeleton h-64 w-full"></div>
 }
 ```
 
-| Trigger          | Use for                                |
-| ---------------- | -------------------------------------- |
-| `on viewport`    | Below-the-fold content                 |
-| `on idle`        | Non-critical UI (analytics, ads)       |
-| `on interaction` | Revealed by user action (tabs, modals) |
-| `on hover`       | Prefetch likely navigation             |
-| `on timer(Xms)`  | Delayed loading after page stabilizes  |
-| `when expr`      | Signal/expression-gated loading        |
-
-### Error Surfaces
-
-Angular has no error boundary. Pair a global `ErrorHandler` (reports to logging) with component-level error inputs:
-
-```typescript
-@Component({
-  template: `
-    @if (error()) {
-      <div role="alert">{{ error() }} <button (click)="retry.emit()">Retry</button></div>
-    } @else {
-      <ng-content />
-    }
-  `,
-})
-export class ErrorStateComponent {
-  error = input<string | null>(null);
-  retry = output<void>();
-}
-```
+Triggers: `on viewport` (below-the-fold), `on interaction` (tabs/modals), `on hover` (prefetch), `when <expr>` (signal-gated). Default `on idle` is rarely intended. `@placeholder` with reserved dimensions prevents CLS.
 
 ### Communication Choices
 
@@ -173,18 +138,20 @@ export class ErrorStateComponent {
 | Content projection | Flexible layout composition              |
 | `provide`/`inject` | Subtree-scoped config (theme, flags)     |
 
+OnPush re-renders when: input reference changes, a read signal changes, a template event fires, or `async` emits. Reaching for `markForCheck()` signals the source should be a signal.
+
 ## Output Format
 
 ```
 ## Component Design
 
-**Stack:** {framework + Angular version}
+**Angular version:** {detected}
 
 ### Component Tree
 
-{Root} (standalone) - {responsibility}
-  ├── {ChildA} (standalone) - {responsibility}
-  └── {ChildB} (standalone) - {responsibility}
+{Root} - {responsibility}
+  ├── {ChildA} - {responsibility}
+  └── {ChildB} - {responsibility}
 
 ### Component Specifications
 
@@ -203,13 +170,13 @@ export class ErrorStateComponent {
   - Fix: {concrete correction}
 ```
 
-All listed components are standalone + OnPush by default; call out exceptions explicitly.
+Components are standalone + OnPush by default; call out exceptions explicitly. Omit `Issues Found` for greenfield design.
 
 ## Avoid
 
-- God components combining unrelated concerns; split by responsibility.
+- God components combining unrelated concerns.
 - Prop drilling past 2 levels.
-- Inline complex types on inputs; use named interfaces.
-- Deeply nested ternaries in templates; extract to `computed()` or sub-components.
-- `markForCheck()` as a fix for stale views; convert the source to a signal.
+- Boolean flag explosion (`showX`/`showY`) where content projection fits.
+- Deeply nested template ternaries; extract to `computed()` or sub-components.
+- `markForCheck()` to fix stale views; convert the source to a signal.
 - Mixing legacy decorators/structural directives with new APIs in the same component.

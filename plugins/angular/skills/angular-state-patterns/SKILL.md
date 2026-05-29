@@ -1,6 +1,6 @@
 ---
 name: angular-state-patterns
-description: Angular state: signals, NgRx Store/ComponentStore, signal services, URL state, library selection, BehaviorSubject migration.
+description: Angular state - signals, NgRx Store/ComponentStore, signal services, URL state, persistence, auth lifecycle, BehaviorSubject migration.
 metadata:
   category: frontend
   tags: [angular, state, signals, ngrx, componentstore, rxjs, behaviorsubject]
@@ -19,26 +19,26 @@ user-invocable: false
 
 ## Rules
 
-- Climb the ladder only when justified: signal -> signal service -> ComponentStore -> NgRx Store. NgRx requires a concrete need (devtools, effects, time-travel).
+- Climb the ladder only when justified: signal -> signal service -> ComponentStore -> NgRx. NgRx requires concrete need (devtools, effects, time-travel).
 - One store per domain boundary; never one mega-store.
 - Server state lives in HTTP services with caching, never duplicated into stores.
 - Filters, sort, pagination, and search belong in route query params (bookmarkable, shareable, back-button-safe).
 - Derived state is `computed()`/selectors, never stored.
-- Updates are immutable - return new references for objects and arrays.
+- Updates are immutable - return new references.
 
 ## Patterns
 
 ### Mechanism Selection
 
-| Mechanism           | Use for                                  | State category   |
-| ------------------- | ---------------------------------------- | ---------------- |
-| `signal()`          | Component-local UI (modal, form dirty)   | Local UI         |
-| Signal service      | Shared UI/domain (cart, theme, prefs)    | Shared UI/domain |
-| HTTP service        | Server data with caching                 | Server           |
-| Router queryParams  | Filters, sort, pagination, search        | URL              |
-| Reactive Forms      | Form values + validation                 | Form             |
-| ComponentStore      | Feature-scoped complex state             | Feature          |
-| NgRx Store          | Enterprise: devtools/effects/middleware  | Global           |
+| Mechanism           | Use for                                  |
+| ------------------- | ---------------------------------------- |
+| `signal()`          | Component-local UI (modal, form dirty)   |
+| Signal service      | Shared UI/domain (cart, theme, prefs)    |
+| HTTP service        | Server data with caching                 |
+| Router queryParams  | Filters, sort, pagination, search        |
+| Reactive Forms      | Form values + validation                 |
+| ComponentStore      | Feature-scoped complex state             |
+| NgRx Store          | Enterprise: devtools/effects/middleware  |
 
 ### Signal Service
 
@@ -47,135 +47,72 @@ user-invocable: false
 export class CartService {
   private readonly _items = signal<CartItem[]>([]);
   readonly items = this._items.asReadonly();
-  readonly total = computed(() =>
-    this._items().reduce((s, i) => s + i.price * i.quantity, 0),
-  );
-  readonly isEmpty = computed(() => this._items().length === 0);
+  readonly total = computed(() => this._items().reduce((s, i) => s + i.price * i.quantity, 0));
 
-  addItem(p: Product): void {
+  add(p: Product): void {
     this._items.update((items) => {
       const existing = items.find((i) => i.productId === p.id);
       return existing
-        ? items.map((i) =>
-            i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i,
-          )
+        ? items.map((i) => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i)
         : [...items, { productId: p.id, name: p.name, price: p.price, quantity: 1 }];
     });
   }
-
-  remove(id: string): void {
-    this._items.update((items) => items.filter((i) => i.productId !== id));
-  }
 }
 ```
 
-### ComponentStore (feature-scoped)
+### Persistence & Auth Lifecycle
+
+Hydrate from storage at construction, persist on change, reset on logout. Guard `localStorage` for SSR.
 
 ```typescript
-@Injectable()
-export class FilterStore extends ComponentStore<FilterState> {
+@Injectable({ providedIn: "root" })
+export class CartService {
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly STORAGE_KEY = "cart";
+
+  private readonly _items = signal<CartItem[]>(this.load());
+  readonly items = this._items.asReadonly();
+
   constructor() {
-    super({ category: "all", sortBy: "name", page: 1 });
+    effect(() => {
+      if (isPlatformBrowser(this.platformId)) {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this._items()));
+      }
+    });
   }
-  readonly filters$ = this.select((s) => s);
-  readonly setCategory = this.updater((s, category: string) => ({ ...s, category, page: 1 }));
-  readonly nextPage = this.updater((s) => ({ ...s, page: s.page + 1 }));
-}
 
-@Component({ providers: [FilterStore] }) // scoped to component subtree
-export class ProductListComponent {
-  private readonly store = inject(FilterStore);
-  readonly filters$ = this.store.filters$;
+  private load(): CartItem[] {
+    if (!isPlatformBrowser(this.platformId)) return [];
+    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) ?? "[]"); }
+    catch { return []; }
+  }
+
+  // Hook called from AuthService.logout()
+  reset(): void { this._items.set([]); }
 }
 ```
 
-### NgRx Store (enterprise only)
-
-```typescript
-// actions
-export const CartActions = createActionGroup({
-  source: "Cart",
-  events: {
-    "Add Item": props<{ product: Product }>(),
-    "Load Success": props<{ items: CartItem[] }>(),
-    "Load Failure": props<{ error: string }>(),
-  },
-});
-
-// reducer
-export const cartReducer = createReducer(
-  initialState,
-  on(CartActions.addItem, (state, { product }) => ({
-    ...state,
-    items: addOrIncrement(state.items, product),
-  })),
-  on(CartActions.loadSuccess, (state, { items }) => ({ ...state, items, loading: false })),
-);
-
-// selectors (derived state)
-export const selectCartItems = createSelector(selectCartState, (s) => s.items);
-export const selectCartTotal = createSelector(selectCartItems, (items) =>
-  items.reduce((s, i) => s + i.price * i.quantity, 0),
-);
-
-// effect
-export const loadCart = createEffect(
-  (actions$ = inject(Actions), api = inject(CartApiService)) =>
-    actions$.pipe(
-      ofType(CartActions.loadCart),
-      switchMap(() =>
-        api.getCart().pipe(
-          map((items) => CartActions.loadSuccess({ items })),
-          catchError((err) => of(CartActions.loadFailure({ error: err.message }))),
-        ),
-      ),
-    ),
-  { functional: true },
-);
-```
+For per-user state (wishlist, profile), AuthService coordinates lifecycle: `effect(() => { if (!this.auth.user()) this.cart.reset(); })`.
 
 ### URL State (signals bridge)
 
-Use route query params as the source of truth for filters/pagination; bridge to signals via `toSignal`, react via `toObservable`.
+Route query params own filter/sort/page; bridge via `toSignal` and react via `toObservable`.
 
 ```typescript
-@Component({
-  template: `
-    <app-search-bar [query]="q()" (queryChange)="update('q', $event)" />
-    <app-product-grid [products]="products()" [loading]="loading()" />
-    <app-pagination [page]="page()" (pageChange)="update('page', $event.toString())" />
-  `,
-})
+@Component({...})
 export class ProductListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(ProductService);
 
-  q = toSignal(this.route.queryParamMap.pipe(map((p) => p.get("q") ?? "")), { initialValue: "" });
-  page = toSignal(
-    this.route.queryParamMap.pipe(map((p) => parseInt(p.get("page") ?? "1", 10))),
-    { initialValue: 1 },
-  );
-  private readonly params = computed(() => ({ q: this.q(), page: this.page() }));
+  q = toSignal(this.route.queryParamMap.pipe(map(p => p.get("q") ?? "")), { initialValue: "" });
+  page = toSignal(this.route.queryParamMap.pipe(map(p => +(p.get("page") ?? 1))), { initialValue: 1 });
 
-  loading = signal(false);
-  products = signal<Product[]>([]);
-
-  constructor() {
-    toObservable(this.params)
-      .pipe(
-        debounceTime(300),
-        switchMap((p) => {
-          this.loading.set(true);
-          return this.api.search(p);
-        }),
-        takeUntilDestroyed(),
-      )
-      .subscribe({
-        next: (r) => { this.products.set(r.items); this.loading.set(false); },
-        error: () => this.loading.set(false),
-      });
-  }
+  productsResource = resource({
+    request: () => ({ q: this.q(), page: this.page() }),
+    loader: ({ request, abortSignal }) =>
+      firstValueFrom(this.api.search(request, { signal: abortSignal })),
+  });
 
   update(key: string, value: string): void {
     this.router.navigate([], {
@@ -186,12 +123,60 @@ export class ProductListComponent {
 }
 ```
 
+### Reactive Forms (form state)
+
+```typescript
+form = inject(FormBuilder).group({
+  email: ["", [Validators.required, Validators.email]],
+  password: ["", Validators.required],
+});
+
+readonly value = toSignal(this.form.valueChanges, { initialValue: this.form.getRawValue() });
+readonly isValid = toSignal(this.form.statusChanges.pipe(map((s) => s === "VALID")), { initialValue: false });
+```
+
+### ComponentStore (feature-scoped)
+
+```typescript
+@Injectable()
+export class FilterStore extends ComponentStore<FilterState> {
+  constructor() { super({ category: "all", sortBy: "name", page: 1 }); }
+  readonly filters$ = this.select((s) => s);
+  readonly setCategory = this.updater((s, category: string) => ({ ...s, category, page: 1 }));
+}
+
+@Component({ providers: [FilterStore] })  // scoped to component subtree
+export class ProductListComponent {
+  private readonly store = inject(FilterStore);
+}
+```
+
+### NgRx Store (enterprise only)
+
+Use when you need devtools, effects, or middleware. Shape: `createActionGroup` + `createReducer` + `createSelector` + `createEffect({ functional: true })`. One feature store per domain; never a mega-store.
+
+### Server Cache + Pagination
+
+```typescript
+private readonly cache = new Map<string, Observable<Page<Product>>>();
+
+getPage(page: number, filters: Filters): Observable<Page<Product>> {
+  const key = `${page}|${JSON.stringify(filters)}`;
+  if (!this.cache.has(key)) {
+    this.cache.set(key, this.http.get<Page<Product>>("/api/products", { params: { page, ...filters } })
+      .pipe(shareReplay({ bufferSize: 1, refCount: false })));
+  }
+  return this.cache.get(key)!;
+}
+
+invalidate(): void { this.cache.clear(); }  // on mutation
+```
+
 ## Output Format
 
 ```
 ## Angular State Architecture
 
-**Stack:** {detected framework}
 **State library:** {Signals | NgRx Store | ComponentStore | Services}
 
 ### State Map
@@ -202,9 +187,9 @@ export class ProductListComponent {
 
 ### Stores / Services
 
-| Name   | Domain   | Scope        | Pattern              |
-| ------ | -------- | ------------ | -------------------- |
-| {name} | {domain} | {root/comp}  | {signal/CS/NgRx}     |
+| Name   | Domain   | Scope        | Persistence | Lifecycle reset           |
+| ------ | -------- | ------------ | ----------- | ------------------------- |
+| {name} | {domain} | {root/comp}  | {localStorage/none} | {on logout/never} |
 
 ### Recommendations
 
@@ -217,6 +202,8 @@ export class ProductListComponent {
   - Fix: {concrete correction}
 ```
 
+Omit `Issues Found` for greenfield design.
+
 ## Avoid
 
 - NgRx for simple apps when signal services suffice
@@ -224,6 +211,7 @@ export class ProductListComponent {
 - One mega-service holding unrelated domains
 - Storing derived values instead of `computed()`/selectors
 - Mutating state in place
-- New `BehaviorSubject` for component-local state - use signals
+- `BehaviorSubject` for component-local state - use signals
 - Filters/sort/pagination in signals or services - they belong in queryParams
-- Mixing state patterns inconsistently across features
+- `providedIn: 'root'` for per-user state without an explicit reset on logout
+- `localStorage` access without `isPlatformBrowser` guard (SSR crash)

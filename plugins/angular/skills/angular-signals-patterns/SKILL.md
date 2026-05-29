@@ -20,19 +20,19 @@ user-invocable: false
 
 ## Rules
 
-- Signals are the default for component state in new code; prefer over BehaviorSubject
-- `computed()` for derived state; `effect()` only for true side effects (DOM, storage, logging)
-- Treat signal values as immutable - always pass a new reference on update
-- `toSignal()` requires `initialValue` or `requireSync: true` unless the source emits synchronously
-- Services expose signals via `.asReadonly()`; keep writable signals private
-- No circular dependencies between computed signals
+- Signals are the default for new component state; prefer over BehaviorSubject.
+- `computed()` for derived state; `effect()` only for true side effects (DOM, storage, logging, third-party sync).
+- Treat signal values as immutable - always pass a new reference on update; deep mutation does not notify.
+- `toSignal()` requires `initialValue` or `requireSync: true` unless the source emits synchronously. It subscribes once and unsubscribes on injector destroy.
+- Signal reads in templates auto-mark OnPush components dirty - no `markForCheck()` needed.
+- Services expose signals via `.asReadonly()`; keep writable signals private.
+- No circular dependencies between computed signals.
 
 ## Patterns
 
-### Updating Signals
+### Updating
 
 ```typescript
-const count = signal(0);
 count.set(5);
 count.update((c) => c + 1);
 
@@ -40,48 +40,42 @@ count.update((c) => c + 1);
 user().name = "Bob";
 items().push(newItem);
 
-// Good - new reference
-user.update((u) => ({ ...u, name: "Bob" }));
+// Good - new reference (deep updates spread each level)
+user.update((u) => ({ ...u, profile: { ...u.profile, name: "Bob" } }));
 items.update((list) => [...list, newItem]);
-items.update((list) => list.filter((i) => i.id !== id));
 ```
 
 ### Computed vs Effect
 
 ```typescript
-// Bad - effect synchronising derived state
-double = signal(0);
-constructor() {
-  effect(() => this.double.set(this.count() * 2));
-}
+// Bad - effect synchronizing derived state
+effect(() => this.double.set(this.count() * 2));
 
 // Good - computed
 double = computed(() => this.count() * 2);
 ```
 
-`effect()` is reserved for side effects outside the signal graph:
+`effect()` is reserved for side effects outside the signal graph (DOM, storage, third-party libraries):
 
 ```typescript
-constructor() {
-  effect(() => localStorage.setItem("theme", this.theme()));
+effect(() => localStorage.setItem("theme", this.theme()));
 
-  effect((onCleanup) => {
-    const id = setInterval(() => this.tick(), 1000);
-    onCleanup(() => clearInterval(id));
-  });
-}
+effect((onCleanup) => {
+  const id = setInterval(() => this.tick(), 1000);
+  onCleanup(() => clearInterval(id));
+});
 ```
 
 ### toSignal / toObservable
 
 ```typescript
-// Observable -> signal at the component boundary
+// Async source - initialValue required
 user = toSignal(this.userService.getUser(id), { initialValue: null });
 
 // Synchronous source (BehaviorSubject, store selector)
 count = toSignal(this.store.select(selectCount), { requireSync: true });
 
-// Signal -> observable to apply RxJS operators
+// Signal -> observable to apply RxJS operators, then back
 search = signal("");
 results = toSignal(
   toObservable(this.search).pipe(
@@ -93,89 +87,80 @@ results = toSignal(
 );
 ```
 
+### resource() - Async Data (Angular 19+)
+
+Prefer over manual `toSignal + switchMap` when async data is driven by signal inputs. Exposes `status`, `value`, `error` signals.
+
+```typescript
+// Single signal input
+productId = input.required<string>();
+productResource = resource({
+  request: () => this.productId(),
+  loader: ({ request: id }) => firstValueFrom(this.api.getProduct(id)),
+});
+
+// Multiple signal inputs - return a composite object
+filters = signal({ category: "all" });
+search = signal("");
+productsResource = resource({
+  request: () => ({ category: this.filters().category, q: this.search() }),
+  loader: ({ request, abortSignal }) =>
+    firstValueFrom(this.api.search(request, { signal: abortSignal })),
+});
+```
+
+For debounced inputs, debounce upstream first then feed the debounced signal into `request`. Use `productsResource.reload()` to force a refetch.
+
+### linkedSignal (Angular 19+)
+
+Writable signal that resets when a source signal changes - use when a selection must follow upstream changes.
+
+```typescript
+selectedProductId = linkedSignal(() => this.products()[0]?.id ?? "");
+// User can override; resets when products() changes
+```
+
 ### Signal-Based Service
 
 ```typescript
 @Injectable({ providedIn: "root" })
 export class CartService {
   private readonly _items = signal<CartItem[]>([]);
-
   readonly items = this._items.asReadonly();
   readonly total = computed(() =>
     this._items().reduce((sum, i) => sum + i.price * i.quantity, 0),
   );
 
-  addItem(item: CartItem): void {
-    this._items.update((items) => {
-      const existing = items.find((i) => i.id === item.id);
-      return existing
-        ? items.map((i) =>
-            i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i,
-          )
-        : [...items, { ...item, quantity: 1 }];
-    });
+  add(item: CartItem): void {
+    this._items.update((list) => [...list, item]);
   }
 }
 ```
 
-### resource() - Async Data (Angular 19+)
-
-Prefer `resource()` over manual `signal + toObservable + switchMap` for async data driven by signal inputs; it provides `status`, `value`, `error` signals.
-
-```typescript
-productId = input.required<string>();
-
-productResource = resource({
-  request: () => this.productId(),
-  loader: ({ request: id }) => this.productService.getProduct(id),
-});
-```
-
-```html
-@switch (productResource.status()) {
-  @case ("loading") { <app-spinner /> }
-  @case ("error") { <app-error [error]="productResource.error()" /> }
-  @case ("resolved") { <app-product [product]="productResource.value()!" /> }
-}
-```
-
-### linkedSignal (Angular 19+)
-
-Writable signal that resets when a source signal changes - use when a user selection must follow upstream changes.
-
-```typescript
-selectedCategory = signal("all");
-filteredProducts = computed(() =>
-  this.selectedCategory() === "all"
-    ? this.products()
-    : this.products().filter((p) => p.category === this.selectedCategory()),
-);
-
-// Resets to first product whenever filteredProducts changes
-selectedProduct = linkedSignal(() => this.filteredProducts()[0]?.id ?? "");
-```
-
 ## Output Format
-
-Consuming workflow skills depend on this structure.
 
 ```
 ## Signals Architecture
 
-**Stack:** {detected framework}
-**Angular version:** {detected version}
+**Angular version:** {detected}
 
-### Signal Map
+### Signals
 
-| Signal       | Type                              | Scope                | Source                            |
-| ------------ | --------------------------------- | -------------------- | --------------------------------- |
-| {name}       | Writable | Computed | Bridged | Component | Service | signal() | computed() | toSignal() |
+| Signal       | Type                                                            | Scope                | Source                              |
+| ------------ | --------------------------------------------------------------- | -------------------- | ----------------------------------- |
+| {name}       | Writable | Computed | Bridged | Linked | Resource          | Component | Service  | signal() | computed() | toSignal() | linkedSignal() | resource() |
+
+### Resources (if any)
+
+| Resource | Request inputs        | Loader                  | Reads          |
+| -------- | --------------------- | ----------------------- | -------------- |
+| {name}   | {signal deps}         | {service.method(...)}   | value/status   |
 
 ### Effects
 
-| Purpose      | Triggers      | Cleanup Required |
-| ------------ | ------------- | ---------------- |
-| {desc}       | {signal deps} | {Yes | No}       |
+| Purpose      | Triggers      | Cleanup |
+| ------------ | ------------- | ------- |
+| {desc}       | {signal deps} | Yes | No |
 
 ### Recommendations
 
@@ -188,10 +173,12 @@ Consuming workflow skills depend on this structure.
   - Fix: {concrete correction}
 ```
 
+Omit sections without entries; omit `Issues Found` for greenfield design.
+
 ## Avoid
 
-- `effect()` that writes to other signals (use `computed()`)
-- Mutating signal values in place
+- `effect()` that writes to other signals (use `computed()` / `linkedSignal`)
+- Mutating signal values in place; deep nested writes that miss a spread
 - Exposing writable signals from services
 - `toSignal()` without `initialValue`/`requireSync` on async sources
 - Circular computed dependencies
