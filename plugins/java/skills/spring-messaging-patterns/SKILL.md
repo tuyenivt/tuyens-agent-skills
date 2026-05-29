@@ -1,6 +1,6 @@
 ---
 name: spring-messaging-patterns
-description: "Spring Kafka / RabbitMQ / Application Events: idempotent consumers, DLT/DLQ, transactional outbox, webhook handlers, AFTER_COMMIT dispatch."
+description: "Spring Kafka / RabbitMQ / Application Events: idempotent consumers, DLT/DLQ, transactional outbox, AFTER_COMMIT, webhooks, observability."
 metadata:
   category: backend
   tags: [kafka, rabbitmq, spring-events, messaging, async, outbox, idempotency]
@@ -15,222 +15,180 @@ user-invocable: false
 
 - Publishing / consuming events via Kafka or RabbitMQ
 - Replacing synchronous HTTP with async messaging
-- Implementing the transactional outbox for guaranteed delivery
-- Spring Application Events for in-process decoupling
+- Guaranteed delivery that must survive a crash between DB commit and broker publish
+- In-process decoupling via Spring Application Events
 
 ## Rules
 
-- Consumers idempotent - messages can be redelivered
-- DLT / DLQ configured for messages that exhaust retries
-- Use the **transactional outbox** when at-least-once delivery must survive a crash between commit and publish
-- Payloads carry IDs and primitive values - never serialized JPA entities
-- Manual ack only after successful processing
-- Catch only retryable exceptions in the listener; let unknowns reach the retry/DLT machinery
+- Consumers idempotent - any message can be redelivered.
+- DLT / DLQ configured for every listener; permanent failures excluded from retry.
+- Use the **transactional outbox** whenever a publish must atomically follow a DB commit. Never call `send()` inside `@Transactional` without it - rollback leaves phantom events.
+- Payloads are records / primitives. Never serialize JPA entities (lazy proxies, schema coupling).
+- Manual ack only after successful processing (`enable-auto-commit: false`, `ack-mode: manual_immediate`).
+- Catch only retryable exceptions in listeners; let unknowns reach the retry / DLT machinery.
+- Propagate trace context across the broker (Micrometer Observation auto-instruments Spring Kafka / Rabbit when `ObservationRegistry` is on the classpath).
 
 ## Patterns
 
-### Spring Kafka
+### Kafka producer + consumer
 
 ```java
 @Service @RequiredArgsConstructor
 class OrderEventPublisher {
     private final KafkaTemplate<String, OrderPlacedEvent> kafka;
 
-    public void publishOrderPlaced(OrderPlacedEvent event) {
-        kafka.send("order.placed", event.orderId().toString(), event)
-            .whenComplete((r, ex) -> {
-                if (ex != null) log.error("Publish failed {}", event.orderId(), ex);
-            });
+    public CompletableFuture<SendResult<String, OrderPlacedEvent>> publish(OrderPlacedEvent e) {
+        return kafka.send("order.placed", e.orderId().toString(), e);  // caller handles failure
     }
 }
 
-@Component
-@Slf4j
+@Component @RequiredArgsConstructor
 class OrderPlacedConsumer {
-    @KafkaListener(topics = "order.placed", groupId = "fulfillment-service")
-    public void onOrderPlaced(OrderPlacedEvent event, Acknowledgment ack) {
-        if (fulfillmentRepo.existsByOrderId(event.orderId())) {
-            ack.acknowledge();  // already processed
-            return;
-        }
-        fulfillmentService.initiate(event.orderId());
-        ack.acknowledge();
+    private final ProcessedMessages processed;
+    private final FulfillmentService fulfillment;
+
+    @RetryableTopic(
+        attempts = "3",
+        backoff = @Backoff(delay = 1000, multiplier = 2),
+        dltStrategy = DltStrategy.FAIL_ON_ERROR,
+        exclude = { ValidationException.class, IllegalArgumentException.class })
+    @KafkaListener(topics = "order.placed", groupId = "fulfillment")
+    public void onOrderPlaced(OrderPlacedEvent e,
+                               @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+        if (!processed.markProcessed(key)) return;  // unique-PK insert; duplicate = skip
+        fulfillment.initiate(e.orderId());
     }
+
+    @DltHandler
+    public void dlt(OrderPlacedEvent e) { alerts.notifyOps("fulfillment-dlt", e.orderId()); }
 }
 ```
 
 ```yaml
-spring.kafka:
-  consumer:
-    auto-offset-reset: earliest
-    enable-auto-commit: false
-    max-poll-records: 50
-  listener:
-    ack-mode: manual_immediate
-    concurrency: 3
+spring:
+  threads.virtual.enabled: true           # Boot 3.5: listener containers honor VTs
+  kafka:
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+    listener:
+      ack-mode: manual_immediate
+      concurrency: 3
+      observation-enabled: true           # emits Micrometer spans + metrics
+    producer:
+      observation-enabled: true
 ```
 
-### `@RetryableTopic` (Kafka)
-
-Creates retry topics + DLT automatically - no manual config:
-
-```java
-@Component
-class FulfillmentConsumer {
-    @RetryableTopic(
-        attempts = "3",
-        backoff = @Backoff(delay = 1000, multiplier = 2),
-        autoCreateTopics = "true",
-        dltStrategy = DltStrategy.FAIL_ON_ERROR,
-        // Permanent failures skip retries
-        exclude = { ValidationException.class, IllegalArgumentException.class })
-    @KafkaListener(topics = "order.placed", groupId = "fulfillment-service")
-    public void onOrderPlaced(OrderPlacedEvent event,
-                               @Header(KafkaHeaders.RECEIVED_KEY) String messageKey) {
-        // Canonical idempotency: processed_messages(message_id PK).
-        // Redelivery triggers unique-constraint violation - skip silently.
-        if (!processedMessages.markProcessed(messageKey)) return;
-        fulfillmentService.initiate(event.orderId());
-    }
-
-    @DltHandler
-    public void handleDlt(OrderPlacedEvent event) {
-        log.error("Exhausted retries for order {} - DLT", event.orderId());
-        alertService.notifyOps("fulfillment-failure", event.orderId());
-    }
-}
-```
+`@RetryableTopic` auto-creates `order.placed-retry-0`, `-retry-1`, `order.placed-dlt`. `exclude` skips retry for non-retryable exceptions and routes them straight to DLT.
 
 ### RabbitMQ with DLQ
 
 ```java
-@Configuration
-class RabbitConfig {
-    @Bean
-    Queue fulfillmentQueue() {
-        return QueueBuilder.durable("order.fulfillment")
-            .withArgument("x-dead-letter-exchange", "order.dlx")
-            .withArgument("x-dead-letter-routing-key", "fulfillment.failed")
-            .build();
-    }
-    @Bean Queue deadLetterQueue() { return QueueBuilder.durable("order.fulfillment.dlq").build(); }
+@Bean Queue fulfillmentQueue() {
+    return QueueBuilder.durable("order.fulfillment")
+        .withArgument("x-dead-letter-exchange", "order.dlx")
+        .withArgument("x-dead-letter-routing-key", "fulfillment.failed")
+        .build();
 }
 
-@Component
-class FulfillmentConsumer {
-    @RabbitListener(queues = "order.fulfillment")
-    public void handle(OrderPlacedEvent event) {
-        if (fulfillmentRepo.existsByOrderId(event.orderId())) return;
-        fulfillmentService.initiate(event.orderId());
-    }
+@RabbitListener(queues = "order.fulfillment")
+public void handle(OrderPlacedEvent e) {
+    if (!processed.markProcessed(e.orderId().toString())) return;
+    fulfillment.initiate(e.orderId());
 }
 ```
 
+Retry/backoff via `spring.rabbitmq.listener.simple.retry.*`; messages that exhaust retries hit `order.dlx` and land in the DLQ bound to it.
+
 ### Transactional outbox
 
-Phantom-event symptom: consumer receives an event whose aggregate row never committed - a broker publish ran inside `@Transactional` and the transaction later rolled back. Fixes:
-
-- **Outbox table** when the event must survive a crash between commit and publish.
-- **`@TransactionalEventListener(AFTER_COMMIT)`** for in-process listeners (no crash survival).
+Use when the publish must survive a crash between DB commit and broker ack.
 
 ```java
 @Entity @Table(name = "outbox_events")
 class OutboxEvent {
     @Id @GeneratedValue UUID id;
-    String aggregateType;
-    String aggregateId;   // Kafka partition key
+    String aggregateId;     // partition key
     String topic;
     String eventType;
-    String payload;       // JSON
+    String payload;         // JSON
     Instant createdAt;
     boolean published;
 }
 
 @Transactional
 public void placeOrder(PlaceOrderCommand cmd) {
-    Order order = orderRepo.save(Order.from(cmd));
-    outboxRepo.save(OutboxEvent.from(order, "orders.events", "OrderPlaced"));
+    Order o = orderRepo.save(Order.from(cmd));
+    outboxRepo.save(OutboxEvent.of(o, "order.placed", "OrderPlaced"));
 }
 
-// Polling publisher: SKIP LOCKED so multiple instances don't double-publish.
-// Each event in its own tx → one failure doesn't block others.
+// One unpublished event per row, per tx → one failure doesn't block siblings.
+// SKIP LOCKED lets multiple instances poll without double-publishing.
 @Scheduled(fixedDelay = 1000)
-public void publishOutbox() {
-    for (UUID id : outboxRepo.claimBatchForPublish(100)) publishOne(id);
+public void drain() {
+    for (UUID id : outboxRepo.claimBatch(100)) publishOne(id);
 }
 
 @Transactional
 public void publishOne(UUID id) {
     OutboxEvent e = outboxRepo.findById(id).orElseThrow();
-    kafka.send(e.getTopic(), e.getAggregateId(), e.getPayload());
-    e.setPublished(true);  // flushed on commit
+    kafka.send(e.getTopic(), e.getAggregateId(), e.getPayload()).join();  // fail tx on send error
+    e.setPublished(true);
 }
-
-// Native query - JPQL has no SKIP LOCKED:
-//   SELECT id FROM outbox_events WHERE published = false
-//   ORDER BY created_at LIMIT :n FOR UPDATE SKIP LOCKED
 ```
 
-### Spring Application Events (in-process)
+```sql
+-- Native query (JPQL lacks SKIP LOCKED):
+SELECT id FROM outbox_events
+WHERE published = false
+ORDER BY created_at
+LIMIT :n FOR UPDATE SKIP LOCKED;
+```
+
+### Spring Application Events (in-process, same JVM)
+
+Use `AFTER_COMMIT` so listeners never see uncommitted state. No crash survival - if that matters, use the outbox.
 
 ```java
 public record OrderCreatedEvent(UUID orderId, BigDecimal total) {}
 
-@Service @RequiredArgsConstructor
-class OrderService {
-    private final ApplicationEventPublisher events;
-
-    @Transactional
-    public Order create(CreateOrderRequest req) {
-        Order order = orderRepo.save(Order.from(req));
-        events.publishEvent(new OrderCreatedEvent(order.getId(), order.getTotal()));
-        return order;
-    }
+@Transactional
+public Order create(CreateOrderRequest req) {
+    Order o = orderRepo.save(Order.from(req));
+    events.publishEvent(new OrderCreatedEvent(o.getId(), o.getTotal()));
+    return o;
 }
 
-@Component
-class OrderAuditListener {
-    @TransactionalEventListener(phase = AFTER_COMMIT)
-    public void onOrderCreated(OrderCreatedEvent e) { auditService.record(e); }
-}
+@TransactionalEventListener(phase = AFTER_COMMIT)
+public void onOrderCreated(OrderCreatedEvent e) { auditService.record(e); }
 ```
 
 ### Webhook handlers
 
-External services (Stripe, GitHub) push via webhooks - process them like message consumers, with signature validation + idempotency:
+External services (Stripe, GitHub) deliver via HTTP with at-least-once semantics: verify signature, dedupe by event ID, respond 200 fast.
 
 ```java
-@RestController @RequestMapping("/webhooks") @RequiredArgsConstructor
-class StripeWebhookController {
-    private final StripeWebhookService webhookService;
-
-    @PostMapping("/stripe")
-    public ResponseEntity<Void> handle(@RequestBody String rawBody,
-                                        @RequestHeader("Stripe-Signature") String signature) {
-        webhookService.verifySignature(rawBody, signature);
-        var event = webhookService.parse(rawBody);
-        if (webhookService.isProcessed(event.getId())) return ResponseEntity.ok().build();
-        webhookService.process(event);
-        return ResponseEntity.ok().build();
-    }
+@PostMapping("/webhooks/stripe")
+public ResponseEntity<Void> stripe(@RequestBody String raw,
+                                    @RequestHeader("Stripe-Signature") String sig) {
+    webhooks.verify(raw, sig);
+    var event = webhooks.parse(raw);
+    if (processed.markProcessed(event.getId())) webhooks.process(event);
+    return ResponseEntity.ok().build();
 }
 ```
 
-Store processed event IDs with a unique constraint - Stripe retries failed deliveries up to 3 days.
+### Required vs best-effort side effects
 
-### Required vs optional notifications
-
-Required notifications must propagate failures (Kafka publish, durable broker). Best-effort notifications (SMS, push) catch and log:
+A listener may fan out to multiple channels with different durability needs. Let required failures propagate; isolate best-effort.
 
 ```java
 @TransactionalEventListener(phase = AFTER_COMMIT)
 public void onPaymentCompleted(PaymentCompletedEvent e) {
-    kafka.send("payment.completed", e.paymentId().toString(), e);  // required
-    try {
-        notificationService.sendSms(e.userPhone(), "Payment confirmed");
-    } catch (Exception ex) {
-        log.warn("Optional SMS failed for payment {}", e.paymentId(), ex);
-    }
+    kafka.send("payment.completed", e.paymentId().toString(), e);   // required - let it throw
+    try { sms.send(e.phone(), "Payment confirmed"); }               // best-effort
+    catch (Exception ex) { log.warn("SMS failed for {}", e.paymentId(), ex); }
 }
 ```
 
@@ -242,14 +200,15 @@ Topic/Queue: {name}
 Producer: {class}
 Consumer: {class}
 Delivery: {at-least-once | at-most-once | exactly-once via outbox}
-Idempotency: {how duplicates are detected}
-DLT/DLQ: {configured | not needed - reason}
-Retry: {attempts, backoff}
+Idempotency: {dedup key + storage}
+DLT/DLQ: {topic/queue name | not needed - reason}
+Retry: {attempts, backoff, excluded exceptions}
+Observability: {observation-enabled | manual instrumentation | n/a}
 ```
 
 ## Avoid
 
-- `enable-auto-commit: true` on Kafka (loses messages on crash)
-- Publishing inside `@Transactional` without the outbox (phantom events on rollback)
-- JPA entities as message payloads
-- Swallowing all exceptions in a consumer (defeats retry / DLT)
+- Publishing inside `@Transactional` without the outbox (phantom events on rollback).
+- JPA entities as payloads.
+- Swallowing all exceptions in a consumer (defeats retry / DLT).
+- Logging-only failure handling on producer futures (`whenComplete` that only logs loses messages silently - use the outbox or propagate).

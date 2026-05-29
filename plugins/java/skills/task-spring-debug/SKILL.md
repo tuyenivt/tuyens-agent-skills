@@ -1,6 +1,6 @@
 ---
 name: task-spring-debug
-description: "Debug a Spring Boot stack trace, error log, or unexpected behavior: root cause, minimal fix with code, regression test."
+description: "Debug Spring Boot stack trace, error log, test failure, or behavior bug: classify, root cause, minimal fix diff, regression test."
 metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]
@@ -12,155 +12,115 @@ user-invocable: true
 
 ## When to Use
 
-Daily developer debugging: paste an error, get a fix.
+Daily developer debugging on Spring Boot / Java: paste an error or describe a misbehavior, get a targeted fix with regression test.
 
-- Java exception or stack trace
-- Unexpected HTTP error response
-- Test failure
-- Build / compilation error
-- Spring Boot startup failure
-- Behavior mismatch with no exception (logic bug)
+In scope: Java exception, HTTP error response, test failure, build / compilation error, startup failure, behavior mismatch without exception.
 
-For production incident analysis (containment, blast radius), use `/task-oncall-start` instead.
-
-## Inputs
-
-| Input                       | Required | Description                                       |
-| --------------------------- | -------- | ------------------------------------------------- |
-| Stack trace or error        | Yes      | The primary failure signal                        |
-| Relevant source file        | No       | File where the error occurs                       |
-| Steps to reproduce          | No       | What triggers the error                           |
-| Expected vs actual behavior | No       | For logic bugs without exceptions                 |
-| Test output                 | No       | Full test failure including assertion diff        |
-
-## Rules
-
-- Classify the error before reading code
-- Show the exact code change (before → after) - no vague suggestions
-- Explain WHY, not just how to fix
-- Minimal fix, not redesign
-- LOW confidence → say so and list what info would help
-- Reference atomic skills only when the fix involves a pattern they cover
+Not in scope: production incident triage (containment, blast radius, comms) -> use `/task-oncall-start`. Wholesale redesign or feature work -> use `/task-spring-refactor` or `/task-spring-implement`.
 
 ## Workflow
 
-### Step 1 - Load Behavioral Principles
+### Step 1 - Load behavioral principles
 
 Use skill: `behavioral-principles`.
 
-### Step 2 - Intake
+### Step 2 - Detect stack
 
-Accept any of: stack trace, application log snippet, HTTP error response, behavior description, test failure output. Ask one clarifying question if input is ambiguous.
+Use skill: `stack-detect`. Confirm Java + Spring Boot. If the project is not Spring, stop and route to the matching stack debug workflow (or `task-code-debug` in core).
 
-### Step 3 - Classify the Error
+### Step 3 - Intake and classify
 
-Spring wraps exceptions heavily (`InvalidDataAccessApiUsageException` wraps `LazyInitializationException`; `TransactionSystemException` wraps `ConstraintViolationException`; `NestedServletException` wraps controller errors). **Walk the `Caused by:` chain to the deepest non-framework cause** and match the table against that - matching the outer wrapper leads to the wrong fix.
+Accept: stack trace, log snippet, HTTP error body, behavior description, or test output. Ask one clarifying question only if the failure signal is ambiguous (no exception class, no repro, no expected vs actual).
 
-| Exception (deepest cause)                  | Likely Cause                                         | Load Skill                              |
-| ------------------------------------------ | ---------------------------------------------------- | --------------------------------------- |
-| `NullPointerException`                     | Null reference in call chain                         | -                                       |
-| `LazyInitializationException`              | JPA session/transaction scope issue                  | `spring-jpa-performance`                |
-| `DataIntegrityViolationException`          | DB constraint violation                              | `spring-db-migration-safety`            |
-| `HttpMessageNotReadableException`          | JSON deserialization failure                         | -                                       |
-| `HttpMediaTypeNotSupportedException`       | Wrong Content-Type header                            | -                                       |
-| `MethodArgumentTypeMismatchException`      | Path/query param type conversion failure             | -                                       |
-| `MissingServletRequestParameterException`  | Required query param absent                          | -                                       |
-| `MethodArgumentNotValidException`          | `@Valid` body validation failed                      | -                                       |
-| `TransactionSystemException`               | Nested exception in `@Transactional`                 | `spring-transaction`                    |
-| `UnexpectedRollbackException`              | Inner tx marked rollback-only                        | `spring-transaction`                    |
-| `OptimisticLockException`                  | Concurrent update on `@Version` entity               | `spring-transaction`                    |
-| `NoSuchBeanDefinitionException`            | Spring context wiring issue                          | -                                       |
-| `BeanCurrentlyInCreationException`         | Circular dependency                                  | -                                       |
-| `DataAccessResourceFailureException`       | DB connection pool / network failure                 | -                                       |
-| `QueryTimeoutException`                    | Statement exceeded query timeout                     | -                                       |
-| `JpaSystemException` / `MappingException`  | Entity mapping or dialect mismatch                   | -                                       |
-| `ConverterNotFoundException`               | Missing custom `Converter` registration              | -                                       |
-| `AsyncRequestNotUsableException`           | Response committed / aborted on async path           | -                                       |
-| Virtual Thread pinning                     | `synchronized` block in VT context                   | -                                       |
-| Kafka consumer lag / DLT messages          | Consumer error, redelivery loop                      | `spring-messaging-patterns`             |
-| RabbitMQ DLQ / unacked messages            | Consumer throwing, no DLQ config                     | `spring-messaging-patterns`             |
-| Outbox event not published                 | Scheduled publisher or tx issue                      | `spring-messaging-patterns`             |
-| `ConstraintViolationException`             | Bean Validation failed before DB insert              | -                                       |
-| `PaymentDeclinedException` (domain)        | External payment gateway declined                    | `spring-exception-handling`             |
-| `WebSocketHandshakeException`              | WS auth or CORS failure                              | `spring-websocket`                      |
+Spring wraps exceptions. Walk `Caused by:` to the deepest non-framework cause before matching. Matching the outer wrapper (e.g. `InvalidDataAccessApiUsageException`, `TransactionSystemException`, `NestedServletException`) leads to the wrong fix.
 
-If a skill is loaded, its patterns drive Step 6's fix - do not re-derive.
+Classify and load the relevant atomic skill if any. Common mappings:
 
-**Other categories:**
-- **Compilation** - check imports, type signatures
-- **Test failure** - assertion mismatch, test setup, mocks
-- **Build failure** - read failing task output, `gradle dependencies` for conflicts. Load `java-gradle-build-optimization` only if the failure is itself a build-config / dependency-management problem
+| Deepest cause                                  | Atomic skill                |
+| ---------------------------------------------- | --------------------------- |
+| `LazyInitializationException`, N+1, slow query | `spring-jpa-performance`    |
+| `TransactionSystemException`, `UnexpectedRollbackException`, `OptimisticLockException` | `spring-transaction` |
+| `DataIntegrityViolationException`, schema drift | `spring-db-migration-safety` |
+| Kafka / RabbitMQ / outbox failures             | `spring-messaging-patterns` |
+| Domain exception not mapped to HTTP status     | `spring-exception-handling` |
+| `WebSocketHandshakeException`                  | `spring-websocket`          |
+| Async / scheduler / VT pinning                 | `spring-async-processing`   |
+| Auth / CSRF / method security failure          | `spring-security-patterns`  |
+| Build / dependency conflict                    | `java-gradle-build-optimization` |
+| Plain `NullPointerException`, JSON binding, `MethodArgumentNotValidException`, `NoSuchBeanDefinitionException`, `BeanCurrentlyInCreationException`, `ConverterNotFoundException`, compilation, generic test failure | none (handle inline) |
 
-### Step 4 - Locate in Codebase
+If a skill loaded, its Patterns drive Steps 5-6. Do not re-derive.
 
-1. First frame in **application code** (not Spring/Hibernate/Tomcat internals) is the starting point
-2. Open the file ±50 lines around the failing line
-3. Trace the call chain through every Spring layer the request actually traverses: Filter / Interceptor → `@ControllerAdvice` → `@RestController` → `@Service` (with `@Transactional` boundary) → Mapper → `@Repository` → async / scheduled / messaging boundary
-4. Check `application.yml`, security/async/datasource config when config-related (LIE with `open-in-view=false`, missing component scan, HikariCP sizing)
+### Step 4 - Locate in codebase
 
-### Step 5 - Root Cause
+1. First non-framework frame is the entry point.
+2. Open the file +/- 50 lines around the failing line.
+3. Trace the layers the request actually crosses: Filter / Interceptor -> `@ControllerAdvice` -> `@RestController` -> `@Service` (note `@Transactional` boundary) -> Mapper -> `@Repository` -> async / scheduled / messaging hop.
+4. Check `application.yml`, security / async / datasource config when symptoms point there (e.g. LIE with `open-in-view=false`, missing component scan, HikariCP exhaustion).
 
-- Explain **WHY**, referencing specific source
-- If pattern violation, name the pattern
-- Rate confidence: **HIGH** (clear evidence) / **MEDIUM** (likely but alternatives exist) / **LOW** (need more info)
+### Step 5 - Root cause
 
-### Step 6 - Propose Fix
+State WHY, citing file and line. Name the violated pattern if any. Rate confidence:
 
-- If Step 3 loaded an atomic, draw candidates from that skill's Patterns - do not re-derive
-- Show exact before → after diff
-- For known multi-fix bugs:
-  - `LazyInitializationException` → `JOIN FETCH`, `@EntityGraph`, projection DTO, or read-only `@Transactional` service method. Prefer the projection when the caller only needs a flat shape.
-  - `OptimisticLockException` → retry on `@Version` conflict, narrow the transaction, or pessimistic lock for true contention.
-  - `TransactionSystemException` (validation) → move `@Valid` to controller so violations surface as 400 instead of being wrapped at commit.
+- **HIGH** - direct evidence in source.
+- **MEDIUM** - likely but plausible alternatives exist.
+- **LOW** - need more info; list what would raise confidence.
 
-### Step 7 - Prevent Recurrence
+### Step 6 - Propose fix
 
-Use skill: `spring-test-integration` for test-slice patterns (singleton Testcontainers, security post-processors, Awaitility).
+Show exact before -> after diff. Minimal fix, not redesign. If Step 3 loaded an atomic, draw the fix from its Patterns. Explain why this fix addresses the cause, not the symptom.
 
-Suggest a test that would have caught this bug class:
-- `LazyInitializationException` → `@SpringBootTest` / `@DataJpaTest` that invokes the controller/mapper outside the original `@Transactional` so lazy access actually fails. Unit tests with mocked repositories will not catch this.
-- `DataIntegrityViolationException` → `@DataJpaTest` against Testcontainers Postgres (not H2).
-- `TransactionSystemException` (validation) → `@WebMvcTest` + `MockMvc` asserting 400 with field errors.
-- `OptimisticLockException` → concurrent test using two threads / `EntityManager`s on the same entity.
-- VT pinning → JFR or `-Djdk.tracePinnedThreads=short` assertion in a load test.
+### Step 7 - Prevent recurrence
 
-If the bug pattern can recur, grep for other occurrences (e.g., other mappers touching the same lazy association).
+Use skill: `spring-test-integration` for test-slice patterns (singleton Testcontainers, security post-processors, Awaitility for async).
 
-## Edge Cases
+Suggest one regression test that would have caught this bug class. Pick the slice that exercises the actual failure boundary (e.g. integration test outside the original `@Transactional` for LIE; `@WebMvcTest` for binding / validation; concurrent threads for optimistic lock; Testcontainers Postgres for schema / constraint bugs - not H2). If the bug class can recur, grep for sibling occurrences and list them.
 
-- **Vague description, no stack trace** - ask for exact error message, class/method, repro steps before classifying
-- **Multiple errors** - identify the root error (earliest / deepest `Caused by`); mention secondaries only if independent
-- **No source available** - if the trace points only to framework internals, explain the framework behavior and ask for the application code that triggered it
-- **Intermittent bug** - likely concurrency; ask for thread dump or load conditions if confidence is LOW
-- **Virtual Thread pinning** - run with `-Djdk.tracePinnedThreads=short` or check JFR for `jdk.VirtualThreadPinned`
+## Output Format
 
-## Output
+```
+## Bug Analysis
+- Error type: <exception or category>
+- Layer: <Controller | Service | Repository | Config | Build | Test>
+- Confidence: <HIGH | MEDIUM | LOW>
+- Loaded skill: <atomic-skill-name or none>
 
-**Bug Analysis** - error type, confidence, layer (Controller/Service/Repository/Configuration/Build)
+## Root Cause
+<why, with file:line citation>
 
-**Root Cause** - why this happened, with source citation
+## Fix
+```diff
+- <before>
++ <after>
+```
+<one-paragraph explanation>
 
-**Fix** - before/after diff + explanation
+## Prevention
+- Test: <slice + what it asserts>
+- Other occurrences: <files or "none found">
 
-**Prevention** (omit if fix is trivial) - test that would catch it, pattern reference, other occurrences via grep
+## Needs Clarification   <!-- only if confidence is LOW -->
+- <specific info that would raise confidence>
+```
 
-If confidence is LOW, add **Needs Clarification** listing what info would help.
+Omit Prevention if the fix is a one-line typo. Omit Needs Clarification unless confidence is LOW.
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded as Step 1
-- [ ] Walked `Caused by:` chain to deepest non-framework cause before reading code
-- [ ] If the table loaded an atomic skill, the fix was drawn from that skill - not re-derived
-- [ ] Root cause cites source file and line; confidence stated
-- [ ] Before/after diff provided; fix addresses root cause, not symptom
-- [ ] Fix does not violate conventions (no `synchronized` on VT path, no field `@Autowired`)
-- [ ] Suggested test would catch this bug class (integration test for LIE, not unit test with mocks)
-- [ ] If pattern can recur, other occurrences grep'd
+- [ ] Step 1: `behavioral-principles` loaded.
+- [ ] Step 2: `stack-detect` confirms Spring; otherwise routed away.
+- [ ] Step 3: walked `Caused by:` to deepest non-framework cause; loaded atomic skill if table mapped one.
+- [ ] Step 4: cited application-code frame and traversed actual layer chain.
+- [ ] Step 5: root cause cites file:line; confidence stated.
+- [ ] Step 6: before/after diff drawn from loaded atomic's Patterns (when one loaded); fix is minimal and targets the cause.
+- [ ] Step 7: regression test names the right slice for this bug class; sibling occurrences grep'd if recurrence-prone.
 
 ## Avoid
 
-- Generic debugging advice ("add logging", "set a breakpoint")
-- Fixing symptoms instead of root causes
-- Refactors when a targeted fix suffices
-- Analysis without reading the source
-- Mixing incident response into developer debugging
+- Generic advice ("add logging", "set a breakpoint") instead of a fix.
+- Matching the outer wrapper exception instead of the deepest cause.
+- Re-deriving a fix the loaded atomic already specifies.
+- Fixing the symptom (catch-and-swallow, broaden `@Transactional`) instead of the cause.
+- Unit test with mocked repository as the "regression test" for an integration-only failure (LIE, constraint, optimistic lock).
+- Refactor when a targeted diff suffices.
+- Mixing incident response (containment, comms) into developer debugging.

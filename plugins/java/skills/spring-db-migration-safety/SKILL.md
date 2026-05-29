@@ -19,45 +19,49 @@ user-invocable: false
 
 ## Rules
 
-- Every migration applied in release N must be backward-compatible with release N-1 code
-- Add NOT NULL in three steps: add nullable → backfill → constrain
-- Rename a column in three steps: add new → dual-write + backfill → drop old
-- Indexes on large tables use `CREATE INDEX CONCURRENTLY` (Postgres) or `ALGORITHM=INPLACE, LOCK=NONE` (MySQL)
-- One concern per migration: DDL and DML in separate files
-- `spring.jpa.hibernate.ddl-auto` is `validate` everywhere beyond local; never `update` in staging or prod
-- Feature-flag schema-dependent code paths during expand-then-contract
-- Liquibase: always include `<rollback>` for non-auto-reversible changes
+- Every migration in release N must be backward-compatible with release N-1 code (rolling deploys run both versions).
+- Destructive changes (NOT NULL, rename, drop) span multiple releases via expand-then-contract.
+- One concern per migration file: DDL and DML separate; one DDL statement per file.
+- Large-table DDL must be non-blocking - Postgres `CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`.
+- `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`.
+- Forward-only fixes: amending a merged migration breaks Flyway checksum validation. Ship a new `Vx__revert_*.sql`.
+- Liquibase: declare `<rollback>` for every non-auto-reversible changeset.
 
 ## Patterns
 
 ### Three-step NOT NULL
 
+Adding `NOT NULL` with `DEFAULT` in one statement rewrites every row and holds an ACCESS EXCLUSIVE lock - unsafe on large tables.
+
 ```sql
--- V1__add_status_nullable.sql
+-- V1__add_status_nullable.sql (release N)
 ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 
--- V2__backfill_status.sql (next release)
-UPDATE orders SET status = 'PENDING' WHERE status IS NULL;
+-- V2__backfill_status.sql (release N, batched DML)
+UPDATE orders SET status = 'PENDING'
+WHERE status IS NULL AND id BETWEEN :lo AND :hi;
 
--- V3__constrain_status.sql (after backfill confirmed)
+-- V3__constrain_status.sql (release N+1, after backfill verified)
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
-### Three-step rename + rolling-deploy dual-write
+Batched backfill avoids long-held locks and WAL bloat. Run from app or job, not as a single `UPDATE`.
+
+### Three-step rename with dual-write
 
 ```sql
 -- V1__add_customer_id.sql (expand)
 ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 
--- V2__backfill_customer_id.sql (batched - 30M-row UPDATEs lock and bloat WAL)
+-- V2__backfill_customer_id.sql (batched)
 UPDATE orders SET customer_id = customer_ref
 WHERE customer_id IS NULL AND id BETWEEN :lo AND :hi;
 
--- V3__drop_customer_ref.sql (release N+1, after all instances read new column)
+-- V3__drop_customer_ref.sql (release N+1)
 ALTER TABLE orders DROP COLUMN customer_ref;
 ```
 
-During release N rollout, two app versions run concurrently. Keep both columns in sync from the app layer:
+During release N rollout both columns are read by some instances. Keep them in sync at the app layer until release N+1 ships:
 
 ```java
 @PrePersist @PreUpdate
@@ -67,9 +71,11 @@ void syncCustomerColumns() {
 }
 ```
 
+Gate read-path switches with a feature flag so a bad release can flip back without a migration.
+
 ### Concurrent index creation
 
-Flyway wraps each script in a transaction by default. `CREATE INDEX CONCURRENTLY` cannot run in a transaction - disable it for that file:
+Flyway wraps each script in a transaction. `CREATE INDEX CONCURRENTLY` cannot run inside one - opt out per file:
 
 ```sql
 -- V20__idx_orders_customer.sql
@@ -77,46 +83,35 @@ Flyway wraps each script in a transaction by default. `CREATE INDEX CONCURRENTLY
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
 
-MySQL equivalent:
+MySQL equivalent (InnoDB):
 
 ```sql
-ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id),
+  ALGORITHM=INPLACE, LOCK=NONE;
 ```
 
-### CHECK constraints for state machines
+### CHECK constraints
+
+Database-level safety when validation is bypassed (manual SQL, admin scripts, other services):
 
 ```sql
 ALTER TABLE payments ADD CONSTRAINT payments_status_check
     CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'));
 ```
 
-A safety net when application validation is bypassed (manual SQL, admin scripts).
+On large tables add as `NOT VALID` first, then `VALIDATE CONSTRAINT` separately to avoid a full-table scan under lock.
 
 ### Rollback strategy
 
-Flyway Community has no automatic undo. Treat forward migrations as one-way:
+Flyway Community has no automatic undo. Schema is forward-only:
 
-- `DROP COLUMN` is not recoverable without restore - lean on PITR / backup retention; document recovery window.
-- Schema mistakes ship a forward `Vx_revert_*.sql`, not a `git revert` (Flyway detects checksum changes and fails validation).
-- "Rollback tested" means: applied on a Testcontainers clone of prod-shape data, revert migration applied, N-1 app boots cleanly.
+- `DROP COLUMN` / `DROP TABLE` recoverable only from PITR or backup - document the recovery window.
+- Mistakes ship as a forward `Vx__revert_*.sql`; never edit a merged migration (checksum mismatch fails `validate-on-migrate`).
+- "Rollback tested" means: migration applied on a Testcontainers clone of prod-shape data, revert migration applied, N-1 app boots and passes smoke tests.
 
-Liquibase: declare `<rollback>` for every non-auto-reversible changeset.
+Liquibase: prefer auto-reversible changes (`addColumn`, `addNotNullConstraint`); for `sql`/`dropColumn` declare an explicit `<rollback>`.
 
-### Conventions
-
-Flyway naming: `V{yyyyMMdd}_{HHmm}__{description}.sql`. Repeatable: `R__create_order_summary_view.sql` for views/functions. One DDL statement per file.
-
-```yaml
-spring:
-  flyway:
-    baseline-on-migrate: true       # for retrofits
-    validate-on-migrate: true
-    out-of-order: false             # strict in prod
-  jpa:
-    hibernate.ddl-auto: validate    # never update beyond local
-```
-
-### CI validation with Testcontainers
+### CI validation
 
 ```java
 @SpringBootTest @Testcontainers
@@ -127,24 +122,25 @@ class MigrationIntegrityTest {
     @Autowired Flyway flyway;
 
     @Test
-    void allMigrationsApplyCleanly() {
-        flyway.clean();
+    void allMigrationsApplyAndValidate() {
         var result = flyway.migrate();
         assertThat(result.success).isTrue();
-        assertThat(result.migrationsExecuted).isPositive();
+        flyway.validate(); // checksum + ordering
     }
 }
 ```
 
-### Expand-then-contract release ordering
+### Flyway conventions
 
-```
-Release N-1: app reads column_a only
-Release N:   add column_b nullable; app dual-writes both
-Release N+1: app reads column_b only; drop column_a
-```
+Versioned: `V{yyyyMMdd}_{HHmm}__{description}.sql`. Repeatable: `R__{description}.sql` for views/functions/triggers (re-runs on checksum change).
 
-Gate schema-dependent code paths with a feature flag during the transition.
+```yaml
+spring:
+  flyway:
+    validate-on-migrate: true
+  jpa:
+    hibernate.ddl-auto: validate
+```
 
 ## Output Format
 
@@ -162,9 +158,9 @@ Rollback: {auto-reversible | liquibase-rollback | forward-fix | restore-from-bac
 
 ## Avoid
 
-- `ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT ...` in one migration on large tables
-- DDL and DML in the same file
-- `spring.jpa.hibernate.ddl-auto=update` beyond local dev
-- Renaming or dropping columns in a single release
-- Blocking index creation on large tables
-- Liquibase changesets without `<rollback>` blocks
+- `ADD COLUMN ... NOT NULL DEFAULT ...` in one statement on large tables (full rewrite under lock).
+- Renaming or dropping a column in the same release that stops reading it.
+- Blocking index creation on large tables (omitting `CONCURRENTLY` / `INPLACE`).
+- Editing a merged migration to "fix" it - breaks checksum validation downstream.
+- Unbounded `UPDATE` for backfill - batch by primary key range.
+- `flyway.clean()` outside ephemeral test containers.

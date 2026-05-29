@@ -11,42 +11,28 @@ user-invocable: true
 
 # Spring Boot Performance Review
 
-Spring-aware perf review naming JPA / Hibernate, Spring Data, Virtual Thread, HikariCP, Spring caching idioms directly. Findings include measured or estimated impact (latency, throughput, query count, GC pressure) and concrete fixes using Java 21+ / Spring Boot 3.5+ patterns.
+Spring-aware perf review naming JPA / Hibernate, Spring Data, Virtual Thread, HikariCP, Spring caching idioms directly. Findings carry measured or estimated impact (latency, throughput, query count, GC pressure) and concrete fixes for Java 21+ / Spring Boot 3.5+.
 
-Stack-specific delegate of `task-code-review-perf` for Java / Spring Boot.
+Stack-specific delegate of `task-code-review-perf`.
 
 ## When to Use
 
 - Spring Boot PR / branch for perf regressions
-- Slow `@RestController` action, `@Async` task, or batch job
-- Pre-merge perf pass on changes to JPA queries, repositories, fetch graphs, `@Transactional`
-- Quarterly N+1 / query-plan / pool-sizing sweep against APM-flagged endpoints
+- Slow `@RestController`, `@Async` task, or batch job
+- Pre-merge pass on JPA queries, repositories, fetch graphs, `@Transactional`
+- Quarterly N+1 / query-plan / pool-sizing sweep
 
-**Not for:**
-- General Spring review (`task-code-review`)
-- Security review (`task-code-review-security` or Spring delegate)
-- Incident response (`/task-oncall-start`)
-- Pre-implementation design (`task-spring-implement`)
+**Not for:** general Spring review (`task-code-review`), security (`task-code-review-security`), incidents (`/task-oncall-start`), pre-implementation design (`task-spring-implement`).
 
-## Depth Levels
+## Depth
 
-| Depth      | When                                                                 | What Runs                                          |
-| ---------- | -------------------------------------------------------------------- | -------------------------------------------------- |
-| `quick`    | Single endpoint or repository ("is this query ok?")                  | Steps 5 + 6 only - JPA hotspots + indexes          |
-| `standard` | Default                                                              | All steps                                          |
-| `deep`     | Profiling-driven with JFR / async-profiler / Micrometer data         | All steps + capacity guidance and load-test plan   |
+| Depth      | When                                                     | Steps Run                       |
+| ---------- | -------------------------------------------------------- | ------------------------------- |
+| `quick`    | Single endpoint or repo ("is this query ok?")            | 1-4, 5, 6, 11                   |
+| `standard` | Default                                                  | All                             |
+| `deep`     | Profiling-driven (JFR / async-profiler / Micrometer)     | All + capacity + load-test plan |
 
-Default: `standard`.
-
-## Invocation
-
-| Invocation                          | Meaning                                                       |
-| ----------------------------------- | ------------------------------------------------------------- |
-| `/task-spring-review-perf`          | Current branch vs base; fails fast on trunk                   |
-| `/task-spring-review-perf <branch>` | `<branch>` vs base (3-dot diff)                               |
-| `/task-spring-review-perf pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch first)         |
-
-When invoked as a subagent, the parent passes the precondition handle + pre-read diff and commit log; Step 3 below is skipped.
+Invocation forms (`/task-spring-review-perf [<branch>|pr-<N>]`) follow `task-code-review-perf`. When invoked as subagent, parent passes the precondition handle plus pre-read diff and commit log; Step 3 is skipped.
 
 ## Workflow
 
@@ -56,129 +42,97 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-confirmed stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review-perf` - this workflow assumes Java 21+ and Spring Boot 3.5+.
+Use skill: `stack-detect`. If not Spring Boot, stop and route the user to `/task-code-review-perf`. This workflow assumes Java 21+ and Spring Boot 3.5+.
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent and the parent passed the handle plus artifacts.
-
-If the precondition check stops with a fail-fast message, surface verbatim and stop. No state-changing git.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
 ### Step 4 - Read the Performance Surface
 
-Before applying checklists:
+Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into:
 
-- Every changed `@Entity` (associations, fetch types, `@EntityGraph`, `@NamedEntityGraph`)
-- Every changed `@Repository` (derived methods, `@Query`, `Pageable`, projections)
-- Every changed `@Service` / `@RestController` that calls a repository or external client
-- `application.yml` for `spring.datasource.hikari.*`, `spring.jpa.*`, `spring.kafka.listener.concurrency`, `spring.threads.virtual.enabled`, cache config
-- Any new migration under `src/main/resources/db/migration/` or `db/changelog/`
-- `build.gradle(.kts)` / `pom.xml` when Resilience4j, Caffeine, p6spy, or datasource-proxy is added
+- `@Entity` (associations, fetch types, `@EntityGraph`)
+- `@Repository` (derived methods, `@Query`, `Pageable`, projections)
+- `@Service` / `@RestController` paths touching repositories or HTTP/broker clients
+- `application.yml` keys: `spring.datasource.hikari.*`, `spring.jpa.*`, `spring.kafka.listener.concurrency`, `spring.threads.virtual.enabled`, cache config
+- New migrations under `db/migration/` or `db/changelog/`
+- Dependency adds (Resilience4j, Caffeine, p6spy, datasource-proxy)
 
-If the diff is small but ripples through unchanged code (a new controller calling an existing repository whose `@Query` does an N+1), read the unchanged file too - the regression lives there.
+A small diff can ripple: a new controller calling an unchanged repo whose `@Query` does N+1 is a regression at the call site. Read the unchanged file.
+
+Also note observability prep: Micrometer timers on slow paths, Hibernate `generate_statistics` non-prod, APM span propagation through `@Async` / `WebClient`. Flag gaps here; do not re-check in a separate step.
 
 ### Step 5 - JPA / Hibernate Hotspots
 
-Use skill: `spring-jpa-performance` for canonical N+1 / fetch / projection / batch / pagination patterns. Additional review signals:
+Use skill: `spring-jpa-performance` for canonical N+1 / fetch / projection / batch / pagination / streaming / `existsBy` / LIE patterns. Additional review-context signals:
 
-- [ ] **N+1 in serializers / mappers** - Jackson / MapStruct touching unpreloaded lazy associations → fix at repository (entity graph or fetch join) or projection DTO, not at the mapper
-- [ ] **`LazyInitializationException` risk** - lazy access after the original `@Transactional` scope ends (controller after service returns, async thread)
-- [ ] **Missing indexes** - any `@Query` `where` / `order by` / `group by` field without a backing index
-- [ ] **`Page<T>` vs `Slice<T>` vs cursor** - `Page<T>` issues a `count(*)` that can dominate large-table requests. Choose deliberately: `Slice` for next/prev UIs, cursor for infinite scroll
-- [ ] **Long-running reads need `@Transactional(timeout = N)`** - untimed queries hold a connection until DB-side `wait_timeout` (often 8h on MySQL, none on Postgres)
-- [ ] **Streaming for >10k rows** - batch jobs / exports use `Stream<T>` + `@Transactional(readOnly=true)` + try-with-resources, not `findAll()`
-- [ ] **`existsBy*` over `findBy*().isPresent()`** - compiles to `select 1 ... limit 1`
-- [ ] **Transaction scope** - no HTTP / broker / external IO inside `@Transactional` (use AFTER_COMMIT or outbox)
-- [ ] **Entity returns from controllers** - always project to DTO
+- [ ] **Serializer / mapper N+1** - Jackson or MapStruct touching unpreloaded lazy associations. Fix at repo (entity graph / fetch join) or projection DTO, not at the mapper.
+- [ ] **`Page<T>` vs `Slice<T>` vs cursor** - `Page` issues `count(*)`; for next/prev UIs use `Slice`, for infinite scroll use cursor.
+- [ ] **`@Transactional(timeout = N)`** on long reads; untimed queries hold a connection until DB `wait_timeout`.
+- [ ] **Transaction scope** - no HTTP / broker / external IO inside `@Transactional`; use `AFTER_COMMIT` or outbox.
+- [ ] Missing indexes on any `@Query` `where` / `order by` / `group by` field (defer detail to Step 6).
 
 ### Step 6 - Indexes and Migrations
 
-Use skill: `spring-db-migration-safety` for safe-migration checks.
+Use skill: `spring-db-migration-safety`.
 
-- [ ] Every column in `@Query` `where` / `order by` / `group by` is indexed
-- [ ] Composite indexes match leftmost-prefix patterns
-- [ ] FKs are indexed (Postgres does not auto-index FKs)
-- [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY` (Postgres) outside a transaction
-- [ ] Unique constraints at the DB level, not just `@Column(unique = true)` on a non-managed column
+- [ ] `where` / `order by` / `group by` columns indexed; composite indexes match leftmost-prefix usage
+- [ ] FKs indexed (Postgres does not auto-index FKs)
+- [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY` outside a transaction (Postgres)
+- [ ] Unique constraints at DB level, not only `@Column(unique = true)`
 - [ ] Partial indexes for boolean / enum filters selecting a small subset
-- [ ] No DDL on hot tables in a single migration (expand-then-contract)
+- [ ] No DDL on hot tables in a single migration; expand-then-contract
 
 ### Step 7 - Concurrency, Virtual Threads, Async
 
-_Skipped at `quick` depth._
+_Skipped at `quick`._
 
 Use skill: `spring-async-processing`.
 
-- [ ] **No `synchronized` on shared instances** in VT paths - pinning the carrier defeats the model. Use `ReentrantLock`, `StampedLock`, or `ConcurrentHashMap.compute`
-- [ ] Virtual Threads on Boot 3.2+: `spring.threads.virtual.enabled=true`; Tomcat and `@Async` use a `VirtualThreadPerTaskExecutor`
-- [ ] **HikariCP sizing** - "small pool, fast queries" still holds with VT. Typical: `maximumPoolSize` `cores x 2` to `cores x 4` for OLTP; `connectionTimeout` 1-3s; `maxLifetime` 30 min (less than DB `wait_timeout`)
-- [ ] **Connection leak detection** - `leakDetectionThreshold: 5000` non-prod
-- [ ] No long-blocking IO in the controller thread when `@Async` makes sense; conversely no `@Async` for sub-millisecond work
-- [ ] HTTP clients (`RestClient`, `WebClient`, `RestTemplate`) reused as beans, not per call; explicit `connectTimeout`, `readTimeout`, response timeout
-- [ ] Circuit breaker (Resilience4j) on flaky external dependencies; bulkheads on shared executors
-- [ ] No blocking calls inside reactive (`Mono`/`Flux`) chains - use `publishOn(Schedulers.boundedElastic())` if unavoidable
+- [ ] **No `synchronized` on shared state in VT paths** - pins the carrier and defeats the model. Use `ReentrantLock`, `StampedLock`, or `ConcurrentHashMap.compute`.
+- [ ] Virtual Threads enabled (`spring.threads.virtual.enabled=true`); Tomcat + `@Async` use `VirtualThreadPerTaskExecutor`.
+- [ ] **HikariCP sizing** - "small pool, fast queries" still holds with VT. OLTP baseline: `maximumPoolSize = cores * 2..4`, `connectionTimeout` 1-3s, `maxLifetime` < DB `wait_timeout`, `leakDetectionThreshold: 5000` non-prod.
+- [ ] HTTP clients (`RestClient`, `WebClient`, `RestTemplate`) reused as beans with explicit connect / read / response timeouts.
+- [ ] Resilience4j circuit breaker on flaky externals; bulkheads on shared executors.
+- [ ] No blocking calls inside `Mono`/`Flux` chains without `publishOn(boundedElastic())`.
+- [ ] `@Async` only when work is non-trivial; no `@Async` for sub-millisecond tasks.
 
-### Step 8 - Caching and Response Performance
+### Step 8 - Caching and Response Shape
 
-_Skipped at `quick` unless the diff touches `@Cacheable` / `@CacheEvict` / cache config._
+_Skipped at `quick` unless diff touches `@Cacheable` / `@CacheEvict` / cache config or response payloads._
 
-- [ ] Spring Cache (`@Cacheable`) for expensive reads with a deterministic key; explicit `unless` for null/empty short-circuits
-- [ ] Cache backend chosen: Caffeine for in-process; Redis (Spring Data Redis / Lettuce) for shared
-- [ ] **Cache stampede protection** - hot keys with expensive regeneration use Caffeine `refreshAfterWrite` or `LoadingCache`
-- [ ] Cache invalidation explicit (`@CacheEvict` on writes, or TTL with documented staleness budget)
+**Caching:**
+
+- [ ] `@Cacheable` with deterministic key; explicit `unless` for nulls/empties
+- [ ] Backend fits scope: Caffeine in-process, Redis (Lettuce) shared
+- [ ] **Stampede protection** on hot keys - Caffeine `refreshAfterWrite` or `LoadingCache`
+- [ ] Invalidation explicit (`@CacheEvict` on writes, or TTL with a documented staleness budget)
+- [ ] **Negative caching** - cached `Optional.empty()` leaves callers stale after insert; skip caching empties or evict on the write path
+
+**Response shape:**
+
+- [ ] List endpoints return projection DTOs, not 50-field entities the caller renders 5 of
 - [ ] HTTP caching (`Cache-Control`, `ETag`, `Last-Modified`) on read-heavy GETs
-- [ ] No DTO mapper iterating lazy associations not in the entity graph
-- [ ] Response compression (`server.compression.enabled=true`) for JSON > 2 KB
-- [ ] **Response payload right-sized** - list endpoints returning 50-field entities when the caller renders 5 waste CPU and bandwidth. Use a projection DTO
-- [ ] **Negative caching invalidated on writes** - cached `Optional.empty()` leaves callers stale after an insert. Either `unless = "#result == null || #result.isEmpty()"` to skip caching empties, or `@CacheEvict` on the insert path
+- [ ] `server.compression.enabled=true` for JSON > 2 KB
 
 ### Step 9 - Messaging and Background Work
 
-_Skipped at `quick` unless the diff touches `@KafkaListener` / `@RabbitListener` / `@Scheduled` / outbox._
+_Skipped at `quick` unless diff touches `@KafkaListener` / `@RabbitListener` / `@Scheduled` / outbox._
 
 Use skill: `spring-messaging-patterns`.
 
-- [ ] Message handlers idempotent on the consumer side (re-fetch state, check, return early)
-- [ ] Consumer concurrency tuned (`spring.kafka.listener.concurrency`, `setConcurrentConsumers`); not default `1` for high-throughput
+- [ ] Consumer-side idempotency (re-fetch state, check, return early)
+- [ ] Consumer concurrency tuned for throughput, not default `1`
 - [ ] Manual ack (`AckMode.MANUAL_IMMEDIATE`) for at-least-once; auto-ack only for fire-and-forget
-- [ ] DLT / DLQ with explicit retry policy; no infinite retry on poison messages
-- [ ] **Transactional outbox** when DB write + message publish must be atomic
-- [ ] `@TransactionalEventListener(phase = AFTER_COMMIT)` for in-process dispatch when downstream must not run on rollback
-- [ ] Long-running consumers split (target sub-30-second median handle latency)
+- [ ] DLT / DLQ with bounded retry; no infinite retry on poison messages
+- [ ] **Transactional outbox** when DB write + publish must be atomic
+- [ ] `@TransactionalEventListener(phase = AFTER_COMMIT)` for in-process dispatch that must not run on rollback
+- [ ] Long-running handlers split so median latency stays well below broker session timeout
 
-### Step 10 - Observability for Perf
+### Step 10 - Write Report
 
-_Skipped at `quick` depth._
-
-- [ ] Slow paths instrumented with Micrometer `@Timed` / custom timers; consistent namespace
-- [ ] Hibernate statistics enabled non-prod (`spring.jpa.properties.hibernate.generate_statistics=true`); flag if disabled in prod
-- [ ] `p6spy` or `datasource-proxy` non-prod for query-count assertions in tests
-- [ ] APM (Datadog / New Relic / Honeycomb) span attribution per request - confirm `traceparent` propagation through `@Async` and `WebClient`
-
-### Step 11 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review-perf`. Write to the report file before ending; print confirmation.
-
-## Self-Check
-
-- [ ] Behavioral principles loaded as Step 1
-- [ ] Stack confirmed before Spring-specific checks
-- [ ] `review-precondition-check` ran (or handle received); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log read once and reused - no mid-review git re-issuing
-- [ ] For `pr-ref` mode, user-run fetch surfaced; local ref existed before continuing
-- [ ] When `head_matches_current` was false, explicit user approval obtained (skipped as subagent)
-- [ ] Performance surface (entities, repos, services, HikariCP/JPA config, migrations) read before checklists
-- [ ] `spring-jpa-performance` consulted; N+1, multi-level N+1, LIE risk, fetch strategy, projections checked
-- [ ] `spring-db-migration-safety` consulted for migrations; concurrent index strategy and leftmost-prefix verified
-- [ ] `spring-async-processing` consulted for `@Async` / VT; `synchronized` pinning checked
-- [ ] `spring-messaging-patterns` consulted for Kafka / Rabbit / event; outbox and post-commit verified
-- [ ] HikariCP sizing validated against thread / concurrency model
-- [ ] Caching strategy assessed; invalidation explicit
-- [ ] Every finding states impact - measured (`p95: 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`) - never "this is slow"
-- [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran only Steps 5 + 6; `standard` ran 5-10; `deep` adds capacity + load-test plan
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit if none)
-- [ ] Report written via `review-report-writer`; confirmation printed
+Use skill: `review-report-writer` with `report_type: review-perf`. Write to the report file, then print confirmation.
 
 ## Output Format
 
@@ -193,9 +147,9 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write to the 
 
 ### High Impact
 - **Location:** [file:line]
-- **Issue:** [name the JPA/Spring idiom: N+1 via lazy association, missing index, mid-tx message publish, `synchronized` on VT, etc.]
-- **Impact:** [estimated: "N+1 in OrderController#list adds ~200 queries per request at 100 orders" or measured "p95 800ms -> 120ms after fix"]
-- **Fix:** [`@EntityGraph`, fetch join, projection, post-commit event, etc.]
+- **Issue:** [name the idiom: N+1 via lazy association, missing index, mid-tx publish, `synchronized` on VT, etc.]
+- **Impact:** [measured "p95 800ms -> 120ms" or estimated "adds ~200 queries/request at 100 orders"]
+- **Fix:** [`@EntityGraph`, fetch join, projection DTO, post-commit event, etc.]
 
 ### Medium Impact
 [Same structure]
@@ -207,24 +161,38 @@ _Omit empty sections._
 
 ## Recommendations
 
-[Structural improvements not tied to a specific finding]
+[Structural improvements not tied to a single finding]
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load test). Order: High > Medium > Low.
+1. **[Implement]** [High] file:line - [action]
+2. **[Delegate]** [High] [scope: schema] - [action]
+3. **[Implement]** [Medium] file:line - [action]
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
-
-_Omit if no actionable findings._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test). Order High > Medium > Low. Omit if none._
 ```
+
+## Self-Check
+
+- [ ] Step 1: behavioral principles loaded
+- [ ] Step 2: stack confirmed Spring Boot 3.5+ / Java 21+
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once
+- [ ] Step 4: entities, repos, services, HikariCP/JPA config, migrations, observability prep read
+- [ ] Step 5: `spring-jpa-performance` consulted; mapper N+1, `Page`/`Slice`, tx timeout, tx scope checked
+- [ ] Step 6: `spring-db-migration-safety` consulted; indexes and concurrent strategy verified
+- [ ] Step 7: `spring-async-processing` consulted; VT pinning, HikariCP sizing, HTTP-client reuse checked
+- [ ] Step 8: caching invalidation explicit; response shape and HTTP caching verified
+- [ ] Step 9: `spring-messaging-patterns` consulted; outbox and post-commit verified
+- [ ] Step 10: report written via `review-report-writer`; confirmation printed
+- [ ] Every finding states impact (measured or estimated), never "this is slow"
+- [ ] Findings ordered by impact; quick wins separated from structural changes
+- [ ] Depth honored: `quick` ran 1-4, 5, 6, 10; `standard` ran all; `deep` adds capacity + load-test plan
+- [ ] Next Steps tagged and ordered (omit if none)
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git from this workflow
 - Reporting issues without naming the idiom ("this is slow" vs "N+1 from lazy `@OneToMany`; add `@EntityGraph`")
-- Generic backend advice when a Spring-specific pattern applies (say "use `@EntityGraph`", not "use eager loading")
+- Generic backend advice when a Spring idiom applies (say "use `@EntityGraph`", not "use eager loading")
 - Suggesting `FetchType.EAGER` to fix N+1
 - Suggesting caching without an invalidation strategy
 - Conflating perf with general review or security

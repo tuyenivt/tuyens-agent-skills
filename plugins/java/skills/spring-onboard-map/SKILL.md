@@ -1,6 +1,6 @@
 ---
 name: spring-onboard-map
-description: "Spring Boot onboarding signals: build system, application.yml profiles, persistence, security, package layout, risk hotspots, first-PR safe zones."
+description: "Spring Boot onboarding signals: build, profiles, ConfigurationProperties, persistence, security chain, scan roots, risks, safe zones."
 metadata:
   category: backend
   tags: [onboarding, codebase-map, spring, maven, gradle]
@@ -13,143 +13,118 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Spring-specific orientation signals: where things live, how to run locally, what conventions matter, where the risks concentrate
-- The project has `pom.xml` or `build.gradle(.kts)` and a Spring Boot main class
+Workflow needs Spring-specific orientation: where code lives, how to run, what wires the context, where risk concentrates. Triggered when `pom.xml` / `build.gradle(.kts)` + a `@SpringBootApplication` class exist.
 
 ## Rules
 
-- Identify build system (Maven vs Gradle) and Spring Boot version first - structure varies
-- Locate `@SpringBootApplication` first; its package is the component-scan root
-- `application.yml` and its profile variants are the runtime-behavior map - inventory every `application-<profile>.yml`
-- Identify the persistence stack (JPA / JDBC / MyBatis / R2DBC / none) before describing data flow
-- Identify the security config class. On Boot 3+ this is a `SecurityFilterChain` bean; any `WebSecurityConfigurerAdapter` extension is on an unsupported version (migration is itself an onboarding signal). If no security config exists, state which autoconfigured default applies (`spring-boot-starter-security` present = HTTP basic + generated password; absent = no auth)
-- Build a route inventory by grepping `@RequestMapping` / `@GetMapping` etc.; cross-reference each route with `SecurityFilterChain.requestMatchers(...)` so the new engineer knows which routes are public / authenticated / role-restricted
+- Identify build system, Boot version, Java toolchain before anything else - structure varies.
+- Locate `@SpringBootApplication` package = component-scan root. Flag any `scanBasePackages`, `@EntityScan`, `@EnableJpaRepositories` that diverge from it - beans outside become invisible.
+- Inventory every `application-<profile>.yml` / `.properties` and state precedence: CLI args > env (`SPRING_APPLICATION_JSON`, `SPRING_*`) > `application-<profile>` > `application.yml`. Note `spring.profiles.active` default and `spring.config.import`.
+- List `@ConfigurationProperties` classes (and any `@EnableConfigurationProperties`) - typed config beats grepping yml for keys.
+- Identify persistence stack (JPA / JDBC / MyBatis / R2DBC / none) and migration tool. Flyway + Liquibase both present is a misconfiguration - call it out.
+- Identify the `SecurityFilterChain` bean. `WebSecurityConfigurerAdapter` = unsupported pre-Boot-3 pattern, surface as migration signal. No security config + `spring-boot-starter-security` on classpath = HTTP Basic with generated password; starter absent = no auth.
+- Cross-reference route inventory (`@RequestMapping` / `@GetMapping` family) with `SecurityFilterChain.requestMatchers(...)` so each route is labeled public / authenticated / role-restricted.
 
 ## Patterns
 
-### Build system inventory
+### Build inventory
 
-| File                                | Signal                                                                                   |
-| ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| `pom.xml`                           | Maven; check `<parent>` for `spring-boot-starter-parent` and Java version                |
-| `build.gradle(.kts)`                | Gradle; check `plugins` for `org.springframework.boot` and `java.toolchain`              |
-| `settings.gradle(.kts)` or multi-module `pom.xml` | Multi-module                                                                |
-| `gradle/libs.versions.toml`         | Gradle version catalog                                                                   |
-| `mvnw` / `gradlew`                  | Use the wrapper, never the system tool                                                   |
+| File | Signal |
+| --- | --- |
+| `pom.xml` | Maven; `<parent>` -> `spring-boot-starter-parent`; `<java.version>` |
+| `build.gradle(.kts)` | Gradle; `plugins { id 'org.springframework.boot' }`; `java { toolchain { languageVersion = ... } }` |
+| `settings.gradle(.kts)` `include(...)` / multi-module `<modules>` | Multi-module fan-out - map each module's role |
+| `gradle/libs.versions.toml` | Version catalog - version source of truth |
+| `mvnw` / `gradlew` | Use wrapper, not system tool |
 
-### Bootstrap path (clone → running app)
+### Bootstrap (clone -> running)
 
-1. Java toolchain: confirm version matches `java -version` (Boot 3.x needs Java 17+; 3.2+ commonly 21)
-2. Local services: scan `compose.yml` / `docker-compose.yml` for required dependencies (Postgres, Redis, Kafka)
-3. Active profile: `spring.profiles.active` in `application.yml` or `SPRING_PROFILES_ACTIVE` env
-4. DB migration tool: Flyway (`src/main/resources/db/migration/`) or Liquibase (`db/changelog/`) - migrations run at startup
-5. Run: `./mvnw spring-boot:run` or `./gradlew bootRun`; default port 8080 unless `server.port` overrides
-6. Verify: `/actuator/health`; if `springdoc-openapi` present, OpenAPI at `/v3/api-docs`, Swagger UI at `/swagger-ui.html`
+1. Java version matches toolchain (`java -version`).
+2. Local deps from `compose.yml` (Postgres, Redis, Kafka) or external URLs in profile yml.
+3. Active profile from `spring.profiles.active` or `SPRING_PROFILES_ACTIVE`.
+4. Migrations: Flyway (`src/main/resources/db/migration/`) or Liquibase (`db/changelog/`) - run at startup.
+5. Run: `./mvnw spring-boot:run` or `./gradlew bootRun`. Port `server.port` (default 8080).
+6. Verify `/actuator/health`; springdoc -> `/v3/api-docs`, `/swagger-ui.html`.
 
-### Key file inventory
+### Key locations
 
-| Location                                    | Purpose                                                       |
-| ------------------------------------------- | ------------------------------------------------------------- |
-| `src/main/java/.../<App>Application.java`   | `@SpringBootApplication`; package = component-scan root       |
-| `src/main/resources/application.yml`        | Default config + profile keys                                 |
-| `src/main/resources/db/migration/`          | Flyway versioned migrations                                   |
-| `src/main/resources/db/changelog/`          | Liquibase changesets                                          |
-| `.../config/`                               | `@Configuration` - security, JPA, web, async                  |
-| `.../controller/` (or `web/`, `api/`)       | `@RestController` / `@Controller`                             |
-| `.../service/`                              | `@Service` + transaction boundaries                           |
-| `.../repository/` (or `dao/`)               | Persistence                                                   |
-| `.../domain/` (or `model/`, `entity/`)      | Entities and value objects                                    |
-| `src/test/resources/application-test.yml`   | Test profile (Testcontainers / H2)                            |
+| Location | Purpose |
+| --- | --- |
+| `.../<App>Application.java` | `@SpringBootApplication` - scan root |
+| `src/main/resources/application*.yml` | Config + profile keys |
+| `src/main/resources/db/{migration,changelog}/` | Flyway / Liquibase |
+| `.../config/` | `@Configuration` - security, JPA, web, async |
+| `.../*Properties.java` | `@ConfigurationProperties` - typed config bindings |
+| `.../{controller,web,api}/` | `@RestController` / `@Controller` |
+| `.../service/` | `@Service` + tx boundaries |
+| `.../{repository,dao}/` | Persistence |
+| `.../{domain,model,entity}/` | Entities / value objects |
+| `src/test/resources/application-test.yml` | Test profile (Testcontainers / H2) |
 
 ### Conventions to extract
 
-- **Package layout**: feature-package (`com.acme.order.{controller,service,repository}`) - modern preference, cross-feature imports become visible. Or layer-package (`com.acme.controller.*`, `com.acme.service.*`).
-- **Layering**: controller → service → repository. Flag deviations (business logic in controllers, repository access from controllers).
-- **DTO vs entity at API boundary**: do `@RestController` methods return entities or records/DTOs? Direct entity exposure is a red flag.
-- **Exception handling**: `@RestControllerAdvice` / `@ControllerAdvice` - if absent, errors leak Spring defaults.
+State the observed choice per axis; flag deviations rather than describe both options:
+
+- **Package layout**: feature-package (`com.acme.order.{controller,service,repository}`) vs layer-package. Feature is modern.
+- **Layering**: controller -> service -> repository. Business logic in controllers or repo access from controllers = smell.
+- **API boundary**: records/DTOs vs entities returned from `@RestController`. Direct entity exposure leaks lazy state.
+- **Error handling**: `@RestControllerAdvice` present, else Spring defaults leak.
 - **Validation**: `@Valid` on controller args + JSR-380 on DTOs.
-- **Transaction placement**: `@Transactional` at service layer is correct; on controllers/repositories is a smell.
-- **Bean naming**: explicit `@Component("name")` is rare; default is class name camelCased.
-- **Logging**: SLF4J via `LoggerFactory` or Lombok `@Slf4j`; per-package levels in `logging.level`.
+- **Tx placement**: `@Transactional` at service. On controller/repo = smell.
+- **Logging**: SLF4J or `@Slf4j`; per-package levels in `logging.level`.
+- **Injection**: constructor (`@RequiredArgsConstructor`) modern; field `@Autowired` legacy.
 
 ### Risk hotspots
 
-Surface as orientation signals; defer depth to the atomic that owns each topic:
+Name and locate; defer depth to the owning atomic:
 
-- **Proxy self-invocation** on `@Transactional` / `@Async` / `@Cacheable` / `@PreAuthorize` (see `spring-transaction`)
-- **OSIV state**: `spring.jpa.open-in-view` true or default - masks N+1 / LIE (see `spring-jpa-performance`)
-- **`@PostConstruct` heavy work** - delays startup, runs before health checks
-- **Custom `scanBasePackages`** - classes outside listed packages are invisible
-- **Multiple `DataSource` / `PlatformTransactionManager` without `@Primary`** - ambiguous wiring
-- **Custom `Filter` / `OncePerRequestFilter` without explicit order** - undefined position vs Spring Security
-- **`@EnableAsync` without a `TaskExecutor` bean** - unbounded `SimpleAsyncTaskExecutor` (see `spring-async-processing`)
-- **JPA entities with Lombok `@Data`** - generated `equals`/`hashCode`/`toString` traverse lazy associations
-- **Flyway `out of order` enabled** - dev/CI/prod schema drift is invisible
+- **Proxy self-invocation** on `@Transactional` / `@Async` / `@Cacheable` / `@PreAuthorize` (-> `spring-transaction`).
+- **OSIV state**: `spring.jpa.open-in-view` masks N+1 / LIE (-> `spring-jpa-performance`).
+- **`@PostConstruct` heavy work** delays startup, precedes health checks.
+- **Scan divergence**: custom `scanBasePackages` / `@EntityScan` / `@EnableJpaRepositories` outside the app package.
+- **Ambiguous wiring**: multiple `DataSource` / `PlatformTransactionManager` without `@Primary`.
+- **Filter ordering**: custom `OncePerRequestFilter` without explicit order vs Spring Security chain.
+- **`@EnableAsync` without `TaskExecutor`** -> unbounded `SimpleAsyncTaskExecutor` (-> `spring-async-processing`).
+- **Lombok `@Data` on JPA entities** - generated `equals`/`hashCode`/`toString` traverse lazy associations.
+- **Flyway `out-of-order` enabled** masks dev/CI/prod schema drift.
+- **Jakarta vs javax**: Boot 3 = `jakarta.*`; mixing imports = runtime error.
 
-### First-PR safe zones
+### First-PR safe zones (vs riskier)
 
-- New endpoint on an existing controller using established patterns
-- New DTO field (with validation) without schema change
-- New test in `src/test/java/...` exercising an existing service method
-- INFO-level log statement following the existing logger pattern
-- New `application.yml` property with `@ConfigurationProperties` and a default that preserves current behavior
-
-Riskier:
-- Anything in `config/` (one bean change rewires the context)
-- JPA entity changes (cascade across migrations, queries, serialization)
-- Spring Security config (silent failures)
-- Schema migrations (irreversible in prod without backout)
+| Safe | Riskier |
+| --- | --- |
+| New endpoint on existing controller, established patterns | Anything in `config/` - one bean rewires the context |
+| New DTO field with validation, no schema change | JPA entity changes - cascade migrations / queries / serialization |
+| New test exercising existing service | Spring Security config - silent failures |
+| INFO log following existing pattern | Schema migrations - irreversible in prod |
+| New `@ConfigurationProperties` field with default preserving current behavior | New profile - changes runtime wiring |
 
 ### Currency signals
 
-- Boot 3.x = Jakarta EE namespace; pre-3.x = `javax.*`. Mixing is a runtime error.
-- Java 21 + `spring.threads.virtual.enabled=true` puts controllers on Virtual Threads.
-- Constructor injection (`@RequiredArgsConstructor`) is modern; `@Autowired` field injection is legacy.
+- Java 21 + `spring.threads.virtual.enabled=true` -> Virtual Threads on controllers.
 - Slice tests (`@WebMvcTest`, `@DataJpaTest`, `@JsonTest`) over full-context `@SpringBootTest`.
 
 ## Output Format
 
-Inject into the parent workflow's output sections:
+Inject into the parent workflow's onboarding output:
 
-**Stack and Tooling:**
-- Build system, Spring Boot version, Java version, key starter dependencies
-- Persistence layer + migration tool
-- Web (Spring MVC / WebFlux), security (present / absent / autoconfigured)
+**Stack and Tooling:** build system, Boot version, Java toolchain, key starters, persistence + migration tool, web stack (MVC / WebFlux), security state (configured / autoconfigured / absent).
 
-**Local Bootstrap:**
-- Exact run command (`./mvnw spring-boot:run` or `./gradlew bootRun`)
-- Required local services (from `compose.yml` or external URLs in `application-*.yml`)
-- Profile inventory: every `application-<profile>.yml` discovered, the default profile, override mechanism
-- Default port and actuator base path
+**Local Bootstrap:** exact run command, required local services, profile inventory (every `application-<profile>.yml`, default active, override mechanism, precedence chain), default port, actuator base path.
 
-**Architecture Map:**
-- Component-scan root package
-- Layer directories with file counts
-- `@Configuration` classes and what each wires
-- Cross-cutting: `@RestControllerAdvice`, custom filters, AOP aspects
-- Route table: HTTP method + path → controller method, with auth requirement from `SecurityFilterChain`
+**Architecture Map:** component-scan root, any divergent `@EntityScan` / `@EnableJpaRepositories`, layer directories with file counts, `@Configuration` classes (what each wires), `@ConfigurationProperties` classes (key prefix), cross-cutting (`@RestControllerAdvice`, custom filters, AOP), route table (method + path -> controller method -> auth label from chain).
 
-**Conventions:**
-- DTO vs entity at API boundary
-- Transaction placement
-- Validation strategy
-- Logging idiom
+**Conventions:** chosen value per axis from the list above.
 
-**Risk Hotspots:**
-- Self-invocation in annotated services
-- OSIV state
-- Custom security filter ordering
-- `@PostConstruct` heavy work
-- Async without configured `TaskExecutor`
+**Risk Hotspots:** observed instances from the list above, with file paths.
 
-**First-PR Safe Zones:**
-- The list above, scoped to the observed structure
+**First-PR Safe Zones:** scoped to the observed structure.
 
 ## Avoid
 
-- Describing layout from generic Spring docs without reading the actual file tree
-- Listing every `@Configuration` class - focus on those wiring cross-cutting concerns
-- Treating Spring autoconfiguration as invisible - name which starters pull in what
-- Recommending Java 8 / Boot 2.x patterns on a Boot 3.x project
-- Skipping `application.yml` profile inventory - that's where runtime behavior lives
-- Listing every dependency - focus on starters, persistence, security, observability
+- Describing layout from generic Spring docs without reading the file tree.
+- Listing every `@Configuration` class - focus on those wiring cross-cutting concerns.
+- Listing every dependency - focus on starters, persistence, security, observability.
+- Treating autoconfiguration as invisible - name which starters pull in what.
+- Recommending Boot 2.x / `javax.*` patterns on a Boot 3 project.
+- Skipping profile precedence - "which value wins" is the question new engineers actually ask.

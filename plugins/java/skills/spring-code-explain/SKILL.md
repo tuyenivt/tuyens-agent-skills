@@ -1,6 +1,6 @@
 ---
 name: spring-code-explain
-description: "Spring/JPA explain signals: stereotype lifecycle, AOP proxy gotchas, @Transactional boundaries, JPA persistence-context surprises, security context."
+description: Spring/JPA explain signals - stereotype lifecycle, AOP proxy bypass, @Transactional boundary, JPA persistence context, security context, async/events.
 metadata:
   category: backend
   tags: [explanation, code-understanding, spring, jpa, aop]
@@ -13,127 +13,132 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Spring framework-magic signals when explaining a class, method, or module
-- Target code uses Spring annotations, JPA, or Spring Security
+Workflow needs Spring framework-magic signals: proxy semantics, transaction boundary, persistence context, security context, async timing.
 
-If the code has no Spring annotations and no `org.springframework.*` / `jakarta.persistence.*` imports, return empty signal blocks and the note "no Spring-specific signals detected" - do not invent behavior.
+If no `org.springframework.*` / `jakarta.persistence.*` imports and no Spring annotations, return "no Spring-specific signals detected" - do not invent behavior.
 
 ## Rules
 
-- Identify the stereotype first - it controls lifecycle, scope, and proxy generation
-- Distinguish AOP-proxied calls from `this.X()` (proxy bypass)
-- Surface JPA persistence-context implications when reading or mutating entities
+- Identify the stereotype and bean scope - singletons share field state across threads
+- Every proxy-backed annotation has the same three failure modes: self-invocation, private/final, init-time call. Apply to all of them, not just `@Transactional`
+- Name the transaction boundary explicitly - where it opens, where it commits, what runs inside vs after
+- External IO (HTTP, Kafka, email) inside `@Transactional` is a correctness signal - the side effect can happen before commit or be retried on rollback
+- JPA mutations flush at commit via dirty checking, not `save()` - say so when the code mutates entities
+- Entities crossing the transaction boundary are detached - lazy access fails after return
 - Identify the security context (filter chain / method security / none) before describing endpoint behavior
-- Note bean scope when state lives on fields - singletons sharing mutable state is a frequent bug
 
 ## Patterns
 
-### Stereotype quick reference
+### Stereotypes
 
-| Annotation                           | Lifecycle / behavior                                         | What to flag                                                                          |
-| ------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `@RestController` / `@Controller`    | HTTP entry, singleton, methods per-request                   | Mutable fields shared across threads; `HttpServletRequest` injected is request-scoped proxy |
-| `@Service`                           | Business logic singleton; usual transaction boundary         | Same threading caveats                                                                |
-| `@Repository`                        | Persistence singleton; JPA exception translation             | Spring Data interfaces have runtime-generated proxies - implementation not in source  |
-| `@Configuration`                     | `@Bean` factory; CGLIB-proxied for inter-`@Bean` calls       | `proxyBeanMethods=false` breaks singleton semantics across `@Bean` calls              |
-| `@RestControllerAdvice`              | Cross-cutting exception handler                              | Order matters; `@ExceptionHandler` resolves by type hierarchy                         |
+| Annotation                        | Lifecycle                                              | Flag                                                                                |
+| --------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `@RestController` / `@Controller` | Singleton, methods per-request                         | Mutable fields are shared; `HttpServletRequest` is a request-scoped proxy           |
+| `@Service`                        | Singleton, usual tx boundary                           | Field state shared across threads                                                   |
+| `@Repository`                     | Singleton; JPA exception translation                   | Spring Data interfaces are runtime proxies - no implementation in source            |
+| `@Configuration`                  | CGLIB-proxied so `@Bean` calls return the singleton    | `proxyBeanMethods=false` makes inter-`@Bean` calls create new instances             |
+| `@RestControllerAdvice`           | Cross-cutting handler; resolves by exception hierarchy | `@Order` resolves ambiguity                                                         |
 
-### AOP proxy gotchas (highest-yield Spring bug class)
+`@Service` vs `@Component` differ only in tooling/semantics, not runtime.
 
-Proxy-backed: `@Transactional`, `@Async`, `@Cacheable` / `@CacheEvict` / `@CachePut`, `@PreAuthorize` / `@PostAuthorize`, `@Retryable`, `@Validated`.
+### Proxy-backed annotations (the highest-yield bug class)
 
-Silent-failure modes:
+Proxied: `@Transactional`, `@Async`, `@Cacheable` / `@CacheEvict` / `@CachePut`, `@PreAuthorize` / `@PostAuthorize`, `@Retryable`, `@Validated`.
 
-- **Self-invocation** (`this.method()`) - bypasses the proxy; annotation does not fire
-- **Private / final methods** - cannot be advised
-- **`@PostConstruct`-time calls** - may run before the proxy is wired
+All share three silent-failure modes:
 
-For canonical fixes (extract to bean, self-injection), see `spring-transaction`.
+- **Self-invocation** (`this.x()` or unqualified call inside the same bean) - bypasses the proxy; the annotation does not fire
+- **Private or final methods** - cannot be advised
+- **Calls during `@PostConstruct` / constructor** - proxy may not be wired yet
 
-### `@Transactional` specifics
+Bad:
+```java
+@Transactional public void outer() { inner(); }   // inner's @Async/@Transactional ignored
+@Async public void inner() { ... }
+```
+Good: extract `inner` to a separate bean, or self-inject (`@Autowired OrderService self; self.inner();`).
 
-Defer to `spring-transaction`. When explaining a transactional method, surface: propagation, `readOnly`, rollback rules for checked exceptions, any outbound IO (`RestClient`, `WebClient`, `KafkaTemplate`) inside the boundary.
+Canonical fix details: `spring-transaction`.
+
+### `@Transactional` boundary
+
+Surface, per transactional method:
+
+- Propagation (default `REQUIRED` joins caller's tx; `REQUIRES_NEW` suspends it)
+- `readOnly` - hints flush mode, avoids dirty-check overhead
+- Rollback rules - rolls back on unchecked only by default; checked exceptions commit unless declared
+- **External IO inside the boundary** - `RestClient` / `WebClient` / `KafkaTemplate` / email. The side effect runs before commit and is not undone on rollback. Load-bearing side effects need an outbox or `AFTER_COMMIT` listener.
 
 ### JPA persistence context
 
-Defer to `spring-jpa-performance` for N+1 / fetch / projection depth. Per entity-touching method, surface:
+Per entity-touching method:
 
-- **Dirty checking** - mutations in an open transaction flush at commit without explicit `save()`; outside, no DB effect
-- **Lazy access boundary** - `LazyInitializationException` when a lazy association is touched after the persistence context closes (controller, mappers, async threads)
-- **Flush timing** - writes buffer until commit / query / explicit `flush()`
-- **Detached entities** - returned from a `@Transactional` method are detached; `merge()` returns a new managed instance
-- **Optimistic locking** - `@Version` throws `OptimisticLockException` on concurrent writes; callers must retry or escalate
+- **Dirty checking** - mutations in an open tx flush at commit without `save()`; outside a tx, no DB effect
+- **Lazy boundary** - lazy associations throw `LazyInitializationException` when touched after the tx closes (controller, mappers, async threads)
+- **Flush timing** - writes buffer until commit / JPQL query / explicit `flush()`
+- **Detached entities** - returned from a `@Transactional` method are detached; `merge()` returns a new managed instance, the original stays detached
+- **`@Version`** - throws `OptimisticLockException` on concurrent writes; callers retry or escalate
+
+N+1, fetch strategy, projection depth: defer to `spring-jpa-performance`.
 
 ### Async, scheduled, events
 
-- **`@Async`**: returns immediately on a `TaskExecutor` thread. Return type must be `void`, `Future`, or `CompletableFuture`. Exceptions on `void` swallowed unless `AsyncUncaughtExceptionHandler` is set. Exceptions on `CompletableFuture` only surface if the caller awaits.
-- **`@Scheduled`**: default pool size 1; long-running tasks block siblings. Detach with `@EnableAsync` + `@Async`.
-- **`@EventListener`**: synchronous; runs on publisher's thread inside publisher's transaction. A throwing listener rolls back the publisher.
-- **`@TransactionalEventListener` phases**:
-  - `BEFORE_COMMIT` (default in older docs - check version) - can still abort the tx
-  - `AFTER_COMMIT` - persisted but tx closed (lazy access fails)
-  - `AFTER_ROLLBACK` - only on rollback
-  - `AFTER_COMPLETION` - either
-- **`ApplicationEventPublisher.publishEvent`**: sync unless the listener is `@Async`.
+- **`@Async`**: proxy hop to a `TaskExecutor`; return `void`, `Future`, or `CompletableFuture`. Exceptions on `void` go to `AsyncUncaughtExceptionHandler` (default: logged). On `CompletableFuture`, exceptions only surface if the caller awaits. Subject to all proxy-bypass modes.
+- **`@Scheduled`**: default pool size 1 - long-running tasks block siblings. Combine with `@Async` to detach.
+- **`@EventListener`**: synchronous, runs on publisher's thread inside publisher's tx. A throwing listener rolls back the publisher.
+- **`@TransactionalEventListener`**: phases gate when the listener runs relative to commit. `AFTER_COMMIT` (most common) runs post-commit so listener failure does not roll back the publisher - and lazy access fails because the tx is closed.
 
 ### Spring Security
 
-- Filter chain runs before the controller - look for the `SecurityFilterChain` bean for what runs first
-- `@PreAuthorize` / `@PostAuthorize` are AOP-proxied (same self-invocation gotcha)
-- `SecurityContextHolder` is thread-local; `@Async` does not inherit unless `DelegatingSecurityContextExecutor` or `MODE_INHERITABLETHREADLOCAL` is configured
-- STATELESS REST APIs typically disable CSRF and use `STATELESS` session policy
+- Filter chain (`SecurityFilterChain` bean) runs before the controller - check it first for auth/CSRF/CORS behavior
+- `@PreAuthorize` / `@PostAuthorize` are proxy-backed (same bypass rules)
+- `SecurityContextHolder` is thread-local; `@Async` does not inherit it unless `DelegatingSecurityContextExecutor` or `MODE_INHERITABLETHREADLOCAL` is wired
+- Stateless REST APIs typically disable CSRF and use `SessionCreationPolicy.STATELESS`
 
-### Boot 3.x / Java 21+ signals
+### Configuration and Boot 3.x cues
 
-- `jakarta.*` packages (not `javax.*`) - Boot 3 moved to Jakarta EE 9+; code on `javax.persistence` is pre-3.0
-- Virtual Threads enabled when `spring.threads.virtual.enabled=true` - `synchronized` in request-path code is a pinning risk
-- `Observation` API (Micrometer Tracing) replaced Sleuth in Spring 6; legacy `Tracer` usage = older version
-- `RestClient` / `@HttpExchange` for modern sync HTTP; `RestTemplate` is maintenance-only
-- Records as DTOs are idiomatic; Jackson constructor binding can surprise
-
-### Configuration
-
-- `application.yml` + profile variants (`application-prod.yml`). Active via `spring.profiles.active`.
-- `@ConfigurationProperties` is type-safe and validated; `@Value("${...}")` is fragile (typos fail at runtime)
-- `@ConditionalOn*` - a bean may not exist in the runtime profile
+- `application.yml` + profile variants; `@ConditionalOn*` may leave a bean absent at runtime
+- `@ConfigurationProperties` is type-safe and `jakarta.validation`-validated; `@Value("${...}")` typos fail at runtime
+- `jakarta.*` imports = Boot 3+; `javax.persistence` = pre-3.0
+- `spring.threads.virtual.enabled=true` makes the request thread virtual - `synchronized` in the hot path pins the carrier; prefer `ReentrantLock`
 
 ## Output Format
 
-Inject the following into the parent workflow's output sections:
+Inject into the parent workflow's sections. Cite class/method, omit blocks with nothing to report.
 
-**Flow Context:**
-- Stereotype and bean scope
-- Filter chain entry (for HTTP handlers)
-- Transaction boundary (where it opens / closes)
-- Async / scheduled / event triggers
+**Flow Context**
+- Stereotype + bean scope
+- For HTTP: filter chain entry, method-security annotations
+- Transaction boundary: where it opens, what runs inside, when it commits
+- Async / scheduled / event hop (and the thread that runs the work)
 
-**Non-Obvious Behavior:**
-- AOP proxy gotchas in play (self-invocation, private/final methods, init-time calls)
-- JPA dirty checking, lazy loading, flush timing
-- Transactional propagation / rollback specifics
-- Security context inheritance gaps across `@Async`
+**Non-Obvious Behavior**
+- Proxy bypass in play (self-invocation, private/final, init-time) - name the call site
+- External IO inside `@Transactional` - committed-before-tx vs lost-on-rollback
+- JPA: dirty checking, lazy access after boundary, flush timing
+- Security context not inherited across `@Async`
 
-**Key Invariants:**
-- Bean is singleton - fields shared across threads
-- Tx must be active for entity mutation to persist
-- Caller must invoke through bean reference for proxy annotations to fire
-- A synchronous `@EventListener` must not throw - or the publisher's tx rolls back
-- Entities returned from `@Transactional` are detached at the boundary
-- `@Version` writers must retry on conflict
+**Key Invariants**
+- Singleton scope - field state shared across threads
+- A proxied annotation fires only when invoked through the proxy
+- Entity mutations persist only if a tx is active at commit
+- Entities returned from a `@Transactional` method are detached
+- External side effects inside `@Transactional` are not transactional - use outbox or `AFTER_COMMIT`
+- `@Version` writers must handle conflict
 
-**Change Impact Preview:**
-- Adding `@Transactional` to a method called via `this.X()` does not take effect - flag call sites; recommend self-injection or extraction
-- Removing `readOnly=true` may double DB load on queries
-- Changing return type away from `CompletableFuture` breaks `@Async` semantics
-- Switching `@EventListener` to `@Async` or `AFTER_COMMIT` changes failure semantics - publisher tx commits even on listener failure
-- Moving external IO out of `@Transactional` changes ordering - DB commit may precede the side effect; load-bearing side effects need an outbox
-- Returning a DTO instead of entity eliminates detachment risk but requires the projection cover every caller's needs
+**Change Impact Preview**
+- Add `@Transactional` to a method called via `this.x()`: no effect - flag the call site
+- Remove `readOnly=true` on a query method: doubles dirty-check cost
+- Change `@Async` return to a non-future type: silently runs sync (still proxied) or loses exception surfacing
+- Switch `@EventListener` to `@TransactionalEventListener(AFTER_COMMIT)`: publisher commits even if listener fails
+- Move external IO out of `@Transactional`: changes ordering, may need outbox to preserve at-least-once
+- Return DTO instead of entity: removes detachment risk; projection must cover all caller fields
 
 ## Avoid
 
-- Explaining Spring annotations as if they always fire - check the proxy chain
-- Treating `@Service` and `@Component` as different at runtime (they're not - stereotype is for tooling)
-- Confusing `@Bean` (method-level in `@Configuration`) with `@Component` (class-level)
-- Describing `save()` as the trigger for DB writes (dirty checking + commit is)
-- Mentioning N+1 risk without naming the lazy field
-- Ignoring profile-conditional bean activation
+- Treating a proxied annotation as always-firing - check the call path first
+- Saying `save()` triggers the DB write (dirty checking + commit does)
+- Describing `@EventListener` as async (it is sync unless `@Async`)
+- Mentioning N+1 without naming the lazy field
+- Conflating `@Bean` (method in `@Configuration`) with `@Component` (class)
+- Ignoring `@ConditionalOn*` - the bean may not exist in this profile

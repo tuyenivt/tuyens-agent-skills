@@ -1,9 +1,9 @@
 ---
 name: spring-async-processing
-description: "Spring @Async, @TransactionalEventListener, @Scheduled with Virtual Threads: bounded executors, AFTER_COMMIT, exception handling, retry."
+description: "Spring @Async, @TransactionalEventListener, @Scheduled on Boot 3.2+ Virtual Threads: bounded vs VT executors, AFTER_COMMIT, retry, pinning."
 metadata:
   category: backend
-  tags: [async, threading, events, idempotency]
+  tags: [async, threading, virtual-threads, events, idempotency]
 user-invocable: false
 ---
 
@@ -19,52 +19,83 @@ user-invocable: false
 
 ## Rules
 
-- Always name the executor on `@Async("name")` - the unnamed default is `SimpleAsyncTaskExecutor` (unbounded, no queue)
-- Async handlers must be idempotent (retries / redelivery are expected)
+- Name the executor on `@Async("name")` - the unnamed default is `SimpleAsyncTaskExecutor`, unbounded (a thread per task; VT-backed when `spring.threads.virtual.enabled=true` on Boot 3.2+, platform otherwise)
+- Pick the executor by workload: `ThreadPoolTaskExecutor` (bounded + queue + back-pressure) for CPU-bound or rate-limited; Virtual Threads for IO-bound fan-out
+- Async handlers must be idempotent (retries and redelivery are expected)
 - `@Async` self-invocation is silently ignored (proxy bypass) - see `spring-transaction`
-- Bounded `ThreadPoolTaskExecutor` (corePoolSize, maxPoolSize, queueCapacity, `CallerRunsPolicy`) or `Executors.newVirtualThreadPerTaskExecutor()` for IO-bound work
-- Configure `AsyncUncaughtExceptionHandler` - unchecked exceptions on `void` returns are swallowed by default
+- Configure `AsyncUncaughtExceptionHandler` - unchecked exceptions on `void` returns are otherwise swallowed; for `CompletableFuture` returns use `.exceptionally(...)`
 - Prefer `@TransactionalEventListener(AFTER_COMMIT)` over `@EventListener` when the handler must not run on rollback
+- Never `synchronized` inside async code that may run on a Virtual Thread - it pins the carrier thread. Use `ReentrantLock`, `StampedLock`, or concurrent collections
 
 ## Patterns
 
-### Bounded executor vs Virtual Threads
+### Boot 3.2+ Virtual Threads (IO-bound default)
+
+```properties
+# application.properties - turns the global Spring executor into a VT-backed SimpleAsyncTaskExecutor
+spring.threads.virtual.enabled=true
+```
+
+With this flag set, the default `applicationTaskExecutor` is a VT-per-task `SimpleAsyncTaskExecutor`. `@Async` without a name uses it; `@Scheduled` and Tomcat request threads also become virtual. No executor bean needed for IO-bound work.
+
+### Explicit executors when you need control
 
 ```java
 @Configuration @EnableAsync
 class AsyncConfig implements AsyncConfigurer {
 
-    // Option A: bounded pool with back-pressure
-    @Bean("asyncTaskExecutor")
-    Executor asyncTaskExecutor() {
+    // CPU-bound or external-API rate-limited: bounded pool with back-pressure
+    @Bean("cpuExecutor")
+    Executor cpuExecutor() {
         var ex = new ThreadPoolTaskExecutor();
         ex.setCorePoolSize(4);
         ex.setMaxPoolSize(16);
         ex.setQueueCapacity(200);
-        ex.setThreadNamePrefix("async-");
+        ex.setThreadNamePrefix("cpu-");
         ex.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         ex.initialize();
         return ex;
     }
 
-    // Option B (Spring Boot 3.2+, IO-bound): Virtual Threads
-    // @Bean("asyncTaskExecutor")
-    // Executor asyncTaskExecutor() { return Executors.newVirtualThreadPerTaskExecutor(); }
+    // IO-bound when you want a dedicated executor (separate from the global VT one)
+    @Bean("ioExecutor")
+    Executor ioExecutor() { return Executors.newVirtualThreadPerTaskExecutor(); }
 
     @Override
     public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
-        return (ex, method, params) -> log.error("Async {} failed {}", method.getName(), params, ex);
+        return (ex, method, params) -> log.error("Async {} failed", method.getName(), ex);
     }
 }
 
-@Async("asyncTaskExecutor")
+@Async("ioExecutor")
 public CompletableFuture<Void> sendEmail(String to, String body) {
     emailClient.send(to, body);
     return CompletableFuture.completedFuture(null);
 }
 ```
 
-Virtual Threads suit IO-bound work; do not use for CPU-bound (no throughput gain, more context switches).
+Virtual Threads do not help CPU-bound work - more context switches, no throughput gain. Use a bounded pool there.
+
+### Avoid pinning on Virtual Threads
+
+```java
+// bad - synchronized pins the carrier, defeating VT scalability
+@Async("ioExecutor")
+public void update(String key) {
+    synchronized (this) { cache.put(key, fetch(key)); }
+}
+
+// good - ReentrantLock parks the VT without pinning
+private final ReentrantLock lock = new ReentrantLock();
+
+@Async("ioExecutor")
+public void update(String key) {
+    lock.lock();
+    try { cache.put(key, fetch(key)); } finally { lock.unlock(); }
+}
+```
+
+Run with `-Djdk.tracePinnedThreads=short` in dev to surface pinning sites.
 
 ### `@TransactionalEventListener` for post-commit side effects
 
@@ -77,7 +108,7 @@ public Order create(OrderRequest req) {
 }
 
 @TransactionalEventListener(phase = AFTER_COMMIT)
-@Async("asyncTaskExecutor")
+@Async("ioExecutor")
 public void onOrderCreated(OrderCreatedEvent e) {
     notificationService.sendConfirmation(e.orderId());
 }
@@ -86,7 +117,7 @@ public void onOrderCreated(OrderCreatedEvent e) {
 ### Retry transient failures
 
 ```java
-@Async("asyncTaskExecutor")
+@Async("ioExecutor")
 @Retryable(retryFor = MailSendException.class, maxAttempts = 3,
            backoff = @Backoff(delay = 2000, multiplier = 2))
 public void sendConfirmationEmail(Long orderId) { emailClient.sendOrderConfirmation(orderId); }
@@ -102,23 +133,26 @@ Always define `@Recover` - without it, exhausted retries are swallowed.
 
 ### Context propagation across the async boundary
 
-- **SecurityContext**: not inherited. Pass principal as a method parameter, or set `SecurityContextHolder.MODE_INHERITABLETHREADLOCAL`.
-- **MDC / trace IDs**: wrap the executor with a `TaskDecorator` (`ContextPropagatingTaskDecorator` from Micrometer Context Propagation copies MDC, security, and trace context).
+- **MDC / trace IDs / SecurityContext**: wrap the executor with `ContextPropagatingTaskDecorator` (Micrometer Context Propagation). It copies registered `ThreadLocal`s including MDC, security, and trace. `InheritableThreadLocal` is unreliable with Virtual Threads - do not rely on it.
 - **JPA Session**: not propagated. The async method must re-fetch entities and open its own transaction.
 
 ## Output Format
 
 ```
 Operation: {what runs async}
-Executor: {bean name | virtualThread}
+Executor: {bean name | global VT | bounded pool}
+Workload: {IO-bound | CPU-bound | rate-limited}
 Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
 Error Handling: {AsyncUncaughtHandler | exceptionally | @Recover}
 Idempotent: {Yes | No - rationale}
+Pinning Risk: {None | synchronized replaced with ReentrantLock}
 ```
 
 ## Avoid
 
-- `@Async` without an explicit executor name (uses unbounded default)
+- `@Async` without an explicit executor name when the workload differs from the global default
 - Calling `@Async` methods via `this.X()` (proxy bypass, silent no-op)
-- Publishing events from inside `@Async` when transactional semantics matter
+- `synchronized` blocks inside async methods that may run on Virtual Threads (carrier pinning)
+- CPU-bound work on Virtual Threads (use a bounded pool)
 - `@EventListener` for handlers that must not run on rollback
+- Relying on `InheritableThreadLocal` or `MODE_INHERITABLETHREADLOCAL` to carry context to Virtual Threads

@@ -1,6 +1,6 @@
 ---
 name: spring-overengineering-review
-description: "Spring necessity review: Bean Validation duplicating JPA/DB, defensive guards on framework guarantees, single-impl interfaces."
+description: "Spring necessity review - flag Bean Validation duplicating JPA/DB, defensive guards on framework guarantees, single-impl interfaces."
 metadata:
   category: backend
   tags: [java, spring-boot, code-review, redundancy, overengineering, necessity]
@@ -12,38 +12,38 @@ user-invocable: false
 ## When to Use
 
 - Reviewing a Spring Boot diff that adds validation annotations, defensive null checks, service interfaces, or new abstractions
-- Phase D of `task-spring-review`: catching code that is correct, performant, and safe - but does not need to exist
+- Phase D of `task-spring-review` - catching code that is correct, performant, and safe but does not need to exist
 
 ## Rules
 
-- Every finding cites the constraint that makes the code redundant: FK, `nullable = false`, unique index, `@Column` attribute, DTO Bean Validation, or framework guarantee
+- Cite the constraint that makes the code redundant: FK, `nullable = false`, unique index, DTO `@Valid` + `@NotNull`, `@RestControllerAdvice`, or framework guarantee. No citation, no finding.
 - Severity:
-  - **`[Suggestion]`** default - cite the constraint, recommend the edit
-  - **`[High]`** when a measurable cost is present: extra SELECT in a hot path, blanket catch masking real bugs, `@Service` interface forcing every refactor to touch two files, controller try/catch defeating `@RestControllerAdvice` status mapping, defensive `equals`/`hashCode` breaking Hibernate proxies. Cite cost in `Cost:` field.
-  - **`[Question]`** when justification is plausible but not visible (e.g., "is this `@NotNull` needed because a Kafka consumer bypasses the DTO?")
-- Skip findings when justification is visible in the diff (non-controller write path bypassing the DTO is defense-in-depth, not duplication)
+  - `[Suggestion]` - default; pure redundancy with no runtime cost
+  - `[High]` - measurable cost (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics); requires `Cost:` field
+  - `[Question]` - plausible justification not visible in the diff; ask before recommending removal
+- Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
 
 ## Patterns
 
 ### Category 1 - Redundant validation vs JPA / DB
 
-DTO validation owns user-facing errors; entity-level annotations fire only on flush. Flag entity validations when the DTO is the sole write path AND the JPA/DB constraint already enforces the rule.
+DTO validation owns user-facing errors; entity-level validation fires only on flush. Flag entity validations when the DTO is the sole write path AND a JPA/DB constraint already enforces the rule.
 
 ```java
-// Bad - three layers checking the same rule
+// Bad - FK + nullable + @NotNull all assert the same thing
 @ManyToOne(optional = false)
 @JoinColumn(name = "user_id", nullable = false)
-@NotNull   // redundant
+@NotNull
 private User user;
 
-// Good - constraint at the layer that owns it
+// Good
 @ManyToOne(optional = false)
 @JoinColumn(name = "user_id", nullable = false)
 private User user;
 ```
 
 ```java
-// Bad - DTO already validates email shape
+// Bad - DTO already validates email shape and length
 @Email @Size(max = 255) @Column(length = 255, nullable = false)
 private String email;
 
@@ -52,7 +52,7 @@ private String email;
 private String email;
 ```
 
-**Manual unique-check before save** - `[High]`. Races (concurrent SELECTs both pass) and the unique index rejects anyway. Extra SELECT per write.
+**Manual unique-check before save** - `[High]`. Race-prone (two concurrent SELECTs both pass), and the unique index rejects anyway. Costs one extra SELECT per write.
 
 ```java
 // Bad
@@ -64,88 +64,81 @@ try { return userRepository.save(new User(req)); }
 catch (DataIntegrityViolationException e) { throw new DuplicateEmailException(e); }
 ```
 
-Justified only when no unique index exists - in which case recommend adding the index.
+Justified only when no unique index exists - then recommend adding the index instead.
 
-### Category 2 - Defensive code for impossible states
+### Category 2 - Defensive code for framework guarantees
 
-Spring guarantees non-null for `@Autowired` beans, `@Valid @NotNull` fields, and the principal inside `@PreAuthorize`'d methods. Re-checking those guarantees adds noise and hides regressions that should crash loudly.
+Spring guarantees non-null for `@Autowired` beans, `@Valid @NotNull` request fields, and the principal inside `@PreAuthorize`'d methods. Re-checking them hides regressions that should crash loudly.
 
 ```java
-// Bad - @Valid + @NotNull already returned 400
-@PostMapping
+// Bad - @Valid + @NotNull already returned 400 before this runs
 ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest req) {
     Objects.requireNonNull(req.customerId());
-    ...
+    return ResponseEntity.ok(orderService.create(req.customerId()));
+}
+
+// Good - trust the validation layer
+ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest req) {
+    return ResponseEntity.ok(orderService.create(req.customerId()));
 }
 ```
 
 ```java
-// Bad - imperative shape hides the failure path
-if (maybe.isPresent()) return toResponse(maybe.get());
-throw new EntityNotFoundException("order " + id);
+// Bad - Optional.ofNullable on a field already constrained by @NotNull
+Long id = Optional.ofNullable(req.customerId())
+    .orElseThrow(() -> new IllegalArgumentException("required"));
 
 // Good
-return orderRepository.findById(id)
-    .map(this::toResponse)
-    .orElseThrow(() -> new EntityNotFoundException("order " + id));
+Long id = req.customerId();
 ```
 
-**Blanket `catch (Exception)`** - `[High]`. Swallows real bugs (`NPE`, `DataIntegrityViolationException`); in controllers, erases status-code mapping (`EntityNotFoundException` → 404 becomes opaque 500).
+**Blanket `catch (Exception)` in a controller or service** - `[High]`. Swallows `DataIntegrityViolationException`, `NullPointerException`, and domain exceptions; in controllers it erases `@RestControllerAdvice` status mapping (404/409 collapse to 500).
 
 ```java
 // Bad
 try { return service.fulfill(orderId); }
-catch (Exception e) { log.error("fulfillment failed", e); return Result.failure("something went wrong"); }
+catch (Exception e) { log.error("failed", e); return ResponseEntity.status(500).build(); }
 
-// Good - name the failures the call can actually raise
-try { return service.fulfill(orderId); }
-catch (InsufficientStockException | PaymentDeclinedException e) { return Result.failure(e.getMessage()); }
+// Good - let advice map status; catch only what this layer handles
+return ResponseEntity.ok(service.fulfill(orderId));
 ```
 
-**Catch-and-rethrow with no transformation** - if the intent is HTTP status mapping, that belongs in `@RestControllerAdvice`.
+**Catch-and-rethrow with no transformation** - `[Suggestion]`. If the goal is HTTP status mapping, that belongs in `@RestControllerAdvice`. If the goal is logging, the advice logs once at the boundary.
 
 ### Category 3 - Premature abstraction
 
-**`@Service` interface with one implementation** - `[High]`. Every refactor touches two files. Mockito mocks classes via CGLIB; Spring proxies concrete classes by default.
+**`@Service` interface with one implementation** - `[High]`. Every refactor touches two files; Mockito mocks concrete classes via CGLIB; Spring proxies concrete classes by default.
 
 ```java
 // Bad
-public interface OrderService { OrderResponse fulfill(Long orderId); }
+public interface OrderService { OrderResponse fulfill(Long id); }
 @Service public class OrderServiceImpl implements OrderService { ... }
 
 // Good
 @Service public class OrderService { ... }
 ```
 
-Justified when a second implementation, an `@Aspect` with a JDK-proxy pointcut, or a non-Mockito test seam requires the interface.
+Justified when a second implementation exists, an `@Aspect` needs a JDK-proxy pointcut, or a non-Mockito test seam requires the interface.
 
-**`BaseService<T>` with one or two subclasses** - generics propagation for 3 saved lines.
+**`BaseService<T, ID>` with one or two subclasses** - `[Suggestion]`. Generics propagation buys ~3 saved lines per child. Abstract only when 3+ services share real cross-cutting behavior (audit, metrics, tenant scoping).
 
-```java
-// Bad
-public abstract class BaseService<T, ID> {
-    protected abstract JpaRepository<T, ID> repo();
-    public T findOne(ID id) { return repo().findById(id).orElseThrow(); }
-}
-```
-
-Abstract only when 3+ services share real cross-cutting behavior (audit, metrics).
-
-**`Result<T>` wrapping a trivial read** - keep `Optional` unless callers branch on multiple distinct failure modes.
+**Custom `Result<T>` wrapping a single failure mode** - `[Suggestion]`. `Optional` already expresses "found or not"; exceptions express domain failures. Use `Result<T>` only when callers branch on 2+ distinct failure variants and exceptions would be overkill.
 
 ```java
 // Bad
 public Result<Order> findOrder(Long id) {
-    return orderRepository.findById(id).map(Result::success).orElseGet(() -> Result.failure("not found"));
+    return orderRepository.findById(id)
+        .map(Result::success)
+        .orElseGet(() -> Result.failure("not found"));
 }
 
 // Good
 public Optional<Order> findOrder(Long id) { return orderRepository.findById(id); }
 ```
 
-**Speculative `@ConfigurationProperties` keys** - flag fields declared and validated but never read anywhere in the repo (confirm with a repo-wide search).
+**Speculative `@ConfigurationProperties` keys** - `[Suggestion]`. Flag fields declared and validated but never read in the repo (confirm with a repo-wide search for the property name).
 
-**Custom mapper layer when one transformation would do** - prefer a MapStruct interface or `OrderResponse.from(Order)` static factory over three mapper classes.
+**Mapper proliferation** - `[Suggestion]`. Three mapper classes for one transformation; prefer a MapStruct interface or `OrderResponse.from(Order)` static factory.
 
 ## Output Format
 
@@ -156,10 +149,10 @@ One block per finding:
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@NotNull` on `Order.user`}
-- Redundant because: {constraints: FK, `nullable = false`, unique index, DTO `@NotNull`, framework guarantee}
-- Cost: {extra SELECT | masked exception | speculative surface | proxy mismatch} _(required for `[High]`; omit otherwise)_
+- Redundant because: {FK, `nullable = false`, unique index, DTO `@NotNull`, `@RestControllerAdvice`, framework guarantee}
+- Cost: {extra SELECT | masked exception | proxy mismatch | speculative surface} _(required for `[High]`)_
 - Recommendation: {concrete edit}
-- Justified when: {one-line note if `[Question]` or plausible reason; otherwise omit}
+- Justified when: {one-line note, only for `[Question]`}
 ```
 
 For each of the three categories with no findings, state `No <category> findings.` so the workflow sees the check ran.
@@ -167,7 +160,7 @@ For each of the three categories with no findings, state `No <category> findings
 ## Avoid
 
 - Flagging Bean Validation on a DTO consumed by `@Valid` - that layer owns user-facing errors
-- Flagging an entity `@NotNull` without checking for a non-controller write path (Kafka consumer, scheduled job, admin tool)
-- Recommending removal of a unique pre-check without confirming a unique index exists
+- Flagging an entity `@NotNull` without checking for non-controller write paths (Kafka consumer, scheduled job, admin tool)
+- Recommending removal of a unique pre-check without confirming the unique index exists
 - Flagging a `@Service` interface before checking for a second impl, `@Aspect`, or test seam
-- Emitting a finding when justification is visible in the diff
+- Treating Optional/stream style preferences as overengineering - this skill judges necessity, not idiom

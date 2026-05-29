@@ -1,6 +1,6 @@
 ---
 name: spring-jpa-performance
-description: "JPA / Hibernate performance: N+1 fixes (fetch join, @EntityGraph, batch size), projections, pagination, locking, second-level cache."
+description: "JPA/Hibernate perf: N+1 (fetch join, @EntityGraph, @BatchSize), DTO projections, pagination countQuery, JDBC batching, locking, L2 cache."
 metadata:
   category: backend
   tags: [jpa, hibernate, performance, queries]
@@ -13,123 +13,181 @@ user-invocable: false
 
 ## When to Use
 
-- Optimizing data-access queries; preventing N+1
-- Read-only endpoints with heavy entities
-- Dynamic filter/search endpoints with multiple optional params
+- Diagnosing slow data-access endpoints; preventing N+1
+- Read-heavy list endpoints returning entity graphs
+- Bulk inserts/updates; dynamic filter/search endpoints
 
 ## Rules
 
-- LAZY by default on all associations; never EAGER on `@OneToMany`
-- Set `spring.jpa.open-in-view=false` everywhere (OSIV silently masks N+1 and `LazyInitializationException`)
-- Read-only endpoints: project to DTO / record, do not return entities
-- Index every column used in WHERE / ORDER BY / JOIN
-- List endpoints always take `Pageable` - never unbounded `findAll()`
-- Service classes default to `@Transactional(readOnly = true)`; `@Transactional` only on mutating methods
+- LAZY by default; never `EAGER` on `@OneToMany` / `@ManyToMany`
+- `spring.jpa.open-in-view=false` (OSIV masks N+1 and `LazyInitializationException`)
+- Read endpoints: project to record/DTO; never return entities
+- List endpoints take `Pageable`; never unbounded `findAll()`
+- Index every column in WHERE / ORDER BY / JOIN
+- Service classes default `@Transactional(readOnly=true)`; `@Transactional` only on writes
+- Bulk writes: set `hibernate.jdbc.batch_size` and flush+clear per chunk
 
 ## Patterns
 
 ### N+1: fetch join vs `@EntityGraph`
 
 ```java
-// Bad - N+1 on u.getOrders() per row
+// Bad - N+1
 userRepository.findAll().forEach(u -> log.info("{}", u.getOrders()));
 
-// Good - fetch join on custom JPQL
+// Good - JPQL fetch join (custom query)
 @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.orders")
 List<User> findAllWithOrders();
 
-// Good - @EntityGraph on derived query
+// Good - @EntityGraph (derived query)
 @EntityGraph(attributePaths = {"orders", "orders.items"})
 List<User> findByStatus(UserStatus status);
 ```
 
-Use fetch join for custom JPQL; `@EntityGraph` for derived methods. Do not combine.
+Fetch join for custom JPQL; `@EntityGraph` for derived methods. Don't combine.
 
 ### Two fetch-join traps
 
-1. **Two `JOIN FETCH` on `List` collections** → `MultipleBagFetchException` at startup. Fix: change one to `Set`, split into two queries, or use `@BatchSize`.
-2. **`Pageable` + collection `JOIN FETCH`** → Hibernate logs `HHH90003004` and paginates in memory (silent OOM).
+1. **Two `JOIN FETCH` on `List` collections** -> `MultipleBagFetchException` at startup. Fix: change one to `Set`, split into two queries, or use `@BatchSize`.
+2. **`Pageable` + collection `JOIN FETCH`** -> `HHH90003004` warning; Hibernate paginates in memory (silent OOM).
 
 ```java
 // Bad - in-memory pagination
 @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines")
-Page<Order> findAllWithLines(Pageable pageable);
+Page<Order> findAllWithLines(Pageable p);
 
-// Good - two-query: page IDs first, fetch associations by ID
+// Good - two-query: page IDs, then fetch associations
 @Query("SELECT o.id FROM Order o ORDER BY o.id")
-Page<Long> findOrderIds(Pageable pageable);
+Page<Long> findIds(Pageable p);
 
 @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines WHERE o.id IN :ids ORDER BY o.id")
 List<Order> findWithLinesByIds(@Param("ids") List<Long> ids);
 ```
 
-Or skip `JOIN FETCH` on paginated endpoints entirely and use batch fetching.
+Alternative: drop `JOIN FETCH` on paginated endpoints and use batch fetching.
 
 ### Batch fetching (multiple collections)
 
 ```yaml
 spring.jpa.properties.hibernate.default_batch_fetch_size: 16
+spring.jpa.properties.hibernate.query.in_clause_parameter_padding: true  # better plan-cache hit
 ```
-
-Or per-association:
 
 ```java
 @OneToMany(mappedBy = "order") @BatchSize(size = 16)
 private List<OrderItem> items;
 ```
 
-Use batch fetching when an entity has multiple `@OneToMany` (fetch join produces Cartesian product).
+Use when an entity has 2+ `@OneToMany` (fetch join produces Cartesian product).
 
-### Projections for read-only queries
+### DTO projections
 
 ```java
 public record OrderSummary(Long id, String status, BigDecimal total) {}
 
 @Query("SELECT new com.example.dto.OrderSummary(o.id, o.status, o.total) FROM Order o WHERE o.customerId = :cid")
-List<OrderSummary> findSummaries(Long cid);
+List<OrderSummary> findSummaries(@Param("cid") Long cid);
 ```
 
-Skips dirty-checking and avoids loading associations.
+Skips dirty-checking and association loading. Prefer over entities for any read-only response.
 
-### Pagination and dynamic filters
+### Pagination
 
-`Page<T>` always for list endpoints. For very large datasets with stable sort, use keyset pagination over `OFFSET`:
+```java
+// Bad - countQuery runs the full JOIN, defeating optimization
+@Query("SELECT o FROM Order o LEFT JOIN o.customer c WHERE c.region = :r")
+Page<Order> find(@Param("r") String r, Pageable p);
+
+// Good - explicit countQuery
+@Query(value = "SELECT o FROM Order o JOIN o.customer c WHERE c.region = :r",
+       countQuery = "SELECT count(o) FROM Order o JOIN o.customer c WHERE c.region = :r")
+Page<Order> find(@Param("r") String r, Pageable p);
+```
+
+Use `Slice<T>` when total count is not needed (skips count query). For large datasets with stable sort, prefer keyset over `OFFSET`:
 
 ```java
 @Query("SELECT o FROM Order o WHERE o.id > :lastId ORDER BY o.id")
-List<Order> nextPage(@Param("lastId") Long lastId, Pageable pageable);
+List<Order> nextPage(@Param("lastId") Long lastId, Pageable p);
 ```
 
-When an endpoint has 2+ optional filters, compose `Specification`s instead of writing combinatorial repository methods. `null` Specifications are ignored by Spring Data.
+### Dynamic filters
+
+2+ optional filters: compose `Specification`s; null Specifications are ignored. Don't write combinatorial repository methods.
+
+### Bulk writes
+
+```java
+// Bad - one INSERT per row, no batching
+orders.forEach(repository::save);
+
+// Good - JDBC batching
+@Transactional
+public void insertAll(List<Order> orders) {
+    for (int i = 0; i < orders.size(); i++) {
+        em.persist(orders.get(i));
+        if (i % 50 == 0) { em.flush(); em.clear(); }
+    }
+}
+```
+
+```yaml
+spring.jpa.properties.hibernate.jdbc.batch_size: 50
+spring.jpa.properties.hibernate.order_inserts: true
+spring.jpa.properties.hibernate.order_updates: true
+```
+
+Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts.
+
+### `@Modifying` queries
+
+```java
+@Modifying(clearAutomatically = true, flushAutomatically = true)
+@Query("UPDATE Order o SET o.status = :s WHERE o.id IN :ids")
+int markStatus(@Param("s") String s, @Param("ids") List<Long> ids);
+```
+
+Without `clearAutomatically`, the persistence context holds stale entities after a bulk update.
 
 ### Pessimistic locking
-
-For decrements / balance updates where optimistic locking is insufficient:
 
 ```java
 @Lock(LockModeType.PESSIMISTIC_WRITE)
 @Query("SELECT p FROM Product p WHERE p.id = :id")
-Optional<Product> findByIdForUpdate(Long id);
+Optional<Product> findByIdForUpdate(@Param("id") Long id);
 ```
 
-Short-lived transactions on single rows only. For bulk, use optimistic `@Version` + retry.
+Short transactions, single rows. For bulk, prefer optimistic `@Version` + retry.
 
 ### Second-level cache
 
-Enable for read-heavy, rarely-changed entities (catalog, config). Negates itself on write-heavy entities. Configuration goes under `hibernate.cache.*` with `@Cache(usage = READ_WRITE)` on the entity.
+Read-heavy, rarely-changed entities only (catalog, config). Counterproductive on write-heavy entities.
+
+```yaml
+spring.jpa.properties.hibernate.cache.use_second_level_cache: true
+spring.jpa.properties.hibernate.cache.region.factory_class: jcache
+```
+
+```java
+@Entity @Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
+public class Country { ... }
+```
 
 ## Output Format
 
 ```
-Optimization: {N+1 Fix | Projection | Batch Fetch | Specification | Cache | Pagination}
-Entity: {name}
-Change: {what changed}
-Query Count: {before} → {after}
+Optimization: {N+1 Fix | Projection | Batch Fetch | Pagination | Bulk Write | Locking | Cache}
+Trigger: {symptom - e.g., "P95 3s on /customers, N queries per request"}
+Entity/Repo: {name}
+Change: {what changed - code + config}
+Query Count: {before} -> {after}
 ```
 
 ## Avoid
 
-- `EAGER` on `@OneToMany` - loads collection on every query
-- Combining `JOIN FETCH` on a collection with `Pageable`
-- Returning entities from controllers - project to DTO
-- Second-level cache on write-heavy entities
+- `EAGER` on collections
+- `JOIN FETCH` collection + `Pageable` in one query
+- Returning entities from controllers
+- `saveAll()` with `IDENTITY` IDs expecting batched inserts
+- `@Modifying` without `clearAutomatically=true` when followed by reads
+- L2 cache on write-heavy entities

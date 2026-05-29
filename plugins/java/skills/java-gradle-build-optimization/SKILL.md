@@ -1,6 +1,6 @@
 ---
 name: java-gradle-build-optimization
-description: "Gradle for Spring Boot multi-module: Kotlin DSL, version catalog, build cache, configuration cache, convention plugins, scope hygiene."
+description: "Gradle for Spring Boot multi-module: Kotlin DSL, version catalog, build/config cache, convention plugins, toolchains, scope hygiene."
 metadata:
   category: backend
   tags: [gradle, build, spring-boot, multi-module, performance]
@@ -14,49 +14,61 @@ user-invocable: false
 ## When to Use
 
 - New Spring Boot Gradle project / migration from Maven
-- Optimizing slow Gradle builds (local or CI)
-- Multi-module structure with shared conventions
-- Standardizing dependency versions
+- Slow Gradle builds (local clean, incremental, or CI)
+- Multi-module structure needing shared conventions
+- Standardizing dependency versions across modules
 - Resolving Boot-managed version conflicts via BOM / `platform()`
 
 ## Rules
 
-- Kotlin DSL (`.gradle.kts`) for new projects
-- All dependency versions in `gradle/libs.versions.toml`
-- Parallel + build cache on by default
-- Convention plugins in `build-logic/` - never `allprojects {}` / `subprojects {}`
-- Spring Boot plugin only on application modules
-- `implementation()` by default; `api()` only when types appear in the module's public API
-- Commit `gradlew` / `gradle-wrapper.jar`
-- CI uses `--no-daemon` (ephemeral runners)
+- Kotlin DSL (`.gradle.kts`) for new projects; Groovy only for legacy maintenance
+- All dependency and plugin versions in `gradle/libs.versions.toml`
+- Parallel + build cache + configuration cache on by default
+- Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`
+- Spring Boot plugin only on application modules (it disables `jar` and produces `bootJar`)
+- `implementation()` is the default; `api()` only when a type appears in the module's public API
+- Toolchain declared with foojay resolver so CI auto-provisions the JDK
+- Commit `gradlew` / `gradle-wrapper.jar`; CI invokes only `./gradlew`
 
 ## Patterns
 
 ### Version catalog
 
-`gradle/libs.versions.toml`:
+`gradle/libs.versions.toml` - hyphens in keys become dots in accessors (`spring-boot-starter-web` -> `libs.spring.boot.starter.web`):
 
 ```toml
 [versions]
 spring-boot = "3.5.0"
-java = "21"
+spring-dep-mgmt = "1.1.7"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
-spring-dependency-management = { id = "io.spring.dependency-management", version = "1.1.7" }
+spring-dep-mgmt = { id = "io.spring.dependency-management", version.ref = "spring-dep-mgmt" }
 ```
 
 ```kotlin
 dependencies {
+    implementation(platform(libs.spring.boot.bom))
     implementation(libs.spring.boot.starter.web)
     testImplementation(libs.spring.boot.starter.test)
 }
 ```
+
+### Toolchain with foojay auto-provisioning
+
+`settings.gradle.kts`:
+
+```kotlin
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0" }
+```
+
+Without this, fresh CI runners fail when no matching JDK is found.
 
 ### `gradle.properties` for build speed
 
@@ -64,11 +76,11 @@ dependencies {
 org.gradle.parallel=true
 org.gradle.caching=true
 org.gradle.configuration-cache=true
-# Some Spring Boot / JPA plugins are not configuration-cache compatible.
-# Start with problems=warn; flip to fail once the build is green.
+# Spring Boot 3.5 + AOT is config-cache compatible. Some 3rd-party plugins
+# still access Task.project at execution time - start with `warn`, flip to
+# `fail` once the build is green.
 org.gradle.configuration-cache.problems=warn
-org.gradle.daemon.idletimeout=600000
-org.gradle.jvmargs=-Xmx2g -XX:+UseG1GC
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseG1GC
 ```
 
 ### Multi-module via convention plugin
@@ -80,10 +92,9 @@ plugins { java }
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(21)) } }
 
-tasks.withType<Test> {
+tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
-    jvmArgs("-Djdk.virtualThreadScheduler.parallelism=4")
 }
 ```
 
@@ -93,7 +104,7 @@ Application module:
 plugins {
     id("java-conventions")
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
+    alias(libs.plugins.spring.dep.mgmt)
 }
 dependencies {
     implementation(project(":domain"))
@@ -101,7 +112,7 @@ dependencies {
 }
 ```
 
-Library module - no Spring Boot plugin (it would produce an unwanted `bootJar`):
+Library module - no Spring Boot plugin (it would produce an unwanted `bootJar` and disable the regular `jar`):
 
 ```kotlin
 plugins {
@@ -109,6 +120,7 @@ plugins {
     `java-library`
 }
 dependencies {
+    implementation(platform(libs.spring.boot.bom))
     api(libs.spring.boot.starter.data.jpa)         // types leak into public API
     implementation(libs.spring.boot.starter.web)   // internal use only
 }
@@ -117,10 +129,10 @@ dependencies {
 ### `api()` vs `implementation()`
 
 ```kotlin
-// Bad - leaks transitive types
+// Bad - downstream modules see infrastructure types and recompile on every change
 api(project(":infrastructure"))
 
-// Good - only this module sees infrastructure types
+// Good - encapsulated; only this module's ABI affects downstream compile avoidance
 implementation(project(":infrastructure"))
 ```
 
@@ -128,38 +140,84 @@ implementation(project(":infrastructure"))
 
 ```kotlin
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.0"))
+    implementation(platform(libs.spring.boot.bom))   // BOM aligns transitive versions
 }
 
-configurations.all {
-    resolutionStrategy { failOnVersionConflict() }
-}
+// Avoid `failOnVersionConflict()` with Spring BOM - the BOM intentionally
+// pins versions that may conflict with transitive requests. Prefer explicit
+// `strictly { }` on the few deps that actually matter.
 
 dependencyLocking { lockAllConfigurations() }
-// ./gradlew dependencies --write-locks
+// ./gradlew dependencies --write-locks  (commit gradle.lockfile)
+// Tradeoff: reproducible builds vs. needing to relock on every dep bump.
 ```
 
-### Spring Boot specifics
+### Dependency hygiene
+
+Detect unused / misdeclared dependencies (api leaking as implementation, etc.):
+
+```kotlin
+// build-logic/.../java-conventions.gradle.kts
+plugins { id("com.autonomousapps.dependency-analysis") }
+// ./gradlew buildHealth
+```
+
+Run periodically; surface unused deps and incorrect `api`/`implementation` scoping that `api()` rule alone can't catch.
+
+### Spring Boot bootJar (application module only)
 
 ```kotlin
 tasks.bootJar {
     mainClass.set("com.example.Application")
-    layered { enabled.set(true) }
+    layered { enabled.set(true) }   // faster Docker layer rebuilds
 }
+```
 
-// GraalVM native
+GraalVM native (only when `org.graalvm.buildtools.native` plugin is applied):
+
+```kotlin
 tasks.processAot { enabled = true }
-tasks.processTestAot { enabled = true }
+```
+
+### Integration test source set
+
+```kotlin
+// build-logic/.../java-conventions.gradle.kts
+sourceSets.create("integrationTest") {
+    java.srcDir("src/integrationTest/java")
+    compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+val integrationTest by tasks.registering(Test::class) {
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    shouldRunAfter("test")
+}
 ```
 
 ### CI
 
+Local builds reuse a long-lived daemon (this is what makes incremental fast). On ephemeral CI runners the daemon's JVM dies with the container, so `--no-daemon` avoids a wasted warmup; on self-hosted runners that persist across jobs, keep the daemon.
+
 ```bash
-./gradlew check --parallel --build-cache --no-daemon                # compile + unit
-./gradlew integrationTest --parallel --build-cache --no-daemon      # integration
+./gradlew check --parallel --build-cache --no-daemon                 # ephemeral CI
+./gradlew integrationTest --parallel --build-cache --no-daemon
 ```
 
-GitHub Actions cache:
+Remote build cache (the biggest multi-module CI win - one job's output feeds the next):
+
+```kotlin
+// settings.gradle.kts
+buildCache {
+    local { isEnabled = true }
+    remote<HttpBuildCache> {
+        url = uri("https://cache.example.com/cache/")
+        isPush = System.getenv("CI") == "true"
+    }
+}
+```
+
+GitHub Actions local-cache fallback:
 
 ```yaml
 - uses: actions/cache@v4
@@ -173,7 +231,7 @@ GitHub Actions cache:
 ## Output Format
 
 ```
-Optimization: {version-catalog | build-cache | configuration-cache | parallel | convention-plugin | scope | bom-platform | locking | layered-jar | ci-cache}
+Optimization: {version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | locking | dependency-analysis | toolchain | layered-jar | ci-cache}
 File: {repo path}
 Change: {one-line diff}
 Priority: {High | Medium | Low}
@@ -186,9 +244,7 @@ Aggregate: `Aggregate: estimated total clean-build reduction (%)`.
 
 ## Avoid
 
-- Groovy DSL for new projects
-- `allprojects {}` / `subprojects {}` blocks
-- Spring Boot plugin on library modules
-- `api()` by default
-- Hardcoded versions in `build.gradle.kts`
-- Gradle daemon in CI
+- Hardcoded versions in `build.gradle.kts` (catalog is the single source of truth)
+- `failOnVersionConflict()` with Spring BOM (BOM conflicts are expected and intentional)
+- Toolchain declaration without foojay resolver (CI breaks on missing JDK)
+- AOT / native tasks referenced when their plugin isn't applied (build script fails to evaluate)

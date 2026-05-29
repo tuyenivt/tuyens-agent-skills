@@ -1,6 +1,6 @@
 ---
 name: spring-websocket
-description: "Spring WebSocket / STOMP: handshake auth, CONNECT-frame JWT, message-level security, external broker for multi-instance, Virtual Thread safety."
+description: "Spring WebSocket / STOMP: CONNECT-frame JWT auth, message-level security, broker relay for multi-instance, Virtual Thread safety."
 metadata:
   category: backend
   tags: [websocket, stomp, messaging, real-time, spring]
@@ -14,31 +14,34 @@ user-invocable: false
 ## When to Use
 
 - Real-time bidirectional channels (chat, notifications, live status)
-- Server-pushed updates to subscribed clients
-- STOMP messaging over WebSocket
+- Server-pushed updates over STOMP / WebSocket
 
 ## Rules
 
-- Authenticate at handshake (or STOMP `CONNECT` frame via `ChannelInterceptor`) - never per-message
-- Prefer CONNECT-frame JWT over query-param tokens (avoids leak to nginx logs / browser history)
-- `/topic` for broadcasts, `/queue` (via `convertAndSendToUser`) for user-specific
-- For >1 app instance, use an external STOMP relay (RabbitMQ / Artemis) - `enableSimpleBroker` is in-process only
-- Set heartbeat to detect stale connections
-- Limit message size / send buffer / send time on the transport registry
-- No `synchronized` in message handlers - pins Virtual Threads; use `ReentrantLock` / concurrent collections
-- Handle exceptions with `@MessageExceptionHandler` - unhandled exceptions close the session silently
+- Authenticate once at the STOMP `CONNECT` frame via `ChannelInterceptor`. Prefer CONNECT-frame JWT over handshake query params (query strings leak to proxy logs and browser history).
+- `/topic/**` for broadcasts; `/user/queue/**` via `convertAndSendToUser` for per-user delivery. Never broadcast sensitive payloads on `/topic`.
+- `enableSimpleBroker` is in-process. For >1 instance, use `enableStompBrokerRelay` (RabbitMQ / Artemis / ActiveMQ).
+- Set heartbeats, message size, send buffer, and send time limits. Without them stale or slow clients consume threads and memory indefinitely.
+- Use `ReentrantLock` or concurrent collections in handlers - `synchronized` pins Virtual Threads.
+- Handle errors with `@MessageExceptionHandler`. Unhandled exceptions close the session with no client-visible reason.
 
 ## Patterns
 
-### Configuration
+### Broker + transport config
 
 ```java
 @Configuration @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
+        // Single instance: in-process broker
         registry.enableSimpleBroker("/topic", "/queue")
-                .setHeartbeatValue(new long[]{10000, 10000});
+                .setHeartbeatValue(new long[]{10_000, 10_000});
+        // Multi-instance: swap the line above for the relay below
+        // registry.enableStompBrokerRelay("/topic", "/queue")
+        //         .setRelayHost("rabbitmq").setRelayPort(61613)
+        //         .setClientLogin("app").setClientPasscode("${broker.password}");
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }
@@ -46,7 +49,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("${app.cors.origins}")
+                .setAllowedOriginPatterns("${app.cors.origins}") // patterns, not origins, when behind proxy
                 .withSockJS();
     }
 
@@ -59,20 +62,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 }
 ```
 
-### Multi-instance: external STOMP relay
-
-`enableSimpleBroker` does not fan out across nodes. For multi-instance, use a relay:
-
-```java
-@Override
-public void configureMessageBroker(MessageBrokerRegistry registry) {
-    registry.enableStompBrokerRelay("/topic", "/queue")
-            .setRelayHost("rabbitmq").setRelayPort(61613)
-            .setClientLogin("app").setClientPasscode("${broker.password}");
-    registry.setApplicationDestinationPrefixes("/app");
-    registry.setUserDestinationPrefix("/user");
-}
-```
+`SimpleBrokerMessageHandler` heartbeats need a `TaskScheduler` - configure one if not already present.
 
 ### CONNECT-frame JWT auth
 
@@ -82,14 +72,14 @@ public void configureClientInboundChannel(ChannelRegistration registration) {
     registration.interceptors(new ChannelInterceptor() {
         @Override
         public Message<?> preSend(Message<?> message, MessageChannel channel) {
-            var accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-            if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-                String bearer = accessor.getFirstNativeHeader("Authorization");
-                if (bearer == null || !bearer.startsWith("Bearer "))
+            StompHeaderAccessor acc = StompHeaderAccessor.wrap(message);
+            if (StompCommand.CONNECT.equals(acc.getCommand())) {
+                String header = acc.getFirstNativeHeader("Authorization");
+                if (header == null || !header.startsWith("Bearer ")) {
                     throw new MessageDeliveryException("Missing Bearer token");
-                Jwt jwt = jwtDecoder.decode(bearer.substring(7));
-                accessor.setUser(new JwtAuthenticationToken(jwt,
-                    AuthorityUtils.createAuthorityList("ROLE_" + jwt.getClaimAsString("role"))));
+                }
+                Jwt jwt = jwtDecoder.decode(header.substring(7));
+                acc.setUser(jwtAuthConverter.convert(jwt)); // reuse the HTTP JwtAuthenticationConverter bean
             }
             return message;
         }
@@ -97,24 +87,7 @@ public void configureClientInboundChannel(ChannelRegistration registration) {
 }
 ```
 
-### Handshake interceptor (alternative)
-
-```java
-@Component
-public class JwtHandshakeInterceptor implements HandshakeInterceptor {
-    public boolean beforeHandshake(ServerHttpRequest req, ServerHttpResponse resp,
-                                    WebSocketHandler h, Map<String, Object> attrs) {
-        String token = extractToken(req);
-        if (token == null || !jwtService.isValid(token)) {
-            resp.setStatusCode(HttpStatus.UNAUTHORIZED);
-            return false;
-        }
-        attrs.put("userId", jwtService.extractSubject(token));
-        return true;
-    }
-    public void afterHandshake(...) {}
-}
-```
+Reusing the existing `JwtAuthenticationConverter` keeps role mapping consistent with the REST side. The `Principal` set here flows through `@MessageMapping` methods and powers `convertAndSendToUser`.
 
 ### Message-level authorization
 
@@ -125,7 +98,7 @@ public class WebSocketSecurityConfig {
     AuthorizationManager<Message<?>> messageAuthz(
             MessageMatcherDelegatingAuthorizationManager.Builder messages) {
         return messages
-            .nullDestMatcher().authenticated()
+            .nullDestMatcher().authenticated()               // CONNECT/DISCONNECT
             .simpSubscribeDestMatchers("/topic/admin/**").hasRole("ADMIN")
             .simpDestMatchers("/app/admin/**").hasRole("ADMIN")
             .simpSubscribeDestMatchers("/user/queue/**").authenticated()
@@ -135,30 +108,32 @@ public class WebSocketSecurityConfig {
 }
 ```
 
-### Controllers
+`simpSubscribeDestMatchers` guards SUBSCRIBE; `simpDestMatchers` guards SEND. Both are needed - a SEND-only rule lets attackers subscribe.
+
+### Controller + per-user send
 
 ```java
 @Controller
 @RequiredArgsConstructor
 public class ChatController {
     private final SimpMessagingTemplate template;
+    private final ChatService chatService;
 
     @MessageMapping("/chat.send")
-    public void send(@Payload ChatMessageDTO message, Principal principal) {
-        ChatMessageDTO saved = chatService.save(message, principal.getName());
-        template.convertAndSend("/topic/chat." + message.roomId(), saved);
+    public void send(@Payload ChatMessageDTO msg, Principal principal) {
+        ChatMessageDTO saved = chatService.save(msg, principal.getName());
+        template.convertAndSend("/topic/chat." + msg.roomId(), saved);
     }
 
     @MessageMapping("/chat.private")
-    public void privateMessage(@Payload PrivateMessageDTO m, Principal p) {
+    public void privateMessage(@Payload PrivateMessageDTO m) {
         template.convertAndSendToUser(m.recipientId(), "/queue/messages", m);
     }
 
     @MessageExceptionHandler
     @SendToUser("/queue/errors")
-    public String handleException(Exception ex) {
-        log.error("WebSocket error", ex);
-        return ex.getMessage();
+    public ErrorDTO handle(Exception ex) {
+        return new ErrorDTO(ex.getMessage());
     }
 }
 ```
@@ -169,55 +144,44 @@ public class ChatController {
 @Component
 @RequiredArgsConstructor
 public class WebSocketEventListener {
-    private final SimpMessagingTemplate template;
     private final UserPresenceService presence;
 
     @EventListener
-    public void onConnect(SessionConnectedEvent e) { presence.markOnline(e.getUser().getName()); }
+    public void onConnect(SessionConnectedEvent e) {
+        presence.markOnline(e.getUser().getName()); // service publishes to /topic/presence
+    }
 
     @EventListener
     public void onDisconnect(SessionDisconnectEvent e) {
-        String userId = e.getUser().getName();
-        presence.markOffline(userId);
-        template.convertAndSend("/topic/presence", new PresenceEvent(userId, "OFFLINE"));
+        presence.markOffline(e.getUser().getName());
     }
 }
 ```
 
-### Reverse proxy (nginx)
+Keep broadcasting inside the service - listeners stay thin and the presence rule (debounce, last-write-wins) lives in one place.
 
-Needs `Upgrade` / `Connection` headers and a long read timeout (default 60s kills idle WS).
+### Reverse proxy
 
-```nginx
-location /ws {
-    proxy_pass http://app:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_read_timeout 3600s;
-}
-```
-
-Behind `X-Forwarded-Host`, use `setAllowedOriginPatterns(...)` instead of `setAllowedOrigins(...)`.
+Behind nginx/ALB: forward `Upgrade` / `Connection` headers, set `proxy_read_timeout` above the heartbeat interval (default 60s drops idle WS). Use `setAllowedOriginPatterns(...)` (not `setAllowedOrigins`) when CORS varies by tenant or `X-Forwarded-Host` is rewritten.
 
 ## Output Format
 
 ```
-Endpoint: {WebSocket path}
+Endpoint: {WebSocket path, e.g. /ws}
 Protocol: {STOMP | raw WebSocket}
-Auth: {handshake JWT | CONNECT-frame JWT | session | none}
-Broker: {simple in-process | STOMP relay (RabbitMQ/Artemis)}
-Topics: {/topic and /queue destinations}
-Heartbeat: {interval ms}
-Message Limit: {max size}
+Auth: {CONNECT-frame JWT | handshake JWT | session}
+Broker: {simple in-process | STOMP relay (RabbitMQ/Artemis/ActiveMQ)}
+Destinations: {/topic/*, /queue/* patterns}
+Heartbeat: {client ms, server ms}
+Limits: {message size, send buffer, send time}
+Multi-instance: {yes via relay | single instance only}
 ```
 
 ## Avoid
 
-- `synchronized` blocks in message handlers (pins Virtual Threads)
-- Missing heartbeat (stale connections accumulate)
-- Per-message authentication (authenticate once at handshake/CONNECT)
-- Broadcasting sensitive data on `/topic` (use `/queue` for user-specific)
-- `enableSimpleBroker` in multi-instance deployments
+- Authenticating per message instead of once at CONNECT
+- `synchronized` in `@MessageMapping` / interceptors (Virtual Thread pinning)
+- Authorizing only SEND while leaving SUBSCRIBE open
+- Shipping `enableSimpleBroker` to a multi-instance deployment
+- Omitting heartbeat or transport size limits
+- Swallowing exceptions instead of `@MessageExceptionHandler` (session dies silently)

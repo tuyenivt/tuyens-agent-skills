@@ -1,6 +1,6 @@
 ---
 name: spring-exception-handling
-description: "Centralized error handling with @RestControllerAdvice and ProblemDetail (RFC 9457): exception hierarchy, HTTP mapping, external API wrapping."
+description: "Centralized REST error handling with @RestControllerAdvice and ProblemDetail (RFC 9457): domain exception hierarchy, HTTP mapping, vendor wrapping."
 metadata:
   category: backend
   tags: [error-handling, rest, http, controller]
@@ -15,28 +15,33 @@ user-invocable: false
 
 - Centralizing REST error handling
 - Mapping business exceptions to HTTP status codes
-- Wrapping third-party API errors at the integration boundary
+- Wrapping third-party SDK errors at the integration boundary
 
 ## Rules
 
-- `@RestControllerAdvice` is the only place that maps exceptions to HTTP - no try/catch in controllers for business logic
-- Business exceptions extend a single `DomainException` base carrying `HttpStatus` and `errorCode`
-- Response body uses `ProblemDetail` (RFC 9457) - never custom error envelopes
-- Never expose stack traces to clients; log them server-side at `ERROR` only for unexpected failures (`WARN` or below for expected business errors)
-- Spring resolves `@ExceptionHandler` by most-specific type - a `DomainException` handler covers all subclasses
+- `@RestControllerAdvice` is the only place that maps exceptions to HTTP; controllers and services throw, never catch for response shaping
+- Business exceptions extend one `DomainException` base carrying `HttpStatus` and `errorCode`; one handler covers the hierarchy
+- Response body is `ProblemDetail` (RFC 9457); enable via `spring.mvc.problemdetails.enabled: true`
+- Log unexpected failures at `ERROR` with stack trace, expected business errors at `WARN` or below, and never leak stack traces to clients
+- Wrap vendor SDK exceptions at the integration boundary so callers depend only on domain types
 
-## Domain Exception → HTTP Mapping
+## Exception to HTTP Mapping
 
-| Exception                                       | Status  | When                            |
-| ----------------------------------------------- | ------- | ------------------------------- |
-| `ValidationException` / `MethodArgumentNotValidException` | 400 | Input validation failure        |
-| `AuthenticationException`                       | 401     | Missing/invalid credentials     |
-| `AccessDeniedException`                         | 403     | Authn ok, authz failed          |
-| `NotFoundException` / `EntityNotFoundException` | 404     | Resource missing                |
-| `ConflictException` / `DataIntegrityViolationException` | 409 | Unique / optimistic-lock conflict |
-| `UnprocessableEntityException`                  | 422     | Valid format, invalid business state |
-| `RateLimitException`                            | 429     | Rate limited                    |
-| Unhandled `RuntimeException`                    | 500     | System failure - log stack trace |
+| Exception                                                | Status |
+| -------------------------------------------------------- | ------ |
+| `MethodArgumentNotValidException`, `ConstraintViolationException`, `HttpMessageNotReadableException`, `MethodArgumentTypeMismatchException` | 400 |
+| `AuthenticationException`                                | 401    |
+| `AccessDeniedException`                                  | 403    |
+| `NotFoundException` (domain)                             | 404    |
+| `HttpRequestMethodNotSupportedException`                 | 405    |
+| `ConflictException`, `DataIntegrityViolationException`, `OptimisticLockingFailureException` | 409 |
+| `HttpMediaTypeNotSupportedException`                     | 415    |
+| `MaxUploadSizeExceededException`                         | 413    |
+| `UnprocessableEntityException` (domain)                  | 422    |
+| `RateLimitedException` (domain)                          | 429    |
+| Unhandled `Exception`                                    | 500    |
+
+Spring 6.2+: extend `ResponseEntityExceptionHandler` to convert framework defaults to `ProblemDetail`, or throw `ErrorResponseException` directly for one-off cases.
 
 ## Patterns
 
@@ -54,105 +59,88 @@ public abstract class DomainException extends RuntimeException {
     public String getErrorCode() { return errorCode; }
 }
 
-public class OrderNotFoundException extends DomainException {
+public final class OrderNotFoundException extends DomainException {
     public OrderNotFoundException(Long id) {
         super("Order not found: " + id, NOT_FOUND, "ORDER_NOT_FOUND");
     }
 }
-
-public class InsufficientStockException extends DomainException {
-    public InsufficientStockException(String sku, int requested, int available) {
-        super("Insufficient stock for %s: requested %d, available %d".formatted(sku, requested, available),
-              CONFLICT, "INSUFFICIENT_STOCK");
-    }
-}
 ```
 
-### Global handler with ProblemDetail
+Mark retryable failures with a sibling abstract (`RetryableException extends DomainException`) so callers can branch without string-matching messages.
+
+### Global handler
 
 ```java
-@Slf4j @RestControllerAdvice
+@RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    // Catches every DomainException subclass via type hierarchy
     @ExceptionHandler(DomainException.class)
-    public ProblemDetail handleDomain(DomainException ex) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
-        pd.setTitle(ex.getErrorCode());
-        pd.setProperty("traceId", MDC.get("traceId"));
-        return pd;
+    ProblemDetail handleDomain(DomainException ex) {
+        log.warn("{}: {}", ex.getErrorCode(), ex.getMessage());
+        return problem(ex.getStatus(), ex.getErrorCode(), ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
-        ProblemDetail pd = ProblemDetail.forStatus(BAD_REQUEST);
-        pd.setTitle("Validation Failed");
+    ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+        var pd = problem(BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed");
         pd.setProperty("fieldErrors", ex.getBindingResult().getFieldErrors().stream()
-            .collect(toMap(FieldError::getField,
-                fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "invalid",
-                (a, b) -> a)));
-        pd.setProperty("traceId", MDC.get("traceId"));
+            .collect(toMap(FieldError::getField, FieldError::getDefaultMessage, (a, b) -> a)));
         return pd;
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
-        return problem(CONFLICT, "Conflict", "A record with the given value already exists");
+    @ExceptionHandler(Exception.class)
+    ProblemDetail handleUnexpected(Exception ex) {
+        log.error("Unexpected error", ex);
+        return problem(INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred");
     }
 
-    @ExceptionHandler(Exception.class)
-    public ProblemDetail handleUnexpected(Exception ex) {
-        log.error("Unexpected error", ex);
-        return problem(INTERNAL_SERVER_ERROR, null, "An unexpected error occurred");
+    private static ProblemDetail problem(HttpStatus status, String code, String detail) {
+        var pd = ProblemDetail.forStatusAndDetail(status, detail);
+        pd.setTitle(code);
+        pd.setProperty("traceId", MDC.get("traceId"));
+        return pd;
     }
 }
 ```
 
-Other framework exceptions worth explicit handlers (or extend `ResponseEntityExceptionHandler` to convert defaults to `ProblemDetail`): `HttpMessageNotReadableException` (400), `MethodArgumentTypeMismatchException` (400), `ConstraintViolationException` (400), `HttpRequestMethodNotSupportedException` (405), `HttpMediaTypeNotSupportedException` (415), `MaxUploadSizeExceededException` (413).
+The `DomainException` handler covers every subclass via Spring's most-specific-type resolution; no per-subclass handler needed.
 
-### Wrapping external API errors
+### Wrapping vendor SDK errors
 
-Classify and wrap at the integration boundary so callers never depend on the vendor SDK.
+Classify at the boundary; callers see domain types only.
 
 ```java
-@Component @RequiredArgsConstructor
-public class StripePaymentGateway implements PaymentGateway {
+@Component
+class StripePaymentGateway implements PaymentGateway {
     public PaymentResult charge(PaymentRequest req) {
         try {
-            return PaymentResult.success(stripeClient.createCharge(req.amount(), req.currency()).getId());
+            return PaymentResult.success(stripeClient.createCharge(req).getId());
         } catch (CardException e) {
             throw new PaymentDeclinedException(req.orderId(), e.getDeclineCode());
-        } catch (RateLimitException e) {
-            throw new PaymentRetryableException(req.orderId(), "Rate limited", e);
+        } catch (com.stripe.exception.RateLimitException e) {
+            throw new PaymentRetryableException(req.orderId(), e);
         } catch (StripeException e) {
-            throw new PaymentGatewayException(req.orderId(), e.getMessage(), e);
+            throw new PaymentGatewayException(req.orderId(), e);
         }
     }
 }
 ```
 
-For retry-vs-permanent classification, mark retryable exceptions via a marker class (`RetryableException extends DomainException`).
-
-Enable ProblemDetail conversion site-wide:
-
-```yaml
-spring.mvc.problemdetails.enabled: true
-```
-
 ## Output Format
 
 ```
-Exception: {class}
-HTTP Status: {code and name}
+Exception: {fully-qualified class}
+HTTP Status: {code and reason}
 Error Code: {domain code}
-Logged: {ERROR | WARN | none}
+Logged: {ERROR | WARN | INFO | none}
 Response Detail: {client-visible message}
 ```
 
 ## Avoid
 
-- Try/catch in controllers
+- Try/catch in controllers for response shaping
 - Custom error envelopes when `ProblemDetail` is available
-- Logging expected business exceptions (404, 400) as `ERROR`
+- Logging expected business exceptions (404, 400, 409) at `ERROR`
 - Leaking vendor exception types past the integration boundary
+- Per-subclass handlers when the `DomainException` base handler suffices
