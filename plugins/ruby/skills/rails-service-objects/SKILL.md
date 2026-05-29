@@ -22,10 +22,10 @@ user-invocable: false
 - One service, one responsibility - verb-named (`FulfillOrder`, `ChargeCustomer`)
 - Always return `Result`; never raw values or exceptions for expected failures
 - Multi-model mutations in `ActiveRecord::Base.transaction`
-- External API calls (Stripe, S3, HTTP) live **outside** the transaction
-- Dispatch Sidekiq jobs **after** the transaction commits
+- External API calls (Stripe, S3, HTTP) live outside the transaction
+- Dispatch Sidekiq jobs after the transaction commits
 - Validate inputs in `initialize` (`ArgumentError` on invariants)
-- Authorization in controllers (Pundit), not services - keeps services framework-light
+- Authorization in controllers (Pundit), not services
 - Decompose services >100 lines
 
 ## Patterns
@@ -38,22 +38,14 @@ class Result
   attr_reader :value, :errors, :code
 
   def initialize(success:, value: nil, errors: [], code: nil)
-    @success = success
-    @value = value
-    @errors = errors
-    @code = code
+    @success, @value, @errors, @code = success, value, Array(errors), code
   end
 
   def success? = @success
   def failure? = !@success
 
-  def self.success(value = nil)
-    new(success: true, value: value)
-  end
-
-  def self.failure(errors, code: nil)
-    new(success: false, errors: Array(errors), code: code)
-  end
+  def self.success(value = nil)          = new(success: true, value: value)
+  def self.failure(errors, code: nil)    = new(success: false, errors: errors, code: code)
 end
 ```
 
@@ -79,8 +71,7 @@ Top-level for orchestrators; subdirectory for sub-services owned by one orchestr
 ```ruby
 class FulfillOrder
   def initialize(order:, fulfilled_by: nil)
-    @order = order
-    @fulfilled_by = fulfilled_by
+    @order, @fulfilled_by = order, fulfilled_by
     raise ArgumentError, "Order required"           unless @order
     raise ArgumentError, "Order must be confirmed"  unless @order.confirmed?
   end
@@ -110,16 +101,16 @@ class FulfillOrder
 end
 ```
 
-Inventory decrement under concurrency requires row locking - `lock("FOR UPDATE")` prevents oversell. Without it the read-decrement is racy.
+Stock decrement under concurrency requires row locking - `lock("FOR UPDATE")` prevents oversell.
 
 ### External API Calls and Compensating Actions
 
-Network calls inside `Model.transaction` hold the connection across the round-trip and can produce inversions:
+Network calls inside `Model.transaction` hold the connection across the round-trip and produce inversions:
 
 - Stripe call inside transaction + transaction rollback after success = "paid but no order"
 - Stripe call outside transaction + Stripe success + DB write fails = same inversion, but now you control it
 
-Correct order: validate -> charge (outside txn) -> open transaction with the resulting payment ID in hand -> commit -> dispatch jobs. If the DB write fails after charging, enqueue a reconciliation job to refund or complete:
+Correct order: validate -> charge (outside txn) -> open transaction with the resulting payment ID -> commit -> dispatch jobs. If the DB write fails after charging, enqueue a reconciliation job (the compensating action) - inline refund compounds failure:
 
 ```ruby
 def call
@@ -137,8 +128,6 @@ def call
 end
 ```
 
-The reconciliation job is the compensating action - inline refund would compound failure.
-
 ### Idempotency Keys
 
 For mutating services callable via "at-least-once" paths (HTTP retry, Sidekiq retry, double-click):
@@ -146,8 +135,7 @@ For mutating services callable via "at-least-once" paths (HTTP retry, Sidekiq re
 ```ruby
 class ChargeCustomer
   def initialize(cart:, idempotency_key:)
-    @cart = cart
-    @idempotency_key = idempotency_key
+    @cart, @idempotency_key = cart, idempotency_key
   end
 
   def call
@@ -156,14 +144,12 @@ class ChargeCustomer
     end
 
     payment = Payment.create!(
-      cart_id: @cart.id,
-      amount_cents: @cart.total_cents,
-      idempotency_key: @idempotency_key,   # unique index
-      status: :pending
+      cart_id: @cart.id, amount_cents: @cart.total_cents,
+      idempotency_key: @idempotency_key, status: :pending     # column has unique index
     )
     intent = Stripe::PaymentIntent.create(
       { amount: payment.amount_cents, ... },
-      idempotency_key: @idempotency_key    # forward to upstream
+      idempotency_key: @idempotency_key                       # forward upstream
     )
     payment.update!(stripe_id: intent.id, status: :authorized)
     Result.success(payment)
@@ -185,9 +171,7 @@ class ChargeCustomer
 end
 ```
 
-Unique index on `idempotency_key` turns a race into a `RecordNotUnique` we recover cleanly. Forward the key to the upstream so the gateway also dedupes.
-
-The orchestrator threads the key through all child services so a single replay produces consistent results across the chain.
+Unique index on `idempotency_key` turns a race into `RecordNotUnique` we recover cleanly. The orchestrator threads the key through all child services so a replay produces consistent results across the chain.
 
 ### Nested Transactions and `requires_new`
 
@@ -195,26 +179,10 @@ When A calls B and both open `transaction`, the inner is a savepoint by default.
 
 Two correct patterns:
 
-1. **Outer service owns the transaction**, inner services don't open one. Simplest - prefer this when B is called only from A.
-2. **Inner uses `requires_new: true`** - opens a savepoint that rolls back independently. Use when B is called from multiple places.
+1. Outer service owns the transaction; inner services don't open one. Prefer this when B is called only from A.
+2. Inner uses `requires_new: true` - opens a savepoint that rolls back independently. Use when B is called from multiple places.
 
-```ruby
-ActiveRecord::Base.transaction(requires_new: true) do
-  @payment = Payment.create!(...)
-  raise ActiveRecord::Rollback if gateway_failed?
-end
-```
-
-Sidekiq dispatch inside a nested transaction has the same pitfall - the savepoint commits at the inner end but the outer is still open. Use `after_commit_everywhere` (see `rails-sidekiq-patterns`):
-
-```ruby
-include AfterCommitEverywhere
-
-ActiveRecord::Base.transaction do
-  @order.update!(status: :processing)
-  after_commit { ShipmentNotificationJob.perform_async(@order.id) }
-end
-```
+For job dispatch inside nested transactions, use `after_commit_everywhere` so the dispatch fires after the outermost commit - see `rails-sidekiq-patterns`.
 
 ### Composition (Orchestrator)
 
@@ -250,33 +218,31 @@ end
 
 ### Controller Usage
 
-Authorization belongs here:
+Authorize, call, branch on `result.code`:
 
 ```ruby
-class CheckoutsController < ApplicationController
-  def create
-    @cart = current_user.cart
-    authorize @cart, :checkout?
+def create
+  @cart = current_user.cart
+  authorize @cart, :checkout?
 
-    result = Checkout.new(
-      cart: @cart,
-      payment_method_id: params.require(:payment_method_id),
-      idempotency_key: request.headers["Idempotency-Key"] || "cart-#{@cart.id}-#{@cart.updated_at.to_i}"
-    ).call
+  result = Checkout.new(
+    cart: @cart,
+    payment_method_id: params.require(:payment_method_id),
+    idempotency_key: request.headers["Idempotency-Key"] || "cart-#{@cart.id}-#{@cart.updated_at.to_i}"
+  ).call
 
-    if result.success?
-      render json: OrderSerializer.new(result.value), status: :created
-    else
-      render json: { errors: result.errors, code: result.code }, status: status_for(result.code)
-    end
+  if result.success?
+    render json: OrderSerializer.new(result.value), status: :created
+  else
+    render json: { errors: result.errors, code: result.code }, status: status_for(result.code)
   end
+end
 
-  private
+private
 
-  def status_for(code)
-    { cart_invalid: :unprocessable_entity, out_of_stock: :conflict,
-      payment_declined: :payment_required, conflict: :conflict }.fetch(code, :unprocessable_entity)
-  end
+def status_for(code)
+  { cart_invalid: :unprocessable_entity, out_of_stock: :conflict,
+    payment_declined: :payment_required, conflict: :conflict }.fetch(code, :unprocessable_entity)
 end
 ```
 
@@ -296,12 +262,10 @@ Result: Success({value type}) | Failure({code enum: out_of_stock | payment_decli
 ## Avoid
 
 - Wrapper around a single AR method - call the method directly
-- Services > 100 lines - decompose
 - Services that only call other services without adding logic - unnecessary indirection
 - Raw exceptions for expected failures - use Result
-- `.perform_async` inside a DB transaction
-- External API calls inside a DB transaction
+- `.perform_async` or external API call inside a DB transaction
 - Authorization inside a service - belongs in the controller
-- Missing input validation - fail fast with `ArgumentError`
 - Inline refund / undo on partial failure - enqueue a reconciliation job
 - Stock decrement without `lock("FOR UPDATE")` - races oversell
+- Inner `transaction` rescued by outer service - savepoint commits partial writes

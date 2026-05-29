@@ -103,24 +103,17 @@ class LedgerEntriesController < ApplicationController
 end
 ```
 
-### Transaction isolation: three-tier framework
+### Transaction isolation: three tiers
 
-The intuitive "RR for web, RC for jobs" is half right, half footgun. Worker code hits RR's stale-snapshot and gap-lock pathologies more than web, but blanket-setting RC on the Sidekiq pool changes shared-service semantics silently.
+"RR for web, RC for jobs" silently changes shared-service behavior. Escalate per-transaction at the call site instead.
 
-**Recommendation: per-transaction RC at the call site** - visible to reviewers, easy to grep, easy to undo.
+| Tier | Approach | Use when |
+| ---- | -------- | -------- |
+| 1 (default) | Keep RR (MySQL) / RC (PG); shorten transactions | Most "stale data" / deadlock complaints - chunked transactions + PK locks resolve at zero cost |
+| 2 | Per-transaction `isolation: :read_committed` at the call site | `SKIP LOCKED` claim under contention; fresh reads of concurrent counters; hot-row re-reads. Aurora/RDS MySQL is RC-safe with `binlog_format=ROW` (default since 5.7.7) |
+| 3 | Per-connection RC via Sidekiq middleware | Only when Tier 2 wrapping gets noisy. Audit shared services; middleware must `ensure` reset or isolation leaks to the next job |
 
-**Tier 1 - Default: keep RR, fix the transaction shape.** Most "stale data" / deadlock complaints under RR are symptoms of long transactions. A 30s transaction sees a 30s-old snapshot and holds 30s of gap locks; a 200ms one doesn't. Apply chunked transactions + lock-by-PK first - resolves ~80% of cases at zero cost.
-
-**Tier 2 - Per-transaction RC at the call site.** Aurora/RDS MySQL with `binlog_format=ROW` (default since 5.7.7) makes RC replication-safe - the "RR is the MySQL default because SBR needed it" reason is obsolete on modern RDS/Aurora.
-
-Use Tier 2 for:
-- `SKIP LOCKED` queue claim under contention - RC reduces gap-lock cascades
-- Reconciliation that wants fresh reads of concurrently-updated counters
-- Hot-row updates re-read after each commit
-
-Don't use Tier 2 for:
-- Jobs that scan rows A and B and join them in app code expecting a consistent snapshot - keep RR or restructure into one SQL join
-- "Feels safer" without a measured contention or staleness problem
+Don't escalate for jobs that scan rows A and B expecting one snapshot - keep RR or fold into one SQL join. PostgreSQL: escalate the other direction with `isolation: :repeatable_read` when a stable snapshot is needed.
 
 ```ruby
 ApplicationRecord.transaction(isolation: :read_committed) do
@@ -129,10 +122,6 @@ ApplicationRecord.transaction(isolation: :read_committed) do
   WorkItem.where(id: ids).update_all(state: "claimed")
 end
 ```
-
-**Tier 3 - Per-connection RC (Sidekiq middleware).** Only when most transactions on the worker process want RC and per-transaction wrapping gets noisy. Audit shared services first. The middleware must `ensure` reset to default - otherwise isolation leaks to the next job on the same connection.
-
-PostgreSQL: default is already RC; for code that needs a stable snapshot, use `transaction(isolation: :repeatable_read)`.
 
 ### Nested transactions and isolation
 

@@ -27,8 +27,9 @@ user-invocable: false
 - Parameterized queries only - never string interpolation
 - `find_each` / `in_batches` for large datasets - never `.all.each`
 - `exists?` over `any?`; `size` over `count` on loaded associations
-- Lock by primary key only on MySQL `REPEATABLE READ` - non-PK scans gap-lock ranges
-- Side-effect callbacks (jobs, mail, HTTP) go in `after_commit`, never `after_save`
+- Side-effect callbacks (jobs, mail, HTTP) in `after_commit`, never `after_save`
+- Under MySQL `REPEATABLE READ`: lock by primary key only, no network calls inside the critical section
+- Use `update!` over `update_attribute` - the latter skips validations
 
 ## Patterns
 
@@ -44,13 +45,7 @@ User.preload(:orders)                                           # always separat
 User.eager_load(:orders).where(orders: { status: :active })     # LEFT OUTER JOIN (WHERE on assoc)
 ```
 
-Surface lazy loads in dev:
-
-```ruby
-# config/environments/development.rb
-config.active_record.strict_loading_by_default = true   # raises on lazy load (Rails 6.1+)
-# Gemfile (development): gem "bullet"
-```
+Surface lazy loads in dev: `config.active_record.strict_loading_by_default = true` (Rails 6.1+) and `gem "bullet"`.
 
 ### Scopes and Enum
 
@@ -86,7 +81,7 @@ normalizes :email, with: ->(e) { e.strip.downcase }
 
 ### Callbacks: `after_save` vs `after_commit`
 
-`after_save` fires **inside** the transaction. `after_commit` fires **after** the outermost transaction commits.
+`after_save` fires inside the transaction; `after_commit` fires after the outermost transaction commits.
 
 | Use case                          | Callback        | Why                                               |
 | --------------------------------- | --------------- | ------------------------------------------------- |
@@ -96,7 +91,7 @@ normalizes :email, with: ->(e) { e.strip.downcase }
 | Compute a derived in-row column   | `before_save`   | Must persist with the same row                    |
 | Audit row inside the same txn     | `after_save`    | Rolls back atomically with the parent             |
 
-Callback inside a locked transaction (`with_lock`, `Model.lock.find`) that makes a network call holds the row lock for the network round-trip - the most common cause of `Lock wait timeout` storms.
+A callback inside a locked transaction (`with_lock`, `Model.lock.find`) that makes a network call holds the row lock for the network round-trip - the most common cause of `Lock wait timeout` storms.
 
 Prefer service objects for business logic; reserve callbacks for invariants tied to the row itself (normalization, derived columns, audit).
 
@@ -147,12 +142,7 @@ end
 
 Don't wrap `with_lock` in an outer `Model.transaction` - redundant and confusing.
 
-**MySQL under default `REPEATABLE READ`: lock granularity is row + gap (next-key lock).** Non-unique-index range scans gap-lock the range, blocking inserts. The #1 source of MySQL deadlocks in Sidekiq workloads.
-
-Two rules under MySQL:
-
-1. Lock by primary key only.
-2. Keep the critical section short - no network calls, no `find_each`, no callbacks that fire HTTP/Sidekiq inline.
+**MySQL under default `REPEATABLE READ`: lock granularity is row + gap (next-key lock).** Non-unique-index range scans gap-lock the range, blocking inserts - the #1 source of MySQL deadlocks in Sidekiq workloads. Lock by PK; keep the critical section short.
 
 For multiple rows, fetch IDs unlocked first, then lock per-ID:
 
@@ -169,7 +159,7 @@ PostgreSQL has no gap-lock equivalent; the lock-by-PK and short-section discipli
 
 ### Optimistic Locking
 
-Add a `lock_version` column for low-contention concurrent updates. Rails bumps it on every update and raises `ActiveRecord::StaleObjectError` when another writer beat this one.
+Add `lock_version` for low-contention concurrent updates. Rails bumps it on every update and raises `ActiveRecord::StaleObjectError` when another writer beat this one.
 
 ```ruby
 add_column :orders, :lock_version, :integer, null: false, default: 0
@@ -179,19 +169,14 @@ For hot rows with frequent contention, optimistic produces `StaleObjectError` st
 
 ### Association Side Effects on Save
 
-`update`/`save` can load associations the action body never references. The cause is declarative (model file or initializer), not in the controller. When `.includes` "fixes" an N+1 on an update action without you wanting those associations in scope, find the source:
+`update`/`save` can load associations the action body never references. The cause is declarative (model file or initializer), not in the controller. When `.includes` "fixes" an N+1 on an update action without you wanting those associations in scope, find and remove the source:
 
 - `belongs_to :parent, touch: true` - saving the child touches the parent's `updated_at`
 - `has_many :children, autosave: true` (explicit or via `accepts_nested_attributes_for`) - parent save iterates children
-- Callback reading `self.<association>` - forces a load at save time
+- Callback reading `self.<association>` - forces a load at save time. Use `self.foo_id` not `self.foo.id` when only the FK is needed
 - Missing `inverse_of` under `load_defaults <= 6.1` (no `has_many_inversing`)
 
-Two fixes, in order:
-
-1. **Remove the source** if the side effect isn't actually needed.
-2. **Keep it but make the load cheap**: add `inverse_of` so traversal reuses the in-memory object; if a callback only needs the FK, use `self.foo_id` not `self.foo.id` to avoid the SELECT.
-
-For an audit of implicit-config state (`has_many_inversing`, `automatic_scope_inversing`, `new_framework_defaults_*.rb`), use `rails-implicit-config-audit`.
+For an audit of implicit-config state, use `rails-implicit-config-audit`.
 
 ### Async Queries with `load_async`
 
@@ -243,15 +228,9 @@ Queries: {before} -> {after}
 
 ## Avoid
 
-- `default_scope` - infects all queries
 - N+1 in serializers - preload before serializing
 - `.includes` papering over `touch:` / `autosave:` / callback side effects - remove the source or add `inverse_of`
-- `.all.each` on large tables - use `find_each`
-- `with_lock` wrapped in an outer `Model.transaction` - redundant
 - Non-PK `lock` on MySQL `REPEATABLE READ` - gap-lock cascade
-- HTTP / Sidekiq / mail in `after_save` - use `after_commit`
 - Optimistic locking on hot rows - `StaleObjectError` storms
 - Callbacks for business logic - use service objects
-- `update_attribute` - skips validations; use `update!`
 - Missing `dependent:` on `has_many` - orphaned records
-- Enum with positional shorthand `[:a, :b]` - values shift when entries reorder

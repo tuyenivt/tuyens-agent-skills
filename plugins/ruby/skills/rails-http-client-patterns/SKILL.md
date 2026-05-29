@@ -14,20 +14,19 @@ user-invocable: false
 - Building a client wrapper for a third-party API
 - Adding retries / backoff to an existing integration
 - Diagnosing flaky calls, timeout creep, retry storms
-- Deciding what to retry, what to surface as permanent, what to push to Sidekiq
-- Setting up VCR / WebMock fixtures
+- Deciding what to retry, surface as permanent, or push to Sidekiq
 
-Scoped to **Faraday + Retriable** - the dominant Rails pairing. For `httpx` / `http.rb` / raw `Net::HTTP`, adapt the principles (timeouts, idempotency-aware retries, error taxonomy) - the code shapes assume Faraday.
+Scoped to **Faraday + Retriable**. For `httpx` / `http.rb` / raw `Net::HTTP`, adapt the principles - the code shapes assume Faraday.
 
 ## Rules
 
 - Every outbound call has explicit `open_timeout` and `timeout`
-- Retry idempotent verbs (`GET`, `HEAD`, `PUT`, `DELETE`) by default; `POST` only with `Idempotency-Key`
-- Bounded retry: ≤3 in-process attempts, exponential backoff with jitter; longer waits to Sidekiq
-- Every external call goes through a client class - never `Faraday.get` from services or controllers
-- Translate transport / HTTP errors into a domain error taxonomy at the client boundary
-- Never log full URLs, request bodies, response bodies, or `Authorization` headers
-- Tests stub at the boundary (WebMock or VCR) - no live HTTP in CI
+- Retry idempotent verbs (`GET HEAD PUT DELETE`) by default; `POST` only when `Idempotency-Key` is present
+- Bounded in-process retry: ≤3 attempts, exponential backoff with jitter; longer waits live in Sidekiq
+- Every external call goes through a client class - never `Faraday.get` from services / controllers
+- Translate transport / HTTP errors into a domain taxonomy at the client boundary; callers rescue domain errors only
+- Never log full URLs, request/response bodies, or `Authorization` headers
+- No live HTTP in CI - stub at the boundary (WebMock or VCR)
 
 ## Patterns
 
@@ -87,7 +86,9 @@ class ShipperClient
     end
   end
 end
+```
 
+```ruby
 # Service consumes the client and rescues domain errors only
 class FulfillOrder
   def call
@@ -104,30 +105,28 @@ class FulfillOrder
 end
 ```
 
-Callers rescue **domain** errors, never `Faraday::Error` - that couples business logic to the HTTP library.
+The TransientError vs PermanentError split is the contract: Sidekiq propagates transient; permanent becomes `Result.failure` -> 4xx in controllers. Rescuing `Faraday::Error` in a service couples business logic to the HTTP library.
 
 ### Timeouts
 
-| Timeout        | Default  | Recommended | Bounds                          |
-| -------------- | -------- | ----------- | ------------------------------- |
-| `open_timeout` | infinite | 1-2s        | TCP connect + TLS handshake     |
-| `timeout`      | infinite | 3-10s       | Total request after connect     |
+| Timeout        | Default  | Recommended | Notes                            |
+| -------------- | -------- | ----------- | -------------------------------- |
+| `open_timeout` | infinite | 1-2s        | TCP connect + TLS - slow connect signals dead host |
+| `timeout`      | infinite | 3-10s       | Total request after connect      |
 
-- Web request path: total external timeout < remaining request budget. Stay under 5s; push longer to Sidekiq.
-- Sidekiq path: 10-30s is fine.
-- Connect timeout < total timeout - a slow connect is almost always a dead host.
+Web request path: external timeout < remaining request budget; stay under 5s and push longer work to Sidekiq. Sidekiq path: 10-30s is fine.
 
 ### Middleware Stack
 
 Order matters - request middleware runs top-down, response bottom-up. Common mistakes:
 
-- `:json` after the body is already a string -> double-encodes
+- `:json` placed after the body is already a string -> double-encodes
 - `:raise_error` before `:json` response middleware -> raised error has unparsed body
 - `:logger` with `bodies: true` in production -> leaks tokens / PII
 
 ### Retry Strategy
 
-Faraday's built-in `:retry` for in-process retries - idempotency-aware:
+Faraday's built-in `:retry` is idempotency-aware:
 
 ```ruby
 retry_options = {
@@ -144,24 +143,20 @@ retry_options = {
 f.request :retry, retry_options
 ```
 
-`retry_if` opts `POST` back in **only** when `Idempotency-Key` is present - the correct way to retry creates without duplicates. Stripe-style APIs require this header.
+`retry_if` opts `POST` back in only when `Idempotency-Key` is present - the correct way to retry creates without duplicates. Stripe-style APIs require this header.
 
-Use `retriable` only when the retry must span beyond a single Faraday request (multi-step flow, non-Faraday call). Inside Sidekiq, prefer letting Sidekiq retry - two layers compound surprise wait times.
+Reach for `retriable` only when retry must span beyond a single Faraday request (multi-step flow, non-Faraday call). Inside Sidekiq, prefer Sidekiq's retry - stacking layers compounds wait time unpredictably.
 
-| Layer             | Retry Count | Backoff       | When                                                             |
-| ----------------- | ----------- | ------------- | ---------------------------------------------------------------- |
-| Faraday `:retry`  | 2-3         | <5s total     | Transient network blips during one request                       |
-| Retriable wrapper | 2-3         | <30s total    | Cross-call retry inside a Sidekiq job; non-Faraday client        |
-| Sidekiq job retry | 5-25        | minutes-hours | Anything that needs to wait out an outage                        |
-| Don't retry       | -           | -             | 4xx other than 408/429; permanent errors; non-idempotent POST without a key |
-
-### Error Taxonomy
-
-The dividing line is **TransientError vs PermanentError**. Sidekiq retries propagate transient; permanent become `Result.failure` mapped to 4xx in controllers.
+| Layer             | Count  | Backoff       | When                                                |
+| ----------------- | ------ | ------------- | --------------------------------------------------- |
+| Faraday `:retry`  | 2-3    | <5s total     | Transient network blips during one request          |
+| Retriable wrapper | 2-3    | <30s total    | Cross-call retry in a Sidekiq job; non-Faraday call |
+| Sidekiq retry     | 5-25   | minutes-hours | Anything that needs to wait out an outage           |
+| Don't retry       | -      | -             | 4xx other than 408/429; non-idempotent POST without a key |
 
 ### Circuit Breaker
 
-For high-volume integrations, in-process retries during a sustained outage make the outage worse. A circuit breaker trips after N consecutive failures and short-circuits for a cooldown:
+In-process retries during a sustained outage make the outage worse. Trip after N consecutive failures and short-circuit for a cooldown:
 
 ```ruby
 require "stoplight"
@@ -173,42 +168,31 @@ def create_shipment(order_id:, idempotency_key:)
 end
 ```
 
-Reach for one when:
-- Synchronous on the request path and an outage cascades into Puma worker exhaustion
-- Volume >10 req/s sustained
-- Upstream has documented SLOs already monitored
-
-For low-volume background work, Sidekiq's retry + dead set is sufficient.
+Reach for one when synchronous on the request path (outages cascade into Puma worker exhaustion), volume >10 req/s sustained, or upstream has documented SLOs. Low-volume background work doesn't need it - Sidekiq's retry + dead set is sufficient.
 
 ### Logging
 
-The boundary call is the highest-value log line - the one you grep during an incident. Capture method, host, path (not full URL - tokens in query strings), status, duration, request ID, outcome:
+The boundary call is the line you grep during an incident. Capture method, host, path (not full URL - tokens hide in query strings), status, duration, request ID:
 
 ```ruby
 ActiveSupport::Notifications.subscribe("request.faraday") do |_, start, finish, _, env|
   Rails.logger.info(
-    event: "http_client",
-    host: env[:url].host,
-    path: env[:url].path,
-    method: env[:method],
-    status: env[:status],
+    event: "http_client", host: env[:url].host, path: env[:url].path,
+    method: env[:method], status: env[:status],
     duration_ms: ((finish - start) * 1000).round,
     request_id: env.request_headers["X-Request-Id"]
   )
 end
 
+# Wire it on the connection:
 f.use :instrumentation
 ```
 
-Never log: full URL, request body, response body, `Authorization`.
-
 ### Webhooks (inbound)
 
-Verify signature **before** parsing the body. Persist `webhook_events(provider, event_id)` with a unique index for replay protection. Respond `200` quickly; dispatch work to Sidekiq. See `rails-security-patterns` for signature verification.
+Verify signature **before** parsing the body. Persist `webhook_events(provider, event_id)` with a unique index for replay protection. Respond 200 quickly; dispatch work to Sidekiq. See `rails-security-patterns` for signature verification.
 
 ### Testing
-
-No live HTTP in CI. WebMock for unit-level client tests, VCR for integration-level service/request specs.
 
 ```ruby
 # WebMock - client unit
@@ -224,9 +208,8 @@ RSpec.describe ShipperClient do
 
   it "raises RateLimitError on 429" do
     stub_request(:post, /shipper.com/).to_return(status: 429)
-    expect {
-      described_class.new.create_shipment(order_id: 7, idempotency_key: "key-1")
-    }.to raise_error(ShipperClient::RateLimitError)
+    expect { described_class.new.create_shipment(order_id: 7, idempotency_key: "key-1") }
+      .to raise_error(ShipperClient::RateLimitError)
   end
 end
 
@@ -239,13 +222,11 @@ end
 
 VCR.configure do |c|
   c.filter_sensitive_data("<SHIPPER_TOKEN>") { ENV["SHIPPER_TOKEN"] }
-  c.filter_sensitive_data("<IDEMPOTENCY_KEY>") do |i|
-    i.request.headers["Idempotency-Key"]&.first
-  end
+  c.filter_sensitive_data("<IDEMPOTENCY_KEY>") { |i| i.request.headers["Idempotency-Key"]&.first }
 end
 ```
 
-Use one per spec, not both - cassettes + stubs interact confusingly.
+WebMock for client unit specs; VCR for service / request specs that exercise the integration. One per spec - cassettes + ad-hoc stubs interact confusingly.
 
 ## Output Format
 
@@ -262,12 +243,8 @@ Tests: {WebMock unit specs | VCR cassettes - file paths}
 
 ## Avoid
 
-- `Faraday.get` / `.post` directly from services or controllers
-- Default (infinite) timeouts
-- Retrying `POST` without `Idempotency-Key`
-- Stacking retry layers (Faraday + Retriable + Sidekiq)
-- Logging full URLs, bodies, `Authorization` headers
-- Rescuing `Faraday::Error` in services
-- Live HTTP in tests
-- Retrying 4xx other than 408 / 429
+- Stacking retry layers (Faraday + Retriable + Sidekiq) - wait times compound unpredictably
 - Circuit breakers on every integration - reserve for high-volume request-path calls
+- Rescuing `Faraday::Error` in services - couples business logic to the transport
+- Retrying 4xx other than 408 / 429
+- Full URLs in logs - query string tokens leak

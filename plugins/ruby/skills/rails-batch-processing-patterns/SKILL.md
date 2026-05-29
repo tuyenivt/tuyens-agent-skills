@@ -32,7 +32,7 @@ user-invocable: false
 
 ### Three failure modes
 
-**Mode A - one transaction over the whole run.**
+**A - one transaction over the whole run.** MySQL undo log holds every pre-image until commit (10M-row update balloons undo by tens of GB); replication lag spikes; mid-run failure rolls back hours. PostgreSQL: blocks VACUUM across the database.
 
 ```ruby
 # Bad
@@ -41,23 +41,19 @@ ApplicationRecord.transaction do
 end
 ```
 
-MySQL: undo log holds every pre-image until commit (10M-row update can balloon undo by tens of GB); replication lag spikes; mid-run failure rolls back hours of work. PostgreSQL: blocks VACUUM from reclaiming dead tuples across the database.
-
-**Mode B - per-row transactions.**
+**B - per-row transactions.** 10M rows = 10M fsyncs under `innodb_flush_log_at_trx_commit=1`. Fix the chunk size, not the flush mode.
 
 ```ruby
-# Bad - one fsync per row under innodb_flush_log_at_trx_commit=1
+# Bad
 Order.where(needs_recompute: true).find_each do |order|
   ApplicationRecord.transaction { order.recompute_total! }
 end
 ```
 
-10M rows = 10M fsyncs - hours bottlenecked on disk. Fix the chunk size, not the flush mode.
-
-**Mode C - no transaction at all.**
+**C - no transaction at all.** Multi-statement updates leave half-applied state on failure.
 
 ```ruby
-# Bad - half-applied state on failure
+# Bad
 Order.where(state: "stale").update_all(state: "archived")
 OrderItem.where(order_id: archived_ids).update_all(archived: true)
 ```

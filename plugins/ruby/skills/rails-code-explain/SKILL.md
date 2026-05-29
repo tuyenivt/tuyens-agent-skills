@@ -11,143 +11,89 @@ user-invocable: false
 
 ## When to Use
 
-- A workflow needs Rails-specific signals: request lifecycle, controller filters, AR callbacks, transaction scope, autoload boundaries, ActionCable, ActiveJob
-- Target code is in a Rails app
+- Workflow needs Rails-specific signals: request lifecycle, controller filters, AR callbacks, transaction scope, autoload, ActionCable, ActiveJob
+- Target code lives in a Rails app
 
 ## Rules
 
 - Identify the layer first: controller, model, mailer, job, channel, service, concern, initializer
-- Controllers: list filters in execution order - they can short-circuit (`render`/`redirect_to`/`head`)
-- Models: surface callbacks, `validates_*`, transaction boundaries; identify `after_commit` vs `after_save` rollback semantics
-- Concerns: identify the including class - they are mixins, not isolated modules
+- Controllers: list filters in execution order; note short-circuits (`render`/`redirect_to`/`head`)
+- Models: surface callbacks, validations, transaction boundaries; distinguish `after_commit` vs `after_save` rollback semantics
+- Concerns: name the including class - they are mixins, not isolated modules
 
 ## Patterns
 
 ### Request Lifecycle
 
-```
-Rack middleware -> Routes -> Controller#action -> View / JSON -> Response
-```
+`Rack middleware -> Routes -> Controller#action -> View / JSON -> Response`
 
-- **Middleware** (`config/application.rb`): order matters; `Rack::Attack`, request logging, Warden/Devise live here
-- **Routes**: `resources :foo` -> 7 RESTful routes; nested routes change parameter names; `constraints:` filter requests
-- **Filters**: `before_action :authenticate_user!` runs unless `only:`/`except:`; `skip_before_action` removes inherited filters
-- **Action**: Strong params is the input contract
-- **View / JSON**: ERB, Jbuilder, serializers (`alba`, `jsonapi-serializer`, `active_model_serializers`)
+- Middleware order is set in `config/application.rb`; `Rack::Attack`, logging, Warden live here
+- `resources :foo` -> 7 RESTful routes; nested routes change param names; `constraints:` filters requests
+- `before_action` filters run unless skipped with `only:`/`except:`/`skip_before_action` (inherited from `ApplicationController`)
+- Strong params (`params.require(:x).permit(...)`) is the input contract; `permit!` allows everything (dangerous)
 
 ### ActiveRecord Callbacks
 
-| Callback                                     | When                                | Note                                              |
-| -------------------------------------------- | ----------------------------------- | ------------------------------------------------- |
-| `before_validation`                          | Before validators                   | Normalization                                     |
-| `before_save` / `before_create`              | Before INSERT / UPDATE              |                                                   |
-| `after_save`                                 | Inside transaction, before commit   | Rolls back atomically with parent                 |
-| `after_commit`                               | After outermost transaction commits | Use for non-DB side effects (jobs, emails, APIs)  |
-| `after_create_commit` / `after_update_commit`| Variants filtered by event          |                                                   |
-| `before_destroy`                             | Before DELETE                       | `dependent: :destroy` cascades; `:delete_all` skips|
+| Callback                                      | When                                | Note                                               |
+| --------------------------------------------- | ----------------------------------- | -------------------------------------------------- |
+| `before_validation`                           | Before validators                   | Normalization                                      |
+| `before_save` / `before_create`               | Before INSERT/UPDATE                |                                                    |
+| `after_save`                                  | Inside transaction, pre-commit      | Rolls back atomically with parent                  |
+| `after_commit`                                | After outermost transaction commits | Non-DB side effects (jobs, emails, APIs)           |
+| `after_create_commit` / `after_update_commit` | Event-filtered variants             |                                                    |
+| `before_destroy`                              | Before DELETE                       | `dependent: :destroy` cascades; `:delete_all` skips |
 
-**Callback abuse:** business logic in `after_save` creates implicit invocation - changing a record anywhere triggers side effects. Surface as a gotcha.
+Business logic in `after_save` is implicit invocation - any save anywhere triggers it. Surface as a gotcha.
 
 ### Transactions
 
-- `ActiveRecord::Base.transaction { }` opens a transaction; nested use savepoints; `requires_new: true` commits/rolls back inner independently
-- `save!` raises on failure; rescue **outside** the block
-- `update_columns` / `update_all` bypass validations and callbacks - common gotcha when an "update" silently skips logic
-- `after_commit` fires after the **outermost** transaction, not the inner
+- `ActiveRecord::Base.transaction { }`; nested -> savepoints; `requires_new: true` commits/rolls back inner independently
+- `save!` raises on failure - rescue **outside** the block
+- `update_columns` / `update_all` bypass validations and callbacks
+- `after_commit` fires after the **outermost** transaction
 
 ### N+1
 
-- `User.all.each { |u| u.posts }` -> one query per user. Fix with `User.includes(:posts)` (separate query) or `User.eager_load(:posts)` (single LEFT JOIN)
-- `bullet` flags N+1 in development
-- `to_json` on a serializer calling associations is a hidden N+1 source
+`User.all.each { |u| u.posts }` -> one query per user. Fix: `includes(:posts)` (preload, separate query) or `eager_load(:posts)` (single LEFT JOIN). `to_json` on serializers calling associations is a hidden N+1 source; `bullet` flags in dev.
 
 ### Zeitwerk (Rails 6+)
 
-- Filenames match class/module names: `app/services/order_processor.rb` -> `OrderProcessor`
-- Namespaced: `app/services/orders/processor.rb` -> `Orders::Processor`
-- Autoload errors surface lazily in dev, eagerly at boot in production
+Filenames match constants: `app/services/orders/processor.rb` -> `Orders::Processor`. Errors surface lazily in dev, eagerly at boot in production.
 
 ### Concerns
 
-- `include MyConcern` is a Ruby mixin: methods become instance methods, `included { }` runs at include time
-- `extend ActiveSupport::Concern` enables `class_methods do { }` and reliable `included` blocks
-- Concerns shared across many classes create implicit coupling
+`include MyConcern` is a mixin - methods become instance methods, `included { }` runs at include time. `extend ActiveSupport::Concern` enables `class_methods do`. Concerns shared across many classes create implicit coupling.
 
-### ActiveJob
+### ActiveJob, ActionCable, Storage, Auth
 
-- `MyJob.perform_later(arg)` enqueues; `perform_now` runs synchronously
-- Arguments must be serializable; AR records are GlobalID-serialized (re-fetched on perform); custom objects need explicit serialization
-- Default Sidekiq retry is 25 - can mask transient bugs. See `rails-sidekiq-patterns`
+- ActiveJob: `perform_later` enqueues, `perform_now` runs synchronously. Args must be serializable; AR records are GlobalID-serialized (re-fetched on perform). Sidekiq default retry is 25 - can mask transient bugs (see `rails-sidekiq-patterns`).
+- ActionCable: channels in `app/channels/`; identify user in `ApplicationCable::Connection#connect`; `stream_from`/`server.broadcast`. No HTTP session/cookie sharing by default.
+- Active Storage: `has_one_attached :x` adds polymorphic associations; variants are lazy; direct upload bypasses the Rails server.
+- Devise: `authenticate_user!` redirects/raises; `current_user` lazily reads session; `user_signed_in?` is the boolean. Warden lives in middleware.
 
-### ActionCable
+### Sidekiq / Batches / Pools
 
-- Channels in `app/channels/`; user identified via `connect` on `ApplicationCable::Connection`
-- `subscribed`/`unsubscribed` hooks; `stream_from "name"` subscribes
-- `ActionCable.server.broadcast("name", data)` publishes
-- Cable connections do not share session/cookie state with HTTP by default
-
-### Strong Params
-
-- `params.require(:user).permit(:name, :email)`
-- `permit!` allows everything - dangerous
-- Nested: `permit(profile_attributes: [:bio])` with `accepts_nested_attributes_for`
-
-### Devise / Warden (when present)
-
-- `authenticate_user!` redirects/raises if not authenticated
-- `current_user` lazily evaluates the session
-- Warden lives in middleware
-
-### Active Storage
-
-- `has_one_attached :avatar` adds polymorphic associations
-- Variants generated lazily
-- Direct upload bypasses the Rails server (signed URL)
-
-### Sidekiq, Batches, Pools
-
-When explained code involves Sidekiq, long batches, or `load_async`:
-- Each Sidekiq thread holds one DB connection. See `rails-connection-pool-sizing`
-- Ruby GC + glibc malloc cause RSS climb. See `rails-batch-processing-patterns`
-- Never wrap `find_each` in `Model.transaction`; chunk transactions. See `rails-batch-processing-patterns`
+When code involves Sidekiq, long batches, or `load_async`:
+- Each Sidekiq thread holds one DB connection (`rails-connection-pool-sizing`)
+- RSS climbs from GC + glibc malloc (`rails-batch-processing-patterns`)
+- Never wrap `find_each` in `Model.transaction`; chunk transactions (`rails-batch-processing-patterns`)
 
 ## Output Format
 
-Inject signals into `task-code-explain` sections:
+Inject into `task-code-explain` sections:
 
-**Flow Context:**
-- Layer (controller / model / job / channel / concern)
-- Controllers: filter chain in execution order, including filters from concerns and ApplicationController
-- Models: callbacks and validations that fire
-- Jobs: enqueue point, backend, retry policy
+**Flow Context:** layer; controller filter chain in execution order (incl. inherited from concerns + `ApplicationController`); model callbacks/validations that fire; job enqueue point, backend, retry policy.
 
-**Non-Obvious Behavior:**
-- `update_columns` / `update_all` bypassing validations and callbacks
-- `dependent: :delete_all` skipping callbacks
-- `after_commit` vs `after_save` rollback semantics
-- Zeitwerk filename/constant mismatches
-- N+1 in serializers or views
-- `permit!` on params
-- ActionCable not sharing session
-- Inherited filters from ApplicationController
+**Non-Obvious Behavior:** `update_columns`/`update_all` bypassing callbacks; `dependent: :delete_all` skipping callbacks; `after_commit` vs `after_save` rollback semantics; Zeitwerk filename/constant mismatches; N+1 in serializers/views; `permit!`; ActionCable not sharing session; inherited filters.
 
-**Key Invariants:**
-- Filenames match class names for Zeitwerk
-- Job arguments must be GlobalID-serializable
-- Strong params required for mass assignment
-- DB pool >= in-process thread count
+**Key Invariants:** Zeitwerk filename = constant; job args GlobalID-serializable; strong params required for mass assignment; DB pool >= in-process thread count.
 
-**Change Impact:**
-- Adding a callback: fires on every save anywhere
-- Renaming a class: must rename the file
-- Adding `before_action`: applies to every action unless filtered
-- Changing `dependent:`: switches callback firing behavior
-- Modifying a concern: every including class is affected
+**Change Impact:** new callback -> fires on every save; rename class -> rename file; new `before_action` -> applies to every action unless filtered; change `dependent:` -> changes callback firing; modify concern -> every including class affected.
 
 ## Avoid
 
-- Describing controller actions without listing the active filters
+- Describing controller actions without listing active filters
 - Treating `update_columns` and `update` as equivalent
 - Glossing over `after_commit` vs `after_save` rollback semantics
 - Listing callbacks without naming when they fire
-- Confusing Devise `authenticate_user!` (raises/redirects) with `user_signed_in?` (boolean)
+- Confusing `authenticate_user!` (raises/redirects) with `user_signed_in?` (boolean)

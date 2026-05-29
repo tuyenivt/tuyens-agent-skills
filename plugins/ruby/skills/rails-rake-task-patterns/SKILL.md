@@ -28,9 +28,10 @@ Not for: logic that belongs in a service (call the service), long-running async 
 - Idempotent - re-runs after partial failure resume, not duplicate
 - Always batch over large tables (`find_each` / `in_batches`)
 - `task: :environment` when touching Rails
-- Structured logs; exit non-zero on failure (raise or `abort`, never `exit`)
-- Pass IDs and primitives, not objects
-- Group under namespaces matching the domain
+- Structured logs; exit non-zero on failure (raise or `abort`, never `exit 0`)
+- Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
+- Group under namespaces matching the domain; one `.rake` per top-level namespace
+- Include `desc` - tasks without it are hidden from `rake -T`
 
 ## Patterns
 
@@ -49,12 +50,6 @@ namespace :orders do
 end
 
 # Good - task wires; service does the work
-class FulfillPendingOrders
-  def self.call(dry_run: false, batch_size: 500)
-    new(dry_run: dry_run, batch_size: batch_size).call
-  end
-end
-
 namespace :orders do
   desc "Fulfill pending orders. ENV: DRY_RUN=1, BATCH_SIZE=500"
   task fulfill_pending: :environment do
@@ -117,22 +112,17 @@ end
 
 ### Argument Parsing
 
-Positional for required identifiers; ENV for optional flags:
+Positional for required identifiers; ENV for optional flags. zsh requires `rake 'customers:recompute[123]'` (square brackets are globs) - document in `desc`.
 
 ```ruby
-namespace :customers do
-  desc "Recompute LTV. Usage: rake customers:recompute[123] or rake customers:recompute"
-  task :recompute, [:customer_id] => :environment do |_, args|
-    if args[:customer_id]
-      RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
-    else
-      Customer.find_each { |c| RecomputeLtv.call(customer_id: c.id) }
-    end
+task :recompute, [:customer_id] => :environment do |_, args|
+  if args[:customer_id]
+    RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
+  else
+    Customer.find_each { |c| RecomputeLtv.call(customer_id: c.id) }
   end
 end
 ```
-
-zsh requires `rake 'customers:recompute[123]'` (square brackets are globs) - document in `desc`.
 
 ### Structured Logs and Exit Codes
 
@@ -180,21 +170,9 @@ task :rebuild => :environment do
 end
 ```
 
-### Concurrent Invocation Guard
+### Leader Lock and Fan-out
 
-```ruby
-task rebuild: :environment do
-  acquired = ApplicationRecord.with_advisory_lock("reports:rebuild", timeout_seconds: 0) do
-    RebuildReports.call
-    true
-  end
-  abort "another reports:rebuild is running; exiting cleanly" unless acquired
-end
-```
-
-See `rails-db-locking-patterns` for the full leader-election pattern.
-
-### Fan-out to Sidekiq
+A rake task that mutates shared state (or fans out work) takes an advisory lock first - two cron triggers or a manual + cron overlap double-enqueue otherwise:
 
 ```ruby
 namespace :backfill do
@@ -211,7 +189,7 @@ namespace :backfill do
 end
 ```
 
-See `rails-work-splitter-patterns` for the decision matrix and `push_bulk` sizing.
+See `rails-db-locking-patterns` for the full leader-election pattern, `rails-work-splitter-patterns` for the decision matrix and `push_bulk` sizing.
 
 ### Composition
 
@@ -226,23 +204,15 @@ end
 
 `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
-### Testing
-
-See `rails-testing-patterns` Rake Task Specs. Behavioral coverage on the service spec; rake spec only verifies wiring.
-
-### File Layout
+### Layout and Testing
 
 ```
-lib/tasks/
-  orders.rake          # namespace :orders
-  reports.rake         # namespace :reports
-app/services/
-  fulfill_pending_orders.rb
-spec/tasks/
-  orders_rake_spec.rb
+lib/tasks/orders.rake          # namespace :orders
+app/services/fulfill_pending_orders.rb
+spec/tasks/orders_rake_spec.rb
 ```
 
-One `.rake` per top-level namespace. Never define tasks in `Rakefile` itself.
+Behavioral coverage lives on the service spec; the rake spec verifies wiring only. See `rails-testing-patterns` Rake Task Specs.
 
 ## Output Format
 
@@ -262,13 +232,11 @@ Exit behavior: {raises on failure | abort on precondition fail}
 
 - Business logic in `.rake` files
 - Loading entire tables (`Model.all.each`)
-- Forgetting `task: :environment`
 - Destructive tasks without `DRY_RUN` and production confirmation
 - `puts` for progress - use `Rails.logger` structured fields
 - `exit 0` after failure - cron sees success; raise or `abort`
-- AR objects through `Rake::Task#invoke`
 - Top-level tasks (no namespace) - they collide
 - Long tasks (>30 min) without resumability
 - Re-implementing retry/backoff - use a Sidekiq job
 - `default_scope` models inside backfills without `unscoped` - silent row skips
-- Skipping `desc` - hidden from `rake -T`
+- Cron fan-out without a leader lock - two triggers double-enqueue

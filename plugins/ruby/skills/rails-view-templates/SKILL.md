@@ -13,73 +13,67 @@ user-invocable: false
 
 - Generating or reviewing server-rendered views (`app/views/**/*.{erb,haml,slim}`)
 - Choosing between helpers, presenters/decorators, ViewComponent
-- Adding/auditing fragment caching, partials, `content_for`
+- Adding / auditing fragment caching, partials, `content_for`
 - Wiring Turbo Frames / Streams and Stimulus controllers
-- Auditing escaping when user data flows into a template (XSS surface)
-
-Engine-agnostic but emphasises Slim because its terse syntax hides escape-bypass operators ERB lacks.
+- Auditing escaping when user data flows into a template
 
 ## Engine Detection
 
-| Signal                                           | Engine |
-| ------------------------------------------------ | ------ |
-| `gem "slim-rails"` / `gem "slim"`                | Slim   |
-| `gem "haml-rails"` / `gem "haml"`                | HAML   |
-| Neither gem present                              | ERB    |
-| Mixed `.slim` and `.erb`                         | Match the surrounding directory's convention |
+| Signal                                | Engine |
+| ------------------------------------- | ------ |
+| `gem "slim-rails"` / `gem "slim"`     | Slim   |
+| `gem "haml-rails"` / `gem "haml"`     | HAML   |
+| Neither                               | ERB    |
+| Mixed `.slim` and `.erb`              | Match the surrounding directory |
 
-When generating new views, **always match the existing engine**. Never convert as a side effect.
+Always match the existing engine. Never convert as a side effect of an unrelated change.
 
 ## Rules
 
-- Default to escaped output: `=` (ERB/Slim/HAML)
-- Never `.html_safe` on user input - use `sanitize` with an explicit tag/attribute allowlist
-- Helpers for presentation only - no DB queries, no service calls
-- One concern per partial
-- Fragment cache keys must include `updated_at` (`cache item`, not `cache item.id`)
-- Turbo Frame `id` unique per page - use `dom_id(record)`
-- No business logic in templates - use presenters or policies
+- Default to escaped output - `=` in ERB/Slim/HAML
+- `sanitize` with an explicit tag/attribute allowlist for any HTML-bearing user input; never `html_safe` / `raw` / Slim `==` / HAML `!=` on it
+- Helpers are presentation-only: no DB queries, no service calls
+- One concern per partial; pass explicit locals
+- Fragment cache keys use the record (`cache item`), not `item.id`
+- Turbo Frame ids via `dom_id(record)` - never hand-rolled
+- No business logic in templates - use presenters, policies, or services
 
 ## Patterns
 
-### Escaping: ERB / HAML / Slim
+### Escaping by Engine
 
 ```erb
 <%# ERB %>
-<%= @order.notes %>             <%# escaped (default) %>
-<%== @order.notes %>            <%# UNESCAPED - dangerous %>
+<%= @order.notes %>             <%# escaped %>
+<%== @order.notes %>            <%# UNESCAPED %>
 <%= raw @order.notes %>         <%# UNESCAPED %>
 <%= @order.notes.html_safe %>   <%# UNESCAPED %>
 ```
 
 ```haml
--# HAML
 %p= @order.notes      -# escaped
 %p!= @order.notes     -# UNESCAPED
 ```
 
 ```slim
-/ Slim
 p = @order.notes      / escaped
 p == @order.notes     / UNESCAPED
 ```
 
-The Slim trap: `=` and `==` differ by one character. Review grep: `^\s*[a-z]+ ==` or `\s== ` in `.slim`; verify each renders trusted content (i18n, `link_to`, `form_with`).
+Review grep for Slim: `\s== ` and `^\s*[a-z]+ ==`. Each hit must render content from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path.
 
 ### Slim-Specific Traps
 
-**`==` is unescaped output, not equality.** All `==` in Slim is the unescape operator - Ruby equality doesn't appear. New Slim users coming from ERB write `==` thinking "evaluate Ruby" and silently introduce XSS.
+`==` is the unescape operator, not Ruby equality. New Slim users coming from ERB write `==` thinking "evaluate Ruby" and introduce XSS silently.
 
-**Attribute values evaluate Ruby when bare:**
+Attribute values evaluate Ruby when bare; quote them when literal:
 
 ```slim
-div class=current_user.role         / evaluates the method call
-div class="current_user.role"       / literal string
+div class=current_user.role     / evaluates the method call
+div class="current_user.role"   / literal string
 ```
 
-Quote attributes that should be literal.
-
-**Implicit closing by indentation.** A misaligned line silently changes scope:
+Implicit closing by indentation - a misaligned line silently changes scope:
 
 ```slim
 / Bug - second p is OUTSIDE the if branch (1 space vs 2)
@@ -88,40 +82,40 @@ Quote attributes that should be literal.
  p = "Tracking: #{order.tracking}"
 ```
 
-Use `slim-lint` and consistent 2-space indent.
+Enforce via `slim-lint` and a consistent 2-space indent.
 
-**`-` vs `=`.** `-` runs Ruby for side effects, no output. `=` outputs escaped. `==` outputs unescaped. The most common Slim review finding is mixing them up.
+`-` runs Ruby for side effects, no output. `=` outputs escaped. `==` outputs unescaped. Mixing them up is the most common review finding.
 
 ### Helper vs Presenter vs ViewComponent
 
-| Logic                                           | Place                  | Why                                                    |
-| ----------------------------------------------- | ---------------------- | ------------------------------------------------------ |
-| Format date / currency / number                 | Built-in helper        | `number_to_currency`, `time_ago_in_words` are idiomatic|
-| Stateless single-value transform                | Application helper     | Cheap, testable                                        |
-| Multi-attribute formatting on one model         | Presenter (Draper/POJO)| Keeps view dumb, model unpolluted                      |
-| Reusable UI with template + tests              | ViewComponent          | Encapsulated, fast tests, no view-layer boot           |
-| One-off conditional in one template             | Inline `if`            | Don't extract until used twice                         |
-| Business logic / DB query / external call       | Service object         | Never in a helper or template                          |
+| Logic                                       | Place              | Why                                                |
+| ------------------------------------------- | ------------------ | -------------------------------------------------- |
+| Date / currency / number formatting         | Built-in helper    | `number_to_currency`, `time_ago_in_words`          |
+| Stateless single-value transform            | Application helper | Cheap, testable                                    |
+| Multi-attribute formatting on one model     | Presenter / POJO   | View stays dumb, model stays unpolluted            |
+| Reusable UI with template + tests           | ViewComponent      | Encapsulated; tests skip the view-layer boot       |
+| One-off conditional in one template         | Inline `if`        | Don't extract until used twice                     |
+| Business logic / DB query / external call   | Service object     | Never in a helper or template                      |
 
-Helpers are loaded into every view as a flat namespace - collisions, no encapsulation, hard to test. ViewComponent gives `render OrderCardComponent.new(order: @order)` with a regular Ruby class unit-testable without booting the view layer.
+Helpers form a flat namespace - collisions and no encapsulation. ViewComponent gives `render OrderCardComponent.new(order: @order)` with a regular Ruby class.
 
 ### Partials
 
 ```erb
-<%# Bad - implicit local %>
+<%# Bad - implicit local, contract is invisible %>
 <%= render 'order' %>
 
-<%# Good - explicit locals; contract is visible %>
+<%# Good - explicit locals %>
 <%= render 'orders/order', order: @order, show_actions: true %>
 ```
 
-`render @orders` is fine when each item renders the partial named after its class. It's where N+1 hides - see below.
+`render @orders` is fine when each item renders its class-named partial. It's where N+1 hides - see below.
 
-`content_for :sidebar do ... end` in the view; `yield :sidebar` in the layout. Don't add inline `<script>` tags.
+`content_for :sidebar do ... end` in the view; `yield :sidebar` in the layout. Never inline `<script>` tags - wire JS via Stimulus.
 
 ### View-Side Query Smells
 
-The view layer is where N+1 usually surfaces. Three patterns to recognise on sight - the fix lives upstream (controller `includes`, `counter_cache`, presenter accepting pre-loaded data):
+The view is where N+1 surfaces; the fix lives upstream (controller `includes`, `counter_cache`, presenter accepting pre-loaded data):
 
 ```slim
 - @orders.each do |order|
@@ -134,14 +128,14 @@ Flag in review even when the view "looks fine" - the cost is invisible until ren
 
 ### Fragment Caching
 
-Russian-doll caching keys on `cache_key_with_version` (includes `updated_at`). `touch: true` on child associations bubbles writes to parent so the parent cache invalidates:
+Russian-doll caching keys on `cache_key_with_version` (includes `updated_at`). `touch: true` on child associations bubbles writes so the parent cache invalidates:
 
 ```slim
 / Wrong - key never changes
 - cache order.id do
   = render order
 
-/ Right
+/ Right - cache_key_with_version embeds updated_at
 - cache order do
   = render order
 ```
@@ -150,23 +144,10 @@ Russian-doll caching keys on `cache_key_with_version` (includes `updated_at`). `
 belongs_to :order, touch: true  # writing a line_item bumps order.updated_at
 ```
 
-```slim
-- cache order do
-  .order
-    h2 = order.number
-    - cache order.line_items do
-      ul
-        - order.line_items.each do |item|
-          - cache item do
-            li = render 'line_items/line_item', item: item
-```
-
-Cache stampede protection for hot keys:
+Hot-key stampede protection:
 
 ```ruby
-Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds) do
-  expensive_render
-end
+Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds) { expensive_render }
 ```
 
 ### Turbo Frames and Streams
@@ -177,19 +158,13 @@ end
     p Loading order ##{order.number}...
 ```
 
-`dom_id(order)` -> stable ids like `order_42`. Hand-rolling frame ids that could collide breaks navigation silently.
+`dom_id(order)` -> stable ids like `order_42`. Hand-rolled ids that could collide break navigation silently.
 
-Streams broadcast partial updates over WebSocket or as form responses:
+Streams broadcast partial updates; reuse the same partial across initial render and stream update for consistent markup:
 
 ```ruby
-respond_to do |format|
-  format.turbo_stream do
-    render turbo_stream: turbo_stream.append("orders", partial: "orders/order", locals: { order: @order })
-  end
-end
+render turbo_stream: turbo_stream.append("orders", partial: "orders/order", locals: { order: @order })
 ```
-
-Reuse the same partial across initial render and stream update for consistent markup.
 
 ### Stimulus
 
@@ -197,26 +172,20 @@ Reuse the same partial across initial render and stream update for consistent ma
 div data-controller="dropdown" data-dropdown-open-value=false
   button data-action="click->dropdown#toggle" Toggle
   ul data-dropdown-target="menu" hidden=true
-    li Item
 ```
 
-`data-action` syntax: `event->controller#method`. Do not put Ruby expressions in `data-action` values - they're JS event names parsed by Stimulus.
+`data-action` syntax is `event->controller#method` - parsed by Stimulus, not Ruby. Don't put Ruby expressions in `data-action` values.
 
 ### ViewComponent
 
 ```ruby
 class OrderCardComponent < ViewComponent::Base
   def initialize(order:, show_actions: false)
-    @order = order
-    @show_actions = show_actions
+    @order, @show_actions = order, show_actions
   end
 
   def status_badge_class
-    case @order.status
-    when "pending"   then "badge-yellow"
-    when "shipped"   then "badge-green"
-    when "cancelled" then "badge-red"
-    end
+    { "pending" => "badge-yellow", "shipped" => "badge-green", "cancelled" => "badge-red" }[@order.status]
   end
 end
 ```
@@ -231,18 +200,18 @@ end
 
 Tests use `render_inline` - no controller, no full request.
 
-### Intentional HTML rendering
-
-For markdown / rich-text / admin-curated copy, `sanitize` with an explicit allowlist - never `raw` / `html_safe` / Slim `==` / HAML `!=`:
+### Intentional HTML Rendering
 
 ```slim
 .comment-body
   = sanitize comment.body, tags: %w[p br strong em a ul ol li blockquote code], attributes: %w[href]
 ```
 
-For markdown pipelines (`Commonmarker`, `Redcarpet`, `Kramdown`), pass rendered HTML through `sanitize` even if the renderer claims safe-mode - one `raw_html: true` option re-opens XSS. The allowlist is the trust boundary.
+Pass markdown / rich-text through `sanitize` even if the renderer (Commonmarker, Redcarpet, Kramdown) claims safe-mode - one `raw_html: true` option re-opens XSS. The allowlist is the trust boundary.
 
 ## Output Format
+
+Generating:
 
 ```
 Engine: {ERB | HAML | Slim}
@@ -270,14 +239,8 @@ Issue: {one line, engine-specific idiom}
 
 ## Avoid
 
-- `.html_safe` on user input
-- `<%==`, `==`, `!=` on user data
-- Helpers issuing DB queries or calling services
 - `default_scope` reaching the view via cached partial keys - stale data leaks
-- Hand-rolled Turbo Frame ids - use `dom_id(record)`
-- Ruby expressions in `data-action` values
 - Mixing template engines without a migration plan
+- `<%==`, Slim `==`, HAML `!=` on anything reachable from user input
 - Inline `<script>` tags - use Stimulus + importmap/jsbundling
-- `render 'partial'` without explicit locals
-- `cache item.id` (key never changes) - use `cache item`
-- Slim/HAML indentation without a linter
+- Slim/HAML without a linter - indentation bugs go unnoticed

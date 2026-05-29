@@ -1,6 +1,6 @@
 ---
 name: task-rails-test
-description: Rails test plan and scaffolding: RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq job specs; coverage gap analysis.
+description: Plan Rails test strategy and scaffold RSpec/FactoryBot/Shoulda/Pundit/Sidekiq specs; assess coverage gaps by risk.
 agent: rails-test-engineer
 metadata:
   category: backend
@@ -9,138 +9,117 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing.
->
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble`. When a spec is loaded, generate one test per acceptance criterion (use `Satisfies: AC<N>` mapping in test names), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md`; surface coverage gaps as proposed amendments.
-
-# Rails Test
-
-Rails-aware test strategy and scaffolding using RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq testing, and the Rails test pyramid (model / request / system / service / job / policy).
-
-Stack-specific delegate of `task-code-test` for Ruby/Rails.
-
 ## When to Use
 
-- Designing a test strategy for a new service or module
-- Assessing coverage gaps across model / request / service / policy / job specs
+- Test strategy for a new service or module
+- Coverage-gap assessment across model / request / service / policy / job / system
 - Scaffolding RSpec specs for under-covered controllers or services
+- Adding boundary tests (authorization, validation, edge cases) to happy-path specs
 - Reviewing test pyramid balance
-- Adding boundary tests (validation, authorization, edge cases) to existing happy-path specs
 
-**Not for:** test failure debugging (`task-rails-debug`), general review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
+Not for: test failure debugging (`task-rails-debug`), general code review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-test`.
+Use skill: `behavioral-principles`.
 
-### Step 2 - Rails Test Pyramid
+### Step 2 - Stack Detect
 
-| Layer       | RSpec spec types                                            | What belongs here                                                                  |
-| ----------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Unit        | model specs, service specs, policy specs, job specs         | Validations, scopes, business rules, Pundit policies, idempotent job behavior      |
-| Integration | request specs, system specs (subset)                        | Routing, controller -> service -> model -> DB end-to-end; authorization end-to-end |
-| E2E         | system specs with `js: true` (Capybara + Selenium/Cuprite)  | Critical journeys only - checkout, signup, payment, data export                    |
+Use skill: `stack-detect`. Accept pre-confirmed stack from parent. If not Rails, redirect to `/task-code-test`.
 
-**Many** unit, **some** request, **few** system. System specs with JS are slow and brittle.
+### Step 3 - Spec-Aware Mode
 
-### Step 3 - Apply Test Patterns
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test: use skill `spec-aware-preamble`. Generate one example per acceptance criterion (`Satisfies: AC<N>` in test names), cover every NFR via `plan.md` verification steps, refuse tests for out-of-scope behavior. Never edit `spec.md`/`plan.md`/`tasks.md`; surface coverage gaps as proposed amendments.
 
-Use skill: `rails-testing-patterns` for canonical recipes. Strategy-side rules on top:
+### Step 4 - Pyramid
 
-- **Model specs**: no AR mocking - FactoryBot real records; behavior-focused names
-- **Service specs**: one example per Result outcome (success / validation failure / external failure); stub HTTP at the boundary, never AR
-- **Request specs**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any controller using `permit`; assert key fields + status + Content-Type, not full body
-- **Policy specs**: one example per `(role, action, allow|deny)` - cover every action, no implicit allows
-- **Job specs**: idempotency assertion (call `perform` twice, side effect once); bounded retry per `sidekiq_options retry: N`
-- **System specs**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
+| Layer       | RSpec types                                                | What belongs                                                                  |
+| ----------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Unit        | model, service, policy, job                                | Validations, scopes, rules, Pundit policies, idempotent job behavior          |
+| Integration | request, system (subset)                                   | Controller -> service -> model -> DB; authorization end-to-end                |
+| E2E         | system with `js: true` (Capybara + Cuprite/Selenium)       | Critical journeys only - checkout, signup, payment, data export               |
 
-### Step 4 - Test Boundaries
+**Many** unit, **some** request, **few** system. System with JS are slow and brittle.
 
-**Unit (model/service/policy/job):**
-- Model validations, scopes, custom methods, callbacks
-- Service objects (one example per Result outcome)
-- Pundit policies (one per role x action)
-- Sidekiq idempotency, argument handling, retry
+### Step 5 - Apply Patterns
 
-**Request spec:**
-- Every controller action: happy + unauthorized + validation-error
-- Auth flows (login, logout, password reset)
-- API contract assertions (response shape, status, headers)
+Use skill: `rails-testing-patterns` for canonical recipes. Strategy rules on top:
 
-**System spec:**
-- Critical journeys: signup, checkout, payment, core data export
-- Multi-page stateful UI behavior
-- **Not**: form-field validation, button states, individual component behavior - test those at lower layers
+- **Model**: no AR mocking - real FactoryBot records; behavior-focused names
+- **Service**: one example per Result outcome (success / validation failure / external failure); stub HTTP at the boundary, never AR
+- **Request**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any `permit`; assert key fields + status + Content-Type, not full body
+- **Policy**: one example per `(role, action, allow|deny)` - cover every action, no implicit allows
+- **Job**: idempotency (call `perform` twice, side effect once); bounded retry per `sidekiq_options retry:`
+- **System**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
 
-**Does NOT need a test:**
-- Rails-provided behavior: `belongs_to` association loading, default routing, default Devise endpoints (test you wired them up via request specs, not that they work)
-- Generated boilerplate
-- Trivial delegation: `delegate :name, to: :user` (framework guarantees it)
+### Step 6 - Boundaries
 
-### Step 5 - FactoryBot
+**Needs a test:** model validations/scopes/methods/callbacks; service Result branches; Pundit `(role x action)`; Sidekiq idempotency, arg shape, retry; every controller action (happy + unauthorized + validation-error); auth flows; API contract (shape, status, headers); critical journeys; multi-page stateful UI.
 
-See `rails-testing-patterns` for shape. Strategy:
+**Does NOT need a test:** Rails-provided behavior (default routing, `belongs_to` loading, default Devise endpoints - test you wired them up, not that they work); generated boilerplate; trivial delegation (`delegate :name, to: :user`).
+
+### Step 7 - FactoryBot
 
 - One factory per model; **traits** for variations - never duplicated factories
-- Default factory builds *valid record with minimum attributes* (no associations unless required for validity)
+- Default factory builds a valid record with minimum attributes (no associations unless needed for validity)
 - `build_stubbed` for unit (fastest), `build` when associations matter without DB, `create` only when persistence is required
-- `create_list(:foo, 100)` in a unit spec signals the test belongs at integration layer
+- `create_list(:foo, 100)` in a unit spec signals the test belongs at integration
 
-### Step 6 - Prioritization (when coverage is low)
+### Step 8 - Prioritize by Risk (when coverage is low)
 
-If line coverage is below ~50%, run this **before scaffolding** - it determines which specs to scaffold first. Scaffolding alphabetically is wrong when authorization holes go unspec'd while plumbing controllers get full coverage.
+If line coverage < ~50%, run this **before scaffolding**. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
-1. **Authorization and authentication**: Pundit policy specs for every API-exposed model; request specs asserting unauthorized -> 403/404 on every protected action; Devise/JWT flow specs
-2. **Data integrity**: model validations + unique-constraint enforcement; services performing writes (one happy + one failure per write); Sidekiq jobs that mutate data (idempotency + retry)
-3. **Business-critical flows**: revenue paths (checkout, billing, subscription state transitions); multi-step state machines (`AASM` / `StateMachines`)
-4. **High-churn code**: files with frequent recent commits (`git log --since="3 months ago"`); files with bug-fix history (`git log --grep="fix"`)
-5. **Plumbing**: pass-through controllers, simple CRUD - lower risk, can wait
+1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs
+2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)
+3. **Business-critical flows** - revenue (checkout, billing, subscription state transitions); multi-step state machines (AASM, `state_machines`)
+4. **High-churn code** - frequent recent commits (`git log --since="3 months ago"`); bug-fix history (`git log --grep=fix`)
+5. **Plumbing** - pass-through controllers, simple CRUD - lower risk, can wait
 
-### Step 6.5 - API Contract Testing
+### Step 9 - API Contract (public/partner APIs)
 
-For Rails apps with public or partner APIs, plain request specs assert "this endpoint returned 200 with these fields today" - they don't catch contract drift (renamed key, status 200->204, new required parameter).
+Plain request specs don't catch drift (renamed key, status 200->204, new required parameter). Pick one:
 
-| Tool         | Approach                                                                                       | Tradeoff                                          |
-| ------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `rswag`      | Specs declare OpenAPI schema inline; `rake rswag:specs:swaggerize` exports `swagger.yaml`      | Docs + contract test in one. Verbose DSL          |
-| `committee`  | Specs validate request and response against existing `swagger.yaml`/OpenAPI                    | Source of truth in schema file; specs assert      |
-| Hand-rolled  | `expect(json_response).to match_schema(...)` with `json-schema`                                | Explicit. Fine for small APIs                     |
+| Tool        | Approach                                                                       |
+| ----------- | ------------------------------------------------------------------------------ |
+| `rswag`     | Declare OpenAPI inline; `rake rswag:specs:swaggerize` exports `swagger.yaml`   |
+| `committee` | Validate request/response against existing OpenAPI schema                      |
+| Hand-rolled | `match_schema(...)` with `json-schema`                                         |
 
-Pick one - drift catches latent client breakage. Skip for internal/admin-only apps where the API has one consumer (the frontend) and contract drift is caught by the frontend's tests.
+Skip for internal/admin apps with one consumer (the frontend) where drift is caught by frontend tests.
 
-### Step 7 - Test Infrastructure Hygiene
+### Step 10 - Infrastructure Hygiene
 
-- [ ] `database_cleaner-active_record` configured (or `use_transactional_fixtures = true` for unit + request)
+- [ ] `database_cleaner-active_record` configured (or transactional fixtures)
 - [ ] `Sidekiq::Testing` configured (default `:fake`; `:inline` per-spec when end-to-end needed)
-- [ ] WebMock/VCR disable real HTTP (`WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`)
-- [ ] **Faraday adapter / SDK clients that bypass WebMock**: WebMock intercepts at `Net::HTTP` (and `http`/`excon`/`patron`/`typhoeus`/`curb` via adapter shims). A Faraday connection with `:typhoeus` / `:em_http` / `:patron` uses that transport directly; unless WebMock's matching adapter is loaded, real HTTP escapes. `aws-sdk-*` uses `Net::HTTP` by default but can be configured with custom handlers; gRPC uses its own C-extension. Confirm by writing one stubbed test and asserting the stub fired (`expect(stub).to have_been_requested`); if not, install the matching WebMock adapter, switch the Faraday adapter back to `:net_http` in test, or stub the SDK client directly. Silent passthrough is how production credentials leak into CI
+- [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`
+- [ ] **Verify HTTP stubs actually intercept.** WebMock matches `Net::HTTP` (+ adapter shims). Faraday with `:typhoeus`/`:em_http`/`:patron` bypasses WebMock unless the matching adapter is loaded; `aws-sdk-*` defaults to `Net::HTTP` but custom handlers escape; gRPC uses a C-extension. Write one stubbed test, assert `expect(stub).to have_been_requested` - if not, install the WebMock adapter, switch Faraday back to `:net_http` in test, or stub the SDK client. Silent passthrough leaks production credentials into CI.
 - [ ] `example_status_persistence_file_path` for `--only-failures`
-- [ ] `bin/rspec --order random` - tests pass in any order
-- [ ] CI runs full suite; local default runs fast unit + request (use `slow:`, `system:` tags to skip)
+- [ ] `--order random` - tests pass in any order
+- [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
 - [ ] Parallelism: `parallel_tests` or RSpec built-in for suites > 5 minutes
 
-## Review Checklist
+### Step 11 - Output
 
-For existing specs:
+Choose by request:
+- "What tests are missing?" / "review coverage" -> Coverage Assessment
+- "Write tests for X" / "scaffold specs" -> Test Scaffolds
+- "Test strategy" / "test plan" / coverage < 50% -> Strategy Doc (+ Coverage Assessment if data exists)
+- Reviewing existing specs -> apply the Review Checklist below
 
-- [ ] Spec types match what's being tested (model -> model spec, controller -> request spec, not deprecated controller spec)
-- [ ] Every controller action has request spec with happy + unauthorized + validation-error
-- [ ] Every Pundit policy has policy spec covering every action x every role
-- [ ] Every Sidekiq job has an idempotency spec
-- [ ] FactoryBot uses traits, not duplicated factories
-- [ ] No `allow(SomeModel).to receive(:find).and_return(...)` - mocking AR is a smell
-- [ ] No `it { should ... }` chains > 5 deep (split into describe blocks)
+**Review Checklist (existing specs):**
+
+- [ ] Spec types match (model spec for model, request spec for controller - no deprecated controller specs)
+- [ ] Every controller action: happy + unauthorized + validation-error request spec
+- [ ] Every Pundit policy: every action x every role
+- [ ] Every mutating Sidekiq job: idempotency spec
+- [ ] FactoryBot: traits, not duplicated factories
+- [ ] No `allow(SomeModel).to receive(:find)...` - mocking AR is a smell
+- [ ] No `it { should ... }` chains > 5 deep (split into describes)
 - [ ] System specs minimal; critical journeys only
 
 ## Output Format
-
-Which output to produce:
-- "What tests are missing?" / "review our test coverage" -> Coverage Assessment
-- "Write tests for X" / "scaffold specs" -> Test Scaffolds
-- "Test strategy" / "test plan" / coverage below 50% -> Strategy Doc (optionally with Coverage Assessment)
-- Unclear: Strategy Doc
 
 **Coverage Assessment:**
 
@@ -148,34 +127,27 @@ Which output to produce:
 ## Rails Test Coverage Assessment
 
 **Stack:** Ruby <version> / Rails <version>
-**Test framework:** RSpec <version>, FactoryBot, Shoulda-matchers
-**Coverage gaps:**
+**Framework:** RSpec <version>, FactoryBot, Shoulda-matchers
+**Gaps:**
+- **Model:** [uncovered models]
+- **Request:** [uncovered actions; missing unauthorized examples]
+- **Policy:** [uncovered Pundit policies]
+- **Service:** [uncovered services]
+- **Job:** [Sidekiq jobs without idempotency specs]
+- **System:** [critical journeys not covered]
 
-- **Model specs:** [models without coverage]
-- **Request specs:** [controllers without coverage; missing unauthorized-path examples]
-- **Policy specs:** [Pundit policies without coverage]
-- **Service specs:** [services without coverage]
-- **Job specs:** [Sidekiq jobs without idempotency specs]
-- **System specs:** [critical journeys without coverage]
-
-**Recommended pyramid balance:**
-
-- Unit (model/service/policy/job): [target count]
-- Integration (request): [target count]
-- E2E (system): [target count - keep small]
+**Pyramid target:** Unit {x} / Request {y} / System {z}
 ```
 
-**Test Scaffolds** (when generating boilerplate):
+**Test Scaffolds:** ready-to-run RSpec files using project conventions. Each scaffold:
 
-Produce ready-to-run RSpec files using project conventions. Each scaffold includes:
-
-- Right spec type (`type: :model`, `type: :request`, `type: :policy`, `type: :job`, `type: :system`)
-- FactoryBot calls (with traits) instead of `Model.new(...)`
-- Model specs: shoulda-matchers for validations and associations
-- Request specs: happy path + unauthorized + validation-error
-- Policy specs: every `(role, action)` pair
-- Job specs: idempotency + retry-behavior
-- Inline comments explaining non-obvious setup
+- Correct spec type (`type: :model | :request | :policy | :job | :system`)
+- FactoryBot (with traits) instead of `Model.new(...)`
+- Model: shoulda-matchers for validations and associations
+- Request: happy + unauthorized + validation-error
+- Policy: every `(role, action)` pair
+- Job: idempotency + retry behavior
+- Inline comments only for non-obvious setup
 
 **Strategy Doc:**
 
@@ -183,38 +155,38 @@ Produce ready-to-run RSpec files using project conventions. Each scaffold includ
 ## Rails Test Strategy
 
 **Objective:** [what this strategy achieves]
-**Pyramid balance:** Unit (model/service/policy/job) {x}% / Request {y}% / System {z}%
+**Pyramid:** Unit {x}% / Request {y}% / System {z}%
 **Tooling:** RSpec, FactoryBot (traits), Shoulda-matchers, pundit-matchers, WebMock/VCR, Cuprite
-**Sidekiq testing:** default `:fake`, `:inline` per-spec for end-to-end
-**Database isolation:** [transactional fixtures | database_cleaner truncation]
+**Sidekiq:** default `:fake`, `:inline` per-spec for end-to-end
+**DB isolation:** [transactional fixtures | database_cleaner truncation]
 **Parallelism:** [parallel_tests | none]
 **Gaps to close (prioritized):**
-
 1. [Highest risk - typically authorization or data integrity]
 2. [...]
 ```
 
 ## Self-Check
 
-- [ ] Stack confirmed
-- [ ] `rails-testing-patterns` consulted for canonical patterns
-- [ ] Pyramid mapped to RSpec spec types (model/service/policy/job at unit, request at integration, system minimal at E2E)
-- [ ] Boundaries defined: each layer covers what it does best; no duplicated assertions
-- [ ] Prioritization by risk applied when coverage is low - auth and data integrity first, plumbing last
-- [ ] FactoryBot: traits over duplicated factories; `build_stubbed` vs `build` vs `create` choice explicit
-- [ ] Sidekiq approach explicit (`:fake` default, `:inline` per-spec)
-- [ ] Test scaffolds (if generated): happy + unauthorized + validation-error; idempotency for jobs; per-role for policies
-- [ ] Spec-aware mode honored when `--spec` passed (one example per AC, NFR coverage from plan.md, no out-of-scope)
-- [ ] Review checklist applied when reviewing existing specs
+- [ ] Step 1: behavioral-principles loaded
+- [ ] Step 2: stack confirmed
+- [ ] Step 3: spec-aware mode honored when applicable (one example per AC, no out-of-scope)
+- [ ] Step 4: pyramid mapped to spec types
+- [ ] Step 5: `rails-testing-patterns` consulted
+- [ ] Step 6: boundaries defined; no duplicated assertions across layers
+- [ ] Step 7: FactoryBot uses traits; `build_stubbed`/`build`/`create` choice stated
+- [ ] Step 8: risk prioritization applied when coverage is low
+- [ ] Step 9: API contract approach chosen (or skip rationale stated)
+- [ ] Step 10: infra hygiene checklist confirmed - HTTP stubs verified to intercept
+- [ ] Step 11: output type matches request; Review Checklist applied when reviewing
 
 ## Avoid
 
-- Chasing a coverage number instead of prioritizing by risk - 100% line coverage with no policy specs misses the bigger threat
+- Chasing a coverage number instead of prioritizing by risk
 - Mocking AR in model or service specs - use FactoryBot and real DB
-- Controller specs (deprecated) - use request specs
-- Duplicating factories instead of using traits
+- Deprecated controller specs - use request specs
+- Duplicating factories instead of traits
 - `create` everywhere when `build_stubbed` would do - slow tests are abandoned tests
-- System specs for things that should be request specs (form validation, error message rendering)
+- System specs for things that belong at the request layer (form validation, error rendering)
 - Testing Rails internals - test your wiring, not the framework
 - Happy-path-only request specs - boundary tests catch the regressions that matter
 - Skipping policy specs because the controller has request specs - policies are unit-tested separately

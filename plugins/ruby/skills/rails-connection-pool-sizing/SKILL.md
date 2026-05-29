@@ -66,13 +66,6 @@ pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 `load_async` (Rails 7.1+ default 4 threads), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. Set `pool = RAILS_MAX_THREADS + 2` when any are in use.
 
-```ruby
-ActiveRecord::Base.connection_pool.stat
-# { size: 7, connections: 5, busy: 4, dead: 0, idle: 1, waiting: 0 }
-```
-
-`waiting > 0` repeatedly = undersized.
-
 ### Sidekiq sizing
 
 Sidekiq pods are a separate process from Puma - separate pool entry in the deployment-wide sum.
@@ -117,7 +110,9 @@ Aurora MySQL: per writer; readers have their own. RDS PG: similar formula (`/953
 ### Detection in production
 
 ```ruby
-ActiveRecord::Base.connection_pool.stat  # waiting > 0 = undersized
+ActiveRecord::Base.connection_pool.stat
+# { size: 7, connections: 5, busy: 4, dead: 0, idle: 1, waiting: 0 }
+# waiting > 0 repeatedly = undersized
 ```
 
 DB-side:

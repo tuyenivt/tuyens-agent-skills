@@ -62,14 +62,20 @@ end
 change_column_null :orders, :status, false
 ```
 
-**Large tables (>1M rows): use NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes:
+**Large tables (>1M rows): use NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes. Run VALIDATE in a separate migration with `disable_ddl_transaction!`:
 
 ```ruby
+# Migration 1
 add_check_constraint :orders, "status IS NOT NULL", name: "orders_status_null", validate: false
-validate_check_constraint :orders, name: "orders_status_null"
+
+# Migration 2
+disable_ddl_transaction!
+def change
+  validate_check_constraint :orders, name: "orders_status_null"
+end
 ```
 
-`strong_migrations` flags `change_column_null` on large tables and recommends this. In PG 12+, with a validated CHECK in place, promoting to column-level NOT NULL is metadata-only.
+PG 12+: with a validated CHECK in place, `change_column_null` reuses it and becomes metadata-only.
 
 ### Partial Indexes
 

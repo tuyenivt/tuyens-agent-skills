@@ -36,7 +36,7 @@ user-invocable: false
 # config/initializers/strong_migrations.rb
 StrongMigrations.lock_timeout      = 5.seconds
 StrongMigrations.statement_timeout = 1.hour
-StrongMigrations.target_version    = 12
+StrongMigrations.target_version    = "8.0"  # MySQL version; gates INSTANT checks
 ```
 
 ### Online DDL: INPLACE / LOCK=NONE

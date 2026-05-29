@@ -21,8 +21,8 @@ user-invocable: false
 
 - Pick one idiom (modulo / SKIP LOCKED / shards table) - mixing creates ambiguous row ownership
 - Idempotency at shard granularity
-- Rake task that fans out takes a leader lock first
-- `push_bulk` in batches of 1000 - larger blows Redis memory, smaller wastes round-trips
+- Rake fan-out takes a leader lock first (see `rails-rake-task-patterns`)
+- `push_bulk` in batches of 1000 - >5000 risks Redis client buffer; <100 wastes round-trips
 - `SKIP LOCKED` claims hit a unique-index path (PK or unique secondary), never non-unique scan
 - Persist cursor / shard state so SIGTERM doesn't lose progress
 - Cap parallelism at the slowest shared resource (DB connections, replication lag, third-party rate limit)
@@ -31,14 +31,14 @@ user-invocable: false
 
 ### Decision matrix
 
-| Workload                                        | Pattern             | Why                                       |
-| ----------------------------------------------- | ------------------- | ----------------------------------------- |
-| Static dataset, uniform distribution            | Modulo partitioning | No lock cost; reshard rare                |
-| Stream of new work (queue-shaped)               | `SKIP LOCKED`       | Naturally drains; tolerates crashes       |
-| One-shot backfill of >100M rows, observable     | Shards table        | Resumable, observable, throttle per-shard |
-| Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Modulo would skew      |
-| Per-tenant batches                              | Modulo or shards on tenant_id | Natural sharding key            |
-| Continuous queue with strict per-key ordering   | Single-worker queue / Sidekiq Pro | `SKIP LOCKED` won't preserve order |
+| Workload                                        | Pattern                            | Why                                       |
+| ----------------------------------------------- | ---------------------------------- | ----------------------------------------- |
+| Static dataset, uniform distribution            | Modulo partitioning                | No lock cost; reshard rare                |
+| Stream of new work (queue-shaped)               | `SKIP LOCKED`                      | Naturally drains; tolerates crashes       |
+| One-shot backfill of >100M rows, observable     | Shards table                       | Resumable, observable, throttle per-shard |
+| Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Modulo would skew                         |
+| Per-tenant batches                              | Modulo or shards on tenant_id      | Natural sharding key                      |
+| Continuous queue with strict per-key ordering   | Single-worker queue / Sidekiq Pro  | `SKIP LOCKED` won't preserve order        |
 
 ### (a) Static modulo partitioning
 
@@ -84,11 +84,11 @@ class DrainQueueJob
 end
 ```
 
-**MySQL caveat:** the claim hits a unique-index path (here `order(:id) limit N` uses PK). Under default RR, wrap the claim in per-transaction RC (shown). See `rails-db-locking-patterns`.
+MySQL: the claim hits a unique-index path (`order(:id) limit N` uses PK). Under default RR, wrap the claim in per-transaction RC (shown) - never set RC on the pool; web (RR) and Sidekiq would diverge. See `rails-db-locking-patterns`.
 
-**PostgreSQL:** default RC makes the `isolation:` parameter unnecessary.
+PostgreSQL: default RC makes the `isolation:` parameter unnecessary.
 
-**Idempotency:** `process_one` must be safe to re-run - a worker can crash after `claimed` but before completing.
+`process_one` must be safe to re-run - a worker can crash after `claimed` but before completing.
 
 ### (c) Shards table
 
@@ -163,26 +163,11 @@ end
 
 Full observability: `SELECT state, COUNT(*) FROM backfill_shards GROUP BY state`. Throttle by varying worker count.
 
-### Rake fan-out with leader lock
+### Fan-out shapes
 
-```ruby
-namespace :backfill do
-  desc "Recompute totals across N shards. ENV: SHARD_COUNT=8"
-  task recompute_totals: :environment do
-    shard_count = Integer(ENV.fetch("SHARD_COUNT", 8))
-    acquired = ApplicationRecord.with_advisory_lock("backfill:recompute_totals", timeout_seconds: 0) do
-      jobs = (0...shard_count).map { |i| [i, shard_count] }
-      Sidekiq::Client.push_bulk("class" => "BackfillShardJob", "args" => jobs, "queue" => "low")
-      true
-    end
-    abort "another backfill:recompute_totals is running" unless acquired
-  end
-end
-```
-
-Variants:
-- Shards-table fan-out: rake seeds the table once, then enqueues `BackfillShardWorker.perform_async(shard_name)` N times
-- `SKIP LOCKED` draining: replace rake with Sidekiq cron entry enqueuing `DrainQueueJob` N times - workers self-coordinate
+- Modulo: rake (leader lock) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
+- Shards table: rake seeds the table once, then enqueues `BackfillShardWorker.perform_async(shard_name)` N times
+- `SKIP LOCKED` draining: Sidekiq cron enqueues `DrainQueueJob` N times - workers self-coordinate, no rake leader needed
 
 ### `push_bulk` sizing
 
@@ -192,8 +177,6 @@ Order.where(state: "stale").in_batches(of: 1_000) do |batch|
                             "args" => batch.pluck(:id).map { |id| [id] })
 end
 ```
-
->5000 args risks blowing the Redis client buffer; <100 wastes round-trips.
 
 ### Sidekiq Batches (Pro / Enterprise)
 
@@ -212,22 +195,19 @@ end
 
 Without Pro: the shards-table pattern's `SELECT COUNT(*) ... WHERE state != 'done'` works.
 
-### Resumability and retry budgets
-
-- Cursor persistence: `Rails.cache.write`, shard row, or state column on the work table
-- Idempotency at chunk level: see `rails-batch-processing-patterns`
-- Retry budget: Sidekiq default 25 is too many for systemic failure. `sidekiq_options retry: 5`, route exhausted to dead set with alerting
-- Signal handling: trap SIGINT/SIGTERM in long rake tasks (see `rails-rake-task-patterns`)
-
 ### Throttling
 
 Without a cap, N workers driving the DB at full tilt produce replication lag spikes, connection exhaustion, lock-wait cascades.
 
 - Sidekiq concurrency per process (`concurrency: 5` for memory- or query-heavy queues)
 - Per-shard sleep between batches (`sleep(0.05)`)
-- Replication-lag-aware throttle - check `Aurora_replica_lag` / `pg_stat_replication.replay_lag`; pause if above threshold
+- Replication-lag-aware throttle - check `Aurora_replica_lag` / `pg_stat_replication.replay_lag`; pause above threshold
 - Token bucket via Redis for rate-limited downstream services
 - `gh-ost` / `pt-online-schema-change` for very large MySQL backfills (built-in throttling on lag and disk)
+
+### Retry budgets
+
+Sidekiq default 25 is too many for systemic failure. Use `sidekiq_options retry: 5`, route exhausted to dead set with alerting. Sidekiq retries are not resumability - design for shard-level retry instead (the shards table's `retries` column).
 
 ### MySQL vs PostgreSQL for `SKIP LOCKED`
 

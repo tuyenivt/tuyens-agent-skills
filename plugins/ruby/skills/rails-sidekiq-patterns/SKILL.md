@@ -20,7 +20,7 @@ user-invocable: false
 
 - Every job idempotent - check state before acting
 - Pass IDs only, never AR objects
-- Dispatch `.perform_async` **after** the DB transaction commits
+- Dispatch `.perform_async` after the DB transaction commits
 - No HTTP / S3 / Redis calls inside `Model.transaction` - holds row locks for the network round-trip
 - Rescue known errors; let unknown propagate to Sidekiq retry
 - Job arg payload < 1 KB - large inputs go to S3 / a row, pass the key
@@ -35,9 +35,7 @@ def perform(order_id)
   order = Order.find(order_id)
   return if order.processed?
 
-  Order.transaction do
-    order.process!
-  end
+  Order.transaction { order.process! }
 end
 ```
 
@@ -53,13 +51,11 @@ ActiveRecord::Base.transaction do
 end
 
 # Good - dispatch after commit
-ActiveRecord::Base.transaction do
-  order.update!(status: :processing)
-end
+ActiveRecord::Base.transaction { order.update!(status: :processing) }
 ShipmentNotificationJob.perform_async(order.id)
 ```
 
-When the service is itself called from a caller's transaction, dispatching "after the local block" still fires before the outer commit. Use `after_commit_everywhere`:
+When the service runs inside a caller's transaction, dispatching "after the local block" still fires before the outer commit. Use `after_commit_everywhere`:
 
 ```ruby
 require "after_commit_everywhere"
@@ -79,9 +75,11 @@ Model `after_commit` callback works when dispatch is tightly coupled to a state 
 
 ### `Sidekiq::Job` vs `ActiveJob` vs Rake
 
-- **`Sidekiq::Job`** (renamed from `Sidekiq::Worker` in 6.3+): direct access to `sidekiq_options`, `sidekiq_retry_in`, `unique_for`, batches. Default choice.
-- **`ApplicationJob` (ActiveJob)**: backend-agnostic wrapper; loses Sidekiq-specific features. Use only when swapping backends or for Action Mailer's `deliver_later`.
-- **Rake task**: foreground, no retries/UI. Ops-triggered / cron maintenance - see `rails-rake-task-patterns`.
+| Choice               | Use When                                                                  |
+| -------------------- | ------------------------------------------------------------------------- |
+| `Sidekiq::Job`       | Default. Direct access to `sidekiq_options`, `sidekiq_retry_in`, batches  |
+| `ApplicationJob`     | Backend-agnostic wrapper; only for swapping backends or `deliver_later`   |
+| Rake task            | Foreground ops / cron, no retries. See `rails-rake-task-patterns`         |
 
 ### Queue Priority
 
@@ -96,7 +94,7 @@ Model `after_commit` callback works when dispatch is tightly coupled to a state 
 
 Time-sensitive / financial -> `critical`. Email -> `mailers`. Reports / cleanup -> `low`.
 
-### Retry and Backoff
+### Retry, Backoff, Error Handling
 
 ```ruby
 class ImportDataJob
@@ -109,31 +107,26 @@ class ImportDataJob
     else (count ** 4) + 15 + (rand(10) * (count + 1))
     end
   end
-end
-```
 
-### Error Handling
-
-```ruby
-def perform(id)
-  resource = Resource.find(id)
-  ExternalApi.sync(resource)
-rescue ExternalApi::RateLimitError => e
-  self.class.perform_in(e.retry_after, id)
-rescue ExternalApi::NotFoundError
-  resource.update!(sync_status: :not_found)
-# Unknown errors propagate -> Sidekiq retries
+  def perform(id)
+    resource = Resource.find(id)
+    ExternalApi.sync(resource)
+  rescue ExternalApi::RateLimitError => e
+    self.class.perform_in(e.retry_after, id)
+  rescue ExternalApi::NotFoundError
+    resource.update!(sync_status: :not_found)
+  # Unknown errors propagate -> Sidekiq retries
+  end
 end
 ```
 
 Bare `rescue => e; logger.error(...)` swallows errors and prevents retry.
 
-### Network Calls Inside Transactions
+### Network Calls and Transactions
 
-External call inside `Model.transaction` holds row locks for the network round-trip. On upstream slowdown, fleet-wide lock-wait timeouts cascade.
+External call inside `Model.transaction` holds row locks for the network round-trip. On upstream slowdown, fleet-wide lock-wait timeouts cascade. Call outside; rely on the upstream's idempotency key to make retry safe:
 
 ```ruby
-# Good - external call outside the transaction; idempotency key makes retry safe
 def perform(order_id)
   order = Order.find(order_id)
   return if order.fulfilled?
@@ -148,25 +141,6 @@ def perform(order_id)
 end
 ```
 
-### `SKIP LOCKED` Work Claim
-
-```ruby
-def perform
-  loop do
-    claimed = ApplicationRecord.transaction(isolation: :read_committed) do
-      ids = WorkItem.where(state: "ready").order(:id).limit(100)
-                    .lock("FOR UPDATE SKIP LOCKED").pluck(:id)
-      WorkItem.where(id: ids).update_all(state: "claimed")
-      ids
-    end
-    break if claimed.empty?
-    claimed.each { |id| process_one(id) }
-  end
-end
-```
-
-MySQL: claim must hit a unique-index path (PK / unique secondary). Per-transaction `:read_committed` reduces gap-lock cascades. Do **not** set RC on the whole Sidekiq pool - shared services called from web (RR) get different semantics. See `rails-db-locking-patterns`.
-
 ### Bulk Enqueue
 
 For >100 jobs, use `push_bulk` (one Redis round-trip):
@@ -180,11 +154,11 @@ User.active.in_batches(of: 1_000) do |batch|
 end
 ```
 
-See `rails-work-splitter-patterns` for orchestrator -> per-record fan-out.
+See `rails-work-splitter-patterns` for orchestrator -> per-record fan-out and `SKIP LOCKED` claim shapes.
 
 ### Payload Discipline
 
-Sidekiq stores every job's arguments in Redis as JSON. 10 KB x 100 K jobs = 1 GB.
+Sidekiq stores every job's arguments in Redis as JSON. 10 KB x 100K jobs = 1 GB.
 
 - Pass IDs; fetch in `perform`
 - For lists, pass ID arrays
@@ -227,7 +201,7 @@ Batch.find(id).items.find_each do |item|
 end
 ```
 
-A re-enqueue on shutdown is safe because the job is idempotent.
+Re-enqueue on shutdown is safe because the job is idempotent.
 
 ### Deploy-Time Versioning
 
@@ -257,10 +231,9 @@ Sidekiq::Web.use Rack::Auth::Basic do |u, p|
   ActiveSupport::SecurityUtils.secure_compare(u, ENV["SIDEKIQ_USER"]) &
     ActiveSupport::SecurityUtils.secure_compare(p, ENV["SIDEKIQ_PASSWORD"])
 end
-
-Sidekiq::DeadSet.new.size
-Sidekiq::Queue.new("default").latency
 ```
+
+Programmatic checks: `Sidekiq::DeadSet.new.size`, `Sidekiq::Queue.new("default").latency`.
 
 ## Output Format
 
@@ -278,9 +251,7 @@ Retry: {count and backoff strategy}
 - AR objects as arguments (use IDs)
 - Jobs > 30 minutes (split)
 - Request context (`current_user`, `session`, `request`)
-- `.perform_async` inside a DB transaction
-- HTTP / S3 / Redis inside `Model.transaction`
+- `.perform_async` or HTTP / S3 / Redis inside `Model.transaction`
 - `rescue => e; log` that swallows errors and blocks retry
-- Blanket `READ COMMITTED` on the Sidekiq pool
 - Argument payloads > 1 KB
 - `Sidekiq::Testing.inline!` outside tests

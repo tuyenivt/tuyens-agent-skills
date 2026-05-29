@@ -16,10 +16,10 @@ user-invocable: false
 
 ## Rules
 
-- Every finding cites the constraint making the code redundant: FK name, NOT NULL column, unique index, enum, or framework guarantee. No citation, no finding.
-- Default severity is `[Suggestion]`. Escalate to `[High]` only when the redundancy has measurable cost: extra SELECT in a hot path, an `after_save` loading an unwanted association, a blanket `rescue` masking real bugs, or a service hiding a transaction boundary that should be visible at the call site.
-- Use `[Question]` when the justification is plausibly present but not in the diff (e.g., "is this validation needed for the signup form's inline error UX?").
-- Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, or `validates ..., uniqueness:` paired with a unique index as advisory form UX.
+- Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, or framework guarantee. No citation, no finding.
+- Default severity is `[Suggestion]`. Escalate to `[High]` only when redundancy has measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see.
+- Use `[Question]` when justification is plausible but not in the diff (e.g., "needed for signup form's inline error UX?").
+- Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, or uniqueness validation paired with a unique index as advisory UX.
 
 ## Patterns
 
@@ -68,11 +68,11 @@ enum :status, { pending: 0, confirmed: 1 }
 
 #### Presence on NOT NULL with no form path
 
-Internal table fed by Sidekiq, no controller form - the DB constraint is enough. Flag only after confirming no form/controller consumes `errors.full_messages` for this attribute.
+Internal table fed by Sidekiq, no controller form - DB constraint suffices. Flag only after confirming no form/controller consumes `errors.full_messages` for this attribute.
 
 ### Category 2: Defensive Code for Impossible States
 
-Re-checking guarantees Rails or the DB already provides adds noise and can hide real bugs by swallowing the exception that would have surfaced a regression.
+Re-checking guarantees Rails or the DB already provides adds noise and hides regressions by swallowing the exception that would have surfaced them.
 
 #### Nil guard on a non-nullable column
 
@@ -218,7 +218,7 @@ When a category has no findings, state it explicitly (`No redundant validations 
 ## Avoid
 
 - Flagging validations on user-submitted models without checking whether the form consumes the error message
-- Recommending removal of `validates ..., uniqueness:` without confirming a unique index exists - the validation may be the only thing preventing silent duplicates
+- Recommending removal of uniqueness validation without confirming a unique index exists - the validation may be the only thing preventing silent duplicates
 - Flagging a controller's `rescue ActiveRecord::RecordNotFound` before checking `ApplicationController`'s `rescue_from` config
 - Recommending changes that require a migration without saying so
 - Confusing "duplicated" with "defense in depth" - validation + unique index is correct for form UX

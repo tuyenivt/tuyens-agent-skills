@@ -15,66 +15,43 @@ user-invocable: false
 - Reviewing strong params for mass assignment / IDOR
 - Implementing rate limiting (`Rack::Attack`)
 - Auditing templates / API responses for XSS / injection
-- Setting up Rails credentials
-- Designing role-based access policies
+- Setting up Rails credentials, signed cookies, host authorization
 
 ## Rules
 
-- Never `params.permit!` or `params.to_unsafe_h`
-- Never permit ownership FKs (`:user_id`, `:account_id`, `:tenant_id`) - assign server-side
-- Every action reading/mutating a resource calls `authorize`; every index uses `policy_scope`
-- `after_action :verify_authorized` / `:verify_policy_scoped` in `ApplicationController`
+- Never `params.permit!` / `params.to_unsafe_h`; never permit ownership FKs (`:user_id`, `:account_id`, `:tenant_id`)
+- Every resource action calls `authorize`; every index uses `policy_scope`; enforce with `after_action :verify_authorized` / `:verify_policy_scoped`
 - Parameterized queries only - never string interpolation in `where`
-- Secrets in Rails credentials; never hardcoded
-- Never `html_safe` / `raw` on user input
+- Never `html_safe` / `raw` on user input - `sanitize` with an explicit tag allowlist
+- Secrets via Rails credentials; never hardcoded
+- Validate `redirect_to` targets against an allowlist
+- Re-detect upload MIME via magic bytes; never trust client `content_type`
 
 ## Patterns
 
 ### Strong Parameters
 
 ```ruby
-# Bad - mass assignment
-params.permit!
+# Bad - mass assignment, claims arbitrary user_id
+params.require(:order).permit(:total, :user_id)
+order = Order.new(order_params)
 
-# Good
-params.require(:order).permit(:total, :status, metadata: {})
-```
-
-Arrays need explicit shape - omitting brackets silently drops input:
-
-```ruby
-# Array of scalars: tag_ids: []
-# Array of nested params: items: [[:product_id, :quantity]]
+# Good - ownership server-side, explicit shape
 params.require(:order).permit(:total, tag_ids: [], items: [[:product_id, :quantity]])
+order = current_user.orders.new(order_params)
 ```
 
-### `params.expect` (Rails 8 / 7.2 backport)
+Arrays need explicit brackets; omitting them silently drops input. Same FK rule for `:account_id`, `:tenant_id`. When the client must reference one (e.g., `:product_id` to buy), validate via `policy_scope` before save.
 
-Stricter than `require.permit` - raises 400 on type mismatch, resists hash-confusion:
+`params.expect` (Rails 8 / 7.2 backport) is stricter - raises 400 on type mismatch, resists hash-confusion. Prefer on new code:
 
 ```ruby
 params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
 ```
 
-Prefer on new code.
-
-### IDOR via Nested Params
-
-```ruby
-# Bad - user can claim any user_id
-params.require(:order).permit(:total, :user_id)
-order = Order.new(order_params)
-
-# Good - ownership server-side
-params.require(:order).permit(:total)
-order = current_user.orders.new(order_params)
-```
-
-Same for `:account_id`, `:tenant_id`, `:organization_id`. If the client must reference one (e.g., `:product_id` they're buying), validate via `policy_scope` before save.
-
 ### Authentication
 
-**Rails 7.2+ `authenticate_by`** - constant-time, defeats user-enumeration timing:
+`authenticate_by` (Rails 7.2+) is constant-time and defeats user-enumeration timing. `find_by(email:)&.authenticate(...)` returns fast when the user is missing - that delta is observable.
 
 ```ruby
 class User < ApplicationRecord
@@ -85,24 +62,7 @@ end
 user = User.authenticate_by(email: params[:email], password: params[:password])
 ```
 
-`User.find_by(email: ...)&.authenticate(...)` leaks existence via timing (fast when user missing).
-
-**Devise + JWT** (API):
-
-```ruby
-class User < ApplicationRecord
-  devise :database_authenticatable, :registerable,
-         :jwt_authenticatable, jwt_revocation_strategy: JwtDenylist
-end
-
-# config/initializers/devise.rb
-Devise.setup do |config|
-  config.jwt do |jwt|
-    jwt.secret = Rails.application.credentials.devise_jwt_secret_key!
-    jwt.expiration_time = 1.hour.to_i
-  end
-end
-```
+Devise + JWT (API): use `:jwt_authenticatable` with a revocation strategy (`JwtDenylist`); load `jwt.secret` from credentials; keep `expiration_time` short (≤ 1 hour).
 
 ### Authorization - Pundit
 
@@ -128,33 +88,21 @@ class ApplicationController < ActionController::Base
     render json: { error: "Forbidden" }, status: :forbidden
   end
 end
-
-class OrdersController < ApplicationController
-  def show
-    @order = Order.find(params[:id])
-    authorize @order
-    render json: OrderSerializer.new(@order)
-  end
-
-  def index
-    @orders = policy_scope(Order).page(params[:page])
-    render json: OrderSerializer.new(@orders)
-  end
-end
 ```
+
+Policies that only check `user.admin?` (without owner access) silently lock owners out. The `rescue_from` is mandatory - without it, denials leak stack traces.
 
 ### XSS Prevention
 
-```ruby
-<%= user.name %>                                  # auto-escaped
-<%= sanitize user.bio, tags: %w[p br strong em] %> # allow specific tags
-
-# Bad: <%= raw user.bio %> or <%= user.bio.html_safe %>
+```erb
+<%= user.bio %>                                   <%# auto-escaped %>
+<%= sanitize user.bio, tags: %w[p br strong em] %> <%# allowlisted HTML %>
+<%= raw user.bio %>  <%# DANGEROUS - never on user input %>
 ```
 
-For intentional HTML (markdown, rich-text), use `sanitize` with an explicit allowlist - never `raw` / `html_safe` / Slim `==` / HAML `!=`. The allowlist is the trust boundary, not the renderer config.
+For markdown / rich-text, pass rendered HTML through `sanitize` even if the renderer claims safe-mode. The allowlist is the trust boundary, not the renderer config.
 
-CSP:
+CSP (set `script_src :self` to block inline scripts):
 
 ```ruby
 config.content_security_policy do |p|
@@ -167,25 +115,17 @@ end
 ### SQL Injection
 
 ```ruby
-# Bad - SQL injection
+# Bad
 User.where("email = '#{params[:email]}'")
 
 # Good
 User.where(email: params[:email])
-User.where("email = ?", params[:email])
 User.where("name LIKE ?", "%#{User.sanitize_sql_like(params[:q])}%")
 ```
 
 ### CSRF
 
-```ruby
-# Default for session-based controllers
-protect_from_forgery with: :exception
-
-# API-only: skip - use token auth instead
-class Api::BaseController < ActionController::API
-end
-```
+Session controllers: `protect_from_forgery with: :exception` (default). API-only (`ActionController::API`) skips CSRF - use token/JWT auth instead. Never globally `skip_before_action :verify_authenticity_token` on a session controller.
 
 ### Rate Limiting - Rack::Attack
 
@@ -195,21 +135,15 @@ Rack::Attack.throttle("api/ip", limit: 300, period: 5.minutes) { |req| req.ip if
 Rack::Attack.throttle("logins/ip", limit: 5, period: 20.seconds) do |req|
   req.ip if req.path == "/api/v1/login" && req.post?
 end
-
-Rack::Attack.blocklist("block bad IPs") do |req|
-  Rack::Attack::Fail2Ban.filter("bad-#{req.ip}", maxretry: 3, findtime: 10.minutes, bantime: 1.hour) do
-    req.path == "/api/v1/login" && req.post? && req.env["rack.attack.match_data"]
-  end
-end
 ```
+
+Login throttles must key on IP **and** submitted email/username - IP-only is bypassed by credential-stuffing rotating proxies.
 
 ### Open Redirect
 
-```ruby
-# Rails 7+ default rejects cross-host (raises UnsafeRedirectError)
-redirect_to params[:return_to]
+Rails 7+ rejects cross-host `redirect_to` by default (`UnsafeRedirectError`), but same-origin open redirects still leak through. Use a path allowlist for user-supplied destinations:
 
-# Explicit allowlist
+```ruby
 ALLOWED = %w[/dashboard /orders /profile].freeze
 def safe_return_to
   ALLOWED.include?(params[:return_to]) ? params[:return_to] : "/"
@@ -233,7 +167,7 @@ class User < ApplicationRecord
 end
 ```
 
-Never trust client-reported `content_type` for security decisions on executable formats - `Marcel::MimeType.for(io)` re-detects from magic bytes. Serve user content from a separate domain or with `Content-Disposition: attachment`.
+`Marcel::MimeType.for(io)` re-detects content type from magic bytes - use it for executable formats. Serve user content from a separate domain or with `Content-Disposition: attachment`.
 
 ### Host Authorization
 
@@ -242,26 +176,21 @@ config.hosts << "app.example.com"
 config.hosts << /.*\.example\.com/
 ```
 
-Blocks Host header injection - requests with mismatched Host get 403.
+Blocks Host header injection; mismatched requests get 403.
 
-### Signed / Encrypted Cookies
+### Cookies and Credentials
 
 ```ruby
-cookies.signed[:cart_id]                       # tamper-evident, readable - non-sensitive IDs
-cookies.encrypted[:user_preferences]           # tamper-evident + opaque - anything sensitive
-cookies.permanent.encrypted[:remember_token]   # long-lived
+cookies.signed[:cart_id]                     # tamper-evident, readable
+cookies.encrypted[:user_preferences]         # tamper-evident + opaque
+cookies.permanent.encrypted[:remember_token]
 ```
 
-Never use `cookies[:foo]=` for security-sensitive values.
-
-### Rails Credentials
+Never store tokens / IDs that grant access in unsigned `cookies[...]`.
 
 ```ruby
-EDITOR=vim rails credentials:edit
 EDITOR=vim rails credentials:edit --environment production
-
-Rails.application.credentials.api_key!         # raises if missing
-Rails.application.credentials.dig(:aws, :secret_key)
+Rails.application.credentials.api_key!       # raises if missing
 ```
 
 ## Output Format
@@ -275,15 +204,8 @@ Risk Mitigated: {mass assignment | unauthorized access | injection | brute force
 
 ## Avoid
 
-- Global `skip_before_action :verify_authenticity_token`
-- String interpolation in `where`
-- `params.permit!` / `to_unsafe_h`
-- Hardcoded secrets - use credentials
-- Missing `authorize` / `policy_scope` calls
-- `html_safe` / `raw` on user input
-- Pundit policies only checking `user.admin?` without owner access
-- Missing `rescue_from Pundit::NotAuthorizedError` (stack trace leaks)
-- Permitting ownership FKs in strong params
-- Unvalidated `redirect_to params[...]`
-- Trusting client-reported `content_type` on uploads
-- Tokens in unsigned `cookies[...]`
+- Pundit policies that only check `user.admin?` without owner access
+- Login throttles keyed on IP only (bypassed by credential stuffing)
+- Same-origin open redirects not covered by `UnsafeRedirectError`
+- Markdown / rich-text rendered with `raw` because the renderer "is safe"
+- `verify_authorized` / `verify_policy_scoped` skipped per-controller without rationale
