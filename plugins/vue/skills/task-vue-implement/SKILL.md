@@ -93,10 +93,7 @@ types.ts
 
 ## Avoid
 
-- `any` or suppressed TS errors; Options API or mixins in new code
-- Server state in Pinia - use `useFetch`/`useAsyncData` or TanStack Query
-- `reactive()` for primitives - use `ref()`
-- Missing loading/error/empty states on data-fetching components
-- Tests asserting internal state, watchers, or method calls
-- Generating code before design approval
-- Fighting Nuxt conventions (manual routing, manual imports) when Nuxt is detected
+- `any` or suppressed TS errors; Options API or mixins in new code.
+- Missing loading/error/empty states on data-fetching components.
+- Tests asserting internal state, watchers, or method calls.
+- Generating code before design approval.

@@ -95,21 +95,7 @@ const sizes = { sm: "h-8 px-3 text-sm", md: "h-10 px-4 text-sm" };
 
 ### Tailwind with Nuxt
 
-Pick by installed Tailwind major version (`package.json`).
-
-- **v4**: CSS-first config via `@theme` in the imported CSS file; no `tailwind.config.ts`.
-- **v3**: JS config (`tailwind.config.ts`), referenced via the module's `cssPath`.
-
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({ modules: ["@nuxtjs/tailwindcss"] });
-```
-
-```css
-/* v4: assets/css/tailwind.css */
-@import "tailwindcss";
-@theme { --color-primary: #3b82f6; }
-```
+`modules: ["@nuxtjs/tailwindcss"]` in `nuxt.config.ts`. Config style depends on Tailwind major: v4 uses CSS-first `@theme` in the imported CSS; v3 uses `tailwind.config.ts`.
 
 ### Dark Mode
 
@@ -189,9 +175,7 @@ Consuming workflow skills parse this structure; preserve field names and enums.
 
 ## Avoid
 
-- Mixing styling paradigms without an explicit boundary (e.g., Tailwind + Vuetify styled mode).
-- Inline `:style` or CSS `v-bind` for static values.
-- `!important` to override scoped styles; use `:deep()` or tokens.
-- Desktop-first breakpoints (`max-width` chains).
-- Hardcoded colors in templates instead of tokens or Tailwind classes.
-- Hardcoded `dark:`/`.dark` color pairs scattered across components instead of token swaps.
+- Mixing paradigms without an explicit boundary (Tailwind + Vuetify styled).
+- `!important` to override scoped styles - use `:deep()` or tokens.
+- Hardcoded colors in templates - use tokens or Tailwind classes.
+- Scattered `dark:`/`.dark` pairs instead of token swaps.

@@ -253,30 +253,23 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Step 1 - `behavioral-principles` loaded
-- [ ] Step 2 - stack confirmed Vue; `Framework`, `Data Layer`, `Styling` recorded
-- [ ] Step 3 - `review-precondition-check` ran or parent handle accepted; diff + log read once; performance surface opened (changed components, layouts, composables, config, stores, Nitro endpoints)
-- [ ] Step 4 - `vue-composables-patterns` + `vue-component-patterns` consulted; deep `reactive`, watcher cascades, destructure de-reactivity, `v-for` keys, identity-unstable inline props/handlers, virtualization, `v-memo` audited
-- [ ] Step 5 - bundle deltas sized per new dep; tree-shake-hostile imports and full UI-library imports flagged; heavy libs gated by `<LazyXxx />` / `defineAsyncComponent`
-- [ ] Step 6 - `vue-data-fetching` consulted; `useFetch` key / transform / `getCachedData` / mutation invalidation audited; `$fetch` in `<script setup>` for initial data flagged; TanStack `staleTime` / keys checked
-- [ ] Step 7 - LCP image / fonts, INP debounce, CLS reservations checked when routes or assets changed (skipped at `quick`)
-- [ ] Step 8 - hydration sources, `<Suspense>` streaming, `useState` for SSR state, `routeRules` (`prerender` / `swr` / `isr` / `ssr: false` / `headers`), Nitro caching reviewed (Nuxt only; skipped on Vite)
-- [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
-- [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
-- [ ] Depth honored: `quick` ran only Steps 4-5; `standard` ran 1-9; `deep` adds capacity + budget plan
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit when no actionable findings)
+- [ ] Steps 1-3: behavioral principles loaded; Vue stack + Framework/Data Layer/Styling recorded; diff/log read once; perf surface opened
+- [ ] Step 4: reactivity hotspots audited (deep `reactive`, watcher cascades, de-reactivity, `v-for` keys, virtualization, `v-memo`)
+- [ ] Step 5: bundle deltas sized; tree-shake-hostile and full UI-library imports flagged; heavy libs gated by `<LazyXxx />` / `defineAsyncComponent`
+- [ ] Step 6: `useFetch` key/transform/`getCachedData`/mutation invalidation audited; `$fetch` in `<script setup>` for initial data flagged
+- [ ] Step 7: LCP image/fonts, INP debounce, CLS reservations checked (skipped at `quick`)
+- [ ] Step 8: hydration sources, `<Suspense>` streaming, `useState`, `routeRules`, Nitro caching reviewed (Nuxt only)
+- [ ] Step 9: observability presence checked or `[Delegate]` added; report written; confirmation printed
+- [ ] Every finding cites `file:line` and states measured or estimated impact
+- [ ] Depth honored: `quick` runs Steps 4-5 only; `deep` adds capacity + budget plan
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered High > Medium > Low
 
 ## Avoid
 
-- State-changing git (`fetch`, `checkout`, `reset`) - the user runs these to protect uncommitted work
-- "This is slow" without naming the Vue idiom (deep `reactive`, watcher cascade, eager chart import, missing virtualization, `useFetch` without `key`)
-- Generic frontend advice when a Vue pattern applies ("use `<LazyXxx />` auto-import", not "lazy load")
-- `computed` / `watch` as defaults - cache invalidation has a cost; only use when the value is reused or genuinely derived
-- Approving raw `<img>` for hero / above-the-fold on Nuxt (`<NuxtImg :preload="true">`)
-- Approving `ssr: false` on a route without a per-route reason - it disables every SSR benefit
-- Approving `useFetch` without a `key` for keyable data - cache reuse across navigation is lost
-- Approving full-import of Vuetify / PrimeVue / Element Plus when per-component works
-- Recommending `watchEffect(() => fetch(...))` when `useFetch` would do
-- Treating high re-render counts as inherently bad - investigate only when a profile or interaction lag implicates them
-- Conflating perf with general / security review - delegate
-- **Dual perf+security findings** (untrusted `v-html`, `eval`, prototype pollution via spread): report the perf half once with `[Delegate] -> task-vue-review-security` in Next Steps. Do not enumerate parallel security concerns
+- State-changing git - user runs `fetch`/`checkout`.
+- "This is slow" without naming the Vue idiom (deep `reactive`, watcher cascade, missing virtualization, `useFetch` without `key`).
+- Generic frontend advice when a Vue pattern applies.
+- `computed` / `watch` as defaults - only when reused or genuinely derived.
+- Treating high re-render counts as inherently bad without profile evidence.
+- Conflating perf with general/security review - delegate.
+- **Dual perf+security findings** (`v-html`, `eval`, prototype-pollution spread): report perf half once with `[Delegate] -> task-vue-review-security` in Next Steps.

@@ -75,20 +75,9 @@ const { items, totalItems } = storeToRefs(cart); // state + getters
 const { addItem } = cart;                         // actions
 ```
 
-### Composable Store (Module-Level Ref)
+### Composable Store
 
-For shared state without devtools/persistence needs. **SSR hazard**: module-level refs are singletons and leak across requests in Nuxt/SSR. Use `useState()` in Nuxt or Pinia instead.
-
-```ts
-// composables/useAuth.ts - client-only (Vite) or Nuxt useState
-const user = ref<User | null>(null); // unsafe in SSR
-export function useAuth() {
-  const isAuthenticated = computed(() => !!user.value);
-  return { user: readonly(user), isAuthenticated };
-}
-```
-
-Nuxt-safe alternative:
+Module-level `ref()` leaks across requests in SSR. In Nuxt, use `useState(key, init)`:
 
 ```ts
 export function useAuth() {
@@ -174,9 +163,7 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- Server state (API data) in Pinia stores
-- Mega-store coupling unrelated domains
-- Stored derived values instead of getters
-- Module-level refs in Nuxt/SSR composables (request leakage)
-- Vuex in new Vue 3 projects
-- Prop drilling beyond 2 levels when a store or `provide`/`inject` fits
+- Server state (API data) in Pinia.
+- Stored derived values - use getters.
+- Module-level refs in Nuxt/SSR (request leakage).
+- Vuex in new Vue 3 projects.

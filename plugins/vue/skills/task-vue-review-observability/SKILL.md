@@ -206,34 +206,22 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 
 ## Self-Check
 
-- [ ] Step 1: behavioral principles loaded
-- [ ] Step 2: stack confirmed Vue; framework recorded (Nuxt 3 / Vite + Vue Router)
-- [ ] Step 3: diff and commit log read once and reused (or handle accepted from parent)
+- [ ] Steps 1-3: behavioral principles loaded; Vue stack + framework recorded; diff/log read once
 - [ ] Step 4: surface map produced with 6 verdicts and evidence; grouping/greenfield rules applied
-- [ ] Step 5: web-vitals v4+, all four core metrics with INP, real transport, route correlation, sampling at reporter
-- [ ] Step 6: Sentry init outside component bodies with `app` argument, env-driven release/env, sample rates per env, PII scrub, error-boundary tree with explicit `captureException` in `error.vue`, source maps uploaded but not public, Replay vs CSP conflict checked
-- [ ] Step 7: OTel browser SDK + traceparent propagation; Nuxt Nitro plugin with shutdown, BatchSpanProcessor, edge gap documented (skipped per gate when applicable)
-- [ ] Step 8: no `console.*` in prod paths, no log in `<script setup>` body, sensitive-field hygiene, RUM events for business actions (skipped per gate)
-- [ ] Step 9: `setUser({ id })`, low-cardinality tags, `extra` projects user to `{ id }`, cross-tool correlation (skipped per gate)
-- [ ] Step 10: RUM SDK init order, SPA nav tracking via `router.afterEach`, custom events, DNT respected (skipped per gate)
-- [ ] Step 11: SLIs, SLOs in code, per-route error alerts, synthetics, bundle budgets (deep only)
-- [ ] Step 12: report written via `review-report-writer`; confirmation printed
+- [ ] Steps 5-6: web-vitals v4+ with INP, real transport, route correlation; Sentry init with `app` arg, PII scrub, error-boundary tree with `captureException`, source maps uploaded but not public, Replay vs CSP audited
+- [ ] Step 7: OTel browser + traceparent propagation; Nitro plugin with shutdown + `BatchSpanProcessor` (skipped per gate)
+- [ ] Steps 8-10: no `console.*` / log-in-setup; `setUser({ id })`; low-cardinality tags; RUM init order; SPA nav via `router.afterEach`; DNT respected (skipped per gate)
+- [ ] Step 11: SLIs, SLOs in code, per-route alerts, synthetics, bundle budgets (deep only)
+- [ ] Step 12: report written; confirmation printed
 
 ## Avoid
 
-- Generic advice when a Vue/SDK idiom exists ("add metrics" vs "register `onINP` reporter in `plugins/web-vitals.client.ts` posting via `sendBeacon`")
-- Per-checkbox findings when a whole surface is absent - collapse per the Step 4 grouping rule
-- Approving Sentry init inside a component body - re-runs every mount, double-reports
-- Approving `Sentry.init({ dsn })` without the `app` argument - skips `app.config.errorHandler` auto-wiring
-- Approving `error.vue` that renders a fallback without calling `Sentry.captureException` (when `@sentry/nuxt` auto-capture is not installed)
-- Approving FID-only web-vitals reporting (INP replaced FID in 2024)
-- Approving `web-vitals` reporter wired only to `console.log`
-- Approving `replaysSessionSampleRate: 1.0` in prod without `mask`/`block` on PII inputs
-- Approving `extra: { user: session.user }` or `setContext` payloads carrying email/phone/address - project to `{ id }`
-- Approving public source-map serving in production
-- Approving missing source-map upload to Sentry - production stack traces unreadable
-- Approving `userId`/`orderId` as Sentry tags (unbounded cardinality)
-- Approving Sentry Replay on a strict CSP without addressing the inline-script conflict
-- Approving error boundaries with a blank-screen fallback
-- Infra scope (Datadog dashboards, Sentry org settings, log forwarders, alert rules) - delegate to ops review
-- State-changing git commands
+- Generic advice when a Vue/SDK idiom exists.
+- Per-checkbox findings when a whole surface is absent - collapse per Step 4 grouping.
+- Approving Sentry init inside a component body, or without the `app` argument.
+- Approving `error.vue` that renders a fallback without `Sentry.captureException` (when not using `@sentry/nuxt` auto-capture).
+- Approving FID-only reporting, `console.log`-only transport, or 100% Replay sampling without `mask`/`block`.
+- Approving public source-map serving, missing Sentry upload, unbounded-cardinality tags, or blank-screen error fallbacks.
+- Approving `extra`/`setContext` payloads carrying email/phone - project to `{ id }`.
+- Infra scope (dashboards, org settings, forwarders, alert rules) - delegate to ops.
+- State-changing git.

@@ -114,9 +114,6 @@ Inject into `task-onboard` sections:
 
 ## Avoid
 
-- Treating Vue 2 / Options API as current
-- Recommending Vuex on a Pinia project
-- Listing every Nuxt module - call out the architectural ones
-- Recommending Options API inside `<script setup>` files
-- Glossing over Pinia destructuring as a top reactivity bug class
-- Using `process.server` / `process.client` in Nuxt 3.10+
+- Treating Vue 2 / Options API as current.
+- Listing every Nuxt module - call out architectural ones.
+- Glossing over Pinia destructuring as a top reactivity bug class.

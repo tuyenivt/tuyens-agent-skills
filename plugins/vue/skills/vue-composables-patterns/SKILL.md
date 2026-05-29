@@ -20,13 +20,13 @@ user-invocable: false
 
 ## Rules
 
-- Name composables `useXxx`; each encapsulates exactly one concern
-- Default to `ref()`. Use `reactive()` only for objects with deep mutation and no reassignment; never for primitives
-- Return refs (or `readonly(ref)`) from composables, not raw `.value`
-- Accept reactive inputs as `MaybeRefOrGetter<T>`; read with `toValue()` (Vue 3.3+)
-- Use `watchEffect` for auto-tracked side effects; `watch` when you need explicit sources, old/new values, or lazy execution
-- Any subscription, listener, timer, or connection must be released via `onUnmounted`, `onCleanup` (watchEffect), or `onWatcherCleanup` (Vue 3.5+)
-- Prefer VueUse for utilities it already provides (storage, debounce, observers, network)
+- Name `useXxx`; one concern per composable.
+- Default to `ref()`. Use `reactive()` only for objects mutated in place; never for primitives or reassignment.
+- Return refs (or `readonly(ref)`), not raw `.value`.
+- Accept reactive inputs as `MaybeRefOrGetter<T>`; read with `toValue()`.
+- `watchEffect` for auto-tracked effects; `watch` for explicit sources, old/new values, or lazy execution.
+- Release every subscription/listener/timer via `onUnmounted`, `onCleanup`, or `onWatcherCleanup` (3.5+).
+- Use VueUse for utilities it already ships.
 
 ## Patterns
 
@@ -161,9 +161,7 @@ Consuming workflow skills depend on this structure.
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 
-### No Issues Found
-
-{State explicitly if composable usage is correct - do not omit this section silently}
+State "No issues found" explicitly when composables are correct.
 ```
 
 ## Avoid

@@ -229,27 +229,21 @@ _Omit this section if no security issues found._
 
 ## Self-Check
 
-- [ ] Step 1: Stack confirmed as Vue; framework (Nuxt 3 vs Vite) recorded
-- [ ] Step 2: `review-precondition-check` ran (or parent handle accepted); diff and log read once and reused; explicit user approval obtained when `head_matches_current` was false; no state-changing git commands issued
-- [ ] Step 3: Security surface (auth config, middleware, changed Nitro routes / pages, HTML-rendering components, CSP / headers) read; prior revision consulted when guards or middleware were removed
-- [ ] Step 4: One OWASP verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] Step 5: Auth library, middleware widening, password hashing, JWT algorithms, cookie flags, rate limit, OAuth redirects, `runtimeConfig` split audited where in scope
-- [ ] Step 6: Every new Nitro endpoint checked for `requireUserSession` + object-level ownership; Pinia / `useState` SSR hydration audited for full ORM rows; CSRF reviewed for cookie-session forms
-- [ ] Step 7: `readValidatedBody` / `getValidatedQuery` / `getValidatedRouterParams` confirmed for every changed endpoint; file uploads validated; `JSON.parse` -> ORM flagged; `v-html` on user input sanitized
-- [ ] Step 8: `v-html`, sanitizer config, `:href` / redirect targets, `NUXT_PUBLIC_*` / `VITE_*`, Pinia / `useState` SSR leak, CSP (channel, wildcards, `unsafe-*`), `image.domains` wildcards, iframe `:src` audited when diff touches them
-- [ ] Step 9: PII in logs, token storage location, HSTS, secrets source, source maps reviewed when in scope
-- [ ] Step 10: Report written via `review-report-writer`; confirmation line printed
-- [ ] Severity rubric applied verbatim; Combined-finding rule applied (and same-handler co-location verified) where findings compose
-- [ ] Every finding has an attack scenario, regression-risk rationale, or topology-dependent framing
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when clean)
-
-Items requiring repo / infra access not visible in the diff (auth library config, deployed headers, Sentry init, `pnpm audit` results) are noted as "could not verify from diff alone - flag for separate audit".
+- [ ] Steps 1-2: Vue stack + framework recorded; diff/log read once (or parent handle accepted); no state-changing git
+- [ ] Step 3: security surface read; prior revision consulted when guards/middleware were removed
+- [ ] Step 4: one OWASP verdict per category (`yes` / `no signal in diff`); not duplicated as findings
+- [ ] Steps 5-6: auth library, middleware widening, password/JWT/cookie flags, `requireUserSession` + object-level ownership, Pinia/`useState` SSR ORM leak, CSRF audited
+- [ ] Steps 7-8: `readValidatedBody`/`getValidatedQuery`/`getValidatedRouterParams` confirmed on changed endpoints; `v-html`/sanitizer/redirect/`NUXT_PUBLIC_*`/CSP/`image.domains`/iframe audited
+- [ ] Step 9: PII in logs, token storage, HSTS, secrets source, source maps reviewed
+- [ ] Step 10: report written; confirmation printed
+- [ ] Severity rubric + Combined-finding rule applied; every finding has attack scenario, regression-risk, or topology-dependent framing
+- [ ] Items invisible in the diff noted "could not verify from diff - flag for separate audit"
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]` and ordered Critical > High > Medium > Low
 
 ## Avoid
 
-- State-changing git commands from this workflow (user runs `fetch` / `checkout` to protect uncommitted work)
-- Findings without an attack scenario ("input not validated" vs "attacker POSTs `{role: 'admin'}` and gains admin via mass assignment because the Nitro endpoint lacks a Zod schema")
-- Skipping clean OWASP categories - explicitly state "no signal in diff"
-- Generic advice when a Vue idiom applies ("validate Nitro body with `readValidatedBody`", not "add input validation")
-- Conflating with general code review or performance review - delegate
-- Treating client-side `v-if="user.role==='admin'"` as authorization
+- State-changing git from this workflow.
+- Findings without an attack scenario, regression rationale, or topology framing.
+- Skipping clean OWASP categories - state "no signal in diff" explicitly.
+- Generic advice when a Vue idiom applies.
+- Treating client-side `v-if="user.role==='admin'"` as authorization.

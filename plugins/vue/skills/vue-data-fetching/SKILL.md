@@ -30,12 +30,11 @@ user-invocable: false
 
 ### Choosing a Fetch Strategy
 
-| Project    | Initial render?            | Use                   |
-| ---------- | -------------------------- | --------------------- |
-| Nuxt       | Yes (blocks navigation)    | `useFetch`            |
-| Nuxt       | No (renders, then loads)   | `useLazyFetch`        |
-| Nuxt/Vite  | Caching, mutations, paging | TanStack Query Vue    |
-| Vite       | Simple, no TanStack Query  | Hand-rolled composable |
+| Project    | Initial render?            | Use                |
+| ---------- | -------------------------- | ------------------ |
+| Nuxt       | Yes (blocks navigation)    | `useFetch`         |
+| Nuxt       | No (renders, then loads)   | `useLazyFetch`     |
+| Nuxt/Vite  | Caching, mutations, paging | TanStack Query Vue |
 
 ### Nuxt useFetch
 
@@ -159,29 +158,6 @@ const keys = {
 };
 ```
 
-### Vite Composable Fallback
-
-When TanStack Query is not available. Prefer TanStack Query in any non-trivial app.
-
-```ts
-export function useProducts(category: MaybeRefOrGetter<string>) {
-  const data = ref<Product[]>([]);
-  const loading = ref(true);
-  const error = ref<Error | null>(null);
-  async function load() {
-    loading.value = true; error.value = null;
-    try {
-      const res = await fetch(`/api/products?category=${toValue(category)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      data.value = await res.json();
-    } catch (e) { error.value = e as Error; }
-    finally { loading.value = false; }
-  }
-  watchEffect(load);
-  return { data: readonly(data), loading, error, refresh: load };
-}
-```
-
 ## Output Format
 
 ```
@@ -219,9 +195,6 @@ export function useProducts(category: MaybeRefOrGetter<string>) {
 
 ## Avoid
 
-- Raw `fetch()` in Nuxt components (breaks SSR hydration)
-- `useFetch` in event handlers or Pinia actions (wrong context - use `$fetch`)
-- `useAsyncData` without a unique key (cache collisions)
-- Mirroring server data into Pinia when the query library already caches it
-- `staleTime: 0` on data that does not need real-time freshness (refetch storms)
-- Inline fetch functions in templates (recreated every render)
+- Mirroring server data into Pinia when the query library already caches it.
+- `staleTime: 0` on data that does not need real-time freshness (refetch storms).
+- Inline fetch functions in templates (recreated every render).

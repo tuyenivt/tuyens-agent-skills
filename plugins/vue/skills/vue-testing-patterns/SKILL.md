@@ -177,26 +177,6 @@ it("server route returns products", async () => {
 });
 ```
 
-### Forms
-
-```ts
-it("submits valid data and shows success", async () => {
-  const wrapper = mount(CreateProductForm);
-  await wrapper.get("input[name='name']").setValue("Widget");
-  await wrapper.get("input[name='price']").setValue("25");
-  await wrapper.get("form").trigger("submit");
-  await flushPromises();
-  expect(wrapper.text()).toContain("Product created");
-});
-
-it("shows validation errors for empty required fields", async () => {
-  const wrapper = mount(CreateProductForm);
-  await wrapper.get("form").trigger("submit");
-  await flushPromises();
-  expect(wrapper.text()).toContain("Name is required");
-});
-```
-
 ### Playwright E2E (critical paths only)
 
 ```ts
@@ -245,9 +225,7 @@ test("user signs in and lands on dashboard", async ({ page }) => {
 
 ## Avoid
 
-- `wrapper.vm`, internal refs, or reactive internals in assertions.
-- `vi.mock` for API/network calls; use MSW.
-- Selecting by CSS class for styling intent, or asserting style values.
+- `wrapper.vm` / internal refs in assertions.
+- Selecting by CSS class for styling intent; asserting style values.
 - Snapshots of large or frequently-changing trees.
-- Skipping any of loading/success/error/empty for data-fetching components.
 - Testing third-party library internals instead of your integration.

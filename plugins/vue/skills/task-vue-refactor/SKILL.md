@@ -361,24 +361,22 @@ _Other smells in the target file; listed for hand-off, not action. Omit if none.
 
 ## Self-Check
 
-- [ ] Step 1 - `behavioral-principles` loaded
-- [ ] Step 2 - stack confirmed Vue (or accepted from parent); framework + version recorded
-- [ ] Step 3 - target file(s) + tests read directly; sibling smells listed or section omitted; severity inversion flagged if applicable; smuggled bug-fix split or labeled `coupled-fix`
-- [ ] Step 4 - Coverage Gate verdict using sharp boundaries; `Inadequate` refuses Steps 1+; happy-path-only -> `Inadequate`; internal-coupled tests pinned to `Step 0`; prerequisite table rendered when Thin/Inadequate; Step 5 preview still produced under refusal
-- [ ] Step 5 - smells classified using the catalog (component, composable, data fetching, state, Nitro endpoint, accessibility, test)
-- [ ] Step 6 - blast radius stated
-- [ ] Step 7 - `Primary recipe:` named; supporting recipes folded as sub-steps; spine <= ~8 steps or split into PRs; every step states SSR (Nuxt) + Reactivity stance; behavior changes labeled `coupled-fix`; ordered low-risk first
-- [ ] Step 8 - goal mapped to end state; no bundled cleanup
+- [ ] Steps 1-2: behavioral principles loaded; Vue stack + framework recorded
+- [ ] Step 3: target + tests read; sibling smells listed; severity inversion flagged if applicable; smuggled bug-fix split or labeled `coupled-fix`
+- [ ] Step 4: Coverage Gate verdict applied with sharp boundaries; `Inadequate` refuses Steps 1+ but still produces Step 5 preview; internal-coupled tests pinned to `Step 0`
+- [ ] Step 5: smells classified using the catalog
+- [ ] Step 6: blast radius stated
+- [ ] Step 7: `Primary recipe:` named; spine <= ~8 steps; every step states SSR (Nuxt) + Reactivity stance; behavior changes labeled `coupled-fix`; ordered low-risk first
+- [ ] Step 8: goal mapped to end state; no bundled cleanup
 
 ## Avoid
 
-- Producing Steps 1+ when Coverage Gate is `Inadequate`
-- Bundling behavior changes with refactor steps (use `coupled-fix` with rationale, or split the PR)
-- "While we're here" unrelated cleanup; renames during a refactor
-- Removing a `watch` without verifying surrounding logic preserves observable behavior - some watchers compensate for genuinely external state
-- Converting `reactive` <-> `ref` <-> `shallowRef` without auditing consumers - destructure/spread patterns and in-place mutation break silently
-- Wrapping a component in `<ClientOnly>` to silence a hydration error - that masks the SSR mismatch; fix the cause
-- Replacing `onMounted(() => $fetch(...))` with `useFetch` when the component is genuinely client-only and depends on browser-only APIs
-- Replacing prop drilling with `provide` (or Pinia) as a default - co-located state is often the right answer
-- Refactoring a design-system primitive without a back-compat plan
-- Replacing `getByTestId` with `getByRole` during a refactor - that's a test improvement, its own PR
+- Producing Steps 1+ when Coverage Gate is `Inadequate`.
+- Bundling behavior changes with refactor steps - use `coupled-fix` or split the PR.
+- "While we're here" cleanup or renames during a refactor.
+- Removing a `watch` without verifying observable behavior is preserved.
+- Converting `reactive` <-> `ref` <-> `shallowRef` without auditing consumers.
+- `<ClientOnly>` to silence hydration mismatch - fix the cause.
+- `useFetch` replacement when component is genuinely client-only with browser-API dependencies.
+- `provide`/Pinia as the default fix for prop drilling - co-location is often right.
+- Refactoring a design-system primitive without a back-compat plan.

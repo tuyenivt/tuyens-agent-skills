@@ -205,9 +205,7 @@ Validation values: `{Zod | Valibot | Manual | None}`. `None` is always an issue.
 
 ## Avoid
 
-- Server routes without schema validation (public HTTP, always reachable).
+- Global `ssr: false` when only an admin shell needs it (kills SEO everywhere).
 - Importing `server/` modules from client code (leaks secrets, breaks build).
-- Global `ssr: false` when only an admin/app shell needs it (kills SEO everywhere).
-- Manual `<head>` manipulation instead of `useHead` / `useSeoMeta`.
-- Hardcoded API base URLs in code instead of `runtimeConfig.public`.
-- Putting secrets under `runtimeConfig.public` (shipped to the browser).
+- Hardcoded API base URLs instead of `runtimeConfig.public`.
+- Secrets under `runtimeConfig.public` (ships to the browser).

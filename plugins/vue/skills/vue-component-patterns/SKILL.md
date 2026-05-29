@@ -21,12 +21,11 @@ user-invocable: false
 ## Rules
 
 - `<script setup lang="ts">` for all new SFCs. No Options API, no mixins (use composables).
-- Type `defineProps`, `defineEmits`, `defineSlots` with TypeScript generics. Extract a named `interface Props` once props reach 3+ fields.
-- Prefer slots over prop-heavy configuration. Each component owns one responsibility.
-- For shared state across nested children, use `provide`/`inject` with a typed `InjectionKey`. Never prop-drill past 2 levels.
-- For two-way binding, use `defineModel` (Vue 3.4+), not manual `modelValue` + `update:modelValue`.
-- For template refs, use `useTemplateRef` (Vue 3.5+).
-- Destructured props are reactive in Vue 3.5+. In <3.5, destructure via `toRefs(props)` only.
+- Type `defineProps`/`defineEmits`/`defineSlots` with generics; extract `interface Props` once shape exceeds ~3 fields.
+- Prefer slots over prop-heavy config. One responsibility per component.
+- Use `provide`/`inject` with typed `InjectionKey` for cross-cutting state; never prop-drill past 2 levels.
+- Use `defineModel` (3.4+) for v-model and `useTemplateRef` (3.5+) for refs.
+- Destructured props are reactive in 3.5+; pre-3.5 use `toRefs(props)`.
 
 ## Patterns
 
@@ -59,40 +58,16 @@ Generic `<script setup>` types slots, emits, and props against `T` so consumers 
 
 ```ts
 // keys.ts
-import type { InjectionKey, Ref } from "vue";
-
-export interface TabsContext {
-  activeTab: Ref<string>;
-  setActiveTab: (tab: string) => void;
-}
+export interface TabsContext { activeTab: Ref<string>; setActiveTab: (t: string) => void }
 export const TabsKey: InjectionKey<TabsContext> = Symbol("Tabs");
-```
 
-```vue
-<!-- Tabs.vue: provider -->
-<script setup lang="ts">
-import { provide, ref } from "vue";
-import { TabsKey } from "./keys";
-
-const { defaultTab } = defineProps<{ defaultTab: string }>();
-const activeTab = ref(defaultTab);
+// Tabs.vue (provider)
 provide(TabsKey, { activeTab, setActiveTab: (t) => (activeTab.value = t) });
-</script>
-```
 
-```vue
-<!-- Tab.vue: consumer -->
-<script setup lang="ts">
-import { inject } from "vue";
-import { TabsKey } from "./keys";
-
-const { value } = defineProps<{ value: string }>();
+// Tab.vue (consumer) - throw on missing inject; silent undefined hides bugs
 const tabs = inject(TabsKey);
 if (!tabs) throw new Error("Tab must be used within <Tabs>");
-</script>
 ```
-
-Always throw when a required inject is missing - silent `undefined` causes opaque runtime bugs.
 
 ### v-model with defineModel
 
@@ -165,21 +140,11 @@ Consuming workflow skills depend on this structure.
 **Stack:** {detected framework}
 **Render mode:** {Nuxt SSR + client | Vite client-only}
 
-### Component Tree
-
-{ComponentName} - {responsibility}
-  ├── {ChildA} - {responsibility}
-  └── {ChildB} - {responsibility}
-
 ### Component Specifications
 
 | Component | Props       | Emits        | Slots       | Pattern                              |
 | --------- | ----------- | ------------ | ----------- | ------------------------------------ |
 | {name}    | {key props} | {key events} | {slot names}| {Composition | Generic | Compound | Async} |
-
-### Recommendations
-
-- {recommendation with rationale}
 
 ### Issues Found
 
@@ -190,8 +155,7 @@ Consuming workflow skills depend on this structure.
 
 ## Avoid
 
-- God components mixing unrelated concerns - split by responsibility.
+- God components mixing unrelated concerns.
 - `v-html` on untrusted input (XSS).
-- Deeply nested `v-if`/`v-else-if` chains in templates - extract to computed or named child components.
-- Inline `defineProps<{...}>()` once shape grows past ~3 fields - hurts readability and reuse.
-- Returning `true` from `onErrorCaptured` unless you intentionally want propagation to parents and the global handler.
+- Nested `v-if`/`v-else-if` chains - extract to computed or sub-components.
+- Returning `true` from `onErrorCaptured` unless propagation is intentional.

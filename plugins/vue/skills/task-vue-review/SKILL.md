@@ -130,15 +130,11 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - Use skill: `vue-nuxt-patterns` (skip on Vite) - hydration safety (browser-only APIs guarded by `import.meta.client` / `onMounted`; async `<script setup>` needs `<Suspense>` ancestor; client-only components in `<ClientOnly>`); Nitro endpoint input via `readValidatedBody(event, Schema.parse)` / `getValidatedQuery`; mutating endpoints call `requireUserSession(event)` and scope by principal in the query; `server/middleware/auth.ts` exclusions justified
 - Use skill: `vue-routing-patterns` if diff touches `pages/**/*.vue`, `app/router.options.ts`, or middleware
 
-**Additional Vue-specific checks the atomics don't own:**
+**Cross-cutting checks the atomics don't own:**
 
-- **Test coverage finding (named, not buried).** PR adds logic without Vitest coverage? At minimum `[Suggestion]`; escalate to `[High]` when critical path: auth / session UI, Nitro endpoints, money / billing UI, form validation, multi-step flows, error boundaries.
-- **Pinia / `useState` SSR payload leak.** A store / state populated server-side with a full ORM row serializes into `__NUXT__` payload visible in client HTML. Flag any domain row placed in a store without DTO projection; `[Critical]` when sensitive fields present today (`passwordHash`, `mfaSecret`, `apiToken`, `refreshToken`, `internal*`, `*Secret`, `recoveryCode`).
-- **Mass assignment on Nitro endpoints.** Raw `readBody` flowing into `prisma.x.update({ data })` is mass assignment - `[Blocker]`. Require `readValidatedBody(event, Schema.parse)` with explicit whitelist.
-- **Cross-cutting safety.** `v-html` on user input without sanitizer (`DOMPurify` / `sanitize-html`) - `[Critical]` if user-controllable; open redirect from `navigateTo(query.returnTo)` without allowlist (or `url.startsWith('/') && !url.startsWith('//')`); `NUXT_PUBLIC_*` / `VITE_*` carrying secrets (compiled into client bundle, `[Critical]`) - server-only secrets live in `runtimeConfig`.
-- **Mutable module-level state** (`let cache = {}` mutated by render / events) leaks across SSR requests.
-- **TypeScript strict.** `strict: true` not silently disabled; `as any` outside test setup is a finding.
-- **Accessibility.** `<input>` paired with `<label>`; `aria-describedby` for errors; dialogs use `<dialog>` or full ARIA (`role="dialog"`, `aria-modal`, focus trap, return-focus) - reach for Headless UI / Reka UI / shadcn-vue before reinventing key handling; images have explicit `width`/`height` (`<NuxtImg>` or `<img>`) and `alt` (`alt=""` for decorative).
+- **Test coverage.** PR adds logic without Vitest coverage - `[Suggestion]`; escalate to `[High]` on critical paths (auth, Nitro endpoints, billing, form validation, error boundaries).
+- **TypeScript strict.** `strict: true` silently disabled or `as any` outside tests is a finding.
+- **Accessibility.** `<input>` paired with `<label>`; `aria-describedby` for errors; dialogs use full ARIA + focus trap (prefer Headless UI / Reka UI); images carry `width`/`height` + `alt`.
 
 ### Phase C - Vue Architecture Guardrails
 
@@ -314,33 +310,23 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded (or accepted from parent)
-- [ ] Step 2: stack confirmed as Vue; framework and Vue version recorded
-- [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch command was surfaced; when `head_matches_current` was false, explicit approval was obtained
-- [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only` suppression) recorded with firing signals
-- [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; low-risk short-circuit applied when applicable
-- [ ] Phase B: atomic skills applied (`vue-component-patterns`, `vue-composables-patterns`, `vue-state-patterns`, `vue-data-fetching`, plus `vue-nuxt-patterns` / `vue-routing-patterns` when relevant); test coverage, Pinia / `useState` SSR ORM leak, Nitro mass assignment + auth, `v-html` / open-redirect / `NUXT_PUBLIC_*` secrets, mutable module state, TS strict, a11y checked
-- [ ] Phase C: layering, server / client boundary, composable / prop drilling / `provide` discipline, settings, module boundaries, plugin sandwich applied
-- [ ] Phase D: `complexity-review` applied; Vue AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `watch` misapplication, computed chains, `as any`, anonymous SFC names)
-- [ ] Phase E: naming, co-location, magic numbers, component length, conditional ladders, logging hygiene
-- [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Blocker states a system risk
-- [ ] Every finding has label + `file:line` + actionable Vue fix
-- [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] Step 5: extra scopes ran in parallel with the pre-resolved diff/log handle plus framework detection
-- [ ] Step 6: subagent findings merged into one severity-ordered Findings list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by severity
-- [ ] Step 7: review report written via `review-report-writer`; confirmation line printed
+- [ ] Steps 1-3: behavioral principles loaded; Vue stack + framework recorded; diff/log resolved and read once (or handle accepted from parent)
+- [ ] Step 4: scope auto-escalation evaluated; firing signals logged
+- [ ] Phase A: risk + blast radius stated before findings; depth auto-promoted on Wide/Critical; low-risk short-circuit applied when applicable
+- [ ] Phase B: atomic skills consulted; cross-cutting test coverage / TS strict / a11y checked
+- [ ] Phase C: layering, server/client boundary, composable/prop discipline, settings, module boundaries applied
+- [ ] Phase D: `complexity-review` applied to Vue AI smells (pattern inflation, redundant prop transforms, `watch` misuse, `as any`)
+- [ ] Phase E: naming, co-location, component length, conditional ladders, logging hygiene
+- [ ] Every finding: label + `file:line` + actionable fix; Blockers state system risk; missing tests named, not buried
+- [ ] `--spec` passed: every finding traces to AC/NFR/task or flagged out-of-scope
+- [ ] Steps 5-6: extra scopes ran in parallel; findings merged severity-ordered; missing scope noted; Next Steps tagged `[Implement]`/`[Delegate]`
+- [ ] Step 7: report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 
-- `git fetch` / `git checkout` from this workflow - user runs these
-- Reviewing without reading the full diff and commit log first
-- Generic frontend conventions when a Vue idiom exists ("extract to a composable", not "extract to a helper")
-- Nitpicking style where no project standard exists
-- Vague feedback ("this could be better")
-- Blocking on personal preference
-- Running extra scopes when `core-only` was passed
-- Duplicating perf / security / observability depth here when the dedicated Vue subagent owns them
-- Sequential extra scopes that could parallelize
-- Appending raw subagent reports instead of merging
-- Recommending `watch` for derived state, deep `reactive` over large datasets, `v-html` on user input, or `NUXT_PUBLIC_` for secrets as acceptable
+- State-changing git from this workflow - user runs `fetch`/`checkout`.
+- Reviewing without reading the full diff and commit log first.
+- Generic frontend conventions when a Vue idiom exists.
+- Vague feedback or blocking on personal preference.
+- Duplicating perf / security / observability depth - delegate to the subagents.
+- Sequential extra scopes that could parallelize; appending raw subagent reports instead of merging.

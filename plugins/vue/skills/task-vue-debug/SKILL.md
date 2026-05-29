@@ -157,10 +157,8 @@ If confidence is LOW, add `## Needs Clarification` listing the missing input.
 
 ## Avoid
 
-- Reading code before classifying
-- Generic advice ("add console.log", "clear cache") without naming the boundary
-- Fixing a symptom (`key: Math.random()` to force refetch) instead of the missing stable key
-- Refactor when a targeted fix suffices
-- `any`, `eslint-disable`, `<ClientOnly>` wrap to silence a hydration mismatch
-- Switching to Options API to dodge a Composition API bug
-- Mixing incident-response (containment, blast radius) into developer debugging
+- Reading code before classifying.
+- Generic advice without naming the boundary.
+- Fixing a symptom (`key: Math.random()` to force refetch) instead of the missing stable key.
+- `<ClientOnly>` / `any` / `eslint-disable` to silence a hydration mismatch.
+- Switching to Options API to dodge a Composition API bug.

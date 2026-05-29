@@ -207,10 +207,7 @@ For islands and widgets the server template owns the layout; Vue controls only m
 
 ## Avoid
 
-- Full SPA when only parts of pages are interactive
-- Inertia.js on Django (no first-party adapter)
-- Duplicating layouts across server templates and Vue
-- Loading the Vue bundle on pages with no Vue mount points
-- Mixing jQuery and Vue on the same DOM nodes
-- Vue assets served without cache-busting digests
-- Heavy state management inside widgets - escalate to Inertia or SPA
+- Inertia.js on Django (no first-party adapter).
+- Loading the Vue bundle on pages with no mount points.
+- Mixing jQuery and Vue on the same DOM nodes.
+- Heavy state management inside widgets - escalate to Inertia or SPA.

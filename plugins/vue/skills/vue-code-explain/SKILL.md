@@ -69,11 +69,8 @@ Workflow needs Vue-specific signals on a `.vue` SFC, composable, Pinia store, or
 
 ### Pitfalls
 
-- `const { x } = reactive({ x: 1 })`: `x` is a plain value.
-- `state = { ...new }` on a `reactive`: external holders keep the old proxy. Mutate keys, or wrap in `ref`.
 - `props` are read-only; use `defineEmits` or `defineModel`.
-- `v-for :key="index"`: equivalent to no key for reorders/inserts; identity bugs. Use a stable id.
-- Pinia `const { items, total } = useCartStore()`: state/getters lose reactivity. Use `storeToRefs`.
+- `v-for :key="index"`: equivalent to no key for reorders/inserts. Use a stable id.
 
 ### TypeScript
 

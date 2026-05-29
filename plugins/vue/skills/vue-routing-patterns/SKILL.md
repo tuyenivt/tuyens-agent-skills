@@ -58,12 +58,6 @@ export default defineNuxtRouteMiddleware((to) => {
 });
 ```
 
-Bad - unconditional redirect causes an infinite loop:
-
-```ts
-export default defineNuxtRouteMiddleware(() => navigateTo("/login"));
-```
-
 ### Nuxt params, validation, fetch
 
 ```vue

@@ -232,17 +232,12 @@ Audit ongoing-maintenance items distinct from Step 8's first-time prerequisites:
 
 ## Avoid
 
-- Scaffolding without reading existing tests + setup - imports wrong factory, drifts from project conventions
-- Chasing coverage percentage instead of risk - 100% lines with no Nitro validation tests misses the bigger threat
-- E2E for what a component test could cover - context cost compounds across the suite
-- Testing implementation details (`wrapper.vm.<internal>`, render counts, lifecycle calls) - breaks on every refactor
-- `getByTestId` as default - test IDs are an escape hatch
-- `fireEvent` over `userEvent` when using TLV - skips focus/key dispatch real users trigger (VTU `trigger` acceptable for simple cases)
-- Calling a composable outside a setup context - lifecycle throws, `inject` returns undefined; use `withSetup` or probe component
-- Snapshot tests for visual layout - churn on every restyle; reserve for stable contracts
-- Skipping Nitro tests because they "are just functions" - validation, auth, side effects must be exercised
-- Mounting a component to test Pinia state - test the store directly
-- Real network in component tests - MSW with `onUnhandledRequest: 'error'` enforces the boundary
-- Sharing mutable fixtures - order-dependent failures
-- Asserting CSS class names - couples tests to styling; assert visible behavior or a11y properties
-- `as any` to silence TS in mocks - use typed `vi.mock` factories
+- Scaffolding without reading existing tests + setup - drifts from project conventions.
+- Chasing coverage percentage instead of risk.
+- E2E for what a component test could cover.
+- Testing implementation details (`wrapper.vm`, render counts, lifecycle calls).
+- `getByTestId` as default; `fireEvent` over `userEvent` in TLV.
+- Calling a composable outside a setup context.
+- Mounting a component to test Pinia state - test the store directly.
+- Sharing mutable fixtures or asserting CSS class names.
+- `as any` in mocks.
