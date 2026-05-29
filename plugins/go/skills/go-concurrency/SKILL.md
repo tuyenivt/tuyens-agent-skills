@@ -1,6 +1,6 @@
 ---
 name: go-concurrency
-description: "Go concurrency: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, fan-out, common race bugs."
+description: "Go concurrency: goroutine lifecycle, channels, context cancellation, errgroup, worker pools, sync primitives, mixed required/optional fan-out."
 metadata:
   category: backend
   tags: [go, concurrency, goroutine, channels, errgroup, sync, worker-pool]
@@ -13,44 +13,35 @@ user-invocable: false
 
 ## When to Use
 
-- Designing concurrent processing pipelines or worker pools
-- Running parallel operations with mixed required/optional semantics
-- Reviewing goroutine-based code for leaks or race conditions
-- Debugging hangs, deadlocks, or unexpected goroutine accumulation
-- Choosing between goroutines, channels, and sync primitives
+- Designing concurrent pipelines, worker pools, or mixed required/optional fan-out
+- Reviewing goroutine code for leaks or races
+- Debugging hangs, deadlocks, or goroutine accumulation
 
 ## Rules
 
-- Every goroutine must have an owner responsible for its termination
-- Every goroutine must have a termination path - no fire-and-forget
-- Pass context to every goroutine that does I/O or can be cancelled
-- Channels: the sender closes, never the receiver
-- Use `errgroup` for coordinated goroutine groups that need error collection
-- Prefer `sync.Mutex` for simple shared state; prefer channels for ownership transfer
+- Every goroutine has an owner and a termination path - no fire-and-forget
+- Pass `ctx` to any goroutine doing I/O or that can be cancelled
+- The sender closes channels; never the receiver
+- `errgroup` for groups that must all succeed (cancels siblings on first error)
+- `sync.Mutex` for shared state; channels for ownership transfer
+- Run `go test -race` in CI for any package using goroutines / channels / sync
 
 ## Patterns
 
-### Goroutine with Context and Lifecycle
+### Goroutine with Context
 
 ```go
-// Bad: no termination path, context ignored
-go func() {
-    for {
-        doWork()
-    }
-}()
+// Bad: no termination path
+go func() { for { doWork() } }()
 
-// Good: owner controls lifecycle via context
+// Good: owner controls lifecycle
 func startWorker(ctx context.Context, jobs <-chan Job) {
     go func() {
         for {
             select {
-            case <-ctx.Done():
-                return // clean shutdown
+            case <-ctx.Done(): return
             case job, ok := <-jobs:
-                if !ok {
-                    return // channel closed
-                }
+                if !ok { return }
                 process(job)
             }
         }
@@ -58,49 +49,30 @@ func startWorker(ctx context.Context, jobs <-chan Job) {
 }
 ```
 
-### errgroup for Coordinated Goroutines (All Required)
-
-Use `golang.org/x/sync/errgroup` when multiple goroutines must all succeed or all be cancelled:
+### errgroup (all required)
 
 ```go
 g, ctx := errgroup.WithContext(ctx)
-
-g.Go(func() error {
-    return fetchUsers(ctx)
-})
-
-g.Go(func() error {
-    return fetchOrders(ctx)
-})
-
-if err := g.Wait(); err != nil {
-    return fmt.Errorf("parallel fetch: %w", err)
-}
+g.Go(func() error { return fetchUsers(ctx) })
+g.Go(func() error { return fetchOrders(ctx) })
+if err := g.Wait(); err != nil { return fmt.Errorf("parallel fetch: %w", err) }
 ```
 
-### Mixed Required/Optional Fan-Out
+### Mixed Required / Optional Fan-Out
 
-When some parallel operations are required and others are best-effort (e.g., email is required but SMS and push notifications are optional), use separate errgroups or manual goroutine management:
+`errgroup` cancels siblings on first error - wrong for optional ops. Use separate groups:
 
 ```go
-func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, payment *Payment) error {
-    // Required operations - use errgroup, cancel on failure
+func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, p *Payment) error {
     required, reqCtx := errgroup.WithContext(ctx)
     required.Go(func() error {
         ctx, cancel := context.WithTimeout(reqCtx, 5*time.Second)
         defer cancel()
-        return s.emailSender.Send(ctx, payment.UserEmail, "Payment confirmed")
+        return s.emailSender.Send(ctx, p.UserEmail, "Payment confirmed")
     })
 
-    // Optional operations - use WaitGroup, log errors but don't fail
     var optional sync.WaitGroup
-    for _, sender := range []struct {
-        name string
-        fn   func(context.Context) error
-    }{
-        {"sms", func(ctx context.Context) error { return s.smsSender.Send(ctx, payment.UserPhone) }},
-        {"push", func(ctx context.Context) error { return s.pushSender.Send(ctx, payment.UserID) }},
-    } {
+    for _, sender := range optionalSenders(s, p) {
         optional.Go(func() {
             ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
             defer cancel()
@@ -110,12 +82,9 @@ func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, paymen
         })
     }
 
-    // Wait for required first - if it fails, return error
     if err := required.Wait(); err != nil {
-        return fmt.Errorf("required notification failed: %w", err)
+        return fmt.Errorf("required notification: %w", err)
     }
-
-    // Wait for optional to finish (they won't block long due to timeout)
     optional.Wait()
     return nil
 }
@@ -123,44 +92,33 @@ func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, paymen
 
 ### Per-Goroutine Timeouts
 
-When different operations have different timeout requirements:
-
 ```go
 g, ctx := errgroup.WithContext(ctx)
-
 g.Go(func() error {
-    ctx, cancel := context.WithTimeout(ctx, 2*time.Second) // fast call
+    ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
     defer cancel()
     return fetchFromCache(ctx)
 })
-
 g.Go(func() error {
-    ctx, cancel := context.WithTimeout(ctx, 10*time.Second) // slow external API
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()
     return fetchFromExternalAPI(ctx)
 })
-
-if err := g.Wait(); err != nil {
-    return fmt.Errorf("parallel fetch: %w", err)
-}
+return g.Wait()
 ```
 
-### Worker Pool Pattern
+### Worker Pool
 
 ```go
-func runWorkerPool(ctx context.Context, jobs <-chan Job, workerCount int) error {
+func runWorkerPool(ctx context.Context, jobs <-chan Job, n int) error {
     g, ctx := errgroup.WithContext(ctx)
-
-    for i := 0; i < workerCount; i++ {
+    for i := 0; i < n; i++ {
         g.Go(func() error {
             for {
                 select {
-                case <-ctx.Done():
-                    return ctx.Err()
+                case <-ctx.Done(): return ctx.Err()
                 case job, ok := <-jobs:
-                    if !ok {
-                        return nil // channel closed, no more work
-                    }
+                    if !ok { return nil }
                     if err := process(ctx, job); err != nil {
                         return fmt.Errorf("worker: %w", err)
                     }
@@ -168,25 +126,20 @@ func runWorkerPool(ctx context.Context, jobs <-chan Job, workerCount int) error 
             }
         })
     }
-
     return g.Wait()
 }
 ```
 
 ### Channel Ownership
 
-The goroutine that creates a channel owns it and is responsible for closing it:
-
 ```go
-// Good: producer owns and closes the channel
 func produce(ctx context.Context) <-chan int {
     ch := make(chan int)
     go func() {
         defer close(ch) // sender closes
         for i := 0; i < 10; i++ {
             select {
-            case <-ctx.Done():
-                return
+            case <-ctx.Done(): return
             case ch <- i:
             }
         }
@@ -198,115 +151,66 @@ func produce(ctx context.Context) <-chan int {
 ### sync Primitives
 
 ```go
-// sync.Mutex for protecting shared state
-type SafeCounter struct {
-    mu    sync.Mutex
-    value int
-}
+// Protect shared state
+type SafeCounter struct { mu sync.Mutex; value int }
+func (c *SafeCounter) Increment() { c.mu.Lock(); defer c.mu.Unlock(); c.value++ }
 
-func (c *SafeCounter) Increment() {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-    c.value++
-}
+// One-time init
+var (instance *DB; once sync.Once)
+func GetDB() *DB { once.Do(func() { instance = initDB() }); return instance }
 
-// sync.Once for one-time initialization
-var (
-    instance *DB
-    once     sync.Once
-)
-
-func GetDB() *DB {
-    once.Do(func() {
-        instance = initDB()
-    })
-    return instance
-}
-
-// sync.WaitGroup.Go (Go 1.25+) for safer goroutine accounting
-// Go() calls Add(1) before launching and Done() on return - no manual Add/Done needed
+// WaitGroup.Go (Go 1.25+) - no manual Add/Done
 var wg sync.WaitGroup
-wg.Go(func() {
-    doWork()
-})
+wg.Go(func() { doWork() })
 wg.Wait()
 
-// sync.Pool for reusing short-lived objects
-var bufPool = sync.Pool{
-    New: func() any { return new(bytes.Buffer) },
-}
-
-buf := bufPool.Get().(*bytes.Buffer)
-buf.Reset()
-defer bufPool.Put(buf)
+// Pool for short-lived objects
+var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+buf := bufPool.Get().(*bytes.Buffer); buf.Reset(); defer bufPool.Put(buf)
 ```
 
-### Semaphore for Bounded Concurrency
-
-When you need to limit parallelism without a full worker pool:
+### Bounded Concurrency (Semaphore)
 
 ```go
 sem := make(chan struct{}, maxConcurrency)
-
 g, ctx := errgroup.WithContext(ctx)
 for _, item := range items {
     g.Go(func() error {
-        sem <- struct{}{}        // acquire
-        defer func() { <-sem }() // release
+        sem <- struct{}{}
+        defer func() { <-sem }()
         return process(ctx, item)
     })
 }
 return g.Wait()
 ```
 
-### Race Detection
-
-Always run tests with the race detector during development and CI:
-
-```bash
-go test -race ./...
-go run -race main.go
-```
-
-Use `go vet` with the `waitgroup` analyzer to catch misuse of `sync.WaitGroup`.
-
 ## Edge Cases
 
-- **Nil channel**: sending to or receiving from a nil channel blocks forever - ensure channels are initialized before use
-- **Closed channel**: sending to a closed channel panics; receiving from a closed channel returns the zero value immediately - always use `val, ok := <-ch` to detect closure
-- **Empty select**: `select {}` blocks forever - useful only for intentional blocking (e.g., keeping main alive), but usually indicates a missing `case <-ctx.Done()`
-- **WaitGroup reuse**: do not call `wg.Add()` after `wg.Wait()` has started - add all goroutines before waiting or use `errgroup` instead
-- **errgroup cancels siblings on first error**: if one goroutine returns an error, the context from `errgroup.WithContext` is cancelled, which cancels all other goroutines. This is the desired behavior for all-required operations but wrong for mixed required/optional - use separate groups for those
+- Nil channel send/receive blocks forever
+- Send on closed channel panics; `v, ok := <-ch` detects close
+- WaitGroup: `Add` before `go`, never inside the goroutine; don't `Add` after `Wait` starts
+- `errgroup.WithContext` cancels all siblings on first error - use separate groups for required + optional
 
 ## Output Format
 
 ```
 ## Concurrency Design
 
-### Goroutine Inventory
+### Goroutines
 | Goroutine | Owner | Termination Path | Timeout |
-|-----------|-------|-----------------|---------|
-| {name} | {parent function} | {context cancellation / channel close} | {duration} |
 
-### Fan-Out Strategy
+### Fan-Out
 | Operation | Required? | Failure Behavior | Timeout |
-|-----------|-----------|-----------------|---------|
-| {email} | yes | cancel all, return error | 5s |
-| {SMS} | no | log warning, continue | 5s |
 
 ### Synchronization
 | Shared State | Protection | Why |
-|-------------|-----------|-----|
-| {cache map} | sync.RWMutex | concurrent read/write from handlers |
-| {counter} | sync/atomic | simple increment, no complex logic |
 ```
 
 ## Avoid
 
-- Goroutines without a context and a termination path
-- Closing channels from the receiver side
-- Using `time.Sleep` as a synchronization mechanism
-- Unbuffered channels in hot paths (causes goroutine pile-up under load)
-- Ignoring the race detector output
-- Sharing memory directly - Go's model is "do not communicate by sharing memory; instead, share memory by communicating" (use channels to transfer ownership)
-- Using a single errgroup when some operations are optional (it cancels all on first error)
+- Goroutines without context + termination
+- Closing channels from the receiver
+- `time.Sleep` as synchronization
+- Unbuffered channels in hot paths
+- One errgroup for required + optional (it cancels everything on first error)
+- Sharing memory directly when channel ownership transfer fits

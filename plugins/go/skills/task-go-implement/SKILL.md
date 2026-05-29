@@ -1,6 +1,6 @@
 ---
 name: task-go-implement
-description: End-to-end Go / Gin feature implementation: generates migration, repository, service, handler layers with full test coverage.
+description: End-to-end Go / Gin feature implementation - generates migration, repository, service, handler layers with full test coverage.
 agent: go-architect
 metadata:
   category: backend
@@ -11,7 +11,7 @@ user-invocable: true
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. Follow its contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts; surface conflicts as proposed amendments.
+> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles` and `stack-detect`. Follow its contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts; surface conflicts as proposed amendments.
 
 # Implement Go Feature
 
@@ -19,16 +19,16 @@ user-invocable: true
 
 End-to-end Go/Gin feature work: migration + model + repository + service + handler + tests in one pass.
 
-Not for: single-file edits (edit directly), bugfixes (`task-go-debug`), frontend.
+Not for: single-file edits, bugfixes (`task-go-debug`), frontend.
 
 ## Rules
 
 - Handlers orchestrate, services execute; no business logic in handlers
-- Constructor injection via function parameters; no globals or `init()`
-- Errors wrapped with `fmt.Errorf("context: %w", err)` at every layer
-- Repository interface declared in the **service** package (consumer-defined)
+- Constructor injection; no globals or `init()` for wiring
+- Errors wrapped with `fmt.Errorf("ctx: %w", err)` at every layer
+- Repository interface declared in the **service** package
 - Multi-model writes use `db.Transaction(...)`
-- Background jobs / events dispatched **after** the transaction returns nil, never inside it
+- Background jobs dispatched **after** the transaction returns nil
 - Each step completes before the next; design approved before code
 
 ## Workflow
@@ -37,57 +37,57 @@ Not for: single-file edits (edit directly), bugfixes (`task-go-debug`), frontend
 
 Use skill: `stack-detect`. Confirm Go/Gin and project layout.
 
-Ask the user before writing code:
+Ask before writing code:
 
 1. Feature description and primary use case
 2. Entities, fields, relationships, constraints
-3. External integrations (third-party APIs, webhooks)
-4. Background jobs or async events
-5. Authentication / authorization
+3. External integrations
+4. Background jobs / async events
+5. AuthN / AuthZ
 6. Status transitions
 7. Concurrency requirements
 8. Idempotency requirements
-9. Webhook endpoints (signature validation, raw body)
+9. Webhooks (signature validation, raw body)
 
-Ask targeted clarifying questions for any gap. Do not guess.
+Ask targeted questions for gaps. Do not guess.
 
 ### STEP 2 - DESIGN (APPROVAL GATE)
 
-Use skill: `go-gin-patterns` for API design. Use skill: `go-data-access` for data layer design.
+Use skill: `go-gin-patterns` for API. Use skill: `go-data-access` for data layer.
 
-Present a file tree and these decisions:
+Present file tree and decisions:
 
-- Endpoints (method, URI, status codes, DTOs)
-- Schema (indexes, FKs, CHECK constraints, idempotency unique index)
-- Service methods and transaction boundaries
+- Endpoints (method, URI, status, DTOs)
+- Schema (indexes, FKs, CHECK, idempotency unique)
+- Service methods, transaction boundaries
 - Error model (sentinels, custom types)
-- Idempotency strategy (if applicable)
-- Webhook design (if applicable): signature middleware, raw body, route group outside JWT auth
-- Background job dispatch points (which transaction commit triggers them)
+- Idempotency strategy
+- Webhook design (signature middleware, raw body, outside JWT)
+- Background job dispatch points
 
-Wait for approval before generating code.
+Wait for approval.
 
 ### STEP 3 - DATABASE
 
-Use skill: `go-migration-safety`. Generate up/down migration files. Index FKs and frequently-filtered columns. For status fields with known values, add a CHECK constraint. For idempotency keys, add a unique index.
+Use skill: `go-migration-safety`. up/down migrations. Index FKs and frequent-filter columns. CHECK for status fields. Unique index for idempotency keys.
 
 ### STEP 4 - DATA LAYER
 
-Use skill: `go-data-access`. Generate the repository interface in the service package and the GORM/sqlx implementation. Configure the connection pool immediately after open. For idempotency, use the canonical `clause.OnConflict{DoNothing: true}` upsert.
+Use skill: `go-data-access`. Repository interface in the service package; GORM/sqlx impl. Configure pool right after open. Use `clause.OnConflict{DoNothing: true}` for idempotent upserts.
 
 ### STEP 5 - SERVICE
 
-Use skill: `go-error-handling`. Generate the service with constructor injection. Wrap errors at every return. Use `db.Transaction` for multi-step writes.
+Use skill: `go-error-handling`. Constructor injection. Wrap at every return. `db.Transaction` for multi-step writes.
 
-For status transitions, validate in the service before persisting (a `validTransitions` map keyed by from-state).
+State transitions: validate in the service via a `validTransitions` map keyed by from-state.
 
-For concurrency: Use skill: `go-concurrency`.
-For background jobs / events: Use skill: `go-messaging-patterns`. Dispatch after the transaction returns nil.
-For external API calls: wrap with `context.WithTimeout`, classify errors at the gateway boundary, define the gateway as an interface for testability.
+Concurrency: Use skill: `go-concurrency`.
+Background jobs: Use skill: `go-messaging-patterns`. Dispatch after `Transaction` returns nil.
+External APIs: wrap with `context.WithTimeout`; classify at the gateway; define interface for testability.
 
 ### STEP 6 - HTTP LAYER
 
-Use skill: `go-gin-patterns`. Gin handlers with `ShouldBindJSON`, consistent response envelope, pagination. Map domain errors to HTTP via centralized error middleware:
+Use skill: `go-gin-patterns`. `ShouldBindJSON`, response envelope, pagination. Map domain errors via centralized middleware:
 
 | Domain Error | HTTP |
 |--------------|------|
@@ -98,11 +98,11 @@ Use skill: `go-gin-patterns`. Gin handlers with `ShouldBindJSON`, consistent res
 | Invalid transition | 422 |
 | External timeout | 503 |
 
-For webhooks: signature middleware reads `c.GetRawData()` before any binding, in a route group **outside** the JWT auth group.
+Webhooks: signature middleware reads `c.GetRawData()` before any binding; route lives outside the JWT auth group.
 
 ### STEP 7 - TESTS
 
-Use skill: `go-testing-patterns`. Table-driven + httptest + testcontainers. Cover happy path, validation, not-found, conflict, timeout. For state machines, table-test every valid + invalid transition. For webhooks, test valid / invalid / missing signature. For idempotency, test that duplicates return the same result.
+Use skill: `go-testing-patterns`. Table-driven + httptest + testcontainers. Cover happy path, validation, not-found, conflict, timeout. State machines: every valid + invalid transition. Webhooks: valid / invalid / missing signature. Idempotency: duplicates return the same result.
 
 ### STEP 8 - VALIDATE
 
@@ -110,14 +110,13 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 
 ## Edge Cases
 
-- **Vague input**: ask targeted questions in STEP 1; never guess fields or relationships
-- **No persistence**: skip STEPs 3-4; service + handler only
-- **Existing entity**: read and extend rather than recreate
-- **Referenced entity missing**: ask whether to create it or use an ID reference
-- **Webhook-only**: skip CRUD; signature middleware + dedicated handler
-- **State transitions**: service-layer validation + DB CHECK constraint
-- **Idempotency**: unique key column + `ON CONFLICT` upsert + service-layer guard
-- **Bulk operations**: `db.Transaction` + batch create + size-limit validation
+- Vague input: ask in STEP 1; never guess
+- No persistence: skip STEPs 3-4
+- Existing entity: read and extend
+- Webhook-only: skip CRUD; signature middleware + dedicated handler
+- State transitions: service validation + DB CHECK
+- Idempotency: unique key + `ON CONFLICT` + service guard
+- Bulk: `db.Transaction` + batch create + size limit
 
 ## Output Format
 
@@ -127,7 +126,6 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 
 ## Endpoints
 | Method | Path | Request | Response | Status |
-| ... |
 
 ## Tests
 - Unit: {count}
@@ -143,11 +141,11 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 - [ ] Stack detected; requirements gathered; design approved before code
 - [ ] All layers generated; repository interface in service package
 - [ ] Errors wrapped with `%w`; constructor injection throughout
-- [ ] Background jobs dispatched after transaction commit
+- [ ] Background jobs dispatched after commit
 - [ ] Status transitions validated (service + DB CHECK) when applicable
-- [ ] Idempotency: unique index + `ON CONFLICT` upsert when applicable
-- [ ] Webhook: signature middleware reads raw body, outside JWT group when applicable
-- [ ] External API calls: `context.WithTimeout` + interface for testability
+- [ ] Idempotency: unique index + `ON CONFLICT` + service guard when applicable
+- [ ] Webhook: signature middleware, raw body, outside JWT group when applicable
+- [ ] External APIs: `context.WithTimeout` + interface for testability
 - [ ] `go build`, `go test -race`, `go vet` all pass
 - [ ] List endpoints paginated
 
@@ -160,5 +158,5 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 - Returning GORM models from handlers (use response DTOs)
 - Unbounded list endpoints
 - Generating code before design approval
-- `ShouldBindJSON` on webhook endpoints (consumes body)
+- `ShouldBindJSON` on webhook endpoints
 - Allowing invalid state transitions

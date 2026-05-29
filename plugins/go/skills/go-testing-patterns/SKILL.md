@@ -1,6 +1,6 @@
 ---
 name: go-testing-patterns
-description: "Go testing: table-driven tests, httptest, testcontainers-go, testify, interface mocking, t.Parallel, fixtures, benchmarks, testing/synctest."
+description: "Go testing: table-driven, httptest, testcontainers-go, testify, interface mocking, t.Parallel, fixtures, benchmarks, testing/synctest."
 metadata:
   category: backend
   tags: [go, testing, httptest, testcontainers, testify, benchmarks]
@@ -13,81 +13,42 @@ user-invocable: false
 
 ## When to Use
 
-- Designing a test strategy for a new Go service
-- Writing unit tests for handlers, services, or domain logic
-- Writing integration tests against a real PostgreSQL database
-- Testing webhook handlers with signature validation
-- Reviewing test quality - coverage gaps, brittle tests, or slow suites
+- Designing a test strategy for a Go service
+- Writing handler / service / repository / webhook / async tests
+- Reviewing tests for coverage, brittleness, or speed
 
 ## Rules
 
-- Table-driven tests for all functions with multiple input/output cases
-- Use `require` (stops test on failure) for setup assertions; use `assert` (continues) for all other assertions
-- Use `t.Parallel()` on all independent tests - it's opt-in and fast tests get faster
-- Mock via interfaces defined in the consumer package - never mock concrete types or the database directly
-- Use `testcontainers-go` for integration tests that need a real database - never `time.Sleep` for async assertions
-- Test public behavior, not private implementation - if you're testing a private function, the package design may need rethinking
+- Table-driven for any function with multiple cases
+- `require` halts on failure (setup); `assert` continues (post-conditions)
+- `t.Parallel()` on every independent test
+- Mock via consumer-defined interfaces; never mock concrete types or the DB
+- Integration tests use `testcontainers-go` against the real DB; never SQLite-for-Postgres
+- Test public behavior; testing a private function suggests bad package design
+- No `time.Sleep` for synchronization - use channels, `testing/synctest`, or testcontainers wait strategies
 
 ## Patterns
 
-### Table-Driven Tests
-
-```go
-func TestValidateEmail(t *testing.T) {
-    t.Parallel()
-
-    tests := []struct {
-        name    string
-        email   string
-        wantErr bool
-    }{
-        {name: "valid email", email: "user@example.com", wantErr: false},
-        {name: "missing @", email: "userexample.com", wantErr: true},
-        {name: "empty string", email: "", wantErr: true},
-        {name: "subdomain", email: "user@mail.example.com", wantErr: false},
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            t.Parallel()
-            err := ValidateEmail(tt.email)
-            if tt.wantErr {
-                require.Error(t, err)
-            } else {
-                require.NoError(t, err)
-            }
-        })
-    }
-}
-```
-
-### Table-Driven Tests for State Transitions
-
-When testing state machines (e.g., payment status), cover all valid and invalid transitions:
+### Table-Driven
 
 ```go
 func TestPaymentTransition(t *testing.T) {
     t.Parallel()
-
     tests := []struct {
         name      string
-        from      string
-        to        string
+        from, to  string
         wantErr   bool
         errTarget error
     }{
-        {name: "pending to processing", from: "pending", to: "processing", wantErr: false},
-        {name: "processing to completed", from: "processing", to: "completed", wantErr: false},
-        {name: "processing to failed", from: "processing", to: "failed", wantErr: false},
-        {name: "pending to completed (skip)", from: "pending", to: "completed", wantErr: true, errTarget: ErrInvalidTransition},
-        {name: "completed to pending (reverse)", from: "completed", to: "pending", wantErr: true, errTarget: ErrInvalidTransition},
+        {"pending->processing", "pending", "processing", false, nil},
+        {"processing->completed", "processing", "completed", false, nil},
+        {"pending->completed (skip)", "pending", "completed", true, ErrInvalidTransition},
+        {"completed->pending (reverse)", "completed", "pending", true, ErrInvalidTransition},
     }
-
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             t.Parallel()
-            svc := NewPaymentService(mockRepo(tt.from))
-            err := svc.Transition(context.Background(), "pay_123", tt.to)
+            err := NewPaymentService(mockRepo(tt.from)).Transition(context.Background(), "pay_123", tt.to)
             if tt.wantErr {
                 require.Error(t, err)
                 assert.ErrorIs(t, err, tt.errTarget)
@@ -99,43 +60,14 @@ func TestPaymentTransition(t *testing.T) {
 }
 ```
 
-### Handler Tests with httptest
-
-Test Gin handlers without starting a real server:
+### Handler Tests (httptest)
 
 ```go
-func TestGetUser_Found(t *testing.T) {
-    t.Parallel()
-
-    mockSvc := &MockUserService{
-        GetUserFn: func(ctx context.Context, id string) (*User, error) {
-            return &User{ID: id, Name: "Alice"}, nil
-        },
-    }
-
-    r := gin.New()
-    r.GET("/users/:id", GetUser(mockSvc))
-
-    w := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
-    r.ServeHTTP(w, req)
-
-    require.Equal(t, http.StatusOK, w.Code)
-
-    var resp SuccessResponse
-    require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-    assert.Equal(t, "Alice", resp.Data.(map[string]any)["name"])
-}
-
 func TestGetUser_NotFound(t *testing.T) {
     t.Parallel()
-
     mockSvc := &MockUserService{
-        GetUserFn: func(ctx context.Context, id string) (*User, error) {
-            return nil, ErrNotFound
-        },
+        GetUserFn: func(ctx context.Context, id string) (*User, error) { return nil, ErrNotFound },
     }
-
     r := gin.New()
     r.Use(ErrorHandler())
     r.GET("/users/:id", GetUser(mockSvc))
@@ -148,186 +80,109 @@ func TestGetUser_NotFound(t *testing.T) {
 }
 ```
 
-### Webhook Handler Tests (Signature Validation)
-
-Webhook handlers need a table-driven signature test: valid, invalid, missing.
+### Webhook Tests (Signature)
 
 ```go
-func TestStripeWebhook(t *testing.T) {
-    t.Parallel()
-
-    secret := "whsec_test_secret"
-    payload := []byte(`{"type":"payment_intent.succeeded","data":{"object":{"id":"pi_123"}}}`)
-    validSig := computeStripeSignature(t, payload, secret)
-
-    tests := []struct {
-        name     string
-        sigHeader string
-        wantStatus int
-    }{
-        {name: "valid", sigHeader: validSig, wantStatus: http.StatusOK},
-        {name: "invalid", sigHeader: "invalid", wantStatus: http.StatusUnauthorized},
-        {name: "missing", sigHeader: "", wantStatus: http.StatusUnauthorized},
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            t.Parallel()
-            mockSvc := &MockPaymentService{HandleWebhookEventFn: func(ctx context.Context, e stripe.Event) error { return nil }}
-            r := gin.New()
-            r.POST("/webhooks/stripe", WebhookSignature(secret), StripeWebhook(mockSvc))
-
-            w := httptest.NewRecorder()
-            req := httptest.NewRequest(http.MethodPost, "/webhooks/stripe", bytes.NewReader(payload))
-            if tt.sigHeader != "" {
-                req.Header.Set("Stripe-Signature", tt.sigHeader)
-            }
-            r.ServeHTTP(w, req)
-            assert.Equal(t, tt.wantStatus, w.Code)
-        })
-    }
+tests := []struct {
+    name, sigHeader string
+    wantStatus      int
+}{
+    {"valid", computeStripeSignature(t, payload, secret), http.StatusOK},
+    {"invalid", "invalid", http.StatusUnauthorized},
+    {"missing", "", http.StatusUnauthorized},
 }
 ```
 
-### Interface Mocking (define in consumer, implement in test)
+Compute signatures dynamically with the provider's test helpers; never hardcode (timestamps must match).
+
+### Interface Mocking
+
+Function-field structs are simplest; for larger projects use `mockery` / `gomock`.
 
 ```go
-// In service package (consumer defines the interface it needs)
-type UserRepository interface {
-    FindByID(ctx context.Context, id string) (*User, error)
-    Save(ctx context.Context, user *User) error
-}
-
-// In test file (not a generated mock - simple struct with function fields)
 type MockUserRepository struct {
     FindByIDFn func(ctx context.Context, id string) (*User, error)
-    SaveFn     func(ctx context.Context, user *User) error
+    SaveFn     func(ctx context.Context, u *User) error
 }
-
 func (m *MockUserRepository) FindByID(ctx context.Context, id string) (*User, error) {
     return m.FindByIDFn(ctx, id)
 }
-
-func (m *MockUserRepository) Save(ctx context.Context, user *User) error {
-    return m.SaveFn(ctx, user)
-}
+func (m *MockUserRepository) Save(ctx context.Context, u *User) error { return m.SaveFn(ctx, u) }
 ```
 
-For larger projects, use `mockery` or `gomock` to generate mocks from interfaces automatically.
-
-### Test Fixtures
-
-For services with complex domain objects, use builder functions to create valid test data:
+### Fixtures (functional options)
 
 ```go
 func newTestPayment(opts ...func(*Payment)) *Payment {
     p := &Payment{
-        ID:             "pay_test_123",
-        Amount:         1000,
-        Currency:       "usd",
-        Status:         "pending",
-        IdempotencyKey: "idk_" + uuid.New().String(),
-        CreatedAt:      time.Now(),
+        ID: "pay_test_123", Amount: 1000, Currency: "usd", Status: "pending",
+        IdempotencyKey: "idk_" + uuid.New().String(), CreatedAt: time.Now(),
     }
-    for _, opt := range opts {
-        opt(p)
-    }
+    for _, opt := range opts { opt(p) }
     return p
 }
 
-func withStatus(status string) func(*Payment) {
-    return func(p *Payment) { p.Status = status }
-}
+func withStatus(s string) func(*Payment) { return func(p *Payment) { p.Status = s } }
+func withAmount(a int64) func(*Payment)  { return func(p *Payment) { p.Amount = a } }
 
-func withAmount(amount int64) func(*Payment) {
-    return func(p *Payment) { p.Amount = amount }
-}
-
-// Usage
-payment := newTestPayment(withStatus("completed"), withAmount(5000))
+p := newTestPayment(withStatus("completed"), withAmount(5000))
 ```
 
-### Integration Tests with testcontainers-go
+### Integration (testcontainers-go)
 
 ```go
 func TestUserRepo_Integration(t *testing.T) {
-    if testing.Short() {
-        t.Skip("skipping integration test in short mode")
-    }
-
+    if testing.Short() { t.Skip() }
     ctx := context.Background()
 
-    pgContainer, err := postgres.RunContainer(ctx,
+    pg, err := postgres.RunContainer(ctx,
         testcontainers.WithImage("postgres:16-alpine"),
         postgres.WithDatabase("testdb"),
         postgres.WithUsername("test"),
         postgres.WithPassword("test"),
         testcontainers.WithWaitStrategy(
-            wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-        ),
+            wait.ForLog("database system is ready to accept connections").WithOccurrence(2)),
     )
     require.NoError(t, err)
-    t.Cleanup(func() { pgContainer.Terminate(ctx) })
+    t.Cleanup(func() { pg.Terminate(ctx) })
 
-    connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+    connStr, err := pg.ConnectionString(ctx, "sslmode=disable")
     require.NoError(t, err)
-
-    db := setupTestDB(t, connStr) // run migrations
+    db := setupTestDB(t, connStr) // runs migrations
     repo := NewUserRepository(db)
 
-    t.Run("creates and retrieves user", func(t *testing.T) {
-        user := &User{Name: "Alice", Email: "alice@example.com"}
-        require.NoError(t, repo.Save(ctx, user))
-        require.NotEmpty(t, user.ID)
-
-        found, err := repo.FindByID(ctx, user.ID)
+    t.Run("creates and retrieves", func(t *testing.T) {
+        u := &User{Name: "Alice", Email: "alice@example.com"}
+        require.NoError(t, repo.Save(ctx, u))
+        got, err := repo.FindByID(ctx, u.ID)
         require.NoError(t, err)
-        assert.Equal(t, "Alice", found.Name)
+        assert.Equal(t, "Alice", got.Name)
     })
 }
 ```
 
-### Testing Idempotent Upserts
+### Idempotent Upsert Integration
 
 ```go
-func TestPaymentRepo_CreateIdempotent(t *testing.T) {
-    // ... testcontainers setup ...
-
-    t.Run("first create succeeds", func(t *testing.T) {
-        payment := newTestPayment()
-        result, err := repo.CreateIdempotent(ctx, payment)
-        require.NoError(t, err)
-        assert.Equal(t, payment.IdempotencyKey, result.IdempotencyKey)
-    })
-
-    t.Run("duplicate returns existing without error", func(t *testing.T) {
-        payment := newTestPayment()
-        first, err := repo.CreateIdempotent(ctx, payment)
-        require.NoError(t, err)
-
-        // Same idempotency key, different amount
-        duplicate := newTestPayment(withAmount(9999))
-        duplicate.IdempotencyKey = payment.IdempotencyKey
-
-        second, err := repo.CreateIdempotent(ctx, duplicate)
-        require.NoError(t, err)
-        assert.Equal(t, first.ID, second.ID)
-        assert.Equal(t, first.Amount, second.Amount) // original amount preserved
-    })
-}
+t.Run("duplicate returns existing", func(t *testing.T) {
+    p := newTestPayment()
+    first, _ := repo.CreateIdempotent(ctx, p)
+    dup := newTestPayment(withAmount(9999))
+    dup.IdempotencyKey = p.IdempotencyKey
+    second, err := repo.CreateIdempotent(ctx, dup)
+    require.NoError(t, err)
+    assert.Equal(t, first.ID, second.ID)
+    assert.Equal(t, first.Amount, second.Amount) // original wins
+})
 ```
 
-### TestMain for Suite-Level Setup
+### TestMain
 
 ```go
 func TestMain(m *testing.M) {
-    // One-time setup before any tests in the package run
-    gin.SetMode(gin.TestMode) // suppress debug logging in tests
+    gin.SetMode(gin.TestMode)
     pool, resource := setupTestDatabase()
-
     code := m.Run()
-
-    // Teardown
     pool.Purge(resource)
     os.Exit(code)
 }
@@ -337,76 +192,53 @@ func TestMain(m *testing.M) {
 
 ```go
 func BenchmarkHashPassword(b *testing.B) {
-    password := "supersecretpassword"
-    b.ResetTimer()
-    for b.Loop() { // Go 1.24+ - replaces for i := 0; i < b.N; i++
-        _, _ = HashPassword(password)
+    for b.Loop() { // Go 1.24+
+        _, _ = HashPassword("secret")
     }
 }
+// go test -bench=. -benchmem ./...
 ```
 
-Run with: `go test -bench=. -benchmem ./...`
-
-### Deterministic Concurrency Tests (testing/synctest)
-
-For testing goroutine behavior without `time.Sleep`:
+### Deterministic Concurrency (testing/synctest)
 
 ```go
-func TestDebounce(t *testing.T) {
-    synctest.Run(func() {
-        calls := 0
-        fn := Debounce(func() { calls++ }, 100*time.Millisecond)
-
-        fn()
-        fn()
-        fn()
-        synctest.Wait() // wait for all goroutines to block
-
-        time.Sleep(150 * time.Millisecond) // advance fake clock
-        synctest.Wait()
-
-        assert.Equal(t, 1, calls) // only one call despite three triggers
-    })
-}
+synctest.Run(func() {
+    calls := 0
+    fn := Debounce(func() { calls++ }, 100*time.Millisecond)
+    fn(); fn(); fn()
+    synctest.Wait()
+    time.Sleep(150 * time.Millisecond)
+    synctest.Wait()
+    assert.Equal(t, 1, calls)
+})
 ```
 
 ## Edge Cases
 
-- **t.Parallel with shared state**: subtests sharing a loop variable must capture it (Go < 1.22) or use `t.Parallel()` only when each subtest is truly independent - shared mocks or counters need synchronization
-- **testcontainers port mapping**: container internal port differs from host-mapped port - always use `container.MappedPort()` or `ConnectionString()`, never hardcode ports
-- **Gin test mode**: set `gin.SetMode(gin.TestMode)` in `TestMain` or init to suppress debug logging and avoid misleading output in CI
-- **Cleanup ordering**: `t.Cleanup` functions run in LIFO order - register container termination before DB connection close to avoid connection errors during teardown
-- **Webhook test signatures**: use the provider's test helpers or compute HMAC-SHA256 manually. Do not hardcode signatures - they include a timestamp that must match
+- testcontainers: use `MappedPort()` / `ConnectionString()`, never hardcode ports
+- `t.Cleanup` runs LIFO - register container teardown before DB close
+- `gin.SetMode(gin.TestMode)` in `TestMain` to suppress debug noise
 
 ## Output Format
 
 ```
 ## Test Strategy
 
-### Test Coverage
+### Coverage
 | Layer | Type | Count | Key Scenarios |
-|-------|------|-------|--------------|
-| Service | Unit (table-driven) | {n} | {happy path, transitions, errors} |
-| Handler | httptest | {n} | {CRUD, webhook sig validation} |
-| Repository | Integration (testcontainers) | {n} | {CRUD, upsert idempotency} |
-| Benchmark | Performance | {n} | {hot path functions} |
 
-### Test Fixtures
+### Fixtures
 | Fixture | Builder | Variants |
-|---------|---------|----------|
-| {Payment} | newTestPayment() | withStatus, withAmount |
 
-### Mock Interfaces
-| Interface | Package | Mock Strategy |
-|-----------|---------|--------------|
-| {PaymentRepository} | service | function-field struct |
+### Mocks
+| Interface | Package | Strategy |
 ```
 
 ## Avoid
 
-- `time.Sleep` in tests - use channels, `synctest`, or `testcontainers` wait strategies
-- Testing private functions - restructure or test through the public API
-- Mocking the database - use `testcontainers-go` for real query validation
-- Missing `t.Parallel()` on independent tests - suites become unnecessarily slow
-- Shared global state between tests - each test must be independently runnable
-- Hardcoding webhook signatures in tests - compute them dynamically
+- `time.Sleep` for sync
+- Testing private functions
+- Mocking the database
+- Missing `t.Parallel()`
+- Shared global state across tests
+- Hardcoded webhook signatures

@@ -1,6 +1,6 @@
 ---
 name: go-error-handling
-description: "Go error patterns: explicit returns, %w wrapping, sentinel errors, custom types, errors.Is/As, Gin error middleware, API error classification."
+description: "Go errors: explicit returns, %w wrapping, sentinels, custom types, errors.Is/As, Gin error middleware, retryable classification."
 metadata:
   category: backend
   tags: [go, error-handling, sentinel-errors, gin, middleware]
@@ -14,134 +14,88 @@ user-invocable: false
 ## When to Use
 
 - Designing error types for a new package or service
-- Reviewing error handling in a code review
-- Debugging unexpected error behavior (swallowed errors, lost context)
+- Reviewing error handling
 - Implementing centralized error handling in a Gin HTTP service
-- Wrapping third-party API errors (Stripe, payment gateways) into domain errors
+- Wrapping third-party API errors into domain errors
 
 ## Rules
 
-- Always check errors - never use `_` to discard an error return
-- Wrap errors with context using `fmt.Errorf("context: %w", err)` - preserve the chain
-- Use `errors.Is` and `errors.As` for checking, never string matching
-- Log OR return an error at each layer - never both (log-and-return duplicates noise)
-- Panic only for programmer bugs (nil dereference of required dependency at startup) - never for business logic
-- Map errors at the boundary: repo errors -> service errors -> HTTP status codes
-- Classify external API errors as retryable or permanent - callers need this to decide on retry behavior
+- Check every error; never discard with `_`
+- Wrap with `fmt.Errorf("context: %w", err)` to preserve the chain
+- Use `errors.Is` / `errors.As`; never string-match error messages
+- Log OR return at each layer, never both
+- Panic only for programmer bugs at startup, never for business logic
+- Map errors at layer boundaries: repo -> service -> HTTP status
+- Classify external API errors as retryable or permanent
 
 ## Patterns
 
 ### Sentinel Errors
 
-Use for expected, checkable conditions:
+For expected, checkable conditions:
 
 ```go
 var (
-    ErrNotFound          = errors.New("not found")
-    ErrUnauthorized      = errors.New("unauthorized")
-    ErrConflict          = errors.New("conflict")
-    ErrInvalidTransition = errors.New("invalid state transition")
+    ErrNotFound     = errors.New("not found")
+    ErrUnauthorized = errors.New("unauthorized")
+    ErrConflict     = errors.New("conflict")
 )
 
-// Check with errors.Is (works through wrapping chains)
-if errors.Is(err, ErrNotFound) {
-    // handle
-}
+if errors.Is(err, ErrNotFound) { /* handle */ }
 ```
 
 ### Custom Error Types
 
-Use when callers need to extract structured data from the error:
+When callers need structured data:
 
 ```go
 type ValidationError struct {
-    Field   string
-    Message string
+    Field, Message string
 }
-
 func (e *ValidationError) Error() string {
     return fmt.Sprintf("validation failed on %s: %s", e.Field, e.Message)
 }
 
-// Check with errors.As
 var ve *ValidationError
-if errors.As(err, &ve) {
-    // ve.Field and ve.Message are available
-}
+if errors.As(err, &ve) { /* ve.Field available */ }
 ```
 
 ### Error Wrapping
 
-Always add context when propagating errors up the call stack:
-
 ```go
-// Bad - caller has no context where the error originated
-func GetUser(id int) (*User, error) {
-    user, err := db.Query(...)
-    if err != nil {
-        return nil, err
-    }
-    return user, nil
-}
+// Bad - loses call site
+if err != nil { return nil, err }
 
-// Good - each layer adds its context
-func GetUser(id int) (*User, error) {
-    user, err := db.Query(...)
-    if err != nil {
-        return nil, fmt.Errorf("GetUser id=%d: %w", id, err)
-    }
-    return user, nil
-}
+// Good
+if err != nil { return nil, fmt.Errorf("GetUser id=%d: %w", id, err) }
 ```
 
-### Error Chain: Repo -> Service -> Handler
+### Layer Mapping
 
-Map errors at each layer boundary rather than leaking implementation details:
+Each layer wraps with its context; the handler maps to HTTP:
 
 ```go
-// Repository layer: returns data access errors
-func (r *userRepo) Find(id int) (*User, error) {
-    if notFound {
-        return nil, fmt.Errorf("userRepo.Find id=%d: %w", id, ErrNotFound)
-    }
-    // ...
+// Repository: data access error
+if notFound { return nil, fmt.Errorf("userRepo.Find id=%d: %w", id, ErrNotFound) }
+
+// Service: business error (still wraps the sentinel)
+if errors.Is(err, ErrNotFound) {
+    return nil, fmt.Errorf("user %d does not exist: %w", id, ErrNotFound)
 }
 
-// Service layer: maps to business errors
-func (s *userService) GetUser(id int) (*User, error) {
-    user, err := s.repo.Find(id)
-    if errors.Is(err, ErrNotFound) {
-        return nil, fmt.Errorf("user %d does not exist: %w", id, ErrNotFound)
-    }
-    if err != nil {
-        return nil, fmt.Errorf("userService.GetUser: %w", err)
-    }
-    return user, nil
-}
-
-// Handler layer: maps to HTTP responses
-func (h *userHandler) GetUser(c *gin.Context) {
-    user, err := h.service.GetUser(id)
-    if errors.Is(err, ErrNotFound) {
-        c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-        return
-    }
-    if err != nil {
-        c.Error(err) // delegate to centralized Gin error middleware
-        return
-    }
-    c.JSON(http.StatusOK, user)
-}
+// Handler: delegates to centralized middleware
+if err != nil { c.Error(err); return }
 ```
 
 ### Wrapping External API Errors
 
-Third-party SDK error types stop at the gateway boundary; callers depend only on domain sentinels.
+Third-party SDK error types stop at the gateway; callers depend only on domain sentinels.
 
 ```go
 var (
     ErrPaymentDeclined = errors.New("payment declined")
     ErrGatewayTimeout  = errors.New("payment gateway timeout")
+    ErrRetryable       = errors.New("retryable")
 )
 
 func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
@@ -164,23 +118,12 @@ func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
 }
 ```
 
-### Retryable vs Permanent Error Classification
-
-When calling external services, callers need to know whether to retry. Use a sentinel or interface:
+### Retryable Classification (multi-`%w`, Go 1.20+)
 
 ```go
-var ErrRetryable = errors.New("retryable")
-
-// Wrap retryable errors so callers can check:
-// if errors.Is(err, ErrRetryable) { retry }
-func classifyHTTPError(statusCode int, err error) error {
-    switch {
-    case statusCode == 429, statusCode >= 500:
-        return fmt.Errorf("%w: %w", ErrRetryable, err) // Go 1.20+ multi-wrap
-    default:
-        return err // permanent failure, do not retry
-    }
-}
+// %w twice lets one error match two sentinels
+return fmt.Errorf("%w: %w", ErrRetryable, cause)
+// caller: if errors.Is(err, ErrRetryable) { retry }
 ```
 
 ### Gin Centralized Error Middleware
@@ -189,13 +132,10 @@ func classifyHTTPError(statusCode int, err error) error {
 func ErrorMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         c.Next()
-
-        if len(c.Errors) == 0 {
-            return
-        }
+        if len(c.Errors) == 0 { return }
 
         err := c.Errors.Last().Err
-        log.Error("unhandled error", "error", err)
+        slog.Error("unhandled error", "err", err)
 
         var ve *ValidationError
         switch {
@@ -205,8 +145,6 @@ func ErrorMiddleware() gin.HandlerFunc {
             c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
         case errors.Is(err, ErrConflict):
             c.JSON(http.StatusConflict, gin.H{"error": "conflict"})
-        case errors.Is(err, ErrInvalidTransition):
-            c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid state transition"})
         case errors.Is(err, ErrGatewayTimeout):
             c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service temporarily unavailable"})
         default:
@@ -218,45 +156,32 @@ func ErrorMiddleware() gin.HandlerFunc {
 
 ## Edge Cases
 
-- **nil wrap**: `fmt.Errorf("context: %w", nil)` returns a non-nil error - guard with `if err != nil` before wrapping
-- **Multi-`%w` (Go 1.20+)**: `fmt.Errorf("%w: %w", ErrRetryable, cause)` lets one error match two sentinels; `errors.Is` / `errors.As` traverse both branches
-- **`Unwrap` cycle**: custom error types must not create cycles - `errors.Is` / `errors.As` will hang
-- **Third-party error-like values**: some libraries return values that don't implement `error`; use type assertions at the boundary
+- `fmt.Errorf("ctx: %w", nil)` returns a non-nil error - guard before wrapping
+- Custom error types must not create `Unwrap` cycles (`errors.Is` / `As` would hang)
+- Some libraries return values that don't implement `error` - assert at the boundary
 
 ## Output Format
 
 ```
 ## Error Design
 
-### Sentinel Errors
+### Sentinels
 | Error | Package | Used By |
-|-------|---------|---------|
-| ErrNotFound | domain | repo, service |
 
-### Custom Error Types
+### Custom Types
 | Type | Fields | Used When |
-|------|--------|-----------|
-| ValidationError | Field, Message | request validation |
 
-### Error Mapping Chain
-| Layer | Input Error | Output | HTTP Status |
-|-------|-------------|--------|-------------|
-| Repository | sql.ErrNoRows | ErrNotFound | - |
-| Service | ErrNotFound | ErrNotFound (wrapped) | - |
-| Handler | ErrNotFound | 404 JSON response | 404 |
+### Layer Mapping
+| Layer | Input | Output | HTTP |
 
-### External Error Classification
+### External Classification
 | External Error | Domain Error | Retryable? |
-|----------------|-------------|------------|
-| {api error} | {domain error} | {yes/no} |
 ```
 
 ## Avoid
 
 - Discarding errors with `_`
-- Using panic for flow control or expected conditions
-- String matching on error messages
+- `panic` for flow control or expected conditions
 - Logging and returning at the same layer
-- Leaking database or internal error details to HTTP clients
-- Leaking third-party library error types into the domain layer
-- Returning generic `errors.New("failed")` without context
+- Leaking DB / third-party error types past the gateway
+- Generic `errors.New("failed")` with no context

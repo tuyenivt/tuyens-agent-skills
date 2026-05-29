@@ -1,6 +1,6 @@
 ---
 name: task-go-review-security
-description: Go / Gin security review: JWT middleware, ShouldBindJSON validation, GORM SQL injection, mass assignment, secrets, govulncheck, OWASP Top 10.
+description: Go / Gin security review - JWT middleware, ShouldBindJSON validation, SQL injection, mass assignment, secrets, govulncheck, OWASP Top 10.
 agent: go-security-engineer
 metadata:
   category: backend
@@ -9,100 +9,88 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Go Security Review
 
-## Purpose
+Go-aware security review naming Gin JWT middleware (`gin-jwt`, `golang-jwt/jwt`), `ShouldBindJSON` + `go-playground/validator`, GORM / sqlx parameterization, password hashing (`bcrypt`, `argon2`), Go-specific risks (`exec.Command` injection, path traversal, mass assignment via `mapstructure.Decode`, `unsafe`), and Go dependency hygiene (`govulncheck`). Produces findings with attack scenarios and concrete Go remediations.
 
-Go-aware security review that names Gin JWT middleware (`gin-jwt`, `golang-jwt/jwt`), `ShouldBindJSON` + `go-playground/validator` tags, GORM / sqlx parameterization, password hashing (`bcrypt`, `argon2`), Go-specific risks (`exec.Command` injection, path traversal via `filepath.Join`, mass assignment via `mapstructure.Decode(req.Body, target)`, `unsafe` usage), and Go dependency hygiene (`govulncheck`) directly instead of routing through the generic backend security adapter. Produces findings with attack scenarios and concrete Go-specific remediations.
-
-This workflow is the stack-specific delegate of `task-code-review-security` for Go. The core workflow's contract (invocation, diff resolution, output format) is preserved so callers see a stable shape.
+Stack-specific delegate of `task-code-review-security` for Go.
 
 ## When to Use
 
-- Reviewing a Go/Gin PR for security regressions
-- Pre-deployment hardening pass on auth, authz, file upload, payment, or PII-handling code
-- Periodic strong-validation and middleware drift sweep across endpoints
-- Auditing a JWT flow, a new Gin auth middleware, or new `crypto` usage
+- Go/Gin PR security regression review
+- Pre-deployment hardening on auth, authz, file upload, payment, PII code
+- Periodic validation and middleware drift sweep
+- Auditing a JWT flow, new auth middleware, or new `crypto` usage
 
-**Not for:**
+**Not for:** perf review (`task-go-review-perf`), general review (`task-go-review`), production incident (`/task-oncall-start`).
 
-- Performance review (use `task-code-review-perf` or `task-go-review-perf`)
-- General code review (use `task-code-review` or `task-go-review`)
-- Production incident triage (use `/task-oncall-start`)
-
-**Depth.** This workflow always runs at full depth - there is no `quick` / `standard` / `deep` knob. Security review has cliff-edged consequences (auth bypass, RCE) that do not benefit from a "light" mode. If callers want a shallower pass, they should scope by file, not by depth.
+**Depth.** This workflow always runs full - security has cliff-edge consequences. Scope by file, not by depth.
 
 ## Severity Rubric
 
-Use these definitions to keep severity consistent across runs - do not invent your own scale.
+| Severity     | Definition                                                                                                                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Unauthenticated RCE, auth bypass, mass data exfiltration, working SQL injection (`db.Exec(fmt.Sprintf(..., userInput))`), `exec.Command` with shell + user input, secrets / signing keys committed, JWT `alg: none` accepted. Must fix before deploy; blocks merge. |
+| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata / internal services, mass assignment via `mapstructure.Decode(req.Body, &user)` granting admin, missing JWT on user-data endpoint, path traversal via `filepath.Join` without `Clean` + base check. Must fix before merge. |
+| **Medium**   | Hardening gap with mitigating control elsewhere (missing CORS allowlist when proxy enforces origin), missing field-level validator tags, weak rate limit on non-critical endpoint, debug exposure on non-prod (`pprof` exposed). Should fix this PR or next.  |
+| **Low**      | Defense-in-depth, dependency advisory below actively-exploited (`govulncheck` info), hardening without a concrete current attack.                                                                                                                                    |
 
-| Severity     | Definition                                                                                                                                                                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Unauthenticated RCE, authentication bypass, mass data exfiltration, working SQL injection on a production code path (`db.Exec(fmt.Sprintf(..., userInput))`), `exec.Command` with shell + user input, secrets / signing keys committed in source, JWT `alg: none` accepted. Must fix before deploy; blocks merge. |
-| **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata or internal services, mass assignment via `mapstructure.Decode(req.Body, &user)` granting admin, missing JWT middleware on user-data endpoint, path traversal via `filepath.Join` without `filepath.Clean` + base check. Must fix before merge. |
-| **Medium**   | Hardening gap with a mitigating control elsewhere (e.g., missing CORS allowlist when a reverse proxy enforces origin), missing field-level validator tags, weak rate limiting on a non-critical endpoint, debug exposure on a non-prod profile (`pprof` exposed). Should fix this PR or the next one.  |
-| **Low**      | Defense-in-depth nice-to-have, dependency advisory below the actively-exploited threshold (`govulncheck` info-level), hardening recommendations without a concrete current attack scenario.                                                                            |
+**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file as a single finding at the elevated severity. Examples:
 
-**Combined-finding rule.** When two or more findings *compose* on the same code path into a worse threat than either alone, file them as a single finding at the elevated severity and cite each component. Examples:
+- Missing JWT (High) + mass assignment via `mapstructure.Decode(req.Body, &user)` (High) on the *same handler* = **Critical** unauthenticated admin override
+- Missing ownership check (High) + ORM model in `c.JSON` exposing `PasswordHash` (Medium) on the *same handler* = **Critical** account takeover
+- SSRF (High) + reachable from unauthenticated endpoint (High) = **Critical** unauth SSRF
 
-- Missing JWT middleware on a user-data endpoint (High, alone) + mass assignment via `mapstructure.Decode(req.Body, &user)` (High, alone) on the *same handler* = **Critical** unauthenticated admin override (anyone on the internet can `POST /admin/users/:id` with `{"role": "admin"}`).
-- Missing ownership check (High, alone) + ORM model returned from `c.JSON` exposing `PasswordHash` (medium, alone) on the *same handler* = **Critical** account takeover (any authenticated user reads any other user's password hash).
-- SSRF (High, alone) + reachable from an unauthenticated endpoint (High, alone) = **Critical** unauth SSRF.
-
-The rule of thumb: if the realistic exploit path requires both findings to land for the attack to succeed, they are one finding. If either finding is exploitable on its own, file them separately at their independent severities.
+If either finding is exploitable alone, file separately at independent severities.
 
 ## Invocation
 
-Mirrors `task-code-review-security`:
+| Form | Meaning |
+|------|---------|
+| `/task-go-review-security` | Current branch vs base; fails fast on trunk |
+| `/task-go-review-security <branch>` | `<branch>` vs base (3-dot) |
+| `/task-go-review-security pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-| Invocation                          | Meaning                                                                                               |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/task-go-review-security`          | Review current branch vs its base - fails fast if on a trunk branch; switch to a feature branch first |
-| `/task-go-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                                            |
-| `/task-go-review-security pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` (user runs the fetch first)                       |
-
-When invoked as a subagent of `task-code-review-security` (the core dispatcher passes the precondition-check handle plus the already-read diff and commit log), Step 2 below is skipped and this workflow reuses the parent's read-once artifacts.
+When invoked as subagent of `task-code-review-security`, parent passes handle + pre-read artifacts; Step 2 skipped.
 
 ## Workflow
 
 ### Step 1 - Confirm Stack
 
-Use skill: `stack-detect` to confirm Go / Gin. If invoked as a delegate of `task-code-review-security` or as a subagent of `task-go-review` (parent already detected Go), accept the pre-confirmed stack and skip re-detection. If the detected stack is not Go, stop and tell the user to invoke `/task-code-review-security` instead.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Go, stop and recommend `/task-code-review-security`.
 
-Detect data access (GORM / sqlx / database/sql / mixed) and JWT library (`golang-jwt/jwt` v4 vs v5, `gin-jwt`, `lestrrat-go/jwx`) and password hashing (`golang.org/x/crypto/bcrypt` vs `argon2`). Record `Data Access`, `JWT Library`, `Password Hash` for the Summary block.
+Detect: data access (GORM / sqlx / database/sql / mixed), JWT library (`golang-jwt/jwt` v4 vs v5, `gin-jwt`, `lestrrat-go/jwx`), password hashing (`bcrypt` vs `argon2`).
 
-### Step 2 - Resolve the Diff Under Review
+### Step 2 - Resolve Diff
 
-Use skill: `review-precondition-check` with the user's argument (or no argument to default to the current branch). On approval, read the diff and commit log once via `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`, then reuse them for all subsequent steps. Skip this step entirely if running as a subagent of `task-code-review-security` and the parent passed the handle plus pre-read artifacts.
-
-If `review-precondition-check` stops with a fail-fast message, surface the message verbatim and stop. Do not run any state-changing git command from this workflow.
+Use skill: `review-precondition-check`. Read diff + log once; reuse. Skip if subagent received handle.
 
 ### Step 3 - Read the Security Surface
 
-Before applying the OWASP and authn/authz checklists, open the files that actually wire security so findings cite real lines:
+Cite real lines. Open:
 
-- `cmd/api/main.go` and the router setup file - confirm middleware order (recovery → logging → request-id → CORS → auth → rate-limit → handler) and which router groups apply auth
-- `internal/middleware/auth.go` (or equivalent) - JWT validation logic, claim extraction, error responses
-- `internal/middleware/cors.go` / CORS setup (typically `gin-contrib/cors`) for origin allowlist
-- `internal/middleware/ratelimit.go` (typically `gin-contrib/limiter` or `golang.org/x/time/rate`) for auth-endpoint rate limits
-- Every changed handler - look for auth middleware applied at group level, ownership checks in handler/service body, request DTO type, `c.ShouldBindJSON` usage
-- Every changed DTO with `validate:"..."` struct tags
-- Every changed query for parameterization (GORM `Where("id = ?", id)`, sqlx `?` placeholders or `:name` named params)
-- `cmd/api/main.go` / config struct for `JWT_SECRET`, allowed origins, env var loading
-- `go.mod` / `go.sum` for dependency versions; recent CVE-affected packages
-- `.env.example` for documented env vars (without real values)
+- `cmd/api/main.go` + router setup - middleware order (recovery -> logging -> request-id -> CORS -> auth -> rate-limit -> handler) and which groups have auth
+- `internal/middleware/auth.go` - JWT validation, claim extraction, error responses
+- `middleware/cors.go` / CORS setup for origin allowlist
+- `middleware/ratelimit.go` for auth-endpoint rate limits
+- Every changed handler - auth at group level, ownership checks, request DTO, `ShouldBindJSON` usage
+- Every changed DTO with `validate:"..."` tags
+- Every changed query for parameterization
+- Config struct for `JWT_SECRET`, allowed origins, env loading
+- `go.mod` / `go.sum` for dependency versions
+- `.env.example` for documented env vars
 
-When the diff removes a middleware or relaxes auth, also `git log -p` the prior revision of those lines to confirm what was protected before. The blame trail is the authoritative answer to "did this change weaken authorization."
+When the diff removes middleware or relaxes auth, `git log -p` the prior revision - the blame trail is authoritative.
 
 ### Step 4 - OWASP Triage (Go Lens)
 
-This is a **triage pass**, not a findings list. Produce a per-category verdict (`yes` / `no signal in diff`) - downstream Steps 5-9 produce the actual findings; do not repeat them here.
+**Triage pass**, not findings list. Per-category verdict (`yes` / `no signal in diff`). Steps 5-9 produce findings.
 
-| Risk | Go-specific signal |
-|------|--------------------|
-| Broken Access Control | Missing JWT middleware at router-group level; missing ownership check for per-owner data |
+| Risk | Go signal |
+|------|-----------|
+| Broken Access Control | Missing JWT at router-group level; missing ownership check |
 | Injection | `db.Raw(fmt.Sprintf(...))`; `exec.Command("sh", "-c", userInput)`; unparameterized SQL via `+` |
 | Cryptographic Failures | `md5` / `sha1` for auth; hardcoded JWT key; `math/rand` for tokens; missing `bcrypt` / `argon2` |
 | Security Misconfiguration | `AllowAllOrigins: true`; `gin.DebugMode` in prod; ungated `pprof`; missing `gin-contrib/secure` |
@@ -110,120 +98,118 @@ This is a **triage pass**, not a findings list. Produce a per-category verdict (
 | XSS | `text/template` (not `html/template`); `c.HTML` with user-supplied template |
 | Insecure Design (A04) | Default-allow router (auth opt-in instead of opt-out) |
 | Vulnerable Components (A06) | Stale package with known CVE; missing `govulncheck` in CI |
-| Data Integrity Failures (A08) | `gob.Decode` on untrusted input; `mapstructure.Decode(req.Body, &model)`; missing request-size limit; `unsafe` |
+| Data Integrity (A08) | `gob.Decode` on untrusted input; `mapstructure.Decode(req.Body, &model)`; missing request-size limit; `unsafe` |
 | Logging & Monitoring (A09) | `slog` logging `password` / `token` / `authorization`; missing auth event log; Sentry not stripping PII |
 
 ### Step 5 - Authentication
 
-- [ ] **JWT signing**: HS256 secret in env / Vault, never committed. RS256 / ES256 with key pair preferred for cross-service. `golang-jwt/jwt/v5` (v4 is on maintenance only); `lestrrat-go/jwx` is the strict-by-default alternative
-- [ ] **`alg: none` rejected**: `jwt.Parse(token, keyFunc)` keyFunc returns the expected key only when `token.Method` matches the expected algorithm (`*jwt.SigningMethodHMAC` for HS256). Never trust the `alg` header value blindly - check `token.Method.(*jwt.SigningMethodHMAC)` and reject otherwise
-- [ ] **JWT issuer / audience validated**: `jwt.WithIssuer(...)`, `jwt.WithAudience(...)` validators (jwt/v5) wired; `iss`, `aud`, `exp` checked, not just signature
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; refresh tokens revocable via DB / Redis denylist (track `jti` claim or refresh-token UUID)
-- [ ] **Password hashing**: `bcrypt.GenerateFromPassword(pw, 12)` (cost ≥ 10) or `argon2.IDKey(...)` (preferred for new code). Never `crypto/sha256.Sum256` / `md5.Sum` for passwords. `crypto/subtle.ConstantTimeCompare` for hash comparison
-- [ ] **Gin JWT middleware wired correctly**: middleware extracts token from `Authorization: Bearer <token>`, validates, sets claims on `c.Set("claims", ...)`, returns 401 with no body details on failure
-- [ ] **Brute-force protection**: rate limiter on `/auth/login`, `/auth/refresh`, `/auth/reset-password` via `gin-contrib/limiter` or `golang.org/x/time/rate`; configured stricter than global rate limit
-- [ ] **No `slog.Info("token", token)` / `fmt.Println(token)`** that leaks the JWT to logs
-- [ ] **Session cookies (when used instead of bearer JWT)**: `Secure: true` in prod, `HttpOnly: true`, `SameSite: http.SameSiteLaxMode`; signed via `securecookie` or HMAC tag
+- [ ] **JWT signing:** HS256 secret in env / Vault, never committed. RS256 / ES256 preferred for cross-service. `golang-jwt/jwt/v5` (v4 is maintenance only); `lestrrat-go/jwx` strict-by-default alternative
+- [ ] **`alg: none` rejected:** `jwt.Parse(token, keyFunc)` returns expected key only when `token.Method` matches expected algorithm (`*jwt.SigningMethodHMAC` for HS256). Never trust `alg` header blindly
+- [ ] **`iss` / `aud` / `exp` validated**, not just signature - via `jwt.WithIssuer(...)`, `jwt.WithAudience(...)` (v5)
+- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; revocable via DB / Redis denylist (`jti` claim or refresh UUID)
+- [ ] **Password hashing:** `bcrypt.GenerateFromPassword(pw, 12)` (cost >= 10) or `argon2.IDKey(...)` (preferred for new code). Never `sha256.Sum256` / `md5.Sum` for passwords. `crypto/subtle.ConstantTimeCompare` for hash comparison
+- [ ] **Gin JWT middleware wired correctly:** extracts from `Authorization: Bearer <token>`, validates, sets claims on `c.Set("claims", ...)`, returns 401 with no body details
+- [ ] **Brute-force protection:** rate limiter on `/auth/login`, `/auth/refresh`, `/auth/reset-password`; stricter than global
+- [ ] **No `slog.Info("token", token)` / `fmt.Println(token)`** leaking the JWT
+- [ ] **Session cookies** (when not bearer): `Secure: true` in prod, `HttpOnly: true`, `SameSite: http.SameSiteLaxMode`; signed via `securecookie` or HMAC
 
 ### Step 6 - Authorization
 
-- [ ] **Authorization drift sweep**: every new endpoint added in the diff has JWT middleware applied at the router group OR explicitly public (whitelisted in a `public` group). No bare `r.GET("/orders", handler)` outside an authed group
-- [ ] **Role / permission checks** centralized in middleware (`auth.RequireRole("admin")`) using claims read from `c.Get("claims")`, not inline `if claims.Role != "admin" { c.AbortWithStatus(403); return }` scattered in handlers (easy to miss on new endpoints)
-- [ ] **IDOR**: lookups scope through the principal (`db.Where("id = ? AND user_id = ?", orderID, claims.UserID).First(&order)`) rather than `db.First(&order, orderID)` then a separate ownership check. Better: every domain query takes `userID` / `tenantID` in its repository signature
-- [ ] **Tenant isolation**: multi-tenant apps scope queries by `tenant_id` at the repository layer (GORM scope or sqlx wrapper injecting the WHERE clause), not at the handler layer alone. `db.Scopes(TenantScoped(claims.TenantID)).Find(...)` pattern preferred
-- [ ] **CORS**: `cors.New(cors.Config{AllowOrigins: [...]})` allowlist (not `AllowAllOrigins: true` for credentialed requests); methods and headers minimal
-- [ ] **CSRF**: not required for stateless JWT-bearer APIs; required for cookie-session apps - confirm via auth model. `gorilla/csrf` middleware for cookie-session
+- [ ] **Authorization drift sweep:** every new endpoint has JWT middleware at the router group OR explicitly public (whitelisted in a `public` group). No bare `r.GET("/orders", handler)` outside an authed group
+- [ ] **Role / permission checks centralized in middleware** (`auth.RequireRole("admin")`) reading claims from `c.Get("claims")`, not inline `if claims.Role != "admin" { ... }` scattered in handlers
+- [ ] **IDOR:** lookups scope through principal (`db.Where("id = ? AND user_id = ?", orderID, claims.UserID).First(&order)`), not `db.First(&order, orderID)` + separate check. Best: repository signature takes `userID` / `tenantID`
+- [ ] **Tenant isolation** scoped by `tenant_id` at the repository layer (GORM scope or sqlx wrapper), not at the handler. `db.Scopes(TenantScoped(claims.TenantID)).Find(...)` preferred
+- [ ] **CORS:** `cors.New(cors.Config{AllowOrigins: [...]})` allowlist; not `AllowAllOrigins: true` for credentialed; minimal methods / headers
+- [ ] **CSRF:** not required for stateless JWT-bearer APIs; required for cookie-session - confirm via auth model. `gorilla/csrf` for cookie-session
 
 ### Step 7 - Input Validation and Mass Assignment
 
-- [ ] **`ShouldBindJSON` (not `BindJSON`)** for control over the response shape: `BindJSON` writes 400 directly and returns; `ShouldBindJSON` returns the error. Use `ShouldBindJSON` so the handler can wrap, log, and respond consistently via the error middleware
-- [ ] **Validator struct tags on every DTO field**: `validate:"required,email,min=1,max=255"` via `go-playground/validator` (Gin's default). Missing tags means anything-goes input
-- [ ] **No `interface{}` / `map[string]interface{}` body**: `c.ShouldBindJSON(&req)` with a typed struct - never `c.ShouldBindJSON(&map[string]interface{}{})` then read fields by string key
-- [ ] **No privilege-bearing fields in user-facing input DTOs**: `Role`, `IsAdmin`, `OwnerID`, `UserID`, `TenantID`, `IsActive`, `Verified` - server-set only. If present in `CreateOrderRequest`, reject and require an admin-only path with a separate DTO
-- [ ] **No `mapstructure.Decode(req.Body, &user)` / `json.Unmarshal(body, &user)` directly into a domain model**: this is mass-assignment. Define a request DTO, validate it, then map to the domain model with explicit field assignment
-- [ ] **Response DTOs (not models) returned from handlers**: `ToOrderResponse(o *model.Order) OrderResponse` maps explicitly, dropping internal fields (`PasswordHash`, `InternalAuditLog`, `IsTest`)
-- [ ] **`c.ShouldBindUri` / `c.ShouldBindQuery`** for path params and query strings - validates and converts in one call; raw `c.Param("id")` returns a string with no validation
-- [ ] **`uuid.Parse` (or equivalent) for UUID path params**: never trust the raw string format
-- [ ] **File uploads**:
-  - File type validated by content (`http.DetectContentType`), not just `Content-Type` header (client-controlled) or extension
-  - Per-file size limit enforced (`router.MaxMultipartMemory = 5 << 20` for 5MB; `c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)` for stricter)
-  - Saved files stored outside the webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized per the path-traversal rule below (the same `filepath.Clean` + `HasPrefix(base)` check applies)
-  - Virus scan pipeline or accepted-risk documented for user uploads
-- [ ] **Path traversal**: `filepath.Clean(userInput)` followed by `filepath.Join(base, cleaned)` and `strings.HasPrefix(joined, base)` check; reject otherwise
-- [ ] **Process execution**: `exec.Command(name, args...)` with arg slice (NOT `exec.Command("sh", "-c", userInput)` and NOT a name interpolated from user input); strict allowlist of allowed binaries
+- [ ] **`ShouldBindJSON` (not `BindJSON`)** so the handler controls the response shape
+- [ ] **Validator struct tags on every DTO field:** `validate:"required,email,min=1,max=255"`. Missing tags means anything-goes input
+- [ ] **No `interface{}` / `map[string]interface{}` body** - bind to a typed struct
+- [ ] **No privilege-bearing fields in input DTOs:** `Role`, `IsAdmin`, `OwnerID`, `UserID`, `TenantID`, `IsActive`, `Verified` are server-set only. If present in `CreateOrderRequest`, reject and require admin-only path with separate DTO
+- [ ] **No `mapstructure.Decode(req.Body, &user)` / `json.Unmarshal(body, &user)` directly into a domain model** - mass assignment. Define a request DTO, validate, then explicit field copy
+- [ ] **Response DTOs (not models) returned:** `ToOrderResponse(o)` maps explicitly, dropping internal fields
+- [ ] **`c.ShouldBindUri` / `c.ShouldBindQuery`** for path / query params - validates and converts. Raw `c.Param("id")` is a string with no validation
+- [ ] **`uuid.Parse`** for UUID path params
+- [ ] **File uploads:**
+  - Type via content (`http.DetectContentType`), not header or extension
+  - Per-file size limit (`router.MaxMultipartMemory`, `http.MaxBytesReader`)
+  - Stored outside webroot; `Content-Disposition: attachment` on serve
+  - Filename sanitized (see path traversal)
+  - Virus scan pipeline or accepted-risk documented
+- [ ] **Path traversal:** `filepath.Clean(userInput)` + `filepath.Join(base, cleaned)` + `strings.HasPrefix(joined, base)` check; reject otherwise
+- [ ] **Process execution:** `exec.Command(name, args...)` with arg slice (NOT `exec.Command("sh", "-c", userInput)`); strict allowlist of binaries
 
 ### Step 8 - Common Go Vulnerability Patterns
 
-- [ ] **SQL injection via raw query**: `db.Exec(fmt.Sprintf("UPDATE ... WHERE id=%s", userInput))` - flagged as critical; same for `db.Raw(fmt.Sprintf(...))`. Use GORM `db.Where("id = ?", id)`, `db.Raw("SELECT ... WHERE id = ?", id)`, sqlx `?` / `:name`. Even `db.Where("name LIKE ?", "%"+userInput+"%")` is fine (the `?` is parameterized) - the smell is unparameterized interpolation
-- [ ] **Command injection**: `exec.Command("sh", "-c", "convert "+userInput+" /tmp/out")` - any concatenation of user input into a shell-interpreted string is RCE; use `exec.Command("convert", userInput, "/tmp/out")` (arg slice, no shell)
-- [ ] **`os/exec` with `shell: true` equivalent**: invoking `bash -c` / `sh -c` / `cmd /c` with user input - same RCE
-- [ ] **`text/template` with user-supplied template**: `template.New("").Parse(userInput).Execute(...)` is RCE / SSTI; templates must come from disk or a trusted constant. `html/template` is auto-escaping for HTML output, but `Parse(userInput)` is still SSTI
-- [ ] **`gob.Decode(userInput)` / `xml.Unmarshal` on untrusted input**: `gob` instantiates types - classic deserialization-gadget surface; `xml.Unmarshal` has billion-laughs / XXE risks (use defaults; flag custom decoders)
-- [ ] **`unsafe` package usage**: `unsafe.Pointer` casts in the diff - audit for memory-safety violations; legitimate uses exist (zero-copy string→[]byte) but most are smells
-- [ ] **`reflect.Set...` with user-controlled field name / value**: a programmable mass-assignment. Flag any `reflect.ValueOf(target).FieldByName(userKey).Set(...)` pattern
-- [ ] **HTTP client with `InsecureSkipVerify: true`**: `&tls.Config{InsecureSkipVerify: true}` flagged unless behind a documented test fixture; same for any direct `&http.Transport{TLSClientConfig: ...}` with InsecureSkipVerify
-- [ ] **Open redirect**: `c.Redirect(http.StatusFound, userInput)` validated against an allowlist or relative-path-only check (`strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//")`)
-- [ ] **`crypto/rand` (NOT `math/rand`) for tokens / nonces / secrets**: `math/rand` is deterministic; `crypto/rand.Read(buf)` for security-sensitive randomness. `math/rand/v2` (Go 1.22+) is still not cryptographic
-- [ ] **`crypto/subtle.ConstantTimeCompare` for HMAC / signature comparison**: `==` on `[]byte` is timing-attack vulnerable. Stripe / GitHub / Slack webhook signature verification must use constant-time compare
-- [ ] **`JWT_SECRET` / signing key** sourced from env / Vault, never committed; rotated when leaked
-- [ ] **Debug exposure**: `gin.SetMode(gin.ReleaseMode)` in prod (default `DebugMode` leaks request bodies in logs); `pprof` endpoint registered only in non-prod or behind admin auth (typical pattern: `if env != "prod" { pprof.Register(r) }`)
-- [ ] **SSRF depth**: when a user-controlled value flows into an outbound URL or hostname, the allowlist must reject (a) cloud metadata IP `169.254.169.254` and IPv6 equivalent, (b) localhost / `127.0.0.0/8` / `::1`, (c) private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve the host **after** parsing (DNS rebinding bypasses string-only allowlists - re-resolve at request time and re-check). `net/url.Parse` quirks: backslash, IPv4-in-IPv6 (`::ffff:127.0.0.1`) all defeat naive checks
-- [ ] **Asynq / Kafka payload trust boundary**: tasks serialize to bytes in Redis / Kafka; consumer `json.Unmarshal(payload, &p)` on input from any source that can publish to the queue is implicit trust. If the queue is reachable from untrusted inputs (webhook → Asynq), validate inside the handler before acting on payload fields
-- [ ] **HTTP request smuggling / desync** (Go behind nginx / ALB): Go's `net/http` parser is strict by default; flag custom HTTP/1.1 parsing or proxy / forwarder middleware that re-emits headers without validation
-- [ ] **Webhook signature verification**: Stripe / GitHub / Slack webhooks - signature verified via `crypto/subtle.ConstantTimeCompare` (not `bytes.Equal`, not `==`). Read raw body via `c.GetRawData()` before any binding (binding consumes the body)
-- [ ] **`govulncheck ./...` integration**: project runs `govulncheck` in CI for known Go vulns; flag unaddressed High/Critical findings
+- [ ] **SQL injection via raw query:** `db.Exec(fmt.Sprintf("UPDATE ... WHERE id=%s", userInput))` - critical. Use GORM `db.Where("id = ?", id)`, sqlx `?` / `:name`. `db.Where("name LIKE ?", "%"+userInput+"%")` is fine (`?` is parameterized) - the smell is unparameterized interpolation
+- [ ] **Command injection:** concatenating user input into a shell-interpreted string is RCE; use arg slice, no shell
+- [ ] **`bash -c` / `sh -c` / `cmd /c`** with user input - same RCE
+- [ ] **`text/template` with user-supplied template:** `template.New("").Parse(userInput).Execute(...)` is SSTI; templates from disk or trusted constant only
+- [ ] **`gob.Decode(userInput)` / `xml.Unmarshal` on untrusted input:** `gob` instantiates types (deserialization gadget); `xml.Unmarshal` has billion-laughs / XXE risks
+- [ ] **`unsafe` package** - audit for memory-safety violations; most are smells
+- [ ] **`reflect.Set...` with user-controlled field name / value** - programmable mass assignment
+- [ ] **`InsecureSkipVerify: true`** flagged unless behind documented test fixture
+- [ ] **Open redirect:** `c.Redirect(http.StatusFound, userInput)` validated against allowlist or relative-path-only (`strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//")`)
+- [ ] **`crypto/rand` (NOT `math/rand`) for tokens / nonces / secrets** - `math/rand` is deterministic
+- [ ] **`crypto/subtle.ConstantTimeCompare` for HMAC / signature** - `==` / `bytes.Equal` are timing-attack vulnerable. Stripe / GitHub / Slack webhook verification must use constant-time
+- [ ] **`JWT_SECRET` / signing key** in env / Vault, never committed; rotated when leaked
+- [ ] **Debug exposure:** `gin.SetMode(gin.ReleaseMode)` in prod (default `DebugMode` leaks request bodies); `pprof` registered only in non-prod or behind admin auth
+- [ ] **SSRF depth:** when user-controlled value flows into an outbound URL/host, allowlist must reject (a) cloud metadata `169.254.169.254` + IPv6, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve host **after** parsing (DNS rebinding defeats string-only checks). `url.Parse` quirks: backslash, IPv4-in-IPv6 (`::ffff:127.0.0.1`) defeat naive checks
+- [ ] **Asynq / Kafka payload trust:** if the queue is reachable from untrusted inputs (webhook -> Asynq), validate inside the handler before acting
+- [ ] **HTTP request smuggling/desync** (Go behind nginx/ALB): flag custom HTTP/1.1 parsing or proxy middleware re-emitting headers without validation
+- [ ] **Webhook signature verification** via `crypto/subtle.ConstantTimeCompare` (not `bytes.Equal`, not `==`). Read raw body via `c.GetRawData()` before binding
+- [ ] **`govulncheck ./...`** in CI; flag unaddressed High/Critical
 
 ### Step 9 - Data Protection
 
-- [ ] **PII / sensitive fields encrypted** at rest (`crypto/aes` + GCM, AWS KMS / GCP KMS for key management, or DB-native column encryption)
-- [ ] **No ORM model returned from handler responses**: `c.JSON(200, user)` where `user` is `*model.User` leaks every column the GORM struct defines - `PasswordHash`, `RecoveryToken`, `MFASecret`, soft-delete columns, internal audit fields, and any sensitive column added later. Handlers map to a response DTO (`ToUserResponse(u)`) that names exactly the public fields. This is both a Step 7 concern (mass-assignment shape on the way in) and a Step 9 concern (data leak on the way out) - check both directions
-- [ ] **`slog` redaction**: structured logger never logs `password`, `token`, `credit_card`, `ssn`, `api_key`. `slog.Handler` wrapper that drops sensitive keys, OR explicit `LogValuer` on types that hold secrets to override marshalling
-- [ ] **No sensitive data in URLs** (use POST body, headers, or signed tokens) - URLs hit logs, browser history, referer headers
-- [ ] **TLS enforcement**: HTTPS-only at LB; HSTS via `gin-contrib/secure`
-- [ ] **Database backups** encrypted; access controlled
-- [ ] **Secrets management**: env vars from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never `.env` committed; `.env` gitignored; `os.Getenv("JWT_SECRET")` accessed via typed config struct loaded once at startup so missing-at-startup fails fast
-
+- [ ] **PII / sensitive encrypted at rest** (AES-GCM, AWS/GCP KMS, or DB column encryption)
+- [ ] **No ORM model returned from handlers:** `c.JSON(200, user)` leaks every column GORM defines (`PasswordHash`, `RecoveryToken`, `MFASecret`, soft-delete columns, audit fields). Handlers map to response DTO naming exactly the public fields. Both Step 7 (mass-assignment in) and Step 9 (data leak out) concern - check both directions
+- [ ] **`slog` redaction:** never log `password`, `token`, `credit_card`, `ssn`, `api_key`. Handler wrapper drops keys, OR `LogValuer` on secret-holding types
+- [ ] **No sensitive data in URLs** (use POST body, headers, signed tokens) - URLs hit logs / browser history / referer
+- [ ] **TLS enforcement** at LB; HSTS via `gin-contrib/secure`
+- [ ] **DB backups** encrypted; access controlled
+- [ ] **Secrets** from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never committed `.env`. `.env` gitignored. `os.Getenv("JWT_SECRET")` via typed config struct loaded once so missing fails fast
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`.
+Use skill: `review-report-writer` with `report_type: review-security`. Write before ending; print confirmation.
 
-Write the fully assembled review output to the report file before ending the session. Print the confirmation line to the console.
 ## Rules
 
-- Always validate at system boundaries (Gin body / query / params / URI, Asynq task payloads, Kafka message values, external API responses, webhook payloads)
+- Validate at system boundaries (Gin body / query / params / URI, Asynq payloads, Kafka values, external API responses, webhook payloads)
 - Never disable middleware to silence a failing test - fix the test
-- Never widen authorization (e.g., moving an endpoint out of an authed router group, removing JWT middleware from a route) without an explicit security review note
+- Never widen authorization (move endpoint out of authed group, remove JWT) without explicit security review note
 - Log security events (login failure, permission denied, validation failure) without sensitive data
-- Follow principle of least privilege - default-deny via authed router group with explicit public whitelist
+- Default-deny via authed router group with explicit public whitelist
 
 ## Self-Check
 
-**Verifiable from the diff (must check):**
+**Verifiable from diff (must check):**
 
-- [ ] Stack confirmed as Go / Gin; data-access mix, JWT library, password hash library recorded before any specific check applied
-- [ ] `review-precondition-check` ran (or its handle was received from the parent workflow); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
-- [ ] Diff and commit log were read once via `git diff <base>...<head>` and `git log <base>..<head>` and reused by all steps - no re-issuing of git commands mid-review
-- [ ] When `head_matches_current` was false, explicit user approval was obtained before any review phase ran (skipped when invoked as a subagent - the parent already gated)
-- [ ] Security surface (router setup / middleware order, auth middleware, settings, changed routers / handlers, DTOs) read directly before applying checklists; prior revision consulted when middleware was removed
-- [ ] OWASP triage (Step 4) produced one signal verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
-- [ ] **Authorization drift sweep**: every new endpoint in the diff has matching JWT middleware OR is explicitly public-listed
-- [ ] DTO validation reviewed; mass-assignment fields, validator tags, separate request vs response DTOs confirmed for changed schemas
-- [ ] File upload, path traversal, and process-execution checks run if the diff touches uploads / file paths / `os/exec`
-- [ ] SQL parameterization, command injection, `text/template` with user input, `gob.Decode`, `unsafe`, `reflect.FieldByName`, `InsecureSkipVerify`, open redirect checked when the diff touches them
-- [ ] Severity rubric applied consistently (Critical / High / Medium / Low matches the rubric, not invented)
-- [ ] Every finding includes an attack scenario, "regression risk" rationale (for test-coverage gaps), or "topology-dependent" framing (for infra-flavored findings) - not just "input not validated"
-- [ ] Next Steps section produced with each item tagged `[Implement]` or `[Delegate]` and ordered Critical > High > Medium > Low (omitted only when no security issues exist)
+- [ ] Stack confirmed; data-access mix, JWT library, password hash recorded before any specific check
+- [ ] `review-precondition-check` ran (or handle received); `base_ref`, `head_ref`, `current_branch`, `head_matches_current` captured
+- [ ] Diff and commit log read once and reused
+- [ ] When `head_matches_current` was false: user approval obtained (skipped when subagent)
+- [ ] Security surface (router / middleware, auth, settings, changed handlers / DTOs) read directly; prior revision consulted when middleware removed
+- [ ] OWASP triage produced one verdict per category; not duplicated as standalone findings
+- [ ] **Authorization drift sweep:** every new endpoint has JWT OR is explicitly public-listed
+- [ ] DTO validation reviewed; mass-assignment fields, validator tags, separate request vs response DTOs confirmed
+- [ ] File upload, path traversal, process exec checked when diff touches them
+- [ ] SQL parameterization, command injection, `text/template`, `gob.Decode`, `unsafe`, `reflect.FieldByName`, `InsecureSkipVerify`, open redirect checked when diff touches them
+- [ ] Severity rubric applied consistently
+- [ ] Every finding includes an attack scenario, "regression risk" rationale, or "topology-dependent" framing
+- [ ] Next Steps tagged `[Implement]` or `[Delegate]`; ordered Critical > High > Medium > Low (omitted only when no issues)
 
-**Requires repo / infra access (check if visible, otherwise note as "could not verify from diff alone - flag for separate audit"):**
+**Requires repo / infra access:**
 
-- [ ] Authentication step run for the auth mechanism in use (JWT via `golang-jwt` / `gin-jwt` / `lestrrat-go/jwx`) - applies when the auth module is in scope
-- [ ] CORS, rate limiting, secure middleware, debug exposure verified - applies when middleware / config are in scope
-- [ ] Password hashing config reviewed (bcrypt cost ≥ 10, argon2 preferred) - skip if hashing config not in diff
-- [ ] Sentry `BeforeSend` strips PII - skip if Sentry init not in diff
-- [ ] `govulncheck ./...` clean - run separately; this workflow does not execute tools
-- [ ] Review report written to file via `review-report-writer`; confirmation line printed to console
+- [ ] Auth library config reviewed when in scope
+- [ ] CORS, rate limiting, secure middleware, debug exposure verified when in scope
+- [ ] Password hashing config (bcrypt cost >= 10, argon2 preferred) when in diff
+- [ ] Sentry `BeforeSend` strips PII when in diff
+- [ ] `govulncheck ./...` clean - run separately
+- [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Output Format
 
@@ -237,16 +223,14 @@ Write the fully assembled review output to the report file before ending the ses
 **Authorization:** router-group middleware + ownership checks | inline checks | none
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
-[2-3 sentence assessment of the overall security posture, calling out any Go-specific risks like missing JWT middleware on a router group, mass assignment via `mapstructure.Decode`, raw SQL via `fmt.Sprintf`, exposed `pprof` in prod, or `InsecureSkipVerify: true` in HTTP client.]
+[2-3 sentence assessment naming Go-specific risks: missing JWT, `mapstructure.Decode`, raw SQL via `fmt.Sprintf`, exposed `pprof`, `InsecureSkipVerify`.]
 
 ## OWASP Triage
-
-_The Step 4 verdicts. One row per category, `yes` (signal present, see Findings) or `no signal in diff`._
 
 | Category                  | Verdict                 |
 | ------------------------- | ----------------------- |
 | Broken Access Control     | yes / no signal in diff |
-| Injection                 | yes / no signal in diff |
+| Injection                 | ...                     |
 | Cryptographic Failures    | ...                     |
 | Security Misconfiguration | ...                     |
 | SSRF                      | ...                     |
@@ -260,55 +244,46 @@ _The Step 4 verdicts. One row per category, `yes` (signal present, see Findings)
 
 ### Critical
 
-- **Location:** [file:line, or comma-separated list for multi-site findings]
-- **Issue:** [vulnerability described in Go terms - e.g., "OrderHandler.Update accepts `req.Body` directly into a domain model via `mapstructure.Decode(req.Body, &order)`; client can submit `{ \"user_id\": 999 }` and override the server-assigned owner via mass assignment because there is no separate request DTO with explicit fields"]
-- **Attack scenario:** [one of: (a) concrete exploit walkthrough; (b) "Regression risk: the next refactor silently removes one of these protections" - for test-coverage / monitoring gaps; (c) "Topology-dependent: depends on whether the reverse proxy strips X-Forwarded-Proto correctly" - for infra-flavored findings. Pick one and label which. Do NOT invent an exploit when the realistic threat is regression or topology.]
-- **Severity rationale:** [tier] per rubric - [which clause from the Severity Rubric applies]
-- **Fix:** [specific Go remediation with code example - separate request DTO + explicit field copy, `db.Where("id = ? AND user_id = ?", id, claims.UserID)`, JWT middleware at group level, etc.]
+- **Location:** [file:line]
+- **Issue:** [vulnerability in Go terms - e.g., "OrderHandler.Update accepts `req.Body` via `mapstructure.Decode(req.Body, &order)`; client can submit `{ \"user_id\": 999 }` and override server-assigned owner because no separate request DTO"]
+- **Attack scenario:** [pick one and label: (a) concrete exploit; (b) "Regression risk: next refactor silently removes one of these protections"; (c) "Topology-dependent: depends on whether reverse proxy strips X-Forwarded-Proto correctly". Do NOT invent an exploit when the realistic threat is regression or topology.]
+- **Severity rationale:** [tier] per rubric - [which clause applies]
+- **Fix:** [specific Go remediation with code]
 
-### High
-
-[Same structure]
-
-### Medium
+### High / Medium / Low
 
 [Same structure]
 
-### Low
-
-[Same structure]
-
-_Omit severity sections with no findings. If all sections are omitted, state "No security issues found."_
+_Omit severity sections with no findings. If all omitted: "No security issues found."_
 
 ## Recommendations
 
-[Prioritized hardening that is not a specific finding - e.g., "Add `gin-contrib/limiter` rate limit on /auth/login", "Migrate from golang-jwt/jwt/v4 to v5 (stricter defaults)", "Move JWT_SECRET from .env literal to Vault", "Add `govulncheck` to CI"]
+[Prioritized hardening not tied to a finding]
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, or threat-model exercise worth spawning a subagent for). Order: Critical > High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Critical > High > Medium > Low.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Replace `mapstructure.Decode(req.Body, &order)` with a typed `UpdateOrderRequest` DTO + explicit field copy in OrderHandler.Update"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `govulncheck ./...` and upgrade flagged packages - spawn dependency-review subagent"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Critical] file:line - [one-line action]
+2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
 
-_Omit this section if no security issues were found._
+_Omit if no issues found._
 ```
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command from this workflow - the user must run these so they can protect uncommitted work
-- Reporting vulnerabilities without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because handler binds directly into `User` model")
-- Skipping OWASP categories that appear clean - explicitly state "No issues found" per category
-- Recommending generic security advice when a Go idiom applies (say "apply auth middleware at the router-group level via `v1.Group(\"/orders\", auth.Required())`", not "add an authorization check")
-- Suggesting `gin.SetMode(gin.DebugMode)` left as default in prod - leaks request bodies in logs; flag if prod uses default
-- Suggesting `fmt.Sprintf` interpolation into SQL as acceptable - parameterize via `?` / named args
-- Suggesting `InsecureSkipVerify: true` outside test fixtures
-- Suggesting `math/rand` for tokens / nonces / secrets - use `crypto/rand`
-- Suggesting `bytes.Equal` / `==` for HMAC / signature comparison - use `crypto/subtle.ConstantTimeCompare`
-- Suggesting `BindJSON` over `ShouldBindJSON` - `BindJSON` writes 400 directly and you lose control of the response
-- Suggesting `mapstructure.Decode(req.Body, &domainModel)` as acceptable - mass-assignment vector
-- Disabling middleware to silence a failing test - fix the test
-- Conflating security review with general code quality or performance review - delegate those to their workflows
-- Approving exposed `pprof` in prod profile
-- Approving `gob.Decode` on untrusted input
+- `git fetch` / `git checkout` from this workflow
+- Reporting without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment")
+- Skipping OWASP categories - state "No issues found" per category
+- Generic advice when Go idiom applies ("apply auth at router-group level via `v1.Group(\"/orders\", auth.Required())`", not "add authorization check")
+- `gin.DebugMode` left as default in prod
+- `fmt.Sprintf` interpolation into SQL
+- `InsecureSkipVerify: true` outside test fixtures
+- `math/rand` for tokens / nonces / secrets
+- `bytes.Equal` / `==` for HMAC / signature comparison
+- `BindJSON` over `ShouldBindJSON`
+- `mapstructure.Decode(req.Body, &domainModel)`
+- Disabling middleware to silence a failing test
+- Conflating security with general or perf review
+- Exposed `pprof` in prod
+- `gob.Decode` on untrusted input

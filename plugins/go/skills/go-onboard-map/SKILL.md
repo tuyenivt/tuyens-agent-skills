@@ -1,6 +1,6 @@
 ---
 name: go-onboard-map
-description: Go project onboarding signals: module layout, go.mod, framework (Gin/Echo/Chi), build tags, ORM (GORM/sqlx/pgx), observability stack.
+description: Go onboarding signals - module layout, go.mod, framework (Gin/Echo/Chi), build tags, ORM (GORM/sqlx/pgx), observability stack.
 metadata:
   category: backend
   tags: [onboarding, codebase-map, go, gin, modules]
@@ -9,143 +9,119 @@ user-invocable: false
 
 # Go Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-onboard` when the detected stack is Go.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when stack is Go.
 
 ## When to Use
 
-- A workflow needs Go-specific orientation: module layout, framework choice, build tags, DB layer, observability stack.
-- Project has `go.mod`.
+- A workflow needs Go-specific orientation: module layout, framework, build tags, DB layer, observability
+- Project has `go.mod`
 
 ## Rules
 
-- Identify Go version (`go.mod` `go 1.x` directive); 1.22+ is current standard, 1.25 latest.
-- Identify framework: Gin, Echo, Chi, Fiber, gorilla/mux, or net/http standard library. Layout differs.
-- Identify DB layer: GORM (`gorm.io/gorm`), sqlx (`jmoiron/sqlx`), pgx (`jackc/pgx/v5`), database/sql + driver, ent.
-- Identify project layout convention: standard `cmd/<binary>/main.go` + `internal/`, or flat layout, or domain-driven `pkg/`+`internal/`.
+- Identify Go version from `go.mod` (`go 1.x`); 1.22+ standard, 1.25 latest
+- Identify framework: Gin / Echo / Chi / Fiber / gorilla / net/http
+- Identify DB: GORM / sqlx / pgx / database/sql + driver / ent / sqlc
+- Identify layout convention (drives where new code lands)
 
-## Patterns
+## Build Inventory
 
-### Build Inventory
+| File              | What it tells you                                |
+| ----------------- | ------------------------------------------------ |
+| `go.mod`          | Module path, Go version, direct dependencies     |
+| `go.sum`          | Dependency checksums                             |
+| `Makefile` / `Taskfile.yml` | Project commands                       |
+| `Dockerfile`      | Multi-stage build (builder -> distroless common) |
+| `.golangci.yml`   | Lint coverage indicates quality bar              |
+| `vendor/`         | Vendored deps if present                         |
 
-| File          | What it tells you                                                                  |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `go.mod`      | Module path, Go version directive, direct dependencies                              |
-| `go.sum`      | Cryptographic checksums of dependencies                                             |
-| `Makefile`    | Common project commands (build, test, lint, run)                                    |
-| `Taskfile.yml` | Alternative to Makefile (Task runner)                                              |
-| `Dockerfile`  | Multi-stage build common: builder image -> distroless                               |
-| `.golangci.yml` | golangci-lint config; linter coverage indicates code-quality bar                  |
-| `tools.go`    | Tool dependency tracking (legacy pattern)                                           |
-| `vendor/`     | Vendored deps; check `go.mod` for `// vendor` directive                            |
+## Bootstrap Path
 
-### Bootstrap Path
+1. Toolchain: `go.mod` directive matches `go version`
+2. Deps: `go mod download`
+3. Local services: `compose.yml`; env vars in `.env.example`
+4. Migrations: golang-migrate (`migrate up`), goose, `AutoMigrate` (footgun), or sqlc + golang-migrate
+5. Run: `go run ./cmd/<binary>` / `make run` / `air` for hot reload
+6. Verify: `/health` or `/healthz`
 
-1. Go toolchain: confirm `go.mod` directive matches `go version`. Use `goenv` or version manager.
-2. Dependencies: `go mod download` (no install step needed).
-3. Local services: `compose.yml` for DB/Redis; required env vars in `.env.example`.
-4. Migrations:
-   - **golang-migrate:** `migrate -path ./migrations -database "$DATABASE_URL" up`.
-   - **goose:** `goose -dir migrations postgres "$DATABASE_URL" up`.
-   - **GORM AutoMigrate:** runs at app startup (declarative, often footgun in prod).
-   - **sqlc** (codegen) + golang-migrate: separate generation from migration.
-5. Run: `go run ./cmd/<binary>` or `make run`.
-6. Hot reload: `air` (`.air.toml` config) or `reflex` for dev.
-7. Verify: default port from config; `/health` or `/healthz` if instrumented.
+## Package Layout
 
-### Key File Inventory
+`cmd/<bin>/main.go` is always thin (config + wiring); business logic in `cmd/` is a smell.
 
-**Standard layout (most common modern Go):**
+| Convention                   | Shape                                                                  | When                                    |
+| ---------------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
+| **Layer-package**            | `internal/handler/`, `service/`, `repository/`, `model/`               | Default for < ~5 domains; tutorials     |
+| **Feature-package**          | `internal/orders/{handler,service,repository,model}.go`                | Recommended for medium+ services        |
+| **DDD / hexagonal**          | `internal/<domain>/{domain,application,adapters}/`; domain has no framework imports | Teams enforcing hexagonal architecture  |
+| **Monorepo multi-binary**    | `cmd/api/`, `cmd/worker/`, `cmd/migrate/` + shared `internal/`         | One repo serves API + Asynq workers     |
 
-| Location                | Purpose                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `cmd/<binary>/main.go`  | Binary entry; thin, delegates to internal packages                       |
-| `internal/`             | Application code; not importable from outside the module                  |
-| `internal/server/`      | HTTP server setup, router, middleware                                    |
-| `internal/handler/` or `internal/api/` | HTTP handlers (Gin handlers or http.HandlerFunc)            |
-| `internal/service/`     | Business logic                                                            |
-| `internal/repository/` or `internal/store/` | DB access                                                |
-| `internal/domain/` or `internal/model/` | Entities, value objects                                       |
-| `pkg/`                  | Reusable libraries (importable by other modules)                          |
-| `migrations/`           | SQL migration files                                                       |
-| `configs/`              | Config files (yaml/toml/env templates)                                    |
-| `scripts/`              | Bootstrap and tooling scripts                                              |
-| `Dockerfile`            | Multi-stage build                                                          |
+| Location                                  | Purpose                                       |
+| ----------------------------------------- | --------------------------------------------- |
+| `cmd/<binary>/main.go`                    | Entry; thin wire-up                           |
+| `internal/`                               | App code, not importable externally           |
+| `internal/server/`                        | Router, middleware                            |
+| `internal/handler/` or `api/`             | HTTP handlers                                 |
+| `internal/service/`                       | Business logic                                |
+| `internal/repository/` or `store/`        | DB access                                     |
+| `internal/domain/` or `model/`            | Entities, value objects                       |
+| `pkg/`                                    | Reusable libraries (some teams skip entirely) |
+| `migrations/`                             | SQL files                                     |
+| `configs/`, `scripts/`                    | Config templates, bootstrap                   |
 
-### Package Layout Convention
+## Conventions
 
-Check which the project uses before describing the architecture - this drives where new code should land:
+- Errors are values; wrap with `fmt.Errorf("ctx: %w", err)`
+- `context.Context` as first param for I/O-bound functions
+- Interfaces declared at the consumer (small, often inline)
+- Constructor functions (`NewServer(...)`); no DI framework
+- Functional options for configurable constructors
+- Tests `_test.go` colocated; `testify` common but not universal
 
-- **Layer-package (most common in tutorials and small services)**: `internal/handler/`, `internal/service/`, `internal/repository/`, `internal/model/` grouped by stereotype. An `Order`-related concern is spread across `internal/handler/orders.go`, `internal/service/orders.go`, `internal/repository/orders.go`. Easy to find by stereotype, hard to find by feature; cross-feature coupling is invisible because everything imports from `service` and `repository`. Default for projects with < ~5 domains
-- **Feature-package (recommended for medium+ services)**: `internal/orders/{handler.go, service.go, repository.go, model.go}`, `internal/payments/{...}`, `internal/users/{...}`. An entire bounded context lives in one tree; cross-feature imports go through public service interfaces (`orders.Service`), not direct repository imports. Idiomatic Go ("accept interfaces, return structs" plus consumer-defined interfaces). Common in production codebases at scale
-- **DDD / hexagonal (`internal/<domain>/{domain/, application/, adapters/}`)**: domain layer (entities, value objects, repository interfaces) is pure Go with no framework imports; application layer holds use cases; adapters layer holds Gin handlers + GORM/sqlx implementations. Used by teams enforcing hexagonal architecture. Recognizable by `domain/` subpackage with no `gin` / `gorm` imports. Less common but heavyweight teams favor it
-- **Monorepo / multi-binary (`cmd/api/`, `cmd/worker/`, `cmd/migrate/` + shared `internal/`)**: multiple binaries share `internal/` packages. Each `cmd/<bin>/main.go` is a thin wire-up file. Common when one repo serves both API and Asynq workers; new business logic still goes in `internal/<feature>/`, not in `cmd/`
+## Risk Hotspots (delegate depth to dedicated skills)
 
-`cmd/<bin>/main.go` is always thin (load config, build dependencies, start server). Business logic in `cmd/` is a smell - it's not importable from tests or other binaries because `main` is special.
+- Goroutine lifetime + cancellation -> `go-concurrency`, `task-go-review-perf`
+- N+1, pool config, `AutoMigrate`, `defer rows.Close()`, `WithContext` -> `go-data-access`
+- Asynq inside transactions, ORM models in payloads -> `go-messaging-patterns`
+- Mass assignment, raw SQL, missing JWT -> `task-go-review-security`
+- Migration safety on hot tables -> `go-migration-safety`
+- Go quirks: default `http.Client` no timeout, `defer` in loops, `init()` doing heavy work, JSON tag mismatches, `init()`-wired globals breaking test isolation
 
-### Conventions
+## First-PR Safe Zones
 
-- **`internal/`** for non-exported code; **`pkg/`** for reusable libraries (some teams skip `pkg/` entirely).
-- **Errors are values:** check explicitly with `if err != nil`. Wrapping via `fmt.Errorf("ctx: %w", err)`.
-- **Context propagation:** `context.Context` as first parameter for any I/O-bound function.
-- **Interfaces define expectations**, declared by the consumer (small interfaces, often inline).
-- **Constructor functions:** `NewServer(...)` returns a configured struct; no DI framework typically.
-- **Functional options pattern:** `NewServer(opts ...Option)` for configurable constructors.
-- **Generics (Go 1.18+):** used for collection utilities; not as common as in other languages.
-- **Tests:** `_test.go` files alongside the source; `testify` (assert/require/mock) common but not universal; subtests via `t.Run`.
+- New handler in `internal/handler/`
+- New service method following existing constructor pattern
+- New `_test.go` colocated
+- New `migrations/<timestamp>_*.sql`
 
-### Risk Hotspots Specific to Go
+Riskier: `cmd/<binary>/main.go`, middleware (applies globally), pool config, goroutine / context patterns.
 
-- **Goroutine lifetime + cancellation** (bare `go fn()` without owner, missing `<-ctx.Done()` arm, `time.Sleep` instead of `select`-on-`ctx`, channel close from receiver, `for range` over an unclosed channel): see `go-concurrency` and `task-go-review-perf`.
-- **N+1 + connection pool** (GORM lazy access without `Preload`, `db.AutoMigrate` in prod, missing `defer rows.Close()`, missing `db.WithContext(ctx)`): see `go-data-access`.
-- **Asynq dispatch inside DB transaction**, tasks taking ORM models in payloads: see `go-messaging-patterns`.
-- **Mass assignment / SQL injection / missing JWT middleware / `mapstructure.Decode(req.Body, &model)`**: see `task-go-review-security`.
-- **Migration safety on hot tables** (concurrent index, lock_timeout, expand-then-contract, `db.AutoMigrate` in prod): see `go-migration-safety`.
-- **Go quirks** to flag on first read: default `http.Client` has no timeout, `defer` inside loops stacks until function return, `init()` doing heavy work at import time, embedded-field method shadowing, JSON tag mismatches (missing `json:"..."` exposes the Go field name), `init()`-wired globals breaking test isolation.
+## Ecosystem Currency
 
-### First-PR Safe Zones
+- Go 1.22+ standard; 1.25 latest
+- Gin dominant; Chi gaining on stdlib alignment
+- pgx 5+ for Postgres; sqlx for general database/sql; sqlc for type-safe generated SQL
+- OpenTelemetry replacing custom metric/trace libs
+- `slog` (1.21+) standard structured logger - replacing logrus/zap in new code
 
-- New HTTP handler in existing `internal/handler/`.
-- New service method following existing constructor pattern.
-- New test file alongside source.
-- New SQL migration file (`migrations/<timestamp>_*.sql`).
+## Output
 
-Riskier:
+Inject into `task-onboard`:
 
-- `cmd/<binary>/main.go` - bootstrapping order matters.
-- Middleware - applies to every handler.
-- Database connection pool config.
-- Goroutine spawning and context propagation patterns.
+**Stack and Tooling:** Go version, framework, DB layer, migration tool, logging, observability
 
-### Ecosystem Currency
+**Local Bootstrap:** `go mod download`, env file, run command, default port, health path
 
-- Go 1.22+ standard; 1.25 latest with structured concurrency improvements.
-- Gin still dominant; Chi gaining adoption for stdlib-aligned style.
-- pgx 5+ for Postgres; sqlx for general database/sql.
-- sqlc for compile-time-safe SQL with generated types.
-- OpenTelemetry replacing custom metric/trace libraries.
-- `slog` (Go 1.21+) standard structured logger - replacing logrus/zap in new code.
+**Architecture Map:** `cmd/`/`internal/`/`pkg/` layout, layer dirs, server file, DB setup
 
-## Output Format
+**Conventions:** error wrapping, context, constructors, options, test framework
 
-Inject into `task-onboard` sections:
+**Risk Hotspots:** goroutine ownership, `http.Client` timeouts, `AutoMigrate`, `init()` side effects, race detector in CI
 
-**Stack and Tooling:** Go version, framework, DB layer, migration tool, logging library, observability stack.
-
-**Local Bootstrap:** `go mod download`, env file, run command (`go run` / `make run` / `air`), default port, health-check path.
-
-**Architecture Map:** `cmd/`/`internal/`/`pkg/` layout, layer directories, server/router setup file, DB connection setup.
-
-**Conventions:** error wrapping, context propagation, constructor functions, functional options usage, test framework.
-
-**Risk Hotspots:** goroutine lifetime owners, default HTTP client timeouts, GORM AutoMigrate, init() side effects, JSON tag completeness, race-detector use in CI.
-
-**First-PR Safe Zones:** scoped to observed structure.
+**First-PR Safe Zones:** scoped to observed structure
 
 ## Avoid
 
-- Treating Go as having "exceptions" - it does not; errors are values
-- Recommending DI frameworks - constructor injection + functional options is idiomatic
-- Glossing over context propagation - it is the cancellation backbone
-- Confusing `pkg/` and `internal/` semantics - the latter is enforced by the compiler
-- Skipping the default-`http.Client`-timeout warning
-- Recommending logrus/zap on a new Go 1.21+ project (`slog` is now standard)
+- Treating Go as having exceptions
+- Recommending DI frameworks (constructor injection is idiomatic)
+- Glossing over context propagation
+- Confusing `pkg/` and `internal/` (the latter is compiler-enforced)
+- Recommending logrus/zap for new 1.21+ projects (use `slog`)
