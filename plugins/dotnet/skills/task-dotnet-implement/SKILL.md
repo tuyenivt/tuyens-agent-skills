@@ -14,30 +14,16 @@ user-invocable: true
 
 ## When to Use
 
-- New ASP.NET Core feature end-to-end (entity -> controller -> tests -> migration)
-- CRUD or domain-specific resource with Clean Architecture layering
+- New ASP.NET Core feature end-to-end (entity -> controller -> tests -> migration) in a Clean Architecture codebase
 - Adding a domain aggregate with REST API, persistence, and tests
-
-## Edge Cases
-
-- **Partial input** (feature name only) - ask for fields, relationships, operations before design
-- **No persistence** (proxy / aggregation endpoint) - skip entity, repository, migration; generate handler + controller + DTOs + tests
-- **Existing entity referenced** - read and extend; skip migration if no schema change
-- **Custom verb** (cancel, approve, publish) - use `PATCH /{resources}/{id}/{verb}` with a dedicated command + handler
-- **Status transitions** - enforce in handler with transition map; mirror as CHECK constraint in migration
-- **Idempotency** - unique `IdempotencyKey` column + find-or-create in handler + duplicate-request test
-- **Role-restricted endpoints** (admin) - `[Authorize(Roles = "Admin")]`; separate query for admin-wide reads
-- **Async messaging** - publish after `SaveChangesAsync`; load `dotnet-messaging-patterns`
+- Aggregation / proxy endpoint with no persistence (skip entity + migration; generate handler + controller + DTOs + tests)
 
 ## Rules
 
-- Constructor injection only; never `new` dependencies
 - `record` types for all DTOs, commands, queries
-- `FluentValidation` for request validation; never `[Required]` annotations on DTOs
-- Never expose EF entities in API responses; always project to DTO records
-- `CancellationToken` parameter on every async method, propagated to EF and HTTP calls
-- Clean Architecture dependencies flow inward: `Api` -> `Application` -> `Domain`; `Infrastructure` implements `Application` interfaces
-- One `SaveChangesAsync(ct)` per handler (unit of work boundary)
+- FluentValidation for request validation; no `[Required]` on DTOs
+- Never expose EF entities in API responses; project to DTO records
+- Clean Architecture flow: `Api` -> `Application` -> `Domain`; `Infrastructure` implements `Application` interfaces
 - `[Authorize]` or `[AllowAnonymous]` explicit on every controller action
 
 ## Workflow
@@ -65,10 +51,10 @@ Do not continue until requirements are complete.
 Present for user approval, then halt:
 
 - Endpoints (method, URI, request/response DTO records, status codes, authorization)
-- Domain entity + DB schema (indexes on FK / filter columns, CHECK constraints, unique idempotency index)
+- Domain entity + DB schema (indexes on FK / filter columns, CHECK constraint for status, unique index for idempotency key)
 - Commands, queries, handlers (one handler per use case)
 - Error model (exception hierarchy, HTTP status mapping)
-- Idempotency and status-transition strategies (when applicable)
+- Idempotency and status-transition strategies
 
 ### Step 4 - Entity + Migration
 
@@ -77,37 +63,28 @@ Use skill: `dotnet-ef-performance`, `dotnet-db-migration-safety`.
 - Domain entity: private setters, audit fields, navigation properties, factory method for invariants
 - `IEntityTypeConfiguration<T>` in `Infrastructure/Persistence/Configurations`
 - `decimal` columns: explicit `HasPrecision(19, 4)` for money
-- Migration generated via `dotnet ef migrations add` (do not hand-write); verify indexes for FK and filter columns
+- Migration via `dotnet ef migrations add` (do not hand-write); verify FK and filter-column indexes
 
-Status with known transitions adds a CHECK constraint:
+Status with known transitions encodes a CHECK constraint; idempotency key gets a unique index:
 
 ```csharp
 builder.ToTable("subscriptions", t => t.HasCheckConstraint(
     "ck_subscriptions_status",
     "status IN ('Pending','Active','Cancelled','Expired')"));
-```
-
-Idempotency key:
-
-```csharp
 builder.HasIndex(x => x.IdempotencyKey).IsUnique();
 ```
 
 ### Step 5 - Repository
 
-Use skill: `dotnet-ef-performance`. Interface in `Application/Interfaces`; implementation in `Infrastructure/Persistence/Repositories`. `AsNoTracking()` reads, DTO projections for list endpoints, `CancellationToken` on every method.
-
-```csharp
-Task<Subscription?> FindByIdempotencyKeyAsync(string key, CancellationToken ct);
-```
+Use skill: `dotnet-ef-performance`. Interface in `Application/Interfaces`; implementation in `Infrastructure/Persistence/Repositories`. `AsNoTracking()` reads, DTO projections for list endpoints.
 
 ### Step 6 - Application Layer
 
 Use skill: `dotnet-transaction`, `dotnet-exception-handling`, `dotnet-async-patterns`.
 
-Commands and queries as `record` types. FluentValidation validators per command. MediatR handlers contain business logic and exactly one `SaveChangesAsync(ct)`. Map entity -> DTO via record static factory `SubscriptionResponse.From(Subscription)`. Domain exceptions extend a common base.
+Commands and queries as `record` types. FluentValidation validators per command. MediatR handlers contain business logic. Map entity -> DTO via static factory `SubscriptionResponse.From(Subscription)`. Domain exceptions extend a common base.
 
-Status transitions enforced in the handler:
+Status transitions live in the handler as a transition map; idempotency is a find-or-create against the unique key:
 
 ```csharp
 private static readonly Dictionary<Status, HashSet<Status>> Allowed = new() {
@@ -116,43 +93,41 @@ private static readonly Dictionary<Status, HashSet<Status>> Allowed = new() {
 };
 if (!Allowed.GetValueOrDefault(s.Status, []).Contains(next))
     throw new InvalidStateTransitionException(s.Status, next);
-```
 
-Idempotent create:
-
-```csharp
 var existing = await repo.FindByIdempotencyKeyAsync(cmd.IdempotencyKey, ct);
 if (existing is not null) return SubscriptionResponse.From(existing);
 ```
+
+For async-messaging features, load `dotnet-messaging-patterns` and publish post-commit.
 
 ### Step 7 - Controller
 
 Use skill: `backend-api-guidelines`, `dotnet-exception-handling`, `dotnet-security-patterns`.
 
-`[ApiController] [Route("api/v1/[controller]")]`. `CancellationToken ct` on every action. `[Authorize]` / `[Authorize(Roles="Admin")]` / `[AllowAnonymous]` explicit. `201 Created` with `Location` header on POST, `204 NoContent` on DELETE, `PATCH /{id}/{verb}` for custom operations.
+`[ApiController] [Route("api/v1/[controller]")]`. `[Authorize]` / `[Authorize(Roles="Admin")]` / `[AllowAnonymous]` explicit. `201 Created` with `Location` on POST, `204 NoContent` on DELETE, `PATCH /{id}/{verb}` for custom operations (cancel, approve, publish).
 
 ### Step 8 - Tests
 
 Use skill: `dotnet-test-integration`.
 
-- Unit (handlers): NSubstitute or Moq; happy path, not-found, validation failure, invalid state transition, idempotent replay
+- Unit (handlers): NSubstitute or Moq; happy path, not-found, validation, invalid transition, idempotent replay
 - Repository: Testcontainers PostgreSQL
-- API: `WebApplicationFactory<Program>` + real `HttpClient`; assert status codes, authorization, conflict (409) on unique violation
+- API: `WebApplicationFactory<Program>` + real `HttpClient`; status codes, authorization, 409 on unique violation
 - Fixtures via Bogus `Faker<T>`
 
 ### Step 9 - Validate
 
-Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and `dotnet test --no-build`. Present file list, endpoint table, test counts, and any manual steps (e.g., `dotnet ef migrations add Create<Name>`).
+Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and `dotnet test --no-build`. Present file list, endpoint table, test counts, and manual steps (e.g., `dotnet ef migrations add Create<Name>`).
 
 ## Self-Check
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: requirements gathered (fields, transitions, idempotency, auth)
 - [ ] Step 3: design presented and approved before code
-- [ ] Step 4: entity, EF configuration, CHECK constraint, unique idempotency index
+- [ ] Step 4: entity, EF configuration, CHECK constraint, unique idempotency index, migration via `dotnet ef`
 - [ ] Step 5: repository interface in `Application`, impl in `Infrastructure`, `AsNoTracking` reads
-- [ ] Step 6: command/query records, validators, MediatR handlers; one `SaveChangesAsync` per handler; transitions enforced
-- [ ] Step 7: `[Authorize]` / `[AllowAnonymous]` explicit on every action; `CancellationToken` propagated
+- [ ] Step 6: command/query records, validators, MediatR handlers; transitions enforced; idempotency check present
+- [ ] Step 7: `[Authorize]` / `[AllowAnonymous]` explicit on every action
 - [ ] Step 8: unit + repo + API tests cover happy path, not-found, validation, invalid transition, idempotent replay
 - [ ] Step 9: `dotnet build` and `dotnet test` pass; file list, endpoint table, test counts presented
 
@@ -196,10 +171,8 @@ Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and 
 
 - Generating code before requirements + design approval
 - Exposing EF entities in API responses
-- `new` on dependencies; missing `CancellationToken` on async methods
 - `[Required]` annotations on DTOs (use FluentValidation)
 - Hand-writing EF migrations instead of using `dotnet ef migrations add`
-- Multiple `SaveChangesAsync` per handler
 - Implicit authorization (missing `[Authorize]` / `[AllowAnonymous]`)
 - Skipping idempotency for payment or external-callback writes
 - Missing CHECK constraints when status transitions are known

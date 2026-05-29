@@ -11,7 +11,7 @@ user-invocable: false
 
 ## When to Use
 
-- Reviewing or writing async service methods, controllers, or `BackgroundService` implementations
+- Reviewing or writing async service methods, controllers, or `BackgroundService`
 - Propagating `CancellationToken` through call stacks
 - Diagnosing deadlocks, thread starvation, or silently-stopping hosted services
 
@@ -19,10 +19,10 @@ user-invocable: false
 
 - Accept and propagate `CancellationToken` on every async method; pass it to every awaited call including `Task.Delay`. `default` only at top-level entry points.
 - Always `await`. Never `.Result`, `.Wait()`, `.GetAwaiter().GetResult()`, or `Thread.Sleep` in async code.
-- Use `async Task`, never `async void` (event handlers excepted).
-- Long-running background work goes in `BackgroundService` / `IHostedService` registered via `AddHostedService<T>()`. No `Task.Run` for background work in controllers.
-- In `BackgroundService.ExecuteAsync`, loop on `!stoppingToken.IsCancellationRequested` and use `IServiceScopeFactory` (not `IServiceProvider.CreateScope` directly) with `CreateAsyncScope()`.
-- Producer/consumer: `Channel<T>` or MassTransit. Not `ConcurrentQueue` with polling.
+- Return `async Task`, never `async void` (event handlers excepted).
+- Long-running work goes in `BackgroundService` registered via `AddHostedService<T>()`. No `Task.Run` for background work in request handlers.
+- In `BackgroundService.ExecuteAsync`, loop on `!stoppingToken.IsCancellationRequested` and resolve scoped services via `IServiceScopeFactory.CreateAsyncScope()`.
+- Producer/consumer uses `Channel<T>` or a message bus, not polled `ConcurrentQueue`.
 - `Task.WhenAll` for independent parallel awaits.
 
 ## Patterns
@@ -36,41 +36,17 @@ public async Task<OrderDto> GetOrderAsync(Guid id)
     await Task.Delay(100);
     return await _repo.GetByIdAsync(id);
 }
-```
 
-```csharp
 // Good: token threaded through every await.
 public async Task<OrderDto> GetOrderAsync(Guid id, CancellationToken ct)
-{
-    var order = await _repo.GetByIdAsync(id, ct)
-        ?? throw new NotFoundException(nameof(Order), id);
-    return _mapper.Map<OrderDto>(order);
-}
+    => _mapper.Map<OrderDto>(await _repo.GetByIdAsync(id, ct));
 ```
 
 ### BackgroundService loop
 
 ```csharp
-// Bad: ignores stoppingToken, blocks startup, fire-and-forget loses exceptions,
-// IServiceProvider.CreateScope is sync and not awaitable for async disposables.
-protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-{
-    Thread.Sleep(2000);
-    while (true)
-    {
-        var scope = _sp.CreateScope();
-        var pending = scope.ServiceProvider.GetRequiredService<IOutboxProcessor>()
-            .GetPendingAsync().Result;
-        foreach (var o in pending) Task.Run(() => Process(o));
-        await Task.Delay(1000);
-    }
-}
-```
-
-```csharp
 public sealed class OutboxProcessorService(
-    IServiceScopeFactory scopeFactory,
-    ILogger<OutboxProcessorService> logger) : BackgroundService
+    IServiceScopeFactory scopeFactory) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -85,17 +61,15 @@ public sealed class OutboxProcessorService(
 }
 ```
 
-### Nuanced guidance
+Common `ExecuteAsync` bugs: `Thread.Sleep` or `.Result` blocking the host startup path; `while (true)` ignoring `stoppingToken`; `IServiceProvider.CreateScope()` for async-disposable services; unhandled exceptions silently stopping the service (set `HostOptions.BackgroundServiceExceptionBehavior = StopHost` or try/catch the loop body).
 
-- **`ConfigureAwait(false)`**: omit in ASP.NET Core app code (no `SynchronizationContext`). Use only in shared libraries that may run outside ASP.NET Core.
-- **`ValueTask<T>`**: use only when the method frequently completes synchronously (e.g., cache hits). Awaitable once, not concurrently. Default to `Task<T>`.
-- **Third-party interface without `CancellationToken`**: wrap with `Task.WhenAny(actualTask, Task.Delay(Timeout.Infinite, ct))` or a `CancellationTokenSource` timeout.
-- **`BackgroundService` exception handling**: unhandled exceptions in `ExecuteAsync` silently stop the service. Set `HostOptions.BackgroundServiceExceptionBehavior = StopHost` to fail fast, or wrap the loop body in try/catch that logs and continues.
-- **Startup blocking**: `ExecuteAsync` runs on the host startup path. Yield (`await Task.Yield()` or an awaited I/O call) before any sync work so the host can finish starting.
+### Edge cases
+
+- `ConfigureAwait(false)`: omit in ASP.NET Core app code (no `SynchronizationContext`). Use in shared libraries.
+- `ValueTask<T>`: only when the method frequently completes synchronously. Awaitable once, not concurrently. Default to `Task<T>`.
+- Third-party API without `CancellationToken`: wrap with `Task.WhenAny(actualTask, Task.Delay(Timeout.Infinite, ct))`.
 
 ## Output Format
-
-When reviewing code, report findings as:
 
 ```
 Finding: <one-line summary>
@@ -105,10 +79,13 @@ Rule: <which rule or pattern violated>
 Fix: <minimal change>
 ```
 
-Severity guide: `async void`, `.Result`/`.Wait()`, missing `stoppingToken` check, `HttpContext` capture in background = Critical. Missing `CancellationToken` propagation, `Task.Run` in request handlers = High. `ConfigureAwait(false)` noise, `ValueTask` misuse = Medium.
+Severity guide:
+- Critical: `async void`, `.Result`/`.Wait()`, missing `stoppingToken` check, `HttpContext` capture in background work.
+- High: missing `CancellationToken` propagation, `Task.Run` in request handlers.
+- Medium: `ConfigureAwait(false)` noise, `ValueTask` misuse.
 
 ## Avoid
 
-- Capturing `HttpContext` (request-scoped, disposed after response) or any scoped service into background work or fire-and-forget `Task.Run`.
+- Capturing `HttpContext` or scoped services into background work or fire-and-forget `Task.Run`.
 - Swallowing `OperationCanceledException` - let it propagate.
 - Reusing or concurrently awaiting a `ValueTask<T>`.

@@ -17,13 +17,12 @@ user-invocable: false
 
 ## Rules
 
-- Read paths: `AsNoTracking()` + project to a DTO with `Select()`. Do not use `Include()` when projecting - the projection drives the join.
-- `Include()` is only for tracked writes or when the full navigation is returned.
-- Multiple collection `Include()`s: add `AsSplitQuery()` to avoid cartesian explosion.
-- Mutate in bulk with `ExecuteUpdateAsync` / `ExecuteDeleteAsync`. Never loop `SaveChangesAsync`.
-- Paginate large/unbounded sets with keyset (`WHERE key > @last`), not `Skip/Take`.
-- Use compiled queries (`EF.CompileAsyncQuery`) only for hot single-entity lookups (no `Include`, no `AsSplitQuery`).
-- Drop to Dapper when the query needs SQL features EF translates poorly (window functions, recursive CTEs, multi-row UNPIVOT). Reuse the connection via `_context.Database.GetDbConnection()`.
+- Reads: `AsNoTracking()` + `Select()` to a DTO. The projection drives the join; do not add `Include()`.
+- `Include()` is only for tracked writes or when the whole navigation is returned. Multiple collection `Include()`s require `AsSplitQuery()`.
+- Bulk mutate via `ExecuteUpdateAsync` / `ExecuteDeleteAsync`. Never loop `SaveChangesAsync`.
+- Paginate large/unbounded sets by keyset (`WHERE key > @last`), not `Skip/Take`.
+- `EF.CompileAsyncQuery` only for hot single-entity lookups (no `Include`, no `AsSplitQuery`).
+- Drop to Dapper for SQL EF translates poorly (window functions, recursive CTEs). Share the EF transaction via `_context.Database.GetDbConnection()`.
 
 ## Patterns
 
@@ -78,13 +77,6 @@ ctx.Products.Where(p => p.Id > lastId).OrderBy(p => p.Id).Take(size);
 private static readonly Func<AppDbContext, Guid, CancellationToken, Task<Order?>> GetById =
     EF.CompileAsyncQuery((AppDbContext c, Guid id, CancellationToken ct) =>
         c.Orders.AsNoTracking().FirstOrDefault(o => o.Id == id));
-```
-
-**Global query filter - centralize soft-delete / tenancy.**
-
-```csharp
-builder.HasQueryFilter(p => !p.IsDeleted);              // applied to root AND Includes
-var all = ctx.Products.IgnoreQueryFilters().ToList();   // bypass when needed
 ```
 
 ## Output Format

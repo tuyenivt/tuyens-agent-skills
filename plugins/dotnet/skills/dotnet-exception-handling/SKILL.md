@@ -103,18 +103,14 @@ return Ok(await svc.Get(id)); // NotFoundException -> 404 Problem Details
 
 ## Output Format
 
-When applying this skill, produce:
-
 - **Files**: `GlobalExceptionHandler.cs` (Web layer), `DomainException.cs` + subtypes (Domain layer).
 - **Exception map**: table of `Exception -> (HTTP status, log level)`.
 - **Registration diff**: lines added to `Program.cs` (`AddExceptionHandler`, `AddProblemDetails`, `UseExceptionHandler`).
-- **Removed**: list of controller `try/catch` blocks deleted.
+- **Removed**: controller `try/catch` blocks deleted.
 
 ## Avoid
 
-- `try/catch` in controllers to return `BadRequest()` / `NotFound()`.
 - Parallel `if (ex is X)` branches alongside the central switch.
-- Catching `Exception` broadly in services instead of propagating.
+- Catching `Exception` broadly in services instead of propagating to the handler.
 - Returning `500` for expected domain errors (missing resource, conflict, validation).
-- Leaking `ex.Message`, stack traces, or inner exception chains to clients in non-Development environments.
-- Logging `OperationCanceledException` from client disconnects as `Error`.
+- Leaking `ex.Message`, stack traces, or inner exceptions to clients outside Development.

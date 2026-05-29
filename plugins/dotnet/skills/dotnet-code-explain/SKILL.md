@@ -9,7 +9,7 @@ user-invocable: false
 
 # .NET Code Explain (atomic)
 
-> Load `Use skill: stack-detect` first to determine the project stack. This atomic is composed by `task-code-explain` when the detected stack is .NET / ASP.NET Core.
+> Load `Use skill: stack-detect` first. Composed by `task-code-explain` when the detected stack is .NET / ASP.NET Core.
 
 ## When to Use
 
@@ -17,42 +17,41 @@ A workflow needs .NET-specific signals for a target in a .NET project (`*.csproj
 
 ## Rules
 
-- Read TFM from `*.csproj` (`net8.0` / `net9.0`) before naming APIs - conventions differ across LTS/STS.
-- Resolve the DI lifetime (Singleton / Scoped / Transient) of every type named; flag Singleton -> Scoped/Transient injection as a captive dependency.
-- List middleware in `app.Use*` order before describing any endpoint behavior.
-- Mark the boundary in any LINQ chain where `IQueryable` materializes (`ToList`, `ToListAsync`, `First`, `AsEnumerable`); operators after the boundary run in memory.
+- Read TFM from `*.csproj` before naming APIs - conventions differ across LTS/STS.
+- Resolve DI lifetime (Singleton / Scoped / Transient) for every type named; flag Singleton holding Scoped/Transient as a captive dependency.
+- List middleware in `app.Use*` order before describing endpoint behavior.
+- Mark the `IQueryable` -> in-memory boundary (`ToList`, `ToListAsync`, `First`, `AsEnumerable`); operators after the boundary run in memory.
 - Note missing `CancellationToken` on async DB / HTTP calls.
 
 ## Patterns
 
 ### DI Lifetimes
 
-| Lifetime  | Scope                   | Flag                                                        |
-| --------- | ----------------------- | ----------------------------------------------------------- |
-| Singleton | App lifetime            | Cannot depend on Scoped/Transient - captive dependency      |
-| Scoped    | One per request         | Default for `DbContext`; not thread-safe across `await`     |
-| Transient | New per resolution      | Must be stateless                                           |
+| Lifetime  | Scope              | Flag                                                    |
+| --------- | ------------------ | ------------------------------------------------------- |
+| Singleton | App lifetime       | Cannot depend on Scoped/Transient - captive dependency  |
+| Scoped    | One per request    | Default for `DbContext`; not thread-safe across `await` |
+| Transient | New per resolution | Must be stateless                                       |
 
-Captive dependency: a Singleton holding a Scoped reference uses one instance across all requests. `ValidateScopes = true` (dev) catches it.
+`ValidateScopes = true` (dev) catches captive dependencies.
 
 ### Middleware Pipeline
 
 ```csharp
 app.UseExceptionHandler();   // catches downstream exceptions
 app.UseAuthentication();     // populates HttpContext.User
-app.UseAuthorization();      // reads HttpContext.User + endpoint metadata
+app.UseAuthorization();      // reads User + endpoint metadata
 ```
 
-- Forward on request, reverse on response; short-circuit by skipping `next()`.
-- `UseAuthentication` must precede `UseAuthorization`; `UseRouting` must precede authorization (endpoint metadata).
+Forward on request, reverse on response; short-circuit by skipping `next()`. `UseRouting` -> `UseAuthentication` -> `UseAuthorization` is the required order.
 
 ### Async and Cancellation
 
-- ASP.NET Core has no `SynchronizationContext` - `ConfigureAwait(false)` is unnecessary in app code (libraries only).
-- Propagate `CancellationToken` through every async layer; controllers receive `HttpContext.RequestAborted`. EF Core honors it via `ToListAsync(ct)`.
+- No `SynchronizationContext` in ASP.NET Core - `ConfigureAwait(false)` is unnecessary in app code.
+- Controllers receive `HttpContext.RequestAborted`; EF Core honors it via `ToListAsync(ct)`.
 - `Task.Run` does not make sync code async - it moves blocking to the thread pool.
 
-### EF Core Change Tracking and LINQ Boundaries
+### EF Core
 
 ```csharp
 db.Users.Where(u => u.Active)   // SQL
@@ -60,24 +59,24 @@ db.Users.Where(u => u.Active)   // SQL
         .Where(u => Calc(u));    // in-memory
 ```
 
-- `DbContext` is Scoped and not thread-safe; one per request.
-- `AsNoTracking()` for read-only queries skips the change tracker.
-- Navigation properties require `Include(...)`; no lazy loading unless `UseLazyLoadingProxies` is configured.
+- `DbContext` is Scoped and not thread-safe; one per request, one operation at a time.
+- `AsNoTracking()` for read-only queries.
+- Navigation properties require explicit `Include(...)` unless lazy-loading proxies are configured.
 - Non-translatable methods after the boundary cause full-table client evaluation.
 
 ### MediatR / CQRS (when present)
 
-- `IRequest<TResponse>` -> one handler resolved from DI (lifetime = registration).
-- `IPipelineBehavior<TRequest, TResponse>` wraps every handler - validation, logging, transactions.
+- `IRequest<TResponse>` -> single handler resolved from DI.
+- `IPipelineBehavior<TRequest, TResponse>` wraps every handler (validation, logging, transactions).
 - `INotification` is one-to-many publish.
 
 ### Clean Architecture (when present)
 
-Domain (no deps) <- Application (use cases, interfaces) <- Infrastructure (EF, clients), Presentation. Application defines interfaces that Infrastructure implements (DIP); Infrastructure is wired in `Program.cs`.
+Domain (no deps) <- Application (use cases, interfaces) <- Infrastructure (EF, clients), Presentation. Application defines interfaces that Infrastructure implements; wired in `Program.cs`.
 
 ## Output Format
 
-Signals consumed by `task-code-explain`. Emit only fields that apply to the target.
+Signals consumed by `task-code-explain`. Emit only fields that apply.
 
 **Flow Context:**
 
@@ -100,7 +99,6 @@ Signals consumed by `task-code-explain`. Emit only fields that apply to the targ
 - `DbContext` is per-request, not thread-safe
 - `UseAuthentication` precedes `UseAuthorization`
 - `IQueryable` is SQL until a materializing operator
-- Scoped services resolve only within a request scope
 
 **Change Impact Preview:**
 

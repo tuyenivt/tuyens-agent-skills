@@ -79,15 +79,13 @@ BackgroundJob.Schedule<IPaymentReminderJob>(j => j.RunAsync(orderId), TimeSpan.F
 // Job loads order, checks state, exits silently if already paid (idempotent)
 ```
 
-**Testing.** Use `x.UsingInMemory()` in integration tests to exercise consumer logic without a real broker.
+**Testing.** `x.UsingInMemory()` exercises consumer logic without a real broker.
 
 ## Output Format
 
-When applying this skill, emit:
-
-- **Reliability gaps**: list of missing guarantees (outbox, idempotency, retry, DLQ)
-- **Changes**: file + concrete edit per gap (registration, consumer, job signature)
-- **Verification**: what to assert in tests (outbox row persisted, duplicate id ignored, DLQ receives after N retries)
+- **Reliability gaps**: missing guarantees (outbox, idempotency, retry, DLQ).
+- **Changes**: file + concrete edit per gap (registration, consumer, job signature).
+- **Verification**: assertions (outbox row persisted, duplicate id ignored, DLQ receives after N retries).
 
 ## Avoid
 

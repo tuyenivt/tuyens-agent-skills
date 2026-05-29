@@ -64,22 +64,21 @@ Detect which the project uses (drives new-code placement):
 
 - DI: constructor injection via `IServiceCollection`.
 - Config: `IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`; secrets via `dotnet user-secrets` (dev), Key Vault / Secrets Manager (prod).
-- Logging: `ILogger<T>`; Serilog or NLog if referenced.
+- Logging: `ILogger<T>`; Serilog/NLog if referenced.
 - Validation: FluentValidation if referenced, else DataAnnotations.
 - Async: `async`/`await` with `CancellationToken` on every async method.
-- MediatR / CQRS: if `MediatR` is referenced, endpoints dispatch to handlers; pipeline behaviors carry cross-cutting concerns.
+- MediatR / CQRS: if referenced, endpoints dispatch to handlers; pipeline behaviors carry cross-cutting concerns.
 - EF Core: `DbSet<T>` per aggregate; configs in `IEntityTypeConfiguration<T>`.
 - Tests: xUnit (dominant), NUnit/MSTest (legacy); Moq or NSubstitute.
 
 ### Risk Hotspots
 
-- **Async / cancellation**: `.Result`, `.Wait()`, `GetAwaiter().GetResult()`, `async void` outside event handlers, missing `CancellationToken` propagation. See `dotnet-async-patterns`.
-- **EF Core**: N+1 via lazy load, `Include` cartesian explosion, missing `AsNoTracking()` on reads, `IQueryable` -> client-eval boundary, multi `SaveChangesAsync` per use case. See `dotnet-ef-performance`.
-- **DI lifetime**: Singleton capturing Scoped (captive); `DbContext` is Scoped, never Singleton; enable `ValidateScopes` in dev. See `dotnet-async-patterns`.
-- **Background dispatch in transaction** / payloads carrying tracked entities. See `dotnet-messaging-patterns`, `dotnet-transaction`.
+- **Async / cancellation**, **DI lifetime** (Singleton capturing Scoped; `DbContext` is Scoped). See `dotnet-async-patterns`.
+- **EF Core**: N+1, `Include` cartesian explosion, missing `AsNoTracking`, client-eval boundary, multi `SaveChangesAsync`. See `dotnet-ef-performance`.
+- **Background dispatch in transaction**, tracked entities in payloads. See `dotnet-messaging-patterns`, `dotnet-transaction`.
 - **Migrations**: online indexes, `lock_timeout`, expand-then-contract, multi-DbContext via `--context`. See `dotnet-db-migration-safety`.
 - **Security**: mass assignment, SQL injection, JWT misvalidation, `BinaryFormatter` / `Newtonsoft.Json TypeNameHandling.All` on untrusted input. See `dotnet-security-patterns`.
-- **ASP.NET Core quirks**: middleware order (`UseRouting` -> `UseAuthentication` -> `UseAuthorization`); `ConfigureAwait(false)` is a no-op in app code (reserve for libraries); `appsettings.Production.json` accidentally committed.
+- **ASP.NET Core quirks**: middleware order (`UseRouting` -> `UseAuthentication` -> `UseAuthorization`); `appsettings.Production.json` accidentally committed.
 
 ### First-PR Safe Zones
 
@@ -102,6 +101,5 @@ Inject into `task-onboard` sections:
 
 - Listing solution projects without naming each one's layer purpose.
 - Treating .NET Framework patterns as current (.NET 5+ is unified).
-- Recommending `ConfigureAwait(false)` in ASP.NET Core app code.
-- Skipping `dotnet user-secrets` for dev configuration.
+- Recommending `ConfigureAwait(false)` in ASP.NET Core app code (no-op; reserve for libraries).
 - Conflating MVC, Minimal API, and Razor patterns.

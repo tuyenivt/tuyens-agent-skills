@@ -13,13 +13,13 @@ user-invocable: false
 
 - Multi-project .NET solution with slow local or CI builds
 - Package versions drifting across `.csproj` files
-- New solution needing Clean Architecture layout and shared build settings
+- New solution needing shared build settings and Clean Architecture layout
 
 ## Rules
 
-- Manage all NuGet versions centrally in `Directory.Packages.props` with `ManagePackageVersionsCentrally=true`; pin exact versions, never float (`*`, `1.0.*`).
-- Share common MSBuild properties (TFM, nullable, warnings-as-errors, lang version) via `Directory.Build.props` at solution root.
-- Cache `~/.nuget/packages` in CI keyed on `Directory.Packages.props` hash; use `dotnet build --no-restore` after a successful `dotnet restore`.
+- Centralize NuGet versions in `Directory.Packages.props` with `ManagePackageVersionsCentrally=true`; pin exact versions, never float.
+- Share MSBuild properties (TFM, nullable, warnings-as-errors, lang version) via `Directory.Build.props` at solution root.
+- Cache `~/.nuget/packages` in CI keyed on `Directory.Packages.props` hash; build with `--no-restore` after a successful `dotnet restore`.
 - Enforce a one-way dependency graph: `Domain` <- `Application` <- `Infrastructure`/`Api`. Domain references nothing.
 
 ## Patterns
@@ -69,16 +69,11 @@ GitHub Actions NuGet cache:
     restore-keys: nuget-
 ```
 
-Clean Architecture solution layout:
+Clean Architecture layout: `src/{App}.Domain`, `{App}.Application`, `{App}.Infrastructure`, `{App}.Api`; `tests/<Project>.Tests` mirror.
 
-```
-src/  YourApp.Domain  YourApp.Application  YourApp.Infrastructure  YourApp.Api
-tests/ <Project>.Tests per src project
-```
+**Migrating to CPM:** strip every `Version="..."` from `<PackageReference>`, declare each package once in `Directory.Packages.props`, run `dotnet nuget locals all --clear`, then restore. Test-only packages still declare their version centrally.
 
-**Migrating an existing solution to CPM:** strip every `Version="..."` from `<PackageReference>` across all `.csproj` files, declare each package once in `Directory.Packages.props`, then run `dotnet nuget locals all --clear` and restore. Conditional/test-only packages still declare their version centrally; the `.csproj` references them without a version.
-
-**Multi-TFM:** use `<TargetFrameworks>net8.0;net9.0</TargetFrameworks>` in `Directory.Build.props` and verify every central package supports both targets.
+**Multi-TFM:** use `<TargetFrameworks>net8.0;net9.0</TargetFrameworks>` and verify every central package supports both targets.
 
 ## Output Format
 
@@ -88,9 +83,7 @@ tests/ <Project>.Tests per src project
 
 ## Avoid
 
-- `<PackageReference Version="...">` scattered across `.csproj` files
 - Floating versions (`*`, `1.0.*`) in `Directory.Packages.props`
-- CI restore without a NuGet cache step
 - `dotnet clean` in CI unless cache is known invalid
 - Mixing TFMs across projects without a stated reason
 - Domain referencing Application or Infrastructure
