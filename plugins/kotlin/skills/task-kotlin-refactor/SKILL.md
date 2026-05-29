@@ -183,118 +183,36 @@ Each step must be:
 
 **Recipes:**
 
-**Extract service from fat controller**
+**Extract service from fat controller**: add `<Verb><Noun>Service` + tests per outcome → controller delegates → remove inlined logic → slice test asserts unchanged behavior + failure surfaces.
 
-1. Add `<Verb><Noun>Service` with a single intention-revealing method returning a domain result; copy logic from controller; controller still does the work
-2. Add `<Verb><Noun>ServiceTest` with one test per outcome
-3. Update controller to call the service; preserve response shape; `@WebMvcTest` slice passes unchanged
-4. Remove the original logic from the controller; verify slice test
-5. Add slice test asserting failure surfaces as expected error response
+**Convert `data class` JPA entity → regular class**: add test for equality / collection behavior → replace `data class` with `class` + ID-based `equals`/`hashCode` (see `kotlin-spring-jpa-performance`) → replace `.copy(...)` with constructor calls → add `kotlin-jpa` / `kotlin-spring` plugins if missing.
 
-**Convert `data class` JPA entity to regular class**
+**Eliminate `!!`**: per `!!`, pick intent - truly impossible → `requireNotNull(v) { "..." }`; default → `?:`; fail-fast → `error(...)`; optional → `?.let { } ?: alt`. Track `git grep -c "!!"` before/after.
 
-1. Add focused test reproducing equality / collection behavior currently relied on
-2. Replace `data class Order(...)` with `class Order(...)` + explicit ID-based equality:
-   ```kotlin
-   override fun equals(other: Any?) = other is Order && id != 0L && id == other.id
-   override fun hashCode() = id.hashCode()
-   ```
-3. Replace `.copy(...)` calls with explicit constructor calls
-4. Run tests
-5. If `kotlin-jpa` / `kotlin-spring` plugins are missing, add them in the same step
+**`@PostUpdate` → `@TransactionalEventListener(AFTER_COMMIT)`**: test current behavior → publish domain event from service → handler runs post-commit. Cross-aggregate work moves to its own `@Service`.
 
-**Eliminate `!!`**
+**Eliminate single-impl interface**: confirm no second impl / AOP target / non-MockK seam → rename `XxxImpl` → `Xxx`, delete interface, update callers. Skip if part of a published library API.
 
-1. For each `!!`, decide intent: truly impossible → `requireNotNull(value) { "..." }`; default available → `?: default`; fail-fast → `error("...")`; optional → `?.let { } ?: alternative`
-2. Compile and run tests after each batch
-3. Track count: `git grep -c "!!"` before/after; aim for zero in production code
+**Field injection → primary constructor**: declare `val` params; remove `@Autowired` and unneeded `lateinit`. MockK works on final classes; no further change needed.
 
-**Convert `@PostUpdate` to `@TransactionalEventListener(AFTER_COMMIT)`**
+**`GlobalScope.launch` → managed scope bean**: add `applicationScope` bean (`SupervisorJob + Dispatchers.Default + CoroutineExceptionHandler`) + `DisposableBean` shutdown → inject + replace call sites → test scope cancels on shutdown.
 
-1. Add test reproducing current observable behavior
-2. Replace JPA callback with a domain event published from the service; add `@TransactionalEventListener(phase = AFTER_COMMIT)` for the side effect
-3. Side effects now fire post-commit; verify
-4. Cross-aggregate work → extract to its own `@Service`
+**Idempotent `@KafkaListener`**: test that the same message twice produces one side effect → add dedup (message UUID table, business-key upsert, version) → configure DLT + retry policy.
 
-**Eliminate single-impl interface**
+**Replace `synchronized` on VT paths**: confirm `spring.threads.virtual.enabled=true` → swap for `ReentrantLock` (or `Mutex` for coroutine paths) → concurrency test → audit other `synchronized` in module.
 
-1. Confirm no test doubles, no second impl, no AOP target requirement (rare for Kotlin with MockK)
-2. Rename `OrderServiceImpl` → `OrderService`, delete interface, update callers
-3. Run tests
-4. **Skip** if part of a published library API or has a real second implementation
+**Move external I/O out of `@Transactional`** - pick one based on rollback need:
 
-**Field injection → primary constructor**
+- **A - No rollback needed**: publish a domain event from the service; handle in `@TransactionalEventListener(AFTER_COMMIT)`. Failure-mode warning: post-commit listener exceptions are swallowed/logged by default. Assert via `@RecordApplicationEvents`.
+- **B - Rollback required**: write an `OutboxEntry(intent, payload)` row in the same transaction; a separate poller drains with at-least-once + idempotency key. Don't move to `BEFORE_COMMIT` (still holds I/O + listener exception rolls back, rarely the intent).
 
-1. Add primary constructor parameters as `val`; remove `@Autowired` annotations; remove `lateinit var` when no longer needed
-2. Run tests; MockK works on final classes
-3. One class per commit if the suite is slow
+**Fix `@Transactional` self-invocation** - pick by cohesion: extract to a separate bean (preferred), self-injection (`@Lazy private val self: ThisService` - document why), or `TransactionTemplate` (single use site).
 
-**Replace `GlobalScope.launch` with managed scope bean**
+**`runBlocking` in services → `suspend` propagation**: identify the non-suspend caller forcing the bridge → add `suspend` and walk up to the controller (Spring 6 supports `suspend` controllers). Stop at `@Scheduled` / JPA listener boundaries with a TODO naming the blocker. Tests: `runTest` over `runBlocking`.
 
-1. Add `CoroutineConfig` with `applicationScope` bean (SupervisorJob + Dispatchers.Default + CoroutineExceptionHandler) + DisposableBean for shutdown
-2. Inject the scope; replace `GlobalScope.launch` calls
-3. Test the scope cancels at shutdown
+**`@MockBean` → `@MockkBean`**: add `com.ninja-squad:springmockk` → replace `@MockBean` + `Mockito.given(...).willReturn(...)` → `every { ... } returns ...` (`coEvery` for suspend); `verify(bean).method(...)` → `verify { bean.method(...) }` / `coVerify`.
 
-**Make `@KafkaListener` idempotent**
-
-1. Test that exact-once side effect occurs when the same message arrives twice
-2. Add idempotency: dedup table on message UUID, business-key upsert, or version check
-3. Verify transient retries still complete the work
-4. Configure DLT + retry policy
-
-**Replace `synchronized` on VT paths**
-
-1. Confirm VT enabled (Boot 3.2+ + `spring.threads.virtual.enabled=true`)
-2. Replace with `ReentrantLock` (or `Mutex` from `kotlinx.coroutines.sync` for coroutine paths)
-3. Concurrency test (multiple VTs racing the critical section)
-4. Audit other `synchronized` in the same module
-
-**Move external I/O out of `@Transactional`**
-
-Pick based on whether the original relied on rollback for the external action.
-
-Option A - No rollback semantics needed:
-1. Extract into `@TransactionalEventListener(AFTER_COMMIT)` handler; publish a domain event from the service
-2. Move suspend HTTP / blocking I/O out of the `@Transactional` body into the listener
-3. State the failure-mode warning: listener exceptions after commit are swallowed/logged by default
-4. Use `@RecordApplicationEvents` to assert the event was published
-
-Option B - Rollback semantics required:
-1. Replace in-transaction call with a transactional outbox row: persist `OutboxEntry(intent, payload)` in the same transaction
-2. Separate poller drains pending entries with at-least-once + idempotency key
-3. Test the outbox is written even if the external call would fail
-4. **Don't** simply move to `BEFORE_COMMIT` - same I/O hold + listener exception still rolls back, rarely the intent
-
-Apply only one option per step.
-
-**Fix `@Transactional` self-invocation**
-
-Three options - pick on cohesion.
-
-Option A - Extract to a separate bean (preferred for distinct responsibilities)
-Option B - Self-injection (`@Lazy private val self: ThisService` - acceptable when extraction is artificial, document why)
-Option C - `TransactionTemplate` (short inner method, single use site)
-
-**Replace `runBlocking` in services with `suspend` propagation**
-
-1. Identify the chain: which non-suspend caller forces `runBlocking`?
-2. Add `suspend` to the original method
-3. Walk up the chain; stop at the controller (Spring 6 supports `suspend` controllers)
-4. If a caller can't be `suspend` (`@Scheduled`, JPA listener), keep `runBlocking` only at that boundary with a TODO comment naming the blocker
-5. Replace test-side `runBlocking` with `runTest`
-
-**`@MockBean` → `@MockkBean`**
-
-1. Add `com.ninja-squad:springmockk` test dependency
-2. Replace `@MockBean` with `@MockkBean`; `Mockito.given(...).willReturn(...)` → `every { ... } returns ...` (`coEvery` for suspend)
-3. `verify(bean).method(...)` → `verify { bean.method(...) }` / `coVerify { ... }`
-4. One test class per commit if the suite is slow
-
-**`Optional<T>` → `T?`**
-
-1. Extension `fun <T> Optional<T>.toNullable(): T? = orElse(null)` at the boundary, OR change Spring Data return types to `T?` directly
-2. Update callers to use `?:` / `?.let` / `orElseThrow { ... }`
-3. Repeat per repository method
+**`Optional<T>` → `T?`**: either change Spring Data return types to `T?` directly, or add `fun <T> Optional<T>.toNullable(): T? = orElse(null)` at the boundary; callers use `?:` / `?.let` / `orElseThrow { ... }`.
 
 ### Step 8 - Validate plan
 

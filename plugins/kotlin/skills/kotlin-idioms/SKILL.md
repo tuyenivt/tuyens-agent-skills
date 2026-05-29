@@ -19,11 +19,11 @@ Not for coroutines (see `kotlin-coroutines-spring`) or testing (see `kotlin-test
 ## Rules
 
 - `T?` instead of `Optional<T>`. `Optional` only for Java-interop boundaries.
-- `data class` for DTOs, value objects, `@ConfigurationProperties`. Regular `class` for JPA entities (auto-generated `equals`/`hashCode`/`copy` corrupt Hibernate proxy identity - canonical entity pattern lives in `kotlin-spring-jpa-performance`).
-- `!!` only as a fail-fast assertion. Use `?:`, `?.`, `requireNotNull`, or `error()` for everything else.
+- `data class` for DTOs, value objects, `@ConfigurationProperties`. Regular `class` for JPA entities (canonical pattern in `kotlin-spring-jpa-performance`).
+- `!!` only as fail-fast assertion. Use `?:`, `?.`, `requireNotNull`, or `error()` otherwise.
 - `require` / `check` / `checkNotNull` over manual `if (x) throw`. `require` for arguments (`IllegalArgumentException`), `check` for invariants (`IllegalStateException`).
 - Kotlin stdlib (`map`, `filter`, `groupBy`, `sumOf`) over Java streams.
-- `@JvmStatic` / `@JvmField` / `@JvmOverloads` only when Java callers or Spring reflection need them.
+- `@Jvm*` annotations only when Java callers or Spring reflection need them.
 - `kotlin("plugin.spring")` + `kotlin("plugin.jpa")` Gradle plugins. Without them: `No default constructor for entity` (JPA), `BeanNotOfRequiredTypeException` / `could not initialize proxy` (Spring AOP).
 - `val` over `var` except mutable framework fields (entity `status`, audit timestamps).
 - Scope-function nesting max 2 levels; deeper - extract to a named function.
@@ -172,14 +172,14 @@ Skip `class OrderUtils { companion object { @JvmStatic ... } }`.
 class Order(val id: Long) {
     companion object {
         const val MAX_ITEMS = 50               // compile-time constant
-        fun empty(uid: Long) = Order(id = 0)   // factory
+        fun empty() = Order(id = 0)            // factory
     }
 }
 
 object OrderIdGenerator { fun next(): Long = ... }   // singleton; no .INSTANCE
 ```
 
-`object` is a Kotlin singleton, not a Spring bean - `@Autowired` won't inject it and `@Transactional` / `@Async` on its methods are ignored. Use `@Component class` when you need DI or proxying.
+`object` is not a Spring bean - `@Autowired` won't inject it; `@Transactional` / `@Async` on its methods are ignored. Use `@Component class` for DI / proxying.
 
 ### `@ConfigurationProperties` data class
 
@@ -197,38 +197,28 @@ data class OrderProperties(
 
 ### Java interop annotations
 
-```kotlin
-@JvmStatic    // Java calls Companion.method() as Class.method()
-@JvmField     // exposes property as public field, no getter
-@JvmOverloads // generates Java overloads for default-parameter functions
-```
+`@JvmStatic` (Java calls `Companion.method()` as `Class.method()`), `@JvmField` (exposes property as public field), `@JvmOverloads` (generates overloads for default-parameter functions).
 
 ## Output Format
 
 ```
 ## Kotlin Idiom Review
 
-### Gradle plugins
-- kotlin-spring configured: {yes | no | n/a}
-- kotlin-jpa configured: {yes | no | n/a}
+Gradle plugins: kotlin-spring {yes|no|n/a}, kotlin-jpa {yes|no|n/a}
+!! count: {count, each justified}
+Platform types treated nullable: {yes | no}
 
-### Conversions applied
-| Java pattern               | Kotlin idiom                       | Files |
-| -------------------------- | ---------------------------------- | ----- |
-| Optional<T>                | T?                                 |       |
-| @Data DTO                  | data class                         |       |
-| @Data Entity               | class + ID-based equals/hashCode   |       |
-| Java streams               | Kotlin stdlib                      |       |
-| Lombok @Builder            | named args + defaults              |       |
-| Utility class              | extension functions                |       |
-| static field/method        | companion object / const val       |       |
-| Singleton class            | object                             |       |
-| if/throw guard             | require / check / checkNotNull     |       |
-| Bean Validation on entity  | @field: target on val parameters   |       |
-
-### Null safety
-- Platform types treated as nullable: {yes | no}
-- !! count: {count, each justified}
+### Conversions
+| Java pattern              | Kotlin idiom                       | Files |
+| ------------------------- | ---------------------------------- | ----- |
+| Optional<T>               | T?                                 |       |
+| @Data DTO                 | data class                         |       |
+| @Data Entity              | class + ID-based equals/hashCode   |       |
+| Java streams              | Kotlin stdlib                      |       |
+| Lombok @Builder           | named args + defaults              |       |
+| Utility class             | extension functions                |       |
+| if/throw guard            | require / check / checkNotNull     |       |
+| Bean Validation on entity | @field: target on val parameters   |       |
 ```
 
 ## Avoid

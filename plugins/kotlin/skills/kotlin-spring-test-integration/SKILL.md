@@ -164,22 +164,7 @@ Testcontainers `KafkaContainer` over `@EmbeddedKafka` - matches production versi
 
 ### Test profile
 
-```yaml
-# application-test.yml
-spring:
-  jpa: { show-sql: true, properties: { hibernate: { format_sql: true } } }
-  cache: { type: none }
-logging:
-  level:
-    org.springframework.test: WARN
-    org.testcontainers: WARN
-```
-
-```kotlin
-@SpringBootTest
-@ActiveProfiles("test")
-class OrderIntegrationTest : AbstractIntegrationTest()
-```
+`application-test.yml`: enable `spring.jpa.show-sql`, disable cache (`spring.cache.type: none`), raise `org.springframework.test` / `org.testcontainers` log levels to WARN. Always `@ActiveProfiles("test")`.
 
 ## Output Format
 

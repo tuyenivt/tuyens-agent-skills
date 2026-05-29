@@ -145,11 +145,11 @@ _Skipped at `quick` unless diff touches messaging / scheduled work._
 
 _Skipped at `quick`._
 
-- [ ] Slow paths instrumented with Micrometer `@Timed`; consistent metric namespace
-- [ ] Hibernate statistics enabled in non-prod; flag any change disabling them in prod
-- [ ] `p6spy` / `datasource-proxy` in non-prod for test-time query-count assertions
-- [ ] APM trace propagation through `@Async`, `CoroutineScope.launch`, `WebClient`
-- [ ] **MDC propagation across coroutines**: `MDCContext` from `kotlinx-coroutines-slf4j`
+Only the perf-relevant slice. Full instrumentation review lives in `task-kotlin-review-observability`.
+
+- [ ] Slow paths instrumented with Micrometer `@Timed`
+- [ ] Hibernate statistics enabled in non-prod; flag changes that disable them in prod
+- [ ] `p6spy` / `datasource-proxy` in non-prod for query-count assertions
 
 ### Step 11 - Write report
 

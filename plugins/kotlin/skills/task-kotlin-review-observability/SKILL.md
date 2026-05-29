@@ -146,12 +146,9 @@ _Skipped at `quick` unless diff touches advice / error-tracker config / DSN hand
 - [ ] **Ignored exceptions documented** with rationale
 - [ ] **`@RestControllerAdvice` maps to responses without losing the stack** - tracker captures the original exception before the advice replaces it
 
-### Step 11 - Health checks / SLIs (deep only)
+### Step 11 - Health checks / SLIs
 
-- [ ] Critical user journeys have a Micrometer SLI (filtered `http.server.requests`, success rate, p95)
-- [ ] DB / cache / broker / external API via `HealthIndicator`
-- [ ] SLO targets documented in code or README
-- [ ] Synthetic probes use `/actuator/health/readiness` not `/actuator/health`
+_Deep only._ Critical journeys have a Micrometer SLI (filtered `http.server.requests`, success rate, p95); DB / cache / broker / external API via `HealthIndicator`; SLO targets documented; synthetic probes use `/actuator/health/readiness`.
 
 ### Step 12 - Write report
 

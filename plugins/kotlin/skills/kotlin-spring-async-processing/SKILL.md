@@ -148,28 +148,6 @@ class OrderListener(private val notifier: NotificationService) {
 
 `AFTER_COMMIT` + `@Async` does not delay the controller response - the listener body just submits to the executor and returns.
 
-### Async outside transaction
-
-```kotlin
-// Bad - blocks transaction; notify could fire before commit
-@Transactional
-fun process(order: Order) {
-    save(order)
-    asyncService.notifyUser(order)
-}
-
-// Good - event after commit, async executor outside TX
-@Transactional
-fun process(order: Order) {
-    val saved = repo.save(order)
-    events.publishEvent(OrderCreatedEvent(saved.id))
-}
-
-@TransactionalEventListener(phase = AFTER_COMMIT)
-@Async("asyncTaskExecutor")
-fun on(event: OrderCreatedEvent) { notifier.notify(event.orderId) }
-```
-
 ### Retry on transient failures
 
 ```kotlin

@@ -145,28 +145,19 @@ suspend fun <T> retryWithBackoff(maxRetries: Int = 3, initialDelay: Long = 100, 
 }
 ```
 
-### `WebClient` with coroutines
-
-```kotlin
-suspend fun fetchProduct(id: String): Product =
-    webClient.get().uri("/products/{id}", id).retrieve().awaitBody()
-```
-
 ### Dispatchers with Virtual Threads
 
 | Dispatcher            | When                                                  |
 | --------------------- | ----------------------------------------------------- |
 | _(none / default)_    | I/O with Virtual Threads enabled                      |
-| `Dispatchers.Default` | CPU-bound work (image processing, crypto)             |
+| `Dispatchers.Default` | CPU-bound (image processing, crypto)                  |
 | `Dispatchers.IO`      | Blocking I/O when Virtual Threads NOT active          |
 
 ```kotlin
-// VT active - no Dispatchers.IO needed
-suspend fun fetchData(): Data = repo.findAll()
-
-// CPU-bound - Dispatchers.Default
-suspend fun processImage(bytes: ByteArray): ByteArray = withContext(Dispatchers.Default) { run(bytes) }
+suspend fun processImage(bytes: ByteArray) = withContext(Dispatchers.Default) { run(bytes) }
 ```
+
+`WebClient`: `webClient.get().uri(...).retrieve().awaitBody()`.
 
 ### `@Scheduled` with coroutines
 
@@ -204,18 +195,15 @@ finally { withContext(NonCancellable) { auditService.logCompletion(id) } }
 ```
 ## Coroutine Design
 
+Virtual Threads active: {yes | no}
+Dispatchers.IO usage: {none | justified}
+Dispatchers.Default usage: {CPU-bound locations}
+
 ### Suspend boundaries
 | Layer      | Method  | suspend? | Rationale |
-| ---------- | ------- | -------- | --------- |
 
 ### Scope decisions
-| Operation | Scope                            | Rationale |
-| --------- | -------------------------------- | --------- |
-
-### Dispatcher configuration
-- Virtual Threads active: {yes | no}
-- Dispatchers.IO usage: {none | justified}
-- Dispatchers.Default usage: {CPU-bound locations}
+| Operation | Scope | Rationale |
 ```
 
 ## Avoid

@@ -134,7 +134,7 @@ Output risk level and blast radius before findings.
 - [ ] **N+1**: walking associations after a query uses `@EntityGraph` / `join fetch`; lazy access outside the TX flagged
 - [ ] **`Optional` from repositories**: converted to `T?` at the boundary; no `.get()` without `isPresent()`
 - [ ] **JPA entities in API**: controllers return DTOs / projections, never entities
-- [ ] **Authorization**: every controller method has explicit `SecurityFilterChain` matcher or `@PreAuthorize`; `permitAll` documented
+- [ ] **Authorization present**: every controller method has matcher or `@PreAuthorize` (depth in `task-kotlin-review-security`)
 - [ ] **Error handling**: `@RestControllerAdvice` + `ProblemDetail`; sealed-class results converted at controller boundary; no blanket `catch (e: Exception)`; no `println(e)` / `e.printStackTrace()`
 - [ ] **Bulk operations**: partial-failure defined; idempotency for retryable bulk; JPA batch size sized
 - [ ] **Idempotency on writes**: any new POST/PUT/PATCH that mutates state checks `Idempotency-Key` (or equivalent) and short-circuits replays. [Blocker] for money/billing, [High] otherwise
@@ -299,27 +299,16 @@ Use skill: `review-report-writer` with `report_type: review`. Print the confirma
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded
-- [ ] Stack confirmed (or accepted from parent)
-- [ ] `review-precondition-check` ran (or handle received)
-- [ ] Diff and log read once via ref-qualified commands
-- [ ] For `pr-ref`, user-run fetch surfaced and local ref existed
-- [ ] When `head_matches_current` was false, user approval obtained
-- [ ] Scope auto-escalation evaluated; decision recorded
-- [ ] Depth auto-promoted to `deep` when Wide/Critical and user didn't pass `quick`
+- [ ] `behavioral-principles` loaded; stack confirmed
+- [ ] `review-precondition-check` ran (or parent handle reused); diff + log read once
+- [ ] For `pr-ref`, fetch surfaced and local ref existed; `head_matches_current` resolved
+- [ ] Scope auto-escalation evaluated; depth auto-promoted on Wide/Critical
 - [ ] Risk + blast radius stated before findings
-- [ ] Phase B Kotlin checks applied (null-safety, `data class` JPA, plugins, `@Transactional`, scopes, dispatchers, Flow, validation, JPA-in-API, authz, advice, VT pinning)
-- [ ] Phase C architecture checks applied
-- [ ] Phase D applied via `complexity-review` + `kotlin-overengineering-review`; AI smells covered
-- [ ] Phase E maintainability checks applied
-- [ ] Missing tests raised as explicit finding
-- [ ] Every Blocker states system risk
-- [ ] Every finding has label + file:line + Kotlin fix
-- [ ] If `--spec`, every finding traces to AC / NFR / task or is flagged out-of-scope blocker
-- [ ] For non-Core scopes: subagents ran in parallel with pre-resolved handle
-- [ ] Subagent findings merged with dedup + highest-severity-wins
-- [ ] Failed scopes noted as `Scope incomplete: <scope>`
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by severity
+- [ ] Phases B-E applied via the named atomic skills; missing tests raised as explicit finding
+- [ ] Every Blocker states system risk; every finding has label + file:line + Kotlin fix
+- [ ] If `--spec`, every finding traces to AC / NFR / task or flagged out-of-scope blocker
+- [ ] Extra scopes ran in parallel; findings deduped, highest-severity wins; failed scopes noted
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by severity
 - [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Avoid

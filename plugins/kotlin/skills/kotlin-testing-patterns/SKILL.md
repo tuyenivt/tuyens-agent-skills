@@ -171,48 +171,21 @@ Share factories across slice and full-context tests in `TestFixtures.kt`; never 
 ```kotlin
 class OrderServiceSpec : FunSpec({
     val repo = mockk<OrderRepository>()
-    val service = OrderService(repo)
     afterEach { clearAllMocks() }
-
-    test("returns order when found") {
+    test("returns order") {
         coEvery { repo.findById(1L) } returns Order(id = 1L)
-        service.findOrder(1L).id shouldBe 1L
+        OrderService(repo).findOrder(1L).id shouldBe 1L
     }
 })
-
-// BehaviorSpec (Given/When/Then) and property-based testing via Arb / checkAll also available
 ```
 
-### Coroutine timeouts in `runTest`
+`BehaviorSpec` (Given/When/Then) and property-based `Arb` / `checkAll` also available.
 
-```kotlin
-@Test fun `timeout enforced`() = runTest {
-    coEvery { slowService.fetch() } coAnswers { delay(10_000); "result" }   // virtual time
-    shouldThrow<TimeoutCancellationException> {
-        withTimeout(1_000) { slowService.fetch() }
-    }
-}
-```
+### Other patterns
 
-`delay()` advances instantly under `runTest`. Use `withTimeout` inside for real-timeout assertions.
-
-### Mocking extension functions
-
-```kotlin
-@BeforeEach fun setup() { mockkStatic(Order::isExpired) }
-@AfterEach  fun cleanup() { unmockkStatic(Order::isExpired) }   // extension mocks are JVM-wide; leak across tests
-```
-
-For top-level extensions: `mockkStatic("com.example.OrdersKt")` (file `Orders.kt` → class `OrdersKt`).
-
-### Relaxed mocks
-
-```kotlin
-val repo = mockk<OrderRepository>(relaxed = true)   // returns defaults for unstubbed methods
-coEvery { repo.findById(1L) } returns order         // override only what matters
-```
-
-Use sparingly - hides missing stubs.
+- **`runTest` timeouts**: `delay()` advances instantly; wrap in `withTimeout(1_000)` to assert real timeout, expect `TimeoutCancellationException`.
+- **Mocking extensions**: `mockkStatic(Order::isExpired)` (member); `mockkStatic("com.example.OrdersKt")` (top-level - file `Orders.kt`). JVM-wide - always `unmockkStatic` in `@AfterEach`.
+- **Relaxed mocks** (`mockk(relaxed = true)`): hides missing stubs; use sparingly.
 
 ## Output Format
 

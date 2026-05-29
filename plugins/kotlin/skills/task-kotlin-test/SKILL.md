@@ -83,49 +83,9 @@ Use skill: `kotlin-spring-test-integration` for slice annotations / `@MockkBean`
 
 Don't mix MockK on `WebClient` inside `@SpringBootTest`; don't pull in WireMock for unit tests.
 
-**Idempotency:**
+**Idempotency:** post twice with the same `Idempotency-Key`; assert response bodies equal AND `coVerify(exactly = 1) { paymentClient.charge(any()) }`. Without the side-effect verification the test passes even when retries double-charge.
 
-```kotlin
-@Test
-fun `same idempotency key returns cached result and does not double-execute`() = runTest {
-    val key = "order-001"
-    val req = createOrderRequest()
-
-    val first = mockMvc.post("/api/orders") {
-        header("Idempotency-Key", key); contentType = APPLICATION_JSON; content = json(req)
-    }.andReturn().response.contentAsString
-
-    val second = mockMvc.post("/api/orders") {
-        header("Idempotency-Key", key); contentType = APPLICATION_JSON; content = json(req)
-    }.andReturn().response.contentAsString
-
-    second shouldBe first
-    coVerify(exactly = 1) { paymentClient.charge(any()) }
-}
-```
-
-**`@TransactionalEventListener` phases:**
-
-`@RecordApplicationEvents` + `ApplicationEvents`. For `AFTER_COMMIT`, test both branches - listener does not run on rollback:
-
-```kotlin
-@SpringBootTest @RecordApplicationEvents
-class OrderEventTest {
-    @Autowired lateinit var events: ApplicationEvents
-    @MockkBean lateinit var emailSender: EmailSender
-
-    @Test fun `OrderPlaced fires only after commit`() {
-        orderService.place(req)
-        events.stream(OrderPlacedEvent::class.java).count() shouldBe 1
-        verify(exactly = 1) { emailSender.sendConfirmation(any()) }
-    }
-
-    @Test fun `rolled-back tx does not fire`() {
-        shouldThrow<InsufficientStockException> { orderService.place(failingReq) }
-        verify(exactly = 0) { emailSender.sendConfirmation(any()) }
-    }
-}
-```
+**`@TransactionalEventListener` phases:** `@RecordApplicationEvents` + inject `ApplicationEvents`. For `AFTER_COMMIT`, test both branches: commit fires `verify(exactly = 1)`, rollback (`shouldThrow<...> { ... }`) fires `verify(exactly = 0)`. Without the rollback test, the post-commit guarantee is unverified.
 
 **Coroutine + `@Transactional` rollback trap:** asserting rollback via `repository.findById(id)` can pass even when an `applicationScope.launch { ... }` started inside the TX wrote to a different row in its own (separate) transaction. Safeguards: assert specifically the rows the SUT claims to have rolled back; for background coroutines that must respect the originating TX, use a synchronous test path or block on completion via Awaitility before asserting.
 

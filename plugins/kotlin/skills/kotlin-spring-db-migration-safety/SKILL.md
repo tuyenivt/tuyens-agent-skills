@@ -144,40 +144,9 @@ Always include a rollback block for non-auto-reversible changes.
 
 ### Spring integration
 
-Validate migrations in CI:
+Validate in CI with `@SpringBootTest` + Testcontainers Postgres (see `kotlin-spring-test-integration`): inject `Flyway`, call `flyway.clean()` then assert `flyway.migrate().migrationsExecuted > 0`.
 
-```kotlin
-@SpringBootTest
-@Testcontainers
-class MigrationIntegrityTest {
-    companion object {
-        @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:16-alpine")
-        @DynamicPropertySource @JvmStatic
-        fun props(r: DynamicPropertyRegistry) {
-            r.add("spring.datasource.url", postgres::getJdbcUrl)
-            r.add("spring.datasource.username", postgres::getUsername)
-            r.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-    @Autowired lateinit var flyway: Flyway
-    @Test fun `migrations apply cleanly`() {
-        flyway.clean()
-        flyway.migrate().migrationsExecuted shouldBeGreaterThan 0
-    }
-}
-```
-
-Separate, smaller pool during migrations:
-
-```yaml
-# application-migration.yml
-spring.datasource.hikari: { maximum-pool-size: 5, connection-timeout: 60000 }
-```
-
-```yaml
-# Good - validate only
-spring.jpa.hibernate.ddl-auto: validate
-```
+Production: `spring.jpa.hibernate.ddl-auto: validate`. Use a smaller separate Hikari pool (`maximum-pool-size: 5`) for the migration profile to avoid starving the app pool on long DDL.
 
 ### Multi-service ordering (expand-then-contract)
 

@@ -189,16 +189,15 @@ shipper.send(user, user.address, country)
 
 ```
 ### [Suggestion | High | Question] file:line
-
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation}
 - Redundant because: {constraints making it redundant}
-- Cost: {extra SELECT | masked exception | speculative surface | scope-nesting cognitive load} _(required for [High])_
+- Cost: {...}   _(required for [High])_
 - Recommendation: {concrete edit}
-- Justified when: {one-line note for [Question] or plausible-but-unverified cases; otherwise omit}
+- Justified when: {...}   _([Question] or unverified cases only)_
 ```
 
-For each of the three categories with no findings, state `No <category> findings.` so the consuming workflow knows the check ran.
+For each of the three categories with no findings, emit `No <category> findings.`
 
 ## Avoid
 

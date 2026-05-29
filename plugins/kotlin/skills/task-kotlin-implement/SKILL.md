@@ -17,33 +17,29 @@ user-invocable: true
 
 - End-to-end Kotlin + Spring Boot feature (entity, controller, tests, migration)
 - New domain aggregate with REST API, persistence, coroutines, tests
-- Any daily coding task requiring coordinated generation across Spring layers
 
 Not for single-file changes (edit directly) or bug fixes (use `task-kotlin-debug`).
-
-## Edge Cases
-
-- **Vague input**: ask targeted questions; never guess field names, types, relationships.
-- **No persistence**: skip STEP 4 (entity + migration) and STEP 5 (repository). Generate service and controller.
-- **Existing entity**: read it and extend. Check existing DTOs / repositories too.
-- **Referenced entity missing**: ask whether to create or use a plain ID reference.
-- **Maven project**: detect `pom.xml` and use `./mvnw` instead of `./gradlew`.
-- **Bulk operations**: `@Transactional` + `saveAll()`, dedicated bulk endpoint, collection size limits.
-- **Coroutine vs blocking**: `suspend` only when the service path actually uses coroutines (parallel calls, Flow, R2DBC). For blocking JPA, regular functions.
-- **Soft-delete**: `deletedAt: Instant?` + Hibernate `@SQLDelete` + `@SQLRestriction`; partial index `WHERE deleted_at IS NULL`; DELETE endpoint issues UPDATE.
 
 ## Rules
 
 - Constructor injection only; no `@Autowired` fields.
-- `data class` for DTOs; regular `class` for JPA entities.
+- `data class` for DTOs; regular `class` for JPA entities; never expose entities in API responses.
 - `@Transactional(readOnly = true)` default on service classes; `@Transactional` on mutating methods only.
-- Never expose JPA entities in API responses - map to DTO data classes.
-- No `synchronized` blocks (breaks Virtual Threads) - `ReentrantLock` if needed.
+- No `synchronized` (pins Virtual Threads) - `ReentrantLock` if needed.
 - `suspend` endpoints only when the service path is coroutine-based.
-- `@MockkBean` not `@MockBean`; `coEvery` / `coVerify` for `suspend` mocks.
+- `@MockkBean` + `coEvery` / `coVerify` for suspend mocks.
 - Verify `kotlin("plugin.jpa")` and `kotlin("plugin.spring")` in `build.gradle.kts`.
-- Each step completes before the next.
 - Present design and wait for approval before generating code.
+
+## Edge Cases
+
+- **Vague input**: ask targeted questions; never guess field names, types, relationships.
+- **No persistence**: skip STEP 4 + 5; generate service and controller only.
+- **Existing entity**: read and extend; check existing DTOs / repositories.
+- **Referenced entity missing**: ask whether to create or use a plain ID reference.
+- **Maven project**: detect `pom.xml` and use `./mvnw` instead of `./gradlew`.
+- **Bulk operations**: `@Transactional` + `saveAll()`, dedicated bulk endpoint, collection size limits.
+- **Soft-delete**: `deletedAt: Instant?` + Hibernate `@SQLDelete` + `@SQLRestriction`; partial index `WHERE deleted_at IS NULL`.
 
 ## Workflow
 
@@ -159,9 +155,7 @@ Cover: happy path, not-found, validation, error responses, edge cases.
 
 Verify: tests pass, no unsafe-cast warnings, detekt / ktlint clean (if configured).
 
-### STEP 11 - Output
-
-## Output
+## Output Format
 
 ```markdown
 ## Generated Files

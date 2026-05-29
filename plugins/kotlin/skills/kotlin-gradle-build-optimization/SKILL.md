@@ -200,31 +200,21 @@ buildCache {
 
 5-10x speedup on cold builds hitting populated caches.
 
-### CI
-
-```bash
-./gradlew build --parallel --build-cache --no-daemon
-```
-
-Daemon wastes memory in ephemeral runners.
-
-### Detekt + ktlint
+### CI + static analysis
 
 ```kotlin
 plugins {
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
 }
-
-detekt {
-    config.setFrom("$rootDir/config/detekt/detekt.yml")
-    buildUponDefaultConfig = true
-}
+detekt { buildUponDefaultConfig = true; config.setFrom("$rootDir/config/detekt/detekt.yml") }
 ```
 
 ```bash
 ./gradlew detekt ktlintCheck check --parallel --build-cache --no-daemon
 ```
+
+`--no-daemon` on CI - the daemon wastes memory in ephemeral runners.
 
 ## Output Format
 

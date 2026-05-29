@@ -151,6 +151,7 @@ csrf { disable() }
 sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
 
 // Stateful SPA - XSRF-TOKEN cookie + X-XSRF-TOKEN header
+// SpaCsrfTokenRequestHandler: project-defined extending CsrfTokenRequestAttributeHandler that resolves from the header
 csrf {
     csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
     csrfTokenRequestHandler = SpaCsrfTokenRequestHandler()
@@ -199,16 +200,7 @@ Cleanest option for `suspend` - principal is a method argument, no ThreadLocal i
 
 ### `AuthorizationManager` for request-context rules
 
-```kotlin
-@Bean
-fun ownsTenant(): AuthorizationManager<RequestAuthorizationContext> =
-    AuthorizationManager { auth, ctx ->
-        val tenantId = ctx.request.getHeader("X-Tenant-Id")
-        AuthorizationDecision(auth.get().authorities.any { it.authority == "TENANT_$tenantId" })
-    }
-
-// In DSL: authorize("/api/tenants/**", access(ownsTenant()))
-```
+When the decision depends on request attributes (tenant header, body, IP), expose an `AuthorizationManager<RequestAuthorizationContext>` bean and wire via `authorize("/api/tenants/**", access(ownsTenant()))`.
 
 ### Coroutine `SecurityContext`
 
@@ -226,20 +218,7 @@ suspend fun listUserOrders(principal: String): List<Order> = orderRepo.findByUse
 
 For `@Async` (non-coroutine), use `MODE_INHERITABLETHREADLOCAL` or `DelegatingSecurityContextExecutor`.
 
-### Testing
-
-```kotlin
-@Test @WithMockUser(roles = ["ADMIN"])
-fun `admin returns 200`() {
-    mockMvc.get("/api/admin/users").andExpect { status { isOk() } }
-}
-
-@Test fun `jwt with valid token`() {
-    mockMvc.get("/api/orders") {
-        with(jwt().authorities(SimpleGrantedAuthority("ROLE_USER")).jwt { it.claim("sub", "user-123") })
-    }.andExpect { status { isOk() } }
-}
-```
+Testing patterns: `@WithMockUser`, `with(jwt().authorities(...).jwt { it.claim("sub", "u") })` - see `kotlin-spring-test-integration`.
 
 ## Output Format
 

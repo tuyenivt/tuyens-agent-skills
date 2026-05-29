@@ -160,25 +160,9 @@ class StripePaymentGateway(private val stripe: StripeClient) : PaymentGateway {
 
 ### Retryable vs permanent
 
-```kotlin
-open class RetryableException(
-    message: String, status: HttpStatus, errorCode: String,
-) : DomainException(message, status, errorCode) {
-    open val isRetryable: Boolean = true
-}
+Mark transient failures with `HttpStatus.SERVICE_UNAVAILABLE` + a retryable error code; set `retryable=true` property on `ProblemDetail` so clients can backoff vs give up.
 
-class PaymentRetryableException(orderId: Long, reason: String, cause: Throwable) :
-    RetryableException("Payment temporarily failed for order $orderId: $reason",
-        HttpStatus.SERVICE_UNAVAILABLE, "PAYMENT_RETRYABLE") {
-    init { initCause(cause) }
-}
-```
-
-### Enable ProblemDetail
-
-```yaml
-spring.mvc.problemdetails.enabled: true
-```
+Enable globally: `spring.mvc.problemdetails.enabled: true`.
 
 ## Output Format
 

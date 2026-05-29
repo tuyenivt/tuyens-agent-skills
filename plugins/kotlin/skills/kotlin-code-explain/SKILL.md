@@ -88,15 +88,7 @@ Kotlin classes and methods are `final` by default. CGLIB proxies require `open`:
 
 ### Scope functions
 
-| Function | Receiver | Returns         | Use                                       |
-| -------- | -------- | --------------- | ----------------------------------------- |
-| `let`    | `it`     | block result    | Null-safe transform; map a value          |
-| `run`    | `this`   | block result    | Configure + compute                       |
-| `also`   | `it`     | original object | Side effects (logging); return receiver   |
-| `apply`  | `this`   | original object | Builder-style configuration               |
-| `with`   | `this`   | block result    | Multiple ops without method chain         |
-
-Common confusion: `apply` vs `also` (both return receiver; `apply`=`this`, `also`=`it`). `let` vs `run` (both return block result; `let`=`it`, `run`=`this`).
+Definitive table in `kotlin-idioms`. When explaining code, name the one used and the confusion pair: `apply` vs `also` (both return receiver; `this` vs `it`), `let` vs `run` (both return block result; `it` vs `this`).
 
 ### `@TransactionalEventListener` phases
 
@@ -106,12 +98,6 @@ Common confusion: `apply` vs `also` (both return receiver; `apply`=`this`, `also
 - `AFTER_COMPLETION`: always runs.
 
 Listener starting a new `@Transactional` in `AFTER_COMMIT` / `AFTER_ROLLBACK` needs `propagation = REQUIRES_NEW` - the original is gone. `@Async` listener runs on the executor pool; SecurityContext / MDC don't propagate without setup.
-
-### Testing
-
-- `runTest` over `runBlocking` for coroutine tests (virtual time).
-- MockK over Mockito - works on final classes.
-- `@MockBean` on final classes needs `open` or `kotlin-allopen`.
 
 ## Output Format
 

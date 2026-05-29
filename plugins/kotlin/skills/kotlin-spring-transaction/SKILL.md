@@ -114,25 +114,9 @@ class OrderService(private val repo: OrderRepository) {
 }
 ```
 
-### Idempotent writes with optimistic locking
+### Idempotency for split transactions
 
-Find-or-create + `@Version` + DB unique constraint on the idempotency key. Note the external call sits between two short transactions:
-
-```kotlin
-fun processPayment(req: PaymentRequest): PaymentResponse {
-    val pending = reservePending(req) ?: return PaymentResponse.from(loadByKey(req.idempotencyKey))
-    val receipt = paymentGateway.charge(pending)            // outside any transaction
-    return PaymentResponse.from(markCompleted(pending.id, receipt))
-}
-
-@Transactional
-internal fun reservePending(req: PaymentRequest): Payment? {
-    paymentRepo.findByIdempotencyKey(req.idempotencyKey)?.let { return null }
-    return paymentRepo.save(Payment.from(req).copy(status = PENDING))
-}
-```
-
-On race, catch `DataIntegrityViolationException` and re-fetch.
+Pair with the split pattern above when retries must not double-execute. Find-or-create + DB unique constraint on the idempotency key. On race, catch `DataIntegrityViolationException` and re-fetch.
 
 ### Transaction timeout
 
