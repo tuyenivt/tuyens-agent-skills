@@ -137,25 +137,16 @@ Run build + test + lint + typecheck (prefer `bun run build`, `bun test`, `bun ru
 
 ## Self-Check
 
-- [ ] Stack detected; requirements gathered; design approved before code
-- [ ] All layers generated: schema/migration, DTOs, service, controller/routes, module, tests
-- [ ] DTOs used everywhere; no ORM entities exposed; all async operations awaited
-- [ ] TypeScript strict; validation on all inputs; guards/middleware explicit
-- [ ] Background jobs dispatched after transaction commit
-- [ ] Status transitions validated in service; enum constraint in schema (when applicable)
-- [ ] Idempotency: unique constraint + find-or-create (when applicable)
-- [ ] Webhook: raw body + signature validation, outside global auth (when applicable)
-- [ ] External API calls: timeout-wrapped + interface for testability
-- [ ] Build, test, lint, typecheck all pass; list endpoints paginated
+- [ ] Stack detected; design approved before code (Steps 1-2)
+- [ ] All layers generated: schema/migration, DTOs, service, controller/routes, module, tests (Steps 3-6)
+- [ ] DTOs used everywhere; no ORM entities exposed; jobs dispatched after commit
+- [ ] When applicable: status enum + transition validation, idempotency unique + find-or-create, webhook raw body + signature outside global auth, external calls timeout-wrapped behind an interface
+- [ ] Build, test, lint, typecheck all pass; list endpoints paginated (Step 7)
 
 ## Avoid
 
 - Generating code before design approval
-- Exposing Prisma models or TypeORM entities in responses
+- Exposing ORM entities; `any` in DTOs; missing `await`; unpaginated lists
 - Background jobs inside a DB transaction
-- `any` in DTOs or services
-- Missing `await` on async operations
-- Skipping pagination on list endpoints
-- Skipping idempotency for payment / external-callback features
-- Missing enum constraints on status fields
+- Skipping idempotency on payment / external-callback features
 - Consuming the body before signature validation on webhook endpoints

@@ -215,22 +215,16 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Stack confirmed as Node/TypeScript; framework (NestJS / Express / mixed) and ORM (Prisma / TypeORM) recorded
-- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused
-- [ ] Performance surface read directly (schema / entities, repositories, controllers / handlers, DTOs, config, migrations, BullMQ)
-- [ ] `node-prisma-patterns` / `node-typeorm-patterns` consulted per ORM; N+1, multi-level, overfetch, projection checked
-- [ ] `node-migration-safety` consulted on migration changes; `lock_timeout`, concurrent index, keyset backfill, expand-contract verified
-- [ ] Async correctness audit run (blocking I/O, `Promise.all`, `AbortSignal`, request-scoped providers, no I/O in transactions)
-- [ ] Validation / serialization cost assessed when DTOs in diff
-- [ ] Caching assessed (in-process vs Redis, single-flight, invalidation) when caching primitives in diff
-- [ ] `node-bullmq-patterns` consulted for any BullMQ change; idempotency, retry, post-commit dispatch, `lockDuration` verified
-- [ ] Observability presence/absence confirmed; depth delegated to `task-node-review-observability`
-- [ ] Pool sizing validated against worker / framework concurrency **if pool config in diff**; otherwise Low / Recommendation
-- [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
-- [ ] Findings ordered by impact; quick wins separated from structural
-- [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered High > Medium > Low
-- [ ] Review report written via `review-report-writer`; confirmation printed
+- [ ] Stack, framework, ORM recorded; diff/log read once; perf surface read directly (Steps 1-3)
+- [ ] ORM atomics consulted; N+1, overfetch, missing indexes, unbounded reads, per-row loops, existence checks, pool sizing, prod-unsafe config covered (Step 4)
+- [ ] Migration-safety atomic consulted on migration changes: `lock_timeout`, CONCURRENTLY, keyset backfill, expand-contract (Step 5)
+- [ ] Async audit: blocking I/O, `Promise.all` boundedness, `AbortSignal`, request-scoped providers, no I/O in transactions (Step 6)
+- [ ] Validation / serialization, caching, BullMQ assessed when diff touches them (Steps 7-9)
+- [ ] Observability presence/absence confirmed; depth delegated (Step 10)
+- [ ] Depth honored: `quick` = Steps 4-5; `standard` = 4-10; `deep` adds capacity + load plan
+- [ ] Every finding states measured or estimated impact; findings ordered by impact
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
+- [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 

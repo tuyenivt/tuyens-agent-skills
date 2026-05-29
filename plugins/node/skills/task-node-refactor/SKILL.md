@@ -317,29 +317,15 @@ _Omit if no other smells in target._
 
 ## Self-Check
 
-**Plan-time:**
-
-- [ ] Stack confirmed; framework and ORM recorded (Step 1)
-- [ ] Target files and matching tests read directly before classification (Step 2)
-- [ ] Sibling smells listed with deferral rationale (or section omitted) (Step 2)
-- [ ] Coverage gate evaluated using sharp boundaries; happy-path-only treated as `Inadequate`; plan refused if `Inadequate` (Step 3)
-- [ ] Node smells identified using Step 4 catalog and overengineering-review delegations (Step 4)
+- [ ] Stack, framework, ORM recorded; target + tests read before classification (Steps 1-2)
+- [ ] Sibling smells listed with deferral rationale (or section omitted)
+- [ ] Coverage gate evaluated with sharp boundaries; happy-path-only = `Inadequate` -> plan refused (Step 3)
+- [ ] Smells identified via overengineering-review + Step 4 catalog
 - [ ] Blast radius stated before steps (Step 5)
-- [ ] `Primary recipe:` named; supporting recipes folded as sub-steps (Step 6)
-- [ ] Step 0 included if `Thin`; omitted if `Adequate` (Output Format)
-- [ ] Transaction stance per step (Step 6)
-- [ ] Async stance per step (Step 6)
-- [ ] `Step kind: coupled-fix` labeled for any intentional behavior change with rationale (Step 6)
-- [ ] Steps ordered low-risk first (Step 6)
-- [ ] Plan length <= 8 steps or split (Step 6)
-- [ ] No step bundles unrelated cleanup (Step 6)
-- [ ] Goal mapped to end state (Step 7)
-
-**Execution-time (commitments for the implementer):**
-
-- [ ] `tsc --noEmit` clean and Jest suite passes between every step
-- [ ] Each step independently committable
-- [ ] Rollback path is one revert per step
+- [ ] `Primary recipe:` named; supporting recipes folded as sub-steps; <= 8 steps or split (Step 6)
+- [ ] Each step: transaction stance + async stance disclosed; `coupled-fix` labeled when behavior changes
+- [ ] Steps ordered low-risk first; no bundled cleanup; goal mapped to end state (Steps 6-7)
+- [ ] Execution commitments listed: `tsc --noEmit` + Jest pass between steps; one-revert rollback per step
 
 ## Avoid
 

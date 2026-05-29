@@ -34,7 +34,7 @@ function isOrder(x: unknown): x is Order {
 }
 
 function parse<T>(data: string, guard: (x: unknown) => x is T): T {
-  const parsed: unknown = JSON.parse(data); // JSON.parse returns any - assign to unknown first
+  const parsed: unknown = JSON.parse(data);
   if (!guard(parsed)) throw new Error("Invalid shape");
   return parsed;
 }

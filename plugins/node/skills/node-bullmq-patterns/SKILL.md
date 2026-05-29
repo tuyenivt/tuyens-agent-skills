@@ -158,8 +158,6 @@ expect(mockQueue.add).toHaveBeenCalledWith(
 
 ### Stack Notes
 
-- **NestJS**: `@nestjs/bullmq` - `@Processor` + `WorkerHost` for DI; register via `BullModule.registerQueue`
-- **Express**: `bullmq` directly; wire `worker.close()` into app shutdown
 - **Redis**: 6.2+; `ioredis` connection needs `maxRetriesPerRequest: null`
 - **Monitoring**: Bull Board (`@bull-board/express` or `/nestjs`) behind admin auth
 

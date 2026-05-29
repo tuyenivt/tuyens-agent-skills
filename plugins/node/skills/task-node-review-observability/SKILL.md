@@ -224,20 +224,16 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Step 1: Stack confirmed as Node.js / TypeScript (or accepted from parent); framework and ORM recorded
-- [ ] Step 2: `review-precondition-check` ran (or handle received from parent); diff and commit log read once and reused
-- [ ] Step 3: Instrumentation surfaces (logger config, OTel wiring, `package.json`, env) read; surface map produced with `wired | partial | absent` verdicts; absent surfaces collapsed to one finding each
-- [ ] Step 4: Structured logging assessed - JSON, correlation, redaction, level discipline, no `console.log`, no entity logging, cause chain
-- [ ] Step 5: OTel SDK and auto-instrumentation reviewed - init BEFORE other imports, framework / DB / HTTP / BullMQ / Redis instrumentations, explicit sampling, resource attributes
-- [ ] Step 6: `prom-client` assessed - default + HTTP metrics, namespaced custom metrics, bounded label cardinality, module-level registration, cluster aggregation, route normalization
-- [ ] Step 7: BullMQ observability assessed (or skipped per depth) - instrumentation, queue events, trace propagation across dispatch, repeatable spans
-- [ ] Step 8: Lifecycle / async assessed (or skipped per depth) - bootstrap / shutdown hooks, `AsyncLocalStorage`, worker-thread boundary
-- [ ] Step 9: Error tracker assessed (or skipped per depth) - SDK + framework integration, DSN externalized, PII scrubbed, OTel correlation, sample rate, unhandled rejection captured
-- [ ] Step 10: At `deep`, SLIs / liveness / readiness / dependency-health separation reviewed; skipped otherwise
-- [ ] Step 11: Report written via `review-report-writer`; confirmation line printed
-- [ ] Findings name a Node / OTel / pino / prom-client idiom directly - not "add observability"
-- [ ] Library-level scope respected; infra concerns deferred to ops
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered High > Medium > Low
+- [ ] Stack, framework, ORM recorded; diff and log read once (Steps 1-2)
+- [ ] Surface map produced with `wired | partial | absent` verdicts; absent surfaces collapsed to one finding each (Step 3)
+- [ ] Logging assessed: JSON, correlation, redaction, level discipline, no `console.log`, no entity logging, cause chain (Step 4)
+- [ ] OTel SDK reviewed: init BEFORE imports; framework / DB / HTTP / BullMQ / Redis instrumentations; explicit sampling; resource attributes (Step 5)
+- [ ] `prom-client` assessed: defaults + HTTP, namespaced customs, bounded labels, module-level registration, cluster aggregation, route normalization (Step 6)
+- [ ] BullMQ, lifecycle / async, error tracker assessed when in scope and depth permits (Steps 7-9)
+- [ ] `deep`: SLIs and liveness / readiness / deps separation reviewed (Step 10)
+- [ ] Findings name a specific Node / OTel / pino / prom-client idiom; library-level scope respected
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
+- [ ] Report written via `review-report-writer`; confirmation printed (Step 11)
 
 ## Avoid
 

@@ -246,25 +246,15 @@ _Omit if no security issues found._
 
 ## Self-Check
 
-**Verifiable from diff:**
-
-- [ ] Step 1: Node/TS confirmed; `Framework: NestJS | Express | mixed` recorded
-- [ ] Step 2: `review-precondition-check` ran (or handle received); `base_ref`/`head_ref`/`current_branch`/`head_matches_current` captured; diff + log read once and reused; user approval obtained when `head_matches_current` was false (skipped as subagent)
-- [ ] Step 3: security surface read directly; prior revision consulted when guards/auth middleware were removed
-- [ ] Step 4: OWASP triage produced one verdict per category (`yes` / `no signal in diff`); not duplicated as findings
-- [ ] Steps 5-6: authz drift sweep covered every new endpoint
-- [ ] Step 7: DTO/Zod validation reviewed; mass-assignment fields, `@Exclude()`/`whitelist`/`.strict()` confirmed
-- [ ] Step 8: file upload, path traversal, exec, prototype pollution, `eval`, raw SQL, dynamic require, `rejectUnauthorized: false`, open redirect checked when touched
-- [ ] Severity rubric applied consistently (not invented)
-- [ ] Every finding has attack scenario, regression-risk, or topology-dependent framing - never "input not validated" alone
-- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Critical > High > Medium > Low (omit if no findings)
-
-**Requires repo/infra access (note "could not verify from diff alone - flag for separate audit" if not visible):**
-
-- [ ] Step 5: auth mechanism in use reviewed (JWT/Passport/session/jose) - applies when auth module in scope
-- [ ] Steps 6-8: CORS, rate limiting, helmet, debug exposure, password hashing config, Sentry `beforeSend` - applies when middleware/config in scope
-- [ ] `npm/pnpm/bun audit` - run separately; this workflow does not execute tools
-- [ ] Step 10: review report written via `review-report-writer`; confirmation printed
+- [ ] Stack confirmed; framework recorded; diff + log read once; prior revision consulted when guards/auth middleware removed (Steps 1-3)
+- [ ] OWASP triage: one verdict per category; findings not duplicated (Step 4)
+- [ ] Authn / authz drift sweep covered every new endpoint (Steps 5-6)
+- [ ] DTO / Zod validation, mass-assignment fields, `@Exclude()` / `whitelist` / `.strict()` confirmed (Step 7)
+- [ ] When touched: file upload, path traversal, exec, prototype pollution, `eval`, raw SQL, dynamic require, `rejectUnauthorized: false`, open redirect (Step 8)
+- [ ] Severity rubric applied consistently; every finding has attack scenario, regression-risk, or topology-dependent framing
+- [ ] Infra-scope items (CORS, rate limiting, helmet, debug exposure, hashing config, Sentry `beforeSend`, `npm audit`) noted as "could not verify from diff alone - flag for separate audit" when not visible
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low
+- [ ] Report written via `review-report-writer`; confirmation printed (Step 10)
 
 ## Avoid
 

@@ -320,26 +320,19 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded (or accepted from parent)
-- [ ] Stack confirmed; framework and ORM recorded
-- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused
-- [ ] Scope auto-escalation evaluated; promotion (or `core-only`) recorded
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`
-- [ ] Risk level + blast radius stated before any finding
-- [ ] Phase B: applied atomic skills; checked test coverage, event-loop blocking, validation strict, authorization, response DTO hygiene, Idempotency-Key, race safety
-- [ ] Phase B migration safety delegated to `node-migration-safety` when migrations changed
-- [ ] Phase C: layering, DI, settings discipline, listener/middleware discipline, package boundaries, multi-tenant
-- [ ] Phase D: `complexity-review` + the framework-matching necessity skill applied; Node AI smells covered
+- [ ] `behavioral-principles` loaded; stack, framework, ORM recorded (Steps 1-2)
+- [ ] `review-precondition-check` ran (or handle received); diff/log read once (Step 3)
+- [ ] Scope auto-escalation evaluated and recorded; depth auto-promoted on Wide/Critical blast radius (Step 4, 4.5)
+- [ ] Risk + blast radius stated before any finding (Phase A)
+- [ ] Phase B: atomic skills applied; test-coverage gap raised as named finding; event-loop, validation strict, authz / IDOR, response-DTO hygiene, Idempotency-Key, race safety, migration safety all checked
+- [ ] Phase C: layering, DI, settings, listener / middleware, multi-tenant
+- [ ] Phase D: `complexity-review` + framework-matching necessity skill applied
 - [ ] Phase E: naming, magic numbers, function length, logging hygiene
-- [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Blocker states a system risk
-- [ ] Every finding has label + `file:line` + actionable Node fix
-- [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
-- [ ] Extra scopes ran in parallel with the pre-resolved diff/log handle + framework/ORM detection
-- [ ] Subagent findings merged into one severity-ordered Findings list; no raw reports appended
-- [ ] Failed/missing subagent scope noted as `Scope incomplete: <scope>`
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by severity
-- [ ] Review report written via `review-report-writer`; confirmation line printed
+- [ ] Every Blocker states a system risk; every finding has label + `file:line` + actionable Node fix
+- [ ] Spec mode: every finding traces to AC/NFR/task or is flagged out-of-scope
+- [ ] Extra scopes ran in parallel; subagent findings merged severity-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by severity
+- [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Avoid
 

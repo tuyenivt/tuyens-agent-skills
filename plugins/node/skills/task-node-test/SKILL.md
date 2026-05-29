@@ -108,14 +108,11 @@ Run before scaffolding when coverage is below ~50%. Alphabetic or by-file order 
 ## Review Checklist (existing tests)
 
 - [ ] Test type matches subject (endpoint -> Supertest, repository -> Testcontainers, service -> unit)
-- [ ] Every endpoint: happy + 401 + 403 + validation
-- [ ] Non-trivial repository queries integration-tested against Testcontainers, not SQLite
-- [ ] Every guard / auth middleware has passing-and-denied tests
-- [ ] Test data via factories, not literals
-- [ ] No internal `repository.save = jest.fn()` mocks where integration could assert real DB state
+- [ ] Endpoint: happy + 401 + 403 + validation; guards / middleware have passing + denied tests
+- [ ] Repository integration on Testcontainers PostgreSQL, not SQLite; no `repository.save = jest.fn()` where real DB could assert
 - [ ] No E2E covering what an endpoint test could
-- [ ] No in-memory queue mock masking `attempts` / `lockDuration` semantics on critical jobs
-- [ ] No `as any` - use `DeepMocked<T>` or `jest.MockedFunction`
+- [ ] Critical jobs use real-broker tests when behavior depends on `attempts` / `lockDuration`
+- [ ] Factories over literals; typed mocks (`DeepMocked<T>` / `jest.MockedFunction`), no `as any`
 
 ## Output Format
 
@@ -176,33 +173,11 @@ Apply Step 7 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4
 
 ## Self-Check
 
-**Always:**
-
-- [ ] Stack confirmed Node.js / TypeScript; Framework + ORM recorded (Step 1)
-- [ ] Code under test + sample existing tests + setup read directly (Step 2)
-- [ ] `node-testing-patterns` consulted for canonical wiring (Step 4)
-- [ ] Auth approach explicit (NestJS `overrideGuard` stub user; Express fixture middleware)
+- [ ] Stack confirmed; Framework + ORM recorded; existing tests + setup read (Steps 1-2)
+- [ ] Pyramid mapped to Node idioms; risk prioritization applied when coverage < ~50% (Steps 3, 7)
 - [ ] Spec-aware mode honored when `--spec` passed (one test per AC, NFR coverage, no out-of-scope)
-
-**Strategy Doc / Coverage Assessment:**
-
-- [ ] Pyramid mapped to Node idioms (Step 3) - no duplicated assertions across layers
-- [ ] Risk prioritization applied when coverage is low (Step 7)
-- [ ] Testcontainers required for repository tests; SQLite flagged on Postgres apps
-
-**Test Scaffolds:**
-
-- [ ] Factories over object literals; typed factory return shapes (Step 6)
-- [ ] Endpoint scaffolds: happy + 401 + 403 + validation; IDOR for per-owner / per-tenant resources
-- [ ] Endpoint scaffolds apply same global pipes / guards / middleware as `main.ts` / `app.ts`
-- [ ] Repository scaffolds on Testcontainers PostgreSQL with per-test cleanup - never SQLite
-- [ ] BullMQ scaffolds include idempotency + retry; real-broker variant for non-trivial `attempts` / `lockDuration`
-- [ ] Typed mocks (`DeepMocked<T>` / `jest.MockedFunction`); no `as any`
-- [ ] Schema unit tests for non-trivial DTOs / Zod / `whitelist:true` / `.strict()` contracts
-
-**Review-existing-tests mode:**
-
-- [ ] Review Checklist items addressed for every test file in scope
+- [ ] Scaffolds: factories over literals; endpoint = happy + 401 + 403 + validation + IDOR; same global pipes / guards as `main.ts` / `app.ts`; repository on Testcontainers PostgreSQL (never SQLite); BullMQ with idempotency + retry, real-broker for non-trivial `attempts` / `lockDuration`; typed mocks, no `as any`
+- [ ] Review mode: every test file in scope passes the Review Checklist
 
 ## Avoid
 
