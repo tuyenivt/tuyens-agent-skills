@@ -169,11 +169,7 @@ log = structlog.get_logger().bind(task_id=self.request.id, task_name=self.name, 
 
 ## Avoid
 
-- ORM objects, sessions, or large payloads as task args - pass IDs only
-- `.delay()` inside an open DB transaction - worker fires before commit
-- Missing `soft_time_limit` / `time_limit` - hung tasks pin workers
-- `acks_late=True` without an idempotency guard - double processing on retry
-- `task_serializer="pickle"` - RCE risk
-- Canvas without `link_error` - silent failures
+- Large payloads (HTML, images) as task args - pass references
 - Sharing DB sessions between web process and worker, or across forked workers
 - Celery worker co-located with the web server process
+- `task_serializer="pickle"` - RCE risk on any broker write

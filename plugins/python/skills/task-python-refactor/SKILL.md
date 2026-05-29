@@ -349,14 +349,9 @@ _Omit if no other smells in target._
 ## Avoid
 
 - Refactor without a coverage gate - that's a rewrite
-- Bundling behavior changes with refactoring steps
-- "While we're here" unrelated cleanup
-- Renaming during a refactor (separate PRs)
-- Removing Django signals / SQLAlchemy event listeners without a test asserting original behavior is preserved
-- `threading.local` skip-flag or `_skip_signals` attribute to silence a signal for "the new path" - audit and delete instead
-- Extracting an ABC / Protocol with one implementation - wait for a real second use case
-- Moving I/O across a transaction boundary without explicit transaction-stance disclosure
-- Changing a function from sync to async without auditing every call site - an un-awaited coroutine is a silent bug
-- Refactoring a published package without a backward-compatibility plan
+- "While we're here" unrelated cleanup; renames bundled into refactors
+- Removing Django signals / SQLAlchemy event listeners without a test pinning observable behavior
+- `threading.local` skip-flag / `_skip_signals` attribute to silence a signal for "the new path" - audit and delete instead
 - Replacing `requests.get` with `httpx.AsyncClient` on a sync code path with no async benefit (`httpx.Client` sync is the right swap)
 - Replacing module-level mutable state with `threading.local` without checking that the codebase actually uses threading vs asyncio
+- Refactoring a published package without a backward-compatibility plan

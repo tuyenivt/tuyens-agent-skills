@@ -146,11 +146,7 @@ class AsyncDBConn:
 
 ## Avoid
 
-- Blocking calls inside `async def` (kills throughput)
-- Manually creating event loops; `asyncio.run()` inside a running loop
 - Fire-and-forget `create_task` without error handling or tracking
 - Mixing sync and async ORM drivers in one codebase
-- New `httpx.AsyncClient` per request (wastes the connection pool)
-- `gather` without `return_exceptions=True` when partial failure must be tolerated
-- `TaskGroup` without `except*` handling
 - Relying on thread-local request context inside `run_in_executor`
+- `asyncio.run()` inside a running loop; manually managing event loops

@@ -270,9 +270,8 @@ _Omit if no security issues found._
 - Running state-changing git from this workflow (user runs fetches / checkouts)
 - Reporting vulnerabilities without an attack scenario - "input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment because `extra='forbid'` is missing"
 - Skipping clean OWASP categories - explicitly state `no signal in diff`
-- Generic advice when a Python idiom applies (say "add `permission_classes = [IsAuthenticated]`", not "add an auth check")
+- Generic advice when a Python idiom applies ("add `permission_classes = [IsAuthenticated]`", not "add an auth check")
 - Suggesting `@csrf_exempt` / disabling `permission_classes` to silence a failing test - fix the test
-- Conflating with general code review or perf - delegate to those workflows
 - Recommending `algorithms=None` / unspecified for JWT decode - explicit allowlist only
 - Approving `pickle` / `yaml.load` / `eval` / `exec` / `verify=False` outside fully trusted server input or test fixtures
 - Approving `DEBUG=True` or open `/docs` in any non-dev settings module

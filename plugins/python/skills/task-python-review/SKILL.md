@@ -345,12 +345,9 @@ _Omit if no actionable findings._
 ## Avoid
 
 - `git fetch` / `git checkout` from this workflow - user runs these
-- Reviewing without reading the full diff and commit log first
 - Generic backend conventions when a Python idiom exists ("extract to a service module", not "extract to a helper class")
-- Vague feedback ("this could be better")
-- Blocking on personal preference
-- Running extra scopes when `core-only` was passed
+- Vague feedback ("this could be better"); blocking on personal preference
 - Duplicating perf / security / observability depth here when the dedicated subagent owns them
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
-- Recommending `requests` / `urllib3` synchronous calls in `async def` paths, `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas as acceptable patterns
+- Recommending `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas, as acceptable patterns

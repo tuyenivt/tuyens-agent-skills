@@ -19,14 +19,14 @@ user-invocable: false
 
 ## Rules
 
-- All I/O in endpoints is async; no sync DB/HTTP calls in async paths (blocks event loop)
-- Use `Annotated[T, Depends(...)]` type aliases - never repeat `Depends()` per endpoint
+- All endpoint I/O is async; sync DB/HTTP in `async def` blocks the event loop
+- `Annotated[T, Depends(...)]` type aliases at module level; never repeat `Depends()` per endpoint
 - Yield-dependencies handle commit/rollback; cleanup after `yield` must not raise
-- Separate `Create` / `Update` / `Response` Pydantic models per resource; `model_config = ConfigDict(from_attributes=True)` for ORM mapping
+- Separate `Create` / `Update` / `Response` Pydantic models per resource; `ConfigDict(from_attributes=True)` for ORM mapping
 - One `APIRouter` per domain with `prefix` + `tags`; declare `response_model` on every endpoint
-- `lifespan` context manager for startup/shutdown - never `@app.on_event`
-- `CORSMiddleware` with explicit `allow_origins` list when `allow_credentials=True` (`["*"]` is rejected at runtime)
-- No business logic in route functions - delegate to services
+- `lifespan` for startup/shutdown; `@app.on_event` is deprecated
+- `CORSMiddleware` with explicit `allow_origins` when `allow_credentials=True` (`["*"]` is rejected at runtime)
+- Route functions delegate to services; no business logic in handlers
 
 ## Patterns
 
@@ -191,13 +191,11 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 ## FastAPI Architecture
 
 ### Middleware Stack
-| Order | Middleware     | Purpose                              |
-|-------|----------------|--------------------------------------|
-| 1     | CORSMiddleware | CORS (explicit origins)              |
-| 2     | request_id     | correlation ID injection             |
-| 3     | timing         | request duration logging             |
-| 4     | (routers)      | API handlers                         |
-| 5     | exception_handlers | centralized error envelope       |
+| Order | Middleware         | Purpose                          |
+|-------|--------------------|----------------------------------|
+| 1     | CORSMiddleware     | CORS (explicit origins)          |
+| 2     | request_id         | correlation ID injection         |
+| 3     | exception_handlers | centralized error envelope       |
 
 ### Router Structure
 | Router | Prefix | Tags | Endpoints |
@@ -213,11 +211,8 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 ## Avoid
 
-- Sync DB/HTTP calls in async endpoints (blocks event loop)
-- `allow_origins=["*"]` with `allow_credentials=True` (rejected at runtime)
-- `@app.on_event("startup"|"shutdown")` (deprecated - use `lifespan`)
 - Returning dicts or raw ORM objects instead of Pydantic response models
 - Pydantic v1 `.dict()` / `.parse_obj()` calls
 - List endpoints without pagination
 - Passing ORM objects to `BackgroundTasks` (session already closed)
-- Business logic in route functions; broad `except Exception` in endpoints
+- Broad `except Exception` in endpoints (defeats the global handler)

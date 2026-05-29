@@ -178,11 +178,7 @@ print(order.items)  # safe
 
 ## Avoid
 
-- `session.query()` / `Column()` (1.x style)
-- `expire_on_commit=True` in async sessions
-- `joinedload` on collections without `.unique()`
-- Lazy attribute access after session close
-- `session.commit()` inside repositories (commit at service layer)
 - `session.merge()` as upsert - use `insert().on_conflict_do_update()`
-- Long-lived sessions; mixing sync and async engines
+- Long-lived sessions across requests
 - Unbounded `pool_size`; missing `pool_pre_ping` / `pool_recycle`
+- `lazy="dynamic"` in async (returns sync `Query`)

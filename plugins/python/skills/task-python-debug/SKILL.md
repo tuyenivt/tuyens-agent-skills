@@ -132,8 +132,5 @@ Add one guard so this class cannot recur:
 ## Avoid
 
 - Proposing a fix before classifying
-- `asyncio.run()` inside an already-running loop
-- `expire_on_commit=False` without understanding attribute expiry
 - Switching async -> sync SQLAlchemy as a "quick fix" for MissingGreenlet
-- `lazy="dynamic"` in async SQLAlchemy (returns sync Query objects)
 - Blanket `try/except Exception: pass` to suppress errors

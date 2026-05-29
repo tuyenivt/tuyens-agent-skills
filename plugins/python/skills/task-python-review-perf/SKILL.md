@@ -250,11 +250,8 @@ _Omit if no actionable findings._
 ## Avoid
 
 - `git fetch` / `git checkout` from this workflow - user runs these
-- Reporting issues without naming the Python idiom ("this is slow" vs "N+1 from lazy `relationship()`; add `selectinload`")
-- Generic backend advice when a Python pattern applies (say "use `selectinload`", not "use eager loading")
-- Suggesting `lazy="joined"` on collections to fix N+1 - causes row duplication; use `selectinload` for collections, `joinedload` only for single-valued FK / OneToOne
+- Generic advice when a Python pattern applies ("use `selectinload`", not "use eager loading")
+- Suggesting `lazy="joined"` on collections to fix N+1 - row duplication; use `selectinload` for collections, `joinedload` for single-valued FK / OneToOne
 - Suggesting caching without invalidation strategy
-- Conflating perf with general or security review
 - Treating Celery retries as a substitute for idempotency
-- Recommending `requests` / `urllib3` / `time.sleep` in `async def` paths - they block the event loop and stall every in-flight request
 - Reporting "missing index" without confirming the column appears in `where` / `order_by` / `group_by`

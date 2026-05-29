@@ -128,7 +128,4 @@ Inject into `task-onboard` sections:
 
 - Listing dependencies without identifying the manager
 - Treating Python 3.8 patterns as current
-- Recommending `requests` in async paths
-- Confusing FastAPI's `Depends` with Django middleware
-- Glossing over sync vs async DB session differences
 - Ignoring Pydantic v1/v2 API divergence

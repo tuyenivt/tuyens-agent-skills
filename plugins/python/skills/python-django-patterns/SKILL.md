@@ -193,13 +193,9 @@ Queries: {before} -> {after}
 
 ## Avoid
 
-- Fat views - extract to service objects or model methods
+- Fat views - extract to services or model methods
 - N+1 in serializers - eager load in `get_queryset()`
 - Signals for business logic - hard to trace, test, debug
 - `raw()` SQL without parameterization
 - `Model.objects.all()` without pagination
 - `depth=N` on nested serializers - declare explicit classes
-- Business logic in serializer `create()`/`update()`
-- Bare `CharField` for status - use `TextChoices`
-- Missing `select_for_update()` on concurrent state transitions
-- Celery dispatch before transaction commit - use `transaction.on_commit`

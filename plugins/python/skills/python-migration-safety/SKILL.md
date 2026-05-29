@@ -169,11 +169,7 @@ Never rename directly. Across releases: (1) add new nullable column, (2) backfil
 
 ## Avoid
 
-- Applying auto-generated migrations without review
-- DDL without `SET lock_timeout` (can block queries indefinitely)
-- Mixing DDL and DML in the same migration
-- `ALTER COLUMN SET NOT NULL` directly on large tables (full table lock)
-- `WHERE col IS NULL LIMIT N` backfill loops (O(n^2) - use keyset pagination)
+- `WHERE col IS NULL LIMIT N` backfill loops (re-scans the same rows; use keyset pagination)
 - Running all steps of a multi-step migration in one deployment (race conditions)
 - Dropping columns before code stops referencing them
 - Removing enum values without the multi-step type migration

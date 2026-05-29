@@ -123,9 +123,6 @@ Inject into `task-code-explain`:
 
 ## Avoid
 
-- Treating `def` and `async def` as equivalent in FastAPI.
 - Recommending `asyncio.run` inside a running loop.
 - Suggesting `Session.merge()` for `DetachedInstanceError` without addressing session scope.
-- Describing Pydantic without confirming v1 vs v2.
 - Calling Django signals async - they are sync and in-transaction.
-- Glossing over decorator order when behavior depends on it.

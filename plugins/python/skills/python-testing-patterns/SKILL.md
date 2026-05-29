@@ -224,11 +224,7 @@ Parallel: `pytest -n auto` (pytest-xdist). Async session-scoped fixtures need `p
 
 ## Avoid
 
-- `unittest.TestCase` classes (use plain pytest functions)
-- SQLite for integration tests
 - Mocking everything in integration tests (defeats the purpose)
 - `time.sleep` in async tests (use `asyncio.wait_for` / `pytest-timeout`)
-- Patching at the source module path instead of the consumer's import path
 - `CELERY_TASK_ALWAYS_EAGER` as the only Celery test strategy
 - Shared mutable state across tests (module globals, session-scoped mutated fixtures)
-- Leftover `dependency_overrides` (always `clear()` in teardown)

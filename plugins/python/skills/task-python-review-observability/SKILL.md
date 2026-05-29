@@ -238,13 +238,8 @@ _Omit if no actionable findings._
 ## Avoid
 
 - Running `git fetch`, `git checkout`, or any state-changing git command
-- Generic gaps ("add metrics") instead of naming the idiom (`prometheus_client.Counter` `acme_orders_placed_total` at module level, bounded labels)
-- Generic advice when a Python SDK exists - say "enable `FastAPIInstrumentor`", not "add HTTP request tracing"
+- Generic advice when a Python SDK exists ("enable `FastAPIInstrumentor`", not "add HTTP request tracing")
 - Reviewing infra (Datadog, Grafana, alert rules, log forwarders, on-call rotation)
-- Accepting high-cardinality labels (`user_id`, `order_id`); require enum / category labels
-- Approving f-string logging (`logger.info(f"...")`) over parameterized / structured form
-- Approving `print(...)` as logging
-- Approving `Counter(...)` registration inside a request handler - duplicate-registration crash after first request
 - Approving `OTEL_TRACES_SAMPLER=always_on` in high-traffic prod
 - Suggesting `logger.error(traceback.format_exc())` instead of `logger.error("...", exc_info=True)`
 - Prescribing OTLP endpoint URL or Sentry DSN - say "sourced from env / Vault" and stop

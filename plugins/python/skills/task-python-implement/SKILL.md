@@ -176,8 +176,5 @@ Run `pytest`, `ruff check`, `mypy` (or `pyright`). Fix failures before reporting
 ## Avoid
 
 - Generating code before design approval
-- Returning raw ORM objects from endpoints
-- Celery `.delay()` inside a DB transaction
-- `requests` in async FastAPI endpoints (blocks event loop)
 - Bare string fields for status without enum / `TextChoices`
-- Skipping pagination on list endpoints
+- Mixing data migration into the schema migration revision
