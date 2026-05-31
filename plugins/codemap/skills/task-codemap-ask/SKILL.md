@@ -10,29 +10,27 @@ user-invocable: true
 
 # Task: Codemap Ask
 
-Ask one question about the codebase. The skill resolves the question against the `.codemap/graph.json` first (cheap, instant, structured), then opens 1-3 specific files when source detail is needed.
+Ask one question. Resolves against `.codemap/graph.json` first (cheap, structured), opens 1-3 specific files only when source detail is needed.
 
 ## When to Use
 
-For questions about the system - you don't know yet which entity matters, you want a 1-3 sentence answer with citations.
+For questions about the system - you don't know yet which entity matters, and you want a 1-3 sentence answer with citations.
 
 - "How does the payment flow work?"
 - "Which handlers touch the `orders` table?"
 - "What calls `authenticate`?"
 - "Where is the JWT signing key configured?"
-- "Show me the auth middleware chain."
 
 **Not for:**
-- A structured deep-dive on one specific file/function (callers + callees + data + tests + blast radius). Use `task-codemap-explain` - it produces a fixed-section report by default.
-- "Make this change" - use `task-implement` or `task-code-refactor`.
-- "Review this PR" - use `task-code-review`.
-- Onboarding overview - play `task-codemap-guide --list` first; use `task-codemap-ask` for follow-ups.
+- Structured deep-dive on one entity -> `task-codemap-explain`.
+- Make a change / refactor / review -> respective `task-*` skills.
+- Onboarding overview -> `task-codemap-guide`.
 
 ## Inputs
 
-| Input | Required | Notes |
-| --- | --- | --- |
-| `$ARGUMENTS` | Yes | The question, in English. |
+| Input | Notes |
+| --- | --- |
+| `$ARGUMENTS` | The question, in English. Required. |
 
 ## Workflow
 
@@ -42,46 +40,45 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Load Codemap
 
-1. Confirm `.codemap/graph.json` exists. If missing, suggest `task-codemap` and stop.
-2. Check freshness: compare `meta.json#gitCommitHash` to current `git rev-parse HEAD`. If stale by more than ~10 commits or `meta.json#builtAt` older than 7 days, warn before answering. Do not block.
+1. Confirm `.codemap/graph.json` exists. Missing -> suggest `/task-codemap` and stop.
+2. Freshness: compare `meta.json#gitCommitHash` to `git rev-parse HEAD`. If stale by >10 commits or `builtAt` older than 7 days, warn but proceed.
 3. Load `graph.json` and `guides.json`.
 
-Use skill: `codemap-schema` for shape.
-Use skill: `codemap-query` for traversal patterns.
+Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal.
 
 ### Step 3 - Classify the Question
 
-| Question shape | Query plan |
+| Shape | Query plan |
 | --- | --- |
-| "What/where is X" | Resolve X to a node ID; render summary, file:line, fan-in/out. |
-| "What calls X" / "What uses X" | Reverse edges of type `calls`/`uses`/`imports` from X. |
-| "What does X call/use" | Outgoing edges from X. |
-| "How does flow Y work" | Find a guide matching Y in `guides.json`; otherwise BFS from an entrypoint. |
-| "Which handlers/services touch Y" (table, queue, etc.) | Reverse BFS from Y over `reads_from`/`writes_to`/`calls`. |
-| "Where is Y configured" | `config`-type nodes with `configures` edges to Y, or filter `config` nodes by tag/name. |
-| "What's the impact if I change X" | Reverse BFS from X depth 3 over `imports`/`calls`/`uses`. |
-| "List all endpoints/tables/services" | Filter nodes by type. |
-| "Why does X depend on Y" | Shortest path from X to Y; render the chain. |
+| "What/where is X" | Resolve X; render summary, file:line, fan-in/out. |
+| "What calls X" / "What uses X" | Incoming `calls`/`uses`/`imports`. |
+| "What does X call/use" | Outgoing edges. |
+| "How does flow Y work" | Match Y in `guides.json`; else BFS from an entrypoint. |
+| "Which handlers/services touch Y" | Reverse BFS from Y over `reads_from`/`writes_to`/`calls`. |
+| "Where is Y configured" | `config` nodes via `configures` edge to Y, or filter `config` by tag/name. |
+| "What's the impact if I change X" | Reverse BFS depth 3 over `imports`/`calls`/`uses`. |
+| "List all endpoints/tables/services" | Filter by type. |
+| "Why does X depend on Y" | Shortest path X -> Y; render the chain. |
 
-If the question doesn't fit any of these, fall back to: extract entities, resolve each to node IDs, walk neighborhoods, summarize.
+No match -> extract entities, resolve each to nodes, walk neighborhoods, summarize.
 
-### Step 4 - Execute the Query
+### Step 4 - Execute
 
-1. Resolve referenced entities to node IDs per `codemap-query`'s resolution rules.
+1. Resolve named entities per `codemap-query`.
 2. Walk the graph with the chosen pattern.
-3. Cap results: more than 50 nodes summarized as top-N by relevance (fan-in or path-length).
-4. If the answer requires actual source code (e.g., "show me the signing logic"), open the **smallest possible** ranges from the relevant `node.lineRange`s. Read at most 3 files; cap each read at 200 lines unless explicitly asked for more.
+3. Cap at 50 nodes; summarize top-N by relevance.
+4. Read source only when needed - smallest possible ranges from `node.lineRange`. Cap 3 files, 200 lines each.
 
 ### Step 5 - Render
 
 - Lead with the answer in 1-3 sentences.
-- Follow with **Evidence**: node IDs and `file:line-line` references the user can click.
-- When the question implies a flow, render the path as a numbered list.
-- When the answer is "not in the graph", say so and offer the next steps (grep the source, `task-codemap` to sync).
+- Follow with **Evidence**: node IDs + `file:line-line` ranges.
+- Flows render as numbered lists.
+- "Not in the graph" -> say so and suggest next steps (grep, sync).
 
-### Step 6 - Stale-Graph Disclaimer
+### Step 6 - Stale-Graph Footer
 
-If freshness check in Step 2 flagged staleness, append a one-line note:
+If Step 2 warned, append:
 
 ```
 > Codemap built from commit abc1234 (12 commits behind HEAD). Run `/task-codemap` to sync.
@@ -90,49 +87,48 @@ If freshness check in Step 2 flagged staleness, append a one-line note:
 ## Output Format
 
 ```markdown
-**Answer:** [1-3 sentence direct answer]
+**Answer:** [1-3 sentences]
 
 **Evidence:**
 
 - `function:internal/auth/login.go:Authenticate` - `internal/auth/login.go:42-87` - validates credentials, issues JWT, writes audit log
-- `function:internal/auth/jwt.go:Sign` - `internal/auth/jwt.go:14-31` - signs with HS256 using key from env
+- `function:internal/auth/jwt.go:Sign` - `internal/auth/jwt.go:14-31` - signs with HS256 using env key
 
-**Flow (if applicable):**
+**Flow (when applicable):**
 
 1. `endpoint:POST /login` -> `function:internal/handler/auth.go:Login` (entry)
-2. -> `function:internal/service/auth.go:Authenticate` (service layer)
+2. -> `function:internal/service/auth.go:Authenticate` (service)
 3. -> `function:internal/auth/jwt.go:Sign` (infra)
-4. -> response with JWT
 
 > Codemap freshness: in sync with HEAD.
 ```
 
-When the answer is empty or partial:
+Empty or partial:
 
 ```markdown
-**Answer:** No `calls` edges to `Authenticate` recorded in the graph. Likely causes:
-1. The function is only called via reflection / DI runtime wiring (graph doesn't capture).
+**Answer:** No `calls` edges to `Authenticate` recorded. Likely causes:
+1. Reflection / DI runtime wiring (graph doesn't capture).
 2. The graph is stale.
 
 **Suggested next steps:**
-- Run `/task-codemap` to sync and re-ask.
-- Grep the source: `Grep "Authenticate(" --type go`.
+- `/task-codemap` to sync, then re-ask.
+- `Grep "Authenticate(" --type go`.
 ```
 
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: graph loaded; freshness checked; stale warning surfaced when applicable
-- [ ] Step 3: question classified to a query plan, or fallback noted
-- [ ] Step 4: entities resolved to node IDs; results capped to top-N when large; targeted file reads only when source detail needed
-- [ ] Step 5: answer leads, evidence cites node IDs + file:line ranges
-- [ ] Step 6: stale-graph disclaimer appended when applicable
-- [ ] No invented node IDs, file paths, or line numbers
+- [ ] Step 2: graph loaded; freshness warning when applicable
+- [ ] Step 3: classified to a query plan, or fallback noted
+- [ ] Step 4: entities resolved; results capped; reads minimal
+- [ ] Step 5: answer leads, evidence cites IDs + file:line
+- [ ] Step 6: stale footer when applicable
+- [ ] No invented IDs, paths, or line numbers
 
 ## Avoid
 
-- Reading source code before querying the graph - the graph answers most questions for free.
-- Returning raw JSON. Render as bullets, paths, flows.
-- Inventing edges or nodes when the graph is silent. State the gap and offer next steps.
-- Reading entire files when a node's `lineRange` tells you exactly which 40 lines to open.
-- Answering high-stakes questions ("which handlers touch user PII?") on a stale graph without warning.
+- Reading source before querying the graph.
+- Returning raw JSON.
+- Inventing edges when the graph is silent.
+- Reading whole files when `lineRange` is precise.
+- Answering high-stakes questions (PII handlers, auth scope) on a stale graph without warning.

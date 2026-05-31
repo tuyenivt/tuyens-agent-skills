@@ -9,22 +9,21 @@ user-invocable: false
 
 # Codemap Schema
 
-Single source of truth for the `.codemap/graph.json` artifact. Every codemap workflow loads this skill before producing or consuming graph data.
+Single source of truth for `.codemap/graph.json` and its sibling artifacts. Every codemap workflow loads this before producing or consuming graph data.
 
 ## When to Use
 
-- Producing graph nodes/edges in `task-codemap` (both full-build and sync modes).
+- Producing graph data in `task-codemap` (full build or sync).
 - Reading graph data in `task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`.
 - Validating an existing graph (via `codemap-validate`).
 
 ## Rules
 
-1. **Schema is a contract.** Field names, enums, and ID format below are exact. Producers and consumers must conform.
-2. **IDs are stable and globally unique.** Rebuild yields the same ID for the same logical entity (`file:<path>`, `function:<path>:<name>`, `class:<path>:<name>`).
-3. **No node without a `summary`.** One sentence in English. If unknown, write `unknown - source not introspectable` rather than empty.
-4. **No edge without both endpoints in the graph.** Dangling edges are dropped at merge.
-5. **Closed enums.** `type`, `complexity`, `layer` use only the values listed below. Producers that need a new value must extend this skill, not invent locally.
-6. **English only.** All `summary`, `tags`, `name` fields are English regardless of source language.
+1. **IDs are stable and globally unique.** Same logical entity yields the same ID across rebuilds. No line numbers in IDs - they shift on every refactor.
+2. **Every node has a one-sentence English `summary`.** Describe intent, not signature. If genuinely unknown, write `unknown - <reason>`.
+3. **Closed enums.** `type`, `complexity`, `layer` use only the listed values. Extending the schema means editing this skill, not improvising locally.
+4. **No dangling edges.** Edges referencing missing endpoints are dropped at merge.
+5. **English only.** `summary`, `tags`, `name` are English regardless of source language.
 
 ## Patterns
 
@@ -59,55 +58,42 @@ Single source of truth for the `.codemap/graph.json` artifact. Every codemap wor
 }
 ```
 
-Field rules:
-
 | Field | Required for | Notes |
 | --- | --- | --- |
 | `id` | all | Format `<type>:<path>[:<name>]`. Stable across rebuilds. |
-| `type` | all | One of the 12 node types below. |
-| `name` | all | Symbol name for code; file basename for files; short label for non-code. |
-| `filePath` | all code nodes, config, document | Relative to repo root, forward slashes. Omit for abstract `concept`/`service`/`schema` nodes. |
-| `lineRange` | `function`, `class`, `endpoint` | `[startLine, endLine]`, 1-based, inclusive. |
-| `summary` | all | One sentence, English. |
-| `tags` | all | 2-5 short kebab-case tags. |
-| `complexity` | code nodes | `simple` / `moderate` / `complex`. Optional for non-code. |
-| `layer` | assigned in step 6 of build | One of the 6 layer values. Omit until layer-assignment phase. |
+| `type` | all | One of the 12 node types. |
+| `name` | all | Symbol for code; basename for files; short label for abstract nodes. |
+| `filePath` | code, config, document | Repo-relative, forward slashes. Omit for `concept`/`service`/`schema`. |
+| `lineRange` | `function`, `class`, `endpoint` | `[start, end]`, 1-based, inclusive. |
+| `summary` | all | One English sentence. |
+| `tags` | all | 1-5 short kebab-case tags. |
+| `complexity` | code nodes | `simple` / `moderate` / `complex`. |
+| `layer` | assigned in layer phase | One of the 6 layer values. Omit when no clear layer. |
 
 ### Node type enum (12)
 
-| Type | Meaning | Example |
-| --- | --- | --- |
-| `file` | Source file | `src/auth/login.ts` |
-| `function` | Free function or method | `authenticate()` |
-| `class` | Class, struct, interface, trait | `UserRepository` |
-| `module` | Logical grouping (package, namespace, folder cluster) | `auth/` |
-| `concept` | Domain concept with no single source location | `JWT`, `Idempotency Key` |
-| `config` | Configuration file or block | `application.yml`, `next.config.ts` |
-| `document` | Documentation file | `README.md`, `ARCHITECTURE.md` |
-| `service` | External or internal deployed service | `Stripe API`, `Notification Service` |
-| `endpoint` | HTTP route, gRPC method, GraphQL resolver, CLI command | `POST /login` |
-| `table` | Database table or collection | `users`, `audit_logs` |
-| `schema` | Data contract (OpenAPI schema, JSON schema, protobuf message) | `UserDTO` |
-| `resource` | Infra resource (queue, topic, bucket, cron) | `email-queue` |
+| Type | Example |
+| --- | --- |
+| `file` | `src/auth/login.ts` |
+| `function` | `authenticate()` (free function or method) |
+| `class` | `UserRepository` (class, struct, interface, trait) |
+| `module` | `auth/` (package, namespace, folder cluster) |
+| `concept` | `JWT`, `Idempotency Key` (no single source location) |
+| `config` | `application.yml`, `next.config.ts` |
+| `document` | `README.md`, `ARCHITECTURE.md` |
+| `service` | `Stripe API`, `Notification Service` (external/internal deployed) |
+| `endpoint` | `POST /login` (HTTP route, gRPC method, GraphQL resolver, CLI cmd) |
+| `table` | `users`, `audit_logs` (DB table or collection) |
+| `schema` | `UserDTO` (OpenAPI, JSON schema, protobuf message) |
+| `resource` | `email-queue` (queue, topic, bucket, cron) |
 
 ### Edge schema
 
 ```json
-{
-  "source": "<sourceNodeId>",
-  "target": "<targetNodeId>",
-  "type": "calls",
-  "weight": 0.7
-}
+{ "source": "<id>", "target": "<id>", "type": "calls", "weight": 0.7 }
 ```
 
-Field rules:
-
-| Field | Required | Notes |
-| --- | --- | --- |
-| `source`, `target` | yes | Must reference existing node IDs. |
-| `type` | yes | One of the 14 edge types below. |
-| `weight` | optional | 0.0-1.0. Defaults to 1.0. Use to encode relative strength. |
+`weight` is optional `0.0-1.0` (defaults to `1.0`). `source` and `target` must reference existing nodes.
 
 ### Edge type enum (14)
 
@@ -118,30 +104,28 @@ Field rules:
 | `calls` | Function source invokes function target |
 | `extends` | Class source extends class/interface target |
 | `implements` | Class source implements interface target |
-| `uses` | Source uses target without a tighter category (DI, instantiation, type reference) |
+| `uses` | Generic dependency without tighter category (DI, instantiation, type reference) |
 | `depends_on` | Module/service-level dependency |
-| `reads_from` | Source reads from data target (table, schema, config) |
-| `writes_to` | Source writes to data target |
-| `tested_by` | Source code/function is tested by target file/function |
+| `reads_from` | Source reads data target (table, schema, config) |
+| `writes_to` | Source writes data target |
+| `tested_by` | Source code/function is tested by target |
 | `documents` | Document target describes source |
 | `configures` | Config source configures target |
 | `routes_to` | Endpoint source routes to handler target |
-| `belongs_to` | Node source is owned by container target (function -> file, file -> module) |
+| `belongs_to` | Source is owned by container target (function -> file, file -> module) |
 
 ### Layer enum (6)
 
-Default values. Stack-detect may override the human-readable label via the `codemap-layer-patterns` table, but the enum slugs remain stable.
-
 | Layer | Meaning |
 | --- | --- |
-| `entry` | Bootstrap, CLI entry, server start, route registration |
+| `entry` | Bootstrap, CLI, server start, route registration |
 | `api` | HTTP/gRPC/GraphQL surface - controllers, handlers, routers |
-| `service` | Use-case, application services, business orchestration |
+| `service` | Use-cases, application services, orchestration |
 | `domain` | Pure domain model, entities, value objects, invariants |
-| `data` | Repositories, ORM mappings, DAOs, raw queries, migrations |
-| `infra` | External integrations, queue clients, observability, config loading |
+| `data` | Repositories, ORM, DAOs, raw queries, migrations |
+| `infra` | External integrations, queues, observability, config loading |
 
-A node may have at most one `layer`. Nodes with no clear layer (e.g., docs, generated code) omit the field.
+Nodes with no clear layer (docs, generated code) omit the field.
 
 ### Guides shape (`.codemap/guides.json`)
 
@@ -154,15 +138,14 @@ A node may have at most one `layer`. Nodes with no clear layer (e.g., docs, gene
       "title": "Request lifecycle: login -> JWT",
       "depth": "basic",
       "steps": [
-        { "order": 1, "nodeId": "endpoint:POST /login", "narration": "..." },
-        { "order": 2, "nodeId": "function:src/auth/login.ts:authenticate", "narration": "..." }
+        { "order": 1, "nodeId": "endpoint:POST /login", "narration": "..." }
       ]
     }
   ]
 }
 ```
 
-Guides reference node IDs that must exist in `graph.json`. `depth` is `basic` (5-8 steps, headline-only) or `full` (10-20 steps, with narration on internals).
+`depth`: `basic` (5-8 steps) or `full` (10-20 steps). Every `nodeId` must exist in `graph.json`.
 
 ### Meta shape (`.codemap/meta.json`)
 
@@ -179,25 +162,18 @@ Guides reference node IDs that must exist in `graph.json`. `depth` is `basic` (5
 ### Config shape (`.codemap/config.json`)
 
 ```json
-{
-  "schemaVersion": 1,
-  "autoUpdate": false,
-  "scope": null
-}
+{ "schemaVersion": 1, "autoUpdate": false, "scope": null }
 ```
 
 `scope: null` means full repo; otherwise a relative subdirectory path.
 
 ## Output Format
 
-This skill produces no artifact directly. It defines the contract that consuming skills must follow when writing or reading the graph.
-
-When a workflow references a node ID in its output, format it exactly as it appears in `graph.json` (e.g., ``function:src/auth/login.ts:authenticate``). Backtick-wrap IDs so users can grep them.
+No artifact. When referencing a node in any output, backtick-wrap the full ID (e.g., ``function:src/auth/login.ts:authenticate``) so users can grep.
 
 ## Avoid
 
-- Inventing node or edge types outside the enums. Extend the schema in this skill instead.
-- Embedding source code in `summary`. Summaries describe intent in one sentence; the code is in the file.
-- Generating `id` values that include line numbers - line numbers change every refactor and break stability.
-- Producing edges to node IDs you have not also produced - merge will silently drop them and you will lose information.
-- Adding free-form fields. If the field is not in the schema, do not write it.
+- Inventing types or edges outside the enums - extend this skill instead.
+- Embedding source code in `summary` - intent only.
+- Line numbers in `id` - they break stability.
+- Free-form fields not listed in the schema.

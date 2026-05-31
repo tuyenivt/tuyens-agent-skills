@@ -1,6 +1,6 @@
 ---
 name: codemap-layer-patterns
-description: Directory-name to architectural layer mapping table across Rails, Django, Spring, .NET, Go, Rust, React, Vue, Angular. Used during layer assignment.
+description: Directory-name to architectural layer mapping across Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, React, Vue, Angular. Used at layer assignment.
 metadata:
   category: core
   tags: [codemap, layers, architecture, mapping]
@@ -12,177 +12,79 @@ user-invocable: false
 > Load `Use skill: stack-detect` first to determine the project stack.
 > Load `Use skill: codemap-schema` for the canonical 6-layer enum.
 
-Heuristic mapping from directory naming conventions to the 6 codemap layers (`entry`, `api`, `service`, `domain`, `data`, `infra`). Consumed by `task-codemap` during the layer-assignment phase.
+Heuristic mapping from directory naming to the 6 codemap layers (`entry`, `api`, `service`, `domain`, `data`, `infra`). Consumed by `task-codemap` during layer assignment.
 
 ## When to Use
 
-- During step 6 of `codemap-build-pipeline` to assign `node.layer` to each node.
-- Map by **deepest matching directory segment in the file path**, not by file name.
-- A node may match multiple patterns; pick the most specific.
+- During the layer-assignment phase of `codemap-build-pipeline`.
+- Match by **deepest matching directory segment** in the file path, not by file name or extension.
 
 ## Rules
 
-1. **Patterns are hints, not rules.** Override when the project's own convention contradicts the table.
-2. **Match deepest segment first.** `src/infrastructure/persistence/user_repo.rb` -> `data` (from `persistence`), not `infra` (from `infrastructure`).
-3. **No match -> omit layer.** Better to leave `layer` undefined than to guess.
-4. **Frontend trees collapse.** SPAs and SSR apps rarely have all 6 layers; map their nodes to `entry` (routes, pages), `api` (data-fetching clients), `service` (stores, composables, hooks with logic), `domain` (typed models, validators), `data` (none unless server-side), `infra` (build config, observability wrappers).
+1. **Patterns are hints.** Defer to project convention when it contradicts the table.
+2. **No match -> omit `layer`.** Better undefined than guessed.
+3. **Files inherit to their members.** Functions and classes get the same layer as their file.
+4. **Frontend trees collapse.** SPAs rarely use all 6 layers - expect `data` empty unless the app has a server runtime.
 
 ## Patterns
 
-### Cross-stack directory map
+### Cross-stack directory map (primary)
 
 | Directory segment | Layer |
 | --- | --- |
 | `cmd/`, `main/`, `bin/`, `entrypoint/`, `bootstrap/` | `entry` |
-| `controllers/`, `controller/`, `handlers/`, `handler/`, `routes/`, `routers/`, `api/`, `resolvers/`, `endpoints/`, `actions/` | `api` |
-| `services/`, `service/`, `usecases/`, `use_cases/`, `interactors/`, `application/`, `commands/`, `queries/`, `workflows/` | `service` |
-| `domain/`, `domains/`, `models/`, `entities/`, `aggregates/`, `value_objects/`, `policies/`, `invariants/` | `domain` |
-| `repositories/`, `repository/`, `repos/`, `dao/`, `daos/`, `persistence/`, `db/`, `database/`, `migrations/`, `mappers/`, `orm/` | `data` |
-| `infrastructure/`, `infra/`, `adapters/`, `gateways/`, `clients/`, `integrations/`, `external/`, `messaging/`, `queues/`, `pubsub/`, `observability/`, `logging/`, `metrics/`, `tracing/`, `config/`, `configs/`, `bootstrap/` (when alongside infrastructure) | `infra` |
+| `controllers/`, `handlers/`, `routes/`, `routers/`, `api/`, `resolvers/`, `endpoints/`, `actions/` | `api` |
+| `services/`, `usecases/`, `use_cases/`, `interactors/`, `application/`, `commands/`, `queries/`, `workflows/` | `service` |
+| `domain/`, `models/`, `entities/`, `aggregates/`, `value_objects/`, `policies/` | `domain` |
+| `repositories/`, `repos/`, `dao/`, `persistence/`, `db/`, `database/`, `migrations/`, `mappers/`, `orm/` | `data` |
+| `infrastructure/`, `infra/`, `adapters/`, `gateways/`, `clients/`, `integrations/`, `messaging/`, `queues/`, `pubsub/`, `observability/`, `logging/`, `metrics/`, `tracing/`, `config/` | `infra` |
 
-### Spring Boot (Java / Kotlin)
+Singular and plural forms are equivalent (`controller/` = `controllers/`).
 
-| Segment | Layer |
-| --- | --- |
-| `*Application.java/.kt`, `config/`, `Application.kt` | `entry` |
-| `controller/`, `web/`, `rest/`, `api/` | `api` |
-| `service/`, `application/`, `usecase/` | `service` |
-| `domain/`, `model/` (in DDD layout) | `domain` |
-| `repository/`, `dao/`, `persistence/`, `entity/` (JPA entities are data) | `data` |
-| `infrastructure/`, `client/`, `messaging/`, `kafka/`, `rabbit/`, `config/` (when only beans), `actuator/` | `infra` |
+### Stack-specific exceptions
 
-### Rails
+When the cross-stack map gives the wrong answer, apply these.
 
-| Segment | Layer |
-| --- | --- |
-| `config/routes.rb`, `config/application.rb` | `entry` |
-| `app/controllers/` | `api` |
-| `app/services/`, `app/operations/`, `app/interactors/` | `service` |
-| `app/models/` (the model layer combines domain + data in Rails - map to `domain` unless the file is a pure ActiveRecord model with no logic, then `data`) | `domain` or `data` |
-| `db/migrate/`, `app/repositories/`, `app/queries/` | `data` |
-| `config/initializers/`, `lib/`, `app/jobs/` (Sidekiq), `app/mailers/` | `infra` |
+**Spring (Java/Kotlin):** `*Application.{java,kt}` -> `entry`. `entity/` (JPA) -> `data`, not `domain`. `actuator/` -> `infra`.
 
-### Django
+**Rails:** `config/routes.rb`, `config/application.rb` -> `entry`. `app/models/` -> `domain` if the file has logic; `data` if it's a pure ActiveRecord shell. `app/jobs/` (Sidekiq), `app/mailers/`, `config/initializers/` -> `infra`.
 
-| Segment | Layer |
-| --- | --- |
-| `wsgi.py`, `asgi.py`, `urls.py` (root) | `entry` |
-| `views/`, `viewsets/`, `serializers/`, `urls.py` (per app) | `api` |
-| `services/`, `selectors/` (services layer convention) | `service` |
-| `models/` (Django models) - map to `domain` if rich, `data` if anemic | `domain` or `data` |
-| `migrations/`, `managers/`, `querysets/` | `data` |
-| `settings/`, `middleware/`, `tasks/` (Celery), `signals/` | `infra` |
+**Django:** `wsgi.py`, `asgi.py`, root `urls.py` -> `entry`. App-level `urls.py`, `views/`, `viewsets/`, `serializers/` -> `api`. `models/` -> `domain` if rich, `data` if anemic. `migrations/`, `managers/`, `querysets/` -> `data`. `settings/`, `middleware/`, `signals/`, Celery `tasks/` -> `infra`.
 
-### FastAPI / Flask
+**FastAPI/Flask:** `main.py`, `app.py`, `__main__.py` -> `entry`. `routers/` -> `api`. Pydantic split: business models -> `domain`; DTOs -> emit as `schema` node type (not layered). `alembic/` -> `data`. `core/`, `dependencies/` -> `infra`.
 
-| Segment | Layer |
-| --- | --- |
-| `main.py`, `app.py`, `__main__.py` | `entry` |
-| `routers/`, `api/`, `endpoints/`, `views/` | `api` |
-| `services/`, `crud/` (when wrapping repository calls), `usecases/` | `service` |
-| `models/`, `schemas/` (Pydantic models split: business -> `domain`, DTOs -> `schema` node type, not layered) | `domain` |
-| `db/`, `repositories/`, `alembic/`, `migrations/` | `data` |
-| `core/`, `config/`, `dependencies/`, `middleware/` | `infra` |
+**Go (Gin/Echo/Fiber):** `cmd/`, `main.go` -> `entry`. `store/` -> `data`. `pkg/`, `internal/infrastructure/` -> `infra`.
 
-### Go / Gin / Echo / Fiber
+**Rust (Axum/Actix):** `main.rs`, `bin/` -> `entry`. `sqlx/`, `diesel/` -> `data`. `telemetry/` -> `infra`.
 
-| Segment | Layer |
-| --- | --- |
-| `cmd/`, `main.go` | `entry` |
-| `handler/`, `handlers/`, `controller/`, `api/`, `routes/` | `api` |
-| `service/`, `usecase/`, `app/` | `service` |
-| `domain/`, `model/`, `entity/` | `domain` |
-| `repository/`, `repo/`, `store/`, `db/`, `migrations/`, `dao/` | `data` |
-| `pkg/`, `internal/infrastructure/`, `client/`, `adapter/`, `config/` | `infra` |
+**.NET (ASP.NET Core):** `Program.cs`, `Startup.cs` -> `entry`. `Minimal*.cs` -> `api`. `Features/` (CQRS) -> `service`. `DbContext.cs`, `EF/` -> `data`.
 
-### Rust / Axum / Actix
+**Laravel:** `public/index.php`, `bootstrap/app.php`, `routes/` -> `entry`. `app/Http/Requests/`, `app/Http/Resources/` -> `api`. `app/Models/` -> same dual rule as Rails. `app/Actions/`, `app/Jobs/` (with logic) -> `service`. `app/Providers/`, `app/Console/Commands/`, `app/Http/Middleware/` -> `infra`.
 
-| Segment | Layer |
-| --- | --- |
-| `main.rs`, `bin/` | `entry` |
-| `routes/`, `handlers/`, `api/`, `controller/` | `api` |
-| `services/`, `usecase/`, `application/` | `service` |
-| `domain/`, `model/`, `entities/` | `domain` |
-| `repositories/`, `db/`, `persistence/`, `migrations/`, `sqlx/`, `diesel/` | `data` |
-| `infra/`, `client/`, `config/`, `telemetry/` | `infra` |
+**React (Next/Vite/Remix):** Next `app/`, `pages/`, Remix `routes/`, Vite `src/main.tsx` -> `entry`. `app/api/`, `pages/api/`, route handlers, `loaders/`, server `actions/` -> `api`. `hooks/`, `stores/`, `context/`, `providers/` -> `service`. `prisma/`, `drizzle/`, `lib/db/` -> `data`. `instrumentation.ts`, `middleware.ts`, `lib/`, `utils/` -> `infra`.
 
-### .NET / ASP.NET Core
+**Vue (Nuxt/Vite):** `pages/`, `app.vue`, `nuxt.config.ts`, `src/main.ts` -> `entry`. `server/api/`, `server/routes/`, `composables/use*Api.ts` -> `api`. `composables/`, `stores/` (Pinia) -> `service`. `server/db/`, `server/repositories/` -> `data`. `plugins/`, `middleware/` -> `infra`.
 
-| Segment | Layer |
-| --- | --- |
-| `Program.cs`, `Startup.cs` | `entry` |
-| `Controllers/`, `Endpoints/`, `Minimal*.cs` | `api` |
-| `Application/`, `Services/`, `UseCases/`, `Features/` (CQRS commands/queries) | `service` |
-| `Domain/`, `Core/Domain/`, `Entities/` | `domain` |
-| `Infrastructure/Persistence/`, `Repositories/`, `Migrations/`, `EF/`, `DbContext.cs` | `data` |
-| `Infrastructure/`, `Adapters/`, `Configuration/`, `Logging/` | `infra` |
-
-### Laravel (PHP)
-
-| Segment | Layer |
-| --- | --- |
-| `public/index.php`, `bootstrap/app.php`, `routes/` | `entry` |
-| `app/Http/Controllers/`, `app/Http/Requests/`, `app/Http/Resources/` | `api` |
-| `app/Services/`, `app/Actions/`, `app/Jobs/` (logic side) | `service` |
-| `app/Models/` - same dual rule as Rails | `domain` or `data` |
-| `database/migrations/`, `app/Repositories/` | `data` |
-| `config/`, `app/Providers/`, `app/Http/Middleware/`, `app/Console/Commands/` | `infra` |
-
-### React (Next.js, Vite, Remix)
-
-| Segment | Layer |
-| --- | --- |
-| `app/` (Next App Router root), `pages/` (Next Pages Router), `routes/` (Remix), `src/main.tsx` (Vite) | `entry` |
-| `app/api/`, `pages/api/`, `app/(routes)/route.ts`, `loaders/`, `actions/` (server actions/loaders) | `api` |
-| `hooks/`, `stores/`, `context/`, `providers/`, `services/` | `service` |
-| `types/`, `models/`, `schemas/`, `validators/` | `domain` |
-| `db/`, `prisma/`, `drizzle/`, `lib/db/` | `data` |
-| `lib/`, `utils/`, `config/`, `instrumentation.ts`, `middleware.ts` | `infra` |
-
-### Vue (Nuxt, Vite)
-
-| Segment | Layer |
-| --- | --- |
-| `pages/`, `app.vue`, `nuxt.config.ts`, `src/main.ts` | `entry` |
-| `server/api/`, `server/routes/` (Nuxt), `composables/use*Api.ts` | `api` |
-| `composables/`, `stores/` (Pinia), `services/` | `service` |
-| `types/`, `models/`, `schemas/` | `domain` |
-| `server/db/`, `server/repositories/` | `data` |
-| `plugins/`, `middleware/`, `utils/`, `config/` | `infra` |
-
-### Angular
-
-| Segment | Layer |
-| --- | --- |
-| `main.ts`, `app/app.config.ts`, `app/app.routes.ts` | `entry` |
-| `*.component.ts` files at route level, `resolvers/`, `guards/` | `api` |
-| `services/`, `*.service.ts`, `facades/`, `state/`, `+state/` (NgRx) | `service` |
-| `models/`, `interfaces/`, `types/`, `domain/` | `domain` |
-| `repositories/`, `db/`, `data-access/` | `data` |
-| `interceptors/`, `config/`, `core/`, `shared/utils/` | `infra` |
+**Angular:** `main.ts`, `app/app.config.ts`, `app/app.routes.ts` -> `entry`. Route-level `*.component.ts`, `resolvers/`, `guards/` -> `api`. `*.service.ts`, `facades/`, `state/`, `+state/` (NgRx) -> `service`. `interceptors/`, `core/` -> `infra`.
 
 ## Output Format
 
-This skill produces no artifact. Consuming workflows apply the table inline during layer assignment and emit `layer` fields on graph nodes per the `codemap-schema` contract.
+No artifact. Consumers apply the table inline and emit `layer` on nodes per `codemap-schema`.
 
-Report layer-assignment summary in the build log as:
+Report assignment summary in the build log:
 
 ```
 Layer assignment:
-  entry: <count>
-  api: <count>
-  service: <count>
-  domain: <count>
-  data: <count>
-  infra: <count>
+  entry: <count>    domain: <count>
+  api: <count>      data: <count>
+  service: <count>  infra: <count>
   unassigned: <count>
 ```
 
-If `unassigned` exceeds 25% of nodes, the build pipeline must surface this as a warning - the project layout does not match standard conventions and the user may want to inspect the unassigned nodes.
+If `unassigned` exceeds 25% of nodes, surface as a warning - the project layout does not match standard conventions.
 
 ## Avoid
 
-- Treating the table as exhaustive. Projects invent their own folder names; defer to project convention when it conflicts.
-- Assigning layers based on file extension instead of directory.
-- Forcing every node into a layer. Documentation, generated code, and tests legitimately have no layer.
-- Mixing layer with node type. `endpoint` is a type; `api` is a layer. A controller file is `type: file` `layer: api`; its handler methods are `type: function` `layer: api`.
+- Treating the table as exhaustive. Defer to project convention on conflicts.
+- Assigning layer by file extension.
+- Confusing layer with node type. `endpoint` is a type; `api` is a layer. A controller file is `type: file, layer: api`; its methods are `type: function, layer: api`.
