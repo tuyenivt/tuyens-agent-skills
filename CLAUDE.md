@@ -11,6 +11,7 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
+  codemap/       # Persistent codebase knowledge graph (any stack, opt-in)
   delivery/      # Release planning and delivery coordination
   architecture/  # Stack-agnostic architecture design and re-architecture
   oncall/        # Incident response workflows
@@ -31,7 +32,7 @@ plugins/
 
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
 
-`core` is required by all other plugins. `spec` requires only `core`; per-stack agents come from whichever stack plugins are installed.
+`core` is required by all other plugins.
 
 ## Skill File Format
 
@@ -85,6 +86,30 @@ All SDD artifacts for a feature live under `.specs/<slug>/`:
 ```
 
 `speckit-detect` chooses dual-mode (defer to Spec Kit) or standalone; both produce the same `.specs/<slug>/` shape. Stack workflows (`task-spring-implement` etc.) accept `--spec <slug>` to ingest spec artifacts via `spec-aware-preamble` and skip their own GATHER/DESIGN steps. Orchestration, fix-loop, and evaluation details live in the `spec` plugin's own skills and README.
+
+## Codemap (persistent codebase graph, opt-in plugin)
+
+The `codemap` plugin owns a `task-codemap-*` workflow family that builds and consumes a persistent knowledge graph of the consuming project. It is opt-in - no other plugin depends on it. Requires `core` (for `behavioral-principles` and `stack-detect`). All artifacts live under `.codemap/`:
+
+```
+.codemap/
+  graph.json          # nodes + edges + layers (committed, source of truth)
+  guides.json         # generated guided walkthroughs (committed)
+  meta.json           # builtAt, gitCommitHash, version (committed)
+  config.json         # autoUpdate flag, scope (committed)
+  fingerprints.json   # per-file structural hashes (committed)
+  .codemapignore      # user-editable, defaults to .gitignore (committed)
+  intermediate/       # transient build outputs (gitignore)
+  diff-overlay.json   # last computed diff impact (gitignore)
+```
+
+Schema is owned by the `codemap-schema` atomic - 12 node types, 14 edge types, 6 layer enum. Producer (`task-codemap`) and consumers (`task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`) all `Use skill: codemap-schema` for the contract. Build pipeline is pure-LLM extraction with sub-agent parallelism; skill-local Python helpers in `plugins/codemap/skills/task-codemap/` handle deterministic scan/batch/merge/fingerprint.
+
+`task-onboard` (in `core`, one-shot Markdown report, no graph dependency) remains the lightweight onboarding path. The codemap family does not duplicate it - orientation from the graph happens via `task-codemap-guide` (guided walkthroughs) and `task-codemap-ask` (ask anything).
+
+## Plugin Hooks
+
+Plugin folders may contain a `hooks/` directory with hook definitions that Claude Code auto-registers when the plugin is installed. Currently: `plugins/codemap/hooks/codemap-auto-update.json` plus `codemap-refresh-prompt.md`. Hooks are Claude-Code-only and must be opt-in (gated by a config flag in the consuming project, never always-on).
 
 ## Environment
 

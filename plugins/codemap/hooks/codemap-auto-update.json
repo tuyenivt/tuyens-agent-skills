@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' \"$TOOL_INPUT\" | grep -qE 'git\\s+(commit|merge|cherry-pick|rebase)' && [ -f .codemap/config.json ] && grep -q '\"autoUpdate\"[[:space:]]*:[[:space:]]*true' .codemap/config.json && [ -f .codemap/graph.json ] && echo \"[codemap] Commit detected and autoUpdate is enabled. Read the file ${CLAUDE_PLUGIN_ROOT}/hooks/codemap-refresh-prompt.md and follow its instructions to refresh the graph. Do not ask for confirmation.\" || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f .codemap/config.json ] && grep -q '\"autoUpdate\"[[:space:]]*:[[:space:]]*true' .codemap/config.json && [ -f .codemap/meta.json ] && [ -f .codemap/graph.json ] && [ \"$(python -c 'import json,sys; print(json.load(open(\".codemap/meta.json\"))[\"gitCommitHash\"])' 2>/dev/null)\" != \"$(git rev-parse HEAD 2>/dev/null)\" ] && echo \"[codemap] Graph is stale relative to HEAD and autoUpdate is enabled. Read the file ${CLAUDE_PLUGIN_ROOT}/hooks/codemap-refresh-prompt.md and follow its instructions to refresh the graph. Do not ask for confirmation.\" || true"
+          }
+        ]
+      }
+    ]
+  }
+}
