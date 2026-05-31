@@ -35,14 +35,16 @@ Check: open incidents AND incidents resolved in last 72h, known flaky alerts, in
 
 ### Step 2 - Assess Health and Risks
 
-| Area               | What to check                                              | Source                                            |
-| ------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
-| Open incidents     | Active or unacknowledged pages                             | Incident tracker, PagerDuty, Slack                |
-| Error rates        | Current vs. baseline for owned services                    | APM                                               |
-| Recent deploys     | Shipped in last 24-48h, including unvalidated production traffic | CI/CD log, release channel                  |
-| Queue health       | Depth, consumer lag, DLQ size                              | Broker dashboard, queue metrics                   |
-| Dependencies       | Status pages for critical third parties                    | Payment, cloud, comms, identity providers         |
-| Scheduled changes  | Maintenance, migrations, cron during your window           | Change calendar                                   |
+Use skill: `ops-observability-fetch` for any of the rows below when an MCP transport is available; otherwise ask the user to paste from the named source. Cache transport detection for the rest of the workflow.
+
+| Area               | What to check                                              | Capability / Source                                          |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------ |
+| Open incidents     | Active or unacknowledged pages                             | `fetch_monitor` (Datadog) / Incident tracker, PagerDuty, Slack |
+| Error rates        | Current vs. baseline for owned services                    | `query_metrics` (24h window vs. prior 7d) / APM              |
+| Recent deploys     | Shipped in last 24-48h, including unvalidated production traffic | `list_deploys` / CI/CD log, release channel             |
+| Queue health       | Depth, consumer lag, DLQ size                              | `query_metrics` / Broker dashboard                           |
+| Dependencies       | Status pages for critical third parties                    | Payment, cloud, comms, identity providers (manual)           |
+| Scheduled changes  | Maintenance, migrations, cron during your window           | Change calendar (manual)                                     |
 
 Identify risks not yet alerting: elevated error rates, unvalidated deploys, upcoming jobs that may trigger pages.
 
@@ -82,7 +84,16 @@ Previous Oncall: {name or "Unknown"}
 
 Use skill: `stack-detect`
 
-### Step 2 - Classify Work Type
+### Step 2 - Hydrate Evidence
+
+Use skill: `ops-observability-fetch`.
+
+- If the alert contains a Sentry issue URL, Datadog monitor URL, log search URL, or trace URL, fetch it now - do not classify on URL alone.
+- If the alert is a raw paste (PagerDuty title, Slack message, stack trace), skip fetch and proceed to classify.
+
+The fetched evidence (error_event, monitor_state, log_window, trace) feeds Step 3 classification and the Context Package in the output.
+
+### Step 3 - Classify Work Type
 
 | Type                       | Signals                                                                                | Route to                                        |
 | -------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -93,17 +104,17 @@ Use skill: `stack-detect`
 | **Performance**            | Slow response, high latency, timeout (no outage)                                       | `oncall-investigate` or `task-code-review-perf` |
 | **Alert investigation**    | Alert fired, unclear if real or false positive                                         | `oncall-investigate`                            |
 
-### Step 3 - Severity
+### Step 4 - Severity
 
 Use the severity table in `incident-root-cause` Step 1. For triage routing, only the Critical/High distinction matters - route immediately, skip further classification.
 
-### Step 4 - Scope Check
+### Step 5 - Scope Check
 
 - Data at risk or ongoing impact → raise severity
-- Recent deploy or config change → rollback is often the fastest resolution
-- Happened before → check runbooks and prior postmortems
+- Recent deploy or config change → rollback is often the fastest resolution. Use `list_deploys` via `ops-observability-fetch` to confirm the deploy window.
+- Happened before → check runbooks and prior postmortems. Sentry `first_seen` on the hydrated issue answers this directly.
 
-### Step 5 - Route and Package Context
+### Step 6 - Route and Package Context
 
 State the classification, severity, recommended workflow, and the context the next workflow needs.
 
@@ -132,12 +143,13 @@ Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-rev
 ## Self-Check
 
 - [ ] Mode detected (Shift-Start vs Triage)
-- [ ] Triage: stack detected; work type classified
+- [ ] Triage: stack detected; URLs hydrated via `ops-observability-fetch` when present
+- [ ] Triage: work type classified using hydrated evidence (not URL alone)
 - [ ] Triage: severity assigned; Critical/High routed without further classification time
 - [ ] Triage: scope check completed (data risk, recent change, prior occurrence)
 - [ ] Triage: context package names symptom, time window, affected scope, recent change
 - [ ] Shift-Start: handoff reviewed (or absence flagged as gap)
-- [ ] Shift-Start: health table walked; known risks identified
+- [ ] Shift-Start: health table walked via `ops-observability-fetch` when available; known risks identified
 
 ## Avoid
 

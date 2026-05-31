@@ -64,6 +64,8 @@ Before concluding "bug", read the code and confirm what the system is *designed*
 
 ### Step 5 - Collect Evidence
 
+Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/logging/error-tracking tool. Match request type to capability: Operational/Alert → `query_metrics` + `fetch_monitor`; Performance/Unexpected → `query_logs` + `fetch_trace`; recurring symptom → `fetch_issue` (first_seen tells you whether it's new or chronic).
+
 | Type                    | Primary evidence                                                                                |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
 | **Data issue**          | DB state for the entity; API/UI response vs DB; write-path trace; visibility filters; recent migrations |

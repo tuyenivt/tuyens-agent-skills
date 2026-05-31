@@ -17,11 +17,13 @@ Active production incident, on-call triage, cascading failure diagnosis.
 
 ## Inputs
 
-Required: error or stack trace. Optional: log snippets, recent PR diff, metrics summary, config snapshot, deploy metadata, service map. When evidence is thin, recommend containment by error class and list the 3-5 evidence items needed to raise confidence.
+Required: error or stack trace, OR a Sentry/Datadog/monitor URL. Optional: log snippets, recent PR diff, metrics summary, config snapshot, deploy metadata, service map. When evidence is thin, recommend containment by error class and list the 3-5 evidence items needed to raise confidence.
 
 ## Workflow
 
 ### Step 1 - Frame the Incident (60 seconds)
+
+Use skill: `ops-observability-fetch` first when inputs include a URL or ID, or when onset / affected scope / deploy correlation are not in the paste. Pull `error_event`, `monitor_state`, `metric_series` (error rate + latency at onset), and `list_deploys` for the last 48h on the affected service. Cache the transport.
 
 Extract: symptom onset, duration, affected services with status (degraded/down/healthy), affected percentage. Assign severity:
 
@@ -112,6 +114,7 @@ Affected Services:
 
 ## Self-Check
 
+- [ ] Onset, affected scope, and recent deploys fetched via `ops-observability-fetch` (or input states why unavailable)
 - [ ] Severity assigned with justification; onset and duration stated (or marked unknown)
 - [ ] Affected services enumerated with individual status
 - [ ] Blast radius classified (Narrow/Moderate/Wide/Critical) before any hypothesis

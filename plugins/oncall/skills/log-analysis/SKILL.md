@@ -23,6 +23,10 @@ user-invocable: false
 - When multiple error classes interleave, establish first-appearance ordering - one is almost always causing the other
 - For each finding, mark it `confirmed by logs`, `contradicted by logs`, or `requires non-log evidence` - the third category populates the Log Gaps output section
 
+## Inputs
+
+Required: a known failure window OR a log/trace/issue URL the fetch step can use. Use skill: `ops-observability-fetch` to obtain `log_window` and `trace` blocks; fall back to user-pasted logs when no MCP transport is available.
+
 ## Patterns
 
 Bad: "Errors started around 2pm and there were lots of timeouts."
@@ -36,7 +40,11 @@ Good: "Errors started 14:23:22 UTC (8 min before alert). 47 timeouts in 3 min on
 
 Default window: 5-10 min around onset. If the window has >2000 lines or spans >10 min, sample strategically: first 30s of anomaly (root signal), peak (saturation pattern), last 30s before recovery (resolution pattern).
 
+When `query_logs` is available, run two passes: full window for the comparison baseline (Step 5), then the narrowed anomaly window for detail. Server-side filtering beats fetching everything and grepping.
+
 ### Step 2 - Correlation Tracing
+
+When a trace ID is present in the logs or input URL, prefer `fetch_trace` over reconstructing the path from logs - APM returns the span tree directly.
 
 - **Full IDs present**: extract from the failing case, follow chronologically across services, identify where the chain breaks (missing span = likely failure point).
 - **Partial IDs** (e.g., on app logs but missing on probes, dependencies, or DB queries): trace what exists; the boundary where IDs drop IS the observability gap - name it.
