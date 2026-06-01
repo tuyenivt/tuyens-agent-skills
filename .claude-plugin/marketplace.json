@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, spec, codemap, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, spec, codemap, regression, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -110,6 +110,24 @@
         "codebase-graph",
         "onboarding",
         "architecture",
+        "stack-agnostic"
+      ]
+    },
+    {
+      "name": "regression",
+      "source": "./plugins/regression",
+      "description": "Outside-in regression test orchestration for polyrepo setups: a dedicated test repo composes services as black boxes, seeds them, drives them via Playwright (HTTP / browser / WebSocket / gRPC), captures a verdict, tears down with -v. Stack-agnostic role-based modeling (Frontend / Backend / Database). Codemap is an optional authoring-time accelerator; .regression/ is the runtime source of truth. Depends only on core.",
+      "version": "1.109.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "regression",
+        "e2e",
+        "playwright",
+        "docker-compose",
+        "polyrepo",
         "stack-agnostic"
       ]
     },

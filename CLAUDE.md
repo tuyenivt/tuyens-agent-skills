@@ -16,6 +16,7 @@ plugins/
   architecture/  # Stack-agnostic architecture design and re-architecture
   oncall/        # Incident response workflows
   spec/          # Spec-Driven Development (any stack, opt-in)
+  regression/    # Outside-in regression test orchestration (polyrepo, opt-in)
   java/          # Java 21+ / Spring Boot 3.5+
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
   kotlin/        # Kotlin 2.0+ / Spring Boot 3.5+

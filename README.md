@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `codemap`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `codemap`, `regression`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -139,6 +139,13 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install codemap@tuyens-agent-skills --scope project
 ```
 
+**Regression (outside-in regression test orchestration, polyrepo, opt-in):**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install regression@tuyens-agent-skills --scope project
+```
+
 > `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
 
 ## How Skills Work
@@ -175,6 +182,9 @@ I want to...
   walk through the codebase step by step  -> /task-codemap-guide [codemap]
   understand a file or function           -> /task-code-explain
   deep-dive on a node from the graph      -> /task-codemap-explain `<path>` [codemap]
+  discover services and flows for E2E tests -> /task-regression-discover [regression]
+  scaffold a Playwright scenario for a flow -> /task-regression-scenario [regression]
+  run the regression suite (compose up/seed/test/report/teardown) -> /task-regression [regression]
   plan/review a database migration        -> /task-db-migration [architecture]
   refactor safely                         -> /task-code-refactor
   decompose monolith into services        -> /task-decompose-monolith [architecture]
@@ -353,6 +363,7 @@ Angular (plugin: angular)
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring |
 | [codemap](plugins/codemap)           | Persistent codebase knowledge graph at `.codemap/graph.json` plus workflows to ask the graph (`task-codemap-ask`), walk through it (`task-codemap-guide`), deep-dive entities (`task-codemap-explain`), and an opt-in auto-update hook. Pure-LLM, no tree-sitter. |
+| [regression](plugins/regression)     | Outside-in regression test orchestration owning end-to-end (black-box) regression for HTTP APIs, browser flows, WebSocket, and gRPC across many services - polyrepo-only, Playwright-only, stack-agnostic role-based (Frontend / Backend / Database), with `.regression/` as the runtime source of truth and codemap as an optional authoring-time accelerator. |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
