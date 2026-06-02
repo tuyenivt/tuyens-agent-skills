@@ -62,7 +62,7 @@ Commit `services.yaml`, `flows.yaml`, `docker-compose.regression.yml`, `seeds/`,
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `task-regression`            | **Headline run.** End-to-end: preflight, resolve compose profile, mint a per-run ID, `docker compose up -d --build --wait`, apply seeds in order, run Playwright scenarios, collect JUnit XML and traces into `reports/<runId>/`, classify failures, teardown with `down -v --remove-orphans` (trap-guarded). Exit non-zero only on real-bug-classified failures.            |
 | `task-regression-discover`   | **Build or refresh `.regression/`.** One-shot, idempotent. Asks the user to declare each service's role (Frontend / Backend / Database) and `source` (sibling-path / git / image), gathers structural metadata, reads optional symlinked codemap graphs + OpenAPI specs + git history to propose flows, writes `services.yaml` + `flows.yaml` + compose + seed skeletons. Never silently overwrites committed flows. |
-| `task-regression-scenario`   | **Scaffold a Playwright scenario.** Resolves a named flow from `flows.yaml`, infers `kind: api \| browser \| mixed` from the flow's services and steps, emits `scenarios/<kind>/<flow>.spec.ts` with idempotent setup, golden-path assertions, negative-path stubs, and data-factory imports. Lint + `npx playwright test --list` dry-run. User reviews before commit.       |
+| `task-regression-scenario`   | **Scaffold a Playwright scenario.** Two modes: pass an existing flow name from `flows.yaml`, or pass `--from <text-or-path>` with a QA ticket / incident summary / user report - the workflow drafts a new `flows.yaml` entry (no fabricated endpoints, evidence required), then emits `scenarios/<kind>/<flow>.spec.ts` with golden + negative paths. Lint + `npx playwright test --list` dry-run. User reviews before commit. |
 
 ### When to use which
 
@@ -71,6 +71,7 @@ Commit `services.yaml`, `flows.yaml`, `docker-compose.regression.yml`, `seeds/`,
 | Stand up `.regression/` for the first time | `/task-regression-discover` |
 | Refresh `services.yaml` / `flows.yaml` after sibling-repo changes | `/task-regression-discover` (run manually after pulls; no hooks in v1) |
 | Add a new scenario for a flow that already exists in `flows.yaml` | `/task-regression-scenario "<flow-name>"` |
+| Add a regression guard from a QA ticket / incident report / user story | `/task-regression-scenario --from "<narrative>"` or `--from <file-path>` |
 | Run the full regression suite locally | `/task-regression` |
 | Run a subset (smoke, one tag) | `/task-regression --grep @smoke` |
 | Run in CI against pinned image digests | `/task-regression --profile pinned-images` |
@@ -126,6 +127,20 @@ Walks you through declaring each service's role and `source`, gathers structural
 ```
 
 Reads the `checkout-order` entry from `flows.yaml`, infers `kind` from the services touched (UI + API -> `mixed`), and writes `.regression/scenarios/mixed/checkout-order.spec.ts` with idempotent setup, golden-path assertions, and a negative-path stub. Run `npx playwright test --list` to confirm it parses; edit, then commit.
+
+**Scaffold from a QA ticket or incident report (from-story mode):**
+
+```
+/task-regression-scenario --from "INC-2026-04-12: a user retried POST /payments with the same idempotency key and the wallet was debited twice. Fix landed in payment-service on 2026-04-14."
+```
+
+Or from a file:
+
+```
+/task-regression-scenario --from ./tickets/INC-2026-04-12.md
+```
+
+The workflow parses the narrative, validates every referenced service against `services.yaml` (never invents new ones), drafts a `flows.yaml` entry with `<USER FILL>` markers for anything the story didn't state (no fabricated endpoint paths), requires at least one `evidence:` citation (ticket ID, incident date, reporter), and asks for `accept` / `edit` / `reject` before appending to `flows.yaml`. Then scaffolds the matching `.spec.ts` with golden + negative paths derived from the story's failure mode. Resolve the `<USER FILL>` markers and commit.
 
 **Headline run (local development):**
 
