@@ -9,85 +9,78 @@ user-invocable: false
 
 # Regression Seed Strategy
 
-Seeds run *after* every healthchecked service is up and *before* Playwright executes. Each run starts from an identical, deterministic state. Seeds bypass the backend's migration tool - the plugin only ever talks to the database directly.
+Seeds run after every service is healthy and before Playwright executes. Each run starts from an identical, deterministic state. Seeds talk to the database directly, never through the backend.
 
 ## When to Use
 
-- During `task-regression-discover` to template the seed files.
-- During `task-regression` to apply them.
+- During `task-regression-discover` to template seed files.
+- During `task-regression` to apply them (called by `regression-runner` via `.regression/scripts/apply-seed.sh`).
 
 ## Rules
 
-1. **Per-engine native tooling.** Postgres uses `psql`, MySQL/MariaDB use `mysql`, MongoDB uses `mongoimport` / `mongosh`, SQL Server uses `sqlcmd`, SQLite uses `sqlite3`. No ORMs.
-2. **Idempotent.** Every seed file must be safe to run twice in a row. `INSERT ... ON CONFLICT DO NOTHING`, `INSERT IGNORE`, `MERGE`, or upserts.
-3. **Ordered.** Files apply in lexicographic order: `00-init/`, `10-domain/`, `20-fixtures/`, `99-final/`. Number prefixes are mandatory.
-4. **Deterministic IDs.** No `gen_random_uuid()` at seed time. UUIDs are literal constants in seed files so scenarios can target them.
-5. **No production data.** Seed data is synthetic, named `acme-test-*` or similar. The plugin's authoring step prompts the user to confirm.
-6. **Schema first, data second.** Schema lives in `initialSchema` (from `services.yaml`); data lives in `.regression/seeds/`.
+1. **Per-engine native tooling.** Postgres `psql`, MySQL/MariaDB `mysql`, MongoDB `mongosh` (not `mongoimport` - upserts need `$setOnInsert`), SQL Server `sqlcmd`, SQLite `sqlite3`. No ORMs.
+2. **Idempotent.** Every seed must be safe to apply twice. Use engine-native upsert idioms (table below). Re-running cannot duplicate rows.
+3. **Lexicographic order.** Phase directories `00-init/`, `10-domain/`, `20-fixtures/`, `99-final/`. Numeric prefixes mandatory. Byte-wise sort.
+4. **Deterministic IDs.** No `gen_random_uuid()`, no `NOW()`, no auto-increment without explicit values. Literal UUIDs and constants.
+5. **No production data.** Synthetic only (`acme-test-*`). The discover workflow prompts the user to confirm.
+6. **Schema source determined by inventory.** `services.yaml#initialSchema.type` is one of `sql-dump` / `migrations` / `none`. The applier reads that, the user does not pick at apply time.
+7. **Migrations are the app's responsibility.** When `initialSchema.type: migrations`, the backend service applies them on startup; seeds wait for the backend healthcheck before running. Seeds never invoke Flyway / Liquibase / Alembic.
+8. **Single transport per engine.** Each engine uses one apply mechanism: SQL engines stream via `docker exec -T ... < file` (host-side stdin redirection, no mount); MongoDB requires `mongosh --file` against a script the runner copies into the container with `docker cp` before invocation. The runner does not mix transports.
 
 ## Patterns
 
-### Seeds directory shape
+### Initial schema modes
 
-```
-.regression/seeds/
-  00-init/
-    01-schema.sql              # only if initialSchema.type == sql-dump and the user wants it under seeds/
-  10-domain/
-    01-tenants.sql
-    02-users.sql
-    03-products.sql
-  20-fixtures/
-    01-orders.sql              # cross-references domain rows by literal UUID
-  99-final/
-    01-flags.sql               # feature flags, defaults, settings
-```
+| `type` | What `regression-runner` does | Who owns the schema |
+| --- | --- | --- |
+| `sql-dump` | Copies the referenced file (e.g. `../api/db/schema.sql`) to `.regression/seeds/00-init/01-schema.sql`. It applies in phase order like any other seed. | User. |
+| `migrations` | Does nothing schema-related. The backend service runs its own migrations on first boot. Seeds wait on backend healthcheck (per Rule 7) before running. | The backend. |
+| `none` | Backend creates schema lazily on first request. Seeds wait on backend healthcheck. | The backend. |
 
-### Per-engine application snippet (used by `regression-runner`)
+For `migrations` and `none`, `00-init/` is empty - no schema applies from this skill.
+
+### Apply commands (one per engine)
+
+The runner invokes `.regression/scripts/apply-seed.sh "$PROJECT" "$FILE"`; the script dispatches on `services.yaml#engine`:
 
 ```bash
-# postgres
-docker compose -p $PROJECT exec -T db psql -U postgres -d app -v ON_ERROR_STOP=1 < .regression/seeds/<file>.sql
+# postgres - stdin transport
+docker compose -p "$PROJECT" exec -T db \
+  psql -U postgres -d app -v ON_ERROR_STOP=1 < "$FILE"
 
-# mysql/mariadb
-docker compose -p $PROJECT exec -T db mysql -uroot -p"$MYSQL_ROOT_PASSWORD" app < .regression/seeds/<file>.sql
+# mysql / mariadb - stdin transport. --abort-source-on-error gives fail-fast on multi-statement files.
+docker compose -p "$PROJECT" exec -T db \
+  mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --abort-source-on-error app < "$FILE"
+# MariaDB official image: use $MARIADB_ROOT_PASSWORD (legacy alias MYSQL_ROOT_PASSWORD also accepted in v11+).
 
-# mongodb (JSON files)
-docker compose -p $PROJECT exec -T db mongoimport --db app --collection <name> --file /seeds/<file>.json --jsonArray
+# sqlite - stdin transport
+docker compose -p "$PROJECT" exec -T db \
+  sqlite3 /data/app.db ".bail on" < "$FILE"
 
-# sqlserver
-docker compose -p $PROJECT exec -T db /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -d app -b -i /seeds/<file>.sql
+# sqlserver - cp + exec because sqlcmd reads from a file path, not stdin
+docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q db)":/tmp/seed.sql
+docker compose -p "$PROJECT" exec -T db \
+  /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -d app -b -i /tmp/seed.sql
 
-# sqlite
-docker compose -p $PROJECT exec -T db sqlite3 /data/app.db < .regression/seeds/<file>.sql
+# mongodb - cp + exec; mongosh runs a JS file containing upsert statements
+docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q db)":/tmp/seed.js
+docker compose -p "$PROJECT" exec -T db \
+  mongosh --quiet --file /tmp/seed.js
 ```
 
-`-v ON_ERROR_STOP=1` / `-b` / equivalent fail-fast flags are required on every engine.
+Fail-fast flags per engine: `psql -v ON_ERROR_STOP=1`, `mysql --abort-source-on-error`, `sqlite3 .bail on`, `sqlcmd -b`, `mongosh` (default - exits non-zero on uncaught script errors).
 
 ### Idempotent insert idioms
 
-| Engine     | Idempotent insert idiom                                          |
-| ---------- | ---------------------------------------------------------------- |
-| postgres   | `INSERT INTO t (...) VALUES (...) ON CONFLICT (id) DO NOTHING;`  |
-| mysql      | `INSERT IGNORE INTO t (...) VALUES (...);`                       |
-| mariadb    | `INSERT IGNORE INTO t (...) VALUES (...);`                       |
-| mongodb    | `db.t.updateOne({ _id }, { $setOnInsert: {...} }, { upsert: true })` |
-| sqlserver  | `MERGE t USING (VALUES (...)) AS s (...) ON t.id = s.id WHEN NOT MATCHED THEN INSERT (...) VALUES (...);` |
-| sqlite     | `INSERT OR IGNORE INTO t (...) VALUES (...);`                    |
+| Engine | Idempotent insert |
+| --- | --- |
+| postgres | `INSERT INTO t (...) VALUES (...) ON CONFLICT (id) DO NOTHING;` |
+| mysql / mariadb | `INSERT IGNORE INTO t (...) VALUES (...);` |
+| mongodb | `db.t.updateOne({ _id }, { $setOnInsert: {...} }, { upsert: true });` |
+| sqlserver | `MERGE t USING (VALUES (...)) AS s (...) ON t.id = s.id WHEN NOT MATCHED THEN INSERT (...) VALUES (...);` |
+| sqlite | `INSERT OR IGNORE INTO t (...) VALUES (...);` |
 
-### Initial schema sourcing
-
-From `services.yaml#services[].initialSchema`:
-
-| `type`       | Where the plugin gets the schema                                                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sql-dump`   | Read the referenced file (typically `<service>/db/schema.sql`). Copy into `.regression/seeds/00-init/01-schema.sql` and apply first.                                                       |
-| `migrations` | Reference the directory but do not parse migration syntax. Apply by mounting the directory into the DB container and running the engine's runner, OR by executing each file in order via the per-engine snippet above. User picks. |
-| `none`       | Backend creates schema on first boot. Seeds wait for the backend to become healthy, then run. `regression-runner` enforces ordering.                                                       |
-
-When `initialSchema.type` is `none`, the runner *must* not start applying seeds until the backend healthcheck passes, because the schema doesn't exist yet.
-
-### Cross-referenced fixture example (postgres)
+### Cross-referenced fixture (postgres)
 
 ```sql
 -- 10-domain/02-users.sql
@@ -101,20 +94,59 @@ INSERT INTO orders (id, user_id, status) VALUES
 ON CONFLICT (id) DO NOTHING;
 ```
 
-The Playwright scenario can target `33333333-...` directly because the IDs are constants.
+Scenarios reference `33333333-...` directly.
 
-### Time freezing for time-sensitive data
+### MongoDB upsert (the file mongosh runs)
 
-If seed rows have created_at / due_at / expires_at, use a single fixed `'2026-01-01T00:00:00Z'` baseline so scenarios assert exact values. Pair with `TZ=UTC` at compose level. See `regression-data-isolation` for the runner-side time setup.
+```js
+// 20-fixtures/01-orders.js
+db.orders.updateOne(
+  { _id: "order-33333333" },
+  { $setOnInsert: { userId: "user-11111111", status: "confirmed" } },
+  { upsert: true }
+);
+```
+
+Mongo seeds are `.js` files (mongosh scripts), not `.json`. The skill does not use `mongoimport`.
+
+### Time-frozen seed data
+
+If rows have `created_at` / `expires_at`, use the literal `'2026-01-01T00:00:00Z'` baseline so scenarios assert exact values. Container `TZ=UTC` (set in compose by `regression-data-isolation`).
+
+### Phase guidance
+
+- `00-init/` - schema (only when `initialSchema.type: sql-dump`).
+- `10-domain/` - core entities (tenants, users, products).
+- `20-fixtures/` - cross-referenced rows for scenarios.
+- `99-final/` - flags, settings, defaults read at boot.
 
 ## Output Format
 
-`.regression/seeds/<NN>-<phase>/<NN>-<topic>.<ext>` files, plus a one-page `.regression/seeds/README.md` documenting the apply order, the engine, and how to add a new fixture.
+`.regression/seeds/<NN>-<phase>/<NN>-<topic>.<ext>` files (`.sql` for SQL engines, `.js` for MongoDB) plus `.regression/seeds/README.md` documenting: engine in use, apply order, fail-fast flag in effect, and how to add a fixture.
+
+`README.md` template:
+
+```markdown
+# Seeds
+
+Engine: {postgres | mysql | mariadb | mongodb | sqlserver | sqlite}
+Fail-fast flag: {ON_ERROR_STOP=1 | --abort-source-on-error | .bail on | -b | mongosh default}
+Apply order: byte-wise lexicographic across phase dirs.
+
+## Adding a fixture
+
+1. Pick a phase dir.
+2. Number-prefix the filename (`05-...` to land before `10-domain/01-...`).
+3. Use literal IDs; refer to them from scenarios.
+4. Use the engine's idempotent insert idiom (see regression-seed-strategy).
+```
 
 ## Avoid
 
-- **Running app migrations from the seeder.** Migrations are the app's concern; seeds talk directly to the DB.
-- **Non-deterministic IDs.** No `gen_random_uuid()`, no `NOW()`, no `auto_increment` without explicit values.
-- **Non-idempotent inserts.** Re-running must not duplicate rows.
-- **Production exports.** Even "scrubbed" production data leaks PII patterns. Synthesize fresh.
-- **One mega-file.** Split by phase and topic so failures point at a specific table.
+- Running app migrations from the seeder.
+- Non-deterministic IDs.
+- Non-idempotent inserts.
+- Production exports (even "scrubbed").
+- One mega-file.
+- `mongoimport` (does not upsert via `$setOnInsert`).
+- Mixing transports for one engine.

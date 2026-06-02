@@ -9,143 +9,95 @@ user-invocable: false
 
 # Regression Compose Build
 
-> Load `Use skill: regression-service-inventory` for the `services.yaml` contract.
+> Schema owner: `regression-service-inventory`. This skill consumes `services.yaml` and emits compose; it does not invent fields, defaults, or values absent from inventory.
 
-Generates the committed `docker-compose.regression.yml` from `services.yaml`. The compose file is the user's to edit; this skill re-emits it on `task-regression-discover` re-runs and shows a diff before overwriting.
+Generates the committed `docker-compose.regression.yml`. Re-emit on `task-regression-discover` re-runs; show a unified diff before any overwrite.
 
 ## When to Use
 
-- During `task-regression-discover` after `services.yaml` is committed.
+- During `task-regression-discover` after `services.yaml` lands.
 - When the user explicitly asks to regenerate compose after editing `services.yaml`.
 
 ## Rules
 
-1. **Two profiles in one file.** `local-build` uses `sibling-path` / `git` sources as build contexts; `pinned-images` uses `image` refs. Same file, profile-gated services.
-2. **Healthchecks on every service.** Pulled from `services.yaml`. No exceptions.
-3. **No host port mappings by default.** Services talk over the compose network. Host ports only on explicit user opt-in (test debugging).
-4. **Named volumes only, per database.** Per-run isolation comes from the compose project name in `regression-runner`, not from volume names.
-5. **Isolated network.** One project-scoped network. No `network_mode: host`.
-6. **Show diff before overwrite.** Never silently replace a hand-edited file.
-7. **All env values via `${ENV_VAR}` references.** No inline secrets.
+1. **Two profiles, profile-gated services.** `local-build` consumes `sibling-path` / `git` sources; `pinned-images` consumes `image` sources. Same file. A service with only one source type appears in only one profile - that is correct.
+2. **Healthchecks pulled verbatim from `services.yaml`.** No healthcheck in inventory = the writer rejects the entry. The writer does not invent commands, intervals, retries, or `curl` / `pg_isready` defaults.
+3. **No host port mappings by default.** Tests speak over the compose network. Host ports only with explicit user opt-in in inventory.
+4. **Named volumes only, one per database.** Per-run isolation comes from the compose project name in `regression-runner`. Volume name uses `<db-service-name>-data` (e.g. `db-data`, `analytics-db-data`).
+5. **One isolated bridge network** named `regression-net`. No `network_mode: host`.
+6. **Compose v2 required.** Healthcheck-conditional `depends_on` is v2; `name:` top-level is v2.3.3+. Stated, not silently assumed.
+7. **Reference env values as `${VAR}` only.** Inventory carries the names; the writer does not interpolate, default, or hardcode values.
+8. **Diff before overwrite.** Unified-diff against the existing file; ask `keep mine / take new / merge`. Default: keep mine. Without an authored-by marker the writer cannot tell hand-edits from prior emits - it always treats the existing file as authoritative until the user picks.
 
 ## Patterns
 
-### File structure
+### File skeleton
+
+The writer emits this shape; every field below comes from `services.yaml` except the literals `name`, `networks`, and `volumes.<n>-data`.
 
 ```yaml
-name: regression                          # default project name; overridden per run by -p regression-<runId>
-
+name: regression                          # overridden per run by -p regression-<runId>
 networks:
   regression-net: { driver: bridge }
-
 volumes:
-  db-data: {}                             # one per database service
+  db-data: {}                             # one per database service, named <svc>-data
 
 services:
-  # ---------- local-build profile ----------
-  web:
+  web:                                    # frontend with sibling-path source
     profiles: [local-build]
-    build:
-      context: ../web                     # sibling-path
-      dockerfile: Dockerfile
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    environment:
-      API_BASE_URL: http://api:8080
+    build: { context: ../web, dockerfile: Dockerfile }
+    healthcheck: { ... }                  # verbatim from services.yaml#services[].healthcheck
+    environment: { ... }                  # verbatim from services.yaml#services[].env
     depends_on:
       api: { condition: service_healthy }
     networks: [regression-net]
 
-  # ---------- pinned-images profile ----------
-  web-image:
+  web-image:                              # same service with image source -> separate entry
     profiles: [pinned-images]
     image: ghcr.io/acme/web@sha256:...
-    healthcheck: { test: [...], interval: 5s, timeout: 3s, retries: 30 }
-    environment:
-      API_BASE_URL: http://api-image:8080
+    healthcheck: { ... }
+    environment: { ... }
     depends_on:
       api-image: { condition: service_healthy }
     networks: [regression-net]
 
-  # ---------- backend (both profiles) ----------
-  api:
-    profiles: [local-build]
-    build: { context: ../api, dockerfile: Dockerfile }
-    healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"], interval: 5s, timeout: 3s, retries: 30 }
-    environment:
-      DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD}@db:5432/app"
-    depends_on:
-      db: { condition: service_healthy }
-    networks: [regression-net]
-
-  api-image:
-    profiles: [pinned-images]
-    image: ghcr.io/acme/api@sha256:...
-    healthcheck: { ... }
-    environment: { DATABASE_URL: "..." }
-    depends_on:
-      db: { condition: service_healthy }
-    networks: [regression-net]
-
-  # ---------- database (shared across profiles) ----------
-  db:
+  db:                                     # databases use image only; no -image suffix
     image: postgres@sha256:...
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    environment:
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      POSTGRES_DB: app
-    volumes:
-      - db-data:/var/lib/postgresql/data
+    healthcheck: { ... }
+    environment: { ... }
+    volumes: [db-data:/var/lib/postgresql/data]
     networks: [regression-net]
+    # no profiles key -> participates in BOTH profiles
 ```
 
-### Naming rule for dual-profile services
+### Dual-source naming
 
-A frontend or backend that has both a `sibling-path` / `git` source *and* an `image` ref gets two compose entries:
-- `<name>` for `local-build`
-- `<name>-image` for `pinned-images`
+A frontend / backend declared with BOTH a `sibling-path` / `git` source AND an `image` ref in inventory becomes two compose entries: `<name>` (local-build) and `<name>-image` (pinned-images). Service-to-service references inside the same profile use the same-profile name.
 
-Service-to-service references inside the same profile use the profile's name. The plugin generates both consistently.
+### Database participation in both profiles
 
-### Database services
-
-Databases use `image` only (the engine's official image). No `local-build` variant - we never rebuild Postgres for a test run. One entry, both profiles see it.
+A service with no `profiles:` key participates in every active profile. Databases are declared without `profiles:` so a single `db` entry serves both `local-build` and `pinned-images` runs - no rebuild of Postgres per profile.
 
 ### `depends_on` health-gating
 
-Always `condition: service_healthy`. Never `service_started`. Combined with `docker compose up --wait`, this is how the runner avoids `sleep`.
+Always `condition: service_healthy`. Never `service_started`. Paired with the runner's `up --wait`, this is the only startup gate - no `sleep`.
 
-### Diff-before-write
+### What this skill never emits
 
-When `docker-compose.regression.yml` already exists:
-
-1. Build the new file in memory.
-2. Diff against the existing file (unified diff format).
-3. Show the user the diff.
-4. Ask: keep mine / take new / merge interactively. Default: keep mine.
-
-### What this skill never does
-
-- Add `restart: unless-stopped` (we want clean failures, not respawn loops).
-- Add `tmpfs` or `cap_add` (out of scope for v1).
-- Generate Dockerfiles. That's `regression-service-inventory`'s suggestion job.
+- `restart: unless-stopped` (we want clean failures, not respawn loops).
+- `tmpfs`, `cap_add`, `privileged` (out of v1 scope).
+- Dockerfiles (`regression-service-inventory` owns Dockerfile suggestions).
+- Default env values or computed URLs (`postgres://...@db:5432/app` is composed in `services.yaml`, not here).
 
 ## Output Format
 
-`.regression/docker-compose.regression.yml` (committed). Plus a side note documenting any unsupported `services.yaml` field the user provided (the field is ignored, not silently rewritten).
+`.regression/docker-compose.regression.yml`. Plus a "Skipped fields" report block listing any `services.yaml` field the writer does not support, so users see what was dropped rather than silently rewritten.
 
 ## Avoid
 
-- **Single-profile files.** The local/CI split is the whole point.
-- **`network_mode: host`.** Breaks isolation; breaks parallel runs.
-- **Host port mappings by default.** Tests run inside the network; no need.
-- **`restart` policies.** A flaky service should fail the run, not loop.
-- **`service_started` dependencies.** Use `service_healthy`.
-- **Anonymous volumes.** Hard to wipe on `down -v` reliably.
+- `network_mode: host`. Breaks isolation; breaks parallel runs.
+- Host port mappings by default.
+- `restart` policies.
+- `service_started` dependencies.
+- Anonymous volumes (cannot be cleaned reliably by `down -v`).
+- Single-profile files. The local / CI split is the whole point.

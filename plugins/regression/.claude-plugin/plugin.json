@@ -1,6 +1,6 @@
 {
   "name": "regression",
-  "version": "1.109.0",
+  "version": "1.110.0",
   "description": "Outside-in regression test orchestration for polyrepo microservices: discover services, generate docker-compose, seed databases, run Playwright scenarios, report verdict, tear down with -v. Stack-agnostic role-based modeling (Frontend / Backend / Database). Playwright (TypeScript) only - covers browser, HTTP, WebSocket, gRPC. Workspace at .regression/ in a dedicated test repo. Requires core. Codemap is a discovery-time accelerator only.",
   "author": {
     "name": "Tuyen"

@@ -9,124 +9,103 @@ user-invocable: false
 
 # Regression Service Inventory
 
-> Stack-agnostic. Do not run `stack-detect` to classify roles. `stack-detect` may only be invoked as a suggestion source for Dockerfile defaults when a `sibling-path` service has no Dockerfile.
+> Schema owner for `.regression/services.yaml`. `regression-compose-build`, `regression-seed-strategy`, and `regression-runner` consume this contract. `stack-detect` may only be invoked as a *suggestion source* for Dockerfile defaults when a sibling-path service has no Dockerfile.
 
-Builds `.regression/services.yaml` by asking the user to declare each service's role and structural metadata. The plugin never auto-detects roles or frameworks - the user names what is in scope.
-
-## When to Use
-
-- During `task-regression-discover`, after the user has listed the services they want under test.
-- When refreshing inventory after a topology change (new service, removed service, new env var, port change).
+Builds `services.yaml` by asking the user to declare each service's role and structural metadata. The plugin never auto-detects roles.
 
 ## Rules
 
-1. **One role per service.** Every service is exactly one of: `frontend`, `backend`, `database`. Services that are none of these (brokers, gateways, sidecars) are out of v1 scope.
-2. **User-declared, not detected.** Source type, port, healthcheck command, env vars, depends_on, and (for databases) engine are user input. Suggestions are allowed; assumptions are not.
-3. **Healthcheck is required for every service.** No healthcheck = no entry. A regression run that races startup is worse than no run.
-4. **Pin by digest, not tag, for `image` sources.** `ghcr.io/acme/svc@sha256:...`, not `:latest` or `:v1`.
-5. **No secrets in `services.yaml`.** Env values referencing secrets use `${ENV_VAR}` form; the actual value lives in `.env` or `docker-compose.override.yml`.
+1. **One role per service.** `frontend` / `backend` / `database`. No others in v1.
+2. **User-declared.** Source type, port, healthcheck, env vars, `depends_on`, engine. Suggestions allowed; silent assumptions not.
+3. **Healthcheck required.** No healthcheck = the writer rejects the entry.
+4. **Pin by digest.** `image:` source must include `@sha256:...`. The writer rejects `:latest` and bare tags. Applies to all roles including databases.
+5. **No inline secret values.** Env values that look secret must use `${VAR}` form. Detection is structural: any `value:` containing a literal string of more than 12 characters that is not a URL, hostname, or boolean - and that is not wrapped in `${...}` - is flagged for the user to confirm. The skill does not ship a heuristic scanner; the user is the gate. A repo-level secret scanner (`gitleaks`, `trufflehog`) is recommended in the discover report.
+6. **Sibling-path without Dockerfile is rejected by default.** The writer offers a `stack-detect`-sourced Dockerfile suggestion; if the user declines, the entry is removed from inventory rather than left in a not-buildable state.
 
 ## Patterns
 
-### Role decision table
+### Role decision
 
-| User answer to "what does it do?"                                       | Role          |
-| ----------------------------------------------------------------------- | ------------- |
-| Serves a UI on an HTTP port; tests drive it through a browser           | `frontend`    |
-| Exposes an HTTP API; depends on a database; not a UI                    | `backend`     |
-| Stateful container holding data; engine is one of postgres/mysql/etc.   | `database`    |
-| Something else (broker, gateway, search index, cache)                   | Out of scope  |
+| What the service does | Role |
+| --- | --- |
+| Serves a UI on an HTTP port; tests drive through a browser | `frontend` |
+| Exposes an HTTP/JSON API; not a UI | `backend` (includes `*-gateway` / `*-api` *applications*) |
+| Stateful container holding data | `database` |
+| Broker, cache, proxy / mesh gateway, search index | out of v1 scope |
 
-### `services.yaml` shape
+### `services.yaml` schema (canonical, owned here)
 
 ```yaml
 services:
-  - name: web
-    role: frontend
-    source: { type: sibling-path, path: ../web }
-    ports: [3000]
-    healthcheck: { cmd: ["CMD", "curl", "-fsS", "http://localhost:3000/healthz"], interval: 5s, timeout: 3s, retries: 30 }
+  - name: <string>
+    role: frontend | backend | database
+    source:
+      type: sibling-path | git | image
+      path: <string>          # type=sibling-path
+      url: <git-url>          # type=git
+      ref: <git-ref>          # type=git, required
+      ref: <image-ref>        # type=image, must include @sha256:
+    ports: [<int>, ...]       # default empty (no host mapping)
+    healthcheck:
+      cmd: [<string>, ...]    # docker compose healthcheck syntax
+      interval: <duration>    # default 5s
+      timeout: <duration>     # default 3s
+      retries: <int>          # default 30
     env:
-      - { name: API_BASE_URL, value: http://api:8080 }
-    depends_on: [api]
-
-  - name: api
-    role: backend
-    source: { type: sibling-path, path: ../api }
-    ports: [8080]
-    healthcheck: { cmd: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"], interval: 5s, timeout: 3s, retries: 30 }
-    env:
-      - { name: DATABASE_URL, value: "${DATABASE_URL}" }
-    depends_on: [db]
-
-  - name: db
-    role: database
-    source: { type: image, ref: "postgres@sha256:..." }
-    engine: postgres
-    version: "16"
-    ports: [5432]
-    healthcheck: { cmd: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, timeout: 3s, retries: 30 }
-    env:
-      - { name: POSTGRES_PASSWORD, value: "${POSTGRES_PASSWORD}" }
-      - { name: POSTGRES_DB, value: app }
-    initialSchema: { type: sql-dump, path: ../api/db/schema.sql }
-    # or: { type: migrations, runner: psql, path: ../api/db/migrations }
-    # or: { type: none }   # backend creates schema on first boot
+      - { name: <NAME>, value: <literal-or-${VAR}> }
+    depends_on: [<service-name>, ...]
+    # database-only
+    engine: postgres | mysql | mariadb | mongodb | sqlserver | sqlite
+    version: <string>
+    initialSchema:
+      type: sql-dump | migrations | none
+      path: <string>          # sql-dump / migrations only
+    persistence: ephemeral | external   # default ephemeral; external -> isolation verifier scans
 ```
 
-### Structural Q&A per role
+Defaults (`5s` / `3s` / `30`, ephemeral persistence) apply when the field is omitted in user input; the writer records them in the emitted yaml so the file is self-describing.
 
-For each service the user names:
+### Per-role Q&A (the questions the writer asks)
 
-**Frontend Service**
-- Source: `sibling-path` / `git` / `image`?
-- HTTP port?
-- Healthcheck command? (HTTP probe like `curl -fsS http://localhost:<port>/healthz`)
-- Env vars the container needs at runtime? (typically `API_BASE_URL`)
-- What backend(s) does it talk to? (writes `depends_on`)
-- If `sibling-path` and no Dockerfile in the repo: offer to suggest one (`Use skill: stack-detect`), but the user owns the final file.
+**Frontend / Backend** - source type, port, healthcheck command, env vars, `depends_on`. For backends: which database(s); `DATABASE_URL` (or equivalent) using `${VAR}` references.
 
-**Backend Service**
-- Same first four as Frontend.
-- What database(s) does it talk to? (writes `depends_on`)
-- `DATABASE_URL` (or equivalent) - reference as `${...}`, never inline.
+**Database** - engine, version, port, healthcheck (engine cheat-sheet below), `initialSchema` mode + path, persistence (default ephemeral).
 
-**Database**
-- Engine: postgres / mysql / mariadb / mongodb / sqlserver / sqlite / other.
-- Version (major.minor or exact tag).
-- Port.
-- Healthcheck command appropriate to engine (see engine cheat-sheet below).
-- Initial schema source: `sql-dump` path / `migrations` path + runner / `none`.
-- Seed scope: per-test-run wipe via `down -v` (default) or persistent volume (discouraged).
+For `sibling-path` services missing a Dockerfile: `Use skill: stack-detect` for a suggestion. Offer to write `<service>/Dockerfile` only on explicit yes; otherwise write `.regression/.cache/suggested-dockerfiles/<service>.dockerfile` and remove the inventory entry per Rule 6.
 
 ### Engine healthcheck cheat-sheet
 
-| Engine       | Healthcheck command                                          |
-| ------------ | ------------------------------------------------------------ |
-| postgres     | `pg_isready -U $POSTGRES_USER`                              |
-| mysql/mariadb| `mysqladmin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD`|
-| mongodb      | `mongosh --quiet --eval "db.adminCommand('ping').ok"`        |
-| sqlserver    | `/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $SA_PASSWORD -Q "SELECT 1"` |
-| sqlite       | n/a - file-based; covered by app healthcheck                |
+| Engine | Command |
+| --- | --- |
+| postgres | `pg_isready -U $POSTGRES_USER` |
+| mysql | `mysqladmin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD` |
+| mariadb | `mariadb-admin ping -h 127.0.0.1 -u root -p$MARIADB_ROOT_PASSWORD` (MariaDB 11+; legacy `mysqladmin` + `MYSQL_ROOT_PASSWORD` still works on the official image) |
+| mongodb | `mongosh --quiet --eval "db.adminCommand('ping').ok"` |
+| sqlserver | `/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $SA_PASSWORD -Q "SELECT 1"` |
+| sqlite | n/a - file-based; rely on the consuming backend's healthcheck |
 
-### Dockerfile-defaults suggestion (sibling-path only, optional)
+### Writer behavior (the validation contract)
 
-When a sibling-path service has no Dockerfile and the user accepts a suggestion:
+The writer rejects an entry and stops with a row-by-row diff when:
 
-1. `Use skill: stack-detect` on the service path.
-2. Emit a multi-stage Dockerfile draft (build + runtime) appropriate to the detected stack.
-3. Write it to `<service>/Dockerfile` only with explicit user confirmation. Otherwise output to `.regression/.cache/suggested-dockerfiles/<service>.Dockerfile` for the user to copy in.
+- Required field missing (`role`, `source`, `healthcheck`, and role-specific fields).
+- `image:` source ref does not contain `@sha256:`.
+- `git:` source missing `ref`.
+- `sibling-path` source path does not resolve relative to the test repo root.
+- `env.value` contains an inline value flagged by Rule 5 and the user did not confirm.
+- Sibling-path Dockerfile suggestion declined per Rule 6.
 
-The plugin never silently writes into a sibling repo.
+The diff is printed to stdout in unified-diff format; the user fixes inputs and re-runs.
 
 ## Output Format
 
-`services.yaml` (committed). Self-validating - the writer rejects entries missing required fields with a row-by-row diff.
+`.regression/services.yaml` (committed) plus a one-line skip summary per rejected entry. The schema in this file is the single source of truth for downstream skills.
 
 ## Avoid
 
-- **Auto-detecting roles.** A Python repo could be frontend (Streamlit), backend (FastAPI), or both - the user knows; the directory layout does not.
-- **Skipping healthchecks.** A `sleep 30` workaround belongs in the user's worst dreams, not in this plugin.
-- **Inline secrets** in `services.yaml`. Always `${ENV_VAR}`.
-- **`:latest` image refs.** Reproducibility dies on the next image push.
-- **Multiple roles per service.** Split the service or omit it from regression scope.
+- Auto-detecting roles from filesystem layout.
+- Skipping healthchecks (`sleep` is not a substitute).
+- Inline secrets in `services.yaml`.
+- `:latest` image refs.
+- Multiple roles per service.
+- Leaving a not-buildable sibling-path entry.

@@ -9,36 +9,33 @@ user-invocable: false
 
 # Regression Flow Extract
 
-> **Authoring-time only.** Output is human-reviewed and frozen into `.regression/flows.yaml`. Runtime never re-reads these inputs.
+> Authoring-time only. Output is human-reviewed and frozen into `.regression/flows.yaml`. Runtime never re-reads these inputs.
 
-Produces ranked cross-service flow suggestions for the user to confirm before they land in `flows.yaml`. The plugin treats this as a *suggester* - never overwrites committed flows, never runs during `task-regression`.
+Produces ranked cross-service flow suggestions for the user to confirm before they land in `flows.yaml`.
 
 ## When to Use
 
 - During `task-regression-discover` after `services.yaml` is committed.
-- When the user asks for fresh suggestions ("propose new flows since last topology change").
+- When the user asks for fresh suggestions after sibling-repo pulls.
 
 ## Rules
 
-1. **Read-only.** Touch no sibling repo state. Codemap symlinks under `.regression/.cache/codemap/` are user-managed.
-2. **Rank, do not pick.** Emit 3-10 ranked candidates with rationale. The user accepts/rejects each.
-3. **Diff against `flows.yaml`.** Never silently overwrite. Show additions and changes; let the user confirm per-entry.
-4. **Cite inputs.** Each candidate names the evidence source (codemap edge, OpenAPI path, git commit).
-5. **Stop at boundaries.** A flow is a cross-service path from an externally-triggerable entry point to an observable outcome (DB row, status code, UI change). Single-service flows are out of scope - those are unit/integration tests.
+1. **Read-only across sibling repos.** Symlinks under `.regression/.cache/codemap/` are user-managed.
+2. **Rank, do not pick.** Emit candidates ranked, with rationale. User accepts / rejects each.
+3. **Diff against `flows.yaml`.** Never silently overwrite. Show additions; name-conflict candidates handled by the workflow (`task-regression-discover` Step 4).
+4. **Cite inputs per candidate.** Each entry's `evidence:` lists every signal (codemap edge, OpenAPI path, git commit). A skeleton candidate uses `evidence: skeleton`.
+5. **Cross-service only.** A flow runs from an externally-triggerable entry point through at least two services to an observable outcome. Single-service flows belong to `task-<stack>-test`; this skill discards them from candidate output.
+6. **Candidate count.** Aim for 3-10 ranked candidates when any evidence tier is present. When all tiers are absent, emit exactly one `evidence: skeleton` candidate per backend - this overrides the 3-10 floor.
 
 ## Patterns
 
-### Input priority
+### Input priority (fall through silently when a tier is absent)
 
-1. **Symlinked codemap graphs** under `.regression/.cache/codemap/<service>/graph.json`. Load all available; merge by node ID. Use `codemap-schema` for shape and `codemap-query` for traversal.
-2. **OpenAPI specs** discovered under each sibling-path service (`openapi.yaml` / `openapi.json` / `swagger.json` in common locations).
-3. **Recent git history** across sibling-path services - last 30 commits per service, mining commit messages and changed files for new/changed endpoints.
+1. Symlinked codemap graphs under `.regression/.cache/codemap/<service>/graph.json`. Merge by node ID. Node types and edge types come from `codemap-schema` (the `codemap` plugin's atomic); traversal verbs come from `codemap-query`. Both are optional reads - skip if absent.
+2. OpenAPI specs in declared service paths (`openapi.yaml` / `openapi.json` / `swagger.json`).
+3. Git history across `sibling-path` services - last 30 commits per service.
 
-Lower-priority sources fill gaps when higher ones are absent. Never assume one source is exhaustive.
-
-### Flow shape
-
-Each candidate has:
+### Candidate shape
 
 ```yaml
 - name: order-checkout-happy
@@ -47,46 +44,72 @@ Each candidate has:
   hops:
     - { from: web, to: api, call: "POST /orders" }
     - { from: api, to: db, call: "INSERT INTO orders" }
-    - { from: api, to: api, call: "POST /payments (internal)" }   # within same service
+    - { from: api, to: payment-service, call: "POST /payments" }
   observableOutcome:
     - "HTTP 201 returned to web"
     - "row in orders with status='confirmed'"
     - "UI shows 'Thank you' screen"
   evidence:
-    - "codemap edge web/src/checkout.tsx -> api POST /orders"
-    - "openapi: api/openapi.yaml POST /orders"
-    - "git: api 2026-05-14 'add payments handoff'"
+    - codemap: "web/src/checkout.tsx -> api POST /orders"
+    - openapi: "api/openapi.yaml POST /orders"
+    - git: "api 2026-05-14 'add payments handoff'"
   rationale: "Cross-service write path, high blast-radius, no existing scenario."
 ```
 
-### Ranking signals
+Cross-service means at least two `from`/`to` services across the hops. Intra-service hops are allowed *only* as supporting context; a flow whose hops all stay in one service is discarded per Rule 5.
 
-Rank descending by:
+### Ranking
 
-1. **Blast radius** - more services touched = higher rank.
-2. **Recency of change** - flows touching files changed in the last 14 days = +1 tier.
-3. **DB write involvement** - any `Endpoint -> Table` write edge = +1 tier.
-4. **Auth/payments/identity surfaces** - keywords in endpoint paths (`/login`, `/pay`, `/checkout`, `/admin`) = +1 tier.
-5. **Existing coverage** - if a scenario in `scenarios/` already covers the flow, drop to bottom or omit.
+Compute a score, then sort descending. Ties broken alphabetically by name.
+
+```
+score = 10 * (#distinct services touched in hops)
+      + 3  if (any hop's source file changed in last 14 days)
+      + 3  if (any hop is a DB write)
+      + 3  if (entryPoint path contains /login|/pay|/checkout|/admin|/auth)
+      - 100 if (an existing scenarios/**/*.spec.ts is named identically to this candidate)
+```
+
+Negative score means the candidate is hidden by default; surface only on `--show-covered`. The window mismatch (14 days for ranking vs 30 commits for mining) is intentional: mining is wider so we have enough signal; ranking is tighter so the boost reflects recent risk.
 
 ### Flow `kind` inference
 
-- All hops are API-only and no UI entry point -> `kind: api`.
-- Entry point is browser-driven, all assertions are UI-observable -> `kind: browser`.
-- Browser entry + API setup, or browser entry + DB observable -> `kind: mixed`.
+| Entry | All-API hops | UI-only observable | DB observable | -> kind |
+| --- | --- | --- | --- | --- |
+| API | yes | n/a | optional | `api` |
+| Browser | n/a | yes | no | `browser` |
+| Browser | n/a | optional | yes | `mixed` |
+| Browser | API setup hops | yes | optional | `mixed` |
 
-### Fallback when no inputs are available
+### Fallback when no inputs
 
-If no codemap, no OpenAPI, no recent git: emit a *single* placeholder candidate per backend - "`POST /<inferred>` -> `<backend>` -> `<db>` write" - flagged with `rationale: "Skeleton only; backend OpenAPI not found"`. The user fills in details. Do not invent endpoint names from imagination.
+For each `services.yaml#services[].role == backend`, emit one candidate:
+
+```yaml
+- name: skeleton-<backend>-write
+  kind: api
+  entryPoint: { service: <backend>, action: "<USER FILL: an externally-triggerable write>" }
+  hops: []                       # USER FILL
+  observableOutcome: []          # USER FILL
+  evidence: skeleton             # singular literal; not a list
+  rationale: "No evidence sources present; user fills hops and outcome."
+```
+
+Do not invent endpoint names. The user owns every field marked `USER FILL`.
+
+### User-confirm prompt format
+
+Numbered list per candidate. For each: name, kind, score, evidence count, rationale. User responds with one of `accept` / `reject` / `defer`. Defer keeps the candidate visible on the next run.
 
 ## Output Format
 
-A ranked candidate list, written to `.regression/.cache/flow-suggestions.json` (gitignored), surfaced to the user as a numbered list with accept/reject prompts. Accepted candidates are appended to `flows.yaml` with the same shape above.
+`.regression/.cache/flow-suggestions.json` (gitignored). Accepted candidates are appended to `.regression/flows.yaml` with the shape above (YAML for readability; JSON only in the suggestions cache for tool consumption).
 
 ## Avoid
 
-- **Silently rewriting `flows.yaml`.** Always diff and confirm.
-- **Inventing endpoints.** A flow with no evidence source is not a candidate.
-- **Single-service flows.** Hand them back to `task-<stack>-test`.
-- **Reading codemap at runtime.** This skill is invoked only by `task-regression-discover`, never by `task-regression`.
-- **Assuming codemap is present.** It is optional. Degrade gracefully to OpenAPI + git, then to skeleton fallback.
+- Silently rewriting `flows.yaml`.
+- Inventing endpoint names.
+- Single-service flows. Hand back to `task-<stack>-test`.
+- Reading codemap at runtime.
+- Assuming codemap is present. Degrade through tiers.
+- Boosting reads when a write boost already fires (no double-counting).

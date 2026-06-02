@@ -10,7 +10,7 @@ Opt-in plugin that owns **outside-in regression testing across many services**. 
 
 **Codemap is optional and authoring-time only.** `regression-flow-extract` reads symlinked sibling `.codemap/graph.json` files (under `.regression/.cache/codemap/`) during `/task-regression-discover` to enrich flow suggestions. Once `flows.yaml` is committed, the suite runs without any codemap read. `.regression/` is the single source of truth.
 
-Requires the `core` plugin (for `behavioral-principles`, `stack-detect`, `review-blast-radius`, `ops-observability`, `ops-resiliency`). No other plugin in this marketplace depends on `regression`.
+Requires the `core` plugin (for `behavioral-principles`, `stack-detect`). No other plugin in this marketplace depends on `regression`.
 
 ## Install
 
@@ -162,7 +162,7 @@ The right long-term shape is a *companion* install in each service repo that wri
 - **Docker** with `docker compose` v2 (the `docker compose` subcommand, not legacy `docker-compose`).
 - **Node 20+** and `npx` on PATH inside the test repo. Python / Ruby / Go / .NET projects need Node 20+ in `.regression/` even though the app is in a different language - this is the only Node touchpoint; the app stays in its own language. Same pattern as `codemap` requiring Python on non-Python projects.
 - **git** on PATH (for `git`-sourced services and discovery-time history scanning).
-- The `core` plugin installed in the same test repo (`behavioral-principles`, `stack-detect`, `review-blast-radius`, `ops-observability`, `ops-resiliency`).
+- The `core` plugin installed in the same test repo (`behavioral-principles`, `stack-detect`).
 - **Optional:** sibling service repos' `.codemap/graph.json` symlinked under `.regression/.cache/codemap/<service>/graph.json` to enrich discovery-time flow suggestions. Never required, never read at runtime.
 
 ## License

@@ -9,177 +9,154 @@ user-invocable: false
 
 # Regression Runner
 
-> Load `Use skill: regression-data-isolation` for `run-id` minting and the compose project naming contract. Load `Use skill: regression-seed-strategy` for the per-engine seed apply commands.
+> Inputs: env vars from `regression-data-isolation` (`REGRESSION_RUN_ID`, `TZ`) plus `REGRESSION_PROFILE` and forwarded Playwright args (`REGRESSION_PW_ARGS`). Seed apply commands come from `regression-seed-strategy`.
 
-Owns the per-run lifecycle: install deps, clone git sources if needed, `up --wait`, seed in order, run Playwright, collect every failure, tear down with `-v` no matter what. Never fails fast; never sleeps.
+Per-run lifecycle: install deps, sync `git` sources under `local-build`, `up --wait`, seed in order, run Playwright, collect every failure, tear down with `-v` regardless. Never fail-fast. Never sleeps.
 
 ## When to Use
 
-- Inside `task-regression` after `regression-data-isolation` has minted the `run-id`.
-- Never during `task-regression-discover` or `task-regression-scenario`. This skill executes; the discover/scenario skills only author.
+- Inside `task-regression` after `regression-data-isolation` minted the run-id.
+- Never during discover / scenario authoring.
 
 ## Rules
 
-1. **Inputs are env vars.** `PROJECT` (= `regression-<runId>`), `REGRESSION_PROFILE` (`local-build` | `pinned-images`), `REGRESSION_RUN_ID`. No flag parsing inside this skill.
-2. **`npm ci` only.** Never `npm install`. Runs in `.regression/` and is skipped only when `node_modules/` exists and `package-lock.json` is unchanged since last install.
-3. **Health-gated startup.** `docker compose ... up -d --build --wait`. Never `sleep`. Never `up -d` without `--wait`.
-4. **Seed in lexicographic order.** Walk `.regression/seeds/**` sorted, apply each via the engine-specific command from `regression-seed-strategy`. Stop the run on first seed error (real failure, not a flake).
+1. **Env-var inputs only.** No flag parsing inside this skill. Inputs:
+
+   | Variable | Set by | Used for |
+   | --- | --- | --- |
+   | `REGRESSION_RUN_ID` | `regression-data-isolation` | derives `PROJECT` and report path |
+   | `REGRESSION_PROFILE` | `task-regression` | `--profile <profile>` on compose up |
+   | `REGRESSION_PW_ARGS` | `task-regression` | extra args forwarded to `playwright test` (`--grep`, `--workers`, `--retries`) |
+   | `TZ=UTC` | this skill exports | frozen clock |
+
+2. **`npm ci` skip via stamp file.** Run `npm ci` when `node_modules/.install-stamp` is missing OR older than `package-lock.json`. After a successful `ci`, `touch node_modules/.install-stamp`. First run never has the stamp - that *is* the skip condition firing correctly.
+3. **Health-gated startup.** `docker compose ... up -d --wait`. Pass `--build` only under `local-build`; under `pinned-images` `--build` is a no-op for image-only services and surfaces as a warning if any compose entry has a `build:` context in that profile. Never `sleep`.
+4. **Seed in byte-wise lexicographic order.** `find ... | LC_ALL=C sort`. Apply per-engine via `regression-seed-strategy`. First seed error aborts the run with exit code `3` *before* Playwright is invoked; teardown still runs.
 5. **Run-all-collect-all.** Playwright runs to completion even when scenarios fail. No `--max-failures`. No fail-fast.
-6. **Teardown always.** Bash `trap` on `EXIT` `INT` `TERM` runs `docker compose -p $PROJECT down -v --remove-orphans`. Ctrl+C must not leak volumes.
-7. **Reports under `reports/<runId>/`.** JUnit XML + line output + traces + videos + screenshots collected before teardown.
-8. **`git`-sourced services are cloned/updated before `up`.** Under `.regression/.cache/<service>`. `git fetch --depth=1 && git reset --hard <ref>`; never merge.
+6. **Teardown always.** `trap` on `EXIT INT TERM`. `down -v --remove-orphans`. Idempotent: a manual `down` already having cleaned up is fine. Ctrl+C must not leak volumes.
+7. **Reports under `reports/<runId>/`.** JUnit XML + line log + traces + videos + screenshots.
+8. **`git` sources cloned/updated under `local-build` only** into `.regression/.cache/<service>` at `services.yaml#source.ref`. `git fetch --depth=1 origin <ref> && git -C ... reset --hard FETCH_HEAD`; never `merge` / `pull`. Under `pinned-images`, git-sourced entries do not appear in the active compose set, so no sync.
 
 ## Patterns
 
-### Env-var inputs
-
-| Variable              | Set by                                | Example                          | Used for                                                       |
-| --------------------- | ------------------------------------- | -------------------------------- | -------------------------------------------------------------- |
-| `REGRESSION_RUN_ID`   | `regression-data-isolation`           | `20260601T101530-a7f3c2`         | Minted once per run; consumed by data factory and report path. |
-| `PROJECT`             | this skill, from `REGRESSION_RUN_ID`  | `regression-20260601T101530-a7f3c2` | `docker compose -p $PROJECT`                                  |
-| `REGRESSION_PROFILE`  | `task-regression`                     | `local-build` / `pinned-images`  | `--profile <profile>` on `compose up`                          |
-| `TZ`                  | this skill, always                    | `UTC`                            | Frozen clock contract; consumed by every container             |
-
-### Lifecycle script (the canonical shape)
+### Canonical lifecycle script
 
 ```bash
+#!/usr/bin/env bash
 set -euo pipefail
 : "${REGRESSION_RUN_ID:?run-id not set; call regression-data-isolation first}"
 : "${REGRESSION_PROFILE:?profile not set}"
 PROJECT="regression-${REGRESSION_RUN_ID}"
 REPORTS=".regression/reports/${REGRESSION_RUN_ID}"
+PW_ARGS="${REGRESSION_PW_ARGS:-}"
 mkdir -p "$REPORTS"
 export TZ=UTC
 
 teardown() {
   echo "[runner] tearing down $PROJECT"
   docker compose -p "$PROJECT" -f .regression/docker-compose.regression.yml \
-    --profile "$REGRESSION_PROFILE" down -v --remove-orphans || true
+    --profile "$REGRESSION_PROFILE" down -v --remove-orphans 2>/dev/null || true
 }
 trap teardown EXIT INT TERM
 
 # 1. deps
 ( cd .regression && \
-  if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.install-stamp ]; then \
+  if [ ! -f node_modules/.install-stamp ] || [ package-lock.json -nt node_modules/.install-stamp ]; then \
     npm ci && touch node_modules/.install-stamp; \
   fi )
 
-# 2. git-sourced services (local-build only)
+# 2. git-sourced services (local-build only). sync-git-sources.sh is shipped with this skill;
+#    contract: read services.yaml, for each source.type==git clone or fetch+reset --hard to source.ref.
 if [ "$REGRESSION_PROFILE" = "local-build" ]; then
-  # for each services.yaml entry with source.type == git:
-  #   .regression/.cache/<name> ; clone if absent, fetch+reset --hard otherwise
-  python3 .regression/scripts/sync-git-sources.py
+  .regression/scripts/sync-git-sources.sh
 fi
 
-# 3. compose up - healthcheck gated, never sleeps
+# 3. compose up; --build only under local-build
+BUILD_FLAG=""
+[ "$REGRESSION_PROFILE" = "local-build" ] && BUILD_FLAG="--build"
 docker compose -p "$PROJECT" -f .regression/docker-compose.regression.yml \
-  --profile "$REGRESSION_PROFILE" up -d --build --wait
+  --profile "$REGRESSION_PROFILE" up -d $BUILD_FLAG --wait
 
-# 4. seed in lexicographic order
-for f in $(find .regression/seeds -type f \( -name '*.sql' -o -name '*.json' \) | sort); do
+# 4. seed in order; fail-fast on first error
+SEED_EXIT=0
+while IFS= read -r f; do
   echo "[runner] seeding $f"
-  # delegate to regression-seed-strategy per-engine snippet
-  .regression/scripts/apply-seed.sh "$PROJECT" "$f"
-done
+  .regression/scripts/apply-seed.sh "$PROJECT" "$f" || { SEED_EXIT=3; break; }
+done < <(find .regression/seeds -type f \( -name '*.sql' -o -name '*.json' \) | LC_ALL=C sort)
+if [ "$SEED_EXIT" -ne 0 ]; then
+  exit "$SEED_EXIT"            # trap runs teardown
+fi
 
-# 5. run all - never fail-fast
+# 5. Playwright run-all. Output respects playwright.config.ts's `outputFolder`;
+#    typical default is `test-results/`. JUnit goes wherever the reporter writes.
 set +e
-( cd .regression && npx playwright test --reporter=junit,line ) \
+( cd .regression && npx playwright test --reporter=junit,line $PW_ARGS ) \
   | tee "$REPORTS/line.log"
 TEST_EXIT=$?
 set -e
 
-# 6. collect artifacts (Playwright already wrote junit.xml + traces under .regression/test-results)
+# 6. collect artifacts
 cp -r .regression/test-results/* "$REPORTS/" 2>/dev/null || true
+# JUnit reporter writes to the path configured in playwright.config.ts (default: `results.xml`)
 cp .regression/results.xml "$REPORTS/junit.xml" 2>/dev/null || true
 
-# 7. teardown runs via trap; exit with Playwright's status
-exit "$TEST_EXIT"
+exit "$TEST_EXIT"               # trap runs teardown
 ```
 
 ### Why each piece exists
 
-| Decision                              | Failure mode it prevents                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------- |
-| `trap teardown EXIT INT TERM`         | Ctrl+C leaks named volumes, breaking the next run with stale data.        |
-| `--wait` on `up`                      | Race between Playwright start and backend readiness -> flaky 5xx.         |
-| `find ... \| sort` for seeds          | Filesystem ordering differs between Linux and macOS -> non-deterministic. |
-| `set +e` around `playwright test`     | A failing scenario must not abort report collection.                      |
-| `down -v --remove-orphans`            | Forgotten volumes carry yesterday's tenant rows into today's run.         |
-| `npm ci`, not `npm install`           | `install` mutates `package-lock.json`; `ci` is reproducible.              |
-| `git fetch --depth=1 && reset --hard` | A `merge` on the runner can produce a state that exists nowhere else.     |
-
-### Bad / good
-
-```bash
-# BAD: races backend startup
-docker compose up -d && sleep 30 && npx playwright test
-
-# GOOD: health-gated
-docker compose -p "$PROJECT" up -d --build --wait
-npx playwright test
-```
-
-```bash
-# BAD: fail-fast hides 9 of 10 failures
-npx playwright test --max-failures=1
-
-# GOOD: collect everything, classify after
-set +e; npx playwright test; TEST_EXIT=$?; set -e
-```
-
-```bash
-# BAD: teardown skipped on Ctrl+C -> next run picks up stale volumes
-docker compose up -d --wait
-npx playwright test
-docker compose down -v
-
-# GOOD: trap-guarded teardown
-trap 'docker compose -p "$PROJECT" down -v --remove-orphans' EXIT INT TERM
-```
-
-### `git`-source sync rules
-
-For each `services.yaml` entry where `source.type == git`:
-
-1. If `.regression/.cache/<name>` does not exist: `git clone --depth=1 --branch <ref> <url> .regression/.cache/<name>`.
-2. Else: `git -C .regression/.cache/<name> fetch --depth=1 origin <ref> && git -C ... reset --hard FETCH_HEAD`.
-3. Never `git pull`. Never `git merge`. The cache mirrors the declared ref exactly.
-
-Only runs under `local-build` profile - `pinned-images` reads from a registry and never needs sources.
+- `trap` on `EXIT INT TERM`: Ctrl+C must not leak volumes. `EXIT` makes the trap fire on `set -e` aborts too. Idempotent teardown means firing twice (e.g. `INT` then `EXIT`) is harmless.
+- `--wait` + healthcheck-gated `depends_on`: no `sleep` race.
+- `--build` only under `local-build`: image-only services never need a build context; passing `--build` to pinned-images would force-rebuild any stray `build:` entry, defeating the reproducibility point of the profile.
+- `find ... | LC_ALL=C sort`: filesystem ordering differs macOS vs Linux.
+- Stamp file: `npm ci` is reproducible but not idempotent; the stamp encodes "did we install for this lockfile already".
+- `set +e` around `playwright test`: a failing scenario must not abort report collection.
+- Seed fail-fast with exit `3`: a broken schema produces meaningless test verdicts. Distinct from Playwright's exit code so callers can distinguish "seed failed" from "tests failed".
+- `down -v --remove-orphans`: forgotten volumes carry yesterday's data into today's run.
+- `npm ci` not `npm install`: `install` mutates the lockfile.
+- `git fetch --depth=1 && reset --hard`: `merge` on the runner produces a state that exists nowhere else.
 
 ### Selective runs
 
-`task-regression --grep @smoke` forwards as `npx playwright test --grep @smoke`. The runner itself does not interpret tags; Playwright does.
+`task-regression --grep @smoke` is forwarded to Playwright via `REGRESSION_PW_ARGS="--grep @smoke"`. The runner itself does not interpret tags.
+
+### Shipped scripts
+
+`regression-runner` ships with two helper scripts under `.regression/scripts/`:
+
+- `sync-git-sources.sh` - reads `services.yaml`, syncs git-sourced services. Idempotent.
+- `apply-seed.sh "$PROJECT" "$FILE"` - dispatches per-engine apply command from `regression-seed-strategy`.
+
+Discover writes these on first scaffold; they are committed in `.regression/scripts/`. No other skill owns them.
 
 ### What this skill does not do
 
-- Mint the `run-id` (that is `regression-data-isolation`).
-- Format the markdown summary (that is `regression-report-format`).
-- Classify failures (that is `regression-flakiness-triage`).
-- Build the compose file (that is `regression-compose-build`).
+- Mint `run-id` (`regression-data-isolation`).
+- Format the summary (`regression-report-format`).
+- Classify failures (`regression-flakiness-triage`).
+- Build the compose file (`regression-compose-build`).
+- Define seed apply commands (`regression-seed-strategy`).
 
 ## Output Format
-
-The runner emits to stdout/stderr and writes:
 
 ```
 .regression/reports/<runId>/
   junit.xml
   line.log
-  traces/             # retain-on-failure
-  videos/             # retain-on-failure
-  screenshots/        # on failure
+  traces/             # retain-on-failure (config)
+  videos/             # retain-on-failure (config)
+  screenshots/        # on failure (config)
 ```
 
-Exit code is Playwright's exit code (0 = all pass, non-zero = at least one failure). Teardown runs regardless.
+Exit code: `0` = green, Playwright's non-zero = test failures, `3` = seed failure, `137` = SIGKILL. Teardown runs regardless.
 
 ## Avoid
 
-- **`sleep` to wait for readiness.** Always `--wait` + healthchecks.
-- **`npm install` in CI.** Use `npm ci`.
-- **`up` without `-d --build --wait`.** Foreground hangs the runner; missing build skips local code; missing wait races startup.
-- **`down` without `-v`.** Stale volumes turn the next run into a debugging session for yesterday's data.
-- **Skipping the trap.** Any non-trapped exit path leaks containers and volumes.
-- **`--max-failures` / fail-fast flags.** You learn one failure instead of ten.
-- **Reading or writing under sibling repo paths.** `git`-sourced services land under `.regression/.cache/`, never `../<service>`.
+- `sleep` for readiness.
+- `npm install` (use `npm ci`).
+- `up` without `-d --wait`.
+- `--build` under `pinned-images`.
+- `down` without `-v`.
+- Skipping the trap.
+- Fail-fast on test runs (always finish, classify after).
+- Reading or writing under sibling repo paths (git sources go in `.regression/.cache/`).

@@ -9,106 +9,83 @@ user-invocable: false
 
 # Regression Env Vars
 
-Sensitive configuration reaches the compose project only through environment variables. The committed files (`services.yaml`, `docker-compose.regression.yml`, `.env.example`) reference them by name. Actual values live in the developer's local `.env` / `docker-compose.override.yml` (gitignored) or a CI secret store.
+Sensitive configuration reaches the compose project only through environment variables. Committed files (`services.yaml`, `docker-compose.regression.yml`, `.env.example`) reference them by name. Values live in the developer's `.env` / `docker-compose.override.yml` (gitignored) or a CI secret store.
 
 ## When to Use
 
-- During `task-regression-discover` to emit `.env.example` and document the override pattern.
-- During `task-regression` preflight to validate that every required env var is resolved before `up`.
+- During `task-regression-discover`: emit `.env.example`, document override mechanism.
+- During `task-regression` preflight: validate that every required name is resolvable.
 
 ## Rules
 
-1. **Never commit a sensitive value.** No exceptions for "test-only" passwords. Pre-commit hooks won't catch this skill's output; the skill is the gate.
-2. **Reference by name in committed files.** Always `${POSTGRES_PASSWORD}`, never `password: hunter2`.
-3. **Ship `.env.example` with placeholder values.** Committed. Lists every required var with a one-line description and a safe placeholder (`changeme`, `dev-only`, empty string with a comment).
-4. **Local overrides via `.env` or `docker-compose.override.yml`.** Gitignored. Never both for the same var - document the precedence.
-5. **CI uses a secret store, not committed files.** The runner reads env vars from the CI environment; the skill does not opine on which store (1Password / Doppler / GCP Secret Manager / AWS SSM / Vault / GitHub Actions - all wrap the runner identically).
-6. **Pre-flight error on unresolved vars.** `task-regression` aborts before `up` with a precise error naming every unresolved var.
+1. **No sensitive values in committed files** - including `.env.example`. Placeholders only (`changeme`, `dev-only-...`, `replace_me`).
+2. **Reference by name in committed files.** Always `${POSTGRES_PASSWORD}`, never the literal value.
+3. **`.env.example` is the required-names manifest.** Every name listed there is preflight-required. Names of non-sensitive Compose config that need a value at run time (e.g. `POSTGRES_DB=app`) belong in committed files directly (compose `environment:` literal, not `${VAR}`), not in `.env.example` "for cohesion".
+4. **Local overrides via `.env` OR `docker-compose.override.yml`.** Both gitignored. Pick one home per var: `.env` for plain compose substitution, override file when the override needs to add ports / build args / volumes too.
+5. **CI uses a secret store.** The plugin does not pick one; the wrapper is one line per provider, the runner stays unchanged.
+6. **Preflight is fail-closed.** `task-regression` aborts before `docker compose up` if any name from `.env.example` is unresolved.
 
 ## Patterns
 
 ### `.env.example` shape
 
 ```bash
-# .regression/.env.example - committed
-# Copy to `.env` and fill in real values. `.env` is gitignored.
-# All names must match references in services.yaml and docker-compose.regression.yml.
+# .regression/.env.example - committed; copy to .env and fill in real values.
+# Every name listed here is preflight-required.
 
-# --- database ---
-POSTGRES_PASSWORD=changeme         # used by db service and DATABASE_URL in api
-POSTGRES_DB=app                    # plain config, not sensitive; left here for cohesion
-
-# --- backend ---
-JWT_SIGNING_KEY=dev-only-32-byte-placeholder-replace
-STRIPE_API_KEY=sk_test_replace_me  # use a Stripe test-mode key only
-
-# --- frontend ---
-# (no sensitive values at frontend layer in this template)
+POSTGRES_PASSWORD=changeme         # consumed by services: db, api (via DATABASE_URL)
+JWT_SIGNING_KEY=dev-only-replace
+STRIPE_API_KEY=sk_test_replace_me  # use Stripe test-mode keys only
 ```
 
-Comments describe *which service consumes the var*, not the value. Placeholders are obviously fake (`changeme`, `replace_me`, `dev-only-...`) so a developer who forgets to edit them fails loudly.
+Comments describe which services consume the var. Placeholders are obviously fake so forgetting to edit fails loudly.
 
-### `services.yaml` reference shape
-
-Bad:
+### Reference shape
 
 ```yaml
-- name: api
-  env:
-    - { name: DATABASE_URL, value: "postgres://postgres:hunter2@db:5432/app" }
-    - { name: JWT_SIGNING_KEY, value: "actually-a-real-key-oops" }
+# BAD
+- { name: DATABASE_URL, value: "postgres://postgres:hunter2@db:5432/app" }
+- { name: JWT_SIGNING_KEY, value: "real-key" }
+
+# GOOD
+- { name: DATABASE_URL, value: "postgres://postgres:${POSTGRES_PASSWORD}@db:5432/app" }
+- { name: JWT_SIGNING_KEY, value: "${JWT_SIGNING_KEY}" }
 ```
 
-Good:
+### Resolution order for preflight
 
-```yaml
-- name: api
-  env:
-    - { name: DATABASE_URL, value: "postgres://postgres:${POSTGRES_PASSWORD}@db:5432/app" }
-    - { name: JWT_SIGNING_KEY, value: "${JWT_SIGNING_KEY}" }
-```
+`task-regression` calls this skill before `docker compose up`. The check, in order:
 
-Same rule for `docker-compose.regression.yml`. The compose `environment:` block uses `${VAR}` and Compose substitutes from the process env at `up` time.
-
-### Local override pattern
-
-Two equivalent options - document both, pick one per project:
-
-**Option A: `.env` file** (simpler, Compose loads it automatically when present beside `docker-compose.regression.yml`):
+1. Parse `.regression/.env.example` for the required-names set.
+2. Read the runner's process env.
+3. If `.regression/.env` exists, parse it (KEY=VALUE lines, no shell expansion) and merge - **process env wins over `.env`**. This matches how Compose's later `--env-file` resolution works once `up` runs.
+4. Compute the unresolved set.
+5. If non-empty, abort.
 
 ```
-.regression/.env             # gitignored, real values
-.regression/.env.example     # committed, placeholder values
+regression: cannot start - 2 required env vars unresolved (exit 2).
+
+Missing:
+  POSTGRES_PASSWORD     declared in .env.example
+  JWT_SIGNING_KEY       declared in .env.example
+
+Resolution:
+  cp .regression/.env.example .regression/.env && edit, OR
+  export the vars in your shell, OR
+  wrap the run with your secret store (op run / doppler run / gcloud / GH Actions env:).
+
+Note: process env wins over .env.
 ```
 
-**Option B: `docker-compose.override.yml`** (more flexible, allows port shifts and developer-specific tweaks alongside sensitive overrides):
+Names only, never values. Pluralization (`1 required env var unresolved`) follows the count.
 
-```yaml
-# .regression/docker-compose.override.yml - gitignored
-services:
-  db:
-    environment:
-      POSTGRES_PASSWORD: my-local-password
-  api:
-    ports: ["8080:8080"]                          # developer-only host port
-```
-
-Document the precedence in the plugin README: Compose merges override on top of base, and `.env` substitutions resolve before merge. Do not mix the same var across both - pick one home per var.
-
-### CI integration (wrap the runner)
-
-The skill does not pick a secret store. CI configs wrap the runner invocation with whatever the store provides:
+### CI integration (wrap the runner, do not template)
 
 ```bash
 # 1Password
 op run --env-file=.regression/.env.example -- /path/to/regression-runner
-
 # Doppler
 doppler run --project regression --config ci -- /path/to/regression-runner
-
-# GCP Secret Manager (via gcloud)
-eval "$(gcloud secrets versions access latest --secret=regression-env)" && /path/to/regression-runner
-
 # GitHub Actions
 - env:
     POSTGRES_PASSWORD: ${{ secrets.REGRESSION_POSTGRES_PASSWORD }}
@@ -116,55 +93,22 @@ eval "$(gcloud secrets versions access latest --secret=regression-env)" && /path
   run: /path/to/regression-runner
 ```
 
-The runner stays identical; only the wrapper changes. This is why the plugin does not ship CI templates - the wrapper is one line per provider and the rest is unchanged.
-
-### Pre-flight validation
-
-`task-regression` calls this skill before `docker compose up`. The check:
-
-1. Parse `.env.example` for the set of required names.
-2. Read process env (already merged with `.env` if present).
-3. Compute the unresolved set.
-4. If non-empty, abort with the format below.
-
-Error format:
-
-```
-regression: cannot start - 2 required env vars are unresolved.
-
-Missing:
-  POSTGRES_PASSWORD       (declared in .env.example, consumed by services: db, api)
-  JWT_SIGNING_KEY         (declared in .env.example, consumed by services: api)
-
-Resolution:
-  cp .regression/.env.example .regression/.env && edit it, OR
-  export the vars in your shell, OR
-  wrap the run with your secret store: op run / doppler run / gcloud / ...
-
-See .regression/.env.example for placeholder values and per-var descriptions.
-```
-
-Never proceed past this check. A run that starts with a missing sensitive value fails opaquely inside the container with no audit trail.
-
 ### Detection of accidentally-committed sensitive values
 
-A best-effort guard, not a replacement for repo-level secret scanning:
-
-- `regression-service-inventory` rejects any `services.yaml` entry where an env `value` contains characters outside `[A-Za-z0-9_${}/.@:-]` *and* does not start with `${`. Heuristic, but catches the common case (a pasted production password).
-- The skill recommends enabling the user's preferred secret scanner (`gitleaks`, `trufflehog`, GitHub secret scanning) at repo level - it does not ship one.
+The plugin does **not** ship an inline-secret scanner; lexically, a leaked Stripe key (`sk_test_4eC3...`) is indistinguishable from a benign DB name. Recommend a repo-level secret scanner (`gitleaks`, `trufflehog`, GitHub secret scanning) in `.regression/`'s host repo. This skill's gate is structural (Rule 2: reference, never inline), not heuristic.
 
 ## Output Format
 
-- `.regression/.env.example` (committed) - the placeholder file.
-- A `.gitignore` block contribution: `.regression/.env` and `.regression/docker-compose.override.yml` (the discover workflow appends these).
-- A pre-flight error message (above format) emitted by `task-regression` when validation fails.
+- `.regression/.env.example` (committed).
+- `.gitignore` recommendation surfaced to the discover workflow: `.regression/.env`, `.regression/docker-compose.override.yml`. The discover workflow appends; this skill does not auto-edit `.gitignore`.
+- The preflight error message above when validation fails. Exit code `2`.
 
 ## Avoid
 
-- **Inline sensitive values** anywhere committed.
-- **Real values in `.env.example`.** Placeholders only. A "real but expired" value tempts revival.
-- **Mixing `.env` and `override.yml` for the same var.** Hard to reason about precedence; pick one home per var.
-- **`.env` committed.** Always gitignored. The `.example` suffix is the committed sibling.
-- **Skipping pre-flight.** A run that starts with missing values fails opaquely; the user wastes minutes debugging.
-- **Picking a secret store for the user.** The plugin wraps. The user picks.
-- **Storing sensitive values in Dockerfiles.** `ARG` and `ENV` in a Dockerfile bake into the image layer; reference at `services.yaml` / compose level instead.
+- Inline sensitive values anywhere committed.
+- Real values in `.env.example`. Even "expired" tempts revival.
+- Mixing `.env` and `override.yml` for the same var.
+- `.env` committed.
+- Skipping preflight.
+- Picking a secret store for the user.
+- Sensitive values in Dockerfiles (`ARG`/`ENV` bake into image layers).

@@ -9,63 +9,49 @@ user-invocable: false
 
 # Regression Report Format
 
-> Consumes JUnit XML from `npx playwright test --reporter=junit` plus verdict labels from `regression-flakiness-triage`. Emits `.regression/reports/<runId>/summary.md` with fixed section headers so CI can grep without parsing YAML.
+> Consumes Playwright JUnit XML, the triage blob from `regression-flakiness-triage`, and the lifecycle metadata block from `regression-runner` (`runId`, `composeProject`, `profile`, image digests, `playwrightVersion`, `node`). Emits `.regression/reports/<runId>/summary.md`.
 
 ## When to Use
 
-- During `task-regression` after Playwright finishes and `regression-flakiness-triage` has classified each failure.
-- Once per run. The summary is not append-only; each run gets a new `<runId>` directory.
+- During `task-regression` after Playwright finishes and triage has classified each failure.
+- Once per run. Each run gets a new `<runId>` directory.
 
 ## Rules
 
-1. **Fixed section headers.** `## Verdict`, `## Counts`, `## Per-Flow`, `## Failure Clusters`, `## Run Metadata`. Headers are exact strings, in this order. CI greps them.
-2. **One verdict per flow.** Exactly one of `Pass | Fail | Flake | Infra | Seed-drift`. Pulled from `regression-flakiness-triage` for failures; `Pass` if all retries green.
-3. **Cluster identical failures.** Group by `(error-class, top-3-stack-frames)`. Report the cluster once at the top with the count and a list of affected scenarios. Do not duplicate the error body per scenario.
-4. **Exit-code rule.** Exit non-zero **only if any flow's verdict is `Fail` (real-bug)**. `Flake`, `Infra`, `Seed-drift` exit zero but are surfaced loudly in `## Verdict`.
-5. **Link, do not embed.** Traces, videos, screenshots are referenced by relative path under `reports/<runId>/`. The Markdown stays small enough to paste into a PR.
-6. **Truncate long error messages.** Cluster body shows first 20 lines + `... (N more lines, see <trace-link>)`.
+1. **Fixed section headers in this order:** `## Verdict`, `## Counts`, `## Per-Flow`, `## Failure Clusters`, `## Run Metadata`. Exact strings. CI greps them.
+2. **One verdict per flow.** From triage. Per-flow casing is `Pass | Fail | Flake | Infra | Seed-drift` (Title-case). The `## Verdict` block label is the UPPER-case mapping: real-bug count -> `**FAIL**`; zero real bugs with any flake/infra/seed-drift -> `**PASS-WITH-NOISE**`; zero real bugs and zero noise -> `**PASS**`.
+3. **`Fail` (table) = `**FAIL**` (block).** Same concept, two casings - intentional, this rule names them so CI matchers can target either.
+4. **Cluster identical failures** by `(error-class, top-3-stack-frames)`. Report the cluster body once with affected scenarios listed. Truncate body to first 20 lines + `... (N more lines, see <trace-link>)`. Clustering applies only to `Fail` and `Flake` failures - `Infra` and `Seed-drift` failures bypass clustering (the error class is the verdict).
+5. **Exit-code rule.** Process exit non-zero iff any flow's verdict is `Fail`. Flake / Infra / Seed-drift never block the pipeline. The exit code is the contract; the verdict label is for humans.
+6. **Link, do not embed traces.**
+7. **Zero-failures section handling.** `## Failure Clusters` always exists; its body is `_None._` when no failures.
 
 ## Patterns
 
 ### Verdict semantics
 
-| Verdict      | Meaning                                                            | Contributes to non-zero exit |
-| ------------ | ------------------------------------------------------------------ | ---------------------------- |
-| `Pass`       | All assertions green on first attempt                              | No                           |
-| `Fail`       | Real-bug classification from `regression-flakiness-triage`         | Yes                          |
-| `Flake`      | Passed on retry without code change                                | No                           |
-| `Infra`      | Container exit / healthcheck / network failure before assertions   | No                           |
-| `Seed-drift` | Assertion failed on a row a fresh seed should have produced        | No                           |
+| Verdict | Meaning | Non-zero exit? |
+| --- | --- | --- |
+| `Pass` | Green on first attempt | No |
+| `Fail` | Real-bug from triage | Yes |
+| `Flake` | Passed on retry, no code change | No |
+| `Infra` | Container exit / healthcheck / network before assertions | No |
+| `Seed-drift` | Assertion failed on a row a fresh seed should have produced | No |
 
 ### Failure-cluster grouping
 
-Bad - one entry per failing scenario:
-
 ```
+# BAD: one entry per failing scenario
 - order-checkout-happy: TimeoutError: locator.click 'Place order' (45s)
 - order-checkout-refund: TimeoutError: locator.click 'Place order' (45s)
-- order-checkout-coupon: TimeoutError: locator.click 'Place order' (45s)
-```
 
-Good - one cluster, affected scenarios listed:
-
-```
-### Cluster 1 (3 scenarios) - TimeoutError on `locator.click 'Place order'`
-Affected: order-checkout-happy, order-checkout-refund, order-checkout-coupon
+# GOOD: one cluster with affected list
+### Cluster 1 (2 scenarios) - TimeoutError on `locator.click 'Place order'`
+Affected: order-checkout-happy, order-checkout-refund
 First trace: traces/order-checkout-happy.zip
 ```
 
-### Per-flow table
-
-```
-| Flow                          | Verdict     | Duration | Trace                                    |
-| ----------------------------- | ----------- | -------- | ---------------------------------------- |
-| order-checkout-happy          | Fail        | 12.4s    | traces/order-checkout-happy.zip          |
-| user-signup-email-verify      | Pass        | 4.1s     | -                                        |
-| admin-refund-flow             | Flake       | 8.7s     | traces/admin-refund-flow.zip             |
-```
-
-### Exact `summary.md` template
+### `summary.md` template
 
 ```markdown
 # Regression Run <runId>
@@ -73,8 +59,6 @@ First trace: traces/order-checkout-happy.zip
 ## Verdict
 
 **FAIL** - 1 real-bug failure. 2 flakes, 0 infra, 0 seed-drift surfaced separately.
-
-(Or: **PASS** / **PASS-WITH-NOISE** when no real bugs but flake/infra/seed-drift > 0.)
 
 ## Counts
 
@@ -89,19 +73,18 @@ First trace: traces/order-checkout-happy.zip
 
 ## Per-Flow
 
-| Flow                          | Verdict     | Duration | Trace                                    |
-| ----------------------------- | ----------- | -------- | ---------------------------------------- |
-| order-checkout-happy          | Fail        | 12.4s    | traces/order-checkout-happy.zip          |
-| ...                           | ...         | ...      | ...                                      |
+| Flow | Verdict | Duration | Trace |
+| --- | --- | --- | --- |
+| order-checkout-happy | Fail | 12.4s | traces/order-checkout-happy.zip |
 
 ## Failure Clusters
 
-### Cluster 1 (1 scenario) - AssertionError: expected status 201, got 500
+### Cluster 1 (1 scenario) - AssertionError: expected 201, got 500
 Affected: order-checkout-happy
 First trace: traces/order-checkout-happy.zip
 Error head:
 ```
-AssertionError: expected status 201, got 500
+AssertionError: expected 201, got 500
   at scenarios/api/order-checkout.spec.ts:42:18
   at scenarios/api/order-checkout.spec.ts:38:5
 ... (14 more lines, see traces/order-checkout-happy.zip)
@@ -109,55 +92,67 @@ AssertionError: expected status 201, got 500
 
 ## Run Metadata
 
-- runId: 2026-06-01T14-32-07-a1b2c3
-- composeProject: regression-2026-06-01T14-32-07-a1b2c3
+- runId: 20260601T143207-a1b2c3
+- composeProject: regression-20260601T143207-a1b2c3
 - profile: local-build
 - duration: 3m 47s
 - imageDigests:
-  - api: ghcr.io/acme/api@sha256:abc...
-  - web: ghcr.io/acme/web@sha256:def...
-  - db: postgres@sha256:fed...
+  - api: ghcr.io/acme/api@sha256:<full-digest>
+  - web: ghcr.io/acme/web@sha256:<full-digest>
+  - db: postgres@sha256:<full-digest>
 - playwrightVersion: 1.49.0
 - node: v20.10.0
 ```
 
+### Verdict block examples (one per label)
+
+```
+**FAIL** - {N} real-bug failure{s}. {flakes} flakes, {infra} infra, {seed-drift} seed-drift surfaced separately.
+**PASS-WITH-NOISE** - 0 real bugs. {flakes} flakes, {infra} infra, {seed-drift} seed-drift surfaced - read the report.
+**PASS** - All {N} scenarios green.
+```
+
+Pluralization follows the count (`1 real-bug failure` / `2 real-bug failures`).
+
 ### CI-grep contract
 
-CI can rely on:
+- `grep '^## Verdict$' summary.md` finds the verdict block header. The label is on the **next non-empty line**, prefixed with `**FAIL**` / `**PASS**` / `**PASS-WITH-NOISE**` (one of three; mutually exclusive).
+- `## Counts` lists `- <Label>: <number>` lines with stable labels: `Total`, `Passed`, `Failed`, `Flake`, `Infra`, `Seed-drift`, `Skipped`, `Duration`.
 
-- `grep -E '^## Verdict$' summary.md` finds the top verdict block.
-- The line after `## Verdict` starts with `**FAIL**`, `**PASS**`, or `**PASS-WITH-NOISE**`.
-- `## Counts` block has one `- <Label>: <number>` per line, labels are stable identifiers (`Total`, `Passed`, `Failed`, `Flake`, `Infra`, `Seed-drift`, `Skipped`).
+### Image digests
 
-### JUnit XML normalization
+Always full sha256 (`sha256:` followed by 64 hex chars). Never truncated - CI compares for reproducibility.
 
-Playwright's JUnit reporter emits one `<testsuite>` per `.spec.ts`. Normalize:
+### JUnit normalization
 
-- One `<testcase>` -> one flow row.
-- `<failure>` body -> cluster grouping input.
-- `<skipped>` -> Skipped count, no row in `## Per-Flow`.
-- `time` attr -> Duration column.
+- One `<testcase>` -> one `## Per-Flow` row.
+- `<failure>` body -> clustering input (Fail / Flake only).
+- `<skipped>` -> Skipped count; no `## Per-Flow` row.
+- `time` -> Duration column (`Xs` / `X.Xs` precision).
+
+### When the lifecycle metadata block is missing
+
+If `regression-runner` did not supply image digests / runId / etc. (legacy invocation or partial input), write `unknown` for each missing field rather than omitting the bullet - the CI contract requires the line to exist.
 
 ## Output Format
 
-`.regression/reports/<runId>/summary.md` (gitignored), plus sibling artifacts:
+`.regression/reports/<runId>/summary.md` + sibling artifacts:
 
 ```
 .regression/reports/<runId>/
   summary.md
-  junit.xml                # raw Playwright output
+  junit.xml
   traces/<scenario>.zip
   videos/<scenario>.webm
   screenshots/<scenario>.png
 ```
 
-The summary is the contract; everything else is linked from it.
-
 ## Avoid
 
-- **Embedding full stack traces.** Link the trace zip; keep the report PR-pastable.
-- **Reporting the same error N times.** Cluster first, then list affected scenarios.
-- **Mixing verdicts.** A scenario is `Fail` *or* `Flake` *or* `Infra` *or* `Seed-drift`, never two.
-- **Non-zero exit on flake/infra/seed-drift.** Only `Fail` blocks the pipeline; the other three are loud but green.
-- **Free-form section names.** CI greps the fixed headers. Renaming breaks the contract.
-- **Appending to an existing run's summary.** Each run gets a new `<runId>` directory.
+- Embedding full stack traces.
+- Reporting the same error N times instead of clustering.
+- Mixing verdicts.
+- Non-zero exit on flake / infra / seed-drift.
+- Free-form section names.
+- Appending to an existing run's summary.
+- Truncating image digests.

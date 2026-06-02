@@ -9,106 +9,71 @@ user-invocable: false
 
 # Regression Flakiness Triage
 
-> Triage, not a re-runner. This skill never re-executes a test. It reads JUnit XML, container exit codes, seed file mtimes, and `.regression/runs/` history to assign each failure to exactly one of four buckets. The verdicts feed `regression-report-format`.
+> Triage, not a re-runner. Reads JUnit XML, container exit codes from the runner's `docker compose ps` snapshot, seed-file mtimes, and `.regression/runs/` history. Never re-executes a test. Verdicts feed `regression-report-format`.
 
 ## When to Use
 
-- During `task-regression` after Playwright finishes, before `regression-report-format` writes the summary.
-- Once per run. Output is consumed by the report skill, not by the user directly.
+- During `task-regression` after Playwright finishes, before `regression-report-format` writes `summary.md`.
+- Once per run.
 
 ## Rules
 
-1. **Exactly one bucket per failure.** `real-bug | flake | infra | seed-drift`. No "mostly a flake" - pick.
-2. **No automatic retries.** Retries hide bugs. Playwright's own per-test retry config is a separate, explicit opt-in surfaced in the report; this skill does not invoke it.
-3. **Signals over instinct.** Each classification cites at least one signal from the table below. No signals = `real-bug` (fail-closed).
-4. **Rotting-suite gate.** If `flake / (flake + real-bug)` across the current run exceeds the threshold (default `0.15`), the report's `## Verdict` block prepends a `SUITE ROTTING` warning telling the user to fix infra/seeds before chasing assertions.
-5. **Trend, not just snapshot.** Read the last N runs from `.regression/runs/` (default `N=10`) and emit the per-flow flake rate. A flow flaky in 7/10 runs is louder than one flaky once.
+1. **Exactly one bucket per failure.** `real-bug | flake | infra | seed-drift`.
+2. **No automatic retries.** Playwright's own retry config is a user-set opt-in; this skill reports retry results, never invokes them.
+3. **Signals are evidence; `real-bug` is the default.** The `real-bug` bucket has no positive signals - it is fall-through. The `signals` field for a real-bug verdict carries the reason it fell through (e.g. `"no infra/seed/flake signals matched"`) plus any positive real-bug indicators (HTTP 5xx, backend exception correlated with the failing request, deterministic reproduction across runs).
+4. **Rotting-suite gate.** Default threshold `0.15` over `(flake / (flake + real-bug))` for the current run. Configurable in `.regression/config.json`. When tripped, the report's `## Verdict` prepends a `SUITE ROTTING` warning. Does not change exit code.
+5. **Trend column, not trend verdict.** Per-flow flake rate across last `N` runs (default 10) is a column in the report; it does not change the current verdict.
+6. **No codemap read.** Service paths come from `services.yaml#source.path`. The skill never opens `.codemap/`.
 
 ## Patterns
 
-### Classification signal table
+### Decision order (first match wins)
 
-| Bucket        | Required signals (any one suffices)                                                                                                                                                                                                                                                                                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `infra`       | Container exit code != 0 in `docker compose ps` snapshot taken at run end. Healthcheck never reached `healthy` within the configured retries. Network error class: `ECONNREFUSED`, `EAI_AGAIN`, `ETIMEDOUT` before any assertion ran. Docker daemon error in `runner` log.                                                                                                            |
-| `seed-drift`  | The failing assertion targets a row/value present in `.regression/seeds/**`. AND any seed file's mtime is newer than the run's last green run timestamp for this flow. OR seed apply phase logged a non-fatal warning (e.g. `ON CONFLICT DO NOTHING` skipped an expected row because schema columns changed).                                                                       |
-| `flake`       | Playwright retry within the same run passed (only when per-test retries are explicitly enabled in `playwright.config.ts`). OR the same `(scenario, error-class, top-frame)` tuple alternates pass/fail across the last N runs with no commit to the relevant scenario or service in between (mine git log via codemap-known service paths or `services.yaml#source`).                |
-| `real-bug`    | Default when no other bucket's signals match. Also the explicit bucket for: assertion failures with deterministic reproduction, HTTP 5xx from the backend, exception in container logs correlated with the failing scenario's request, schema-mismatch errors from the backend itself.                                                                                              |
-
-### Decision order
-
-Evaluate in this order; first match wins:
-
-1. `infra` - check container exit codes and healthcheck status first. If the system was not up, no test verdict is meaningful.
-2. `seed-drift` - check seed mtimes and apply-phase warnings. A failed assertion against a missing fixture row is not a bug in the backend.
-3. `flake` - check retry result and cross-run alternation. Requires evidence; never a guess.
-4. `real-bug` - fall-through.
-
-### Bad / good triage example
-
-Bad - vague bucket assignment:
-
-```
-order-checkout-happy: flaky (sometimes fails)
-```
-
-Good - signal-cited assignment:
-
-```
-order-checkout-happy: flake
-  signals:
-    - alternates pass/fail across runs 7,8,9 (no commits to api/ or scenarios/api/order-checkout.spec.ts)
-    - same top-frame: locator.click 'Place order' at 'order-checkout.spec.ts:42'
-```
+1. **`infra`** - the system was not up: container exit != 0 at run end, healthcheck never reached `healthy`, network error class (`ECONNREFUSED`, `EAI_AGAIN`, `ETIMEDOUT`) before any assertion, Docker daemon error in runner log.
+2. **`seed-drift`** - the assertion targets a row that fresh seeds should have produced: the failing assertion's target identifier matches a literal in `.regression/seeds/**`, AND (any seed file mtime is newer than the last green run for this flow OR the seed apply phase logged a non-fatal warning for that file).
+3. **`flake`** - non-deterministic execution: Playwright's own retry within the same run passed (config has retries > 0), OR the same `(scenario, error-class, top-frame)` tuple alternated pass/fail across the last `N` runs with no commit to the relevant scenario file or to any sibling service path (from `services.yaml#source.path`). Partial-tuple alternation (top-frame missing because the trace truncated) does not satisfy `flake`; fall through to `real-bug`.
+4. **`real-bug`** - fall-through. Cite either the fall-through reason or any positive indicator listed in Rule 3.
 
 ### Cross-run history shape
 
-`.regression/runs/<runId>/index.json` (gitignored, one per run):
+`.regression/runs/<runId>/triage.json` (gitignored, one per run):
 
 ```json
 {
-  "runId": "2026-06-01T14-32-07-a1b2c3",
-  "startedAt": "2026-06-01T14:32:07Z",
-  "endedAt": "2026-06-01T14:35:54Z",
-  "profile": "local-build",
+  "runId": "20260601T143207-a1b2c3",
   "perFlow": {
-    "order-checkout-happy": { "verdict": "flake", "durationMs": 12400, "errorClass": "TimeoutError", "topFrame": "order-checkout.spec.ts:42" },
-    "user-signup-email-verify": { "verdict": "pass", "durationMs": 4100 }
+    "order-checkout-happy": { "verdict": "flake", "errorClass": "TimeoutError", "topFrame": "order-checkout.spec.ts:42" },
+    "user-signup": { "verdict": "pass" }
   }
 }
 ```
 
-The triage skill reads the last N (default 10) of these to compute per-flow flake rate.
+Trend reads the last `N` of these. `flakeRate` in the per-flow output is `"<F>/<N>"` for flake verdicts and unset for others.
 
-### Per-flow flake-rate output
-
-Surfaced in the report under `## Per-Flow` as an extra column or footnote:
+### Per-flow report column
 
 ```
-| Flow                  | Verdict | Duration | Flake-rate (last 10) |
-| --------------------- | ------- | -------- | -------------------- |
-| order-checkout-happy  | flake   | 12.4s    | 7/10                 |
+| Flow | Verdict | Duration | Flake-rate (last 10) |
+| --- | --- | --- | --- |
+| order-checkout-happy | flake | 12.4s | 7/10 |
+| user-signup | pass | 4.1s | - |
 ```
 
-### Rotting-suite threshold
+### Rotting-suite warning
 
-Default `0.15`. Configurable in `.regression/config.json`:
-
-```json
-{ "flakiness": { "rottingThreshold": 0.15, "historyWindow": 10 } }
-```
-
-When tripped, the report's `## Verdict` block leads with:
+When the ratio trips the threshold:
 
 ```
-**SUITE ROTTING** - flake ratio 0.42 exceeds threshold 0.15. Fix infra and seeds before chasing assertion failures.
+**SUITE ROTTING** - flake ratio 0.42 exceeds threshold 0.15.
+{If infra > 0 OR seed-drift > 0:}  Fix infra and seeds before chasing assertion failures.
+{Otherwise:}                       Investigate the alternating tests; assertions are probably correct.
 ```
 
-This does not change exit code. It changes the human's reading order.
+Two messages: one when infra/seeds carry blame, one when the flake is pure assertion / timing churn.
 
 ## Output Format
 
-A JSON blob handed to `regression-report-format`:
+JSON handed to `regression-report-format` and written to `.regression/runs/<runId>/triage.json`:
 
 ```json
 {
@@ -116,25 +81,27 @@ A JSON blob handed to `regression-report-format`:
     {
       "flow": "order-checkout-happy",
       "verdict": "flake",
-      "signals": ["alternates across runs 7-9", "top-frame stable"],
+      "signals": ["alternates runs 7-9; no commits to api/ or scenarios/api/order-checkout.spec.ts"],
       "flakeRate": "7/10"
+    },
+    {
+      "flow": "gateway-route",
+      "verdict": "real-bug",
+      "signals": ["no infra/seed/flake signals matched"]
     }
   ],
-  "rottingSuite": {
-    "tripped": true,
-    "ratio": 0.42,
-    "threshold": 0.15
-  }
+  "rottingSuite": { "tripped": true, "ratio": 0.42, "threshold": 0.15 }
 }
 ```
 
-Verdicts in this blob are 1:1 with what the report renders. The blob is also written to `.regression/runs/<runId>/triage.json` for trend computation on the next run.
+`ratio` is rounded to 2 decimals.
 
 ## Avoid
 
-- **Auto-retrying failed tests.** This skill never invokes Playwright; it classifies what already ran.
-- **Guessing buckets.** No signal = `real-bug`. Don't mark something `flake` to keep the build green.
-- **Mixing verdicts per flow.** One bucket. The signals can be multiple; the bucket is one.
-- **Ignoring trend.** A flow flaky in 7/10 runs is a load-bearing warning, not a footnote.
-- **Reading codemap.** Cross-run history lives in `.regression/runs/`; service paths come from `services.yaml`. No codemap read at runtime.
-- **Treating `infra` as `real-bug`.** A container that never came up cannot have produced a real-bug assertion failure.
+- Auto-retrying failed tests.
+- Marking a failure `flake` to keep the build green.
+- Mixing verdicts per flow.
+- Treating `infra` as `real-bug` (the system wasn't up).
+- Reading codemap.
+- Trend-changing a current verdict.
+- Inferring `seed-drift` from `ON CONFLICT DO NOTHING` log lines on rows whose values do not appear in the failing assertion.
