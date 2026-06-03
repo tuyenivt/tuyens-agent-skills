@@ -1,6 +1,6 @@
 {
   "name": "codemap",
-  "version": "1.111.0",
+  "version": "1.112.0",
   "description": "Persistent codebase knowledge graph plugin: builds and syncs .codemap/graph.json via pure-LLM extraction with parallel sub-agents. Workflows: task-codemap (build/sync), task-codemap-ask (Q&A), task-codemap-guide (guided walkthroughs), task-codemap-explain (structured deep-dive). Opt-in auto-update hook on git commit/merge/rebase. Depends only on core.",
   "author": {
     "name": "Tuyen"

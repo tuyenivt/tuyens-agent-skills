@@ -10,33 +10,29 @@ user-invocable: true
 
 # Task: Regression Plan
 
-Read-only export. Joins `.regression/flows.yaml` with `.regression/scenarios/**/*.spec.ts` and emits a single Markdown document - the **test plan** - intended for QA leads, release managers, and auditors who need to see what the suite is supposed to verify (not what a run produced).
+Read-only export. Joins `.regression/flows.yaml` with `.regression/scenarios/**/*.spec.ts` and writes one Markdown file - the **test plan** - for QA leads, release managers, and auditors who need to see what the suite is supposed to verify, not what a run produced.
 
-Never mutates `flows.yaml`, scenarios, or any sibling repo. Output is one file: `.regression/test-plan.md` (or the path passed to `--out`). The coverage column (`covered` / `no-spec` / `orphan`) falls out of the join for free; deeper coverage analysis (redundancy, stale evidence) is out of scope and stays a separate future workflow.
+The skill never mutates `flows.yaml`, scenarios, or sibling repos. The Coverage column (`covered` / `kind-mismatch` / `no-spec` / `orphan`) falls out of the join; redundancy and stale-evidence analysis are out of scope.
 
 ## When to Use
 
-- Before a release: sign-off document showing what regression covers.
-- Handover / audit: give a non-engineer a readable inventory of intended verifications.
-- Onboarding: new team member needs to see the test surface without reading 40 `.spec.ts` files.
-- Periodically, to spot `no-spec` flows (uncovered intent) and `orphan` specs (drifted from declared flows).
+- Release sign-off: an inventory of intended verifications.
+- Handover / audit: a readable summary for non-engineers.
+- Onboarding: a single document instead of 40 `.spec.ts` files.
+- Periodic check: surface `no-spec` flows (uncovered intent), `kind-mismatch` rows (drift), and `orphan` specs (declared-flow gap).
 
-**Not for:**
-- A run report -> `task-regression` produces `reports/<runId>/summary.md` via `regression-report-format`.
-- Authoring or refreshing flows -> `task-regression-discover`.
-- Authoring a single scenario -> `task-regression-scenario`.
-- Deep coverage analysis (redundancy, staleness, evidence re-validation against sibling repos) -> not shipped; revisit when the suite has actually rotted.
+**Not for:** run reports (`task-regression`), authoring flows (`task-regression-discover`), authoring a scenario (`task-regression-scenario`), deeper coverage analysis (unshipped).
 
 ## Inputs
 
 | Input | Default | Notes |
 | --- | --- | --- |
-| `--out <path>` | `.regression/test-plan.md` | Output file. Relative to the test repo root. Parent directory must exist. |
-| `--group-by <flow-kind\|service\|none>` | `flow-kind` | Top-level grouping. `flow-kind` groups by `api` / `browser` / `mixed`. `service` groups by the `entryPoint.service`. `none` emits one flat sorted list. |
-| `--include-orphans` | on | Include an "Orphan scenarios" appendix listing `.spec.ts` files with no matching `flows.yaml` entry. Pass `--include-orphans=false` to suppress. |
-| `--format <markdown>` | `markdown` | Only Markdown ships in v1. Reserved for future `csv` / `html` without forcing a flag rename. |
+| `--out <path>` | `.regression/test-plan.md` | Output file, relative to the test repo root. Parent directory must already exist (skill does not create it). |
+| `--group-by <flow-kind\|service\|none>` | `flow-kind` | `flow-kind`: groups by `api` / `browser` / `mixed`. `service`: groups by `entryPoint.service` only (a flow appears under one service even when its hops touch others). `none`: flat alphabetical list. |
+| `--include-orphans` | on | Pass `--include-orphans=false` to omit the appendix. |
+| `--force` | off | Overwrite `--out` without the diff-confirm prompt. Use for scripted runs. |
 
-**Working directory.** Invoke from the test repo root (the directory containing `.regression/`). All paths below are relative to that root.
+Invoke from the test repo root (the directory containing `.regression/`). All paths below are relative to that root.
 
 ## Workflow
 
@@ -46,58 +42,72 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Preflight
 
-In order; first failure stops with the named remediation:
+In order; the first failure aborts with the named message:
 
-1. `.regression/flows.yaml` exists. Missing -> abort with `task-regression-plan: .regression/flows.yaml not found; run /task-regression-discover first.`
-2. `.regression/scenarios/` exists. Missing -> warn and continue (every flow will render as `no-spec`; orphan appendix will be empty). Do not abort - a plan with all gaps is still a useful document.
-3. `--out` parent directory exists. Missing -> abort with `task-regression-plan: parent directory of <path> does not exist.`
-4. **No codemap / OpenAPI / sibling-repo read.** Plan generation is offline against `.regression/` only.
+1. `.regression/flows.yaml` exists. Missing -> `task-regression-plan: .regression/flows.yaml not found; run /task-regression-discover first.`
+2. `.regression/scenarios/` exists. Missing -> warn and continue (every flow will render `no-spec`, orphan appendix empty). A gap-only plan is still useful.
+3. `--out` parent directory exists. Missing -> `task-regression-plan: parent directory of <path> does not exist. Create it (mkdir -p <parent>) or rerun with --out under an existing directory; this workflow does not create directories.`
+
+No codemap / OpenAPI / sibling-repo read at any point - generation is offline against `.regression/`.
 
 ### Step 3 - Load Flows
 
-Parse `.regression/flows.yaml`. For each entry read: `name`, `kind`, `entryPoint`, `hops`, `observableOutcome`, `evidence`, and any optional fields the user added (`owner`, `tags`, `priority`, `status`). Unknown fields are passed through into the plan's "Additional fields" sub-row - never dropped, never validated. Schema authority remains with `regression-flow-extract` (Patterns / Candidate shape); this skill is a reader.
+Parse `.regression/flows.yaml`. For each entry read every field present. Schema authority remains `regression-flow-extract`; this skill is a reader.
 
-Unresolved `<USER FILL>` markers in any flow field are surfaced verbatim in the plan, prefixed `<USER FILL>` so the reader sees them as gaps. The plan does not abort on them - it documents them. (`task-regression-scenario` is the gate that refuses to scaffold unresolved markers; this workflow is documentation.)
+**Field handling:**
+
+- **Known structured fields** (`name`, `kind`, `entryPoint`, `hops`, `observableOutcome`, `evidence`) drive the per-flow lines in Output Format.
+- **Every other field** (`owner`, `priority`, `tags`, `status`, ...) passes through into the `Additional fields` sub-row verbatim. No allow-list; nothing is dropped, nothing is validated.
+- **Flow-level `tags:`** is independent from test-title `@tags`. Flow-level `tags` ride under `Additional fields`; test-title `@tags` are extracted in Step 4. Same word, different namespaces.
+- **`evidence:` shape.** Map -> render as comma-separated `key: value` pairs. Scalar `skeleton` -> render `_skeleton_`. List -> render as `[v1, v2, ...]`. Multi-line strings collapse to single line.
+- **`<USER FILL>` markers** render verbatim, unchanged. Do not abort - the plan documents gaps; `task-regression-scenario` is the gate that refuses unresolved markers.
+- **Duplicate flow names.** Warn once at the top of Summary (`duplicate flow names: <list>`) and render every occurrence; do not dedupe.
 
 ### Step 4 - Scan Scenarios
 
 Glob `.regression/scenarios/**/*.spec.ts`. For each file:
 
-- Derive `flow-name` from the basename (`<flow>.spec.ts` -> `<flow>`). This is the join key, set by `regression-scenario-author` Rule 1.
-- Derive `kind` from the parent directory (`scenarios/api/...` -> `api`, `browser` -> `browser`, `mixed` -> `mixed`). Files under `scenarios/` but not in one of these three subdirectories are recorded as `unknown-kind` orphans.
-- Parse the file as text (no execution, no AST). Extract:
-  - Every `test(...)` title via regex `test\(\s*["'\`]([^"'\`]+)["'\`]`. Tags are substrings starting with `@` inside the title (e.g. `@smoke`, `@negative`, `@flake`).
-  - `// flake (REG-\d+|TODO-[a-z0-9-]+); remove after fix` comments (the `regression-scenario-author` Rule 5 marker) - listed under "Known flake markers" for that flow.
-- Do not attempt to validate POM imports, fixture usage, or assertion shape. The plan is descriptive, not a lint.
+- **Flow name** = basename without `.spec.ts` (join key, set by `regression-scenario-author` Rule 1).
+- **Spec kind** = parent directory name if `api` / `browser` / `mixed`; else `unknown-kind` (treated as orphan).
+- **Tests + tags.** Extract every `test(...)` title via `test\(\s*["'\`]([^"'\`]+)["'\`]`. Tags are substrings beginning with `@` (e.g. `@smoke`, `@negative`, `@flake`). Only `@negative` drives the `Negative cases:` line; other tags ride along inside the verbatim test title. This is deliberate - extending to more structured tag projections is a separate workflow.
+- **Flake markers.** Match `// flake \((REG-\d+|TODO-[a-z0-9-]+)\)` (the rest of the line is ignored - permissive on purpose so a missing `; remove after fix` suffix does not silently drop the marker).
+
+No execution, no AST, no POM / fixture / assertion lint.
 
 ### Step 5 - Join and Classify
 
-Build the join table keyed by flow name. Each row gets a `coverageStatus`:
+Key by flow name = spec basename.
 
 | Status | Condition |
 | --- | --- |
-| `covered` | flow entry exists in `flows.yaml` AND a `.spec.ts` exists at `scenarios/<kind>/<name>.spec.ts` AND its parent-dir `kind` matches the flow's declared `kind` |
-| `kind-mismatch` | flow entry + spec both exist, but the spec lives under a different `<kind>/` than the flow declares (rare, indicates a manual move; surfaced so the user can fix one or the other) |
+| `covered` | flow entry exists, matching spec exists, spec's parent-dir kind matches flow's declared kind |
+| `kind-mismatch` | flow entry + spec both exist, kinds differ |
 | `no-spec` | flow entry exists, no matching spec file |
-| `orphan` | spec file exists, no matching flow entry |
+| `orphan` | spec exists, no flow entry (appendix only, not in main table) |
 
-Orphans are not rows in the main table - they go in the appendix (Step 6).
+**`kind-mismatch` rendering convention.** Group by the flow's **declared** kind (source of truth = `flows.yaml`). The `Kind:` row line shows the declared kind. The `Scenario file:` line shows the **actual on-disk path** (since that's what the user has to act on). Append `(declared kind <X>, found under <Y>/)` to the file line to make the drift visible.
 
 ### Step 6 - Emit Plan
 
-Write to `--out` (default `.regression/test-plan.md`). If the file exists, show a unified diff and ask `replace / cancel`. Never silently overwrite. The exact section order is fixed (see Output Format) - downstream tooling may grep these headers.
+Write to `--out` (default `.regression/test-plan.md`). Use the section headers in Output Format verbatim - downstream tooling may grep them.
+
+If the file exists and `--force` is not set, show a unified diff and ask `replace / cancel`. With `--force`, overwrite silently.
+
+**Sort order.** Groups sorted alphabetically by label; flows within a group sorted alphabetically by name.
 
 ### Step 7 - Summary
 
-Print a short summary to the user: total flows, covered / no-spec / kind-mismatch / orphan counts, output path. Do not duplicate the document body in the console.
+Print to the console: total flows, per-bucket counts (`covered` / `kind-mismatch` / `no-spec` / `orphan`), grouping mode, output path. Do not duplicate the document body.
 
 ## Output Format
+
+Timestamp is ISO-8601 UTC (deterministic across re-runs). Use `_missing_` for absent values and `_none_` for empty lists. Omit lines with no data when explicitly marked "omit if empty" below.
 
 ```markdown
 # Regression Test Plan
 
 **Workspace:** .regression/
-**Generated at:** {ISO timestamp}
+**Generated at:** {ISO-8601 UTC}
 **Group-by:** {flow-kind | service | none}
 
 ## Summary
@@ -112,43 +122,36 @@ Print a short summary to the user: total flows, covered / no-spec / kind-mismatc
 
 ## Flows
 
-### {group label - e.g. "Kind: mixed" or "Service: api" or "All flows"}
+### {group label - e.g. "Kind: mixed", "Service: gateway-api", "All flows"}
 
 #### {flow-name}
 
-- **Coverage:** {covered | no-spec | kind-mismatch | orphan}
-- **Kind:** {api | browser | mixed}
+- **Coverage:** {covered | kind-mismatch | no-spec | orphan}
+- **Kind:** {declared kind from flows.yaml}
 - **Entry point:** {service} - {action}
 - **Steps:**
   1. {hop.from} -> {hop.to}: {hop.call}
-  2. ...
 - **Expected outcome:**
   - {observableOutcome[0]}
-  - ...
-- **Negative cases:** {list of test() titles tagged @negative, or `_None declared._`}
-- **Evidence:** {comma-separated `key: value` from flow.evidence, or `_skeleton_` for evidence: skeleton}
-- **Scenario file:** `.regression/scenarios/{kind}/{name}.spec.ts` (or `_missing_` for no-spec)
-- **Tests in file:** {comma-separated test titles, or `_n/a_` for no-spec}
-- **Known flake markers:** {list of `REG-... / TODO-...` tokens from `// flake` comments, or omitted if none}
-- **Additional fields:** {`owner: ...`, `priority: ...`, etc. from flows.yaml, or omitted if none}
-
-... (repeat per flow within group)
-
-... (repeat per group)
+- **Negative cases:** {comma-separated test titles tagged @negative, or `_none_`}
+- **Evidence:** {comma-separated `key: value`, `_skeleton_`, or list form}
+- **Scenario file:** {actual on-disk path, or `_missing_`} {append `(declared kind <X>, found under <Y>/)` for kind-mismatch}
+- **Tests in file:** {comma-separated test titles, or `_missing_`}
+- **Known flake markers:** {comma-separated tokens} _(omit if none)_
+- **Additional fields:** {`key: value` pairs from non-known flow fields} _(omit if none)_
 
 ## Orphan scenarios
 
-Scenario files under `.regression/scenarios/` with no matching entry in `flows.yaml`. Either add a flow entry (run `/task-regression-discover --refresh-flows` and accept the candidate, or hand-author the entry) or delete the file.
+Scenario files under `.regression/scenarios/` with no matching entry in `flows.yaml`. Add a flow entry (`/task-regression-discover --refresh-flows`) or delete the file.
 
-- `.regression/scenarios/{kind}/{name}.spec.ts` - {comma-separated test titles}
-- ...
+- `.regression/scenarios/{kind}/{name}.spec.ts` - {test titles}
 
-(Omitted entirely if `--include-orphans=false` or no orphans.)
+_(Omit section if `--include-orphans=false` or no orphans.)_
 
 ## Next
 
-- `no-spec` flows: `/task-regression-scenario "<flow-name>"` to scaffold.
-- `orphan` scenarios: add the missing `flows.yaml` entry or delete the spec.
+- `no-spec` flows: `/task-regression-scenario "<flow-name>"`.
+- `orphan` scenarios: add a `flows.yaml` entry or delete the spec.
 - `kind-mismatch`: move the spec file or fix the flow's `kind:` declaration.
 - Run the suite: `/task-regression`.
 ```
@@ -156,20 +159,20 @@ Scenario files under `.regression/scenarios/` with no matching entry in `flows.y
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded.
-- [ ] Step 2: `flows.yaml` exists; `scenarios/` absence warned but did not abort; `--out` parent directory verified; no codemap / OpenAPI / sibling-repo read.
-- [ ] Step 3: every `flows.yaml` entry parsed; unknown fields passed through; `<USER FILL>` markers surfaced verbatim, not silently filtered.
-- [ ] Step 4: every `.spec.ts` under `scenarios/` scanned by text; `test()` titles and tags extracted; flake-marker comments captured; no execution, no AST.
-- [ ] Step 5: join keyed by flow name (= spec basename); `covered` / `no-spec` / `kind-mismatch` / `orphan` assigned per the table; orphan list deferred to appendix.
-- [ ] Step 6: output file written at `--out`; pre-existing file diffed and confirmed before replace; fixed section headers used verbatim.
-- [ ] Step 7: summary printed (counts + output path); document body not duplicated in console.
+- [ ] Step 2: preflight checks ran in order; abort messages used verbatim where applicable; no sibling-repo / codemap / OpenAPI read.
+- [ ] Step 3: every flow parsed; non-known fields passed through to `Additional fields`; `<USER FILL>` rendered verbatim; `evidence` shape handled per the rules.
+- [ ] Step 4: every `.spec.ts` scanned by text; `test()` titles + `@`-tags extracted; flake markers matched with the permissive regex; no execution.
+- [ ] Step 5: every row classified per the four-status table; kind-mismatch rendered under declared kind with actual on-disk path.
+- [ ] Step 6: output written to `--out`; pre-existing file diffed and confirmed unless `--force`; verbatim section headers; sort order applied.
+- [ ] Step 7: console summary printed (counts + grouping + output path), document body not duplicated.
 
 ## Avoid
 
-- Mutating `flows.yaml`, scenarios, or sibling repos. This workflow is read-only.
-- Executing the suite or any scenario file. The plan is offline.
-- Reading codemap, OpenAPI, or sibling repos. Discovery-time inputs are not consulted here.
-- Silently overwriting an existing `--out` file. Always diff and confirm.
-- Inferring missing fields. `<USER FILL>` stays `<USER FILL>` in the plan.
-- Asserting redundancy or staleness. Those are separate (unshipped) analyses.
-- Embedding run results (pass/fail counts, durations). The plan is forward-looking intent, not run history.
-- Dropping unknown flow fields. Pass them through into "Additional fields".
+- Mutating `flows.yaml`, scenarios, or sibling repos.
+- Reading codemap, OpenAPI, or sibling repos.
+- Executing any scenario file.
+- Silently overwriting `--out` without `--force`.
+- Inferring or filling `<USER FILL>` markers.
+- Dropping non-known flow fields - they belong in `Additional fields`.
+- Embedding run results (pass/fail, durations). The plan is forward-looking intent.
+- Asserting redundancy, staleness, or evidence freshness - separate (unshipped) analyses.
