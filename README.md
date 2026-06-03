@@ -184,6 +184,7 @@ I want to...
   deep-dive on a node from the graph      -> /task-codemap-explain `<path>` [codemap]
   discover services and flows for E2E tests -> /task-regression-discover [regression]
   scaffold a Playwright scenario for a flow -> /task-regression-scenario [regression]
+  export a readable test plan from flows.yaml + scenarios -> /task-regression-plan [regression]
   run the regression suite (compose up/seed/test/report/teardown) -> /task-regression [regression]
   plan/review a database migration        -> /task-db-migration [architecture]
   refactor safely                         -> /task-code-refactor
