@@ -100,8 +100,8 @@ The `codemap` plugin owns a `task-codemap-*` workflow family that builds and con
   config.json         # autoUpdate flag, scope (committed)
   fingerprints.json   # per-file structural hashes (committed)
   .codemapignore      # user-editable, defaults to .gitignore (committed)
+  .last-synced-head   # last HEAD the auto-update hook fired on (gitignore)
   intermediate/       # transient build outputs (gitignore)
-  diff-overlay.json   # last computed diff impact (gitignore)
 ```
 
 Schema is owned by the `codemap-schema` atomic - 12 node types, 14 edge types, 6 layer enum. Producer (`task-codemap`) and consumers (`task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`) all `Use skill: codemap-schema` for the contract. Build pipeline is pure-LLM extraction with sub-agent parallelism; skill-local Python helpers in `plugins/codemap/skills/task-codemap/` handle deterministic scan/batch/merge/fingerprint.

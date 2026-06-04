@@ -40,10 +40,10 @@ Use skill: `behavioral-principles`.
 ### Step 2 - Load Codemap
 
 1. Confirm `.codemap/graph.json` exists. Missing -> fall back to `task-code-explain` (no graph dependency) and stop.
-2. Freshness check; warn if stale.
+2. Apply the freshness rule from `codemap-query` (Freshness check); warn but proceed when stale.
 3. Load graph.
 
-Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal.
+Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal and the freshness rule.
 
 ### Step 3 - Resolve Target
 

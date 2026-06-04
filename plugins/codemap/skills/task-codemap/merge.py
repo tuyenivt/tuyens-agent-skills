@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 BATCH_FILE_PATTERN = re.compile(r"^batch-\d+(-part-\d+)?\.json$")
+ERROR_FILE_PATTERN = re.compile(r"^batch-\d+(-part-\d+)?-error\.json$")
 
 
 def load_batches(batches_dir: Path):
@@ -26,6 +27,10 @@ def load_batches(batches_dir: Path):
         print(f"error: no batch-*.json files found in {batches_dir}", file=sys.stderr)
         sys.exit(1)
     return files
+
+
+def load_error_batches(batches_dir: Path):
+    return sorted(p for p in batches_dir.iterdir() if ERROR_FILE_PATTERN.match(p.name))
 
 
 def main():
@@ -43,13 +48,16 @@ def main():
     duplicate_node_ids = []
     edge_set = set()  # (source, target, type)
     edges = []
+    malformed_batches = []
 
     for batch_file in load_batches(batches_dir):
         try:
             payload = json.loads(batch_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            print(f"error: {batch_file.name} is not valid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
+        except (json.JSONDecodeError, OSError) as e:
+            # Tolerant: log and continue, matching duplicate-ID handling.
+            malformed_batches.append({"file": batch_file.name, "reason": str(e)})
+            print(f"warn: {batch_file.name} skipped ({e})", file=sys.stderr)
+            continue
 
         for node in payload.get("nodes", []):
             node_id = node.get("id")
@@ -93,19 +101,39 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
 
+    # Collect any explicit error-batch sidecars written by retry-exhausted sub-agents.
+    error_batches = []
+    for err_file in load_error_batches(batches_dir):
+        try:
+            error_batches.append({
+                "file": err_file.name,
+                "payload": json.loads(err_file.read_text(encoding="utf-8")),
+            })
+        except (json.JSONDecodeError, OSError):
+            error_batches.append({"file": err_file.name, "payload": None})
+
     summary = {
         "nodes": len(merged["nodes"]),
         "edges": len(merged["edges"]),
         "droppedDanglingEdges": dropped,
         "duplicateNodeIds": len(duplicate_node_ids),
+        "malformedBatches": len(malformed_batches),
+        "errorBatches": len(error_batches),
     }
-    print(f"merge: {summary['nodes']} nodes, {summary['edges']} edges, "
-          f"{dropped} dangling dropped, {len(duplicate_node_ids)} duplicate IDs")
+    print(
+        f"merge: {summary['nodes']} nodes, {summary['edges']} edges, "
+        f"{dropped} dangling dropped, {len(duplicate_node_ids)} duplicate IDs, "
+        f"{len(malformed_batches)} malformed, {len(error_batches)} error-batches"
+    )
 
-    # Write a small repair log if duplicates were dropped
-    if duplicate_node_ids:
+    # Write a merge log when anything noteworthy happened.
+    if duplicate_node_ids or malformed_batches or error_batches:
         log_path = output_path.parent / "merge-log.json"
-        log_path.write_text(json.dumps({"duplicateNodeIds": duplicate_node_ids}, indent=2), encoding="utf-8")
+        log_path.write_text(json.dumps({
+            "duplicateNodeIds": duplicate_node_ids,
+            "malformedBatches": malformed_batches,
+            "errorBatches": error_batches,
+        }, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

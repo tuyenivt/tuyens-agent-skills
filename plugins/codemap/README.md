@@ -23,8 +23,8 @@ claude plugin install codemap@tuyens-agent-skills --scope project
   config.json         # autoUpdate flag, scope (committed)
   fingerprints.json   # per-file structural hashes (committed)
   .codemapignore      # user-editable, defaults to .gitignore (committed)
+  .last-synced-head   # last HEAD the auto-update hook fired on (gitignore this)
   intermediate/       # transient build outputs (gitignore this)
-  diff-overlay.json   # last computed diff impact (gitignore this)
 ```
 
 Commit the artifacts and teammates skip the build entirely - opening the project gets them the graph for free.
@@ -33,7 +33,7 @@ Commit the artifacts and teammates skip the build entirely - opening the project
 
 ```
 .codemap/intermediate/
-.codemap/diff-overlay.json
+.codemap/.last-synced-head
 ```
 
 ## Workflow Skills
@@ -63,9 +63,9 @@ Atomic skills are hidden from the slash menu (`user-invocable: false`) and compo
 | Skill                     | Description                                                                                                                              |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `codemap-schema`          | Canonical graph schema - 12 node types, 14 edge types, 6 layer enum, JSON shapes for `graph.json`, `guides.json`, `meta.json`, `config.json`. Loaded by every codemap workflow. |
-| `codemap-layer-patterns`  | Directory-name to layer mapping across Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, React, Vue, Angular. Used at layer assignment.   |
+| `codemap-layer-patterns`  | Directory-to-layer mapping (entry/api/service/domain/data/infra) across Spring, Rails, Django, FastAPI, Go, Rust, React, Vue. Used at layer assignment.   |
 | `codemap-fingerprints`    | Per-file structural fingerprint contract for incremental sync - hash inputs, comparison rules, change-set shape, escalation thresholds.          |
-| `codemap-validate`        | Validates `graph.json` and `guides.json` - 14 error checks (schema, refs, uniqueness), 8 warning checks (orphans, hubs, layer coverage, test gaps). |
+| `codemap-validate`        | Validates `graph.json` and `guides.json` - 15 error checks (schema, refs, uniqueness, stack block), 8 warning checks (orphans, hubs, layer coverage, test gaps). |
 | `codemap-query`           | Read-only traversal patterns - neighbors, fan-in/out, layer filter, path finding, callers/callees, file scope. Used by every consumer workflow.    |
 | `codemap-build-pipeline`  | The 9 build phases: scan, batch, parallel sub-agent analyze, merge, repair, layer assign, guide generate, validate, persist. Pure-LLM extraction.    |
 
@@ -144,6 +144,7 @@ Claude Code is the only platform with hook support. Users on Codex, Cursor, Copi
 - **Claude Code.** The workflows shell out to skill-local Python scripts via `${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/*.py` - that env var is set by Claude Code's plugin runtime. Other platforms (Codex, Cursor, Copilot, Gemini CLI) install the plugin's skill bodies fine but will not resolve the script paths; they cannot run `/task-codemap` or `/task-codemap` sync. The read-only workflows (`/task-codemap-ask`, `/task-codemap-guide`, `/task-codemap-explain`) work everywhere as long as `.codemap/graph.json` already exists - so a teammate on Codex can still query a graph that a Claude Code user built and committed.
 - **Python 3** on PATH (skill-local helpers use stdlib only - no `pip install` needed).
 - **git** on PATH (for fingerprints and HEAD comparison; scan falls back to `os.walk` if missing).
+- **Hooks (optional, auto-update only) require a POSIX shell.** The hook command uses `[ -f ... ]`, `grep -q`, `printf`. Works on Linux/macOS out of the box; on Windows it needs Git Bash or WSL on PATH. On native Windows without either, leave `autoUpdate: false` and run `/task-codemap` manually after pulls.
 - The `core` plugin installed in the same project.
 
 ## Sharing the graph with your team
@@ -152,11 +153,13 @@ The graph is just JSON - **commit it once, teammates skip the build**. Good for 
 
 **Commit:** `.codemap/graph.json`, `.codemap/guides.json`, `.codemap/meta.json`, `.codemap/config.json`, `.codemap/fingerprints.json`, `.codemap/.codemapignore`.
 
-**Gitignore:** `.codemap/intermediate/`, `.codemap/diff-overlay.json`.
+**Gitignore:** `.codemap/intermediate/`, `.codemap/.last-synced-head`.
 
 **Keep it fresh:** enable `--auto-update`, or run `/task-codemap` manually after pulls and before releases.
 
 For graphs above ~10 MB, track with **git-lfs**.
+
+**Note on diff churn:** `meta.json#builtAt` and `fingerprints.json#computedAt` are ISO timestamps, so every rebuild produces a non-zero diff even when the graph itself is unchanged. If diff noise on these files is a problem, consider a pre-commit hook that strips them, or accept the churn in exchange for a recorded build time.
 
 ## License
 

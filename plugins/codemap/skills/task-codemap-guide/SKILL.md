@@ -41,10 +41,10 @@ Use skill: `behavioral-principles`.
 
 1. Confirm `.codemap/graph.json` exists. Missing -> suggest `/task-codemap` and stop.
 2. Confirm `.codemap/guides.json` exists. Missing -> offer `--rebuild` and stop.
-3. Freshness check; warn if stale.
+3. Apply the freshness rule from `codemap-query` (Freshness check); warn but proceed when stale.
 4. Load both.
 
-Use skill: `codemap-schema` for guide shape. Use skill: `codemap-query` for traversal.
+Use skill: `codemap-schema` for guide shape. Use skill: `codemap-query` for traversal and the freshness rule.
 
 ### Step 3 - Branch on Mode
 

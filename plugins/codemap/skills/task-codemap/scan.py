@@ -10,6 +10,7 @@ Output: JSON manifest at the path given by --output.
 Schema is documented in skills/codemap-build-pipeline/SKILL.md (Phase 1).
 """
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
@@ -139,19 +140,55 @@ def walk_filesystem(root: Path):
     return results
 
 
-def load_codemapignore(root: Path):
-    ignore_file = root / ".codemap" / ".codemapignore"
-    if not ignore_file.exists():
-        ignore_file = root / ".gitignore"
-    if not ignore_file.exists():
-        return []
-    patterns = []
-    for line in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+def load_ignore_patterns(root: Path):
+    """Return (codemapignore_patterns, gitignore_patterns).
+
+    `.codemap/.codemapignore` is always applied. `.gitignore` is read as a fallback
+    pattern source for the os.walk path (git ls-files already respects it).
+    """
+    def _read(path: Path):
+        if not path.exists():
+            return []
+        patterns = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            patterns.append(line)
+        return patterns
+
+    return _read(root / ".codemap" / ".codemapignore"), _read(root / ".gitignore")
+
+
+def matches_pattern(rel_path: str, patterns: list) -> bool:
+    """Match a forward-slash relative path against gitignore-style patterns.
+
+    Supports: bare names (any depth), `dir/` (directory prefix), `**` segments,
+    and standard fnmatch globs. Negation (`!`) is not supported.
+    """
+    if not patterns:
+        return False
+    parts = rel_path.split("/")
+    for pat in patterns:
+        if pat.startswith("!"):
             continue
-        patterns.append(line)
-    return patterns
+        p = pat.rstrip("/")
+        is_dir_only = pat.endswith("/")
+        # Anchored to repo root if pattern contains a slash (other than trailing).
+        anchored = "/" in p
+        if anchored:
+            if fnmatch.fnmatch(rel_path, p):
+                return True
+            if is_dir_only and (rel_path == p or rel_path.startswith(p + "/")):
+                return True
+            # `**` support via fnmatch translation
+            if "**" in p and fnmatch.fnmatch(rel_path, p.replace("**", "*")):
+                return True
+        else:
+            # Unanchored: match against any path segment or the basename.
+            if any(fnmatch.fnmatch(part, p) for part in parts):
+                return True
+    return False
 
 
 def git_commit_hash(root: Path):
@@ -165,11 +202,16 @@ def git_commit_hash(root: Path):
         return None
 
 
+DEFAULT_MAX_FILE_BYTES = 500_000
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default=".", help="Project root (default: current directory)")
     parser.add_argument("--output", required=True, help="Output JSON path")
     parser.add_argument("--scope", default=None, help="Optional subdirectory to limit scan to")
+    parser.add_argument("--max-file-bytes", type=int, default=DEFAULT_MAX_FILE_BYTES,
+                        help="Skip files larger than this byte count (default 500000; 0 disables).")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -184,32 +226,51 @@ def main():
             print(f"error: scope not found: {scope_path}", file=sys.stderr)
             sys.exit(1)
 
+    codemap_patterns, gitignore_patterns = load_ignore_patterns(root)
+
     files = git_ls_files(scope_path)
     fallback_used = False
     if files is None:
         files = walk_filesystem(scope_path)
         fallback_used = True
 
-    skipped = 0
+    skipped_default = 0
+    skipped_codemapignore = 0
+    skipped_gitignore = 0
+    skipped_oversize = 0
+    oversize_paths = []
     entries = []
     for path in files:
         rel = path.relative_to(root)
-        rel_parts = rel.parts
-        if any(part in DEFAULT_IGNORE for part in rel_parts):
-            skipped += 1
+        rel_str = str(rel).replace(os.sep, "/")
+        if any(part in DEFAULT_IGNORE for part in rel.parts):
+            skipped_default += 1
             continue
         if not path.is_file():
+            continue
+        if matches_pattern(rel_str, codemap_patterns):
+            skipped_codemapignore += 1
+            continue
+        # Only apply .gitignore in the os.walk fallback - git ls-files already honored it.
+        if fallback_used and matches_pattern(rel_str, gitignore_patterns):
+            skipped_gitignore += 1
             continue
         language = classify_language(path)
         category = classify_category(rel, language)
         lines, byte_size = count_lines_and_bytes(path)
+        if args.max_file_bytes and byte_size > args.max_file_bytes:
+            skipped_oversize += 1
+            oversize_paths.append({"path": rel_str, "bytes": byte_size})
+            continue
         entries.append({
-            "path": str(rel).replace(os.sep, "/"),
+            "path": rel_str,
             "language": language or "unknown",
             "lines": lines,
             "bytes": byte_size,
             "category": category,
         })
+
+    skipped_total = skipped_default + skipped_codemapignore + skipped_gitignore + skipped_oversize
 
     manifest = {
         "schemaVersion": 1,
@@ -218,7 +279,15 @@ def main():
         "scope": args.scope,
         "gitCommitHash": git_commit_hash(root),
         "totalFiles": len(entries),
-        "skipped": skipped,
+        "skipped": skipped_total,
+        "skippedBreakdown": {
+            "default": skipped_default,
+            "codemapignore": skipped_codemapignore,
+            "gitignore": skipped_gitignore,
+            "oversize": skipped_oversize,
+        },
+        "oversize": oversize_paths,
+        "maxFileBytes": args.max_file_bytes,
         "enumerationMethod": "os.walk" if fallback_used else "git ls-files",
         "files": entries,
     }
@@ -226,7 +295,11 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"scan: {len(entries)} files ({skipped} skipped) -> {args.output}")
+    print(
+        f"scan: {len(entries)} files ({skipped_total} skipped: "
+        f"{skipped_default} default, {skipped_codemapignore} .codemapignore, "
+        f"{skipped_gitignore} .gitignore, {skipped_oversize} oversize) -> {args.output}"
+    )
 
 
 if __name__ == "__main__":

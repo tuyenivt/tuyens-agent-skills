@@ -41,10 +41,11 @@ Use skill: `behavioral-principles`.
 ### Step 2 - Load Codemap
 
 1. Confirm `.codemap/graph.json` exists. Missing -> suggest `/task-codemap` and stop.
-2. Freshness: compare `meta.json#gitCommitHash` to `git rev-parse HEAD`. If stale by >10 commits or `builtAt` older than 7 days, warn but proceed.
+2. Apply the freshness rule from `codemap-query` (Freshness check). Warn but proceed when stale.
 3. Load `graph.json` and `guides.json`.
+4. **Sparse-graph check:** if `nodes.length < 10`, warn explicitly that the graph is sparse and may not yet cover the codebase. Suggest verifying `.codemap/config.json#scope` and `.codemap/.codemapignore`. Proceed anyway.
 
-Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal.
+Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal and the freshness rule.
 
 ### Step 3 - Classify the Question
 

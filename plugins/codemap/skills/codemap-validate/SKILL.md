@@ -1,6 +1,6 @@
 ---
 name: codemap-validate
-description: Validate codemap graph - referential integrity, schema conformance, dangling edges, ID uniqueness, layer coverage, guide resolvability.
+description: Validate codemap graph - schema conformance, referential integrity, dangling edges, ID uniqueness, layer coverage, guide resolvability, top-level fields.
 metadata:
   category: core
   tags: [codemap, validation, integrity, quality]
@@ -45,6 +45,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | 12 | `complexity`, when present, is in `{simple, moderate, complex}` | `complexity: "high"` |
 | 13 | `layer`, when present, is in the 6-value enum | `layer: "controller"` |
 | 14 | Every `guides.json` step `nodeId` exists in `graph.json` | Stale node ID |
+| 15 | Top-level `stack` is an object with `language`, `framework`, `stackType` (strings; framework may be `null`) | `stack: null` or missing |
 
 ### Warning checks (non-blocking)
 

@@ -37,7 +37,7 @@ The optional auto-update hook invokes this workflow on `git commit | merge | reb
 | --- | --- |
 | `[path]` | Repo root (default `.`) or scope subdirectory. |
 | `--full` | Force full rebuild. |
-| `--scope <dir>` | Limit to a subdirectory (huge monorepos). |
+| `--scope <dir>` | Limit to a subdirectory (huge monorepos). CLI flag overrides `.codemap/config.json#scope`; persisted to `config.json` on each run. |
 | `--auto-update[=false]` | Toggle the post-commit + session-start hook in `config.json`. |
 | `--validate-only` | Validate the existing graph without rebuilding. |
 | `--force` | In sync mode, skip the "no changes" early exit. |
@@ -69,7 +69,8 @@ When `--full` would overwrite an existing graph, confirm with the user first.
 
 1. **Stack:** `Use skill: stack-detect`. Cache; reused in phases 3, 6, 7.
 2. **Ignore file:** if `.codemap/.codemapignore` missing, copy `.gitignore` + banner.
-3. **Pipeline:** `Use skill: codemap-build-pipeline`. Runs phases 1-9. Track per-phase wall-clock.
+3. **Resolve scope:** CLI `--scope` wins; otherwise read `.codemap/config.json#scope`. Pass to `scan.py` in pipeline Phase 1 and persist to `config.json` on completion.
+4. **Pipeline:** `Use skill: codemap-build-pipeline`. Runs phases 1-9. Track per-phase wall-clock.
 
 Validation errors abort - do not persist. Skip to Step 7.
 
@@ -78,10 +79,12 @@ Validation errors abort - do not persist. Skip to Step 7.
 #### 5a. Compute Change-Set
 
 ```
-python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/scan.py" --root <path> --output .codemap/intermediate/scan.json
+python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/scan.py" --root <path> [--scope <dir>] --output .codemap/intermediate/scan.json
 python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/fingerprint.py" --mode compute --scan .codemap/intermediate/scan.json --output .codemap/intermediate/fingerprints-current.json
 python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/fingerprint.py" --mode compare --current .codemap/intermediate/fingerprints-current.json --previous .codemap/fingerprints.json --output .codemap/intermediate/change-set.json
 ```
+
+Resolve `--scope` the same way as Step 4 (CLI flag wins over `config.json#scope`).
 
 Use skill: `codemap-fingerprints` for the contract.
 
@@ -152,8 +155,8 @@ Write `autoUpdate` to `.codemap/config.json`. If enabled, surface:
 | --- | --- | --- |
 | 1. Scan | 412 files (18 skipped) | 2s |
 | 2. Batch | 18 batches | <1s |
-| 3. Analyze | 18 batches, 5-way parallel | 96s |
-| 4. Merge | 412 nodes, 1184 edges (12 dangling dropped) | <1s |
+| 3. Analyze | 18 batches, 5-way parallel (0 dropped after retries) | 96s |
+| 4. Merge | 412 nodes, 1184 edges (12 dangling dropped, 0 malformed) | <1s |
 | 5. Repair | clean | 4s |
 | 6. Layers | 88% assigned | 6s |
 | 7. Guides | 4 generated | 8s |
@@ -175,7 +178,7 @@ Write `autoUpdate` to `.codemap/config.json`. If enabled, surface:
 
 ```
 .codemap/intermediate/
-.codemap/diff-overlay.json
+.codemap/.last-synced-head
 ```
 
 ## Next
@@ -230,10 +233,10 @@ Write `autoUpdate` to `.codemap/config.json`. If enabled, surface:
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: Python/git preflight passed; intermediate dir present
 - [ ] Step 3: mode decided; `--full` overwrite confirmed with user
-- [ ] Step 4: stack detected, ignore initialized, pipeline ran all 9 phases (full path)
+- [ ] Step 4: stack detected, ignore initialized, scope resolved (CLI wins over `config.json#scope`), pipeline ran all 9 phases (full path)
 - [ ] Step 5: change-set computed; decision tree applied; analysis only on changed files; splice preserved existing layer assignments (sync path)
 - [ ] Step 6: auto-update config written + portability caveat surfaced (when flag set)
-- [ ] Step 7: validation ran; errors did not overwrite prior graph in sync mode
+- [ ] Step 7: validation ran; errors did not overwrite prior graph (sync OR full mode)
 - [ ] Step 8: persisted (unless `--validate-only`); correct report rendered
 
 ## Avoid

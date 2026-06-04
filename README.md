@@ -382,7 +382,7 @@ Angular (plugin: angular)
 
 - `core` is required by all other plugins.
 - Each plugin folder has its own README with stack-specific usage and examples.
-- **Persistent codebase graph (`.codemap/`).** The opt-in `codemap` plugin ships a `task-codemap-*` family that builds and consumes a JSON knowledge graph of your project. Commit `.codemap/graph.json`, `guides.json`, `meta.json`, `config.json`, `fingerprints.json`, `.codemapignore` so teammates skip the build. Gitignore `.codemap/intermediate/` and `.codemap/diff-overlay.json`. See `plugins/codemap/README.md` for the workflow family and the optional Claude-Code-only auto-update hook.
+- **Persistent codebase graph (`.codemap/`).** The opt-in `codemap` plugin ships a `task-codemap-*` family that builds and consumes a JSON knowledge graph of your project. Commit `.codemap/graph.json`, `guides.json`, `meta.json`, `config.json`, `fingerprints.json`, `.codemapignore` so teammates skip the build. Gitignore `.codemap/intermediate/` and `.codemap/.last-synced-head`. See `plugins/codemap/README.md` for the workflow family and the optional Claude-Code-only auto-update hook.
 
 ## Optional: Claude Code Settings Template
 

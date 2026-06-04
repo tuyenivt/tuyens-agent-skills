@@ -55,7 +55,7 @@ Multiple matches -> list with type+path, ask user to pick. Zero matches -> sugge
 | Hub nodes | Top-K by fan-in + fan-out. |
 | Orphans | Fan-in 0 AND fan-out 0. |
 | Shortest path A -> B | BFS on undirected edge set, cap depth 6. One path, report length. |
-| Files in current diff | Read `.codemap/diff-overlay.json` if present; else `git diff --name-only`. Map to `file:<path>` IDs. |
+| Files in current diff | `git diff --name-only` (and `git diff --name-only <base>...HEAD` for branch diffs). Map to `file:<path>` IDs. |
 | Impact of change to F | Reverse BFS from `file:F` over `imports`/`calls`/`uses`/`routes_to`. Cap depth 3. Group by layer. |
 
 ### File-scope filter
@@ -68,6 +68,35 @@ nodes_in_scope = [n for n in nodes if n.filePath and n.filePath.startswith(scope
 ```
 
 Edges in-scope = both endpoints in-scope. Cross-boundary edges answer "what depends on this module" - surface them separately.
+
+### Freshness check (shared by all consumers)
+
+Run once per workflow before answering. Compare `.codemap/meta.json` against the working tree:
+
+| Signal | Action |
+| --- | --- |
+| `meta.json` missing | Stop; tell the user to run `/task-codemap`. |
+| `meta.json#gitCommitHash != git rev-parse HEAD` and HEAD is >10 commits ahead | Warn `stale`; proceed; append stale footer. |
+| `meta.json#builtAt` older than 7 days | Warn `stale`; proceed; append stale footer. |
+| Otherwise | `in-sync`; proceed without warning. |
+
+Footer format:
+
+```
+> Codemap built from commit <hash> (<N> commits behind HEAD, <D> days old). Run `/task-codemap` to sync.
+```
+
+Workflows reference this rule instead of re-defining it.
+
+### Large-graph access (>5MB `graph.json`)
+
+When `graph.json` exceeds ~5 MB, skip the full-file Read; use targeted reads.
+
+- Find one node: `Grep "\"id\": \"<id>\"" .codemap/graph.json -A 5`.
+- One-off aggregations: `Bash python -c "import json; g=json.load(open('.codemap/graph.json')); ..."`.
+- Slice by type/layer: `Grep "\"type\": \"<type>\"" .codemap/graph.json` then resolve hits.
+
+Rule 1 ("Load once per workflow") relaxes here: prefer multiple narrow reads to one full-file load that blows the context.
 
 ### Reading source from a node
 

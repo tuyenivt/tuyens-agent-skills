@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '%s' \"$TOOL_INPUT\" | grep -qE 'git\\s+(commit|merge|cherry-pick|rebase)' && [ -f .codemap/config.json ] && grep -q '\"autoUpdate\"[[:space:]]*:[[:space:]]*true' .codemap/config.json && [ -f .codemap/graph.json ] && echo \"[codemap] Commit detected and autoUpdate is enabled. Read the file ${CLAUDE_PLUGIN_ROOT}/hooks/codemap-refresh-prompt.md and follow its instructions to refresh the graph. Do not ask for confirmation.\" || true"
+            "command": "printf '%s' \"$TOOL_INPUT\" | grep -qE 'git\\s+(commit|merge|cherry-pick|rebase)' && [ -f .codemap/config.json ] && grep -q '\"autoUpdate\"[[:space:]]*:[[:space:]]*true' .codemap/config.json && [ -f .codemap/graph.json ] && HEAD_NOW=\"$(git rev-parse HEAD 2>/dev/null)\" && [ -n \"$HEAD_NOW\" ] && LAST_SEEN=\"$(cat .codemap/.last-synced-head 2>/dev/null)\" && [ \"$HEAD_NOW\" != \"$LAST_SEEN\" ] && printf '%s' \"$HEAD_NOW\" > .codemap/.last-synced-head && echo \"[codemap] Commit detected and autoUpdate is enabled. Read the file ${CLAUDE_PLUGIN_ROOT}/hooks/codemap-refresh-prompt.md and follow its instructions to refresh the graph. Do not ask for confirmation.\" || true"
           }
         ]
       }

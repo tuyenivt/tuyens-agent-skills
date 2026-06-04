@@ -1,6 +1,6 @@
 ---
 name: codemap-layer-patterns
-description: Directory-name to architectural layer mapping across Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, React, Vue, Angular. Used at layer assignment.
+description: Directory-to-layer mapping (entry/api/service/domain/data/infra) across Spring, Rails, Django, FastAPI, Go, Rust, React, Vue.
 metadata:
   category: core
   tags: [codemap, layers, architecture, mapping]
