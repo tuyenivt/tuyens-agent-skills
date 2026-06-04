@@ -21,6 +21,8 @@ Builds `services.yaml` by asking the user to declare each service's role and str
 4. **Pin by digest.** `image:` source must include `@sha256:...`. The writer rejects `:latest` and bare tags. Applies to all roles including databases.
 5. **No inline secret values.** Env values that look secret must use `${VAR}` form. Detection is structural: any `value:` containing a literal string of more than 12 characters that is not a URL, hostname, or boolean - and that is not wrapped in `${...}` - is flagged for the user to confirm. The skill does not ship a heuristic scanner; the user is the gate. A repo-level secret scanner (`gitleaks`, `trufflehog`) is recommended in the discover report.
 6. **Sibling-path without Dockerfile is rejected by default.** The writer offers a `stack-detect`-sourced Dockerfile suggestion; if the user declines, the entry is removed from inventory rather than left in a not-buildable state.
+7. **`resources:` are optional.** Omitted -> no cap. Recommended on shared CI runners where two suite runs may overlap. Honored by `regression-compose-build` only.
+8. **`sinks:` is a top-level list of out-of-process targets the suite needs to assert on.** Brokers / buckets / outbound webhooks / mail-out. Always optional; populated by `task-regression-discover` when the user answers "do you have async sinks?". Consumed by `regression-sink-asserter`.
 
 ## Patterns
 
@@ -61,6 +63,16 @@ services:
       type: sql-dump | migrations | none
       path: <string>          # sql-dump / migrations only
     persistence: ephemeral | external   # default ephemeral; external -> isolation verifier scans
+    # optional - per-service resource caps for shared-runner concurrency
+    resources:
+      memMb: <int>            # compose `mem_limit`, mapped to MiB
+      cpus: <float>           # compose `cpus`
+sinks:                        # optional - async sinks the suite asserts on (F-7)
+  - name: <string>            # logical sink name (e.g. "orders-events")
+    kind: kafka-topic | s3-bucket | webhook-out | smtp-out | sqs-queue
+    target: <string>          # broker:topic, bucket name, URL pattern, mailhog hostname, queue ARN
+    consumerGroup: <string>   # kafka only - this suite's consumer group name (run-id scoped)
+    notes: <string>           # free-text; what this sink is for
 ```
 
 Defaults (`5s` / `3s` / `30`, ephemeral persistence) apply when the field is omitted in user input; the writer records them in the emitted yaml so the file is self-describing.

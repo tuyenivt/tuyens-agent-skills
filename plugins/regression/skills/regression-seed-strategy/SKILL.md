@@ -26,6 +26,7 @@ Seeds run after every service is healthy and before Playwright executes. Each ru
 6. **Schema source determined by inventory.** `services.yaml#initialSchema.type` is one of `sql-dump` / `migrations` / `none`. The applier reads that, the user does not pick at apply time.
 7. **Migrations are the app's responsibility.** When `initialSchema.type: migrations`, the backend service applies them on startup; seeds wait for the backend healthcheck before running. Seeds never invoke Flyway / Liquibase / Alembic.
 8. **Single transport per engine.** Each engine uses one apply mechanism: SQL engines stream via `docker exec -T ... < file` (host-side stdin redirection, no mount); MongoDB requires `mongosh --file` against a script the runner copies into the container with `docker cp` before invocation. The runner does not mix transports.
+9. **Service name and DB name come from `services.yaml`.** Never literal `db` / `app`. `apply-seed.sh` resolves the compose service name (the database service's `name:`) and the engine-specific DB name (`POSTGRES_DB` / `MYSQL_DATABASE` / `MARIADB_DATABASE` / `MSSQL_DB` / mongodb URI path) from inventory at startup. Hardcoded names are a Rule-9 violation and fail the writer.
 
 ## Patterns
 
@@ -41,32 +42,34 @@ For `migrations` and `none`, `00-init/` is empty - no schema applies from this s
 
 ### Apply commands (one per engine)
 
-The runner invokes `.regression/scripts/apply-seed.sh "$PROJECT" "$FILE"`; the script dispatches on `services.yaml#engine`:
+The runner invokes `.regression/scripts/apply-seed.sh "$PROJECT" "$FILE"`; the script reads `.regression/services.yaml` once at top to resolve, for each `role: database` entry: the service `name` (compose service name -> `$DB_SVC`), `engine`, and the engine-specific DB name from `env:` (`POSTGRES_DB` / `MYSQL_DATABASE` / `MARIADB_DATABASE` / `MSSQL_DB` / mongodb URI path). When multiple databases are declared, dispatch is by extension AND by per-seed-file frontmatter or path convention (`seeds/<db-svc>/...`); the inventory writer rejects multi-DB inventories that do not adopt the directory convention.
 
 ```bash
 # postgres - stdin transport
-docker compose -p "$PROJECT" exec -T db \
-  psql -U postgres -d app -v ON_ERROR_STOP=1 < "$FILE"
+docker compose -p "$PROJECT" exec -T "$DB_SVC" \
+  psql -U "${POSTGRES_USER:-postgres}" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 < "$FILE"
 
 # mysql / mariadb - stdin transport. --abort-source-on-error gives fail-fast on multi-statement files.
-docker compose -p "$PROJECT" exec -T db \
-  mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --abort-source-on-error app < "$FILE"
-# MariaDB official image: use $MARIADB_ROOT_PASSWORD (legacy alias MYSQL_ROOT_PASSWORD also accepted in v11+).
+docker compose -p "$PROJECT" exec -T "$DB_SVC" \
+  mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --abort-source-on-error "$MYSQL_DATABASE" < "$FILE"
+# MariaDB official image: use $MARIADB_ROOT_PASSWORD + $MARIADB_DATABASE (legacy aliases MYSQL_* also accepted in v11+).
 
 # sqlite - stdin transport
-docker compose -p "$PROJECT" exec -T db \
-  sqlite3 /data/app.db ".bail on" < "$FILE"
+docker compose -p "$PROJECT" exec -T "$DB_SVC" \
+  sqlite3 "${SQLITE_PATH:-/data/app.db}" ".bail on" < "$FILE"
 
 # sqlserver - cp + exec because sqlcmd reads from a file path, not stdin
-docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q db)":/tmp/seed.sql
-docker compose -p "$PROJECT" exec -T db \
-  /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -d app -b -i /tmp/seed.sql
+docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q "$DB_SVC")":/tmp/seed.sql
+docker compose -p "$PROJECT" exec -T "$DB_SVC" \
+  /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -d "$MSSQL_DB" -b -i /tmp/seed.sql
 
 # mongodb - cp + exec; mongosh runs a JS file containing upsert statements
-docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q db)":/tmp/seed.js
-docker compose -p "$PROJECT" exec -T db \
-  mongosh --quiet --file /tmp/seed.js
+docker cp "$FILE" "$(docker compose -p "$PROJECT" ps -q "$DB_SVC")":/tmp/seed.js
+docker compose -p "$PROJECT" exec -T "$DB_SVC" \
+  mongosh --quiet "${MONGO_URI:-mongodb://localhost:27017/$MONGO_DB}" --file /tmp/seed.js
 ```
+
+`$DB_SVC`, `$POSTGRES_DB`, `$MYSQL_DATABASE`, `$MARIADB_DATABASE`, `$MSSQL_DB`, `$MONGO_DB` are populated by `apply-seed.sh` from `services.yaml` - never hardcoded literals.
 
 Fail-fast flags per engine: `psql -v ON_ERROR_STOP=1`, `mysql --abort-source-on-error`, `sqlite3 .bail on`, `sqlcmd -b`, `mongosh` (default - exits non-zero on uncaught script errors).
 

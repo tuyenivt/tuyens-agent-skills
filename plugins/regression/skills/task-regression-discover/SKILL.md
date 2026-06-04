@@ -1,6 +1,6 @@
 ---
 name: task-regression-discover
-description: Build or refresh .regression/ workspace - services.yaml, flows.yaml, docker-compose.regression.yml, seeds/, .env.example. Role-based, polyrepo, idempotent.
+description: Build or refresh .regression/ workspace - services.yaml, flows.yaml, compose, seeds, .env.example. Role-based polyrepo discovery, idempotent.
 metadata:
   category: testing
   tags: [regression, discovery, services, flows, compose, polyrepo]
@@ -50,6 +50,8 @@ For each service the user wants under test, gather:
 Surface the in-scope list back for confirmation before Step 3.
 
 **Out-of-scope dependents.** If an in-scope backend's env references an excluded service (e.g. `REDIS_URL`), ask the user explicitly: (a) re-declare the dependency as one of the three roles, (b) keep the env var as an external reference satisfied at run time, or (c) drop the dependency for regression scope. Record the decision in the report.
+
+**Async sinks.** After the in-scope service list is confirmed, ask: "Does any in-scope service publish to a Kafka topic, write to S3, send outbound email, POST to an external webhook, or enqueue to SQS, that you want the suite to assert on?" For each yes, gather `kind` / `target` / `consumerGroup` (kafka) / `notes`; record under `services.yaml#sinks:`. Without this prompt, async-sink flows fall through silently (`regression-scenario-author` Rule 9 deflects to HTTP/DB assertions). Sinks are consumed by `regression-sink-asserter` at scenario time.
 
 ### Step 3 - Per-Service Structural Q&A
 
@@ -173,7 +175,7 @@ Surface `.gitignore` recommendations - never auto-edit. Show a final summary dif
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded.
-- [ ] Step 2: roles assigned by runtime behavior (not by name); excluded services noted; out-of-scope dependents resolved with recorded decision; user confirmed the in-scope list.
+- [ ] Step 2: roles assigned by runtime behavior (not by name); excluded services noted; out-of-scope dependents resolved with recorded decision; async sinks prompted and recorded under `services.yaml#sinks`; user confirmed the in-scope list.
 - [ ] Step 3: `regression-service-inventory` gathered structural metadata for every in-scope service (scoped to `--services` if provided); no role auto-detected.
 - [ ] Step 4: `regression-flow-extract` ran across all services with available evidence tiers; skeletons emitted when no inputs; change candidates surfaced with explicit choice for any name-collision; `flows.yaml` never overwritten silently.
 - [ ] Step 5: `regression-compose-build` emitted both profiles with healthchecks; per-source-type profile population honored; diff shown before overwrite.

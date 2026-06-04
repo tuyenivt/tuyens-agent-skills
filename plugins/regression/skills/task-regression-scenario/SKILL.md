@@ -1,6 +1,6 @@
 ---
 name: task-regression-scenario
-description: Scaffold a Playwright scenario from a named flow or a freeform ticket/story (--from). Infers kind, drafts flows.yaml entry on-the-fly, emits golden + negative paths.
+description: Scaffold a Playwright scenario from a named flow or freeform ticket/story (--from). Infers kind, drafts flows.yaml, emits golden + negative paths.
 metadata:
   category: testing
   tags: [regression, playwright, scenario, authoring, typescript]

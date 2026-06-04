@@ -82,27 +82,56 @@ Commit `services.yaml`, `flows.yaml`, `docker-compose.regression.yml`, `seeds/`,
 
 Atomic skills are hidden from the slash menu (`user-invocable: false`) and composed by the workflow skills above.
 
+### Core lifecycle and inventory
+
 | Skill                              | Description                                                                                                                                                                                                                                                                              |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `regression-service-inventory`     | Role-based structural Q&A (Frontend / Backend / Database). Builds `services.yaml` from user-declared metadata: `source` (sibling-path / git / image), HTTP port, healthcheck command, env vars, `depends_on`, DB engine + version + initial-schema source. The only place `stack-detect` is allowed - and only as a *suggestion source* for Dockerfile defaults. |
-| `regression-flow-extract`          | Authoring-time flow suggester. Reads symlinked sibling `.codemap/graph.json` files, OpenAPI specs in declared service paths, and recent git history to propose ranked flows typed `api \| browser \| mixed`. Output is human-reviewed and frozen into `flows.yaml`; never read at runtime.   |
-| `regression-compose-build`         | Emits `docker-compose.regression.yml` with healthchecks, named volumes, isolated network, and two profiles (`local-build` for sibling-path / git sources, `pinned-images` for `image` sources). Profile selection: `--profile` flag -> env var -> `CI=true` auto-detect -> `local-build` default. |
-| `regression-seed-strategy`         | Per-engine seed patterns. Writes seed templates keyed by Database `engine` (postgres / mysql / mariadb / mongodb / sqlserver / sqlite / etc.). Seeds apply directly to the DB container via engine-native tooling (`psql`, `mysql`, `mongoimport`, `sqlcmd`, `sqlite3`), bypassing the backend's migration tool. |
-| `regression-scenario-author`       | Playwright scenario authoring template. `kind: api \| browser \| mixed`. Golden path + at least one explicit negative path (self-check fails if absent). Idempotent setup, data-factory imports, bounded read-after-write retry (max 5s, 200ms backoff). Page Object Model for browser flows. |
-| `regression-runner`                | Ephemeral run lifecycle. `npm ci` if `package-lock.json` changed -> clone/update `git`-sourced services in `local-build` -> `docker compose -p regression-<runId> up -d --build --wait` -> apply seeds in order -> `npx playwright test --reporter=junit,line` -> collect reports -> teardown. Trap-guarded `down -v --remove-orphans` on Ctrl+C. |
-| `regression-data-isolation`        | Prevents "passes locally, fails in CI". Per-run compose project name (`regression-<runId>`), ephemeral named volumes, deterministic seed ordering, frozen wall-clock (`TZ` env + freezing libs), unique tenant/user IDs derived from `run-id`.                                              |
-| `regression-report-format`         | JUnit XML normalization + Markdown verdict. Produces `reports/<runId>/summary.md` with pass/fail/skip counts, per-flow verdict, top failure clusters (collapses N scenarios failing with the same root error into one entry), and links to traces/videos/screenshots.                          |
-| `regression-flakiness-triage`      | Classifies each failure into 4 buckets: `real bug \| flake \| infra down \| seed drift`. Emits bucket counts at the top of `summary.md`. If the `flake` ratio exceeds threshold, explicitly tells the user "this suite is rotting, fix infra/seeds first; don't chase the assertions yet." |
-| `regression-env-vars`             | Env-var plumbing for sensitive compose configuration: never commit values, always reference `${VAR}`, ship `.env.example`, document overrides via the gitignored `docker-compose.override.yml`. Suggests 1Password / Doppler / GCP Secret Manager patterns. |
+| `regression-service-inventory`     | Role-based structural Q&A (Frontend / Backend / Database). Builds `services.yaml` from user-declared metadata: `source`, HTTP port, healthcheck, env vars, `depends_on`, DB engine + version + initial-schema source, optional resource caps, optional async `sinks`. The only place `stack-detect` is allowed - and only as a suggestion source for Dockerfile defaults. |
+| `regression-flow-extract`          | Authoring-time flow suggester and schema owner of `flows.yaml`. Reads symlinked sibling `.codemap/graph.json` files, OpenAPI specs, and recent git history to propose ranked flows. Schema fields: `name`, `kind`, `direction`, `owner` (required), `status` (active/deprecated/stale), `entryPoint`, `hops`, `observableOutcome`, `evidence`, `flowLabels`, `checks`, `latencyBudget`, `clock`, `archetype`, `sinks`, `a11y`, `securityHeaders`. |
+| `regression-compose-build`         | Emits `docker-compose.regression.yml` with healthchecks, named volumes, isolated network, two profiles (`local-build`, `pinned-images`), optional resource caps, and optional sink containers (Kafka, Mailhog, Minio, OTel collector, webhook listener). |
+| `regression-seed-strategy`         | Per-engine seed patterns. Writes seed templates keyed by Database `engine` (postgres / mysql / mariadb / mongodb / sqlserver / sqlite). Seeds apply via engine-native tooling (`psql`, `mysql`, `mongosh`, `sqlcmd`, `sqlite3`), bypassing the backend's migration tool. DB service name and DB name resolve from `services.yaml`, never literals. |
+| `regression-scenario-author`       | Playwright scenario authoring template. `kind: api \| browser \| mixed` + `direction: default \| inverted`. Golden + at least one explicit negative path. Idempotent setup, bounded `pollUntil`, POM for browser flows. Reads `checks:` and delegates to check atomics. |
+| `regression-runner`                | Ephemeral run lifecycle. `npm ci` (Node-version-keyed stamp) -> sync git sources -> `docker compose up -d --build --wait` -> clock-skew check -> seed in order -> Playwright -> capture `compose.log` -> scrub -> teardown with trap. Matrix/shard-suffixed report dirs. |
+| `regression-data-isolation`        | Prevents "passes locally, fails in CI". Per-run compose project name (`regression-<runId>`), ephemeral named volumes, deterministic seed ordering, frozen `TZ`, unique tenant/user IDs derived from `run-id`. |
+| `regression-report-format`         | JUnit XML normalization + Markdown verdict. `summary.md` with `## Verdict`, `## Counts` (including `BudgetViolations`), `## Per-Flow` (Owner column), `## Failure Clusters`, `## Trend`, `## Performance`, `## Run Metadata`. Optional GH / GitLab annotations. |
+| `regression-flakiness-triage`      | Classifies each failure into 4 buckets: `real bug \| flake \| infra down \| seed drift`. Emits bucket counts at the top of `summary.md`. Rotting-suite gate. |
+| `regression-env-vars`             | Env-var plumbing for sensitive compose configuration: never commit values, always reference `${VAR}`, ship `.env.example`, gitignored `docker-compose.override.yml`. Scenario-side secrets via `fixtures/secrets.ts` (allow-list). |
+| `regression-preflight`            | Host-side gating: `docker info`, free disk at docker root, declared host port availability, post-`up` host/container clock skew. Stable exit codes 20-23. |
+
+### Coverage checks (opt-in per flow via `checks:`)
+
+| Skill                                | Description                                                                                                                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `regression-contract-check`          | OpenAPI / JSON Schema body-shape assertions. `checks: [contract]`. Cached schema under `.regression/fixtures/contracts/`. Mismatch is `real-bug`. |
+| `regression-perf-check`              | Per-flow `latencyBudget.p95Ms` enforcement. `checks: [perf]`. Rolling p95 over last 10 runs; OVER status surfaces in report but does NOT block exit. |
+| `regression-a11y-check`              | Playwright + axe scan for browser flows. `checks: [a11y]`. WCAG 2.1 AA default. Per-flow `a11y.disable:` suppression. Failure = `real-bug`. |
+| `regression-security-headers-check`  | CSP / HSTS / X-Frame / Referrer-Policy / Permissions-Policy assertions. `checks: [security-headers]`. Structural compare, `at-least-as-strict-as` semantics. |
+| `regression-observability-check`     | Asserts OTel spans, structured log lines, metric deltas. `checks: [otel-span:<name>]` / `log:<key>` / `metric:<name>`. Spins up an OTel collector in compose. |
+
+### Async / time-travel / archetypes
+
+| Skill                       | Description                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `regression-sink-asserter`  | Asserts on Kafka topics, S3 buckets, SMTP outboxes (Mailhog), outbound webhooks, SQS queues declared under `services.yaml#sinks`. |
+| `regression-clock-advance`  | App-side clock advance for cron / scheduled-job tests. Three mechanisms: `libfaketime`, `restart-env`, `admin-endpoint`. Per-scenario reset. |
+| `regression-flow-archetypes`| Prebuilt patterns: `oauth-callback`, `signed-upload`, `feature-flag-matrix`, `idempotency-key-retry`, `rate-limit-429`, `cache-invalidation`, `tenant-isolation-cross-read`. |
+| `regression-fixture-factory`| Typed builder pattern: `scopedOrder({ status, amount })`, `scopedTenant({ plan })`. Pure builders, no I/O, idempotent within a run. |
+
+### CI / governance
+
+| Skill                       | Description                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `regression-pr-comment`     | Sticky PR / MR comment with verdict + counts + top-3 clusters. GitHub (`gh`) and GitLab (`glab`) backends; one sticky per matrix key. |
+| `regression-artifact-scrub` | PII / PCI scrubbing of traces, videos, screenshots, `compose.log` before CI upload. Playwright `mask` selectors + pattern redaction. Opt-in via `config.json#scrub.enabled`. |
 
 ## Skill Dependency Index
 
 | Workflow                     | Atomic skills used                                                                                                                                                                                                                                                                       |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-regression-discover`   | `behavioral-principles`, `stack-detect` (suggestion-only), `regression-service-inventory`, `regression-flow-extract`, `regression-compose-build`, `regression-seed-strategy`, `regression-env-vars`                                                                          |
-| `task-regression-scenario`   | `behavioral-principles`, `regression-scenario-author`                                                                                                                                                                                                                                  |
-| `task-regression-plan`       | `behavioral-principles` (read-only consumer of `flows.yaml` shape from `regression-flow-extract` and scenario-naming convention from `regression-scenario-author`)                                                                                                                     |
-| `task-regression`            | `behavioral-principles`, `regression-data-isolation`, `regression-runner`, `regression-report-format`, `regression-flakiness-triage`                                                                                                                                                   |
+| `task-regression-discover`   | `behavioral-principles`, `stack-detect` (suggestion-only), `regression-service-inventory`, `regression-flow-extract`, `regression-compose-build`, `regression-seed-strategy`, `regression-env-vars` |
+| `task-regression-scenario`   | `behavioral-principles`, `regression-scenario-author` (delegates to `regression-contract-check`, `regression-perf-check`, `regression-a11y-check`, `regression-security-headers-check`, `regression-observability-check`, `regression-sink-asserter`, `regression-clock-advance`, `regression-flow-archetypes`, `regression-fixture-factory` per `checks:` / `archetype:` / `sinks:` / `clock:` on the flow) |
+| `task-regression-plan`       | `behavioral-principles` (read-only consumer of `flows.yaml` shape from `regression-flow-extract`) |
+| `task-regression`            | `behavioral-principles`, `regression-preflight`, `regression-data-isolation`, `regression-runner`, `regression-artifact-scrub`, `regression-report-format`, `regression-flakiness-triage`, optionally `regression-pr-comment` |
 
 `behavioral-principles` and `stack-detect` live in the `core` plugin (required). `regression-flow-extract` reads `codemap-schema` / `codemap-query` opportunistically when sibling `.codemap/` symlinks are present, but never requires the `codemap` plugin to be installed.
 
@@ -172,6 +201,90 @@ Same lifecycle, but Playwright only picks up scenarios tagged `@smoke`. Useful f
 **CI invocation (prose, no YAML generator):**
 
 Run `/task-regression --profile pinned-images` from the test repo's root in your CI job. The `pinned-images` profile uses the `image:` references in `services.yaml` (registry digests recommended - no `latest` tags), skips local build, and reproduces the exact images shipped through your release pipeline. Cache `.regression/node_modules` keyed on `package-lock.json` hash. Upload `reports/<runId>/` as a CI artifact. Fail the job on non-zero exit. No CI YAML template ships with the plugin - the lifecycle is short enough that hand-wiring per CI provider stays readable.
+
+## First 10 minutes (worked example)
+
+```bash
+# 1. Sibling layout - autotest sits next to the service repos.
+$ ls ~/work
+gateway-api  order-service  payment-service  autotest
+$ cd ~/work/autotest
+
+# 2. Install plugins from the marketplace.
+$ claude plugin install core@tuyens-agent-skills --scope project
+$ claude plugin install regression@tuyens-agent-skills --scope project
+
+# 3. Discover - declare three services, answer Q&A.
+$ claude /task-regression-discover
+> ... (interactive) ...
+Workspace .regression/ written:
+  services.yaml      (3 services: gateway-api, order-service, payment-service + db)
+  flows.yaml         (5 candidates accepted; 2 deferred)
+  docker-compose.regression.yml
+  seeds/00-init/01-schema.sql
+  seeds/10-domain/01-tenants.sql
+  .env.example
+
+# 4. Inspect the proposed plan before running anything.
+$ claude /task-regression-plan
+.regression/test-plan.md written. Coverage: 0/5 covered, 5/5 no-spec.
+
+# 5. Scaffold one scenario.
+$ claude /task-regression-scenario "checkout-order"
+.regression/scenarios/mixed/checkout-order.spec.ts written.
+tsc --noEmit: pass. playwright --list: 2 tests discovered.
+
+# 6. Set required env vars.
+$ cp .regression/.env.example .regression/.env
+$ vi .regression/.env   # fill POSTGRES_PASSWORD, JWT_SIGNING_KEY
+
+# 7. Run the suite.
+$ claude /task-regression
+Preflight: pass. npm ci: ran (4s). Compose up: 4 healthy (12s).
+Seed: 3 files applied. Playwright: 2 scenarios, 2 passed (8s).
+.regression/reports/20260604T101530-a1b2c3/summary.md written.
+**PASS** - All 2 scenarios green.
+Teardown: containers gone, volumes gone, networks gone.
+```
+
+Total wall-clock: under 10 minutes including reading the report.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Where to look |
+| --- | --- | --- |
+| Every run classified `seed-drift` | Mongo seeds named `.json` instead of `.js`, or seed files not under `00-init/`/`10-domain/`/`20-fixtures/`/`99-final/` | `regression-seed-strategy` (extension dispatch in `apply-seed.sh`); check `compose.log` for engine error |
+| Every failure classified `infra` | Healthcheck command is wrong; container exits before `--wait` returns | `services.yaml#healthcheck` per service; `docker compose logs <svc>` in `compose.log` |
+| `compose` hangs on "unhealthy" | App migrations slower than retries window allow | Increase `healthcheck.retries` or interval in `services.yaml`; or wait for migrations to complete on first boot |
+| Same flaky scenario every run | True flake (async race in app) vs. test-side race (timing assertion too tight) | `regression-flakiness-triage` Rule 5 alternation table; bump `pollUntil` `timeoutMs` if test-side |
+| `npm ci` runs every invocation | Node version changed between runs (nvm) - stamp now keyed on `node --version` | `regression-runner` Rule 2; check `.regression/node_modules/.install-stamp` first line vs current `node --version` |
+| CI artifacts contain PII / real-looking emails | Scrub not enabled, or pattern catalog missing this PII shape | `regression-artifact-scrub` Rule 1 (mask selectors); add patterns under `config.json#scrub.patterns` |
+| Reports overwriting each other in matrix CI | `--matrix-key` or `SHARD_INDEX` not set | `task-regression --matrix-key <key>` or export `SHARD_INDEX`; runner suffixes the report dir |
+| `unknown check '<token>' in flow` | Typo in `flows.yaml#checks` | Valid tokens: `contract`, `perf`, `a11y`, `security-headers`, `otel-span:<name>`, `log:<key>`, `metric:<name>` |
+| Clock-advance scenario leaves clock advanced | `afterEach` reset hook missing in the spec | `regression-clock-advance` Rule 4; add `test.afterEach(() => resetClock(svc))` |
+| Sink assertion times out, no message received | Producer not pointed at the compose-network broker, or topic does not exist | `services.yaml#sinks` `target` resolves to broker:topic? Confirm via the broker's UI or `kafka-topics --list` in `compose.log` |
+| Owner column shows `_unknown_` | Legacy flow without `owner:` field | `regression-flow-extract` Rule 9 requires `owner:`; add the team slug to the flow entry |
+
+## CODEOWNERS / required-reviewer pattern
+
+Recommend in the test repo's `.github/CODEOWNERS` (or GitLab's `CODEOWNERS`):
+
+```
+# .regression/* changes require QA review by default.
+/.regression/                           @org/qa-platform
+
+# Flow-prefix routing - per-team ownership without scattering CODEOWNERS lines.
+/.regression/flows.yaml                 @org/qa-platform
+/.regression/scenarios/**/checkout-*    @org/checkout-squad
+/.regression/scenarios/**/payment-*     @org/payments-platform
+/.regression/seeds/                     @org/qa-platform @org/dba
+
+# Compose / runner / governance config.
+/.regression/docker-compose.regression.yml  @org/qa-platform @org/devex
+/.regression/config.json                    @org/qa-platform
+```
+
+The flow-level `owner:` field (`regression-flow-extract` Rule 9) is the per-flow source of truth; CODEOWNERS is the GitHub-mechanism enforcement. For routing without prefix conventions, generate a CODEOWNERS block from `flows.yaml#owner` per scenario directory (left as a project script - no atomic ships this).
 
 ## Maintenance hooks - deferred
 

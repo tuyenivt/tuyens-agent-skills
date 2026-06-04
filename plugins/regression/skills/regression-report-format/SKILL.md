@@ -18,7 +18,7 @@ user-invocable: false
 
 ## Rules
 
-1. **Fixed section headers in this order:** `## Verdict`, `## Counts`, `## Per-Flow`, `## Failure Clusters`, `## Run Metadata`. Exact strings. CI greps them.
+1. **Fixed section headers in this order:** `## Verdict`, `## Counts`, `## Per-Flow`, `## Failure Clusters`, `## Trend`, `## Performance`, `## Run Metadata`. Exact strings. CI greps them. `## Trend` and `## Performance` render `_None - first run_` when no prior run-data is available.
 2. **One verdict per flow.** From triage. Per-flow casing is `Pass | Fail | Flake | Infra | Seed-drift` (Title-case). The `## Verdict` block label is the UPPER-case mapping: real-bug count -> `**FAIL**`; zero real bugs with any flake/infra/seed-drift -> `**PASS-WITH-NOISE**`; zero real bugs and zero noise -> `**PASS**`.
 3. **`Fail` (table) = `**FAIL**` (block).** Same concept, two casings - intentional, this rule names them so CI matchers can target either.
 4. **Cluster identical failures** by `(error-class, top-3-stack-frames)`. Report the cluster body once with affected scenarios listed. Truncate body to first 20 lines + `... (N more lines, see <trace-link>)`. Clustering applies only to `Fail` and `Flake` failures - `Infra` and `Seed-drift` failures bypass clustering (the error class is the verdict).
@@ -73,9 +73,9 @@ First trace: traces/order-checkout-happy.zip
 
 ## Per-Flow
 
-| Flow | Verdict | Duration | Trace |
-| --- | --- | --- | --- |
-| order-checkout-happy | Fail | 12.4s | traces/order-checkout-happy.zip |
+| Flow | Owner | Verdict | Duration | Trace |
+| --- | --- | --- | --- | --- |
+| order-checkout-happy | checkout-squad | Fail | 12.4s | traces/order-checkout-happy.zip |
 
 ## Failure Clusters
 
@@ -89,6 +89,24 @@ AssertionError: expected 201, got 500
   at scenarios/api/order-checkout.spec.ts:38:5
 ... (14 more lines, see traces/order-checkout-happy.zip)
 ```
+
+## Trend
+
+- **Slowest scenarios (vs last green run):**
+  1. order-checkout-happy: 12.4s (+2.1s)
+  2. user-signup: 4.1s (-0.3s)
+- **p95 step duration (10-run rolling):** 1.8s (last green 1.6s, +12.5%)
+- **Image-digest delta vs last green:**
+  - api: changed (sha256:abc... -> sha256:def...)
+  - web: unchanged
+  - db: unchanged
+
+## Performance
+
+| Flow | p95 step (ms) | Budget (ms) | Status |
+| --- | --- | --- | --- |
+| order-checkout-happy | 1820 | 1500 | OVER (+21%) |
+| user-signup | 380 | _none_ | _no budget_ |
 
 ## Run Metadata
 
@@ -104,6 +122,11 @@ AssertionError: expected 201, got 500
 - node: v20.10.0
 ```
 
+### Trend / Performance data sources
+
+- **Trend** reads `.regression/runs/<last-N-green-runIds>/triage.json` plus the per-run `## Run Metadata` from prior `summary.md`. "Last green" = most recent run with `## Verdict` containing `**PASS**` or `**PASS-WITH-NOISE**`. Slowest delta = top-3 by current duration, signed delta vs that flow's duration in the last green. p95 step rolling = 10-run window of per-flow `time` from JUnit. When fewer than 2 prior runs exist, render `_None - insufficient history_`.
+- **Performance** joins JUnit per-testcase `time` against `flows.yaml#latencyBudget.p95Ms` (`regression-perf-check` consumes the same field). Flows without a budget render `_no budget_` in the Status column. OVER status marks a budget violation but does NOT change the exit code (Rule 5 still gates exit on `real-bug` verdicts only); the violation surfaces in `## Counts` as `BudgetViolations: N` for CI greps.
+
 ### Verdict block examples (one per label)
 
 ```
@@ -117,7 +140,7 @@ Pluralization follows the count (`1 real-bug failure` / `2 real-bug failures`).
 ### CI-grep contract
 
 - `grep '^## Verdict$' summary.md` finds the verdict block header. The label is on the **next non-empty line**, prefixed with `**FAIL**` / `**PASS**` / `**PASS-WITH-NOISE**` (one of three; mutually exclusive).
-- `## Counts` lists `- <Label>: <number>` lines with stable labels: `Total`, `Passed`, `Failed`, `Flake`, `Infra`, `Seed-drift`, `Skipped`, `Duration`.
+- `## Counts` lists `- <Label>: <number>` lines with stable labels: `Total`, `Passed`, `Failed`, `Flake`, `Infra`, `Seed-drift`, `Skipped`, `Duration`, `BudgetViolations`.
 
 ### Image digests
 
@@ -129,10 +152,21 @@ Always full sha256 (`sha256:` followed by 64 hex chars). Never truncated - CI co
 - `<failure>` body -> clustering input (Fail / Flake only).
 - `<skipped>` -> Skipped count; no `## Per-Flow` row.
 - `time` -> Duration column (`Xs` / `X.Xs` precision).
+- Owner column resolves by joining the testcase basename against `flows.yaml#owner`. Missing -> `_unknown_`.
 
 ### When the lifecycle metadata block is missing
 
 If `regression-runner` did not supply image digests / runId / etc. (legacy invocation or partial input), write `unknown` for each missing field rather than omitting the bullet - the CI contract requires the line to exist.
+
+### CI annotations (optional)
+
+When `--annotations <gh|gl|none>` is set (`task-regression` forwards `REGRESSION_ANNOTATIONS`), the report writer emits one annotation per `Fail` verdict to stderr alongside `summary.md`. Default `none`.
+
+- **GitHub Actions (`gh`):** `::error file=<spec-path>,line=<line>::<error-class>: <first-line-of-failure>`. One per failing testcase. The line number comes from the JUnit `<failure>` body's first frame; falls back to `1` when unparseable.
+- **GitLab CI (`gl`):** emits `.regression/reports/<runId>/junit.xml` already; this skill ALSO writes `.regression/reports/<runId>/code-quality.json` (GitLab's report format) with one entry per `Fail`.
+- **None:** no extra emission.
+
+Annotations are purely additive - they never replace `summary.md` and never change exit code semantics.
 
 ## Output Format
 

@@ -35,6 +35,11 @@ Runtime reads `.regression/` only. No codemap, no OpenAPI, no sibling-repo metad
 | `--workers <N>` | from `playwright.config.ts` | CLI flag overrides config. |
 | `--retries <N>` | `0` | Forwarded verbatim. Default `0`; retries hide bugs. |
 | `--keep-up` | off | Skip teardown on normal exit. Trap on `INT`/`TERM` still fires. |
+| `--include-deprecated` | off | Run flows with `status: deprecated`. Default: skip them. Stale flows always run but surface as warnings in the report. |
+| `--rerun-failed <runId>` | off | Read `.regression/runs/<runId>/triage.json` and re-run only the failing scenario titles via `--grep`. Mutually exclusive with `--grep`. |
+| `--matrix-key <key>` | unset | Suffix for the report dir (`reports/<runId>__<key>/`) so sharded/matrix CI jobs do not overwrite each other. Defaults to `default` when `SHARD_INDEX` is set without `--matrix-key`. |
+| `--annotations <gh\|gl\|none>` | `none` | Emit CI-native annotations alongside `summary.md`. `gh` -> GitHub `::error file=...,line=...::` to stderr. `gl` -> GitLab `code-quality.json`. Forwarded to `regression-report-format` via `REGRESSION_ANNOTATIONS`. |
+| `--pr-comment` | off | After the report writes, post / update a sticky PR comment via `regression-pr-comment`. Requires `GH_TOKEN` / `GITLAB_TOKEN` and `REGRESSION_PR_REF`. |
 
 **Working directory.** The user invokes from the test repo root (the directory containing `.regression/`). All paths below are relative to that root. Never `cd .regression && ...`; the workflow always uses `.regression/` as a prefix and runs `npx playwright test` from that subdirectory via `( cd .regression && npx playwright test ... )`.
 
@@ -46,13 +51,21 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Preflight
 
-In order; first failure stops with the named remediation:
+Use skill: `regression-preflight`.
+
+In order; the first failure stops with the named remediation:
 
 1. `docker version` and `docker compose version` succeed.
 2. `.regression/services.yaml`, `.regression/flows.yaml`, `.regression/docker-compose.regression.yml`, `.regression/playwright.config.ts`, `.regression/package.json` all exist. Any missing -> "run `/task-regression-discover`".
-3. Required env vars (names declared in `.regression/.env.example`) resolvable. Resolution order: process env, then `.regression/.env`. List missing names only; never log values.
-4. Host ports declared in `services.yaml` (if any) are free. Default config declares none.
+3. `regression-preflight`: `docker info`, disk space at docker root, declared host port availability. Aggregated failures with named exit codes 20-22.
+4. Required env vars (names declared in `.regression/.env.example`) resolvable. Resolution order: process env, then `.regression/.env`. List missing names only; never log values.
 5. **No codemap/OpenAPI/sibling-repo read.**
+
+The post-`up --wait` clock-skew check (`regression-preflight` exit code 23) fires inside Step 6 after the runner reports services healthy, not here.
+
+### Step 2.5 - Resolve --rerun-failed (only when set)
+
+When `--rerun-failed <runId>` is set, read `.regression/runs/<runId>/triage.json`. Missing -> abort with `task-regression: triage.json for run <runId> not found; cannot rerun-failed.` Compute the set of failing flow names (verdicts `real-bug` and `flake`) and pass them as `--grep '^(name1|name2|...)$'` to Playwright via `REGRESSION_PW_ARGS`. Mutually exclusive with `--grep`; both present -> abort.
 
 ### Step 3 - Resolve Compose Profile
 
@@ -168,7 +181,8 @@ Exit non-zero iff Step 8 produced at least one `real-bug` verdict. `flake` / `in
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded.
-- [ ] Step 2: docker available; `.regression/` complete; env vars resolvable (process env, then `.regression/.env`); declared host ports free; no codemap/OpenAPI/sibling-repo read.
+- [ ] Step 2: docker available; `.regression/` complete; `regression-preflight` cleared codes 20-22; env vars resolvable (process env, then `.regression/.env`); no codemap/OpenAPI/sibling-repo read.
+- [ ] Step 2.5: when `--rerun-failed` set, triage.json loaded, failing flow names extracted, mutual exclusion with `--grep` enforced.
 - [ ] Step 3: profile resolved with documented precedence; source recorded for the report header.
 - [ ] Step 4: `regression-data-isolation` minted run-id and project name; volumes ephemeral; `TZ=UTC`; per-scenario IDs derived.
 - [ ] Step 5: trap armed before Step 6; under `--keep-up` only `EXIT` is disarmed.

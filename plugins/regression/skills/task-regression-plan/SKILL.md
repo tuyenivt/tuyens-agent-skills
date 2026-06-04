@@ -28,7 +28,7 @@ The skill never mutates `flows.yaml`, scenarios, or sibling repos. The Coverage 
 | Input | Default | Notes |
 | --- | --- | --- |
 | `--out <path>` | `.regression/test-plan.md` | Output file, relative to the test repo root. Parent directory must already exist (skill does not create it). |
-| `--group-by <flow-kind\|service\|none>` | `flow-kind` | `flow-kind`: groups by `api` / `browser` / `mixed`. `service`: groups by `entryPoint.service` only (a flow appears under one service even when its hops touch others). `none`: flat alphabetical list. |
+| `--group-by <flow-kind\|service\|owner\|none>` | `flow-kind` | `flow-kind`: groups by `api` / `browser` / `mixed`. `service`: groups by the **derived `services`** set (`entryPoint.service` + every `hops[].from/to`); a flow appears once under each distinct service it touches. `owner`: groups by required `owner:` field (`regression-flow-extract` Rule 9). `none`: flat alphabetical list. |
 | `--include-orphans` | on | Pass `--include-orphans=false` to omit the appendix. |
 | `--force` | off | Overwrite `--out` without the diff-confirm prompt. Use for scripted runs. |
 
@@ -56,10 +56,10 @@ Parse `.regression/flows.yaml`. For each entry read every field present. Schema 
 
 **Field handling:**
 
-- **Known structured fields** (`name`, `kind`, `entryPoint`, `hops`, `observableOutcome`, `evidence`) drive the per-flow lines in Output Format.
-- **Every other field** (`owner`, `priority`, `tags`, `status`, ...) passes through into the `Additional fields` sub-row verbatim. No allow-list; nothing is dropped, nothing is validated.
-- **Flow-level `tags:`** is independent from test-title `@tags`. Flow-level `tags` ride under `Additional fields`; test-title `@tags` are extracted in Step 4. Same word, different namespaces.
-- **`evidence:` shape.** Map -> render as comma-separated `key: value` pairs. Scalar `skeleton` -> render `_skeleton_`. List -> render as `[v1, v2, ...]`. Multi-line strings collapse to single line.
+- **Known structured fields** (`name`, `kind`, `direction`, `owner`, `status`, `entryPoint`, `hops`, `observableOutcome`, `evidence`, `flowLabels`, `checks`, `clock`, `latencyBudget`, `archetype`) drive the per-flow lines in Output Format.
+- **Every other field** (`priority`, ...) passes through into the `Additional fields` sub-row verbatim. No allow-list; nothing is dropped, nothing is validated.
+- **`flowLabels:` is the flow-level label set; `@tags` are scenario test-title tags.** They live in different namespaces and were intentionally renamed apart - `tags:` on a flow entry is a legacy field treated as `flowLabels:` for back-compat reads only; new flows use `flowLabels:`.
+- **`evidence:` shape.** Contract owned by `regression-flow-extract`: `"skeleton" | Array<{[kebab-key]: string}>`. Scalar `skeleton` -> render `_skeleton_`. List -> render as comma-separated `key: value` pairs (one per single-key map). Multi-line values collapse to single line. Legacy shapes (top-level map, plain list of strings) are read tolerantly but warned at the top of Summary: `legacy evidence shape on flows: <list>`.
 - **`<USER FILL>` markers** render verbatim, unchanged. Do not abort - the plan documents gaps; `task-regression-scenario` is the gate that refuses unresolved markers.
 - **Duplicate flow names.** Warn once at the top of Summary (`duplicate flow names: <list>`) and render every occurrence; do not dedupe.
 
@@ -127,8 +127,11 @@ Timestamp is ISO-8601 UTC (deterministic across re-runs). Use `_missing_` for ab
 #### {flow-name}
 
 - **Coverage:** {covered | kind-mismatch | no-spec | orphan}
-- **Kind:** {declared kind from flows.yaml}
+- **Owner:** {kebab-case team slug from `owner:`, or `_missing_`}
+- **Status:** {active | deprecated | stale} _(omit if `active`)_
+- **Kind:** {declared kind from flows.yaml}{` / direction: <d>` when `kind=mixed`}
 - **Entry point:** {service} - {action}
+- **Services touched:** {derived union of entryPoint + hops}
 - **Steps:**
   1. {hop.from} -> {hop.to}: {hop.call}
 - **Expected outcome:**

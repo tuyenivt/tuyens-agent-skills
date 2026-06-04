@@ -33,11 +33,12 @@ user-invocable: false
    | `browser` | `page` only                 | -                                                                                   |
    | `mixed`   | `request` and `page`        | API does setup, browser does the user-visible assertion. Inversion allowed (Rule 8). |
 
-8. **Mixed-kind inversion when the entry is browser.** When the flow's `entryPoint.service` has `role: frontend` in `services.yaml`, the browser performs the action and the assertion observes via API and / or DB - regardless of whether API setup would have been technically possible. Document the inversion in a one-line header comment: `// kind: mixed; entry=browser; assertion=DB+UI`. Backend entry -> default direction (API setup, browser asserts) - no inversion comment needed. Mid-flow HTTP hop assertions inside a browser-driven `@smoke` use `page.waitForResponse(...)`; this is the only sanctioned pattern for asserting on an in-flight network call.
+8. **Mixed-kind direction is explicit (`direction: default | inverted`).** When `kind: mixed`, the flow's `direction:` field (owned by `regression-flow-extract` Rule 8) selects the template. `direction: default` -> API setup, browser asserts. `direction: inverted` -> browser action via POM, assertion observes via API and/or DB. Header comment when inverted: `// kind: mixed; direction: inverted; assertion=DB+UI`. `kind: mixed` with no `direction:` -> infer from `entryPoint.service` role (`frontend` -> inverted, `backend` -> default) and emit the inferred value back into the flow entry. Mid-flow HTTP hop assertions inside a browser-driven `@smoke` use `page.waitForResponse(...)`; this is the only sanctioned pattern for asserting on an in-flight network call.
 9. **Out-of-fixture transports observed via downstream state.** Kafka publishes, gRPC streams, raw WebSocket frames - assert on the resulting HTTP response or DB row through `pollUntil`. This skill never invents fixtures for transports Playwright does not own.
 10. **From-story mode: no fabrication.** Service names, endpoint paths, and observable outcomes absent from the input become `<USER FILL: ...>` placeholders in `flows.yaml`. Plausible guesses are forbidden. The marker lives only in `flows.yaml`, never in the emitted `.spec.ts`.
-11. **From-story mode: evidence is mandatory.** At least one `evidence:` entry citing the source. The list is a sequence of single-key mappings; conventional keys are `ticket` / `incident` / `commit` / `reporter` / `reported` / `repro` / `url`, but any kebab-case key is accepted. Empty list -> abort, no file changes.
+11. **From-story mode: evidence is mandatory.** Contract owned by `regression-flow-extract` (`Evidence = "skeleton" | Array<{[kebab-key]: string}>`); from-story drafts always use the list form. At least one entry is required; conventional keys include `ticket` / `incident` / `commit` / `reporter` / `reported` / `repro` / `url`. Empty list or scalar `skeleton` -> abort, no file changes.
 12. **Refuse to scaffold over unresolved `<USER FILL>`.** Before emitting the `.spec.ts`, scan the resolved flow entry. Any `<USER FILL>` in `entryPoint`, `hops`, or `observableOutcome` -> stop and surface to the user; the consuming workflow exits non-zero. The from-story drafting step is the legitimate producer of these markers; the scenario authoring step is the gate that demands they be resolved.
+13. **Compose check atomics by `checks:`.** When the flow entry has `checks: [<list>]`, delegate to the matching atomic for each token: `contract` -> `regression-contract-check`, `perf` -> `regression-perf-check`, `a11y` -> `regression-a11y-check`, `security-headers` -> `regression-security-headers-check`, tokens starting with `otel-span:` / `log:` / `metric:` -> `regression-observability-check`. Each atomic appends its assertion block to the `@smoke` test in the documented order (contract -> security-headers -> perf -> a11y -> observability). Unknown check tokens -> abort with `regression-scenario-author: unknown check '<token>' in flow '<name>'.`
 
 ## Patterns
 
@@ -90,12 +91,12 @@ test.describe("POST /orders", () => {
 
 ### Kind-specific differences
 
-| `kind`        | Fixtures requested            | `@smoke` performs           | `@smoke` asserts                                 | Header comment                                  |
-| ------------- | ----------------------------- | --------------------------- | ------------------------------------------------ | ----------------------------------------------- |
-| `api`         | `{ request }`                 | HTTP call                   | response status + `pollUntil` on read-after-write | `// Flow: <n>\n// Kind: api`                    |
-| `browser`     | `{ page }`                    | UI action via POM           | `await expect(pom.<locator>).toHaveText(...)`    | `// Flow: <n>\n// Kind: browser`                |
-| `mixed`       | `{ request, page }`           | API setup, then UI assert   | UI element + optional `rowExists` on DB          | `// Flow: <n>\n// Kind: mixed`                  |
-| `mixed` (inv) | `{ page, request }`           | UI action via POM           | `rowExists(...)` and/or UI confirmation          | `// Flow: <n>\n// Kind: mixed; entry=browser; assertion=DB+UI` |
+| `kind` / `direction`         | Fixtures requested            | `@smoke` performs           | `@smoke` asserts                                 | Header comment                                  |
+| ---------------------------- | ----------------------------- | --------------------------- | ------------------------------------------------ | ----------------------------------------------- |
+| `api`                        | `{ request }`                 | HTTP call                   | response status + `pollUntil` on read-after-write | `// Flow: <n>\n// Kind: api`                    |
+| `browser`                    | `{ page }`                    | UI action via POM           | `await expect(pom.<locator>).toHaveText(...)`    | `// Flow: <n>\n// Kind: browser`                |
+| `mixed` / `direction: default`  | `{ request, page }`        | API setup, then UI assert   | UI element + optional `rowExists` on DB          | `// Flow: <n>\n// Kind: mixed`                  |
+| `mixed` / `direction: inverted` | `{ page, request }`        | UI action via POM           | `rowExists(...)` and/or UI confirmation          | `// Flow: <n>\n// Kind: mixed; direction: inverted; assertion=DB+UI` |
 
 A browser scenario substitutes the `request.post` block for `await pom.placeOrder()`; a mixed scenario keeps the api `@smoke` setup and adds a browser assertion before the `pollUntil`. Inversion (Rule 8) flips setup and assertion.
 
@@ -166,14 +167,51 @@ await pollUntil(() => rowExists("orders", { id, status: "confirmed" }));
 
 The supported engines are whatever `regression-service-inventory#engine` permits; the helper's connection string comes from compose env at runtime.
 
+### Local debugging
+
+Once a scenario is on disk, debug it without `task-regression` lifecycle overhead:
+
+```bash
+# UI mode - per-step pane, time-travel, network log
+( cd .regression && npx playwright test --ui scenarios/api/<flow>.spec.ts )
+
+# Headed + trace - watch the browser, save trace.zip for later
+( cd .regression && npx playwright test --headed --trace on scenarios/browser/<flow>.spec.ts )
+
+# Single test by title, with breakpoint - drop `await page.pause()` in the spec, then
+( cd .regression && npx playwright test --debug -g "@smoke creates an order" )
+```
+
+Compose stack must already be up (`docker compose -p regression-debug -f .regression/docker-compose.regression.yml --profile local-build up -d --wait`). The run-id env (`REGRESSION_RUN_ID=debug`) and `TZ=UTC` must be exported - the `scopedId` factory reads them.
+
+Avoid `--debug` in CI - it pauses on every assertion.
+
 ### Tag conventions
 
 | Tag         | Meaning                                                                                                            |
 | ----------- | ------------------------------------------------------------------------------------------------------------------ |
 | `@smoke`    | Golden path. Exactly one per file. Selected by `/task-regression --grep @smoke`.                                   |
 | `@negative` | Validation / authz / conflict. Exactly one required per file (Rule 2). Multiple negatives go in separate flows.    |
+| `@visual`   | Opt-in snapshot test. Browser flows only. Baselines under `.regression/scenarios/<kind>/<flow>.spec.ts-snapshots/`. |
 
 Other project tags (`@slow`, `@flaky`, `@nightly`) are out of this skill's scope.
+
+### Visual snapshot policy (`@visual`)
+
+Snapshots only run when `--grep @visual` is passed; CI default does NOT include them (snapshot churn is environment-sensitive). To author:
+
+```ts
+test("@visual checkout confirmation matches baseline", async ({ page }) => {
+  await pom.goto();
+  await pom.placeOrder();
+  await expect(page).toHaveScreenshot("checkout-confirmation.png", {
+    mask: [page.locator("[data-sensitive]")],   // F-28 scrubbing
+    maxDiffPixelRatio: 0.01,
+  });
+});
+```
+
+Update baselines: `npx playwright test --grep @visual --update-snapshots`. Commit the updated `.png` files alongside the scenario change. Baselines are platform-sensitive; document the runner in `playwright.config.ts` (`use.viewport`, `projects.use.locale`, etc.).
 
 ## Output Format
 

@@ -24,6 +24,7 @@ Sensitive configuration reaches the compose project only through environment var
 4. **Local overrides via `.env` OR `docker-compose.override.yml`.** Both gitignored. Pick one home per var: `.env` for plain compose substitution, override file when the override needs to add ports / build args / volumes too.
 5. **CI uses a secret store.** The plugin does not pick one; the wrapper is one line per provider, the runner stays unchanged.
 6. **Preflight is fail-closed.** `task-regression` aborts before `docker compose up` if any name from `.env.example` is unresolved.
+7. **Scenario-side secrets via `fixtures/secrets.ts`.** Scenarios needing an external API key (Stripe, SendGrid, etc.) MUST import from `fixtures/secrets.ts`, never read `process.env` directly. Allowed names mirror `.env.example` exactly; the helper rejects unknown names at scenario start to surface drift. `process.env.STRIPE_KEY` in a scenario is a Rule 7 violation that `regression-scenario-author`'s lint surfaces.
 
 ## Patterns
 
@@ -92,6 +93,30 @@ doppler run --project regression --config ci -- /path/to/regression-runner
     JWT_SIGNING_KEY: ${{ secrets.REGRESSION_JWT_KEY }}
   run: /path/to/regression-runner
 ```
+
+### Scenario-side secrets helper (`fixtures/secrets.ts`)
+
+```ts
+// .regression/fixtures/secrets.ts - committed, no values.
+const ALLOWED = new Set([
+  "STRIPE_TEST_KEY",
+  "SENDGRID_TEST_KEY",
+  // mirror .env.example exactly
+]);
+
+export const requireSecret = (name: string): string => {
+  if (!ALLOWED.has(name)) {
+    throw new Error(`fixtures/secrets: '${name}' is not in the allowed list (mirror .env.example)`);
+  }
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(`fixtures/secrets: '${name}' is unset; resolve via .env / export / secret store`);
+  }
+  return v;
+};
+```
+
+Scenarios call `requireSecret("STRIPE_TEST_KEY")`, never `process.env.STRIPE_TEST_KEY`. The allowed-list guard makes a typo / new env reference loud at scenario start instead of silent undefined.
 
 ### Detection of accidentally-committed sensitive values
 

@@ -23,9 +23,20 @@ Produces ranked cross-service flow suggestions for the user to confirm before th
 1. **Read-only across sibling repos.** Symlinks under `.regression/.cache/codemap/` are user-managed.
 2. **Rank, do not pick.** Emit candidates ranked, with rationale. User accepts / rejects each.
 3. **Diff against `flows.yaml`.** Never silently overwrite. Show additions; name-conflict candidates handled by the workflow (`task-regression-discover` Step 4).
-4. **Cite inputs per candidate.** Each entry's `evidence:` lists every signal (codemap edge, OpenAPI path, git commit). A skeleton candidate uses `evidence: skeleton`.
+4. **Cite inputs per candidate (`evidence:` contract).** This skill owns the contract; every other consumer (`task-regression-plan`, `regression-scenario-author`) reads it:
+
+   ```
+   Evidence = "skeleton"                      # singular literal, fallback candidates only
+             | Array<{ [kebab-key: string]: string }>   # list of single-key maps
+   ```
+
+   Keys are kebab-case; conventional keys: `codemap` / `openapi` / `git` / `ticket` / `incident` / `commit` / `reporter` / `reported` / `repro` / `url`. Values are free-text. Empty list is forbidden in from-story drafting (`regression-scenario-author` Rule 11). The literal scalar `evidence: skeleton` is reserved for fallback candidates only.
 5. **Cross-service only.** A flow runs from an externally-triggerable entry point through at least two services to an observable outcome. Single-service flows belong to `task-<stack>-test`; this skill discards them from candidate output.
 6. **Candidate count.** Aim for 3-10 ranked candidates when any evidence tier is present. When all tiers are absent, emit exactly one `evidence: skeleton` candidate per backend - this overrides the 3-10 floor.
+7. **Cross-service services field is derived, not authored.** `services` for a flow = unique union of `entryPoint.service` and every `hops[].from/to`. Computed by consumers (`task-regression-plan --group-by service`); not stored on the flow.
+8. **`kind` and `direction` are orthogonal.** `kind: api | browser | mixed` selects fixtures. `direction: default | inverted` is meaningful only when `kind: mixed`. Default direction = API setup, browser asserts; inverted = browser action, API/DB asserts. For `kind != mixed`, `direction:` is omitted (or rejected).
+9. **`owner:` is required on every flow.** Kebab-case team slug (e.g. `checkout-squad`, `payments-platform`). The writer rejects entries without it. Legacy entries without `owner:` are surfaced as `<USER FILL: owner-team>` in the candidate output.
+10. **`status:` defaults to `active`.** Enum `active | deprecated | stale`. `deprecated` flows render greyed-out in plans and skip in the runner unless `--include-deprecated` is passed. `stale` flows surface as warnings in the plan with the date they were marked stale.
 
 ## Patterns
 
@@ -40,6 +51,9 @@ Produces ranked cross-service flow suggestions for the user to confirm before th
 ```yaml
 - name: order-checkout-happy
   kind: mixed                    # api | browser | mixed
+  direction: default             # default | inverted (meaningful only when kind=mixed; see Rule 13)
+  owner: checkout-squad          # required; kebab-case team slug (see Rule 12)
+  status: active                 # active | deprecated | stale (see Rule 14)
   entryPoint: { service: web, action: "navigate /checkout, click 'Place order'" }
   hops:
     - { from: web, to: api, call: "POST /orders" }
@@ -49,10 +63,15 @@ Produces ranked cross-service flow suggestions for the user to confirm before th
     - "HTTP 201 returned to web"
     - "row in orders with status='confirmed'"
     - "UI shows 'Thank you' screen"
-  evidence:
-    - codemap: "web/src/checkout.tsx -> api POST /orders"
-    - openapi: "api/openapi.yaml POST /orders"
-    - git: "api 2026-05-14 'add payments handoff'"
+  evidence:                      # see Rule 4 for the contract
+    - { codemap: "web/src/checkout.tsx -> api POST /orders" }
+    - { openapi: "api/openapi.yaml POST /orders" }
+    - { git: "api 2026-05-14 'add payments handoff'" }
+  flowLabels: [smoke, revenue]   # flow-level set; orthogonal to scenario @-tags
+  checks: [contract, a11y]       # optional opt-in checks; consumed by check atomics
+  latencyBudget: { p95Ms: 1500 } # optional; consumed by regression-perf-check
+  clock: { advanceMs: 0 }        # optional; consumed by regression-clock-advance
+  archetype: cart-checkout       # optional; consumed by regression-flow-archetypes
   rationale: "Cross-service write path, high blast-radius, no existing scenario."
 ```
 

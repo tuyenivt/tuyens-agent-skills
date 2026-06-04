@@ -28,6 +28,7 @@ Generates the committed `docker-compose.regression.yml`. Re-emit on `task-regres
 6. **Compose v2 required.** Healthcheck-conditional `depends_on` is v2; `name:` top-level is v2.3.3+. Stated, not silently assumed.
 7. **Reference env values as `${VAR}` only.** Inventory carries the names; the writer does not interpolate, default, or hardcode values.
 8. **Diff before overwrite.** Unified-diff against the existing file; ask `keep mine / take new / merge`. Default: keep mine. Without an authored-by marker the writer cannot tell hand-edits from prior emits - it always treats the existing file as authoritative until the user picks.
+9. **Optional resource caps.** When `services.yaml#services[].resources` is present, emit `mem_limit: <N>m` and `cpus: '<F>'` for that service. Omitted by default; nothing emitted means no cap. Recommended on shared CI runners.
 
 ## Patterns
 
