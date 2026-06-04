@@ -1,6 +1,6 @@
 ---
 name: task-regression-plan
-description: Export a human-readable test plan from .regression/ - joins flows.yaml + scenarios/ into one Markdown doc with per-flow intent, steps, expected outcome, negative cases, evidence, and a Coverage column.
+description: Export regression test plan - joins flows.yaml + scenarios/ into one Markdown doc with per-flow intent, steps, evidence, Coverage column.
 metadata:
   category: testing
   tags: [regression, test-plan, documentation, qa, release]

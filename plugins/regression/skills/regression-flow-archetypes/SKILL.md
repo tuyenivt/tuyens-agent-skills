@@ -40,17 +40,23 @@ Library of opinionated scenario templates for recurring flow shapes. `regression
 ### `archetype:` field shape
 
 ```yaml
+# Map form (canonical when the archetype has required params)
 - name: checkout-with-flag-off
   kind: api
-  archetype: feature-flag-matrix
   archetype:
+    name: feature-flag-matrix
     flagKey: new-checkout-v2
     variants:
       - { name: "off", value: false, expect: "old checkout response shape" }
       - { name: "on",  value: true,  expect: "new checkout response shape" }
+
+# Scalar form (shorthand for archetypes with no required params)
+- name: ping-roundtrip
+  kind: api
+  archetype: smoke-only
 ```
 
-The `archetype:` key serves dual purpose: scalar for the archetype name + a nested map for its parameters. Parsing precedence: if `archetype:` is a map, the `name:` field inside is the archetype; if scalar, the scalar is the name. The map form is canonical; scalar is shorthand for archetypes with no required params.
+The `archetype:` value is either a scalar (the archetype name) or a map with a required `name:` field plus archetype-specific params. Never both at the same level - YAML disallows duplicate keys. The map form is canonical; scalar is shorthand.
 
 ### Example emission - `idempotency-key-retry`
 

@@ -39,7 +39,7 @@ user-invocable: false
    ```
 
 3. **Clock advance is a per-scenario action, not a per-run setting.** The `regression-data-isolation` `RUN_BASELINE` stays stable; the advance is layered on top.
-4. **Reset on scenario teardown.** Every clock-advance scenario emits an `afterEach` that resets the clock (`POST /__test/advance-clock {advanceMs: 0}` for admin-endpoint; container restart for the other two). Without this, scenario ordering matters - which violates `regression-data-isolation` Rule 6.
+4. **Reset on scenario teardown.** Every clock-advance scenario emits an `afterEach` that resets the clock (`POST /__test/advance-clock {advanceMs: 0}` for admin-endpoint; container restart for the other two). Without this, scenario ordering becomes load-bearing - which violates the per-run baseline stability `regression-data-isolation` Rule 5 guarantees.
 5. **`admin-endpoint` requires a test-build guard.** The endpoint must 404 under prod build flags. The skill emits a one-time pre-flight: hit the endpoint on the first scenario use; if response is `200`, proceed; if anywhere outside test-build, abort with `regression-clock-advance: __test/advance-clock returned <status> - not a test build.`
 
 ## Patterns

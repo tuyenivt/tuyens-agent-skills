@@ -88,13 +88,15 @@ expect(resp.status()).toBe(201);
 
 ```ts
 // fixtures/factories/subscription.ts
+import { scopedId } from "../factory";
+import { RUN_BASELINE } from "../clock";       // regression-data-isolation
 import { scopedTenant } from "./tenant";
 
 export const scopedSubscription = (scenario: string, input: { plan?: string } = {}) => ({
   id: scopedId(scenario, "sub"),
   tenant: scopedTenant(scenario),    // typed Tenant
   plan: input.plan ?? "monthly",
-  startsAt: process.env.REGRESSION_RUN_BASELINE,
+  startsAt: RUN_BASELINE,
 });
 ```
 

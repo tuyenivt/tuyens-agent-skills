@@ -1,6 +1,6 @@
 ---
 name: regression-runner
-description: Ephemeral run lifecycle for outside-in regression. npm ci, compose up --wait, seed in order, playwright test, collect all failures, always teardown with down -v.
+description: Ephemeral regression run lifecycle. npm ci, compose up --wait, seed in order, playwright test, collect failures, teardown with down -v.
 metadata:
   category: testing
   tags: [regression, runner, docker-compose, lifecycle, ci]

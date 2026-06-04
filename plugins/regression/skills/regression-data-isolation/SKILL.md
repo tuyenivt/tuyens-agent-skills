@@ -1,6 +1,6 @@
 ---
 name: regression-data-isolation
-description: Per-run isolation for outside-in regression. Mints run-id, names compose project, owns ephemeral volumes, deterministic seed order, frozen clock, per-scenario tenant IDs.
+description: Per-run isolation for regression suite. Mints run-id, scopes compose project + volumes, freezes clock, derives per-scenario tenant/user/order IDs.
 metadata:
   category: testing
   tags: [regression, isolation, run-id, volumes, clock, tenant]

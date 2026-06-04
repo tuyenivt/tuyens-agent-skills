@@ -1,6 +1,6 @@
 ---
 name: regression-pr-comment
-description: Post or sticky-update a PR comment with regression verdict + counts. GitHub (gh) and GitLab (glab) backends. One sticky comment per PR per matrix key.
+description: Sticky PR comment with regression verdict + counts. GitHub (gh) and GitLab (glab) backends. One sticky per PR per matrix key.
 metadata:
   category: testing
   tags: [regression, pr-comment, ci, github, gitlab]

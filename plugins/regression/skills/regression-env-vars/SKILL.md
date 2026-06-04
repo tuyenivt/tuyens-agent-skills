@@ -1,6 +1,6 @@
 ---
 name: regression-env-vars
-description: Env-var plumbing for .regression/ compose. All sensitive values referenced via ${VAR}, .env.example shipped, override file gitignored, pre-flight validation.
+description: Env-var plumbing for regression compose. Sensitive values via ${VAR}, .env.example shipped, override file gitignored, preflight validation.
 metadata:
   category: testing
   tags: [regression, env-vars, config, security, compose]

@@ -1,6 +1,6 @@
 ---
 name: regression-compose-build
-description: Emit .regression/docker-compose.regression.yml from services.yaml with healthchecks, two profiles (local-build, pinned-images), isolated network, named volumes.
+description: Emit docker-compose.regression.yml from services.yaml - healthchecks, two profiles (local-build, pinned-images), isolated net, named volumes.
 metadata:
   category: testing
   tags: [regression, docker-compose, infrastructure, polyrepo]

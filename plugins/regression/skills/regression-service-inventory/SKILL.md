@@ -67,7 +67,7 @@ services:
     resources:
       memMb: <int>            # compose `mem_limit`, mapped to MiB
       cpus: <float>           # compose `cpus`
-sinks:                        # optional - async sinks the suite asserts on (F-7)
+sinks:                        # optional - async sinks the suite asserts on (see Rule 8)
   - name: <string>            # logical sink name (e.g. "orders-events")
     kind: kafka-topic | s3-bucket | webhook-out | smtp-out | sqs-queue
     target: <string>          # broker:topic, bucket name, URL pattern, mailhog hostname, queue ARN

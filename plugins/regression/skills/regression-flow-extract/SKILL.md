@@ -1,6 +1,6 @@
 ---
 name: regression-flow-extract
-description: Discovery-time flow suggester for outside-in regression. Reads symlinked codemap graphs, OpenAPI specs, and git history to propose cross-service flows for flows.yaml.
+description: Discovery-time flow suggester. Reads symlinked codemap graphs, OpenAPI specs, and git history to propose ranked cross-service flows for flows.yaml.
 metadata:
   category: testing
   tags: [regression, flows, discovery, codemap, openapi]
@@ -51,9 +51,9 @@ Produces ranked cross-service flow suggestions for the user to confirm before th
 ```yaml
 - name: order-checkout-happy
   kind: mixed                    # api | browser | mixed
-  direction: default             # default | inverted (meaningful only when kind=mixed; see Rule 13)
-  owner: checkout-squad          # required; kebab-case team slug (see Rule 12)
-  status: active                 # active | deprecated | stale (see Rule 14)
+  direction: default             # default | inverted (meaningful only when kind=mixed; see Rule 8)
+  owner: checkout-squad          # required; kebab-case team slug (see Rule 9)
+  status: active                 # active | deprecated | stale (see Rule 10)
   entryPoint: { service: web, action: "navigate /checkout, click 'Place order'" }
   hops:
     - { from: web, to: api, call: "POST /orders" }

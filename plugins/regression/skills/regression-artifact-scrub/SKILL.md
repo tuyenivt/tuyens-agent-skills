@@ -9,7 +9,7 @@ user-invocable: false
 
 # Regression Artifact Scrub
 
-`regression-data-isolation` Rule 5 enforces synthetic `acme-test-*` identifiers by convention. Nothing today scrubs the artifact. A scenario that reads prod-shaped fixtures records real-looking emails / card numbers / SSNs into a CI artifact retained for days. This skill closes that gap.
+`regression-seed-strategy` Rule 5 enforces synthetic `acme-test-*` identifiers by convention. Nothing today scrubs the artifact. A scenario that reads prod-shaped fixtures records real-looking emails / card numbers / SSNs into a CI artifact retained for days. This skill closes that gap.
 
 ## When to Use
 

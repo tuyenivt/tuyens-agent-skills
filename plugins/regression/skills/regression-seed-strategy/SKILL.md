@@ -1,6 +1,6 @@
 ---
 name: regression-seed-strategy
-description: Per-engine database seeding for outside-in regression. Postgres / MySQL / MariaDB / MongoDB / SQL Server / SQLite. Seeds apply directly, bypassing the backend's migration tool.
+description: Per-engine seeding for regression suite. Postgres / MySQL / MariaDB / MongoDB / SQL Server / SQLite. Applies directly, bypassing backend migrations.
 metadata:
   category: testing
   tags: [regression, seeds, database, fixtures, idempotent]

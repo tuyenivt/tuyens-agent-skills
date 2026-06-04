@@ -1,6 +1,6 @@
 ---
 name: regression-flakiness-triage
-description: Classify regression test failures into real-bug / flake / infra / seed-drift. Surfaces flake-rate trend across last N runs. Triage only, no auto-retries.
+description: Classify regression failures into real-bug / flake / infra / seed-drift. Surfaces flake-rate trend across last N runs. Triage only, no retries.
 metadata:
   category: testing
   tags: [regression, flakiness, triage, classification, reliability]

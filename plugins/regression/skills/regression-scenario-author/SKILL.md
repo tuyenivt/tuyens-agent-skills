@@ -1,6 +1,6 @@
 ---
 name: regression-scenario-author
-description: Playwright scenario authoring template for outside-in regression. Emits api/browser/mixed .spec.ts plus from-story flows.yaml drafting with no-fabrication rules.
+description: Playwright scenario authoring for regression. Emits api/browser/mixed .spec.ts plus from-story flows.yaml drafting with no-fabrication rules.
 metadata:
   category: testing
   tags: [regression, playwright, scenarios, typescript, e2e]
@@ -205,7 +205,7 @@ test("@visual checkout confirmation matches baseline", async ({ page }) => {
   await pom.goto();
   await pom.placeOrder();
   await expect(page).toHaveScreenshot("checkout-confirmation.png", {
-    mask: [page.locator("[data-sensitive]")],   // F-28 scrubbing
+    mask: [page.locator("[data-sensitive]")],   // see regression-artifact-scrub
     maxDiffPixelRatio: 0.01,
   });
 });

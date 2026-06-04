@@ -1,6 +1,6 @@
 ---
 name: task-regression
-description: Run the outside-in regression suite end-to-end - build, up, wait healthy, seed, Playwright run, report, teardown. Ephemeral compose project, real-bug gating.
+description: Run the regression suite end-to-end - build, up, wait, seed, Playwright, report, teardown. Ephemeral compose project, real-bug exit gating.
 metadata:
   category: testing
   tags: [regression, playwright, docker-compose, e2e, orchestration]
@@ -57,11 +57,11 @@ In order; the first failure stops with the named remediation:
 
 1. `docker version` and `docker compose version` succeed.
 2. `.regression/services.yaml`, `.regression/flows.yaml`, `.regression/docker-compose.regression.yml`, `.regression/playwright.config.ts`, `.regression/package.json` all exist. Any missing -> "run `/task-regression-discover`".
-3. `regression-preflight`: `docker info`, disk space at docker root, declared host port availability. Aggregated failures with named exit codes 20-22.
+3. `regression-preflight`: `docker info`, disk space at docker root, declared host port availability. Aggregated failures with named exit codes 20-22 (code 23 fires later in Step 6, after services are healthy).
 4. Required env vars (names declared in `.regression/.env.example`) resolvable. Resolution order: process env, then `.regression/.env`. List missing names only; never log values.
 5. **No codemap/OpenAPI/sibling-repo read.**
 
-The post-`up --wait` clock-skew check (`regression-preflight` exit code 23) fires inside Step 6 after the runner reports services healthy, not here.
+The post-`up --wait` clock-skew check (`regression-preflight` exit code 23) fires inside Step 6 after the runner reports services healthy, not here. Full preflight code range: 20-23.
 
 ### Step 2.5 - Resolve --rerun-failed (only when set)
 
@@ -181,7 +181,7 @@ Exit non-zero iff Step 8 produced at least one `real-bug` verdict. `flake` / `in
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded.
-- [ ] Step 2: docker available; `.regression/` complete; `regression-preflight` cleared codes 20-22; env vars resolvable (process env, then `.regression/.env`); no codemap/OpenAPI/sibling-repo read.
+- [ ] Step 2: docker available; `.regression/` complete; `regression-preflight` cleared codes 20-22 here (code 23 deferred to Step 6); env vars resolvable (process env, then `.regression/.env`); no codemap/OpenAPI/sibling-repo read.
 - [ ] Step 2.5: when `--rerun-failed` set, triage.json loaded, failing flow names extracted, mutual exclusion with `--grep` enforced.
 - [ ] Step 3: profile resolved with documented precedence; source recorded for the report header.
 - [ ] Step 4: `regression-data-isolation` minted run-id and project name; volumes ephemeral; `TZ=UTC`; per-scenario IDs derived.

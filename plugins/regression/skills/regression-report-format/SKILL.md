@@ -1,6 +1,6 @@
 ---
 name: regression-report-format
-description: JUnit XML normalization + Markdown verdict report for outside-in regression. Produces summary.md with per-flow verdicts, failure clusters, CI-grep-friendly sections.
+description: JUnit XML normalization + Markdown verdict for regression runs. Emits summary.md with per-flow verdicts, failure clusters, CI-grep-friendly sections.
 metadata:
   category: testing
   tags: [regression, report, junit, markdown, ci]
