@@ -173,16 +173,12 @@ end
 
 Unique index on `idempotency_key` turns a race into `RecordNotUnique` we recover cleanly. The orchestrator threads the key through all child services so a replay produces consistent results across the chain.
 
-### Nested Transactions and `requires_new`
+### Transaction Discipline
 
-When A calls B and both open `transaction`, the inner is a savepoint by default. A `raise` inside B rescued in A leaves B's writes committed - the most common silent-corruption bug in service-heavy codebases.
+For full transaction boundary rules - nested transactions, `requires_new`, `after_commit` vs `after_save`, `after_commit_everywhere` for nested dispatch, isolation levels, and deadlock retry - use skill: `rails-transaction-patterns`. The service-object specific summary:
 
-Two correct patterns:
-
-1. Outer service owns the transaction; inner services don't open one. Prefer this when B is called only from A.
-2. Inner uses `requires_new: true` - opens a savepoint that rolls back independently. Use when B is called from multiple places.
-
-For job dispatch inside nested transactions, use `after_commit_everywhere` so the dispatch fires after the outermost commit - see `rails-sidekiq-patterns`.
+- Outer service owns the transaction; inner services either don't open one (called from one place) or use `requires_new: true` (called from many).
+- External calls outside; DB writes inside; Sidekiq dispatch after commit via `after_commit_everywhere` when nested.
 
 ### Composition (Orchestrator)
 

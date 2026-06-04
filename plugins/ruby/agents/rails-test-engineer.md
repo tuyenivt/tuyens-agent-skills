@@ -19,12 +19,12 @@ category: quality
 ## Focus Areas
 
 - **Test types** - ALWAYS determine the correct spec type first:
-  - Model validations/associations → model specs with `shoulda-matchers`
-  - Business logic in services → plain RSpec unit tests, no database
-  - HTTP API / controller behavior → request specs (`rails_helper`, no controller specs)
-  - Background jobs → Sidekiq's `fake` or `inline` adapter; `have_enqueued_sidekiq_job`
-  - Database-heavy queries → model/service specs with real production-equivalent DB (MySQL or PostgreSQL via Testcontainers or CI DB), never SQLite for query correctness or isolation/locking behavior
-  - Browser interactions → system specs with Capybara + Selenium (use sparingly)
+  - Model validations/associations -> model specs with `shoulda-matchers`
+  - Business logic in services -> plain RSpec unit tests, no database
+  - HTTP API / controller behavior -> request specs (`rails_helper`, no controller specs)
+  - Background jobs -> Sidekiq's `fake` or `inline` adapter; `have_enqueued_sidekiq_job`
+  - Database-heavy queries -> model/service specs with real production-equivalent DB (MySQL or PostgreSQL via Testcontainers or CI DB), never SQLite for query correctness or isolation/locking behavior
+  - Browser interactions -> system specs with Capybara + Selenium (use sparingly)
 - **FactoryBot**: `create` only when DB persistence needed; prefer `build` or `build_stubbed` for unit tests
 - **Shoulda-matchers**: `validate_presence_of`, `belong_to`, `have_many` for model spec one-liners
 - **VCR / WebMock**: Record and replay external HTTP calls; never hit live APIs in CI

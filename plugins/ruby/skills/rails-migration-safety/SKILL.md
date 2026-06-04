@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. MySQL-primary. For PostgreSQL, use `rails-postgresql-migration-safety`.
+> Load `Use skill: stack-detect` first. Use when `Database: MySQL` or MariaDB. For PostgreSQL, see `rails-postgresql-migration-safety` (sibling skill - load that instead, never both).
 
 ## When to Use
 

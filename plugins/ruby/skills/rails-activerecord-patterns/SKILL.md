@@ -81,19 +81,7 @@ normalizes :email, with: ->(e) { e.strip.downcase }
 
 ### Callbacks: `after_save` vs `after_commit`
 
-`after_save` fires inside the transaction; `after_commit` fires after the outermost transaction commits.
-
-| Use case                          | Callback        | Why                                               |
-| --------------------------------- | --------------- | ------------------------------------------------- |
-| Sync to external service (Stripe) | `after_commit`  | Outside transaction; row is durably persisted     |
-| Enqueue Sidekiq job               | `after_commit`  | Worker may run before commit otherwise            |
-| Send email                        | `after_commit`  | Same; also extends lock-hold time inside the txn  |
-| Compute a derived in-row column   | `before_save`   | Must persist with the same row                    |
-| Audit row inside the same txn     | `after_save`    | Rolls back atomically with the parent             |
-
-A callback inside a locked transaction (`with_lock`, `Model.lock.find`) that makes a network call holds the row lock for the network round-trip - the most common cause of `Lock wait timeout` storms.
-
-Prefer service objects for business logic; reserve callbacks for invariants tied to the row itself (normalization, derived columns, audit).
+Reserve callbacks for invariants tied to the row itself (normalization, derived columns, audit). For side effects (jobs, email, external sync), use `after_commit` so the worker sees a persisted row. For the full hook selection table and the lock-hold pitfall (`with_lock` + callback + network call -> `Lock wait timeout` storms), use skill: `rails-transaction-patterns`.
 
 ### Query Optimization
 

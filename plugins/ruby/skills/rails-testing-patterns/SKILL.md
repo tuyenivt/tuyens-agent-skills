@@ -241,21 +241,31 @@ RSpec.configure { |c| c.use_transactional_fixtures = true }
 
 ### Request Helpers
 
+One canonical `auth_headers` helper per project; shape depends on the auth strategy. Two common forms:
+
 ```ruby
-# spec/support/request_helpers.rb
+# Devise session (cookie-based, server-rendered apps)
 module RequestHelpers
   def auth_headers(user)
-    token = Warden::JWTAuth::UserEncoder.new.call(user, :user, nil).first
-    { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
+    sign_in(user)
+    { "Content-Type" => "application/json" }
   end
 
   def json_response = JSON.parse(response.body)
 end
 
+# JWT bearer (API-only apps; adjust encoder to the project's gem)
+module RequestHelpers
+  def auth_headers(user)
+    token = JwtEncoder.encode(user_id: user.id) # or Warden::JWTAuth, Devise-JWT, etc.
+    { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
+  end
+end
+
 RSpec.configure { |c| c.include RequestHelpers, type: :request }
 ```
 
-Adapt `auth_headers` to the project's auth strategy - one helper, one canonical shape.
+Pick one shape - mixing session and bearer auth in the same spec helper hides which path the endpoint actually exercises.
 
 ### Time Helpers
 
@@ -283,6 +293,29 @@ it "index runs ≤ 4 queries regardless of order count" do
   expect(queries.count).to be <= 4
 end
 ```
+
+### Turbo Stream and Broadcast Assertions
+
+For Hotwire-driven endpoints, assert the stream shape, not the HTML body:
+
+```ruby
+# Request spec - response is text/vnd.turbo-stream.html
+it "appends a row to the orders frame" do
+  post "/orders", params: { order: attributes_for(:order) },
+       headers: { "Accept" => "text/vnd.turbo-stream.html" }
+  expect(response.media_type).to eq("text/vnd.turbo-stream.html")
+  expect(response.body).to include('<turbo-stream action="append" target="orders">')
+end
+
+# ActionCable broadcast from a model/service
+it "broadcasts to the user's stream" do
+  expect { service.call }
+    .to have_broadcasted_to("orders_#{user.id}")
+    .with(a_hash_including("action" => "update"))
+end
+```
+
+`turbo-rails` ships `Turbo::Broadcastable::TestHelper` for `assert_turbo_stream_broadcasts` in Minitest; RSpec uses `have_broadcasted_to` from `action-cable-testing`.
 
 ### VCR / WebMock
 

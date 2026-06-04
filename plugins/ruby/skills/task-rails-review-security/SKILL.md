@@ -83,13 +83,13 @@ Run the matching flavor sub-bullets only:
 
 - [ ] **Strong params** explicit allowlist on every diffed `create`/`update`; no `permit!`/`to_unsafe_h`. Privilege-bearing fields (`:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status`) require an admin-only controller with a separate policy, or must be dropped from the permit
 - [ ] **`accepts_nested_attributes_for`** limited to expected children; nested permit explicit; `_destroy: true` only when parent policy authorizes child deletion
-- [ ] **File uploads**: content-type from magic bytes; size limit; `Content-Disposition: attachment`; signed short-expiry direct-upload URLs; virus scan or accepted-risk documented
+- [ ] **File uploads**: content-type from magic bytes; size limit; `Content-Disposition: attachment`; signed short-expiry direct-upload URLs; virus scan or accepted-risk documented. Use skill `rails-active-storage-patterns` when the diff touches `has_one_attached`/`has_many_attached`, `direct_upload`, or variant processing
 - [ ] **Path traversal**: `File.read`/`send_file` with user-controlled paths uses `File.expand_path` + base-directory containment
 - [ ] **Shell calls**: no `system(...)`/backticks/`Open3` with interpolated user input
 - [ ] **View escaping** (server-rendered only - skip for API-only): audit every diffed `.erb`/`.haml`/`.slim` for `<%==`, `!=`, ` == `, `raw`, `.html_safe`. Use skill `rails-view-templates` when the diff has >1 templated file; inline check sufficient for a single small template
 - [ ] **`sanitize`** with explicit tags/attributes only - bare `sanitize(html)` permits enough to be exploitable
 - [ ] **Slim attributes**: bare `class=user_input` executes Ruby; quote literals
-- [ ] **Turbo Streams**: `turbo_stream.append("id", html: user_input)` is XSS - render via `partial:`; `turbo_stream_from "scope_#{record.id}"` requires `subscribed` authorization or `Turbo::StreamsChannel.signed_stream_name`
+- [ ] **Turbo Streams / ActionCable**: `turbo_stream.append("id", html: user_input)` is XSS - render via `partial:`; `turbo_stream_from "scope_#{record.id}"` requires `subscribed` authorization or `Turbo::StreamsChannel.signed_stream_name`. Use skill `rails-actioncable-patterns` when the diff adds a channel or `stream_for`/`stream_from` call
 - [ ] **Markdown / rich-text**: `Commonmarker`/`Redcarpet`/`Kramdown` output passed through `sanitize` with explicit allowlist
 
 ### Step 8 - Common Rails Vulnerabilities

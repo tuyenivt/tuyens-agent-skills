@@ -67,7 +67,7 @@ Logical correctness, state-integrity, transaction boundaries, backward compat. S
 - [ ] **Transactions**: writes wrapped; no HTTP / `.perform_async` / `deliver_now` inside - use `after_commit`
 - [ ] **Callbacks**: cross-aggregate work and Sidekiq dispatch via `after_commit`, never `after_save`/`after_create`
 - [ ] **`save!`** in services/transactions so failures surface
-- [ ] **Error handling**: no blanket `rescue StandardError`; centralize `RecordNotFound` / `Pundit::NotAuthorizedError` via `rescue_from` in `ApplicationController`
+- [ ] **Error handling**: no bare `rescue` or `rescue Exception`; no blanket `rescue StandardError` that logs-and-continues; centralize `RecordNotFound` / `Pundit::NotAuthorizedError` / app-level `ApplicationError` via `rescue_from` in `ApplicationController`. Use skill `rails-exception-handling` when the diff adds `rescue_from`, a new error class, or touches Sidekiq error flow
 - [ ] **Bulk operations**: partial-failure path defined; transaction wraps one chunk, not whole run or single row
 - [ ] **Concurrency**: no class-level mutable state, no `Time.zone=`; race-prone updates use row-level lock or `with_advisory_lock`
 
@@ -82,7 +82,7 @@ Logical correctness, state-integrity, transaction boundaries, backward compat. S
 - [ ] Data migrations in rake tasks, not `db/migrate/`
 - [ ] Rollback path documented
 
-Atomic skills as needed: `rails-activerecord-patterns`; `rails-service-objects` (when PR adds/extends a service); `rails-sidekiq-patterns` (when PR adds/modifies a job).
+Atomic skills as needed: `rails-activerecord-patterns`; `rails-service-objects` (when PR adds/extends a service); `rails-sidekiq-patterns` (when PR adds/modifies a job); `rails-transaction-patterns` (when PR touches transaction boundaries, nested transactions, or callbacks); `rails-concurrency-patterns` (when PR introduces `load_async`, threads, fibers, or fan-out); `rails-actioncable-patterns` (when PR touches channels or Turbo broadcasts); `rails-exception-handling` (when PR adds rescue logic or error classes).
 
 ### Step 6 - Architecture
 

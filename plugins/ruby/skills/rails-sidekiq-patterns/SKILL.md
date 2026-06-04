@@ -124,7 +124,7 @@ Bare `rescue => e; logger.error(...)` swallows errors and prevents retry.
 
 ### Network Calls and Transactions
 
-External call inside `Model.transaction` holds row locks for the network round-trip. On upstream slowdown, fleet-wide lock-wait timeouts cascade. Call outside; rely on the upstream's idempotency key to make retry safe:
+External call inside `Model.transaction` holds row locks for the network round-trip. On upstream slowdown, fleet-wide lock-wait timeouts cascade. Call outside; rely on the upstream's idempotency key to make retry safe. For the full boundary discipline (five-step ordering, isolation, retry on deadlock), use skill: `rails-transaction-patterns`.
 
 ```ruby
 def perform(order_id)

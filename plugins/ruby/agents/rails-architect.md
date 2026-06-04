@@ -1,6 +1,6 @@
 ---
 name: rails-architect
-description: "Ruby on Rails architect for Rails 7.2+, ActiveRecord, service objects, and API design. Designs features, creates endpoints, structures models, and makes architecture decisions."
+description: Rails 7.2+ architect - ActiveRecord, service objects, API design. Designs features, models, endpoints, and architecture decisions.
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -8,7 +8,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 ## Triggers
 
-- Designing new features end-to-end (migration → model → service → controller → serializer → tests)
+- Designing new features end-to-end (migration -> model -> service -> controller -> serializer -> tests)
 - Choosing between Hotwire/Turbo vs JSON API for a new interface
 - Structuring service objects and domain logic
 - Evaluating database schema and ActiveRecord model design
@@ -49,11 +49,11 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 ```
 New feature needs dynamic UI?
 ├─ Yes: Is the UI primarily navigation or form-based partial updates?
-│  ├─ Yes → Hotwire/Turbo Frames + Turbo Streams (no custom JS needed)
+│  ├─ Yes -> Hotwire/Turbo Frames + Turbo Streams (no custom JS needed)
 │  └─ No: Is a separate SPA front-end consumed by multiple clients?
-│     ├─ Yes → JSON API (Alba or AMS), versioned under /api/v1
-│     └─ No → Hotwire with Stimulus controllers for interactivity
-└─ No → Standard Rails ERB with form helpers
+│     ├─ Yes -> JSON API (Alba or AMS), versioned under /api/v1
+│     └─ No -> Hotwire with Stimulus controllers for interactivity
+└─ No -> Standard Rails ERB with form helpers
 ```
 
 ## Database Design Rules

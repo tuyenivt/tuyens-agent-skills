@@ -117,6 +117,8 @@ If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task i
 
 Skip if no external APIs. Otherwise: use skill `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
 
+If the feature fans out across two or more external services on the same request or job, use skill `rails-concurrency-patterns` to pick the primitive (`load_async`, `Concurrent::Promises`, `async` gem, or Sidekiq fan-out).
+
 ### Step 10 - Controllers
 
 Strong params; pagination on list endpoints; delegate business logic to services. Domain error -> HTTP:
@@ -145,13 +147,15 @@ Generate only what the feature needs: `index`/`show`/`new`/`edit`, `_form` parti
 
 Escape every user-controlled value; no `.html_safe` on user input. Intentional HTML (markdown bodies, rich text): `sanitize` with explicit tag/attribute allowlist - the allowlist is the trust boundary even after `Commonmarker`/`Redcarpet`/`Kramdown`.
 
-### Step 13 - Security
+### Step 13 - Security + Exception Strategy
 
-Use skill: `rails-security-patterns`.
+Use skill: `rails-security-patterns`. Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy (`ApplicationError::*`, Result vs raise, SDK-error translation at clients).
 
 - Pundit policies per resource with role-based access
 - `after_action :verify_authorized` (+ `verify_policy_scoped` on index)
-- `rescue_from Pundit::NotAuthorizedError` in `ApplicationController`
+- `rescue_from Pundit::NotAuthorizedError`, `ActiveRecord::RecordNotFound`, and the app-level `ApplicationError` base in `ApplicationController`
+- For file upload features: use skill `rails-active-storage-patterns` (direct upload, content-type/size validation, signed URL discipline, `purge_later` on destroy)
+- For ActionCable channels or Turbo Stream subscriptions: use skill `rails-actioncable-patterns` (channel auth, subscription authz, `turbo_stream_from` scope as capability, broadcast from `after_commit`)
 
 ### Step 14 - Tests
 
@@ -207,7 +211,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 10: strong params; list endpoints paginated; domain-to-HTTP mapping applied; idempotency keys for write endpoints
 - [ ] Step 11: serializers used for every API response (or skipped for server-rendered)
 - [ ] Step 12: views in existing engine; user input escaped; Turbo Frames use `dom_id`; intentional HTML via `sanitize` allowlist (or skipped for API)
-- [ ] Step 13: Pundit policies; `verify_authorized` / `verify_policy_scoped`
+- [ ] Step 13: Pundit policies; `verify_authorized` / `verify_policy_scoped`; `rescue_from` ladder covers `Pundit::NotAuthorizedError`, `RecordNotFound`, and the app-level `ApplicationError` base; file uploads use Active Storage patterns; channels use ActionCable authz patterns
 - [ ] Step 14: model + service + policy + request + job + component specs; factories have traits
 - [ ] Step 15: `rspec` and `rubocop` pass
 

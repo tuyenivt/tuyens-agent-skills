@@ -43,7 +43,7 @@ order = current_user.orders.new(order_params)
 
 Arrays need explicit brackets; omitting them silently drops input. Same FK rule for `:account_id`, `:tenant_id`. When the client must reference one (e.g., `:product_id` to buy), validate via `policy_scope` before save.
 
-`params.expect` (Rails 8 / 7.2 backport) is stricter - raises 400 on type mismatch, resists hash-confusion. Prefer on new code:
+`params.expect` (Rails 7.2 backport) is stricter - raises 400 on type mismatch, resists hash-confusion. Prefer on new code:
 
 ```ruby
 params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])

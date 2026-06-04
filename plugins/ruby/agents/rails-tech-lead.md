@@ -1,6 +1,6 @@
 ---
 name: rails-tech-lead
-description: Holistic Rails 7.2+ quality gate - code review, architectural compliance, Rails conventions, refactoring guidance, and documentation standards across PRs.
+description: Rails 7.2+ quality gate - code review, architectural compliance, refactoring guidance, and doc standards across PRs.
 tools: Read, Grep, Glob, Bash
 category: quality
 ---
@@ -124,7 +124,7 @@ Flag as review findings when:
 
 ### Workflows this agent drives
 
-- Use skill: `task-rails-review` for the Rails-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
+- Use skill: `task-rails-review` for the Rails-specific staff-level review umbrella (10 steps with perf/security/observability subagents)
 - Use skill: `task-rails-refactor` for Rails-specific refactor planning (fat models, callback abuse, scope sprawl, concern soup) with a test-coverage gate
 - Use skill: `task-rails-review-observability` for the Rails observability depth review (ActiveSupport::Notifications, lograge, Sidekiq tracing, error trackers)
 
