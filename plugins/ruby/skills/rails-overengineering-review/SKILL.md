@@ -11,8 +11,7 @@ user-invocable: false
 
 ## When to Use
 
-- Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, or new abstractions
-- Phase D of `task-rails-review`: catching code that is correct, performant, and safe - but does not need to exist
+Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, or new abstractions. Composed into `task-rails-review` Step 7 (Code Hygiene) to catch code that is correct, performant, safe - and unnecessary.
 
 ## Rules
 
@@ -25,7 +24,7 @@ user-invocable: false
 
 ### Category 1: Redundant Validation vs DB Constraints
 
-Validations on the application side cost a SELECT (uniqueness, presence on `belongs_to`) or are pure CPU. When the DB already enforces the rule via FK / NOT NULL / UNIQUE / CHECK / enum, the validation adds load without adding safety - unless the form path needs the error message before the DB roundtrip.
+App-side validations cost a SELECT (uniqueness, `belongs_to` presence) or CPU. When the DB enforces the rule via FK / NOT NULL / UNIQUE / CHECK / enum, the validation adds load without adding safety - unless a form path needs the error message before the DB roundtrip.
 
 #### Presence on `belongs_to`
 
@@ -48,9 +47,10 @@ Without a unique index, two concurrent requests pass the SELECT, both insert, an
 # Bad - races
 validates :email, uniqueness: true
 
-# Good - DB-enforced, validation kept only if form needs the pre-submit error
+# Good - DB-enforced; validation kept only if form needs the pre-submit error
 validates :email, uniqueness: { case_sensitive: false } # advisory; index is authoritative
-add_index :users, "lower(email)", unique: true
+# MySQL (case-insensitive collation): add_index :users, :email, unique: true
+# MySQL 8 / PG functional index: add_index :users, "lower(email)", unique: true
 ```
 
 #### Inclusion on an enum

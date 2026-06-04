@@ -9,6 +9,10 @@ metadata:
 user-invocable: true
 ---
 
+# Rails Refactor Plan
+
+Stack-specific delegate of `task-code-refactor`. Identifies Rails code smells on a specific target and produces independently committable refactor steps with test gates and transaction-stance discipline.
+
 ## When to Use
 
 - Rails code-smell identification and resolution on a specific target
@@ -20,25 +24,22 @@ Not for: deciding which debt to tackle first (`task-debt-prioritize`), feature c
 ## Workflow
 
 ### Step 1 - Behavioral Principles
-
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
-
-Use skill: `stack-detect`. Accept pre-confirmed stack from parent. If not Rails, redirect to `/task-code-refactor`.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-refactor`.
 
 ### Step 3 - Inputs
-
 Required: target scope (file/class/path), goal (what the refactor achieves). Recommended: existing RSpec coverage status, whether target crosses module/engine/team boundaries.
 
 ### Step 4 - Coverage Gate
 
 Refactoring without test coverage is a rewrite with extra steps.
 
-1. Identify the RSpec specs covering the target.
-2. Assess: **Adequate** / **Thin (boundary tests missing)** / **Inadequate**.
-3. If Inadequate, stop and recommend `task-rails-test` to fill gaps. Do not proceed.
-4. If Thin, add boundary-test prerequisite as the first refactor step.
+1. Identify the RSpec specs covering the target
+2. Assess: **Adequate** / **Thin (boundary tests missing)** / **Inadequate**
+3. If **Inadequate**, stop and recommend `task-rails-test`. Do not proceed
+4. If **Thin**, add boundary-test prerequisite as the first refactor step
 
 ### Step 5 - Identify Smells
 
@@ -130,12 +131,12 @@ Each step must be:
 
 Pick **one** option per event - mixing is a red flag.
 
-- **A. Post-commit dispatch.** `after_commit` callback or `transaction.after_commit { ... }` at the dispatch site. Cheapest. Risk: process crash between commit and `after_commit` drops the side effect.
-- **B. Transactional outbox.** Inside the transaction, `OutboxMessage.create!`. A relay job (`FOR UPDATE SKIP LOCKED`) dispatches and marks processed. Handlers must be idempotent. Use when at-least-once delivery is required across crashes.
+- **A. Post-commit dispatch.** `after_commit` callback or `transaction.after_commit { ... }` at the dispatch site. Cheapest. Risk: process crash between commit and `after_commit` drops the side effect
+- **B. Transactional outbox.** Inside the transaction, `OutboxMessage.create!`. A relay job (`FOR UPDATE SKIP LOCKED`) dispatches and marks processed. Handlers must be idempotent. Use when at-least-once delivery is required across crashes
 
 **Recipe: untangle fat controller + callback orchestration**
 
-Do **not** use thread-local "skip from service" flags - they leak across requests on threaded servers.
+Thread-local "skip from service" flags leak across requests on threaded servers - do not use.
 
 1. Pin behavior with a request spec asserting every observable side effect
 2. Promote `after_save` to `after_commit` if callbacks enqueue jobs or send mail mid-transaction
@@ -156,7 +157,7 @@ Do **not** use thread-local "skip from service" flags - they leak across request
 2. Create role concerns one at a time; move methods; update host
 3. Remove original soup concern when empty
 
-**Recipe: make Sidekiq job idempotent**
+**Recipe: make Sidekiq job idempotent + bounded**
 
 1. Spec asserting side effect happens once when `perform` is called twice
 2. Idempotency guard at top of `perform`
@@ -200,8 +201,7 @@ Do **not** use thread-local "skip from service" flags - they leak across request
 
 ## Self-Check
 
-- [ ] Step 1: behavioral-principles loaded
-- [ ] Step 2: stack confirmed
+- [ ] Step 1-2: behavioral-principles loaded; stack confirmed
 - [ ] Step 3: target and goal recorded
 - [ ] Step 4: coverage status stated; refused to proceed if Inadequate
 - [ ] Step 5: smells identified using catalog

@@ -58,16 +58,27 @@ Use skill: `review-precondition-check`. Surface fail-fast messages verbatim and 
 
 Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before line-level findings.
 
-**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-7, produce Step 5 only.
+**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only.
 
 ### Step 5 - Rails Correctness
 
 Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Security is not in scope, raise the most severe as a `[High]` and note "verify via `/task-rails-review-security`".
 
-- [ ] **Transactions**: writes wrapped; no HTTP / `.perform_async` / `deliver_now` inside - use `after_commit`
-- [ ] **Callbacks**: cross-aggregate work and Sidekiq dispatch via `after_commit`, never `after_save`/`after_create`
+Atomic skills (consult when PR touches the area):
+
+- `rails-activerecord-patterns` (models, associations, scopes)
+- `rails-service-objects` (new/extended service)
+- `rails-sidekiq-patterns` (new/modified job)
+- `rails-transaction-patterns` (transaction boundaries, nested transactions, callbacks, `after_commit` dispatch)
+- `rails-concurrency-patterns` (`load_async`, threads, fibers, fan-out)
+- `rails-actioncable-patterns` (channels, Turbo broadcasts)
+- `rails-exception-handling` (rescue logic, new error classes, Sidekiq error flow)
+
+Checks:
+
+- [ ] **Transactions / callbacks**: writes wrapped; no HTTP / `.perform_async` / `deliver_now` inside transactions or `after_save`/`after_create` - dispatch via `after_commit` (see `rails-transaction-patterns`)
 - [ ] **`save!`** in services/transactions so failures surface
-- [ ] **Error handling**: no bare `rescue` or `rescue Exception`; no blanket `rescue StandardError` that logs-and-continues; centralize `RecordNotFound` / `Pundit::NotAuthorizedError` / app-level `ApplicationError` via `rescue_from` in `ApplicationController`. Use skill `rails-exception-handling` when the diff adds `rescue_from`, a new error class, or touches Sidekiq error flow
+- [ ] **Error handling**: no bare `rescue` / `rescue Exception` / blanket `rescue StandardError` that logs-and-continues; `RecordNotFound`, `Pundit::NotAuthorizedError`, app-level `ApplicationError` centralized via `rescue_from` in `ApplicationController`
 - [ ] **Bulk operations**: partial-failure path defined; transaction wraps one chunk, not whole run or single row
 - [ ] **Concurrency**: no class-level mutable state, no `Time.zone=`; race-prone updates use row-level lock or `with_advisory_lock`
 
@@ -81,8 +92,6 @@ Logical correctness, state-integrity, transaction boundaries, backward compat. S
 - [ ] FKs added with `validate: false`, validated separately
 - [ ] Data migrations in rake tasks, not `db/migrate/`
 - [ ] Rollback path documented
-
-Atomic skills as needed: `rails-activerecord-patterns`; `rails-service-objects` (when PR adds/extends a service); `rails-sidekiq-patterns` (when PR adds/modifies a job); `rails-transaction-patterns` (when PR touches transaction boundaries, nested transactions, or callbacks); `rails-concurrency-patterns` (when PR introduces `load_async`, threads, fibers, or fan-out); `rails-actioncable-patterns` (when PR touches channels or Turbo broadcasts); `rails-exception-handling` (when PR adds rescue logic or error classes).
 
 ### Step 6 - Architecture
 
@@ -184,7 +193,9 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - [ ] Steps 1-3: behavioral rules, stack, diff resolved (or accepted from parent); diff/log read once
 - [ ] Step 4: Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Step 5: Rails correctness only - security idioms deferred to the security subagent or flagged for it
-- [ ] Step 6-8: architecture, hygiene, maintainability applied
+- [ ] Step 6: architecture / layering / Zeitwerk / multi-tenant / multi-DB applied via `architecture-guardrail`
+- [ ] Step 7: complexity + overengineering reviews run; test verbosity checked
+- [ ] Step 8: maintainability checks applied
 - [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts; failed scopes noted
 - [ ] Step 10: findings merged with dedup + highest-severity-wins; report written via `review-report-writer`
 - [ ] Every Blocker states a system risk; every finding has label + `file:line` + actionable Rails fix

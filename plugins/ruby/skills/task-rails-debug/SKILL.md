@@ -27,9 +27,9 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept pre-confirmed stack from parent.
 
-### Step 3 - Intake
+### Step 3 - Intake and Locate
 
-Collect: full stack trace or error message, source file, expected behavior. If partial, ask for the full trace before proceeding. Identify the first application-code frame; read that file.
+Collect: full stack trace or error message, source file, expected behavior. If partial, ask for the full trace before proceeding. Identify the first application-code frame; read that file and the failing method. Trace the data path upstream (controller params -> service -> ORM); for Sidekiq, inspect both `perform` and the enqueue site.
 
 **No error, silent value drop** ("the field I added gets ignored"): trace the boundary chain.
 
@@ -86,30 +86,21 @@ Match the error and load the relevant atomic skill.
 
 **Nil reference:** `NoMethodError: undefined method 'X' for nil` - missing association, failed `find_by`, uninitialized variable.
 
-### Step 5 - Locate
-
-1. Read stack trace top to bottom; find first application-code frame.
-2. Open that file; read the failing method.
-3. Trace data path upstream (controller params -> service -> ORM).
-4. Sidekiq: inspect both `perform` and the enqueue site.
-
-### Step 6 - Reproduce
+### Step 5 - Reproduce
 
 Reduce to: a failing RSpec example (preferred - prevention builds on it), a `rails console` snippet, or a `curl` request. If reproduction is impossible (race, prod-only data, third-party outage), state it and lower confidence.
 
-### Step 7 - Root Cause
+### Step 6 - Root Cause
 
-Explain **why**, not just what. State confidence:
+Explain **why**, not just what, with `file:line`. State confidence:
 
 - **HIGH** - reproduced or obvious
 - **MEDIUM** - pattern match
 - **LOW** - multiple possible causes
 
-### Step 8 - Fix and Prevention
+### Step 7 - Fix and Prevention
 
-Before/after diff; minimal; addresses root cause. Never bypass strong params, Pundit, or Zeitwerk. Never `rescue StandardError` globally.
-
-Prevention: RSpec example exercising the exact path, model/DB validation, or config change.
+Before/after diff; minimal; addresses root cause. Never bypass strong params, Pundit, or Zeitwerk. Never `rescue StandardError` globally. Prevention: RSpec example exercising the exact path, model/DB validation, or config change.
 
 ## Output Format
 
@@ -131,12 +122,11 @@ Prevention: RSpec example exercising the exact path, model/DB validation, or con
 
 - [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed
-- [ ] Step 3: full trace gathered; "no error" cases consulted `rails-implicit-config-audit` before tracing
+- [ ] Step 3: full trace gathered; first app-code frame and data path located; "no error" cases consulted `rails-implicit-config-audit` before tracing
 - [ ] Step 4: error classified; matching atomic skill consulted
-- [ ] Step 5: first app-code frame and data path located
-- [ ] Step 6: reproduction attempted; limitation stated if not feasible
-- [ ] Step 7: root cause references file:line; confidence stated
-- [ ] Step 8: minimal fix; strong params / Pundit / Zeitwerk preserved; prevention included
+- [ ] Step 5: reproduction attempted; limitation stated if not feasible
+- [ ] Step 6: root cause references file:line; confidence stated
+- [ ] Step 7: minimal fix; strong params / Pundit / Zeitwerk preserved; prevention included
 
 ## Avoid
 

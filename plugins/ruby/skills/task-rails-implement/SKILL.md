@@ -78,27 +78,17 @@ db/migrate/<ts>_create_orders.rb
 
 ### Step 6 - Migrations
 
-Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG).
-
-- Indexes on FK and frequently-filtered columns; partial indexes for non-terminal status
-- `null: false` + defaults where appropriate; decimal precision/scale on monetary fields
-- One structural concern per migration
+Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration. Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status; `null: false` + defaults where appropriate; decimal precision/scale on monetary fields.
 
 ### Step 7 - Models
 
-- Associations with explicit `dependent:` on `has_many`/`has_one`
-- Validations (presence, numericality, inclusion); avoid `default_scope`
-- `enum` with explicit integer mapping (`pending: 0, active: 1`)
-- Chainable scopes; `counter_cache` where count queries appear
+Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on `has_many`/`has_one`, `enum` with integer mapping, chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
 
 ### Step 8 - Services
 
-Use skill: `rails-service-objects`.
+Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
 
-- `.call` returning `Result`; input validated in `initialize`
-- Multi-model mutations in `ActiveRecord::Base.transaction`
-- External API calls **outside** the transaction
-- Sidekiq dispatch **after** commit
+Canonical shape:
 
 ```ruby
 def call
@@ -110,8 +100,6 @@ def call
   Result.success(@order.reload)
 end
 ```
-
-If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
 
 ### Step 9 - External HTTP Clients
 
@@ -137,36 +125,28 @@ Strong params; pagination on list endpoints; delegate business logic to services
 
 ### Step 11 - Serializers (API only)
 
-Skip for server-rendered. Otherwise: one serializer per resource; never `render json: @model`. Library: match the project convention (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`). New Rails 7.2+ default: `alba`.
+Skip for server-rendered. One serializer per resource; never `render json: @model`. Library: match the project convention (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`). New Rails 7.2+ default: `alba`.
 
 ### Step 12 - Views (server-rendered only)
 
-Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one.
-
-Generate only what the feature needs: `index`/`show`/`new`/`edit`, `_form` partial, `_<resource>` collection partial, ViewComponents for reusable UI, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers (no inline `<script>`), fragment caching for collections (>~20 items) with `belongs_to :parent, touch: true`.
-
-Escape every user-controlled value; no `.html_safe` on user input. Intentional HTML (markdown bodies, rich text): `sanitize` with explicit tag/attribute allowlist - the allowlist is the trust boundary even after `Commonmarker`/`Redcarpet`/`Kramdown`.
+Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one. Generate only the files this feature needs (`index`/`show`/`new`/`edit`, `_form`, collection partial, ViewComponents, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers, fragment caching for hot collections). Intentional HTML via `sanitize` allowlist; never `.html_safe` on user input.
 
 ### Step 13 - Security + Exception Strategy
 
-Use skill: `rails-security-patterns`. Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy (`ApplicationError::*`, Result vs raise, SDK-error translation at clients).
+Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_authorized` / `verify_policy_scoped`, strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
-- Pundit policies per resource with role-based access
-- `after_action :verify_authorized` (+ `verify_policy_scoped` on index)
-- `rescue_from Pundit::NotAuthorizedError`, `ActiveRecord::RecordNotFound`, and the app-level `ApplicationError` base in `ApplicationController`
-- For file upload features: use skill `rails-active-storage-patterns` (direct upload, content-type/size validation, signed URL discipline, `purge_later` on destroy)
-- For ActionCable channels or Turbo Stream subscriptions: use skill `rails-actioncable-patterns` (channel auth, subscription authz, `turbo_stream_from` scope as capability, broadcast from `after_commit`)
+- For file upload features: use skill `rails-active-storage-patterns`
+- For ActionCable channels or Turbo Stream subscriptions: use skill `rails-actioncable-patterns`
 
 ### Step 14 - Tests
 
-Use skill: `rails-testing-patterns`.
-
-- Model: associations, validations, scopes, enums (shoulda-matchers)
+Use skill: `rails-testing-patterns`. Cover:
+- Model: associations, validations, scopes, enums
 - Service: one example per `Result` outcome; side effects asserted
-- Policy: per `(role, action)` with `permit_action`
+- Policy: per `(role, action)`
 - Request: happy + unauthorized + validation-error per action
 - Job: idempotency + bounded retry (if applicable)
-- ViewComponent (server-rendered): `render_inline` per state; user strings escaped
+- ViewComponent (server-rendered): `render_inline` per state
 - Factories: traits per status/state
 
 ### Step 15 - Validate
@@ -204,27 +184,21 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 3: spec-aware mode honored when applicable
 - [ ] Step 4: requirements gathered
 - [ ] Step 5: design approved before generating code
-- [ ] Step 6: migrations include indexes on FKs and filtered columns; one concern per migration
-- [ ] Step 7: enum with explicit integer mapping; `dependent:` set; no `default_scope`
-- [ ] Step 8: services use Result; multi-model writes in transaction; Sidekiq + external calls outside/after
-- [ ] Step 9: external APIs go through a dedicated client with timeouts, idempotency retries, domain taxonomy
-- [ ] Step 10: strong params; list endpoints paginated; domain-to-HTTP mapping applied; idempotency keys for write endpoints
-- [ ] Step 11: serializers used for every API response (or skipped for server-rendered)
-- [ ] Step 12: views in existing engine; user input escaped; Turbo Frames use `dom_id`; intentional HTML via `sanitize` allowlist (or skipped for API)
-- [ ] Step 13: Pundit policies; `verify_authorized` / `verify_policy_scoped`; `rescue_from` ladder covers `Pundit::NotAuthorizedError`, `RecordNotFound`, and the app-level `ApplicationError` base; file uploads use Active Storage patterns; channels use ActionCable authz patterns
-- [ ] Step 14: model + service + policy + request + job + component specs; factories have traits
+- [ ] Step 6: migration-safety skill consulted; one concern per migration; indexes on FKs/filters
+- [ ] Step 7: `rails-activerecord-patterns` applied to models
+- [ ] Step 8: services return `Result`; transactions and post-commit dispatch via `rails-transaction-patterns`
+- [ ] Step 9: external APIs go through a dedicated client with timeouts and domain taxonomy
+- [ ] Step 10: strong params, pagination, domain-to-HTTP mapping, idempotency keys on writes
+- [ ] Step 11: serializer per resource (or skipped for server-rendered)
+- [ ] Step 12: views in existing engine via `rails-view-templates` (or skipped for API)
+- [ ] Step 13: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
+- [ ] Step 14: model + service + policy + request + job + component specs; factory traits
 - [ ] Step 15: `rspec` and `rubocop` pass
 
 ## Avoid
 
 - Generating code before design approval
-- `.perform_async` or external API calls inside a DB transaction
+- `.perform_async` / external API calls / mailers inside a DB transaction (dispatch via `after_commit`)
 - `render json: @model` without a serializer
 - Business logic in controllers or model callbacks
-- `params.permit!` / `to_unsafe_h`
-- `default_scope`
-- Enum without explicit integer mapping
-- Skipping pagination on list endpoints
-- Missing `dependent:` on `has_many`/`has_one`
 - Introducing a new view engine when one already exists
-- Missing Pundit policy specs

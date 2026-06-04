@@ -18,20 +18,19 @@ user-invocable: false
 - Bootstrap / seeding beyond `db:seed`
 - Tasks triggered from a deploy hook
 
-Not for: logic that belongs in a service (call the service), long-running async with retries (Sidekiq), schema changes (migration), user-triggered actions during a request (controller + service).
+Not here: logic that belongs in a service (call it from the task); long-running async with retries (`rails-sidekiq-patterns`); schema changes (migration); user-triggered work in a request (controller + service).
 
 ## Rules
 
-- Rake tasks are thin orchestrators - parse input, set up logging, call services
+- Thin orchestrator - parse input, set up logging, call a service
+- `task: :environment` whenever touching Rails
+- Idempotent - re-runs after partial failure resume, never duplicate
+- Batch over large tables (`find_each` / `in_batches`); see `rails-batch-processing-patterns`
 - Every data-mutating task supports `DRY_RUN=1`
-- Production-mutating tasks require explicit `CONFIRM=yes` when `Rails.env.production?`
-- Idempotent - re-runs after partial failure resume, not duplicate
-- Always batch over large tables (`find_each` / `in_batches`)
-- `task: :environment` when touching Rails
-- Structured logs; exit non-zero on failure (raise or `abort`, never `exit 0`)
+- Production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`
+- Structured logs via `Rails.logger`; exit non-zero on failure (`raise` or `abort`, never `exit 0`)
 - Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
-- Group under namespaces matching the domain; one `.rake` per top-level namespace
-- Include `desc` - tasks without it are hidden from `rake -T`
+- Namespace per domain, one `.rake` per top-level namespace, always include `desc`
 
 ## Patterns
 
@@ -64,20 +63,18 @@ end
 
 ### Idempotency and Resumability
 
-State-driven (preferred when you can mark per-row):
+Prefer a state column when you can mark per-row; fall back to a cursor. For multi-day backfills with retry/observability, use a shards table - see `rails-work-splitter-patterns`.
 
 ```ruby
+# State-driven
 User.where(welcome_sent_at: nil).find_each do |user|
   User.transaction do
     user.update!(welcome_sent_at: Time.current)
     UserMailer.welcome(user).deliver_later
   end
 end
-```
 
-Checkpoint-based when you can't:
-
-```ruby
+# Cursor (cache or column)
 last_id = Integer(args[:since_id] || Rails.cache.read("reports:rebuild:cursor") || 0)
 Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
   RebuildReportRows.call(orders: batch)
@@ -112,7 +109,7 @@ end
 
 ### Argument Parsing
 
-Positional for required identifiers; ENV for optional flags. zsh requires `rake 'customers:recompute[123]'` (square brackets are globs) - document in `desc`.
+Positional for required identifiers; ENV for optional flags. zsh treats `[]` as globs, so document `rake 'customers:recompute[123]'` quoting in `desc`.
 
 ```ruby
 task :recompute, [:customer_id] => :environment do |_, args|
@@ -126,6 +123,8 @@ end
 
 ### Structured Logs and Exit Codes
 
+Use `abort "message"` for expected refusals (preconditions); `raise` for unexpected errors. Both exit non-zero so cron / CI see the failure.
+
 ```ruby
 task backfill: :environment do
   started_at = Time.current
@@ -136,11 +135,9 @@ task backfill: :environment do
 rescue => e
   Rails.logger.error(task: "users:backfill", status: "error",
                      class: e.class.name, message: e.message)
-  raise  # non-zero exit
+  raise
 end
 ```
-
-`abort "message"` for expected refusals; `raise` for unexpected errors.
 
 ### Rake vs Sidekiq vs Sidekiq Cron
 
@@ -152,9 +149,11 @@ end
 | Recurring schedule, simple, visible | Rake + cron / whenever        |
 | Deploy hook (once per release)      | Rake task in deploy script    |
 
-A rake task can fan out to Sidekiq - often the right shape for large backfills.
+A rake task often fans out to Sidekiq for large backfills.
 
 ### Signal Handling
+
+Persist the cursor before checking the interrupt flag - on SIGTERM the next run resumes at the last completed batch.
 
 ```ruby
 task :rebuild => :environment do
@@ -172,7 +171,7 @@ end
 
 ### Leader Lock and Fan-out
 
-A rake task that mutates shared state (or fans out work) takes an advisory lock first - two cron triggers or a manual + cron overlap double-enqueue otherwise:
+A rake task that mutates shared state (or fans out work) takes an advisory lock first - two cron triggers or a manual + cron overlap double-enqueue otherwise. `timeout_seconds: 0` returns false instead of blocking.
 
 ```ruby
 namespace :backfill do
@@ -189,7 +188,7 @@ namespace :backfill do
 end
 ```
 
-See `rails-db-locking-patterns` for the full leader-election pattern, `rails-work-splitter-patterns` for the decision matrix and `push_bulk` sizing.
+See `rails-db-locking-patterns` for leader-election, `rails-work-splitter-patterns` for the decision matrix and `push_bulk` sizing.
 
 ### Composition
 
@@ -233,8 +232,8 @@ Exit behavior: {raises on failure | abort on precondition fail}
 - Business logic in `.rake` files
 - Loading entire tables (`Model.all.each`)
 - Destructive tasks without `DRY_RUN` and production confirmation
-- `puts` for progress - use `Rails.logger` structured fields
-- `exit 0` after failure - cron sees success; raise or `abort`
+- `puts` for progress - use structured `Rails.logger` fields
+- `exit 0` after failure - cron reads success; raise or `abort`
 - Top-level tasks (no namespace) - they collide
 - Long tasks (>30 min) without resumability
 - Re-implementing retry/backoff - use a Sidekiq job

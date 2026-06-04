@@ -15,17 +15,17 @@ user-invocable: false
 - Serializing per-tenant or per-resource work between web and workers
 - Choosing between Redis locks, Kubernetes leases, and DB advisory locks
 - Preventing deadlock cascades on MySQL `REPEATABLE READ`
-- Deciding between RR default, per-transaction RC at the call site, or per-connection RC
+- Choosing between RR default, per-transaction RC at the call site, or per-connection RC
 - Reviewing lock code for hold-time and connection-accounting risk
 
 ## Rules
 
-- DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (API rate limits, cache stampede)
-- Acquire lock, do DB work, release - never wrap network calls in an open transaction or held lock
-- Lock by PK only on MySQL `REPEATABLE READ` - non-PK scans gap-lock ranges (see `rails-activerecord-patterns`)
-- Never `find_each` inside `Model.transaction { ... }`
-- Set `innodb_lock_wait_timeout` (MySQL) / `lock_timeout` (PG) to 5-10s at the worker session
-- Default stays at the DB's default isolation; escalate per-transaction at the call site, not per-connection or globally
+- DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (rate limits, cache stampede).
+- Acquire lock, do DB work, release. Never wrap network calls in an open transaction or held lock.
+- Never `find_each` inside `Model.transaction { ... }`.
+- Set `innodb_lock_wait_timeout` (MySQL) / `lock_timeout` (PG) to 5-10s at the worker session.
+- Default stays at the DB's default isolation; escalate per-transaction at the call site, not per-connection or globally.
+- Row-lock discipline (PK-only on MySQL RR, short critical section): see `rails-activerecord-patterns`.
 
 ## Patterns
 
@@ -42,7 +42,7 @@ A DB advisory lock taken in the same DB as the work commits/aborts atomically wi
 
 ### `with_advisory_lock` (recommended abstraction)
 
-Wraps MySQL `GET_LOCK` and PG `pg_advisory_lock` behind one API. The gem holds the connection for the duration of the block and releases the lock before checking the connection back in - safe under Sidekiq concurrency.
+Wraps MySQL `GET_LOCK` and PG `pg_advisory_lock` behind one API. The gem holds the connection for the lock duration and releases the lock before checking the connection back in - safe under Sidekiq concurrency.
 
 ```ruby
 gem "with_advisory_lock"
@@ -53,9 +53,9 @@ end
 # Returns false when not acquired; the block doesn't run.
 ```
 
-MySQL `GET_LOCK` is session-scoped (auto-released on connection drop). PG offers `pg_advisory_xact_lock(key)` that auto-releases at commit - cleaner crash-safety than ensure blocks.
+MySQL `GET_LOCK` is session-scoped (auto-released on connection drop). PG `pg_advisory_xact_lock(key)` auto-releases at commit - cleaner crash-safety than ensure blocks.
 
-### Pattern: leader election for cron rake tasks
+### Leader election for cron rake tasks
 
 Cron triggers a task while the previous run is still going - two processes mutate the same rows.
 
@@ -73,9 +73,9 @@ namespace :reports do
 end
 ```
 
-### Pattern: per-tenant serialization across web and worker
+### Per-tenant serialization across web and worker
 
-The reconciler and the web ledger-write endpoint share one lock name namespaced by tenant. They cannot run concurrently on the same tenant but run freely across tenants. Combine with chunked transactions and PK-only row locks inside the lock.
+Reconciler and the web ledger-write endpoint share one lock name namespaced by tenant. They cannot run concurrently on the same tenant but run freely across tenants. Combine with chunked transactions and PK-only row locks inside the lock.
 
 ```ruby
 class BalanceReconciler
@@ -96,7 +96,8 @@ class LedgerEntriesController < ApplicationController
     ApplicationRecord.with_advisory_lock("reconcile:tenant:#{current_tenant.id}", timeout_seconds: 3) do
       ApplicationRecord.transaction(isolation: :read_committed) do
         Ledger.create!(ledger_params)
-        Account.where(id: ledger_params[:account_id]).lock("FOR UPDATE").first.increment!(:balance, ledger_params[:amount])
+        Account.where(id: ledger_params[:account_id]).lock("FOR UPDATE").first
+               .increment!(:balance, ledger_params[:amount])
       end
     end
   end
@@ -109,7 +110,7 @@ end
 
 | Tier | Approach | Use when |
 | ---- | -------- | -------- |
-| 1 (default) | Keep RR (MySQL) / RC (PG); shorten transactions | Most "stale data" / deadlock complaints - chunked transactions + PK locks resolve at zero cost |
+| 1 (default) | Keep RR (MySQL) / RC (PG); shorten transactions | Most "stale data"/deadlock complaints - chunked transactions + PK locks resolve at zero cost |
 | 2 | Per-transaction `isolation: :read_committed` at the call site | `SKIP LOCKED` claim under contention; fresh reads of concurrent counters; hot-row re-reads. Aurora/RDS MySQL is RC-safe with `binlog_format=ROW` (default since 5.7.7) |
 | 3 | Per-connection RC via Sidekiq middleware | Only when Tier 2 wrapping gets noisy. Audit shared services; middleware must `ensure` reset or isolation leaks to the next job |
 
@@ -123,9 +124,9 @@ ApplicationRecord.transaction(isolation: :read_committed) do
 end
 ```
 
-### Nested transactions and isolation
+### Nested isolation is silently ignored
 
-`transaction(isolation: :read_committed) do ... transaction(isolation: ...) end` - the inner `isolation:` is silently ignored. The inner block becomes a savepoint (`requires_new: true`) or a no-op under MySQL/PG. If you need different isolation per chunk, don't nest - flatten:
+`transaction(isolation: :read_committed) do ... transaction(isolation: ...) end` - the inner `isolation:` is dropped (the inner becomes a savepoint or no-op). For different isolation per chunk, flatten:
 
 ```ruby
 slice_ids.each do |slice|
@@ -134,6 +135,8 @@ slice_ids.each do |slice|
   end
 end
 ```
+
+For `requires_new` / savepoint semantics around nested rescues, see `rails-transaction-patterns`.
 
 ### Lock-hold discipline
 
@@ -156,11 +159,7 @@ Inside `SKIP LOCKED` claim workers, claim small batches (50-500 rows) per transa
 
 ### Connection accounting
 
-Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours. For long coordinators, prefer `pg_advisory_xact_lock` inside short transactions, or release-and-reacquire with a heartbeat between work batches. Cross-reference `rails-connection-pool-sizing`.
-
-### Row locking and optimistic locking
-
-For row-locking discipline (PK-only, short critical section, MySQL gap-lock cascade) and optimistic `lock_version`, see `rails-activerecord-patterns`.
+Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours. For long coordinators, prefer `pg_advisory_xact_lock` inside short transactions, or release-and-reacquire with a heartbeat between work batches. See `rails-connection-pool-sizing`.
 
 ### Failure modes
 
@@ -176,7 +175,7 @@ For row-locking discipline (PK-only, short critical section, MySQL gap-lock casc
 ## Output Format
 
 ```
-Lock kinds: {comma-separated: advisory leader | advisory per-resource | row pessimistic | optimistic | transaction-scoped advisory}
+Lock kinds: {advisory leader | advisory per-resource | row pessimistic | optimistic | transaction-scoped advisory}
 Adapter: {MySQL | PostgreSQL} (primitive: {GET_LOCK | pg_advisory_lock | pg_advisory_xact_lock | with_advisory_lock gem})
 Scope: {session | transaction}
 Hold time: {expected ms / s; reviewed for network calls / find_each / external IO}

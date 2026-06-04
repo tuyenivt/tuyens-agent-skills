@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. Use when `Database: PostgreSQL`. For MySQL/MariaDB, see `rails-migration-safety` (sibling skill - load that instead, never both).
+> Load `Use skill: stack-detect` first. Use when `Database: PostgreSQL`. For MySQL/MariaDB, see `rails-migration-safety` (sibling - load that instead, never both).
 
 ## When to Use
 
@@ -20,16 +20,16 @@ user-invocable: false
 
 ## Rules
 
-- One structural change per migration; reversible
-- Data backfills in rake tasks, not `db/migrate/`
-- New tables include `timestamps` + indexes on FK and filter columns
-- `disable_ddl_transaction!` for all `CONCURRENTLY` operations
-- `ignored_columns` before removing a column
-- `safety_assured` only after verifying the operation is safe
+- One structural change per migration; reversible.
+- Data backfills in rake tasks, not `db/migrate/`.
+- New tables include `timestamps` and indexes on FK + filter columns.
+- `disable_ddl_transaction!` for all `CONCURRENTLY` operations.
+- `ignored_columns` ships in a deploy before `remove_column`.
+- `safety_assured` only after verifying the operation is safe.
 
 ## Patterns
 
-### strong_migrations
+### `strong_migrations` + concurrent index
 
 ```ruby
 class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
@@ -40,29 +40,20 @@ class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
 end
 ```
 
-`safety_assured` overrides a check; use only after verifying:
-
-```ruby
-safety_assured { add_index :orders, :customer_id, algorithm: :concurrently }
-```
-
 ### Adding a NOT NULL column
 
 ```ruby
-# 1. add nullable + default
-add_column :orders, :status, :string, default: "pending"
+add_column :orders, :status, :string, default: "pending"                   # 1. nullable + default
 
-# 2. backfill (separate migration)
-disable_ddl_transaction!
+disable_ddl_transaction!                                                   # 2. backfill (rake)
 def up
   Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }
 end
 
-# 3. enforce
-change_column_null :orders, :status, false
+change_column_null :orders, :status, false                                 # 3. enforce
 ```
 
-**Large tables (>1M rows): use NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes. Run VALIDATE in a separate migration with `disable_ddl_transaction!`:
+**Large tables (>1M rows): NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes.
 
 ```ruby
 # Migration 1
@@ -77,7 +68,7 @@ end
 
 PG 12+: with a validated CHECK in place, `change_column_null` reuses it and becomes metadata-only.
 
-### Partial Indexes
+### Partial indexes
 
 ```ruby
 add_index :orders, :fulfilled_at, where: "fulfilled_at IS NOT NULL",
@@ -87,20 +78,16 @@ add_index :orders, :status, where: "status IN (0, 1, 2)",
           algorithm: :concurrently, name: "idx_orders_active_status"
 ```
 
-### Renaming Columns (four steps)
+### Renaming columns (four steps)
 
 ```ruby
-# 1. add new
-add_column :orders, :amount, :decimal
-# 2. backfill
-Order.in_batches { |b| b.update_all("amount = total") }
-# 3. ignored_columns + deploy
-# self.ignored_columns += ["total"]
-# 4. remove (next deploy)
-safety_assured { remove_column :orders, :total, :string }
+add_column :orders, :amount, :decimal                          # 1
+Order.in_batches { |b| b.update_all("amount = total") }        # 2
+# self.ignored_columns += ["total"] ; deploy                   # 3
+safety_assured { remove_column :orders, :total, :string }      # 4
 ```
 
-### Dropping Columns (two deploys + audit)
+### Dropping columns (two deploys + audit)
 
 Drops are final. Three phases.
 
@@ -110,7 +97,7 @@ Drops are final. Three phases.
 rg -n "legacy_field" app/ lib/ config/ spec/ db/ -g '*.{rb,erb,haml,slim,sql}' -g '!*.lock'
 ```
 
-Also: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical replication subscribers, FDW foreign tables. Drop dependent FK / index / generated-column / CHECK / **views** in a *prior* migration. `strong_migrations` catches FK/index but not view dependencies - find with `pg_depend`:
+Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical-replication subscribers, FDW foreign tables. Drop dependent FK / index / generated / CHECK / **views** in a *prior* migration. `strong_migrations` catches FK/index but not view dependencies - find them with `pg_depend`:
 
 ```sql
 SELECT dependent_view.relname
@@ -125,8 +112,8 @@ WHERE source_table.relname = 'orders' AND pg_attribute.attname = 'legacy_field';
 
 **Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails. Both metadata-only on PG 11+:
 
-- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - sensible default fits all rows
-- `change_column_null :users, :legacy_field, true` - NULL acceptable for the short window
+- `change_column_default :users, :legacy_field, from: nil, to: "guest"`
+- `change_column_null :users, :legacy_field, true`
 
 **Phase 3 - Two deploys.**
 
@@ -143,11 +130,11 @@ safety_assured do
 end
 ```
 
-Restate type/null/default for `db:rollback`. `DROP COLUMN` is metadata-only in PG (no rewrite). Disk reclaims via autovacuum or `pg_repack` if needed promptly.
+Restate type/null/default for `db:rollback`. `DROP COLUMN` is metadata-only in PG (no rewrite). Reclaim disk via autovacuum or `pg_repack` if needed promptly.
 
-Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view via `pg_depend`), external systems (BI / ETL / logical-replication / FDW), >100M-row tables where space reclamation is urgent (plan `pg_repack`).
+Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view via `pg_depend`), external systems (BI / ETL / logical replication / FDW), >100M-row tables where space reclamation is urgent (`pg_repack`).
 
-### Creating Tables
+### Creating tables
 
 ```ruby
 create_table :orders do |t|
@@ -160,7 +147,7 @@ end
 add_index :orders, [:user_id, :status]
 ```
 
-### Foreign Keys Without Table Lock
+### Foreign keys without table lock
 
 ```ruby
 add_foreign_key :orders, :users, validate: false  # fast
@@ -169,7 +156,7 @@ validate_foreign_key :orders, :users              # no write lock; sequential sc
 
 Fix orphans if validation fails, then rerun.
 
-### Large Tables (>1M Rows)
+### Large tables (>1M rows)
 
 ```ruby
 Order.in_batches(of: 10_000) do |batch|
@@ -180,7 +167,7 @@ end
 
 See `rails-batch-processing-patterns` for chunked-transaction shape, idempotency, memory safety.
 
-### Lock and Statement Timeouts
+### Lock and statement timeouts
 
 ```ruby
 class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
@@ -194,7 +181,7 @@ end
 
 Or globally: `StrongMigrations.lock_timeout = 5.seconds`.
 
-For long backfills, also set `statement_timeout` per-batch:
+For long backfills, also bound each batch:
 
 ```ruby
 Order.in_batches(of: 10_000) do |batch|
@@ -211,7 +198,9 @@ PG 11+ stores defaults as metadata - fast, no rewrite. Avoid `change_column` (co
 change_column_default :orders, :status, from: nil, to: "pending"
 ```
 
-### Advisory Locks for Backfills
+### Advisory locks for backfills
+
+Guard against double-runs (deploy retry, two engineers). Full leader-election patterns and `pg_advisory_xact_lock`: `rails-db-locking-patterns`.
 
 ```ruby
 def up
@@ -221,9 +210,7 @@ def up
 end
 ```
 
-See `rails-db-locking-patterns` for full leader-election patterns and `pg_advisory_xact_lock`.
-
-### Rollback Safety
+### Rollback safety
 
 Test `db:migrate && db:rollback && db:migrate` in CI.
 
@@ -236,7 +223,7 @@ def change
 end
 ```
 
-### INVALID indexes recovery
+### INVALID index recovery
 
 ```sql
 SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;

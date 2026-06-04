@@ -12,25 +12,21 @@ user-invocable: false
 ## When to Use
 
 - Extracting business logic spanning multiple models or external APIs
-- New features with multi-step mutations + transactions
+- Multi-step mutations with transactions
 - Refactoring fat controllers / models
-- Orchestrating multi-service flows (checkout, fulfillment)
-- Wrapping external API calls with idempotency and error handling
+- Wrapping external API calls with idempotency
 
 ## Rules
 
-- One service, one responsibility - verb-named (`FulfillOrder`, `ChargeCustomer`)
-- Always return `Result`; never raw values or exceptions for expected failures
-- Multi-model mutations in `ActiveRecord::Base.transaction`
-- External API calls (Stripe, S3, HTTP) live outside the transaction
-- Dispatch Sidekiq jobs after the transaction commits
-- Validate inputs in `initialize` (`ArgumentError` on invariants)
-- Authorization in controllers (Pundit), not services
-- Decompose services >100 lines
+- One service, one responsibility, verb-named (`FulfillOrder`, `ChargeCustomer`); place in `app/services/`, nest by domain when count grows.
+- `call` returns `Result` for expected failures; raise only for programmer errors / unexpected state.
+- Validate inputs in `initialize` (`ArgumentError` on invariants); authorization stays in controllers (Pundit).
+- DB writes inside `ActiveRecord::Base.transaction`; external API calls outside; Sidekiq dispatch after commit.
+- On partial failure after an external call succeeds, enqueue a reconciliation job - never inline refund / undo.
 
 ## Patterns
 
-### `.call` + Result Object
+### `.call` + Result
 
 ```ruby
 # app/services/result.rb
@@ -44,27 +40,12 @@ class Result
   def success? = @success
   def failure? = !@success
 
-  def self.success(value = nil)          = new(success: true, value: value)
-  def self.failure(errors, code: nil)    = new(success: false, errors: errors, code: code)
+  def self.success(value = nil)       = new(success: true, value: value)
+  def self.failure(errors, code: nil) = new(success: false, errors: errors, code: code)
 end
 ```
 
-`code:` is the controller's branch for HTTP status mapping (`:out_of_stock` -> 409, `:payment_declined` -> 402). String-matching `errors` is fragile.
-
-### Naming and Placement
-
-Verb + domain noun. Place in `app/services/`, nest by domain when the count grows:
-
-```
-app/services/
-  checkout.rb                # orchestrator
-  charge_customer.rb
-  create_order.rb
-  inventory/
-    decrement.rb
-```
-
-Top-level for orchestrators; subdirectory for sub-services owned by one orchestrator.
+`code:` drives HTTP status mapping in controllers (`:out_of_stock` -> 409, `:payment_declined` -> 402). String-matching `errors` is fragile.
 
 ### Service Body
 
@@ -72,8 +53,8 @@ Top-level for orchestrators; subdirectory for sub-services owned by one orchestr
 class FulfillOrder
   def initialize(order:, fulfilled_by: nil)
     @order, @fulfilled_by = order, fulfilled_by
-    raise ArgumentError, "Order required"           unless @order
-    raise ArgumentError, "Order must be confirmed"  unless @order.confirmed?
+    raise ArgumentError, "Order required"          unless @order
+    raise ArgumentError, "Order must be confirmed" unless @order.confirmed?
   end
 
   def call
@@ -90,8 +71,8 @@ class FulfillOrder
   private
 
   def decrement_inventory
-    product_ids = @order.order_items.map(&:product_id)
-    products = Product.where(id: product_ids).lock("FOR UPDATE").index_by(&:id)
+    products = Product.where(id: @order.order_items.map(&:product_id))
+                      .lock("FOR UPDATE").index_by(&:id)
     @order.order_items.each do |item|
       product = products.fetch(item.product_id)
       raise Inventory::InsufficientStockError, "#{product.name} short" if product.available_stock < item.quantity
@@ -101,132 +82,67 @@ class FulfillOrder
 end
 ```
 
-Stock decrement under concurrency requires row locking - `lock("FOR UPDATE")` prevents oversell.
+`lock("FOR UPDATE")` prevents oversell under concurrent fulfillment. For lock semantics, use skill: `rails-db-locking-patterns`.
 
-### External API Calls and Compensating Actions
+### External API Ordering + Compensating Action
 
-Network calls inside `Model.transaction` hold the connection across the round-trip and produce inversions:
-
-- Stripe call inside transaction + transaction rollback after success = "paid but no order"
-- Stripe call outside transaction + Stripe success + DB write fails = same inversion, but now you control it
-
-Correct order: validate -> charge (outside txn) -> open transaction with the resulting payment ID -> commit -> dispatch jobs. If the DB write fails after charging, enqueue a reconciliation job (the compensating action) - inline refund compounds failure:
+Network calls inside a transaction hold the DB connection across the round-trip and invert failure modes. Correct order: validate -> charge (outside txn) -> open transaction with the payment ID -> commit -> dispatch jobs. If the DB write fails after a successful charge, enqueue a reconciliation job:
 
 ```ruby
 def call
   payment = ChargeCustomer.new(cart: @cart, idempotency_key: @key).call
   return payment if payment.failure?
 
-  order_result = CreateOrder.new(cart: @cart, payment: payment.value).call
-  if order_result.failure?
+  order = CreateOrder.new(cart: @cart, payment: payment.value).call
+  if order.failure?
     PaymentReconciliationJob.perform_async(payment.value.id, "order_write_failed")
-    return order_result
+    return order
   end
 
-  ShipmentNotificationJob.perform_async(order_result.value.id)
-  Result.success(order_result.value)
+  ShipmentNotificationJob.perform_async(order.value.id)
+  Result.success(order.value)
 end
 ```
 
 ### Idempotency Keys
 
-For mutating services callable via "at-least-once" paths (HTTP retry, Sidekiq retry, double-click):
+For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-click), thread one key through the chain and back it with a unique DB index:
 
 ```ruby
 class ChargeCustomer
-  def initialize(cart:, idempotency_key:)
-    @cart, @idempotency_key = cart, idempotency_key
-  end
-
   def call
-    if existing = Payment.find_by(idempotency_key: @idempotency_key)
-      return replay(existing)
-    end
+    return Result.success(replay(existing)) if (existing = Payment.find_by(idempotency_key: @key))
 
-    payment = Payment.create!(
-      cart_id: @cart.id, amount_cents: @cart.total_cents,
-      idempotency_key: @idempotency_key, status: :pending     # column has unique index
-    )
-    intent = Stripe::PaymentIntent.create(
-      { amount: payment.amount_cents, ... },
-      idempotency_key: @idempotency_key                       # forward upstream
-    )
+    payment = Payment.create!(cart_id: @cart.id, amount_cents: @cart.total_cents,
+                              idempotency_key: @key, status: :pending)
+    intent  = Stripe::PaymentIntent.create({ amount: payment.amount_cents, ... },
+                                           idempotency_key: @key) # forward upstream
     payment.update!(stripe_id: intent.id, status: :authorized)
     Result.success(payment)
   rescue ActiveRecord::RecordNotUnique
-    Result.success(Payment.find_by!(idempotency_key: @idempotency_key))
+    Result.success(Payment.find_by!(idempotency_key: @key))      # race winner
   rescue Stripe::CardError => e
     Result.failure([e.message], code: :payment_declined)
   end
-
-  private
-
-  def replay(payment)
-    case payment.status
-    when "authorized", "captured" then Result.success(payment)
-    when "declined"               then Result.failure([payment.failure_reason], code: :payment_declined)
-    else                               Result.failure(["in-flight"], code: :conflict)
-    end
-  end
 end
 ```
 
-Unique index on `idempotency_key` turns a race into `RecordNotUnique` we recover cleanly. The orchestrator threads the key through all child services so a replay produces consistent results across the chain.
+The unique index converts the race into `RecordNotUnique` we recover cleanly. The orchestrator passes the same key into every child so replays are consistent. For HTTP-side idempotency headers, use skill: `rails-http-client-patterns`.
 
 ### Transaction Discipline
 
-For full transaction boundary rules - nested transactions, `requires_new`, `after_commit` vs `after_save`, `after_commit_everywhere` for nested dispatch, isolation levels, and deadlock retry - use skill: `rails-transaction-patterns`. The service-object specific summary:
+For nested transactions, `requires_new`, `after_commit` vs `after_save`, isolation levels, and deadlock retry, use skill: `rails-transaction-patterns`. Service-specific:
 
-- Outer service owns the transaction; inner services either don't open one (called from one place) or use `requires_new: true` (called from many).
-- External calls outside; DB writes inside; Sidekiq dispatch after commit via `after_commit_everywhere` when nested.
-
-### Composition (Orchestrator)
-
-```ruby
-class Checkout
-  def initialize(cart:, payment_method_id:, idempotency_key:)
-    @cart, @pm, @key = cart, payment_method_id, idempotency_key
-  end
-
-  def call
-    if existing = Order.joins(:payment).find_by(payments: { idempotency_key: @key })
-      return Result.success(existing)
-    end
-
-    validation = ValidateCart.new(cart: @cart).call
-    return validation if validation.failure?
-
-    payment = ChargeCustomer.new(cart: @cart, payment_method_id: @pm, idempotency_key: @key).call
-    return payment if payment.failure?
-
-    order = CreateOrder.new(cart: @cart, payment: payment.value).call
-    if order.failure?
-      PaymentReconciliationJob.perform_async(payment.value.id, "order_failed")
-      return order
-    end
-
-    ShipmentNotificationJob.perform_async(order.value.id)
-    InvoiceEmailJob.perform_async(order.value.id)
-    Result.success(order.value)
-  end
-end
-```
+- Outer service owns the transaction; inner services either don't open one or use `requires_new: true`.
+- Post-commit dispatch via `after_commit_everywhere` when nested.
 
 ### Controller Usage
 
-Authorize, call, branch on `result.code`:
-
 ```ruby
 def create
-  @cart = current_user.cart
   authorize @cart, :checkout?
-
-  result = Checkout.new(
-    cart: @cart,
-    payment_method_id: params.require(:payment_method_id),
-    idempotency_key: request.headers["Idempotency-Key"] || "cart-#{@cart.id}-#{@cart.updated_at.to_i}"
-  ).call
-
+  result = Checkout.new(cart: @cart, payment_method_id: params.require(:payment_method_id),
+                        idempotency_key: request.headers["Idempotency-Key"]).call
   if result.success?
     render json: OrderSerializer.new(result.value), status: :created
   else
@@ -234,34 +150,31 @@ def create
   end
 end
 
-private
-
 def status_for(code)
   { cart_invalid: :unprocessable_entity, out_of_stock: :conflict,
-    payment_declined: :payment_required, conflict: :conflict }.fetch(code, :unprocessable_entity)
+    payment_declined: :payment_required }.fetch(code, :unprocessable_entity)
 end
 ```
 
 ## Output Format
 
 ```
-Service: {class name}
+Service: {ClassName}
 Location: app/services/{file}.rb
 Responsibility: {one sentence}
 Transaction: {Yes - models mutated | No}
-External API: {provider, called outside transaction? compensating action if so}
-Idempotency: {key source and propagation; unique constraint location}
-Sidekiq Jobs: {job names dispatched after commit, or "None"}
-Result: Success({value type}) | Failure({code enum: out_of_stock | payment_declined | ...})
+External API: {provider; outside transaction? compensating action: <job name | N/A>}
+Idempotency: {key source; unique index column}
+Sidekiq Jobs: {jobs dispatched after commit | None}
+Result: Success({value}) | Failure({code enum})
 ```
 
 ## Avoid
 
 - Wrapper around a single AR method - call the method directly
-- Services that only call other services without adding logic - unnecessary indirection
+- Pure delegation services adding no logic - unnecessary indirection
 - Raw exceptions for expected failures - use Result
 - `.perform_async` or external API call inside a DB transaction
 - Authorization inside a service - belongs in the controller
 - Inline refund / undo on partial failure - enqueue a reconciliation job
 - Stock decrement without `lock("FOR UPDATE")` - races oversell
-- Inner `transaction` rescued by outer service - savepoint commits partial writes

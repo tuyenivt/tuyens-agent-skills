@@ -11,87 +11,88 @@ user-invocable: false
 
 ## When to Use
 
-- Workflow needs Rails-specific orientation: Gemfile, Rails version, env config, ActiveJob backend, ActionCable, asset pipeline
-- Project has `Gemfile`, `config/application.rb`, `bin/rails`
+Project has `Gemfile` + `config/application.rb` and the host workflow needs Rails-specific orientation.
 
 ## Rules
 
-- Ruby version from `.ruby-version`/`Gemfile`; Rails version from `Gemfile.lock` (trust lock over Gemfile)
-- Database from `config/database.yml`: MySQL/MariaDB, PostgreSQL, or SQLite. **Default to MySQL when ambiguous.** PG -> load `rails-postgresql-migration-safety` instead of `rails-migration-safety`
-- ActiveJob backend from `config.active_job.queue_adapter`; `:async` (default) is in-memory, unsafe for prod
-- Asset/JS pipeline: importmap (7+ default), jsbundling-rails, cssbundling-rails, propshaft (modern), sprockets (legacy)
+- Ruby version from `.ruby-version` (fallback `Gemfile`); Rails from `Gemfile.lock` (lock is authoritative).
+- Database from `config/database.yml`. Default to MySQL when ambiguous. PG -> route to `rails-postgresql-migration-safety`; MySQL/MariaDB -> `rails-migration-safety`.
+- ActiveJob backend from `config.active_job.queue_adapter`. `:async` (default) is in-memory and unsafe in production.
+- Asset pipeline: Propshaft (modern, Rails 7+) or Sprockets (legacy). JS handling: importmap (Rails 7+ default), jsbundling-rails, cssbundling-rails. These are independent axes.
+- Missing `config/master.key` (or `RAILS_MASTER_KEY`) blocks boot whenever `credentials.yml.enc` is read.
 
 ## Patterns
 
-### Key Files
+### Key files
 
-| Location                                                | Purpose                                          |
-| ------------------------------------------------------- | ------------------------------------------------ |
-| `Gemfile` / `Gemfile.lock`                              | Gems + `ruby "x.y.z"`; lock is authoritative     |
-| `.ruby-version`                                         | Ruby pin                                         |
+| Location                                                | Purpose                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| `Gemfile` / `Gemfile.lock`                              | Gems + `ruby "x.y.z"`; lock authoritative                |
+| `.ruby-version`                                         | Ruby pin                                                 |
 | `bin/rails` / `bin/setup` / `bin/dev`                   | CLI; setup script; Foreman runner (reads `Procfile.dev`) |
-| `config/application.rb`                                 | App-wide config (autoload, timezone, ActiveJob)  |
-| `config/environments/`, `config/initializers/`          | Per-env config; boot-time setup (alphabetical)   |
-| `config/routes.rb`                                      | Routes                                           |
-| `config/database.yml` / `cable.yml` / `storage.yml`     | DB / ActionCable / ActiveStorage backends        |
-| `config/credentials.yml.enc` + `master.key`             | Encrypted credentials (missing key blocks boot)  |
-| `db/schema.rb` or `db/structure.sql`, `db/migrate/`     | Current schema, migrations                       |
-| `app/{controllers,models,views,jobs,mailers,channels}/` | Stereotype dirs                                  |
-| `app/javascript/`, `lib/`                               | JS entrypoint; non-Rails code                    |
+| `config/application.rb`                                 | App-wide config (autoload, timezone, ActiveJob, `load_defaults`) |
+| `config/environments/`, `config/initializers/`          | Per-env config; boot-time setup (alphabetical)           |
+| `config/routes.rb`                                      | Routes                                                   |
+| `config/database.yml` / `cable.yml` / `storage.yml`     | DB / ActionCable / ActiveStorage backends                |
+| `config/credentials.yml.enc` + `master.key`             | Encrypted credentials; missing key blocks boot           |
+| `db/schema.rb` or `db/structure.sql`, `db/migrate/`     | Schema, migrations                                       |
+| `app/{controllers,models,views,jobs,mailers,channels}/` | Stereotype directories                                   |
+| `app/javascript/`, `lib/`                               | JS entrypoint; non-Rails code                            |
 
-### Bootstrap Path
+### Bootstrap path
 
 1. Toolchain (rbenv/asdf/chruby) from `.ruby-version`
 2. `bundle install`; `yarn install` if `package.json` present
 3. `bin/setup` or `bin/rails db:create db:migrate db:seed`
-4. Local services: `compose.yml` for Postgres/Redis/MailCatcher
-5. Run: `bin/dev` (7+) or `bin/rails server` (legacy)
-6. Verify: `http://localhost:3000`; health `/up` (7.1+)
+4. Local services from `compose.yml` (DB, Redis, MailCatcher)
+5. Run `bin/dev` (7+) or `bin/rails server`
+6. Verify `http://localhost:3000`; health `/up` (7.1+)
 
-### Package Layout
+### Package layout
 
-- **Layer-package (default)**: `app/{controllers,models,services,jobs}/` grouped by stereotype
-- **Domain-package**: `app/domains/<context>/` or `app/packs/`; often paired with [Packwerk](https://github.com/Shopify/packwerk) (each pack has `package.yml`)
-- **Mixed**: domain packs next to legacy `app/services/`. New code in pack; edits to legacy stay
+- **Layer-package (default)**: `app/{controllers,models,services,jobs}/` grouped by stereotype.
+- **Domain-package**: `app/domains/<context>/` or `app/packs/`; often paired with [Packwerk](https://github.com/Shopify/packwerk) (`package.yml` per pack).
+- **Mixed**: domain packs alongside legacy `app/services/`. New code in pack; legacy stays.
 
-### Conventions
+### Risk hotspots
 
-MVC + concerns (`controllers/concerns/`, `models/concerns/`); service/form/query/presenter objects in `app/services/`; strong params for mass assignment; RSpec or Minitest with FactoryBot or fixtures; queue backend (Sidekiq/Solid Queue/GoodJob/DelayedJob); Devise + Pundit/CanCan; Standardrb or RuboCop.
+| Area                            | Signal                                                                        | Follow-up skill                    |
+| ------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------- |
+| N+1 queries                     | `bullet` in Gemfile; `includes` missing in collection views                   | `rails-activerecord-patterns`      |
+| Implicit config                 | `load_defaults <= 6.1`; `new_framework_defaults_*.rb`; `touch:`/`autosave:`   | `rails-implicit-config-audit`      |
+| Callback abuse                  | Heavy `after_save` business logic                                             | `rails-code-explain`               |
+| `update_columns` / `update_all` | Bypass callbacks/validations                                                  | `rails-code-explain`               |
+| `permit!`                       | Mass assignment escape hatch in controllers                                   | `rails-security-patterns`          |
+| Connection pool                 | Sidekiq concurrency vs DB `max_connections`                                   | `rails-connection-pool-sizing`     |
+| MySQL `REPEATABLE READ`         | Long transactions, gap locks                                                  | `rails-db-locking-patterns`        |
+| Worker memory                   | jemalloc / `MALLOC_ARENA_MAX=2` / WorkerKiller                                | `rails-batch-processing-patterns`  |
+| Zeitwerk / `master.key`         | Constant-loading bugs at boot; missing key blocks boot                        | `rails-code-explain`               |
 
-### Risk Hotspots
-
-| Area                            | What to check                                                                        | Skill                          |
-| ------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------ |
-| N+1 queries                     | `bullet` in Gemfile, `includes` in collection views                                  | `rails-activerecord-patterns`  |
-| Implicit config                 | `config.load_defaults <= 6.1`, `new_framework_defaults_*.rb`, `touch:` / `autosave:` | `rails-implicit-config-audit`  |
-| Callback abuse                  | Heavy `after_save` business logic                                                    | `rails-code-explain`           |
-| `update_columns` / `update_all` | Bypass callbacks/validations                                                         | -                              |
-| `permit!` mass assignment       | Audit controllers                                                                    | `rails-security-patterns`      |
-| Connection pool sizing          | Sidekiq concurrency vs `max_connections`                                             | `rails-connection-pool-sizing` |
-| MySQL `REPEATABLE READ`         | Long transactions, gap locks                                                         | `rails-db-locking-patterns`    |
-| Worker memory growth            | jemalloc / `MALLOC_ARENA_MAX=2` / `WorkerKiller`                                     | `rails-batch-processing-patterns` |
-| CSRF / Zeitwerk / `master.key`  | Disabled on session controllers; constant-loading bugs at boot; missing key blocks boot | -                           |
-
-### First-PR Safe Zones
+### First-PR safe zones
 
 Safe: new RESTful route + controller + view; new field with safe-default migration; new spec; new rake task.
-Riskier: initializers (run once at boot); existing migrations (never edit; add new); concerns shared across many models/controllers; Devise/Warden config.
+Riskier: initializers (run once at boot); existing migrations (never edit - add new); shared concerns; Devise/Warden config.
 
 ## Output Format
 
 Inject into `task-onboard` sections:
 
-**Stack and Tooling:** Ruby, Rails, DB, ActiveJob backend, JS pipeline, asset pipeline, test framework, auth gem, lint stack.
-**Local Bootstrap:** `bin/setup` (or `bundle install` + `bin/rails db:setup`); `bin/dev`; default port; health-check path.
-**Architecture Map:** controllers/models/views counts; concerns; services; jobs/mailers/channels; package layout.
-**Conventions:** strong params, service object pattern, test framework, factories, queue backend.
-**Risk Hotspots:** filtered to actual gemset; cross-reference skills.
+**Stack and Tooling:** Ruby, Rails, DB, ActiveJob backend, JS pipeline, asset pipeline, test framework (RSpec/Minitest), auth gem (Devise/JWT), lint stack (RuboCop/Standardrb).
+
+**Local Bootstrap:** `bin/setup` (or `bundle install` + `bin/rails db:setup`); `bin/dev`; default port; health path `/up`; `master.key` requirement.
+
+**Architecture Map:** controller/model/view counts; concerns; services; jobs/mailers/channels; package layout (layer / domain / mixed).
+
+**Conventions:** strong params; service-object pattern; test framework + factories; queue backend (Sidekiq/Solid Queue/GoodJob).
+
+**Risk Hotspots:** filtered to actual gemset; cross-reference follow-up skills.
+
 **First-PR Safe Zones:** scoped to observed structure.
 
 ## Avoid
 
-- Treating Rails 5/6 patterns as current
-- Skipping JS pipeline detection
-- Listing every gem in Gemfile - focus on architecture-changing ones
-- Missing the `master.key` requirement
-- Recommending Sprockets when project uses Propshaft
+- Treating Rails 5/6 patterns as current; baseline is 7.2+.
+- Skipping JS pipeline detection or conflating it with the asset pipeline.
+- Listing every gem - focus on architecture-changing ones.
+- Recommending Sprockets when project uses Propshaft.
+- Reporting `:async` ActiveJob adapter as production-suitable.

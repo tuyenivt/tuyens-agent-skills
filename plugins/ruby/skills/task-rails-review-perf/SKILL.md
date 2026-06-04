@@ -62,9 +62,9 @@ Use skill: `rails-postgresql-migration-safety` **or** `rails-migration-safety` (
 
 ### Step 6 - Transactions and Async Boundaries
 
-Single axis covering Sidekiq dispatch, mailers, HTTP, and lock scope. Use skill: `rails-sidekiq-patterns`.
+Use skills: `rails-sidekiq-patterns`, `rails-transaction-patterns`.
 
-- [ ] **No HTTP/S3/Stripe/SMTP/`.perform_async`/`deliver_now` inside `Model.transaction`** - move to `after_commit` (`after_commit_everywhere` for nested)
+- [ ] **No HTTP / S3 / Stripe / SMTP / `.perform_async` / `deliver_now` inside `Model.transaction`** - move to `after_commit` (`after_commit_everywhere` for nested)
 - [ ] Job arguments are primitive (IDs, not AR records)
 - [ ] Idempotency guard at top of `perform`: re-fetch state, return early if done
 - [ ] Retries bounded (`sidekiq_options retry: <N>`); queue priority explicit
@@ -91,14 +91,14 @@ Skip the connection-pool checks unless the diff changes pool config, Puma/Sideki
 - [ ] **Row locking** by primary key only; range scans under default RR on MySQL flagged (gap-lock); `SKIP LOCKED` claims hit a unique-index path
 - [ ] **No `find_each` inside `Model.transaction`**; chunked-transaction shape is `in_batches(of: N) { |batch| Model.transaction { ... } }`, not whole-run or per-row
 - [ ] **Chunk size** justified for row size + contention (500-1000 OLTP, 5000-10000 cold backfills); idempotent at chunk granularity
-- [ ] **No HTTP/Redis/S3 inside chunk transactions**, no network in held locks
+- [ ] **No HTTP / Redis / S3 inside chunk transactions**, no network in held locks
 - [ ] **Cron rake tasks** guarded by leader lock (`with_advisory_lock`)
 - [ ] **Lock-wait timeout** set when contention expected (PG: `lock_timeout`; MySQL: `innodb_lock_wait_timeout`)
 - [ ] **Memory**: jemalloc or `MALLOC_ARENA_MAX=2` for Sidekiq and long rake tasks; `WorkerKiller` at 70-80%; memory-heavy queues at lower concurrency; `pluck(:id)` cursors when AR objects aren't needed
 
 ### Step 9 - Observability Hooks
 
-One rule: if a new hot path lands without instrumentation, flag it. Concretely:
+If a new hot path lands without instrumentation, flag it:
 
 - [ ] Slow paths emit `ActiveSupport::Notifications` or APM custom spans; `query_log_tags_enabled = true` so APM attributes queries; Bullet enabled in non-prod (flag any change disabling it)
 
@@ -151,9 +151,9 @@ _Omit if no actionable findings._
 - [ ] Steps 1-3 ran (or accepted from parent); diff/log read once; DB recorded
 - [ ] Step 4: N+1, indexes, batching covered; for update/save N+1, source diagnosed via `rails-implicit-config-audit` before recommending `.includes`
 - [ ] Step 5: migration-safety skill for the detected DB consulted on `db/migrate/` change
-- [ ] Step 6: every transaction boundary checked for HTTP/job/mailer leak; idempotency verified
+- [ ] Step 6: every transaction boundary checked for HTTP / job / mailer leak; idempotency verified
 - [ ] Step 7: caching/rendering applied when diff touches views/serializers/cache
-- [ ] Step 8: pool sizing skipped unless config changed; locking/batching/memory applied where relevant
+- [ ] Step 8: pool sizing skipped unless config changed; locking / batching / memory applied where relevant
 - [ ] Step 9: instrumentation gap flagged on new hot paths
 - [ ] Step 10: report via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise (`adds ~N queries at K rows`)

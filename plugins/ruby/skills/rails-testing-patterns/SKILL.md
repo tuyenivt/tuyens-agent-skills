@@ -1,6 +1,6 @@
 ---
 name: rails-testing-patterns
-description: RSpec for Rails 7.2+: model/request/system/service/policy/job/rake specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR.
+description: RSpec on Rails 7.2+ - model/request/system/service/policy/job/rake specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR/WebMock.
 metadata:
   category: backend
   tags: [ruby, rails, rspec, testing, factorybot]
@@ -13,7 +13,7 @@ user-invocable: false
 
 - Writing tests for a new feature (models, services, requests, policies, jobs)
 - Setting up FactoryBot factories with state traits
-- Testing Sidekiq jobs and Pundit policies
+- Testing Sidekiq jobs, Pundit policies, Turbo Stream endpoints
 - Mocking external HTTP at the boundary (VCR / WebMock)
 - Reviewing for mystery guests, over-mocking, missing edge cases
 
@@ -21,11 +21,12 @@ user-invocable: false
 
 - Request specs, never controller specs
 - Test through the public interface; no private-method specs
-- FactoryBot only - no fixtures
-- `build_stubbed` by default; `build` for in-memory; `create` only when persistence is required
-- Mock at boundaries (HTTP, third-party SDKs), never internal code
-- Every Pundit policy gets a spec covering each role
+- FactoryBot only - no fixtures; use state traits, not inline attribute overrides
+- `build_stubbed` by default; `build` in-memory; `create` only when persistence is required
+- Mock at boundaries (HTTP, third-party SDKs); never mock internal code
+- Every Pundit policy has a spec covering each role
 - `travel` / `freeze_time`, never `Time.now =` stubs
+- One canonical `auth_headers` helper per project - don't mix session and bearer in the same suite
 
 ## Patterns
 
@@ -158,7 +159,7 @@ end
 
 ### FactoryBot
 
-State traits avoid inline overrides hiding intent:
+State traits replace inline overrides so intent stays explicit:
 
 ```ruby
 FactoryBot.define do
@@ -178,20 +179,19 @@ FactoryBot.define do
   end
 end
 
-build_stubbed(:order)                          # no DB
-create(:order, :confirmed, :with_order_items)  # DB + associated rows
+build_stubbed(:order)
+create(:order, :confirmed, :with_order_items)
 ```
 
 ### Sidekiq
 
 ```ruby
 require "sidekiq/testing"
-Sidekiq::Testing.fake!  # default - jobs pushed to array
+Sidekiq::Testing.fake!  # jobs pushed to array
 
 RSpec.describe ShipmentNotificationJob, type: :job do
   it "enqueues" do
-    expect { described_class.perform_async(order.id) }
-      .to change(described_class.jobs, :size).by(1)
+    expect { described_class.perform_async(order.id) }.to change(described_class.jobs, :size).by(1)
   end
 
   it "is idempotent - skips already-shipped orders" do
@@ -206,7 +206,7 @@ end
 
 > See `rails-rake-task-patterns` for task design.
 
-Tasks are thin shells - the service spec owns behavior; the rake spec verifies wiring. `Rails.application.load_tasks` once; `task.reenable` after each example; `climate_control` for per-example ENV.
+Tasks are thin shells; service spec owns behavior, rake spec verifies wiring. `Rails.application.load_tasks` once; `task.reenable` after each example; `climate_control` for per-example ENV.
 
 ```ruby
 RSpec.describe "orders:fulfill_pending" do
@@ -227,24 +227,23 @@ RSpec.describe "orders:fulfill_pending" do
 end
 ```
 
-Production-gate tasks: stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset.
+For production-gate tasks, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset.
 
 ### Database Isolation
 
-Transactional fixtures, not `database_cleaner`. System specs share the connection between test thread and Capybara server thread, so one transaction works:
+Use transactional fixtures, not `database_cleaner`. System specs share the connection between test thread and Capybara server thread, so one transaction works:
 
 ```ruby
 RSpec.configure { |c| c.use_transactional_fixtures = true }
 ```
 
-`database_cleaner-active_record` with `:truncation` only for cross-connection state (separate analytics DB).
+`database_cleaner-active_record` with `:truncation` only for cross-connection state (e.g., a separate analytics DB).
 
-### Request Helpers
+### Request Auth Helpers
 
-One canonical `auth_headers` helper per project; shape depends on the auth strategy. Two common forms:
+Pick one shape per project. Devise session:
 
 ```ruby
-# Devise session (cookie-based, server-rendered apps)
 module RequestHelpers
   def auth_headers(user)
     sign_in(user)
@@ -253,11 +252,14 @@ module RequestHelpers
 
   def json_response = JSON.parse(response.body)
 end
+```
 
-# JWT bearer (API-only apps; adjust encoder to the project's gem)
+JWT bearer (Warden::JWTAuth / Devise-JWT / custom encoder):
+
+```ruby
 module RequestHelpers
   def auth_headers(user)
-    token = JwtEncoder.encode(user_id: user.id) # or Warden::JWTAuth, Devise-JWT, etc.
+    token = JwtEncoder.encode(user_id: user.id)
     { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
   end
 end
@@ -265,7 +267,7 @@ end
 RSpec.configure { |c| c.include RequestHelpers, type: :request }
 ```
 
-Pick one shape - mixing session and bearer auth in the same spec helper hides which path the endpoint actually exercises.
+Mixing both in one suite hides which path the endpoint actually exercises.
 
 ### Time Helpers
 
@@ -283,20 +285,18 @@ Built-in - no `timecop` needed; auto-resets after each example.
 
 ### N+1 Assertions
 
-Pin the query count so raising it requires an explicit review decision:
-
 ```ruby
 require "active_record/query_recorder"
-it "index runs ≤ 4 queries regardless of order count" do
+it "index runs <= 4 queries regardless of order count" do
   create_list(:order, 10, :with_order_items, user: user)
   queries = ActiveRecord::QueryRecorder.new { get "/api/v1/orders", headers: auth_headers(user) }
   expect(queries.count).to be <= 4
 end
 ```
 
-### Turbo Stream and Broadcast Assertions
+Pin the count so raising it requires an explicit review decision.
 
-For Hotwire-driven endpoints, assert the stream shape, not the HTML body:
+### Turbo Stream and Broadcast Assertions
 
 ```ruby
 # Request spec - response is text/vnd.turbo-stream.html
@@ -315,7 +315,7 @@ it "broadcasts to the user's stream" do
 end
 ```
 
-`turbo-rails` ships `Turbo::Broadcastable::TestHelper` for `assert_turbo_stream_broadcasts` in Minitest; RSpec uses `have_broadcasted_to` from `action-cable-testing`.
+`have_broadcasted_to` ships with `action-cable-testing`.
 
 ### VCR / WebMock
 
@@ -328,7 +328,7 @@ VCR.configure do |c|
 end
 ```
 
-WebMock for client unit specs; VCR for service/request specs hitting the integration. Use one per spec - cassettes + ad-hoc stubs interact confusingly.
+WebMock for client unit specs; VCR for service/request specs hitting the integration. One per spec - cassettes + ad-hoc stubs interact confusingly.
 
 ## Output Format
 
@@ -345,5 +345,6 @@ Examples: {count}
 - Mystery guests - data set up in shared `before` blocks far from the example
 - Factories without state traits - inline status overrides obscure intent
 - `sleep` waiting on async work - use `have_enqueued_job` / `Sidekiq::Testing`
-- Missing policy specs (authorization bugs are among the most damaging)
-- Mocking internal code - mock boundaries only
+- Missing policy specs - authorization bugs are among the most damaging
+- Mocking internal code - boundaries only
+- Mixing session and bearer auth in the same `auth_headers` helper

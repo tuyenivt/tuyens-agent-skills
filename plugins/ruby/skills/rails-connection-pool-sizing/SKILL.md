@@ -19,12 +19,12 @@ user-invocable: false
 
 ## Rules
 
-- Each AR-calling thread checks out one connection - count threads, not pods
-- Per-process `pool >= max_threads_in_that_process` - more is wasted, less leaks `ConnectionTimeoutError`
-- Deployment-wide sum stays under DB `max_connections` with 15-25% headroom for deploys
-- Rolling deploys hold old + new pool simultaneously - size for the peak
-- A long-running query holds the connection for its full duration
-- Never tune `pool` without re-deriving the deployment-wide total
+- Each AR-calling thread checks out one connection - count threads, not pods.
+- Per-process `pool == max_threads_in_that_process` (+1-2 if `load_async` / ActionCable share the process).
+- Deployment-wide sum stays under DB `max_connections` with 15-25% headroom.
+- Rolling deploys hold old + new pool simultaneously - size for the peak.
+- A long-running query holds the connection for its full duration.
+- Never tune `pool` without re-deriving the deployment-wide total.
 
 ## Patterns
 
@@ -49,11 +49,11 @@ On `db.t3.medium` (~340 max_connections), the deploy peak exhausts the pool befo
 
 ### Per-process pool size
 
-| Process              | `pool`                                                                    |
-| -------------------- | ------------------------------------------------------------------------- |
-| Puma worker          | `puma_threads` (`+1`/`+2` if `load_async` / ActionCable in same process)  |
-| Sidekiq process      | `sidekiq.concurrency`                                                     |
-| Rails console / rake | 1 default; bump only if the script spawns threads                         |
+| Process              | `pool`                                                                   |
+| -------------------- | ------------------------------------------------------------------------ |
+| Puma worker          | `puma_threads` (`+1`/`+2` if `load_async` / ActionCable in same process) |
+| Sidekiq process      | `sidekiq.concurrency`                                                    |
+| Rails console / rake | 1 default; bump only if the script spawns threads                        |
 
 ```yaml
 # Bad - reserves 20 unused connections
@@ -64,7 +64,7 @@ pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 ### Headroom for non-request work
 
-`load_async` (Rails 7.1+ default 4 threads), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. Set `pool = RAILS_MAX_THREADS + 2` when any are in use.
+`load_async` (Rails 7.1+, default 4 threads), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. Set `pool = RAILS_MAX_THREADS + 2` when any are in use.
 
 ### Sidekiq sizing
 
@@ -76,7 +76,7 @@ Sidekiq pods are a separate process from Puma - separate pool entry in the deplo
 
 Set `RAILS_MAX_THREADS=15` in the Sidekiq deployment env so `pool=15` matches.
 
-Partition memory- or query-heavy queues onto a separate Sidekiq process with lower `concurrency` - a queue running 10s SQL at `concurrency: 25` holds 25 connections per ten seconds.
+Partition memory- or query-heavy queues onto a separate Sidekiq process with lower `concurrency`. A queue running 10s SQL at `concurrency: 25` holds 25 connections for ten seconds.
 
 ### Deploy-window doubling
 
@@ -86,7 +86,7 @@ Mitigations in leverage order:
 
 1. **Connection multiplexer** in front of the DB:
    - MySQL: **RDS Proxy** (managed) or **ProxySQL** (self-hosted)
-   - PostgreSQL: **PgBouncer** (transaction pooling - set `prepared_statements: false` for transaction mode) or **RDS Proxy for Postgres**
+   - PostgreSQL: **PgBouncer** transaction-pool (set `prepared_statements: false`) or **RDS Proxy for Postgres**
    - Essentially mandatory above ~200 backend processes
 2. **Lower per-process thread counts** - `threads=5` to `threads=3` cuts pool footprint by 40%
 3. **`maxSurge=0`** in Kubernetes - old pods drain before new start; trades deploy speed for connection budget
@@ -94,7 +94,7 @@ Mitigations in leverage order:
 
 ### RDS / Aurora limits
 
-RDS MySQL `max_connections` default: `LEAST({DBInstanceClassMemory/12582880}, 16000)`.
+RDS MySQL default: `max_connections = LEAST({DBInstanceClassMemory/12582880}, 16000)`.
 
 | Instance         | Memory | Default `max_connections` |
 | ---------------- | ------ | ------------------------- |
