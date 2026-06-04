@@ -18,9 +18,7 @@ Guided codebase walkthroughs generated during `task-codemap`. Each guide visits 
 - Pair-programming context-setting before a feature dive.
 - Refresher on an unfamiliar module.
 
-**Not for:**
-- Free-form questions -> `task-codemap-ask`.
-- Single-entity deep-dive -> `task-codemap-explain`.
+**Not for:** free-form questions (`task-codemap-ask`); single-entity deep-dive (`task-codemap-explain`).
 
 ## Inputs
 
@@ -39,16 +37,16 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Load Codemap
 
-1. Confirm `.codemap/graph.json` exists. Missing -> suggest `/task-codemap` and stop.
-2. Confirm `.codemap/guides.json` exists. Missing -> offer `--rebuild` and stop.
-3. Apply the freshness rule from `codemap-query` (Freshness check); warn but proceed when stale.
-4. Load both.
+Use skill: `codemap-schema` (guide shape). Use skill: `codemap-query` (traversal patterns, freshness check).
 
-Use skill: `codemap-schema` for guide shape. Use skill: `codemap-query` for traversal and the freshness rule.
+1. Missing `.codemap/graph.json` -> suggest `/task-codemap` and stop.
+2. Missing `.codemap/guides.json` -> offer `--rebuild` and stop.
+3. Run the `codemap-query` freshness check; warn but proceed when stale.
+4. Load both.
 
 ### Step 3 - Branch on Mode
 
-#### `--list`
+**`--list`** - print the available guides, then stop:
 
 ```
 Available guides (from .codemap/guides.json):
@@ -61,20 +59,21 @@ Available guides (from .codemap/guides.json):
 Run: /task-codemap-guide --guide <name> [--depth basic|full]
 ```
 
-#### `--rebuild`
+**`--rebuild`** - regenerate `guides.json`, then stop:
 
 1. Apply the guide-selection heuristic from `codemap-build-pipeline` Phase 7.
 2. Write `.codemap/guides.json`.
-3. Validate via `codemap-validate` (every step `nodeId` must exist in `graph.json`).
-4. Print summary, stop.
+3. `Use skill: codemap-validate`.
+4. Print a one-line summary (`Rebuilt N guides, total M steps`).
 
-#### Play a guide (default)
+**Play (default)** - continue to Step 4:
 
-1. If `--guide` missing, list and ask the user to pick.
+1. If `--guide` missing, list guides and ask the user to pick.
 2. Look up the guide; apply `--depth` override if given.
-3. Render per the depth contract.
 
-### Step 4 - Render a Step
+### Step 4 - Render Steps
+
+For each step, follow the depth contract:
 
 **Basic:**
 
@@ -91,7 +90,9 @@ Run: /task-codemap-guide --guide <name> [--depth basic|full]
 - "Incoming" line: top 3 callers/importers.
 - "Outgoing" line: next-step calls/imports.
 
-### Step 5 - Guide Summary
+Full mode without source excerpts is just basic with extra words - skip it or include excerpts.
+
+### Step 5 - Render Summary + Footer
 
 ```
 **Guide summary:**
@@ -105,13 +106,7 @@ Next:
 - `/task-codemap-ask "<question>"` for follow-up
 ```
 
-### Step 6 - Stale-Graph Footer
-
-When applicable:
-
-```
-> Codemap built from commit abc1234. Run `/task-codemap` for current data.
-```
+Append the freshness footer per Output Format.
 
 ## Output Format
 
@@ -141,19 +136,23 @@ When applicable:
 - Connected concepts: `JWT`, `Session`
 ```
 
+Stale variant of the freshness footer:
+
+```
+> Codemap built from commit abc1234. Run `/task-codemap` for current data.
+```
+
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: graph + guides loaded; freshness warning when stale
-- [ ] Step 3: mode branched correctly
+- [ ] Step 3: mode branched correctly; `--list` / `--rebuild` exited; play mode proceeded
 - [ ] Step 4: depth contract honored; full mode includes source excerpts within the 40-line cap
-- [ ] Step 5: guide summary included
-- [ ] Step 6: stale-graph footer when applicable
+- [ ] Step 5: guide summary + freshness footer included
 - [ ] All cited node IDs resolve in the current graph
 
 ## Avoid
 
 - Inventing steps not in `guides.json`.
 - Reading whole files when `lineRange` is the exact span.
-- Full mode without source excerpts - that's just basic with extra words.
 - Skipping freshness on long guides where staleness compounds.

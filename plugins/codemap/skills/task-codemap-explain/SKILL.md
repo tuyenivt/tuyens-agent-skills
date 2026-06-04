@@ -10,20 +10,17 @@ user-invocable: true
 
 # Task: Codemap Explain
 
-Fixed structured deep-dive on **one named entity**. Composes with stack-specific `*-code-explain` atomics for framework-magic.
+Fixed structured deep-dive on **one named entity**. Composes stack-specific `*-code-explain` atomics for framework gotchas. Falls back to `task-code-explain` when the graph is missing.
 
 ## When to Use
 
-For callers + callees + data + tests + blast radius + concepts on a single known entity.
+You want callers + callees + data + tests + blast radius + concepts for a single known entity.
 
 - "Walk me through `authenticate()`."
 - "What does `OrderService` do, and how does it fit in?"
 - "Explain `internal/payment/charge.go` end-to-end."
 
-**Not for:**
-- Free-form questions about the system -> `task-codemap-ask`.
-- Multi-node flows ("how does the whole auth flow work") -> `task-codemap-guide` or `task-codemap-ask`.
-- Debug, refactor -> respective `task-*` skills.
+**Not for:** free-form questions (`task-codemap-ask`); multi-node flows (`task-codemap-guide` / `task-codemap-ask`); debug/refactor (`task-*` skills).
 
 ## Inputs
 
@@ -39,25 +36,19 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Load Codemap
 
-1. Confirm `.codemap/graph.json` exists. Missing -> fall back to `task-code-explain` (no graph dependency) and stop.
-2. Apply the freshness rule from `codemap-query` (Freshness check); warn but proceed when stale.
-3. Load graph.
+Use skill: `codemap-schema` (shape). Use skill: `codemap-query` (resolution, traversal, freshness, source-reading caps).
 
-Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal and the freshness rule.
+1. Missing `.codemap/graph.json` -> fall back to `task-code-explain` (no graph dependency) and stop.
+2. Run the `codemap-query` freshness check; warn but proceed when stale.
+3. Load graph.
 
 ### Step 3 - Resolve Target
 
-Apply `codemap-query` resolution rules:
-1. Exact ID.
-2. `filePath`.
-3. `name`.
-4. Substring.
-
-Multiple matches -> list and ask. Zero matches -> suggest closest 3 by Levenshtein and stop.
+Apply `codemap-query` resolution rules. Multiple matches -> list and ask. Zero matches -> suggest closest 3 by Levenshtein; offer `task-code-explain` for source-only explanation if the path exists on disk.
 
 ### Step 4 - Detect Stack & Compose
 
-Use skill: `stack-detect`. If a stack-specific atomic exists, load it for framework-magic and gotchas:
+Use skill: `stack-detect`. Load the stack's `*-code-explain` atomic when present - it enriches sections 10-11, never replaces graph structure.
 
 | Stack | Atomic |
 | --- | --- |
@@ -74,57 +65,47 @@ Use skill: `stack-detect`. If a stack-specific atomic exists, load it for framew
 | Vue | `vue-code-explain` |
 | Angular | `angular-code-explain` |
 
-The atomic enriches; it does not replace the graph-driven structure below.
-
 ### Step 5 - Collect Context from Graph
 
-For the resolved node N:
+For the resolved node N, gather these slices via `codemap-query` patterns:
 
 | Section | Query |
 | --- | --- |
 | Identity | `N.id`, `type`, `filePath`, `lineRange`, `summary`, `tags`, `complexity`, `layer` |
-| Containers | Walk `belongs_to` upward |
-| Members (file/class) | Walk `belongs_to` downward |
+| Containers / Members | `belongs_to` up / down |
 | Callers (top 10) | Incoming `calls` by fan-in |
 | Callees (top 10) | Outgoing `calls` by fan-out |
-| Imports of N's file | Outgoing `imports` from `file:<N.filePath>` |
-| Importers | Incoming `imports` |
+| File imports / importers | `imports` from / into `file:<N.filePath>` |
 | Data touchpoints | Outgoing `reads_from` / `writes_to` |
 | Tests | Incoming `tested_by` |
 | Related concepts | `concept` nodes within 2 hops |
 | Blast radius | Reverse BFS depth 3 over `calls`/`imports`/`uses`; count by layer |
 
-Use skill: `architecture-guardrail` to flag layer-violation participation. Use skill: `complexity-review` for function/class complexity.
+Use skill: `architecture-guardrail` for layer-violation participation. Use skill: `complexity-review` for function/class complexity grading.
 
 ### Step 6 - Read Source
 
-Read N's `lineRange` (cap 200 lines). Read 1-2 close neighbors when they clarify intent. Cap total at 3 files.
+Apply `codemap-query` "Reading source from a node" rules. Cap total at 3 files (N + up to 2 close neighbors when they clarify intent).
 
 ### Step 7 - Render
 
-Structured deep-dive with these sections (skip empty ones):
+Render the structured deep-dive (skip empty sections, but mark intentional skips with `none` rather than dropping silently):
 
-1. **Summary** - one paragraph: what N does, why it exists, where it fits.
+1. **Summary** - one paragraph: what N does, why it exists, where it fits (orientation).
 2. **Identity** - node ID, file:line, layer, complexity.
-3. **What it does** - line-referenced walkthrough.
+3. **What it does** - line-referenced walkthrough (mechanics, distinct from Summary).
 4. **Inputs and outputs** - parameters, return, side effects.
 5. **Callers** - top callers with `file:line` + one-line reason.
 6. **Callees** - top callees with `file:line` + delegated purpose.
 7. **Data touchpoints** - tables/schemas/resources read/written.
 8. **Tests** - covering tests + coverage-gap assessment.
-9. **Layer / boundary check** - via `architecture-guardrail`.
+9. **Layer / boundary check** - from `architecture-guardrail`.
 10. **Framework gotchas** - from the stack-specific atomic.
 11. **Blast radius** - depth-3 reverse-BFS by layer.
 12. **Related concepts** - connected `concept` nodes + one-line definitions.
 13. **Recommendations** - flags only (god-method, missing tests, suspicious coupling). No refactor plan.
 
-### Step 8 - Stale-Graph Footer
-
-When applicable:
-
-```
-> Codemap built from commit abc1234. Run `/task-codemap` for current data.
-```
+Append the freshness footer per Output Format.
 
 ## Output Format
 
@@ -219,16 +200,21 @@ Low blast radius.
 - Consider transactional pairing for `audit.Append` + token issuance.
 ```
 
+Stale variant of the freshness footer:
+
+```
+> Codemap built from commit abc1234. Run `/task-codemap` for current data.
+```
+
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: graph loaded; freshness warning; fallback to `task-code-explain` when graph missing
-- [ ] Step 3: target resolved; ambiguous matches surfaced
+- [ ] Step 3: target resolved; ambiguous matches surfaced; zero-match fallback offered
 - [ ] Step 4: `stack-detect` ran; stack-specific atomic loaded when available
 - [ ] Step 5: graph context collected per the section list
 - [ ] Step 6: targeted reads to `lineRange`; total <= 3 files
-- [ ] Step 7: all populated sections rendered; empty sections marked `none` not silently dropped
-- [ ] Step 8: stale-graph footer when applicable
+- [ ] Step 7: all populated sections rendered; empty sections marked `none`; freshness footer present
 - [ ] No invented callers, callees, or tests
 
 ## Avoid
@@ -237,4 +223,3 @@ Low blast radius.
 - Reading whole files when `lineRange` is the exact span.
 - Walking beyond depth 3 for blast radius - signal degrades fast.
 - Producing a refactor plan - flag, don't redesign.
-- Skipping the test-gap assessment - high-value output.

@@ -16,6 +16,13 @@ user-invocable: false
 
 End-to-end build flow for `task-codemap`. Full path runs all 9 phases; sync mode runs phase 3 (analyze) on changed files and reuses merge/repair/validate on the spliced graph.
 
+**Phase ownership:**
+
+- Python helpers (deterministic): phases 1 (scan), 2 (batch), 4 (merge), 9 (persist + fingerprint).
+- LLM (semantic): phases 3 (sub-agent analyze), 5 (repair-LLM pass), 6 (layer assign), 7 (guide generate).
+- Composed atomic: phase 8 (`codemap-validate`).
+- Mixed: phase 5 also includes a mechanical complexity backfill.
+
 ## When to Use
 
 Composed into `task-codemap` for both modes (full build and sync). Pure-LLM extraction - Python helpers only enumerate, batch, merge, and fingerprint.
@@ -163,7 +170,7 @@ LLM. Read `merged.json` + `stack-detect` + `codemap-layer-patterns`:
 
 1. For each node with `filePath`, walk segments deepest-first; first match -> `layer`.
 2. Members inherit their file's layer via `belongs_to`.
-3. `endpoint` -> `api`; other abstract types via the schema's heuristics.
+3. Abstract type defaults: `endpoint` -> `api`; `table`/`schema` -> `data`; `service`/`resource` -> `infra`; `config` -> `infra` (unless the file path matches an entry mapping in `codemap-layer-patterns`); `concept`/`document` -> omit `layer`.
 4. Emit `layers` summary:
 
 ```json
@@ -183,7 +190,7 @@ LLM. Generate 3-5 dependency-ordered walkthroughs into `.codemap/guides.json`. S
 | `request-lifecycle` | `endpoint` nodes exist |
 | `auth-flow` | Auth-tagged cluster (`auth`, `jwt`, `session`) |
 | `data-layer` | `data`-layer nodes exist |
-| `entrypoints` | Always - all `entry` nodes |
+| `entrypoints` | Always when `entry`-layer nodes exist |
 | `domain-model` | `domain`-layer nodes exist |
 
 `basic` = 5-8 steps, `full` = 10-20. Each step: `{ order, nodeId, narration }`. Narration is one sentence explaining why this stop.

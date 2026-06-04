@@ -23,7 +23,7 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 2. **Every node has a one-sentence English `summary`.** Describe intent, not signature. If genuinely unknown, write `unknown - <reason>`.
 3. **Closed enums.** `type`, `complexity`, `layer` use only the listed values. Extending the schema means editing this skill, not improvising locally.
 4. **No dangling edges.** Edges referencing missing endpoints are dropped at merge.
-5. **English only.** `summary`, `tags`, `name` are English regardless of source language.
+5. **English only.** `summary`, `tags`, `name` are English regardless of source language - consumers query and render in English; the underlying source can be any locale.
 
 ## Patterns
 
@@ -64,7 +64,7 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 | `type` | all | One of the 12 node types. |
 | `name` | all | Symbol for code; basename for files; short label for abstract nodes. |
 | `filePath` | code, config, document | Repo-relative, forward slashes. Omit for `concept`/`service`/`schema`. |
-| `lineRange` | `function`, `class`, `endpoint` | `[start, end]`, 1-based, inclusive. |
+| `lineRange` | `function`, `class`, `endpoint` | `[start, end]`, 1-based, inclusive. Omit for `file`, `module`, and abstract types. |
 | `summary` | all | One English sentence. |
 | `tags` | all | 1-5 short kebab-case tags. |
 | `complexity` | code nodes | `simple` / `moderate` / `complex`. |

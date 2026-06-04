@@ -23,7 +23,7 @@ Per-file structural fingerprint used by `task-codemap` sync mode to decide which
 1. **Hash content + path only.** No timestamps, no inode, no git blob SHA. Deterministic across machines and re-clones.
 2. **File-level granularity.** Sub-file change detection is out of scope - belongs in a future schema version, not producer-side improvisation.
 3. **Whitespace-insensitive.** Trim trailing whitespace per line and collapse blank-line runs before hashing - reformats don't trigger re-analysis.
-4. **Detect renames by hash.** Same hash under a different path is a rename. The refresh updates `filePath` on existing nodes rather than rebuilding.
+4. **Detect renames by hash.** During `fingerprint.py --mode compare`, a hash present in the previous set but missing in the current set, paired with a new path whose hash matches, is emitted as a rename rather than a delete + add. The refresh then updates `filePath` on existing nodes rather than rebuilding.
 5. **Schema-version gate.** `fingerprints.json#schemaVersion` mismatch forces full rebuild.
 
 ## Patterns

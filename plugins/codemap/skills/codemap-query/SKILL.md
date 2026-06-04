@@ -48,7 +48,7 @@ Multiple matches -> list with type+path, ask user to pick. Zero matches -> sugge
 | Callees of function G | `source == G`, `type == calls`. |
 | Functions in file F | `filePath == F`, `type == function`. |
 | Endpoints | `type == endpoint`. Group by HTTP verb when present in `name`. |
-| Tables touched by handler H | BFS from H via `calls`/`uses` until hitting `reads_from`/`writes_to`. Cap depth 4. |
+| Tables touched by handler H | BFS from H via `calls`/`uses` until hitting `reads_from`/`writes_to`. Cap depth 4 (handler -> service -> repository -> table + 1 hop slack). |
 | Layer of X | `node.layer`. If absent, walk `belongs_to` up to a layered ancestor. |
 | Nodes in layer L | Filter `nodes` by `layer == L`. |
 | Fan-in / fan-out for X | Count distinct edge sources/targets. |

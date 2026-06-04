@@ -44,7 +44,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | 11 | `tags` is a 1-5 element string array | `tags: "auth"` |
 | 12 | `complexity`, when present, is in `{simple, moderate, complex}` | `complexity: "high"` |
 | 13 | `layer`, when present, is in the 6-value enum | `layer: "controller"` |
-| 14 | Every `guides.json` step `nodeId` exists in `graph.json` | Stale node ID |
+| 14 | `guides.json` steps reference live nodes, have monotonically increasing `order`, and `depth` is `basic` or `full` | Stale node ID, out-of-order step, `depth: "medium"` |
 | 15 | Top-level `stack` is an object with `language`, `framework`, `stackType` (strings; framework may be `null`) | `stack: null` or missing |
 
 ### Warning checks (non-blocking)
@@ -55,7 +55,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | W2 | Self-edges (`source == target`) | Recursion not flagged |
 | W3 | Duplicate edges (`source, target, type`) | Same import twice |
 | W4 | >25% of nodes have no `layer` | Layout doesn't match patterns table |
-| W5 | A layer has 0 nodes (excluding `domain` for frontend-only) | `data` empty in a fullstack |
+| W5 | A layer has 0 nodes (use `stack.stackType` to skip benign cases: frontend-only -> `data` may be empty; library -> `entry`/`api` may be empty) | `data` empty in a fullstack |
 | W6 | Hub node with > 50 outgoing edges | God-module candidate |
 | W7 | 0 `document` nodes despite `README.md` at root | Docs not analyzed |
 | W8 | 0 `tested_by` edges when stack-detect found tests | Tests not linked |

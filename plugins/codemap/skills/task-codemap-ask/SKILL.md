@@ -10,21 +10,18 @@ user-invocable: true
 
 # Task: Codemap Ask
 
-Ask one question. Resolves against `.codemap/graph.json` first (cheap, structured), opens 1-3 specific files only when source detail is needed.
+Resolve a question against `.codemap/graph.json` first (cheap, structured), open 1-3 specific files only when source detail is needed. 1-3 sentence answer with citations.
 
 ## When to Use
 
-For questions about the system - you don't know yet which entity matters, and you want a 1-3 sentence answer with citations.
+You don't yet know which entity matters and want a short answer with citations.
 
 - "How does the payment flow work?"
 - "Which handlers touch the `orders` table?"
 - "What calls `authenticate`?"
 - "Where is the JWT signing key configured?"
 
-**Not for:**
-- Structured deep-dive on one entity -> `task-codemap-explain`.
-- Make a change / refactor / review -> respective `task-*` skills.
-- Onboarding overview -> `task-codemap-guide`.
+**Not for:** structured deep-dive on one entity (`task-codemap-explain`); change/refactor/review (`task-*` skills); onboarding overview (`task-codemap-guide`).
 
 ## Inputs
 
@@ -40,12 +37,12 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Load Codemap
 
-1. Confirm `.codemap/graph.json` exists. Missing -> suggest `/task-codemap` and stop.
-2. Apply the freshness rule from `codemap-query` (Freshness check). Warn but proceed when stale.
-3. Load `graph.json` and `guides.json`.
-4. **Sparse-graph check:** if `nodes.length < 10`, warn explicitly that the graph is sparse and may not yet cover the codebase. Suggest verifying `.codemap/config.json#scope` and `.codemap/.codemapignore`. Proceed anyway.
+Use skill: `codemap-schema` (shape). Use skill: `codemap-query` (traversal patterns, resolution rules, caps, freshness check, large-graph access).
 
-Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal and the freshness rule.
+1. Missing `.codemap/graph.json` -> suggest `/task-codemap` and stop.
+2. Run the `codemap-query` freshness check; warn but proceed when stale.
+3. Load `graph.json` and `guides.json`.
+4. Sparse-graph guard: `nodes.length < 10` -> warn that the graph is sparse and may not cover the codebase; suggest checking `.codemap/config.json#scope` and `.codemap/.codemapignore`. Proceed.
 
 ### Step 3 - Classify the Question
 
@@ -57,33 +54,21 @@ Use skill: `codemap-schema` for shape. Use skill: `codemap-query` for traversal 
 | "How does flow Y work" | Match Y in `guides.json`; else BFS from an entrypoint. |
 | "Which handlers/services touch Y" | Reverse BFS from Y over `reads_from`/`writes_to`/`calls`. |
 | "Where is Y configured" | `config` nodes via `configures` edge to Y, or filter `config` by tag/name. |
-| "What's the impact if I change X" | Reverse BFS depth 3 over `imports`/`calls`/`uses`. |
+| "What's the impact if I change X" | `codemap-query` "Impact of change" pattern. |
 | "List all endpoints/tables/services" | Filter by type. |
 | "Why does X depend on Y" | Shortest path X -> Y; render the chain. |
 
-No match -> extract entities, resolve each to nodes, walk neighborhoods, summarize.
+No match -> extract entities, resolve each, walk neighborhoods, summarize.
 
 ### Step 4 - Execute
 
-1. Resolve named entities per `codemap-query`.
-2. Walk the graph with the chosen pattern.
-3. Cap at 50 nodes; summarize top-N by relevance.
-4. Read source only when needed - smallest possible ranges from `node.lineRange`. Cap 3 files, 200 lines each.
+1. Resolve named entities per `codemap-query` resolution rules.
+2. Walk per the chosen pattern; obey `codemap-query` caps and traversal rules.
+3. Read source only when needed - smallest possible ranges from `node.lineRange`. Cap 3 files, 200 lines each.
 
 ### Step 5 - Render
 
-- Lead with the answer in 1-3 sentences.
-- Follow with **Evidence**: node IDs + `file:line-line` ranges.
-- Flows render as numbered lists.
-- "Not in the graph" -> say so and suggest next steps (grep, sync).
-
-### Step 6 - Stale-Graph Footer
-
-If Step 2 warned, append:
-
-```
-> Codemap built from commit abc1234 (12 commits behind HEAD). Run `/task-codemap` to sync.
-```
+Use the Output Format template. Answer leads in 1-3 sentences. Cite node IDs + `file:line-line`. Empty/silent graph -> say "not in the graph", propose next steps (grep, sync).
 
 ## Output Format
 
@@ -104,6 +89,12 @@ If Step 2 warned, append:
 > Codemap freshness: in sync with HEAD.
 ```
 
+Stale variant of the freshness footer:
+
+```
+> Codemap built from commit abc1234 (12 commits behind HEAD). Run `/task-codemap` to sync.
+```
+
 Empty or partial:
 
 ```markdown
@@ -119,11 +110,10 @@ Empty or partial:
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: graph loaded; freshness warning when applicable
+- [ ] Step 2: graph loaded; freshness warning when stale; sparse-graph warning when applicable
 - [ ] Step 3: classified to a query plan, or fallback noted
-- [ ] Step 4: entities resolved; results capped; reads minimal
-- [ ] Step 5: answer leads, evidence cites IDs + file:line
-- [ ] Step 6: stale footer when applicable
+- [ ] Step 4: entities resolved per `codemap-query`; caps respected; reads minimal
+- [ ] Step 5: answer leads, evidence cites IDs + file:line; freshness footer chosen correctly
 - [ ] No invented IDs, paths, or line numbers
 
 ## Avoid

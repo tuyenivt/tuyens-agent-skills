@@ -1,6 +1,6 @@
 ---
 name: codemap-layer-patterns
-description: Directory-to-layer mapping (entry/api/service/domain/data/infra) across Spring, Rails, Django, FastAPI, Go, Rust, React, Vue.
+description: Directory-to-layer mapping for codemap (entry/api/service/domain/data/infra) across 12 stacks (Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, Next, Nuxt, Angular).
 metadata:
   category: core
   tags: [codemap, layers, architecture, mapping]
@@ -41,15 +41,19 @@ Heuristic mapping from directory naming to the 6 codemap layers (`entry`, `api`,
 
 Singular and plural forms are equivalent (`controller/` = `controllers/`).
 
+### Rich-vs-anemic model rule (shared)
+
+ORM-style model files (`models/`, `app/Models/`, `entity/`) are ambiguous - they may hold business logic or be pure persistence shells. Apply across Rails, Django, Laravel, and Spring/JPA: file with non-trivial logic -> `domain`; anemic data class -> `data`.
+
 ### Stack-specific exceptions
 
 When the cross-stack map gives the wrong answer, apply these.
 
 **Spring (Java/Kotlin):** `*Application.{java,kt}` -> `entry`. `entity/` (JPA) -> `data`, not `domain`. `actuator/` -> `infra`.
 
-**Rails:** `config/routes.rb`, `config/application.rb` -> `entry`. `app/models/` -> `domain` if the file has logic; `data` if it's a pure ActiveRecord shell. `app/jobs/` (Sidekiq), `app/mailers/`, `config/initializers/` -> `infra`.
+**Rails:** `config/routes.rb`, `config/application.rb` -> `entry`. `app/models/` follows the rich-vs-anemic rule. `app/jobs/` (Sidekiq), `app/mailers/`, `config/initializers/` -> `infra`.
 
-**Django:** `wsgi.py`, `asgi.py`, root `urls.py` -> `entry`. App-level `urls.py`, `views/`, `viewsets/`, `serializers/` -> `api`. `models/` -> `domain` if rich, `data` if anemic. `migrations/`, `managers/`, `querysets/` -> `data`. `settings/`, `middleware/`, `signals/`, Celery `tasks/` -> `infra`.
+**Django:** `wsgi.py`, `asgi.py`, root `urls.py` -> `entry`. App-level `urls.py`, `views/`, `viewsets/`, `serializers/` -> `api`. `models/` follows the rich-vs-anemic rule. `migrations/`, `managers/`, `querysets/` -> `data`. `settings/`, `middleware/`, `signals/`, Celery `tasks/` -> `infra`.
 
 **FastAPI/Flask:** `main.py`, `app.py`, `__main__.py` -> `entry`. `routers/` -> `api`. Pydantic split: business models -> `domain`; DTOs -> emit as `schema` node type (not layered). `alembic/` -> `data`. `core/`, `dependencies/` -> `infra`.
 
@@ -59,7 +63,7 @@ When the cross-stack map gives the wrong answer, apply these.
 
 **.NET (ASP.NET Core):** `Program.cs`, `Startup.cs` -> `entry`. `Minimal*.cs` -> `api`. `Features/` (CQRS) -> `service`. `DbContext.cs`, `EF/` -> `data`.
 
-**Laravel:** `public/index.php`, `bootstrap/app.php`, `routes/` -> `entry`. `app/Http/Requests/`, `app/Http/Resources/` -> `api`. `app/Models/` -> same dual rule as Rails. `app/Actions/`, `app/Jobs/` (with logic) -> `service`. `app/Providers/`, `app/Console/Commands/`, `app/Http/Middleware/` -> `infra`.
+**Laravel:** `public/index.php`, `bootstrap/app.php`, `routes/` -> `entry`. `app/Http/Requests/`, `app/Http/Resources/` -> `api`. `app/Models/` follows the rich-vs-anemic rule. `app/Actions/`, `app/Jobs/` (with logic) -> `service`. `app/Providers/`, `app/Console/Commands/`, `app/Http/Middleware/` -> `infra`.
 
 **React (Next/Vite/Remix):** Next `app/`, `pages/`, Remix `routes/`, Vite `src/main.tsx` -> `entry`. `app/api/`, `pages/api/`, route handlers, `loaders/`, server `actions/` -> `api`. `hooks/`, `stores/`, `context/`, `providers/` -> `service`. `prisma/`, `drizzle/`, `lib/db/` -> `data`. `instrumentation.ts`, `middleware.ts`, `lib/`, `utils/` -> `infra`.
 
