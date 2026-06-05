@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
 > **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `// Satisfies: AC<N>` mapping or test-name suffix), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
 
 # Vue Test
@@ -28,13 +26,17 @@ Stack-specific delegate of `task-code-test` for Vue. Preserves the core workflow
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every step that follows.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` with Vue already confirmed, skip re-detection. If the stack is not Vue, stop and direct the user to `/task-code-test`.
 
 Record for the output: `Framework: Nuxt 3 | Vite + Vue Router`, `Vue: <version>`, `Runner: Vitest | Jest`, `Helper: @vue/test-utils | @testing-library/vue`. Subsequent steps branch on these signals.
 
-### Step 2 - Read Code Under Test and Existing Tests
+### Step 3 - Read Code Under Test and Existing Tests
 
 Ground output in real project conventions before producing assessment, strategy, or scaffolds.
 
@@ -46,7 +48,7 @@ Ground output in real project conventions before producing assessment, strategy,
 
 If no existing tests exist, state so and propose conventions explicitly in the output instead of inventing them silently.
 
-### Step 3 - Map the Vue Test Pyramid
+### Step 4 - Map the Vue Test Pyramid
 
 | Layer       | Tooling                                              | What belongs here                                                       |
 | ----------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -60,7 +62,7 @@ If no existing tests exist, state so and propose conventions explicitly in the o
 
 **Many** unit/composable/component, **some** integration, **few** E2E. One Nitro test per endpoint covering happy + auth + validation paths minimum.
 
-### Step 4 - Apply Vue Test Patterns
+### Step 5 - Apply Vue Test Patterns
 
 Use skill: `vue-testing-patterns` for canonical patterns: `withSetup` and probe-component composable testing, `renderWithProviders` helper, MSW lifecycle, Nitro direct-`$fetch` vs `useFetch`-mock flavors, Pinia store testing, TanStack Query setup, Vue Router mocking, `mountSuspended` (Nuxt), Sentry mock, Playwright `storageState`.
 
@@ -73,7 +75,7 @@ Selection rules (this workflow decides; the atomic skill provides the pattern):
 - Page-level integration test → MSW for network; real router (Vite: `createMemoryHistory`; Nuxt: `mountSuspended`)
 - TypeScript strict in tests; no `as any` in mocks
 
-### Step 5 - Define Test Boundaries
+### Step 6 - Define Test Boundaries
 
 **Deserves a test:**
 
@@ -90,7 +92,7 @@ Selection rules (this workflow decides; the atomic skill provides the pattern):
 
 **Does NOT need a test:** framework-provided behavior (`<NuxtLink>`, Pinia internals, Vue Router guards), generated boilerplate, trivial wrappers covered by parents, visual layout (belongs to visual regression), pure presentation components with no logic.
 
-### Step 6 - Test Data and Fixtures
+### Step 7 - Test Data and Fixtures
 
 - Factories (`createUserFactory`, `@faker-js/faker`, `fishery`) over hand-rolled literals
 - Co-locate with types: `test/factories/<entity>.ts`
@@ -99,7 +101,7 @@ Selection rules (this workflow decides; the atomic skill provides the pattern):
 - Rebuild fixtures in `beforeEach`; never mutate shared fixtures
 - Test data must be minimal - 100-row `Array.from` setups in a component test signal it belongs at integration / E2E
 
-### Step 7 - Prioritize (when coverage is low)
+### Step 8 - Prioritize (when coverage is low)
 
 Run before scaffolding when line/branch coverage is below ~50% or there are >5 gaps. Order determines *which* tests to scaffold first; alphabetical or by-file is wrong.
 
@@ -109,7 +111,7 @@ Run before scaffolding when line/branch coverage is below ~50% or there are >5 g
 4. **P4 - High-churn:** files with frequent recent commits (`git log --since="3 months ago"`) or bug-fix history (`git log --grep="fix"`)
 5. **P5 - Plumbing:** pure presentation, simple wrappers - lowest risk
 
-### Step 8 - Audit Test Infrastructure Prerequisites
+### Step 9 - Audit Test Infrastructure Prerequisites
 
 A prioritized list against an empty `vitest.config.ts` is a paper plan. Audit the harness needed to *run* tests; surface every missing piece as a prerequisite that must land **alongside P1**, not after it.
 
@@ -123,9 +125,9 @@ A prioritized list against an empty `vitest.config.ts` is a paper plan. Audit th
 
 Missing items render as a **Test infrastructure prerequisites** subsection of the Coverage Assessment; label "must land alongside P1."
 
-### Step 9 - Verify Hygiene of Existing Setup
+### Step 10 - Verify Hygiene of Existing Setup
 
-Audit ongoing-maintenance items distinct from Step 8's first-time prerequisites:
+Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 
 - [ ] `userEvent.setup()` per test (not module-level)
 - [ ] Strict TS in tests; typed `mount<typeof Component>`
@@ -182,7 +184,7 @@ Audit ongoing-maintenance items distinct from Step 8's first-time prerequisites:
 4. **P4 - High-churn:** [list]
 5. **P5 - Plumbing:** [list]
 
-**Test infrastructure prerequisites** *(when any Step 8 item is missing - must land alongside P1)*
+**Test infrastructure prerequisites** *(when any Step 9 item is missing - must land alongside P1)*
 
 - [missing item, e.g., "no `vitest.config.ts` - components cannot mount under `environment: 'nuxt'`"]
 - [...]
@@ -218,15 +220,16 @@ Audit ongoing-maintenance items distinct from Step 8's first-time prerequisites:
 
 ## Self-Check
 
-- [ ] Step 1 - stack confirmed; framework, runner, helper, Vue version recorded
-- [ ] Step 2 - target modules and a representative sample of existing tests + setup files read
-- [ ] Step 3 - test pyramid mapped to Vue idioms
-- [ ] Step 4 - `vue-testing-patterns` consulted; composable strategy explicit (`withSetup` vs probe); user-centric queries used; no `wrapper.vm.<internal>` assertions
-- [ ] Step 5 - boundaries defined; no duplicated assertions across layers; wizard coverage includes back-navigation + cross-step + submit
-- [ ] Step 6 - factories (not raw literals); minimal data per test
-- [ ] Step 7 - risk-based prioritization applied when coverage <50% (P1 auth/money/Nitro, P2 forms, P3 empty/error, P4 high-churn, P5 plumbing)
-- [ ] Step 8 - infrastructure prerequisites audited; missing pieces surfaced as "must land alongside P1," not buried in Step 9
-- [ ] Step 9 - hygiene items checked when assessing or reviewing existing tests
+- [ ] Step 1 - `behavioral-principles` loaded
+- [ ] Step 2 - stack confirmed; framework, runner, helper, Vue version recorded
+- [ ] Step 3 - target modules and a representative sample of existing tests + setup files read
+- [ ] Step 4 - test pyramid mapped to Vue idioms
+- [ ] Step 5 - `vue-testing-patterns` consulted; composable strategy explicit (`withSetup` vs probe); user-centric queries used; no `wrapper.vm.<internal>` assertions
+- [ ] Step 6 - boundaries defined; no duplicated assertions across layers; wizard coverage includes back-navigation + cross-step + submit
+- [ ] Step 7 - factories (not raw literals); minimal data per test
+- [ ] Step 8 - risk-based prioritization applied when coverage <50% (P1 auth/money/Nitro, P2 forms, P3 empty/error, P4 high-churn, P5 plumbing)
+- [ ] Step 9 - infrastructure prerequisites audited; missing pieces surfaced as "must land alongside P1," not buried in Step 10
+- [ ] Step 10 - hygiene items checked when assessing or reviewing existing tests
 - [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
 - [ ] Scaffolds only: MSW handlers reset in `afterEach`; TanStack Query uses fresh `QueryClient` with `retry: false`; Sentry mock asserted on error paths; a11y (`axe`) on route-level scaffolds
 

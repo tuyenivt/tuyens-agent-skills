@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
-
 # Vue Security Review
 
 Stack-specific delegate of `task-code-review-security` for Vue / Nuxt. Always runs at full depth - no quick/standard knob.
@@ -32,7 +30,7 @@ Stack-specific delegate of `task-code-review-security` for Vue / Nuxt. Always ru
 | `/task-vue-review-security <branch>` | Review `<branch>` vs its base (3-dot diff)                                             |
 | `/task-vue-review-security pr-<N>`   | Review PR head in local branch `pr-<N>` (user fetches first)                           |
 
-When called as subagent of `task-code-review-security` or `task-vue-review`, accept the parent's stack and pre-read diff/log; skip Steps 1-2.
+When called as subagent of `task-code-review-security` or `task-vue-review`, accept the parent's stack and pre-read diff/log; skip Steps 2-3.
 
 ## Severity Rubric
 
@@ -54,17 +52,21 @@ Archetypal compositions:
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`. These rules govern every step that follows.
+
+### Step 2 - Confirm Stack and Detect Framework
 
 Use skill: `stack-detect` to confirm Vue. If a parent workflow already detected Vue, skip re-detection. If not Vue, stop and direct user to `/task-code-review-security`.
 
 Record `Framework: Nuxt 3 <version>` or `Vite + Vue Router <version>`. Subsequent steps branch on this - only Nuxt has Nitro server routes, server middleware, and `defineNuxtRouteMiddleware`.
 
-### Step 2 - Resolve the Diff Under Review
+### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` **once**; reuse for all subsequent steps. Surface fail-fast messages verbatim and stop. Never run state-changing git from this workflow. Skip entirely if parent provided pre-read artifacts.
 
-### Step 3 - Read the Security Surface
+### Step 4 - Read the Security Surface
 
 Open the files that wire security so findings cite real lines.
 
@@ -74,9 +76,9 @@ Open the files that wire security so findings cite real lines.
 
 When the diff removes a CSP rule, removes a sanitizer, or relaxes auth middleware, `git log -p` the prior revision to confirm prior protection.
 
-### Step 4 - OWASP Triage (Vue Lens)
+### Step 5 - OWASP Triage (Vue Lens)
 
-Triage pass only - produce one verdict per category (`yes` / `no signal in diff`). Findings go in Steps 5-9, not here.
+Triage pass only - produce one verdict per category (`yes` / `no signal in diff`). Findings go in Steps 6-10, not here.
 
 | Risk                          | Vue-specific check                                                                                                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -91,7 +93,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 | Data Integrity Failures (A08) | `eval` / `new Function` any occurrence is Critical                                                                                                                   |
 | Logging & Monitoring (A09)    | Sentry `beforeSend` strips PII; logs free of `password`, `token`, `authorization`                                                                                     |
 
-### Step 5 - Authentication
+### Step 6 - Authentication
 
 **Nuxt 3 (server-side auth):**
 
@@ -111,7 +113,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] No client-side authorization decisions. `v-if="user.role==='admin'"` is UX; the backend must reject regardless. Flag client guards not backed by a server check
 - [ ] Refresh token never in JS - rotate via httpOnly cookie POST
 
-### Step 6 - Authorization
+### Step 7 - Authorization
 
 **Nuxt 3 Nitro endpoints:**
 
@@ -126,7 +128,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] Client route guards are UX; server must enforce authz independently
 - [ ] **CSRF.** Cookie-session POST endpoints need CSRF token or `sameSite: 'strict'`/`'lax'` + Origin/Referer check. Nitro has no built-in CSRF - flag missing protection (use `nuxt-csurf` / `nuxt-security`)
 
-### Step 7 - Input Validation and Nitro Endpoints
+### Step 8 - Input Validation and Nitro Endpoints
 
 **Nuxt 3 Nitro endpoints (`server/api/**`):**
 
@@ -142,7 +144,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] `JSON.parse(userInput)` spread into `prisma.x.update({ data })` is mass-assignment + prototype pollution. Validate via Zod after parsing
 - [ ] `v-html` on user-controlled string sanitized via `DOMPurify.sanitize(html)` (strict default allowlist) or `sanitize-html`
 
-### Step 8 - Vue Vulnerability Patterns
+### Step 9 - Vue Vulnerability Patterns
 
 - [ ] **`v-html` audit.** Every site has a sanitizer in the chain or a comment justifying trust (`"static markdown built at compile time"`)
 - [ ] **Sanitizer config.** Default `DOMPurify.sanitize(html)` is safe. Flag `ADD_TAGS` containing `iframe`/`script`/`object`/`embed`/`style` and `ADD_ATTR` containing event handlers (`onload`, `onclick`, `onerror`) or URL attrs (`src`, `href`) when input is user-controlled
@@ -159,7 +161,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] `<iframe :src>` for external content uses `sandbox` with minimum allowlist; `<iframe :src="userInput">` requires host allowlist on top of sandbox
 - [ ] External `target="_blank"` includes `rel="noopener noreferrer"`
 
-### Step 9 - Data Protection
+### Step 10 - Data Protection
 
 - [ ] Sentry Vue SDK `beforeSend` strips PII; `sendDefaultPii: false`; error boundaries don't log full props
 - [ ] No tokens / passwords / PII in URLs - they hit logs, history, referer
@@ -168,7 +170,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] Secrets sourced from secret store (Vault / Doppler / platform); `.env` gitignored; no literal API keys committed
 - [ ] Source maps not publicly served (`sourcemap.client: false` for non-Sentry builds; Sentry plugin uploads and deletes)
 
-### Step 10 - Write Report
+### Step 11 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file before ending the session. Print the confirmation line to the console.
 
@@ -229,13 +231,14 @@ _Omit this section if no security issues found._
 
 ## Self-Check
 
-- [ ] Steps 1-2: Vue stack + framework recorded; diff/log read once (or parent handle accepted); no state-changing git
-- [ ] Step 3: security surface read; prior revision consulted when guards/middleware were removed
-- [ ] Step 4: one OWASP verdict per category (`yes` / `no signal in diff`); not duplicated as findings
-- [ ] Steps 5-6: auth library, middleware widening, password/JWT/cookie flags, `requireUserSession` + object-level ownership, Pinia/`useState` SSR ORM leak, CSRF audited
-- [ ] Steps 7-8: `readValidatedBody`/`getValidatedQuery`/`getValidatedRouterParams` confirmed on changed endpoints; `v-html`/sanitizer/redirect/`NUXT_PUBLIC_*`/CSP/`image.domains`/iframe audited
-- [ ] Step 9: PII in logs, token storage, HSTS, secrets source, source maps reviewed
-- [ ] Step 10: report written; confirmation printed
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Steps 2-3: Vue stack + framework recorded; diff/log read once (or parent handle accepted); no state-changing git
+- [ ] Step 4: security surface read; prior revision consulted when guards/middleware were removed
+- [ ] Step 5: one OWASP verdict per category (`yes` / `no signal in diff`); not duplicated as findings
+- [ ] Steps 6-7: auth library, middleware widening, password/JWT/cookie flags, `requireUserSession` + object-level ownership, Pinia/`useState` SSR ORM leak, CSRF audited
+- [ ] Steps 8-9: `readValidatedBody`/`getValidatedQuery`/`getValidatedRouterParams` confirmed on changed endpoints; `v-html`/sanitizer/redirect/`NUXT_PUBLIC_*`/CSP/`image.domains`/iframe audited
+- [ ] Step 10: PII in logs, token storage, HSTS, secrets source, source maps reviewed
+- [ ] Step 11: report written; confirmation printed
 - [ ] Severity rubric + Combined-finding rule applied; every finding has attack scenario, regression-risk, or topology-dependent framing
 - [ ] Items invisible in the diff noted "could not verify from diff - flag for separate audit"
 - [ ] Next Steps tagged `[Implement]`/`[Delegate]` and ordered Critical > High > Medium > Low

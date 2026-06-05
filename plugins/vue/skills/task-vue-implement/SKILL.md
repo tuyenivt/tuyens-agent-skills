@@ -37,7 +37,7 @@ types.ts
 
 **Step 6 - Data.** Use skill: `vue-data-fetching` + `frontend-api-integration`. Define keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 
-**Step 7 - Components.** Use skill: `vue-composables-patterns` + `vue-styling-patterns`. Nuxt: Use skill: `vue-nuxt-patterns`. Generate `<script setup lang="ts">` SFCs with `defineProps<T>()` / `defineEmits<T>()`; composables named `use*`, single concern.
+**Step 7 - Components.** Use skill: `vue-composables-patterns` + `vue-styling-patterns`. Nuxt: Use skill: `vue-nuxt-patterns`. Generate `<script setup lang="ts">` SFCs with `defineProps<T>()` / `defineEmits<T>()`; composables named `use*`, single concern. For each route/page generated under Nuxt, add `useSeoMeta({...})` (defer to `vue-nuxt-patterns` for field choices). Skip for app-shell or auth-only pages.
 
 **Step 8 - Forms.** Use skill: `frontend-form-handling` (skip if no forms). Validation, error display, submit protection, dirty tracking.
 
@@ -81,11 +81,13 @@ types.ts
 
 ## Self-Check
 
-- [ ] Step 1-2: behavioral principles loaded; stack confirmed (Nuxt or Vite branch chosen; monolith strategy chosen if applicable)
-- [ ] Step 3-4: requirements gathered; component tree and file layout approved before code
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: stack confirmed (Nuxt or Vite branch chosen; monolith strategy chosen if applicable)
+- [ ] Step 3: requirements gathered (feature, components, data, routing, forms, a11y)
+- [ ] Step 4: component tree and file layout approved before code
 - [ ] Step 5: state categorized; URL state for filters/pagination; no server state in Pinia
 - [ ] Step 6: data calls have keys, cache invalidation, and loading/error/empty states
-- [ ] Step 7: `<script setup lang="ts">`, Composition API, typed props/emits, composables single-concern
+- [ ] Step 7: `<script setup lang="ts">`, Composition API, typed props/emits, composables single-concern; Nuxt page-level routes have `useSeoMeta` (or are explicitly marked SSR-disabled / app-shell / auth-only)
 - [ ] Step 8: forms have validation, error display, submit protection, dirty tracking (if applicable)
 - [ ] Step 9: WCAG 2.1 AA - semantic HTML, keyboard, ARIA, focus
 - [ ] Step 10: tests assert behavior (Vue Test Utils + MSW); critical paths flagged for e2e

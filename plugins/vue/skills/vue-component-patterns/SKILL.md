@@ -71,9 +71,21 @@ if (!tabs) throw new Error("Tab must be used within <Tabs>");
 
 ### v-model with defineModel
 
+Bad - manual prop + emit (pre-3.4):
+
 ```vue
 <script setup lang="ts">
-const modelValue = defineModel<string>({ required: true });
+const props = defineProps<{ modelValue: string }>();
+const emit = defineEmits<{ "update:modelValue": [v: string] }>();
+function onInput(e: Event) { emit("update:modelValue", (e.target as HTMLInputElement).value); }
+</script>
+```
+
+Good - `defineModel` (3.4+) collapses prop + emit into one writable ref; multi-model via name:
+
+```vue
+<script setup lang="ts">
+const model = defineModel<string>({ required: true });
 const focused = defineModel<boolean>("focused", { default: false });
 </script>
 <!-- Usage: <SearchInput v-model="q" v-model:focused="isFocused" /> -->

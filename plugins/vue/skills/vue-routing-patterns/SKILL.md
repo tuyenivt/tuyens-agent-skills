@@ -88,7 +88,9 @@ defineProps<{ error: { statusCode: number; message: string } }>();
 </template>
 ```
 
-### Vue Router (Vite) - lazy routes, nested layouts, meta guards
+### Vue Router (Vite) lazy + nested routes
+
+Dynamic `import()` per route splits each branch into its own chunk; `children` mount under a parent layout's `<RouterView />`. `props: true` passes route params as component props - test components in isolation without `useRoute()`.
 
 ```ts
 // router/index.ts
@@ -100,7 +102,6 @@ export const router = createRouter({
     {
       path: "/dashboard",
       component: () => import("@/layouts/DashboardLayout.vue"),
-      meta: { requiresAuth: true },
       children: [
         { path: "", component: () => import("@/pages/Dashboard.vue") },
         { path: ":teamId", component: () => import("@/pages/Team.vue"), props: true },
@@ -108,16 +109,35 @@ export const router = createRouter({
     },
   ],
 });
+```
 
+Layout renders children via `<RouterView />` (mirrors Nuxt's `<slot />`). Access params with `useRoute()` or declare them as props with `props: true`.
+
+### Route guards and meta
+
+Attach guard inputs to `meta` so the guard reads declarative data instead of branching on path. `beforeEach` runs before every navigation; `beforeEnter` scopes to one route. **Always exclude the redirect target** from the predicate, else the guard loops.
+
+```ts
+// router/index.ts (route definition)
+{
+  path: "/dashboard",
+  meta: { requiresAuth: true, roles: ["admin", "editor"] },
+  component: () => import("@/layouts/DashboardLayout.vue"),
+}
+
+// router/guards.ts
 router.beforeEach((to) => {
   const auth = useAuthStore();
+  if (to.path === "/login") return; // never guard the redirect target
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
+  const roles = to.meta.roles as string[] | undefined;
+  if (roles && !roles.includes(auth.user.role)) return { path: "/forbidden" };
 });
 ```
 
-Layout renders children via `<RouterView />` (mirrors Nuxt's `<slot />`). Access params with `useRoute()`.
+Compose per-route guards via `beforeEnter: [requireAuth, requireRole('admin')]`. Keep guards synchronous when possible; if a guard awaits, surface a loading state in the layout to avoid blank-screen navigations.
 
 ## Output Format
 
