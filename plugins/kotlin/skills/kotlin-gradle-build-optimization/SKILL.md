@@ -182,15 +182,6 @@ dependencies {
 }
 ```
 
-### Boot JAR with layers
-
-```kotlin
-tasks.bootJar {
-    mainClass.set("com.example.ApplicationKt")
-    layered { enabled.set(true) }
-}
-```
-
 ### Remote build cache
 
 Wire in `settings.gradle.kts` for cross-machine task-output sharing:
@@ -241,6 +232,7 @@ Commit lockfiles. CI builds with `--write-locks` removed fail if resolution drif
 
 ```kotlin
 tasks.bootJar {
+    mainClass.set("com.example.ApplicationKt")
     layered { enabled.set(true) }      // dependency / spring-boot-loader / snapshot-dependencies / application
 }
 ```

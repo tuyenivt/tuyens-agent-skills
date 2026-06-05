@@ -1,6 +1,6 @@
 ---
 name: kotlin-spring-messaging-patterns
-description: Kotlin / Spring Kafka / RabbitMQ / Application Events: idempotent consumers, DLT/DLQ, transactional outbox, AFTER_COMMIT, sealed events, suspend caveats.
+description: Kotlin / Spring Kafka, RabbitMQ, Application Events: idempotent consumers, DLT/DLQ, transactional outbox, AFTER_COMMIT, suspend caveats.
 metadata:
   category: backend
   tags: [kotlin, kafka, rabbitmq, spring-events, messaging, async, outbox, idempotency, coroutines]
