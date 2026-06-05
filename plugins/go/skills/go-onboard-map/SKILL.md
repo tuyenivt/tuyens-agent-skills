@@ -18,7 +18,7 @@ user-invocable: false
 
 ## Rules
 
-- Identify Go version from `go.mod` (`go 1.x`); 1.22+ standard, 1.25 latest
+- Identify Go version from `go.mod` (`go 1.x`); current toolchain range per Go release policy (last two majors are supported)
 - Identify framework: Gin / Echo / Chi / Fiber / gorilla / net/http
 - Identify DB: GORM / sqlx / pgx / database/sql + driver / ent / sqlc
 - Identify layout convention (drives where new code lands)
@@ -96,11 +96,11 @@ Riskier: `cmd/<binary>/main.go`, middleware (applies globally), pool config, gor
 
 ## Ecosystem Currency
 
-- Go 1.22+ standard; 1.25 latest
+- Toolchain: read `go.mod` (see Rules); Go's release policy supports the last two majors
 - Gin dominant; Chi gaining on stdlib alignment
 - pgx 5+ for Postgres; sqlx for general database/sql; sqlc for type-safe generated SQL
 - OpenTelemetry replacing custom metric/trace libs
-- `slog` (1.21+) standard structured logger - replacing logrus/zap in new code
+- `slog` standard structured logger - replacing logrus/zap in new code
 
 ## Output
 

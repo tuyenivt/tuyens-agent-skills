@@ -66,6 +66,10 @@ Refactoring without tests is a rewrite.
 
 Use skill: `go-overengineering-review` for: binding/service guards vs GORM/DB; defensive nil after non-nil constructors; silent `if err != nil { return nil }`; single-impl interfaces at impl side; `BaseRepository` embedding; naked `go fn()` wrapping sequential calls.
 
+Use skill: `go-security-patterns` for the mass-assignment recipe (request DTO + explicit field copy), IDOR scoping at the repository, and webhook signature shape - the refactor must not weaken existing hardening.
+
+Use skill: `go-idioms` for the canonical shape when extracting types: `iota` enums + Stringer for status fields, new types for IDs, functional options for multi-knob constructors, `defer` in loops antipattern, embedding vs composition.
+
 **Additional smells:**
 
 | Smell | Signal | Risk |

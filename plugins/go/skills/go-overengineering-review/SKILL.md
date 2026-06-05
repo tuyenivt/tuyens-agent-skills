@@ -161,6 +161,25 @@ Justified when dispatched to a tracked async system (worker pool, Asynq, errgrou
 
 Flag `envconfig` keys declared but never read. Grep first - background jobs and CLI commands often read indirectly.
 
+#### Custom error type when a sentinel `var Err... = errors.New(...)` would do
+
+Common AI-generated overspecification: every distinct error becomes its own struct type even when no caller inspects fields beyond identity. A package-level sentinel is shorter and matches via `errors.Is`.
+
+```go
+// Bad - struct type with no fields callers read; only matched by identity
+type notFoundError struct{}
+func (notFoundError) Error() string { return "not found" }
+func NotFound() error { return notFoundError{} }
+
+if _, ok := err.(notFoundError); ok { ... }
+
+// Good - sentinel; matched via errors.Is
+var ErrNotFound = errors.New("not found")
+if errors.Is(err, ErrNotFound) { ... }
+```
+
+Justified when callers genuinely read fields off the error (`*ValidationError` carrying field names, `*ExternalError` carrying status code). The smell is field-less structs that exist only to be type-asserted.
+
 ## Output Format
 
 One block per finding; consuming workflow merges them:

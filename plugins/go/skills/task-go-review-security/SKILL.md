@@ -101,78 +101,70 @@ When the diff removes middleware or relaxes auth, `git log -p` the prior revisio
 | Data Integrity (A08) | `gob.Decode` on untrusted input; `mapstructure.Decode(req.Body, &model)`; missing request-size limit; `unsafe` |
 | Logging & Monitoring (A09) | `slog` logging `password` / `token` / `authorization`; missing auth event log; Sentry not stripping PII |
 
-### Step 5 - Authentication
+### Step 5 - Apply the Pattern Bank
 
-- [ ] **JWT signing:** HS256 secret in env / Vault, never committed. RS256 / ES256 preferred for cross-service. `golang-jwt/jwt/v5` (v4 is maintenance only); `lestrrat-go/jwx` strict-by-default alternative
-- [ ] **`alg: none` rejected:** `jwt.Parse(token, keyFunc)` returns expected key only when `token.Method` matches expected algorithm (`*jwt.SigningMethodHMAC` for HS256). Never trust `alg` header blindly
-- [ ] **`iss` / `aud` / `exp` validated**, not just signature - via `jwt.WithIssuer(...)`, `jwt.WithAudience(...)` (v5)
-- [ ] **Access token lifetime** short (5-15 min); refresh token rotation; revocable via DB / Redis denylist (`jti` claim or refresh UUID)
-- [ ] **Password hashing:** `bcrypt.GenerateFromPassword(pw, 12)` (cost >= 10) or `argon2.IDKey(...)` (preferred for new code). Never `sha256.Sum256` / `md5.Sum` for passwords. `crypto/subtle.ConstantTimeCompare` for hash comparison
-- [ ] **Gin JWT middleware wired correctly:** extracts from `Authorization: Bearer <token>`, validates, sets claims on `c.Set("claims", ...)`, returns 401 with no body details
-- [ ] **Brute-force protection:** rate limiter on `/auth/login`, `/auth/refresh`, `/auth/reset-password`; stricter than global
-- [ ] **No `slog.Info("token", token)` / `fmt.Println(token)`** leaking the JWT
-- [ ] **Session cookies** (when not bearer): `Secure: true` in prod, `HttpOnly: true`, `SameSite: http.SameSiteLaxMode`; signed via `securecookie` or HMAC
+Use skill: `go-security-patterns` for the canonical AuthN, AuthZ, validation, injection, crypto, secrets, and SSRF patterns. The skill owns the recipes; this workflow owns the diff-level triage below.
 
-### Step 6 - Authorization
+**AuthN diff triage:**
 
-- [ ] **Authorization drift sweep:** every new endpoint has JWT middleware at the router group OR explicitly public (whitelisted in a `public` group). No bare `r.GET("/orders", handler)` outside an authed group
-- [ ] **Role / permission checks centralized in middleware** (`auth.RequireRole("admin")`) reading claims from `c.Get("claims")`, not inline `if claims.Role != "admin" { ... }` scattered in handlers
-- [ ] **IDOR:** lookups scope through principal (`db.Where("id = ? AND user_id = ?", orderID, claims.UserID).First(&order)`), not `db.First(&order, orderID)` + separate check. Best: repository signature takes `userID` / `tenantID`
-- [ ] **Tenant isolation** scoped by `tenant_id` at the repository layer (GORM scope or sqlx wrapper), not at the handler. `db.Scopes(TenantScoped(claims.TenantID)).Find(...)` preferred
-- [ ] **CORS:** `cors.New(cors.Config{AllowOrigins: [...]})` allowlist; not `AllowAllOrigins: true` for credentialed; minimal methods / headers
-- [ ] **CSRF:** not required for stateless JWT-bearer APIs; required for cookie-session - confirm via auth model. `gorilla/csrf` for cookie-session
+- [ ] JWT algorithm pinned in `keyFunc`; `iss` / `aud` / `exp` validated; v5 of `golang-jwt/jwt`
+- [ ] Access token lifetime short; refresh rotation; revocation surface (`jti` denylist or refresh UUID)
+- [ ] Password hashing via `bcrypt` cost >= 10 or `argon2.IDKey`
+- [ ] Gin middleware returns 401 with no body details; brute-force rate limit on `/auth/login`, `/auth/refresh`, `/auth/reset-password`
+- [ ] No `slog` / `fmt.Println` leaking JWT, password, or session cookie value
+- [ ] Cookie sessions (if used): `Secure`, `HttpOnly`, `SameSite`
 
-### Step 7 - Input Validation and Mass Assignment
+**AuthZ diff triage:**
 
-- [ ] **`ShouldBindJSON` (not `BindJSON`)** so the handler controls the response shape
-- [ ] **Validator struct tags on every DTO field:** `validate:"required,email,min=1,max=255"`. Missing tags means anything-goes input
-- [ ] **No `interface{}` / `map[string]interface{}` body** - bind to a typed struct
-- [ ] **No privilege-bearing fields in input DTOs:** `Role`, `IsAdmin`, `OwnerID`, `UserID`, `TenantID`, `IsActive`, `Verified` are server-set only. If present in `CreateOrderRequest`, reject and require admin-only path with separate DTO
-- [ ] **No `mapstructure.Decode(req.Body, &user)` / `json.Unmarshal(body, &user)` directly into a domain model** - mass assignment. Define a request DTO, validate, then explicit field copy
-- [ ] **Response DTOs (not models) returned:** `ToOrderResponse(o)` maps explicitly, dropping internal fields
-- [ ] **`c.ShouldBindUri` / `c.ShouldBindQuery`** for path / query params - validates and converts. Raw `c.Param("id")` is a string with no validation
-- [ ] **`uuid.Parse`** for UUID path params
-- [ ] **File uploads:**
-  - Type via content (`http.DetectContentType`), not header or extension
-  - Per-file size limit (`router.MaxMultipartMemory`, `http.MaxBytesReader`)
-  - Stored outside webroot; `Content-Disposition: attachment` on serve
-  - Filename sanitized (see path traversal)
-  - Virus scan pipeline or accepted-risk documented
-- [ ] **Path traversal:** `filepath.Clean(userInput)` + `filepath.Join(base, cleaned)` + `strings.HasPrefix(joined, base)` check; reject otherwise
-- [ ] **Process execution:** `exec.Command(name, args...)` with arg slice (NOT `exec.Command("sh", "-c", userInput)`); strict allowlist of binaries
+- [ ] Every new endpoint sits under an authed group OR is explicitly public-listed (default-deny)
+- [ ] Role / permission checks centralized in middleware, not scattered inline
+- [ ] Per-owner lookups scope by principal at the repository (`WHERE id = ? AND owner_id = ?`)
+- [ ] Multi-tenant queries scoped by `tenant_id` at the repository (GORM scope), not the handler
+- [ ] CORS allowlist explicit; no `AllowAllOrigins: true` for credentialed requests
+- [ ] CSRF protection present iff auth model is cookie-session
 
-### Step 8 - Common Go Vulnerability Patterns
+**Input validation / mass assignment diff triage:**
 
-- [ ] **SQL injection via raw query:** `db.Exec(fmt.Sprintf("UPDATE ... WHERE id=%s", userInput))` - critical. Use GORM `db.Where("id = ?", id)`, sqlx `?` / `:name`. `db.Where("name LIKE ?", "%"+userInput+"%")` is fine (`?` is parameterized) - the smell is unparameterized interpolation
-- [ ] **Command injection:** concatenating user input into a shell-interpreted string is RCE; use arg slice, no shell
-- [ ] **`bash -c` / `sh -c` / `cmd /c`** with user input - same RCE
-- [ ] **`text/template` with user-supplied template:** `template.New("").Parse(userInput).Execute(...)` is SSTI; templates from disk or trusted constant only
-- [ ] **`gob.Decode(userInput)` / `xml.Unmarshal` on untrusted input:** `gob` instantiates types (deserialization gadget); `xml.Unmarshal` has billion-laughs / XXE risks
-- [ ] **`unsafe` package** - audit for memory-safety violations; most are smells
-- [ ] **`reflect.Set...` with user-controlled field name / value** - programmable mass assignment
-- [ ] **`InsecureSkipVerify: true`** flagged unless behind documented test fixture
-- [ ] **Open redirect:** `c.Redirect(http.StatusFound, userInput)` validated against allowlist or relative-path-only (`strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//")`)
-- [ ] **`crypto/rand` (NOT `math/rand`) for tokens / nonces / secrets** - `math/rand` is deterministic
-- [ ] **`crypto/subtle.ConstantTimeCompare` for HMAC / signature** - `==` / `bytes.Equal` are timing-attack vulnerable. Stripe / GitHub / Slack webhook verification must use constant-time
-- [ ] **`JWT_SECRET` / signing key** in env / Vault, never committed; rotated when leaked
-- [ ] **Debug exposure:** `gin.SetMode(gin.ReleaseMode)` in prod (default `DebugMode` leaks request bodies); `pprof` registered only in non-prod or behind admin auth
-- [ ] **SSRF depth:** when user-controlled value flows into an outbound URL/host, allowlist must reject (a) cloud metadata `169.254.169.254` + IPv6, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), (d) link-local `169.254.0.0/16`. Resolve host **after** parsing (DNS rebinding defeats string-only checks). `url.Parse` quirks: backslash, IPv4-in-IPv6 (`::ffff:127.0.0.1`) defeat naive checks
-- [ ] **Asynq / Kafka payload trust:** if the queue is reachable from untrusted inputs (webhook -> Asynq), validate inside the handler before acting
-- [ ] **HTTP request smuggling/desync** (Go behind nginx/ALB): flag custom HTTP/1.1 parsing or proxy middleware re-emitting headers without validation
-- [ ] **Webhook signature verification** via `crypto/subtle.ConstantTimeCompare` (not `bytes.Equal`, not `==`). Read raw body via `c.GetRawData()` before binding
-- [ ] **`govulncheck ./...`** in CI; flag unaddressed High/Critical
+- [ ] `ShouldBindJSON` (not `BindJSON`)
+- [ ] Validator tags on every DTO field; no `interface{}` / `map[string]any` body
+- [ ] No privilege-bearing fields (`Role`, `IsAdmin`, `OwnerID`, `UserID`, `TenantID`, `IsActive`, `Verified`) in input DTOs
+- [ ] No `mapstructure.Decode(req.Body, &domain)` or `json.Unmarshal(body, &domain)` into domain models
+- [ ] Response DTO (not raw model) returned; `c.JSON(200, *model.User)` is `High` regardless of current fields
+- [ ] `c.ShouldBindUri` / `c.ShouldBindQuery` for path / query params; `uuid.Parse` for UUID path params
+- [ ] File uploads: content-type detected via bytes (not header), size capped, stored outside webroot, filename sanitized
+- [ ] Path traversal guarded (`filepath.Clean` + base-prefix check)
+- [ ] `exec.Command(name, args...)` with arg slice; no `sh -c` / `cmd /c` with user input
 
-### Step 9 - Data Protection
+### Step 6 - Go-specific Vulnerability Patterns
 
-- [ ] **PII / sensitive encrypted at rest** (AES-GCM, AWS/GCP KMS, or DB column encryption)
-- [ ] **No ORM model returned from handlers:** `c.JSON(200, user)` leaks every column GORM defines (`PasswordHash`, `RecoveryToken`, `MFASecret`, soft-delete columns, audit fields). Handlers map to response DTO naming exactly the public fields. Both Step 7 (mass-assignment in) and Step 9 (data leak out) concern - check both directions
-- [ ] **`slog` redaction:** never log `password`, `token`, `credit_card`, `ssn`, `api_key`. Handler wrapper drops keys, OR `LogValuer` on secret-holding types
-- [ ] **No sensitive data in URLs** (use POST body, headers, signed tokens) - URLs hit logs / browser history / referer
-- [ ] **TLS enforcement** at LB; HSTS via `gin-contrib/secure`
-- [ ] **DB backups** encrypted; access controlled
-- [ ] **Secrets** from a secret store (Vault / AWS Secrets Manager / GCP Secret Manager / Doppler), never committed `.env`. `.env` gitignored. `os.Getenv("JWT_SECRET")` via typed config struct loaded once so missing fails fast
+Pattern bank in `go-security-patterns`. Diff-level checks:
 
-### Step 10 - Write Report
+- [ ] No `fmt.Sprintf` interpolation into SQL; GORM `?` or sqlx `$1` / `:name` only
+- [ ] No `text/template` with user-supplied template (SSTI); templates from disk or trusted constant
+- [ ] No `gob.Decode` / `xml.Unmarshal` on untrusted input
+- [ ] `unsafe` blocks audited and justified
+- [ ] No `reflect.Set...` with user-controlled field name
+- [ ] No `InsecureSkipVerify: true` outside a test fixture
+- [ ] Open redirect: `c.Redirect(..., userInput)` validated against allowlist or relative-path-only
+- [ ] `crypto/rand` (not `math/rand`) for tokens, nonces, secrets
+- [ ] `crypto/subtle.ConstantTimeCompare` / `hmac.Equal` for HMAC / signature - not `==` / `bytes.Equal`
+- [ ] `gin.SetMode(gin.ReleaseMode)` in prod; `pprof` not exposed (or behind admin auth)
+- [ ] SSRF: user-controlled outbound URL resolves and rejects metadata / loopback / RFC1918 / link-local
+- [ ] Webhook: raw body via `c.GetRawData()` before binding; signature via `hmac.Equal`; route outside JWT auth group
+- [ ] Asynq / Kafka payload trust: validate inside the handler when queue is reachable from untrusted inputs
+- [ ] `govulncheck ./...` clean in CI
+
+### Step 7 - Data Protection
+
+- [ ] PII / sensitive encrypted at rest (AES-GCM, KMS, or DB column encryption)
+- [ ] No ORM model returned from handlers (audit columns leak silently when added later)
+- [ ] `slog` redaction: never log `password`, `token`, `credit_card`, `ssn`, `api_key`; use `LogValuer` on secret-holding types
+- [ ] No sensitive data in URLs (logs / browser history / referer)
+- [ ] TLS enforcement at LB; HSTS via `gin-contrib/secure`
+- [ ] DB backups encrypted; access controlled
+- [ ] Secrets via typed config struct loaded once at startup; no scattered `os.Getenv`; `.env` gitignored
+
+### Step 8 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`. Write before ending; print confirmation.
 

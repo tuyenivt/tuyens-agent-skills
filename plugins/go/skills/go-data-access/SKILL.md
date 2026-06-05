@@ -84,6 +84,8 @@ db.Joins("JOIN orders ON orders.user_id = users.id").
 
 ### Transactions
 
+Use `db.Transaction(func(tx) error { ... })` closure form - it handles commit on `return nil`, rollback on non-nil return or panic, and prevents the connection-leak class that `db.Begin()` + `defer tx.Rollback()` rots into when a branch forgets to call it.
+
 ```go
 return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
     if err := tx.Create(order).Error; err != nil {
@@ -96,6 +98,118 @@ return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
     return nil // commit
 })
 ```
+
+#### Post-commit dispatch (canonical)
+
+Side effects that leave the database - Asynq enqueue, HTTP call, mailer, cache invalidation - happen **after** `Transaction(...)` returns nil, never inside the closure. Enqueueing inside the tx races commit: a worker can pick up the task and read the row before commit completes, or the tx can roll back leaving the task referencing a non-existent row.
+
+```go
+// Bad - worker may run before commit; rollback leaves a task with no row
+return db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&order).Error; err != nil { return err }
+    _, err := asynq.Enqueue(asynq.NewTask("order.notify", payload))
+    return err
+})
+
+// Good - dispatch after commit
+var orderID int64
+err := db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&order).Error; err != nil { return err }
+    orderID = order.ID
+    return nil
+})
+if err != nil { return err }
+if _, err := asynq.Enqueue(asynq.NewTask("order.notify", payload)); err != nil {
+    slog.ErrorContext(ctx, "post-commit enqueue failed", "order_id", orderID, "err", err)
+}
+```
+
+Failure mode of post-commit dispatch: process crash between commit and `Enqueue` drops the dispatch. If unacceptable, use a transactional outbox (insert an `outbox_messages` row inside the tx; a relay polls `FOR UPDATE SKIP LOCKED` and dispatches; handlers are idempotent).
+
+GORM `AfterCreate` / `AfterUpdate` hooks fire **inside** the transaction - same hazard as `Enqueue` inside the closure. Move side-effect calls out of the hook into the calling service.
+
+#### Locking
+
+Pessimistic row lock (`SELECT ... FOR UPDATE`) when concurrent writers contend on the same row (counters, balances, inventory):
+
+```go
+db.Clauses(clause.Locking{Strength: "UPDATE"}).
+    Where("id = ?", id).First(&account)
+account.Balance += amount
+db.Save(&account)
+```
+
+Optimistic locking when contention is rare and a retry on conflict is acceptable - add a `version int` column and use GORM's check:
+
+```go
+type Account struct { ID int64; Balance int64; Version int }
+
+res := db.Model(&account).
+    Where("id = ? AND version = ?", account.ID, account.Version).
+    Updates(map[string]any{"balance": newBalance, "version": account.Version + 1})
+if res.RowsAffected == 0 {
+    return ErrStaleRead // caller re-reads and retries
+}
+```
+
+`clause.Locking{Strength: "SHARE"}` for `FOR SHARE` (allow concurrent reads, block writes). Read-only transactions can also be expressed at the connection level via `db.Set("gorm:query_option", "FOR SHARE")` when GORM clauses are not flexible enough.
+
+In-process `sync.Mutex` is **not** a substitute - it only serializes within one replica. Counters / balances / state transitions in a multi-replica deployment require DB-level locking or optimistic versioning.
+
+#### Savepoints (nested transactions)
+
+GORM nested `Transaction(...)` calls become savepoints (`SAVEPOINT sp1` / `ROLLBACK TO sp1`), letting an inner step fail without aborting the outer transaction:
+
+```go
+db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&order).Error; err != nil { return err }
+    err := tx.Transaction(func(tx *gorm.DB) error { // SAVEPOINT
+        return tx.Create(&optionalAuditEntry).Error
+    })
+    if err != nil {
+        slog.WarnContext(ctx, "audit failed, continuing", "err", err) // outer survives
+    }
+    return nil
+})
+```
+
+Use sparingly - most "needs to keep going on partial failure" cases are better modelled as two top-level transactions plus post-commit retry.
+
+#### Long-running transactions (anti-pattern)
+
+Holding a tx across user input, HTTP calls, or message-broker dispatch ties up a pool connection and lengthens lock windows. Symptoms: `too many connections`, lock waits, deadlocks.
+
+```go
+// Bad - external HTTP inside the tx
+db.Transaction(func(tx *gorm.DB) error {
+    tx.Create(&order)
+    resp, _ := http.Get(externalURL) // holds connection + locks for the round trip
+    tx.Save(&resp)
+    return nil
+})
+
+// Good - fetch first, then transact briefly
+data, err := fetch(ctx, externalURL)
+if err != nil { return err }
+return db.Transaction(func(tx *gorm.DB) error {
+    return tx.Create(&Order{Payload: data}).Error
+})
+```
+
+#### `db.Begin()` connection leak
+
+If you must use `db.Begin()` / `tx.Commit()` (e.g., crossing a function boundary), `defer tx.Rollback()` immediately - `Rollback` after `Commit` is a no-op, but a missed rollback path leaks the connection.
+
+```go
+tx := db.WithContext(ctx).Begin()
+if tx.Error != nil { return tx.Error }
+defer tx.Rollback() // safe to call after Commit
+
+if err := tx.Create(&order).Error; err != nil { return err }
+return tx.Commit().Error
+```
+
+Prefer the closure form unless you have a specific reason.
 
 ### Idempotent Upsert
 

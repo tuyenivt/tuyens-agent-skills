@@ -129,7 +129,7 @@ Apply atomic skills; each owns canonical patterns:
 **Additional checks (not owned by atomics):**
 
 - **Test coverage finding (named, not buried).** PR adds logic without `*_test.go`? At minimum `[Suggestion]`; escalate to `[High]` when critical path: auth, ownership / role checks, money / billing, multi-table writes, state machines, Asynq / Kafka mutators, migrations changing column semantics
-- **Authorization + IDOR.** Every per-owner endpoint scopes queries by principal: `db.Where("id = ? AND user_id = ?", id, claims.UserID)`. JWT proves authn, not object access
+- **Authorization + IDOR.** Every per-owner endpoint scopes queries by principal: `db.Where("id = ? AND user_id = ?", id, <principal-id>)` - where `<principal-id>` is whatever the project uses (`claims.UserID`, `claims.Sub`, `c.MustGet("user_id")`). JWT proves authn, not object access
 - **Response DTO hygiene.** Compare response DTO `json:` fields against the model. Flag `PasswordHash` / `MFASecret` / `RecoveryCodes` / `APIKey` / `WebhookSecret` / `InternalNotes` / `AuditLog` / `IsAdmin` / `Role` / `DeletedAt` / `LastLoginIP` on the wire. Raw `c.JSON(200, *model.User)` is `[High]` regardless of current fields (sensitive column added later silently exposes it)
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via a `request_idempotency` table. Distinct from worker-side `asynq.TaskID`
 - **Go boundary quirks.** `net.JoinHostPort` (not `fmt.Sprintf("%s:%d", ...)`); `time.Now().UTC()` for stored timestamps; `slog` (not `fmt.Println` / `log.Printf`)

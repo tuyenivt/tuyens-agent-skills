@@ -1,7 +1,7 @@
 ---
 name: task-go-debug
 description: Debug Go errors - panics, context errors, SQL connectivity, data races, goroutine leaks, GORM association issues from stack traces or symptoms.
-agent: go-architect
+agent: go-tech-lead
 metadata:
   category: backend
   tags: [go, gin, debug, troubleshooting, stack-trace, workflow]
@@ -24,6 +24,17 @@ user-invocable: true
 Not for: new features (`task-go-implement`), general review (`task-go-review`).
 
 ## Workflow
+
+### STEP 0 - REPRODUCTION PROTOCOL
+
+Before reading any code, lock the reproducer:
+
+1. **Minimal trigger:** request, command, payload, or test that produces the failure
+2. **Environment:** `go version`, `GOOS`/`GOARCH`, and the versions from `go.mod` for the suspect dependencies (Go bugs frequently track to a dependency upgrade not visible from the stack trace)
+3. **Frequency:** every request, 5% of requests, only under load, only after N minutes uptime
+4. **First seen:** commit, deploy, or dependency bump that introduced it (`git bisect` is cheap once a reproducer exists)
+
+If the reporter cannot reproduce, ask for it before classifying - speculative debugging burns hours.
 
 ### STEP 1 - INTAKE
 
@@ -68,7 +79,22 @@ Intermittent: nullable FK, or cache returning partial objects.
 
 **Data race** - the two stacks in `-race` output are the bug. Find the shared field; choose `sync.Mutex` / channels / `sync/atomic`. Use skill: `go-concurrency`.
 
-**Goroutine leak** - `runtime.NumGoroutine()` growing. Check context propagation, `select` with `<-ctx.Done()`, channel close. `go tool pprof http://...:6060/debug/pprof/goroutine`. Use skill: `go-concurrency`.
+**Goroutine leak** - `runtime.NumGoroutine()` growing. Check context propagation, `select` with `<-ctx.Done()`, channel close. Use skill: `go-concurrency`.
+
+`pprof` walkthrough:
+
+```bash
+# Snapshot the live goroutine profile
+curl -s http://localhost:6060/debug/pprof/goroutine?debug=1 > goroutine.txt
+
+# Or interactive
+go tool pprof http://localhost:6060/debug/pprof/goroutine
+(pprof) top              # dominant stacks - the leaked one is usually #1
+(pprof) traces           # full stack per goroutine
+(pprof) list <func>      # see which line is blocked
+```
+
+The dominant stack is the leaker. A growing count of goroutines parked on `chan receive`, `select`, or `sync.WaitGroup.Wait` indicates the producer never closed the channel / cancelled the context / called `Done()`. Take two snapshots minutes apart and diff: the stack that grew is the bug.
 
 **Build / import**
 - `undefined:` -> missing import, wrong package, unexported identifier
@@ -79,6 +105,32 @@ Intermittent: nullable FK, or cache returning partial objects.
 - Asynq retry loop -> idempotency + error classification. Use skill: `go-messaging-patterns`
 - Worker not processing -> Redis connectivity, queue name, handler registration
 - Kafka lag growing -> consumer group offset, handler error reprocess loop
+
+**Asynq dead-letter / archived tasks** - tasks exhausted retries land in the `archived` set. Triage with `asynqmon` (web UI) or `asynq.Inspector`:
+
+```go
+insp := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
+archived, _ := insp.ListArchivedTasks("default", asynq.PageSize(50))
+for _, t := range archived {
+    slog.Info("archived", "type", t.Type, "id", t.ID, "err", t.LastErr, "payload", string(t.Payload))
+}
+```
+
+Classify each:
+
+| Pattern | Cause | Action |
+|---------|-------|--------|
+| Same error across many tasks | Code bug or downstream outage | Fix, then `insp.RunTask` to requeue |
+| Payload-shape mismatch (`json: cannot unmarshal`) | Producer / consumer drift after deploy or dependency upgrade | Version the payload or write a migrator; `insp.DeleteTask` the unrecoverable |
+| Transient (network, timeout) on a small slice | Real intermittent failure | Tune `MaxRetry` / backoff; requeue |
+| Poisoned (input invalid) | Bad upstream data | Delete; fix the producer |
+
+If archived count grows on every deploy, the payload contract is drifting - bump a `Version` field in the payload struct and gate handler logic on it.
+
+**Build tags / integration tests**
+- `// +build integration` or `//go:build integration` files require `go test -tags=integration ./...`. Symptom: tests pass locally but a regression slips through CI because the suite ran without the tag and silently skipped the file
+- `// +build !race` excludes a file under `-race` - check before declaring `-race` clean
+- Constraint matrix sanity: `go list -tags=integration -f '{{.GoFiles}} {{.TestGoFiles}}' ./...` shows what each tag pulls in
 
 ### STEP 3 - LOCATE
 
@@ -138,13 +190,16 @@ Add a guard so this class cannot recur:
 
 ## Self-Check
 
+- [ ] Reproducer + env (Go version, dependency versions, frequency) captured before classification
 - [ ] Classified before reading code or proposing fix
 - [ ] Root cause cites file:line; confidence stated
 - [ ] Before/after fix is minimal and root-cause-targeted
 - [ ] Error wrapping preserved (`%w`); no global state added
 - [ ] Prevention step included
-- [ ] For concurrency: `-race` referenced; cancellation path included
+- [ ] For concurrency: `-race` referenced; cancellation path included; pprof goroutine snapshot for leaks
 - [ ] For GORM nil: `Preload` / `Joins` fix + integration test recommended
+- [ ] For Asynq archived: classified (code bug / drift / transient / poisoned) before requeue or delete
+- [ ] Build-tag matrix checked when CI green but issue reproduces locally
 
 ## Avoid
 

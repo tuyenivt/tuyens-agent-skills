@@ -84,44 +84,11 @@ Background processing:
 | repository | model, DB driver (GORM/sqlx)       | handler, service, dto       |
 | model      | stdlib only                        | everything above            |
 
-## Interface Design Pattern
+## Pattern Pointers
 
-```go
-// Defined in the consuming package (service), not repository
-type OrderRepository interface {
-    FindByID(ctx context.Context, id int64) (*model.Order, error)
-    Save(ctx context.Context, o *model.Order) error
-}
-
-// Implemented in repository package
-type gormOrderRepository struct{ db *gorm.DB }
-
-func NewOrderRepository(db *gorm.DB) OrderRepository {
-    return &gormOrderRepository{db: db}
-}
-```
-
-## Concurrency Pattern for Workers
-
-```go
-// Use WaitGroup.Go (Go 1.25+) for concurrent tasks
-var wg sync.WaitGroup
-for _, task := range tasks {
-    wg.Go(func() {
-        if err := process(ctx, task); err != nil {
-            slog.Error("task failed", "id", task.ID, "err", err)
-        }
-    })
-}
-wg.Wait()
-```
-
-## Migration Strategy
-
-- Files named `000001_create_orders.up.sql` / `000001_create_orders.down.sql`
-- Every `up` migration has a matching `down` migration
-- Non-null columns added with a default → backfill → drop default as separate migrations
-- Index creation uses `CREATE INDEX CONCURRENTLY` for zero-downtime on large tables
+- Interface design (consumer-side): see `go-data-access` and `go-overengineering-review`
+- Worker concurrency (`WaitGroup.Go`, `errgroup` fan-out, cancellation): see `go-concurrency`
+- Migration strategy (file naming, up/down pairs, zero-downtime DDL, `CREATE INDEX CONCURRENTLY`): see `go-migration-safety`
 
 ## Reference Skills
 

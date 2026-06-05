@@ -30,8 +30,11 @@ category: quality
 
 ## Key Skills
 
+- Use skill: `go-security-patterns` for JWT validation, default-deny router, IDOR scoping, mass-assignment guards, webhook signature, path traversal, SSRF, secrets
 - Use skill: `go-gin-patterns` for Gin middleware setup, JWT auth group, and secure handler design
+- Use skill: `go-data-access` for SQL parameterization, repository-level tenant / ownership scoping
 - Use skill: `go-error-handling` for safe error propagation without leaking internal details to callers
+- Use skill: `go-messaging-patterns` for Asynq / Kafka payload trust when queues are reachable from untrusted inputs
 
 ## Security Review Checklist
 

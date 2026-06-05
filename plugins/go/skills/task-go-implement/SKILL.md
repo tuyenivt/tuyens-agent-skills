@@ -37,17 +37,25 @@ Not for: single-file edits, bugfixes (`task-go-debug`), frontend.
 
 Use skill: `stack-detect`. Confirm Go/Gin and project layout.
 
-Ask before writing code:
+Ask before writing code, grouped so each cluster surfaces its own follow-ups:
 
+**Domain**
 1. Feature description and primary use case
 2. Entities, fields, relationships, constraints
-3. External integrations
-4. Background jobs / async events
-5. AuthN / AuthZ
-6. Status transitions
-7. Concurrency requirements
-8. Idempotency requirements
-9. Webhooks (signature validation, raw body)
+3. Status transitions and the invariants around them
+
+**Persistence**
+4. Schema shape (tables, indexes, FKs, soft-delete?)
+5. Idempotency: client-supplied key or server-derived?
+
+**External**
+6. Integrations (which providers, sync vs async, timeout budget)
+7. Webhooks: signature scheme, raw-body requirement, replay window
+
+**Concurrency**
+8. Background jobs / async events (Asynq / Kafka)
+9. AuthN / AuthZ (JWT claims used; per-owner vs admin paths)
+10. Concurrency requirements (fan-out, contention, ordering)
 
 Ask targeted questions for gaps. Do not guess.
 
@@ -73,11 +81,11 @@ Use skill: `go-migration-safety`. up/down migrations. Index FKs and frequent-fil
 
 ### STEP 4 - DATA LAYER
 
-Use skill: `go-data-access`. Repository interface in the service package; GORM/sqlx impl. Configure pool right after open. Use `clause.OnConflict{DoNothing: true}` for idempotent upserts.
+Use skill: `go-data-access`. Use skill: `go-idioms` for ID types (`type UserID int64`), enum fields (`iota` + `Value`/`Scan`), struct tag ordering, and `go:embed` for SQL migrations. Repository interface in the service package; GORM/sqlx impl. Configure pool right after open. Use `clause.OnConflict{DoNothing: true}` for idempotent upserts.
 
 ### STEP 5 - SERVICE
 
-Use skill: `go-error-handling`. Constructor injection. Wrap at every return. `db.Transaction` for multi-step writes.
+Use skill: `go-error-handling`. Use skill: `go-security-patterns` for AuthZ scoping (IDOR), webhook signature verification, secret handling, and SSRF guards when external URLs are user-controlled. Constructor injection. Wrap at every return. `db.Transaction` for multi-step writes.
 
 State transitions: validate in the service via a `validTransitions` map keyed by from-state.
 
@@ -87,7 +95,7 @@ External APIs: wrap with `context.WithTimeout`; classify at the gateway; define 
 
 ### STEP 6 - HTTP LAYER
 
-Use skill: `go-gin-patterns`. `ShouldBindJSON`, response envelope, pagination. Map domain errors via centralized middleware:
+Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request DTO (no privilege-bearing fields, mass-assignment guard), default-deny router group, and JWT middleware shape. `ShouldBindJSON`, response envelope, pagination. Map domain errors via centralized middleware:
 
 | Domain Error | HTTP |
 |--------------|------|
