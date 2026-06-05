@@ -97,19 +97,21 @@ await prisma.$transaction(async (tx) => {
   });
 });
 
-// relay (BullMQ scheduler or interval)
-const batch = await prisma.$queryRaw<OutboxRow[]>`
-  SELECT * FROM "OutboxMessage" WHERE "processedAt" IS NULL
-  ORDER BY "createdAt" LIMIT 100 FOR UPDATE SKIP LOCKED`;
-for (const m of batch) {
-  await queue.add(m.eventType, m.payload, { jobId: m.id });   // jobId dedupes replay
-  await prisma.outboxMessage.update({ where: { id: m.id }, data: { processedAt: new Date() } });
+// relay (BullMQ scheduler or interval) - claim atomically, dispatch outside any tx
+const claimed = await prisma.$queryRaw<OutboxRow[]>`
+  UPDATE "OutboxMessage" SET "processedAt" = NOW()
+  WHERE id IN (
+    SELECT id FROM "OutboxMessage" WHERE "processedAt" IS NULL
+    ORDER BY "createdAt" LIMIT 100 FOR UPDATE SKIP LOCKED
+  )
+  RETURNING *`;
+
+for (const m of claimed) {
+  await queue.add(m.eventType, m.payload, { jobId: m.id });     // jobId dedupes replay
 }
 ```
 
-The outbox row commits **atomically with the business write**, so rollback drops both. The relay loop is idempotent because BullMQ's `jobId` deduplicates, and downstream handlers also tolerate replay (idempotency keys).
-
-`FOR UPDATE SKIP LOCKED` lets multiple relay instances cooperate without contention.
+The outbox row commits **atomically with the business write**, so rollback drops both. The `UPDATE ... RETURNING` with `FOR UPDATE SKIP LOCKED` in the inner SELECT claims a batch in one statement - multiple relay instances cooperate without contention, no I/O is held under a row lock. BullMQ's `jobId` plus idempotent downstream handlers tolerate the rare double-dispatch when a relay crashes after claim and before `queue.add`.
 
 ### Lock-Then-Write (Counters, Balances, State Machines)
 
@@ -200,7 +202,7 @@ Failure Mode Documented: {what happens on crash between commit and dispatch}
 - Wrapping read-only queries in a transaction
 - Chaining two `$transaction` calls where one would do - the gap is not atomic
 - Side-effect listeners (`@AfterInsert`, EventEmitter2 fired pre-commit) that race the COMMIT
-- Outbox pattern without `FOR UPDATE SKIP LOCKED` - relay instances will double-dispatch
+- Outbox relay without `FOR UPDATE SKIP LOCKED` on the claim - relay instances dispatch the same row repeatedly
 - Outbox consumers that aren't idempotent - one relay restart and every receipt fires twice
 - Lock-then-write without a timeout - waits forever on contention
 - Setting `statement_timeout` globally on the DB role used by long-running migrations (it kills them)

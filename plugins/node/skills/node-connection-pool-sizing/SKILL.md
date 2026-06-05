@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-Owns the **whole-deployment** pool math. `node-prisma-patterns` / `node-typeorm-patterns` set per-process pool size in one line; this skill makes that line correct in production by accounting for replicas, BullMQ workers, rolling deploys, and the pooler tier (PgBouncer / RDS Proxy / Prisma Accelerate).
+Owns the **whole-deployment** pool math. `node-prisma-patterns` / `node-typeorm-patterns` set per-process pool size in one line; this skill makes that line correct in production across replicas, workers, rolling deploys, and the pooler tier.
 
 ## When to Use
 
@@ -33,7 +33,7 @@ where process_count includes:
 
 Headroom: 15-25% for ad-hoc psql sessions, migrations, monitoring exporters.
 
-**Singleton discipline.** NestJS `PrismaService` / `DataSource` is `@Injectable({ scope: DEFAULT })` - one client per process. If a code path constructs a new `PrismaClient()` per request (or per BullMQ job), the math above is wrong and the pool will exhaust under load. Audit for `new PrismaClient(` / `new DataSource(` outside the bootstrap path.
+The math above assumes **one DB client per process**. NestJS `PrismaService` / `DataSource` is singleton-scoped by default; audit for `new PrismaClient(` / `new DataSource(` outside the bootstrap path - per-request clients silently break every number below.
 
 ## Rules
 
@@ -115,11 +115,11 @@ If a processor calls multiple sequential DB queries, `concurrency` * (queries-in
 ### Rolling Deploy Overlap
 
 ```yaml
-# k8s - cap overlap at 1 extra replica, and add a preStop drain
+# k8s - cap overlap at 1 extra replica; sleep lets the LB stop sending traffic before SIGTERM
 spec:
   strategy:
     rollingUpdate:
-      maxSurge: 1                   # only +1 during rollout, not +25%
+      maxSurge: 1                   # absolute, not 25%
       maxUnavailable: 0
   template:
     spec:
@@ -128,10 +128,10 @@ spec:
         - lifecycle:
             preStop:
               exec:
-                command: ["sh", "-c", "node -e 'process.kill(process.pid, \"SIGTERM\")'; sleep 25"]
+                command: ["sh", "-c", "sleep 15"]
 ```
 
-Application-side: handle `SIGTERM` by calling `await prisma.$disconnect()` (or `dataSource.destroy()`) after draining in-flight requests. Otherwise the old client holds its pool until TCP timeout.
+Application-side: on `SIGTERM`, stop accepting new requests, await in-flight, then `await prisma.$disconnect()` (or `dataSource.destroy()`). Otherwise the old client holds its pool until TCP timeout and the deploy peak doubles.
 
 ### PgBouncer (Transaction Mode) and Prisma
 

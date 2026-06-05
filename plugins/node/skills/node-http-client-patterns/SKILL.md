@@ -58,19 +58,19 @@ const BASE_MS = 200;
 const MAX_TOTAL_MS = 3_000;          // in-process ceiling - past this, hand to BullMQ
 
 async function callWithRetry(req: () => Promise<Response>): Promise<Response> {
-  let start = Date.now();
+  const start = Date.now();
+  let last: Response | undefined;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const res = await req();
-    if (res.ok || !RETRYABLE.has(res.status)) return res;
-    if (attempt === MAX_ATTEMPTS) return res;
+    last = await req();
+    if (last.ok || !RETRYABLE.has(last.status) || attempt === MAX_ATTEMPTS) return last;
 
-    const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
+    const retryAfter = parseRetryAfter(last.headers.get('retry-after'));
     const backoff = retryAfter ?? Math.min(BASE_MS * 2 ** (attempt - 1), 1_000);
-    const jitter = backoff * (0.5 + Math.random() * 0.5);
-    if (Date.now() - start + jitter > MAX_TOTAL_MS) return res;     // budget blown
-    await new Promise(r => setTimeout(r, jitter));
+    const wait = backoff * (0.5 + Math.random() * 0.5);             // jitter
+    if (Date.now() - start + wait > MAX_TOTAL_MS) return last;      // budget blown
+    await new Promise(r => setTimeout(r, wait));
   }
-  throw new Error('unreachable');
+  return last!;
 }
 ```
 

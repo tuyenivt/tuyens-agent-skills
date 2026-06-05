@@ -50,11 +50,13 @@ export class AppError extends Error {
   }
 }
 
-export class ValidationError extends AppError { constructor(m: string, c?: unknown) { super(m, 'validation', 400, false, { cause: c }); } }
-export class NotFoundError   extends AppError { constructor(m: string, c?: unknown) { super(m, 'not_found',  404, false, { cause: c }); } }
-export class ConflictError   extends AppError { constructor(m: string, c?: unknown) { super(m, 'conflict',   409, false, { cause: c }); } }
+export class ValidationError   extends AppError { constructor(m: string, c?: unknown) { super(m, 'validation',    400, false, { cause: c }); } }
+export class UnauthorizedError extends AppError { constructor(m: string, c?: unknown) { super(m, 'unauthorized',  401, false, { cause: c }); } }
+export class ForbiddenError    extends AppError { constructor(m: string, c?: unknown) { super(m, 'forbidden',     403, false, { cause: c }); } }
+export class NotFoundError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'not_found',     404, false, { cause: c }); } }
+export class ConflictError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'conflict',      409, false, { cause: c }); } }
 export class InvalidStateError extends AppError { constructor(m: string, c?: unknown) { super(m, 'invalid_state', 422, false, { cause: c }); } }
-export class UpstreamError   extends AppError { constructor(m: string, c?: unknown) { super(m, 'upstream',   503, true,  { cause: c }); } }
+export class UpstreamError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'upstream',      503, true,  { cause: c }); } }
 ```
 
 `retryable` lets BullMQ processors decide retry-vs-stop without sniffing the message. `{ cause }` chains the original error - the filter logs the chain.
@@ -238,5 +240,4 @@ Retry Behavior: {domain-final / transient with attempts+backoff / one-shot}
 - BullMQ processors that retry validation / not-found errors (wastes attempts, hides bugs)
 - Sniffing `error.message` strings instead of typed subclasses or error codes
 - `catch (e) { throw e }` no-op rethrow - add `{ cause: e }` context or delete
-- `catch (e) { console.log(e) }` - use the structured logger (`pino` / `winston`)
 - Trying to recover after `uncaughtException` - exit and let the orchestrator restart

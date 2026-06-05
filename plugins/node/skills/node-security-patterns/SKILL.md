@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-For prototype-pollution and request-body validation specifics under NestJS / Express, this skill is the canonical owner. The security review workflow (`task-node-review-security`) delegates here for "build it right" patterns and only flags deviations.
+Canonical "build it right" security patterns for NestJS / Express. `task-node-review-security` delegates here and only flags deviations.
 
 ## When to Use
 
@@ -21,7 +21,7 @@ For prototype-pollution and request-body validation specifics under NestJS / Exp
 
 ## Rules
 
-- Every JWT verify call declares `algorithms: [...]` explicitly - implicit allowlists accept `alg: none` on some token shapes
+- Every JWT verify call declares `algorithms: [...]` explicitly (`jsonwebtoken<9` accepted `alg: none` without an allowlist; keep the rule unconditional)
 - Every request body has a DTO / Zod schema; whitelist mode strips unknown fields and rejects privilege fields (`role`, `ownerId`, `tenantId`, `isAdmin`)
 - Never `Object.assign(target, userInput)`, `_.merge`, or spread untrusted keys onto framework / domain objects - prototype pollution
 - Never `eval`, `new Function(string)`, `vm.runInNewContext`, `require(userInput)`, dynamic `import(userInput)` on user input; `vm2` is deprecated (CVEs)
@@ -192,8 +192,8 @@ Trust magic bytes, not the `mimetype` header (client-supplied). Generate filenam
 ```typescript
 import { timingSafeEqual, createHmac } from 'node:crypto';
 
-// NestJS - raw body for the route
-@Module({ /* configure ConsumerOptions with bodyParser: false on this route, or use rawBody: true */ })
+// NestJS bootstrap - enable rawBody so @Req() RawBodyRequest exposes req.rawBody
+const app = await NestFactory.create(AppModule, { rawBody: true });
 
 @Post('webhooks/stripe')
 @HttpCode(200)
@@ -205,6 +205,9 @@ async stripe(@Req() req: RawBodyRequest<Request>, @Headers('stripe-signature') s
   if (!timingSafeEqual(Buffer.from(expected), Buffer.from(got))) throw new UnauthorizedException();
   // ... handle
 }
+
+// Express equivalent - mount raw parser only on the webhook path
+app.use('/webhooks/stripe', express.raw({ type: '*/*', limit: '1mb' }));
 ```
 
 `===` on hex strings leaks timing. JSON-parsing before verification breaks signature comparison (whitespace, key order). Prefer the SDK's `constructEvent` (Stripe) / `verify` (GitHub, Slack) helpers when available - they enforce raw-body + timing-safe internally.
@@ -307,5 +310,4 @@ Risk Mitigated: {auth bypass | mass assignment | prototype pollution | SSRF | RC
 - Reading secrets via raw `process.env.X` in business logic - go through validated config
 - `vm2` (deprecated, CVEs); recommending `isolated-vm` without explicit justification
 - `csurf` (deprecated) - recommend `csrf-csrf` or session-anti-CSRF
-- `rejectUnauthorized: false` outside documented test fixtures
 - Same-origin open redirects masquerading as "internal" - allowlist paths, not "starts with /"
