@@ -27,6 +27,7 @@ user-invocable: false
 - Implement `String()`, `MarshalJSON`, `UnmarshalJSON`, `Value`/`Scan` (`database/sql`) for types that cross boundaries (logs, JSON, DB)
 - `go:embed` for SQL migrations, templates, static assets - ship them in the binary
 - Exported identifiers have a doc comment starting with the identifier name; unexported only when non-obvious
+- Prefer `log/slog` over the legacy `log` package for structured output and `LogValue`-based redaction
 
 ## Patterns
 
@@ -64,6 +65,8 @@ func (s OrderStatus) Value() (driver.Value, error) { return s.String(), nil }
 func (s *OrderStatus) Scan(v any) error            { /* parse string -> enum */ }
 ```
 
+When `stringer` is not yet wired into `go generate`, hand-write `String()` until it is - never ship an enum without a string form.
+
 ### Struct tag conventions
 
 One struct often carries tags for multiple consumers - keep the order consistent so they scan top-to-bottom:
@@ -93,18 +96,24 @@ type Server struct {
 type Option func(*Server)
 
 func WithTimeout(d time.Duration) Option { return func(s *Server) { s.timeout = d } }
-func WithLogger(l *slog.Logger) Option   { return func(s *Server) { s.logger = l } }
-
-func New(addr string, opts ...Option) *Server {
-    s := &Server{addr: addr, timeout: 30 * time.Second, logger: slog.Default()}
-    for _, opt := range opts { opt(s) }
-    return s
+func WithLogger(l *slog.Logger) Option {
+    return func(s *Server) {
+        if l == nil { return } // nil-guard: keep the default
+        s.logger = l
+    }
 }
 
-srv := New(":8080", WithTimeout(5*time.Second), WithLogger(customLog))
+func New(addr string, opts ...Option) (*Server, error) {
+    if addr == "" { return nil, errors.New("addr required") }
+    s := &Server{addr: addr, timeout: 30 * time.Second, logger: slog.Default()}
+    for _, opt := range opts { opt(s) }
+    return s, nil
+}
+
+srv, err := New(":8080", WithTimeout(5*time.Second), WithLogger(customLog))
 ```
 
-Use when there are more than 2-3 optional parameters and defaults make sense. For 1-2 knobs, a `Config` struct is simpler.
+Use when there are more than 2-3 optional parameters and defaults make sense. For 1-2 knobs, a `Config` struct is simpler. Required args stay positional; constructors return `error` for invalid required args instead of panicking.
 
 ### Generics: when they help
 
@@ -132,7 +141,21 @@ type Ordered interface { ~int | ~int64 | ~float64 | ~string }
 func Max[T Ordered](a, b T) T { if a > b { return a }; return b }
 ```
 
-If your generic function calls a method, define an interface constraint instead - generics aren't a substitute for interfaces.
+If your generic function calls a method, use an interface constraint - generics aren't a substitute for interfaces, but they let an interface be used as the element type of a slice without losing the concrete type:
+
+```go
+type Identifiable interface{ GetID() string }
+
+// Bad - caller must convert []User to []Identifiable at every call
+func FindByID(items []Identifiable, id string) (Identifiable, bool)
+
+// Good - constraint reuses the interface, return type stays concrete
+func FindByID[T Identifiable](items []T, id string) (T, bool) {
+    for _, x := range items { if x.GetID() == id { return x, true } }
+    var zero T
+    return zero, false
+}
+```
 
 ### Type-safe IDs
 
@@ -166,7 +189,7 @@ func (l *LoggingDB) Find(out any, where ...any) *gorm.DB {
 }
 ```
 
-Embedding is **forwarding**, not inheritance - there is no virtual dispatch. If you wanted to override behavior seen by an embedded method calling a sibling method, use composition (hold the dependency as a field) instead.
+Embedding is **forwarding**, not inheritance - there is no virtual dispatch. An embedded method calling a sibling method calls the embedded one, not an outer override. If you wanted that, use composition (hold the dependency as a field) instead.
 
 ### `defer` rules
 
@@ -269,4 +292,5 @@ When invoked from a review workflow, emit one finding block per non-idiomatic sh
 - `interface{}` / `any` to silence a type error - find the actual type
 - Stringer hand-written when `go generate stringer -type=...` exists
 - `time.Sleep` for synchronization - channels or `testing/synctest`
-- `panic` in library or service code (only `main` for unrecoverable startup)
+- `panic` in library or service code (only `main` for unrecoverable startup); constructors return `error` for bad required args
+- Legacy `log` package in new code - use `log/slog`

@@ -16,12 +16,13 @@ user-invocable: false
 
 ## Rules
 
-- Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract
+- Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract. When multiple constraints stack (e.g., binding + GORM tag + "only HTTP write path"), list them comma-separated in `Redundant because:`.
 - Severity:
   - **`[Suggestion]`** (default). Cite the constraint, recommend the edit
   - **`[High]`** when measurable cost is present. Cite the cost in `Cost:`. Triggers: extra SELECT in a hot path; silent error swallow via `if err != nil { return nil }`; single-impl interface declared at the implementation; naked `go fn()` wrapping a sequential call
   - **`[Question]`** when justification is plausible but not visible in the diff
 - A redundancy with **visible** justification is not a finding
+- `Cost:` for premature-abstraction `[High]` findings is maintenance cost (parallel definitions to keep in sync, indirect call, lost IDE jump-to-impl), not runtime cost - that is still measurable and worth citing
 
 ## Patterns
 
@@ -81,6 +82,8 @@ Justified when a non-HTTP write path (Asynq, cron, gRPC) reaches the service wit
 svc := NewOrderService(repo)
 if svc == nil { log.Fatal("nil service") }    // unreachable
 ```
+
+Default severity `[Suggestion]` - unreachable code is dead, not costly. Escalate to `[High]` only when the check itself triggers expensive work (locking, allocation, metric emission).
 
 Legitimate when the constructor returns `(T, error)` and the caller hasn't checked the error.
 
@@ -189,13 +192,13 @@ One block per finding; consuming workflow merges them:
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation}
-- Redundant because: {constraint making the code dead}
+- Redundant because: {constraint(s) making the code dead; comma-separate when stacked}
 - Cost: {required for [High]; omit otherwise}
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if legitimate reason might apply; otherwise omit}
 ```
 
-For each category with no findings, state `No <category> findings.` so the workflow knows the check ran.
+For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran. Omit this line for categories that have at least one finding.
 
 ## Avoid
 

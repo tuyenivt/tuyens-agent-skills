@@ -82,7 +82,7 @@ Cite real lines. Open:
 - `go.mod` / `go.sum` for dependency versions
 - `.env.example` for documented env vars
 
-When the diff removes middleware or relaxes auth, `git log -p` the prior revision - the blame trail is authoritative.
+When the diff removes middleware or relaxes auth, `git log -p` the prior revision - the blame trail is authoritative. A PR that takes a route out of the authed group, drops `iss`/`aud`/`exp` validation, or deletes alg-pinning is itself evidence of Insecure Design (A04) - call this out even when each individual removal looks "small" in isolation; the team's stated rationale ("we'll add it back later", "auth is annoying") is not a compensating control.
 
 ### Step 4 - OWASP Triage (Go Lens)
 

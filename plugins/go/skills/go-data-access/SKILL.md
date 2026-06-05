@@ -24,16 +24,17 @@ user-invocable: false
 - Always configure pool limits (`SetMaxOpenConns`, `SetConnMaxLifetime`); defaults are unbounded
 - Always pass `ctx`: `db.WithContext(ctx)` for GORM, `*Context` variants for sqlx
 - `defer rows.Close()` immediately after a successful query
-- Transactions: defer rollback; only return after commit
+- Transactions: prefer the closure form (`db.Transaction(func(tx) error { ... })`); side effects that leave the DB happen after commit, never inside the closure
 - N+1: `Preload` for associations you'll access; `Joins` when filtering by them
 - Repository interfaces live in the consumer (service) package, never in the repo package
+- Pagination: always pair `Limit`/`Offset` with a deterministic `Order`; prefer keyset (`WHERE id < ? ORDER BY id DESC`) over large offsets
 
 ## GORM vs sqlx
 
 | Scenario                                      | Use    |
 | --------------------------------------------- | ------ |
 | CRUD with associations                        | GORM   |
-| Reporting / complex joins                     | sqlx   |
+| Reporting / complex joins / window functions  | sqlx   |
 | Bulk insert / upsert                          | sqlx   |
 | Simple PK lookups                             | Either |
 
@@ -44,7 +45,7 @@ Both share a `*sql.DB` pool via `db.DB()`.
 ### Consumer-defined Repository Interface
 
 ```go
-// service/payment.go
+// service/payment.go - interface lives with the caller
 type PaymentRepository interface {
     FindByID(ctx context.Context, id string) (*Payment, error)
     CreateIdempotent(ctx context.Context, p *Payment) (*Payment, error)
@@ -60,7 +61,7 @@ func NewPaymentRepository(db *gorm.DB) PaymentRepository { return &paymentRepo{d
 
 ```go
 type User struct {
-    gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt
+    gorm.Model // ID, CreatedAt, UpdatedAt, DeletedAt (soft delete; queries auto-filter, use Unscoped() for hard delete)
     Name   string  `gorm:"not null"`
     Email  string  `gorm:"uniqueIndex;not null"`
     Orders []Order `gorm:"foreignKey:UserID"`
@@ -70,7 +71,7 @@ type User struct {
 ### N+1 Prevention
 
 ```go
-// Bad: N queries to load Orders
+// Bad: N queries
 db.Find(&users)
 for _, u := range users { db.Find(&u.Orders) }
 
@@ -84,7 +85,7 @@ db.Joins("JOIN orders ON orders.user_id = users.id").
 
 ### Transactions
 
-Use `db.Transaction(func(tx) error { ... })` closure form - it handles commit on `return nil`, rollback on non-nil return or panic, and prevents the connection-leak class that `db.Begin()` + `defer tx.Rollback()` rots into when a branch forgets to call it.
+Use the closure form - it commits on `return nil`, rolls back on non-nil return or panic, and avoids the connection-leak class that `db.Begin()` + `defer tx.Rollback()` rots into.
 
 ```go
 return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -99,12 +100,30 @@ return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 })
 ```
 
-#### Post-commit dispatch (canonical)
+#### Service-level transactions across repositories
 
-Side effects that leave the database - Asynq enqueue, HTTP call, mailer, cache invalidation - happen **after** `Transaction(...)` returns nil, never inside the closure. Enqueueing inside the tx races commit: a worker can pick up the task and read the row before commit completes, or the tx can roll back leaving the task referencing a non-existent row.
+When the unit of work spans repositories, expose `WithTx` constructors so the service owns the transaction and repositories accept the `*gorm.DB` bound to it:
 
 ```go
-// Bad - worker may run before commit; rollback leaves a task with no row
+type RefundRepository interface{ Create(ctx context.Context, r *Refund) error }
+type OutboxRepository interface{ Enqueue(ctx context.Context, m *OutboxMessage) error }
+
+func (s *RefundService) Create(ctx context.Context, r *Refund) error {
+    return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        if err := s.refunds.WithTx(tx).Create(ctx, r); err != nil { return err }
+        return s.outbox.WithTx(tx).Enqueue(ctx, outboxFor(r))
+    })
+}
+```
+
+This keeps repositories ignorant of each other while preserving atomicity. Avoid passing `*gorm.DB` as a method parameter on every call.
+
+#### Post-commit dispatch (canonical)
+
+Side effects that leave the database - Asynq enqueue, HTTP call, mailer, cache invalidation - happen **after** `Transaction(...)` returns nil. Enqueueing inside the tx races commit: a worker can read the row before commit completes, or rollback leaves the task referencing a non-existent row.
+
+```go
+// Bad - worker may run before commit; rollback orphans the task
 return db.Transaction(func(tx *gorm.DB) error {
     if err := tx.Create(&order).Error; err != nil { return err }
     _, err := asynq.Enqueue(asynq.NewTask("order.notify", payload))
@@ -124,60 +143,31 @@ if _, err := asynq.Enqueue(asynq.NewTask("order.notify", payload)); err != nil {
 }
 ```
 
-Failure mode of post-commit dispatch: process crash between commit and `Enqueue` drops the dispatch. If unacceptable, use a transactional outbox (insert an `outbox_messages` row inside the tx; a relay polls `FOR UPDATE SKIP LOCKED` and dispatches; handlers are idempotent).
+GORM `AfterCreate` / `AfterUpdate` hooks fire **inside** the transaction - same hazard. Move side-effect calls into the calling service.
 
-GORM `AfterCreate` / `AfterUpdate` hooks fire **inside** the transaction - same hazard as `Enqueue` inside the closure. Move side-effect calls out of the hook into the calling service.
+A process crash between commit and `Enqueue` drops the dispatch. If unacceptable, use the outbox below.
 
-#### Locking
+#### Transactional outbox
 
-Pessimistic row lock (`SELECT ... FOR UPDATE`) when concurrent writers contend on the same row (counters, balances, inventory):
-
-```go
-db.Clauses(clause.Locking{Strength: "UPDATE"}).
-    Where("id = ?", id).First(&account)
-account.Balance += amount
-db.Save(&account)
-```
-
-Optimistic locking when contention is rare and a retry on conflict is acceptable - add a `version int` column and use GORM's check:
+Insert an `outbox_messages` row inside the tx; a relay claims rows with `FOR UPDATE SKIP LOCKED` and dispatches. Handlers must be idempotent.
 
 ```go
-type Account struct { ID int64; Balance int64; Version int }
+// Inside the writing tx:
+tx.Create(&OutboxMessage{Topic: "order.notify", Payload: payload, Status: "pending"})
 
-res := db.Model(&account).
-    Where("id = ? AND version = ?", account.ID, account.Version).
-    Updates(map[string]any{"balance": newBalance, "version": account.Version + 1})
-if res.RowsAffected == 0 {
-    return ErrStaleRead // caller re-reads and retries
-}
+// Relay (separate goroutine / process):
+const claim = `
+    UPDATE outbox_messages SET status = 'processing', claimed_at = NOW()
+    WHERE id IN (
+        SELECT id FROM outbox_messages
+        WHERE status = 'pending' ORDER BY id LIMIT $1
+        FOR UPDATE SKIP LOCKED
+    ) RETURNING *`
 ```
-
-`clause.Locking{Strength: "SHARE"}` for `FOR SHARE` (allow concurrent reads, block writes). Read-only transactions can also be expressed at the connection level via `db.Set("gorm:query_option", "FOR SHARE")` when GORM clauses are not flexible enough.
-
-In-process `sync.Mutex` is **not** a substitute - it only serializes within one replica. Counters / balances / state transitions in a multi-replica deployment require DB-level locking or optimistic versioning.
-
-#### Savepoints (nested transactions)
-
-GORM nested `Transaction(...)` calls become savepoints (`SAVEPOINT sp1` / `ROLLBACK TO sp1`), letting an inner step fail without aborting the outer transaction:
-
-```go
-db.Transaction(func(tx *gorm.DB) error {
-    if err := tx.Create(&order).Error; err != nil { return err }
-    err := tx.Transaction(func(tx *gorm.DB) error { // SAVEPOINT
-        return tx.Create(&optionalAuditEntry).Error
-    })
-    if err != nil {
-        slog.WarnContext(ctx, "audit failed, continuing", "err", err) // outer survives
-    }
-    return nil
-})
-```
-
-Use sparingly - most "needs to keep going on partial failure" cases are better modelled as two top-level transactions plus post-commit retry.
 
 #### Long-running transactions (anti-pattern)
 
-Holding a tx across user input, HTTP calls, or message-broker dispatch ties up a pool connection and lengthens lock windows. Symptoms: `too many connections`, lock waits, deadlocks.
+Holding a tx across user input, HTTP calls, or broker dispatch ties up a pool connection and lengthens lock windows. Symptoms: `too many connections`, lock waits, deadlocks.
 
 ```go
 // Bad - external HTTP inside the tx
@@ -196,9 +186,49 @@ return db.Transaction(func(tx *gorm.DB) error {
 })
 ```
 
-#### `db.Begin()` connection leak
+#### Locking
 
-If you must use `db.Begin()` / `tx.Commit()` (e.g., crossing a function boundary), `defer tx.Rollback()` immediately - `Rollback` after `Commit` is a no-op, but a missed rollback path leaks the connection.
+Pessimistic row lock when concurrent writers contend on the same row (counters, balances, inventory):
+
+```go
+db.Clauses(clause.Locking{Strength: "UPDATE"}).
+    Where("id = ?", id).First(&account)
+account.Balance += amount
+db.Save(&account)
+```
+
+Optimistic locking when contention is rare and retry on conflict is acceptable:
+
+```go
+type Account struct { ID int64; Balance int64; Version int }
+
+res := db.Model(&account).
+    Where("id = ? AND version = ?", account.ID, account.Version).
+    Updates(map[string]any{"balance": newBalance, "version": account.Version + 1})
+if res.RowsAffected == 0 {
+    return ErrStaleRead // caller re-reads and retries
+}
+```
+
+`clause.Locking{Strength: "SHARE"}` for `FOR SHARE`. In-process `sync.Mutex` is **not** a substitute - it only serializes within one replica; multi-replica counters/balances require DB-level locking or optimistic versioning.
+
+#### Savepoints (nested transactions)
+
+GORM nested `Transaction(...)` calls become savepoints, letting an inner step fail without aborting the outer tx. Use sparingly - most "keep going on partial failure" cases are better as two top-level transactions plus retry.
+
+```go
+db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&order).Error; err != nil { return err }
+    _ = tx.Transaction(func(tx *gorm.DB) error { // SAVEPOINT
+        return tx.Create(&optionalAuditEntry).Error
+    }) // outer survives inner failure
+    return nil
+})
+```
+
+#### `db.Begin()` fallback
+
+If you must use `db.Begin()` (e.g., crossing a function boundary), `defer tx.Rollback()` immediately - `Rollback` after `Commit` is a no-op, but a missed path leaks the connection.
 
 ```go
 tx := db.WithContext(ctx).Begin()
@@ -208,8 +238,6 @@ defer tx.Rollback() // safe to call after Commit
 if err := tx.Create(&order).Error; err != nil { return err }
 return tx.Commit().Error
 ```
-
-Prefer the closure form unless you have a specific reason.
 
 ### Idempotent Upsert
 
@@ -243,6 +271,8 @@ VALUES (:id, :idempotency_key, :amount, :status)
 ON CONFLICT (idempotency_key) DO NOTHING RETURNING *;
 ```
 
+Retryable endpoints (`POST /payments`) need a client-supplied idempotency key in the request, not a server-generated one.
+
 ### Scopes
 
 ```go
@@ -265,16 +295,18 @@ func (r *paymentRepo) List(ctx context.Context, limit, offset int) ([]Payment, i
     if err := db.Count(&total).Error; err != nil {
         return nil, 0, fmt.Errorf("count: %w", err)
     }
-    if err := db.Limit(limit).Offset(offset).Order("created_at DESC").Find(&payments).Error; err != nil {
+    if err := db.Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&payments).Error; err != nil {
         return nil, 0, fmt.Errorf("list: %w", err)
     }
     return payments, total, nil
 }
 ```
 
+`Limit`/`Offset` without `Order` returns rows in undefined order - page 2 may overlap page 1. Tiebreak on a unique column (`id`) when the primary sort can repeat. For tables that grow without bound, prefer keyset pagination.
+
 ### Hooks (Sparingly)
 
-Hooks are invisible to callers. Use only for genuine cross-cutting concerns (audit fields, password hashing); prefer explicit service-layer logic for non-trivial operations.
+Hooks are invisible to callers. Use only for genuine cross-cutting concerns (audit fields, password hashing); prefer explicit service-layer logic for non-trivial operations. Never put outbound dispatch in a hook.
 
 ## sqlx Patterns
 
@@ -301,6 +333,20 @@ if err := sqlx.StructScan(rows, &results); err != nil {
 }
 ```
 
+Nullable columns require pointer types or `sql.NullX` for scan.
+
+### Top-N-per-group (window function)
+
+GORM has no idiomatic shape for this; drop to sqlx:
+
+```sql
+SELECT * FROM (
+  SELECT id, user_id, total,
+         ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY total DESC) AS rn
+  FROM orders
+) t WHERE rn <= 3
+```
+
 ### Bulk Insert
 
 ```go
@@ -309,23 +355,28 @@ _, err := r.db.NamedExecContext(ctx,
     items)
 ```
 
+### Dropping from GORM to sqlx
+
+sqlx queries bypass GORM's `deleted_at IS NULL` filter. When the table uses `gorm.Model`, add `WHERE deleted_at IS NULL` to raw SQL explicitly, or you will return soft-deleted rows.
+
 ## Connection Pool
 
 Configure immediately after open:
 
 ```go
 sqlDB, _ := db.DB()
-sqlDB.SetMaxOpenConns(25)                  // tune to DB thread limit
+sqlDB.SetMaxOpenConns(25)
 sqlDB.SetMaxIdleConns(10)                  // ~40% of max open
 sqlDB.SetConnMaxLifetime(5 * time.Minute)  // recycle for LB failover
 sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 ```
 
+**Replica fan-in math.** `replicas * SetMaxOpenConns < DB max_connections - reserved`. Example: Postgres `max_connections=100`, reserve 10 for admin/migrations, 8 service replicas → `SetMaxOpenConns((100-10)/8) ≈ 11`. Front the DB with PgBouncer (transaction pooling) when the worker count makes per-replica limits too tight.
+
 ## Edge Cases
 
-- `gorm.Model` enables soft delete: `db.Delete()` sets `deleted_at`; queries auto-filter. Use `Unscoped()` for hard delete
 - `db.Save(&user)` updates zero values too; use `db.Model(&u).Updates(map[string]any{...})` for partial updates
-- sqlx StructScan on nullable columns requires pointer types or `sql.NullX`
+- Partial updates with a struct skip zero-valued fields silently; use `map[string]any{}` or `Select(...)` to set zeros explicitly
 
 ## Output Format
 
@@ -346,7 +397,9 @@ sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 
 - `AutoMigrate` in production
 - Pool defaults (unbounded)
-- Hooks for non-trivial business logic
-- GORM for complex reporting (use sqlx)
+- Hooks for non-trivial business logic or outbound dispatch
+- GORM for complex reporting or window functions (use sqlx)
 - Missing `WithContext` / `*Context`
 - Repository interface in the repository package
+- `Limit`/`Offset` without `Order`
+- sqlx raw SQL on `gorm.Model` tables without an explicit `deleted_at IS NULL` filter

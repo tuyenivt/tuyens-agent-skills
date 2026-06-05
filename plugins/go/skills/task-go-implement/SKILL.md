@@ -29,6 +29,7 @@ Not for: single-file edits, bugfixes (`task-go-debug`), frontend.
 - Repository interface declared in the **service** package
 - Multi-model writes use `db.Transaction(...)`
 - Background jobs dispatched **after** the transaction returns nil
+- No side effects (audit logs, metrics, webhook dispatch) inside the tx closure - they outlive a rollback. Buffer audit lines and flush them after commit.
 - Each step completes before the next; design approved before code
 
 ## Workflow
@@ -73,6 +74,8 @@ Present file tree and decisions:
 - Webhook design (signature middleware, raw body, outside JWT)
 - Background job dispatch points
 
+When the design extends or deviates from the defaults in this skill (e.g., adds a new HTTP status to the error map, departs from the layered file tree, chooses a different middleware ordering), call out the deviation explicitly with the reason so the approver sees the choice rather than discovering it in code review.
+
 Wait for approval.
 
 ### STEP 3 - DATABASE
@@ -103,8 +106,12 @@ Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request 
 | Unauthorized | 401 |
 | Not found | 404 |
 | Conflict | 409 |
+| Gone (expired token, deleted resource) | 410 |
 | Invalid transition | 422 |
 | External timeout | 503 |
+| Already-processed webhook event | 200 (return success so provider stops retrying) |
+
+The webhook "200 on duplicate" mapping is counterintuitive but correct: Stripe, GitHub, and similar providers retry on any non-2xx, so a duplicate-detection 409 produces a retry storm. Treat duplicate as a no-op success.
 
 Webhooks: signature middleware reads `c.GetRawData()` before any binding; route lives outside the JWT auth group.
 
@@ -147,12 +154,13 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 ## Self-Check
 
 - [ ] Stack detected; requirements gathered; design approved before code
+- [ ] Deviations from the skill's defaults (error map, layout, middleware order) called out at the approval gate
 - [ ] All layers generated; repository interface in service package
 - [ ] Errors wrapped with `%w`; constructor injection throughout
-- [ ] Background jobs dispatched after commit
+- [ ] Background jobs dispatched after commit; no side effects inside the tx closure
 - [ ] Status transitions validated (service + DB CHECK) when applicable
 - [ ] Idempotency: unique index + `ON CONFLICT` + service guard when applicable
-- [ ] Webhook: signature middleware, raw body, outside JWT group when applicable
+- [ ] Webhook: signature middleware, raw body, outside JWT group, duplicate-as-200 when applicable
 - [ ] External APIs: `context.WithTimeout` + interface for testability
 - [ ] `go build`, `go test -race`, `go vet` all pass
 - [ ] List endpoints paginated
@@ -160,7 +168,7 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 ## Avoid
 
 - Business logic in handlers
-- Background jobs inside `db.Transaction`
+- Background jobs, audit logs, metrics, or webhook dispatch inside `db.Transaction`
 - Global DB connections; `init()` for wiring
 - `AutoMigrate` in production
 - Returning GORM models from handlers (use response DTOs)
@@ -168,3 +176,4 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 - Generating code before design approval
 - `ShouldBindJSON` on webhook endpoints
 - Allowing invalid state transitions
+- Returning 4xx for a duplicate webhook event (provider will retry forever)

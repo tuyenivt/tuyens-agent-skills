@@ -56,11 +56,13 @@ Refactoring without tests is a rewrite.
 
 | Status | Definition | Action |
 |--------|------------|--------|
-| `Adequate` | Happy path + ≥ 2 boundary outcomes per public entry (validation, auth denial, external failure, not-found) | Proceed |
-| `Thin` | Happy path + exactly 1 boundary outcome | Proceed; plan must include `Step 0 - Coverage prerequisite` |
-| `Inadequate` | No tests, or happy-path-only | **Refuse Steps 1+.** Output Coverage Gate verdict + recommend `task-go-test` first |
+| `Adequate` | Happy path + ≥ 2 boundary outcomes per public entry (validation, auth denial, external failure, not-found), tested against the production engine | Proceed |
+| `Thin` | Happy path + exactly 1 boundary outcome, or correct boundaries but missing engine match | Proceed; plan must include `Step 0 - Coverage prerequisite` |
+| `Inadequate` | No tests, happy-path-only, or tests run only against a different engine than production (SQLite for a Postgres app, in-process Asynq stub) - a green suite cannot certify the refactor | **Refuse Steps 1+.** Output Coverage Gate verdict + recommend `task-go-test` first |
 
-**Race-detector check.** If the target uses goroutines / channels / `sync`, confirm `go test -race ./<package>/...` is in CI. If not, downgrade status by one tier.
+**Race-detector check.** If the target uses goroutines / channels / `sync`, confirm `go test -race ./<package>/...` is in CI. If not, downgrade status by one tier. Skip when already `Inadequate`.
+
+**Refused-plan shape.** When refusing, still emit `Target`, `Goal`, `Primary recipe` (so the eventual re-invocation has its target named), the Coverage Gate verdict + prerequisite table, and `Smells Identified` / `Sibling Smells` as preview rows so the team has a punch list to fund. Omit `Blast Radius`, `Step Sequence`, `Verification`. Self-Check items that target absent sections do not apply.
 
 ### Step 4 - Identify Smells
 

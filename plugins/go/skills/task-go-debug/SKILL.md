@@ -31,7 +31,7 @@ Before reading any code, lock the reproducer:
 
 1. **Minimal trigger:** request, command, payload, or test that produces the failure
 2. **Environment:** `go version`, `GOOS`/`GOARCH`, and the versions from `go.mod` for the suspect dependencies (Go bugs frequently track to a dependency upgrade not visible from the stack trace)
-3. **Frequency:** every request, 5% of requests, only under load, only after N minutes uptime
+3. **Frequency:** every request, 5% of requests, only under load, only after N minutes uptime. Reconcile the reported rate with the conditional rate before classifying - "8% of requests panic" plus "the panic site executes 8% of the time" usually means **100% of the requests that reach the bug fail**, not a flaky bug.
 4. **First seen:** commit, deploy, or dependency bump that introduced it (`git bisect` is cheap once a reproducer exists)
 
 If the reporter cannot reproduce, ask for it before classifying - speculative debugging burns hours.
@@ -65,7 +65,7 @@ fmt.Println(order.User.Email) // PANIC
 order, _ := db.Preload("User").First(&order, id)
 ```
 
-Intermittent: nullable FK, or cache returning partial objects.
+Intermittent: nullable FK, or cache returning partial objects. Adjacent smell: the same handler often masks all DB errors into a single status (`AbortWithStatus(404)` on every error path) - discriminate `errors.Is(err, gorm.ErrRecordNotFound)` from other errors. See `go-error-handling`.
 
 **Context errors**
 - `DeadlineExceeded` -> timeout too short or downstream slow
@@ -73,7 +73,7 @@ Intermittent: nullable FK, or cache returning partial objects.
 
 **Database / SQL**
 - `connection refused` -> DB down or wrong DSN. Use skill: `go-data-access`
-- `too many connections` -> pool exhaustion. Check `SetMaxOpenConns`; root cause often missing `rows.Close()` or unbounded goroutines
+- `too many connections` -> pool exhaustion. Three root causes, in descending frequency: **(1) transaction held across external I/O** (HTTP call, broker dispatch) - the connection is pinned for the full round-trip; (2) missing `rows.Close()` after iterating `Rows`; (3) unbounded goroutines each calling `db.X`. Defaults are unbounded - check `SetMaxOpenConns` and the per-replica fan-in budget against the DB's `max_connections`.
 - `duplicate key` -> use idempotent upsert
 - `could not serialize access` -> transaction retry or isolation change
 
@@ -145,6 +145,8 @@ If archived count grows on every deploy, the payload contract is drifting - bump
 
 Explain **why**, not just what. State confidence: **HIGH** (reproduced/obvious), **MEDIUM** (pattern match), **LOW** (multiple candidates).
 
+When the incident has multiple compounding causes (e.g., a slow downstream + missing timeout + uncapped pool + no backpressure all firing during the same minute), list each cause separately with its own confidence; don't compress them into a single sentence. The fix and prevention sections then map back to each cause.
+
 ```
 ROOT CAUSE: [HIGH/MEDIUM/LOW]
 [Why the error occurs, citing file:line.]
@@ -152,7 +154,7 @@ ROOT CAUSE: [HIGH/MEDIUM/LOW]
 
 ### STEP 5 - FIX
 
-Before/after, minimal, root-cause-targeted. Use skill: `go-error-handling` to preserve wrapping.
+Before/after, minimal, root-cause-targeted. Use skill: `go-error-handling` to preserve wrapping. When a sibling smell (e.g., DB errors collapsed into 404) sits on the same line as the root-cause fix, address it inline rather than leaving a known regression hazard.
 
 ### STEP 6 - PREVENTION
 
@@ -163,6 +165,8 @@ Add a guard so this class cannot recur:
 - `go vet` (especially `waitgroup`, `hostport`)
 - `testing/synctest` over `time.Sleep` for async tests
 - For GORM nils: repository integration test (testcontainers) verifying the association loads
+- For pool exhaustion: load test that holds external I/O at p99 latency; assert pool budget invariant at startup
+- For incidents that combined a slow downstream with no backpressure: add a concurrency limiter / circuit breaker at the offending endpoint
 
 ## Edge Cases
 
@@ -179,7 +183,7 @@ Add a guard so this class cannot recur:
 [Category]: [specific type]
 
 ## Root Cause (confidence: HIGH/MEDIUM/LOW)
-[Why, citing file:line]
+[Why, citing file:line. For multi-cause cascades, one bullet per cause with its own confidence.]
 
 ## Fix
 [Before/after code]
@@ -192,8 +196,8 @@ Add a guard so this class cannot recur:
 
 - [ ] Reproducer + env (Go version, dependency versions, frequency) captured before classification
 - [ ] Classified before reading code or proposing fix
-- [ ] Root cause cites file:line; confidence stated
-- [ ] Before/after fix is minimal and root-cause-targeted
+- [ ] Root cause cites file:line; confidence stated; multi-cause cascades enumerated
+- [ ] Before/after fix is minimal and root-cause-targeted; adjacent smells on the same lines addressed
 - [ ] Error wrapping preserved (`%w`); no global state added
 - [ ] Prevention step included
 - [ ] For concurrency: `-race` referenced; cancellation path included; pprof goroutine snapshot for leaks
@@ -209,3 +213,4 @@ Add a guard so this class cannot recur:
 - `_ =` to silence build errors
 - Global variables to "fix" goroutine scope
 - Nil checks around GORM associations as a band-aid (fix the missing `Preload`)
+- Buffering a channel "to stop it blocking" without addressing why the receiver isn't draining

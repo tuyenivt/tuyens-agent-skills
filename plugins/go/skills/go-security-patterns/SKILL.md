@@ -27,6 +27,7 @@ user-invocable: false
 - `exec.Command(name, args...)` with arg slice - never `sh -c` / `cmd /c` with user input
 - `crypto/rand` (NOT `math/rand`) for tokens, nonces, secrets; `crypto/subtle.ConstantTimeCompare` for HMAC/signature comparison
 - Password hashing: `bcrypt.GenerateFromPassword(pw, 12)` (cost >= 10) or `argon2.IDKey(...)`
+- API keys: never store plaintext; hash with sha256 at issuance, compare with `subtle.ConstantTimeCompare`
 - Load secrets from env/secret manager into a typed config struct at startup; fail fast on absence; never log tokens, passwords, JWTs, or PII
 
 ## Patterns
@@ -75,9 +76,10 @@ if err != nil || !token.Valid {
 }
 ```
 
-- Access tokens 5-15 min; refresh tokens rotated; revocation via DB/Redis denylist keyed on `jti` or refresh UUID
+- Access tokens 5-15 min; refresh tokens are opaque random strings (not nested JWTs - they ride in cookies and don't need self-description), rotated on every use; revocation via DB/Redis denylist keyed on `jti` for access tokens or refresh-token UUID
 - For RS256/ES256: load the public key from a trusted source; cache JWKS with TTL
 - Never `slog.Info("token", token)` / `fmt.Println(token)` - logs leak the bearer
+- Transport: send JWTs via `Authorization: Bearer` (API) or `Secure; HttpOnly; SameSite=Lax` cookies (browser). Never put a JWT in a URL query string or fragment - logs, browser history, and Referer headers capture it.
 
 ### Gin auth middleware shape
 
@@ -111,6 +113,57 @@ func RequireRole(role string) gin.HandlerFunc {
     }
 }
 ```
+
+### Login flow hardening
+
+Beyond hashing the password, the login handler is the credential-stuffing target. Address all three:
+
+```go
+// Rate-limit by IP and by email (separate buckets) before doing crypto work
+if !rl.Allow(c.ClientIP(), req.Email) { c.AbortWithStatus(http.StatusTooManyRequests); return }
+
+// Always bcrypt - even when the user doesn't exist - so timing doesn't leak existence
+var hash []byte
+if u, err := repo.FindByEmail(ctx, req.Email); err == nil {
+    hash = u.PasswordHash
+} else {
+    hash = dummyBcryptHash // pre-computed at startup
+}
+if err := bcrypt.CompareHashAndPassword(hash, []byte(req.Password)); err != nil || u == nil {
+    c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"}) // generic, no "user not found"
+    return
+}
+```
+
+Failure response is the same string and same status for "user missing" and "wrong password" - any divergence is a user-enumeration oracle.
+
+### API key storage
+
+```go
+// Bad - lookup by plaintext key; DB compromise leaks every customer's key
+db.Where("key = ?", c.GetHeader("X-API-Key")).First(&k)
+
+// Good - hash at issuance, store the hash, look up by hash, constant-time compare
+func IssueAPIKey() (plaintext string, hash [32]byte) {
+    b := make([]byte, 32); crand.Read(b)
+    plaintext = "sk_" + base64.RawURLEncoding.EncodeToString(b)
+    return plaintext, sha256.Sum256([]byte(plaintext))
+}
+
+func Verify(c *gin.Context) {
+    raw := c.GetHeader("X-API-Key")
+    h := sha256.Sum256([]byte(raw))
+    var k APIKey
+    if err := db.Where("key_hash = ?", h[:]).First(&k).Error; err != nil {
+        c.AbortWithStatus(http.StatusUnauthorized); return
+    }
+    if subtle.ConstantTimeCompare(k.KeyHash, h[:]) != 1 || k.RevokedAt != nil {
+        c.AbortWithStatus(http.StatusUnauthorized); return
+    }
+}
+```
+
+Store a key prefix (`sk_xxxx...`) in plaintext alongside the hash so users can identify keys in the dashboard. Bcrypt is overkill for high-entropy random keys; sha256 + constant-time compare is sufficient.
 
 ### IDOR: scope at the repository, not the handler
 
@@ -170,7 +223,7 @@ u := model.User{
 }
 ```
 
-If GORM's `Updates` is called with a struct, only non-zero fields update (which can also be abused). Prefer `db.Model(&u).Select("name", "email").Updates(req)` to declare the allowlist.
+If GORM's `Updates` is called with a struct, only non-zero fields update (which can also be abused). Prefer `db.Model(&u).Select("name", "email").Updates(req)` to declare the allowlist. Never pass `map[string]any` from the request body straight into `Updates` - same shape as `mapstructure.Decode` on writes.
 
 ### Input validation
 
@@ -237,7 +290,7 @@ exec.Command("convert", userFile, "out.png")
 
 ```go
 // Read raw body BEFORE ShouldBindJSON (binding consumes the body)
-raw, err := c.GetRawData()
+raw, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
 if err != nil { c.AbortWithStatus(http.StatusBadRequest); return }
 
 mac := hmac.New(sha256.New, []byte(cfg.WebhookSecret))
@@ -253,9 +306,14 @@ if !hmac.Equal(expected, got) {                  // wraps subtle.ConstantTimeCom
 
 var evt WebhookEvent
 if err := json.Unmarshal(raw, &evt); err != nil { ... }
+
+// Idempotency - providers retry; persist (provider, event_id) and short-circuit duplicates
+if seen, _ := store.SeenEvent(ctx, "stripe", evt.ID); seen {
+    c.Status(http.StatusOK); return
+}
 ```
 
-Route the webhook outside the JWT auth group; the signature is the only auth.
+Route the webhook outside the JWT auth group; the signature is the only auth. Idempotency is not optional - Stripe and GitHub both retry on non-2xx and on timeout, so handlers must tolerate duplicates without double-applying side effects.
 
 ### Password hashing
 
@@ -315,6 +373,8 @@ for _, ip := range ips {
 }
 ```
 
+Cap response size with `http.MaxBytesReader` on the response body to defeat oversized-response DoS. Re-check on every redirect via a custom `CheckRedirect`.
+
 ### `crypto/rand` and `InsecureSkipVerify`
 
 ```go
@@ -364,10 +424,12 @@ When invoked from an implementation workflow, emit a decision table:
 - `sh -c` / `cmd /c` / `bash -c` with any user-controlled segment
 - `math/rand` for tokens, nonces, IDs, or secrets
 - `bytes.Equal` / `==` for HMAC, signature, or hash comparison (timing attack)
+- API keys stored or looked up in plaintext
 - `InsecureSkipVerify: true` outside a test fixture
 - `gin.DebugMode` in production (leaks request bodies in logs)
 - `pprof` exposed in production without admin auth
 - `gob.Decode` / `xml.Unmarshal` on untrusted input
 - `text/template` (not `html/template`) for HTML output
-- JWT in URL query string (lands in logs, browser history, referer)
+- JWT in URL query string or session cookie without `Secure; HttpOnly; SameSite`
 - Logging `password`, `token`, `authorization`, `credit_card`, `ssn`, `api_key`
+- Login responses that differ between "user missing" and "wrong password"
