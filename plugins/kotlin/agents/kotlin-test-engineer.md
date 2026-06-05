@@ -48,6 +48,12 @@ category: quality
 
 ## Key Skills
 
+### Workflow this agent drives
+
+- Use skill: `task-kotlin-test` for Kotlin / Spring Boot test strategy, coverage assessment, and scaffolding (JUnit / Kotest + MockK + springmockk + Testcontainers + runTest + Turbine)
+
+### Atomic skills consulted
+
 - Use skill: `kotlin-testing-patterns` for MockK, Kotest, Turbine, and coroutine test patterns
 - Use skill: `kotlin-spring-test-integration` for Spring Boot test slices, Testcontainers, `@MockkBean`, security tests
 

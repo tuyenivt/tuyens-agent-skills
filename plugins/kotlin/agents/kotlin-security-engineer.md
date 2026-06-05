@@ -51,6 +51,13 @@ category: quality
 
 ## Key Skills
 
+### Workflow this agent drives
+
+- Use skill: `task-kotlin-review-security` for Kotlin / Spring Boot security review (Kotlin DSL `SecurityFilterChain`, OAuth2 / JWT, method security, mass assignment on `data class` DTOs, coroutine `SecurityContext`, OWASP Top 10)
+
+### Atomic skills consulted
+
 - Use skill: `kotlin-spring-security-patterns` for Spring Security 6.x Kotlin DSL, OAuth2, method security, CORS / CSRF, coroutine SecurityContext propagation
 - Use skill: `kotlin-spring-exception-handling` for secure error responses (`ProblemDetail` without leaking stack traces)
 - Use skill: `kotlin-coroutines-spring` for coroutine context propagation patterns
+- Use skill: `kotlin-spring-messaging-patterns` for webhook signature, payload-DTO discipline, broker auth

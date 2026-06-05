@@ -198,6 +198,46 @@ suspend fun list(@AuthenticationPrincipal jwt: Jwt): List<OrderResponse> =
 
 Cleanest option for `suspend` - principal is a method argument, no ThreadLocal involved.
 
+### `RoleHierarchy` bean
+
+Avoid listing every superset role in `hasRole(...)`:
+
+```kotlin
+@Bean
+fun roleHierarchy(): RoleHierarchy = RoleHierarchyImpl.fromHierarchy(
+    """
+    ROLE_ADMIN > ROLE_MANAGER
+    ROLE_MANAGER > ROLE_USER
+    """.trimIndent()
+)
+
+@Bean
+fun methodSecurityExpressionHandler(roleHierarchy: RoleHierarchy): MethodSecurityExpressionHandler =
+    DefaultMethodSecurityExpressionHandler().apply { setRoleHierarchy(roleHierarchy) }
+```
+
+Now `@PreAuthorize("hasRole('USER')")` permits `ROLE_ADMIN` and `ROLE_MANAGER` too.
+
+### Password encoding
+
+```kotlin
+@Bean
+fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder(12)        // cost 10-12; ~250ms verify on modern hw
+
+@Service
+class UserService(private val users: UserRepository, private val encoder: PasswordEncoder) {
+    fun register(req: RegisterRequest) {
+        users.save(User(email = req.email, passwordHash = encoder.encode(req.password)))
+    }
+    fun authenticate(email: String, password: String): User? {
+        val u = users.findByEmail(email) ?: return null
+        return if (encoder.matches(password, u.passwordHash)) u else null
+    }
+}
+```
+
+Argon2 (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()`) is preferred for new systems; BCrypt remains compatible.
+
 ### `AuthorizationManager` for request-context rules
 
 When the decision depends on request attributes (tenant header, body, IP), expose an `AuthorizationManager<RequestAuthorizationContext>` bean and wire via `authorize("/api/tenants/**", access(ownsTenant()))`.
@@ -218,7 +258,43 @@ suspend fun listUserOrders(principal: String): List<Order> = orderRepo.findByUse
 
 For `@Async` (non-coroutine), use `MODE_INHERITABLETHREADLOCAL` or `DelegatingSecurityContextExecutor`.
 
-Testing patterns: `@WithMockUser`, `with(jwt().authorities(...).jwt { it.claim("sub", "u") })` - see `kotlin-spring-test-integration`.
+### MockMvc security tests
+
+```kotlin
+@WebMvcTest(OrderController::class)
+class OrderControllerSecurityTest(@Autowired val mvc: MockMvc) {
+
+    @Test
+    fun `anonymous returns 401`() {
+        mvc.get("/api/orders/1").andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `user without role returns 403`() {
+        mvc.get("/api/orders/admin/stats") {
+            with(jwt().authorities(SimpleGrantedAuthority("ROLE_USER")))
+        }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `admin returns 200`() {
+        mvc.get("/api/orders/admin/stats") {
+            with(jwt().authorities(SimpleGrantedAuthority("ROLE_ADMIN")))
+        }.andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `csrf required on state-change`() {
+        mvc.post("/api/orders") {
+            with(jwt())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"items":[]}"""
+        }.andExpect { status { isForbidden() } }     // missing CSRF token
+    }
+}
+```
+
+See `kotlin-spring-test-integration` for `@MockkBean` discipline and CSRF helpers when SecurityConfig is involved.
 
 ## Output Format
 

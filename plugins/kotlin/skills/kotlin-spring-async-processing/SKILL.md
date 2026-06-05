@@ -26,6 +26,7 @@ user-invocable: false
 - `@Async` self-invocation is silently ignored - call through an injected bean.
 - Managed `CoroutineScope` bean over `GlobalScope` (see `kotlin-coroutines-spring`).
 - Configure `kotlin("plugin.spring")` - otherwise `@Async` classes are final.
+- `synchronized` on a Virtual Thread carrier pins the carrier. Use `ReentrantLock` (sync code) or `kotlinx.coroutines.sync.Mutex` (suspend code) on Boot 3.2+ with `spring.threads.virtual.enabled=true`. Diagnose with `-Djdk.tracePinnedThreads=full`.
 
 ## `@Async` vs coroutines
 
@@ -75,6 +76,36 @@ fun asyncTaskExecutor(): Executor = Executors.newVirtualThreadPerTaskExecutor()
 ```
 
 Lightweight thread per task. Do not use for CPU-bound work.
+
+### `synchronized` pins Virtual Threads
+
+```kotlin
+// Bad - synchronized pins the VT carrier; throughput collapses under load
+@Service
+class CounterService {
+    private var count = 0L
+    @Synchronized
+    fun increment(): Long = ++count
+}
+
+// Good - ReentrantLock parks the VT without pinning
+@Service
+class CounterService {
+    private val lock = ReentrantLock()
+    private var count = 0L
+    fun increment(): Long = lock.withLock { ++count }
+}
+
+// Good (suspend code) - Mutex is coroutine-aware
+@Service
+class CounterService {
+    private val mutex = Mutex()
+    private var count = 0L
+    suspend fun increment(): Long = mutex.withLock { ++count }
+}
+```
+
+Same trap applies to `synchronized {}` blocks, `Collections.synchronizedMap`, and many `java.util.concurrent` internals that hold monitor locks. Diagnose with `-Djdk.tracePinnedThreads=full` - pinned-frame stack traces print to stderr on every pin event.
 
 ### Self-invocation bypass
 

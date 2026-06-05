@@ -81,11 +81,21 @@ plugins {
 | `LazyInitializationException` from `suspend` controller / `withContext` block | JPA session is request-thread-bound; coroutine resumed elsewhere      | Fetch inside `@Transactional` (DTO / `JOIN FETCH`). Use skill: `kotlin-spring-jpa-performance`         |
 | `IllegalStateException: No transaction is currently active`        | `@Transactional` on `suspend` but missing `kotlinx-coroutines-reactor`, or `runBlocking` bridge to suspend | Add the reactor bridge; propagate `suspend`. Use skill: `kotlin-coroutines-spring`        |
 
+**Async / scheduled / Virtual Threads**
+
+| Error / symptom                                                   | Cause                                                                                    | Fix                                                                                                              |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `@Async` method runs synchronously                                | Self-invocation bypasses proxy, or missing `@EnableAsync`                                | Extract to a separate bean; add `@EnableAsync`. Use skill: `kotlin-spring-async-processing`                       |
+| `@Scheduled` task never fires                                     | Missing `@EnableScheduling` or no `TaskScheduler` bean when also using `SimpleBrokerHandler` | Add `@EnableScheduling`; provide a `TaskScheduler` if WebSocket / heartbeats coexist                              |
+| Executor saturation / queue full / requests time out under load   | Default `SimpleAsyncTaskExecutor` or bounded pool with low capacity                       | Name executor, size pool, set `RejectedExecutionHandler`. See `kotlin-spring-async-processing` § ThreadPoolTaskExecutor |
+| Throughput collapses under load on Boot 3.2+ with VTs enabled     | `synchronized` / `Collections.synchronizedMap` pins the VT carrier                       | Switch to `ReentrantLock` (sync) or `Mutex` (suspend). Diagnose with `-Djdk.tracePinnedThreads=full`              |
+| `@TransactionalEventListener` doesn't fire                        | No active transaction at publish time, or AFTER_COMMIT outside a TX                       | Publish inside `@Transactional`, or set `fallbackExecution = true`                                                |
+
 **MockK / testing**
 
 | Error                                          | Cause                                              | Fix                                                                  |
 | ---------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------- |
-| `MockKException: no answer found`              | `every` on a `suspend` function                    | Change `every` → `coEvery`, `verify` → `coVerify`                    |
+| `MockKException: no answer found`              | `every` on a `suspend` function                    | Change `every` -> `coEvery`, `verify` -> `coVerify`                  |
 | `ClassCastException` in Spring slice           | `@MockBean` used instead of `@MockkBean`           | Replace with `@MockkBean`                                            |
 | `UninitializedPropertyAccessException` in test | Missing `@ExtendWith(MockKExtension::class)`       | Add the extension or use `@SpringBootTest`                           |
 
@@ -117,11 +127,11 @@ coEvery { repo.findById(1L) } returns order
 
 For standard Spring errors (`DataIntegrityViolationException`, `MethodArgumentNotValidException`, `UnexpectedRollbackException`, etc.), walk `Caused by:` to the root then look for Kotlin-specific factors:
 
-- Final-class proxy failures → missing `kotlin("plugin.spring")`
-- JPA no-arg failures → missing `kotlin("plugin.jpa")`
-- Null parameter from Java → platform-type leak
-- LIE inside `suspend` controller, `@Transactional` on suspend without reactor bridge → coroutine errors above
-- Self-invocation defeating `@Transactional` / `@Async` / `@Cacheable` (companion object / extension dispatch) → see `kotlin-spring-transaction`
+- Final-class proxy failures -> missing `kotlin("plugin.spring")`
+- JPA no-arg failures -> missing `kotlin("plugin.jpa")`
+- Null parameter from Java -> platform-type leak
+- LIE inside `suspend` controller, `@Transactional` on suspend without reactor bridge -> coroutine errors above
+- Self-invocation defeating `@Transactional` / `@Async` / `@Cacheable` (companion object / extension dispatch) -> see `kotlin-spring-transaction`
 
 If no Kotlin-specific factor, fall back to `kotlin-spring-exception-handling` for the response side.
 

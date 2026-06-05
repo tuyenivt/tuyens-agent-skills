@@ -148,6 +148,53 @@ Validate in CI with `@SpringBootTest` + Testcontainers Postgres (see `kotlin-spr
 
 Production: `spring.jpa.hibernate.ddl-auto: validate`. Use a smaller separate Hikari pool (`maximum-pool-size: 5`) for the migration profile to avoid starving the app pool on long DDL.
 
+### CHECK constraint with `NOT VALID` + `VALIDATE`
+
+Adding a CHECK on a large table normally rewrites every row. Postgres splits this in two:
+
+```sql
+-- V1: enforced for new/updated rows, NOT validated retroactively (no rewrite, no full-table lock)
+ALTER TABLE orders ADD CONSTRAINT chk_status
+    CHECK (status IN ('PENDING','PAID','CANCELLED','SHIPPED')) NOT VALID;
+
+-- V2 (next release, after backfill): validate (takes ACCESS EXCLUSIVE briefly per page, not whole table)
+ALTER TABLE orders VALIDATE CONSTRAINT chk_status;
+```
+
+If V2 errors with offending rows, fix them in a separate DML migration before re-running.
+
+### `@PrePersist` / `@PreUpdate` dual-write during rename
+
+During the rename transition window (V1 added column added, V3 drop not yet shipped), keep both columns in sync from the app:
+
+```kotlin
+@Entity
+class Order(
+    @Id @GeneratedValue val id: Long = 0,
+    var customerRef: Long? = null,          // old column - read by N-1
+    var customerId: Long? = null,           // new column - read by N+1
+) {
+    @PrePersist @PreUpdate
+    fun syncCustomer() {
+        // last-write-wins; both columns mirrored
+        when {
+            customerId != null && customerRef == null -> customerRef = customerId
+            customerRef != null && customerId == null -> customerId = customerRef
+        }
+    }
+}
+```
+
+Remove the entity lifecycle hook in release N+1 when the old column is dropped.
+
+### Forward-only rollback strategy
+
+Reverting a deployed migration in place is rarely safe (replication, partial writes, downstream consumers). Default policy:
+
+1. **Schema rollback = forward-only.** If migration `V42` is broken, ship `V43` that re-establishes the desired state. Never delete `V42` or its `flyway_schema_history` row.
+2. **Liquibase `<rollback>` blocks** still required for non-reversible changes - they document the inverse and run in test environments only.
+3. **CI proves the revert path**: Testcontainers boots prior release schema, applies `V42` + `V43`, verifies app health. Without this, "we can roll back" is unverified.
+
 ### Multi-service ordering (expand-then-contract)
 
 ```

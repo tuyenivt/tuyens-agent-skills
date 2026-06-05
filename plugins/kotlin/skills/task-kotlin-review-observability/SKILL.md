@@ -124,6 +124,8 @@ _Skipped at `quick`._
 
 _Skipped at `quick` unless diff touches messaging / scheduled / launch._
 
+Use skill: `kotlin-spring-messaging-patterns` for canonical Kafka / Rabbit / outbox patterns.
+
 - [ ] **Kafka**: `spring.kafka.listener.observation-enabled: true`
 - [ ] **RabbitMQ**: `spring.rabbitmq.listener.simple.observation-enabled: true`
 - [ ] **MDC across consumer threads**: filter / aspect copies `traceId`, `userId`, `tenantId` from message headers into MDC at handler entry; clears in `finally`

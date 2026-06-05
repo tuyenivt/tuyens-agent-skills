@@ -21,6 +21,10 @@ user-invocable: false
 - Identify the Kotlin / Spring versions and plugin set before describing layout.
 - Locate `kotlin-spring` and `kotlin-jpa` plugins - their absence changes whether Spring AOP and JPA work on Kotlin classes.
 - Identify the coroutine runtime (kotlinx-coroutines version, `kotlin-coroutines-reactor` for Spring interop).
+- Inventory every `application-<profile>.yml` / `.properties` and state precedence: CLI args > env (`SPRING_APPLICATION_JSON`, `SPRING_*`) > `application-<profile>` > `application.yml`. Note `spring.profiles.active` default and any `spring.config.import`.
+- List `@ConfigurationProperties` data classes (and any `@EnableConfigurationProperties`) - typed config beats grepping yml for keys. Flag missing `kotlin-spring` plugin when these are used without `open` (constructor-binding is fine; method-binding needs proxying).
+- Locate `@SpringBootApplication` package = component-scan root. Flag any `scanBasePackages`, `@EntityScan`, `@EnableJpaRepositories` that diverge from it - beans outside become invisible.
+- Identify the `SecurityFilterChain` bean. Flag `WebSecurityConfigurerAdapter` as legacy (Boot 2.x). No security config + `spring-boot-starter-security` on classpath = HTTP Basic with generated password.
 
 ## Patterns
 
@@ -39,12 +43,23 @@ user-invocable: false
 
 ### Bootstrap path
 
-1. JVM toolchain: `kotlinOptions.jvmTarget` / `java.toolchain.languageVersion`. Common: 17 or 21.
+1. JVM toolchain: `kotlinOptions.jvmTarget` / `kotlin { jvmToolchain(...) }` / `java.toolchain.languageVersion`. Common: 17 or 21. With `jvmToolchain(...)` confirm `foojay-resolver-convention` is applied in `settings.gradle.kts` (otherwise CI fails on first run).
 2. Local services: `compose.yml` / `docker-compose.yml` or external connections in `application-*.yml`.
-3. Profiles: `application.yml` `spring.profiles.active`, or `SPRING_PROFILES_ACTIVE`.
-4. Migrations: `src/main/resources/db/migration/` (Flyway) or Liquibase.
-5. Run: `./gradlew bootRun`.
-6. Verify: actuator at `/actuator`; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
+3. Migrations: `src/main/resources/db/migration/` (Flyway) or `db/changelog/` (Liquibase). Both present = misconfiguration.
+4. Run: `./gradlew bootRun`. Port `server.port` (default 8080).
+5. Verify: actuator at `/actuator/health`; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
+
+### Configuration axes
+
+State the observed value for each axis. New engineers ask "which value wins" - the precedence chain answers it.
+
+- **Profile precedence**: CLI args > env (`SPRING_APPLICATION_JSON`, `SPRING_PROFILES_ACTIVE`, `SPRING_*`) > `application-<profile>.yml` > `application.yml` > `application.properties` (if both `.yml` and `.properties` exist, `.properties` wins for the same key in the same source).
+- **Active profile**: `spring.profiles.active` in `application.yml`, or `SPRING_PROFILES_ACTIVE` env.
+- **Profile inventory**: every `application-<profile>.yml` (dev / staging / prod / test / local) with one-line purpose.
+- **`spring.config.import`**: external config sources (`configtree:`, `optional:`, `vault:`); call out what's loaded.
+- **`@ConfigurationProperties` classes**: prefix + bound type. Constructor-bound `data class` is idiomatic in Kotlin; method-bound `class` needs the `kotlin-spring` plugin to be proxied.
+- **Plugin presence**: `kotlin-spring` (opens stereotype-annotated classes), `kotlin-jpa` (no-arg ctors), `kotlin-allopen` (custom open rules). Missing plugin + the feature it opens = silent failure at runtime.
+- **Scan divergence**: any `@ComponentScan(basePackages = ...)`, `@EntityScan`, `@EnableJpaRepositories` whose root differs from `@SpringBootApplication` - beans outside it become invisible.
 
 ### Key file inventory
 

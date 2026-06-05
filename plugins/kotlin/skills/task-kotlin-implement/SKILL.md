@@ -109,6 +109,8 @@ Use skill: `kotlin-spring-transaction` for transaction patterns.
 - Entity-to-DTO via extension functions
 - Business exceptions from common base
 - `suspend` only when the path is coroutine-based
+- Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` - never inside `@Transactional`
+- Status transitions validated against an `allowed-transitions: Map<Status, Set<Status>>` map before persistence; invalid transitions throw a domain exception
 
 ### STEP 7 - Controller + DTO
 
@@ -146,7 +148,7 @@ Use skill: `kotlin-testing-patterns`.
 - Repository: `@DataJpaTest` + Testcontainers
 - Controller: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
 
-Cover: happy path, not-found, validation, error responses, edge cases.
+Cover: happy path, not-found, validation errors, unique-constraint conflict (409), idempotent replay returns same response, invalid state transition (409 or 422), filter / search edge cases.
 
 ### STEP 10 - Validate
 
@@ -186,15 +188,16 @@ Verify: tests pass, no unsafe-cast warnings, detekt / ktlint clean (if configure
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded as STEP 1
-- [ ] Stack detected; design approved before code
-- [ ] All layers generated: entity, migration, repository, service, controller, DTOs, tests
-- [ ] `kotlin-jpa` and `kotlin-spring` plugins verified; entity is regular class
-- [ ] `data class` for DTOs; constructor injection only; no `synchronized`
-- [ ] `suspend` used consistently; MockK with `coEvery` / `coVerify` for suspend functions
-- [ ] `@MockkBean` not `@MockBean`; Testcontainers for integration tests
-- [ ] Build + tests pass
-- [ ] Migration includes indexes; list endpoints paginated
+- [ ] STEP 1 - `behavioral-principles` loaded first
+- [ ] STEP 2 - stack detected; Kotlin 2.0+ / Spring Boot 3.5+ confirmed; requirements gathered (fields, operations, relationships, visibility, coroutine usage, async needs)
+- [ ] STEP 3 - design approved by user before any code (endpoints, entity, service boundaries, error model, coroutine scope)
+- [ ] STEP 4 - entity is regular class (not `data class`); Flyway migration matches columns/constraints; `kotlin-jpa` + `kotlin-spring` plugins verified; indexes on FK + filter columns
+- [ ] STEP 5 - repository uses `Pageable` on lists; `JpaRepository` or `CoroutineCrudRepository` chosen per stack
+- [ ] STEP 6 - `@Service @Transactional(readOnly = true)` default; write boundaries only on mutations; constructor injection; entity-to-DTO via extension functions; `suspend` only when path is coroutine-based
+- [ ] STEP 7 - controller returns DTOs (never entities); correct status codes (201/204); `@Valid` on writes; `suspend` consistent with service
+- [ ] STEP 8 - error mapping via `@ControllerAdvice`; HTTP status table applied; auth requirements explicit
+- [ ] STEP 9 - tests cover happy + not-found + validation + edge cases; `@MockkBean` + `coEvery`/`coVerify`; Testcontainers for integration
+- [ ] STEP 10 - build + tests pass; no unsafe-cast warnings; detekt/ktlint clean if configured
 
 ## Avoid
 

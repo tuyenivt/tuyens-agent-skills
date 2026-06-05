@@ -64,6 +64,7 @@ Use skill: `review-precondition-check`. Read diff + log once. Skip if parent pas
 - `application.yml` for HikariCP / JPA / Kafka concurrency / VT enabled / cache config
 - `build.gradle.kts` plugin block
 - New Flyway / Liquibase migrations
+- Dependency adds (Resilience4j, Caffeine, p6spy, datasource-proxy, Spring Retry)
 
 For each finding, cite a real `file:line`. If the diff is small but the regression lives in unchanged code (new caller exposing existing N+1), read the unchanged file too.
 
@@ -131,6 +132,8 @@ _Skipped at `quick` unless diff touches `@Cacheable` / cache config._
 ### Step 9 - Messaging and background work
 
 _Skipped at `quick` unless diff touches messaging / scheduled work._
+
+Use skill: `kotlin-spring-messaging-patterns`.
 
 - [ ] Message handlers idempotent (re-fetch state, dedup key, upsert, return early on replay)
 - [ ] Consumer concurrency tuned (`spring.kafka.listener.concurrency`)

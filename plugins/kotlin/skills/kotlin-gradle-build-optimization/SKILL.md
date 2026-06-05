@@ -29,6 +29,7 @@ user-invocable: false
 - `kotlin("plugin.spring")` for projects using `@Component` / `@Service` / `@Configuration` / `@Transactional`.
 - `kotlin("plugin.jpa")` for projects with JPA `@Entity` / `@Embeddable` / `@MappedSuperclass`.
 - Exclude `mockito-core` from `spring-boot-starter-test` when using springmockk.
+- Apply `org.gradle.toolchains.foojay-resolver-convention` in `settings.gradle.kts` when using `jvmToolchain(...)`. Without it, fresh CI runs fail with `No matching toolchains found`.
 
 ## Patterns
 
@@ -57,6 +58,7 @@ mockk = "1.13.13"
 kotest = "5.9.1"
 springmockk = "4.0.2"
 testcontainers = "1.20.4"
+foojay = "0.10.0"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -77,6 +79,15 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
 kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+foojay-resolver = { id = "org.gradle.toolchains.foojay-resolver-convention", version.ref = "foojay" }
+```
+
+`settings.gradle.kts` applies the resolver so `jvmToolchain(21)` can auto-provision a JDK:
+
+```kotlin
+plugins {
+    alias(libs.plugins.foojay.resolver)
+}
 ```
 
 Usage:
@@ -199,6 +210,100 @@ buildCache {
 ```
 
 5-10x speedup on cold builds hitting populated caches.
+
+### Dependency hygiene
+
+```kotlin
+plugins {
+    id("com.autonomousapps.dependency-analysis") version "2.5.0"
+}
+```
+
+```bash
+./gradlew buildHealth        # reports unused / misclassified dependencies (api vs implementation)
+```
+
+**Dependency locking** (reproducible CI):
+
+```kotlin
+dependencyLocking { lockAllConfigurations() }
+```
+
+```bash
+./gradlew dependencies --write-locks         # generates gradle.lockfile per module
+```
+
+Commit lockfiles. CI builds with `--write-locks` removed fail if resolution drifts.
+
+**BOM + `failOnVersionConflict`**: `dependencyManagement { imports { mavenBom(...) } }` (Spring Boot BOM) does not pin transitive versions when `configurations.all { resolutionStrategy { failOnVersionConflict() } }` is also on. Either pin in the catalog or relax the strategy - they fight.
+
+### Bootable JAR layers + Docker
+
+```kotlin
+tasks.bootJar {
+    layered { enabled.set(true) }      // dependency / spring-boot-loader / snapshot-dependencies / application
+}
+```
+
+Dockerfile leverages the layers for fast rebuilds:
+
+```dockerfile
+FROM eclipse-temurin:21-jre AS extractor
+WORKDIR /app
+COPY build/libs/*.jar app.jar
+RUN java -Djarmode=layertools -jar app.jar extract
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=extractor /app/dependency/ ./
+COPY --from=extractor /app/spring-boot-loader/ ./
+COPY --from=extractor /app/snapshot-dependencies/ ./
+COPY --from=extractor /app/application/ ./
+ENTRYPOINT ["java","org.springframework.boot.loader.launch.JarLauncher"]
+```
+
+### `integrationTest` source set
+
+```kotlin
+sourceSets {
+    create("integrationTest") {
+        kotlin.srcDir("src/integrationTest/kotlin")
+        resources.srcDir("src/integrationTest/resources")
+        compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+val integrationTest = tasks.register<Test>("integrationTest") {
+    description = "Integration tests (Testcontainers)"
+    group = "verification"
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter(tasks.test)
+}
+tasks.check { dependsOn(integrationTest) }
+```
+
+Keeps slow Testcontainers tests off the inner loop.
+
+### CI cache fallback
+
+GitHub Actions: layer Gradle build cache + dependency cache with fallback keys:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: |
+      ~/.gradle/caches
+      ~/.gradle/wrapper
+      .gradle/configuration-cache
+    key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', 'gradle.lockfile') }}
+    restore-keys: |
+      gradle-${{ runner.os }}-
+```
+
+`restore-keys` lets a partial cache hit accelerate the first run after a dependency bump.
 
 ### CI + static analysis
 

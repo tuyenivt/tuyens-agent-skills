@@ -226,21 +226,15 @@ Run before scaffolding.
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded
-- [ ] Stack confirmed
-- [ ] Code + existing tests read so scaffolds match project conventions
-- [ ] `kotlin-spring-test-integration` + `kotlin-testing-patterns` consulted
-- [ ] Pyramid mapped to slice annotations
-- [ ] No duplicated assertions across layers
-- [ ] Prioritization by risk when coverage low
-- [ ] Factory functions used; no per-test-class duplication
-- [ ] Testcontainers for repository / full-context; H2 flagged
-- [ ] Security testing explicit
-- [ ] Coroutine testing explicit: `runTest`, `coEvery`/`coVerify`, Turbine; `runBlocking` flagged
-- [ ] MockK + springmockk discipline; `mockito-core` excluded
-- [ ] Scaffolds include happy + 401 + 403 + validation-error
-- [ ] Spec-aware mode honored when applicable
-- [ ] Review checklist items addressed when reviewing existing tests
+- [ ] Step 1 - `behavioral-principles` loaded
+- [ ] Step 2 - stack confirmed (or accepted from parent)
+- [ ] Step 3 - target code + existing tests read; conventions (fixture factories, assertion library, auth helpers) identified
+- [ ] Step 4 - test-pyramid layer mapped per target (unit / slice / full-context / contract / E2E)
+- [ ] Step 5 - `kotlin-testing-patterns` + `kotlin-spring-test-integration` patterns applied; HTTP stubbing matched to test type; idempotency + event-phase + coroutine-rollback traps covered; coroutine tests use `runTest`/`coEvery`/Turbine; security slice covers `(endpoint, principal, outcome)` triples
+- [ ] Step 6 - test boundaries respect what does/doesn't need a test (no Spring-provided behavior, no trivial delegation)
+- [ ] Step 7 - test data via shared factory functions with named parameters; no per-class duplication
+- [ ] Step 8 - prioritization by risk when coverage < 50% (authz → data integrity → business → high-churn → plumbing)
+- [ ] Step 9 - infrastructure hygiene: Testcontainers reused via `@ServiceConnection`; `mockito-core` excluded from `spring-boot-starter-test`; `clearAllMocks()` in teardown; JaCoCo / Kover wired; spec-aware mode honored when applicable
 
 ## Avoid
 

@@ -39,6 +39,9 @@ user-invocable: false
 | `ConflictException`                             | 409 Conflict              | Duplicate / optimistic lock                           |
 | `UnprocessableEntityException`                  | 422 Unprocessable Entity  | Valid format, invalid business state                  |
 | `RateLimitException`                            | 429 Too Many Requests     | Rate limit exceeded                                   |
+| `MaxUploadSizeExceededException`                | 413 Payload Too Large     | Multipart upload exceeds `spring.servlet.multipart.max-file-size` |
+| `HttpRequestMethodNotSupportedException`        | 405 Method Not Allowed    | Verb not declared on the mapping                      |
+| `HttpMediaTypeNotSupportedException`            | 415 Unsupported Media Type| Request `Content-Type` not accepted                   |
 | Unexpected `RuntimeException`                   | 500 Internal Server Error | System failure - log with stack trace                 |
 
 ## Patterns
@@ -163,6 +166,27 @@ class StripePaymentGateway(private val stripe: StripeClient) : PaymentGateway {
 Mark transient failures with `HttpStatus.SERVICE_UNAVAILABLE` + a retryable error code; set `retryable=true` property on `ProblemDetail` so clients can backoff vs give up.
 
 Enable globally: `spring.mvc.problemdetails.enabled: true`.
+
+### `RetryableException` sibling-abstract
+
+Branch `@RestControllerAdvice` by type instead of by string-matching `ex.message`:
+
+```kotlin
+abstract class RetryableException(message: String) : DomainException(message, HttpStatus.SERVICE_UNAVAILABLE, "RETRYABLE")
+abstract class PermanentException(message: String, status: HttpStatus, code: String) : DomainException(message, status, code)
+
+class UpstreamTimeoutException(svc: String) : RetryableException("Upstream timeout: $svc")
+class PaymentDeclinedException(orderId: Long, declineCode: String) : PermanentException("Payment declined: $declineCode (order $orderId)", HttpStatus.PAYMENT_REQUIRED, "PAYMENT_DECLINED")
+
+@ExceptionHandler(RetryableException::class)
+fun handleRetryable(ex: RetryableException): ProblemDetail =
+    problem(HttpStatus.SERVICE_UNAVAILABLE, "Retryable", ex.message ?: "Try again").apply { setProperty("retryable", true) }
+
+@ExceptionHandler(PermanentException::class)
+fun handlePermanent(ex: PermanentException): ProblemDetail = problem(ex.status, ex.errorCode, ex.message ?: "Failed")
+```
+
+One advice per axis (retryable vs permanent) replaces N advice methods grepping `ex.message` for "timeout" / "rate".
 
 ## Output Format
 

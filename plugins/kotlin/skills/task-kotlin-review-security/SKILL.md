@@ -68,7 +68,7 @@ Use skill: `kotlin-spring-security-patterns` for canonical patterns.
 | Injection                  | Derived queries or `@Query` with named parameters. **No string interpolation in JPQL** (Kotlin templates `"where x = $userInput"` = SQL injection).                                            |
 | Cryptographic Failures     | `BCryptPasswordEncoder` / `Argon2PasswordEncoder` for passwords; Vault for secrets at rest; no MD5 / SHA-1 for auth.                                                                            |
 | Security Misconfig         | `SecurityFilterChain` explicit; HTTPS-only via `requiresSecure` / upstream LB; headers via DSL `headers { }`.                                                                                   |
-| SSRF                       | `WebClient` / `RestClient` validates hostnames against an allowlist **and rejects private/loopback IPs after DNS resolution** (DNS-rebinding defense). Hostname-string allowlists alone are insufficient - resolve once + pin IP, or re-check via `ClientHttpRequestInterceptor`. |
+| SSRF                       | `WebClient` / `RestClient` validates hostnames against an allowlist **and rejects private/loopback IPs after DNS resolution** (DNS-rebinding defense). Reject these literal ranges: `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (AWS IMDS), `::1`, `fc00::/7`. Resolve once + pin IP, or re-check via `ClientHttpRequestInterceptor`. |
 | XSS                        | Thymeleaf auto-escapes - no `th:utext` on user input. JSON responses set `application/json` to block sniff XSS.                                                                                 |
 | Insecure Design            | `@EnableMethodSecurity` on and used; default-deny via `authorize(anyRequest, authenticated)`.                                                                                                   |
 | Vulnerable Components      | `./gradlew dependencyCheckAnalyze` clean; `./gradlew dependencyUpdates` reviewed.                                                                                                               |
@@ -121,6 +121,19 @@ Use skill: `kotlin-spring-security-patterns`.
 - [ ] **Spring4Shell-class**: `DataBinder` not bound to `Class` / `ClassLoader` properties; dep-check clean
 - [ ] **H2 console** disabled in non-dev
 - [ ] **Coroutine `SecurityContext`**: `SecurityContextHolder.getContext()` does not survive `suspend` dispatcher switches - use `ReactiveSecurityContextHolder.awaitFirstOrNull()`, `@AuthenticationPrincipal`, or pass explicitly
+- [ ] **`JwtDecoder.decode(...)` inside `suspend`**: the decoder is blocking and blocks the JVM thread mid-suspension. Either keep auth filtering in the servlet chain (non-suspend), wrap in `withContext(Dispatchers.IO)`, or rely on Virtual Threads to absorb the block (`spring.threads.virtual.enabled=true`)
+
+**Messaging security** (when diff touches Kafka / RabbitMQ / webhooks):
+
+Use skill: `kotlin-spring-messaging-patterns`.
+
+- [ ] Webhook handlers verify signature **before** parsing payload (Stripe / GitHub `X-*-Signature`)
+- [ ] Message payloads are `data class` / records - never JPA entities (leaks schema and lazy state)
+- [ ] Consumer idempotency by stable dedup key; replay does not double-charge
+- [ ] DLT / DLQ access restricted to ops; raw payloads scrubbed of PII before logging
+- [ ] Kafka client TLS + SASL (`security.protocol: SASL_SSL`); RabbitMQ TLS; credentials from Vault / env
+- [ ] `kafka.consumer.group-id` namespaced per environment to prevent cross-env consumption
+- [ ] `@KafkaListener` / `@RabbitListener` not on `private` / `final` methods (silently bypassed)
 
 ### Step 7 - Data protection
 

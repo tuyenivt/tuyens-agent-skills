@@ -162,6 +162,44 @@ Testcontainers `KafkaContainer` over `@EmbeddedKafka` - matches production versi
 }
 ```
 
+### `@JsonTest` for serialization contracts
+
+When the controller test would test Jackson behavior accidentally, isolate it:
+
+```kotlin
+@JsonTest
+class OrderResponseJsonTest(@Autowired val json: JacksonTester<OrderResponse>) {
+
+    @Test fun `serializes idiomatically`() {
+        val r = OrderResponse(id = 1L, status = "PAID", createdAt = Instant.parse("2026-01-01T00:00:00Z"))
+        json.write(r).extractingJsonPathStringValue("$.status") shouldBe "PAID"
+        json.write(r).extractingJsonPathStringValue("$.createdAt") shouldBe "2026-01-01T00:00:00Z"
+    }
+
+    @Test fun `deserializes with field target validation`() {
+        val parsed = json.parseObject("""{"id":1,"status":"PAID","createdAt":"2026-01-01T00:00:00Z"}""")
+        parsed.status shouldBe "PAID"
+    }
+}
+```
+
+Faster than `@WebMvcTest` for round-trip / unwrap / `@JsonView` behavior.
+
+### Fixture comparison with `usingRecursiveComparison`
+
+```kotlin
+@Test fun `creates order matching fixture`() {
+    val actual = service.create(CreateOrderRequest(items = listOf(item("SKU-1", 1))))
+    val expected = orderFixture(status = OrderStatus.PENDING)
+    assertThat(actual)
+        .usingRecursiveComparison()
+        .ignoringFields("id", "createdAt", "updatedAt")     // server-generated
+        .isEqualTo(expected)
+}
+```
+
+Cleaner than chained `shouldBe` on every field; survives adding new fields without churning every test.
+
 ### Test profile
 
 `application-test.yml`: enable `spring.jpa.show-sql`, disable cache (`spring.cache.type: none`), raise `org.springframework.test` / `org.testcontainers` log levels to WARN. Always `@ActiveProfiles("test")`.

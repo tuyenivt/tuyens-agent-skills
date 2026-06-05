@@ -119,6 +119,45 @@ Always `Pageable`. For large datasets with stable order, use keyset over OFFSET:
 fun findNextPage(@Param("lastId") lastId: Long, pageable: Pageable): List<Order>
 ```
 
+### `Slice<T>` vs `Page<T>`
+
+- `Page<T>` runs an extra `count(*)` query - needed only when the UI shows total pages.
+- `Slice<T>` runs the data query only + a `hasNext()` cheaper check (`pageSize + 1` rows).
+- Infinite-scroll / cursor-style UIs use `Slice`; numbered pagination uses `Page`.
+
+Derived queries with joins need a manual `countQuery` or the auto-generated count query joins the same tables and times out:
+
+```kotlin
+@Query(
+    value = "SELECT o FROM Order o JOIN FETCH o.customer WHERE o.status = :s",
+    countQuery = "SELECT count(o) FROM Order o WHERE o.status = :s",
+)
+fun findByStatus(s: OrderStatus, p: Pageable): Page<Order>
+```
+
+### Batch writes
+
+```yaml
+spring.jpa.properties:
+  hibernate.jdbc.batch_size: 50
+  hibernate.order_inserts: true
+  hibernate.order_updates: true
+  hibernate.jdbc.batch_versioned_data: true
+```
+
+```kotlin
+@Transactional
+fun bulkInsert(rows: List<Order>) {
+    rows.chunked(50).forEach { chunk ->
+        orderRepo.saveAll(chunk)
+        entityManager.flush()
+        entityManager.clear()        // prevent first-level cache OOM
+    }
+}
+```
+
+**`GenerationType.IDENTITY` disables JDBC batching.** Hibernate must round-trip per insert to get the generated ID. For high-volume insert paths use `SEQUENCE` with a pooled allocation size (`@SequenceGenerator(allocationSize = 50)`).
+
 ### Dynamic filters with `Specification`
 
 Use when an endpoint has 2+ optional filters. Derived methods for single-parameter filters.

@@ -41,23 +41,25 @@ user-invocable: false
 
 **Cancellation** is cooperative at suspend points. Long CPU-bound code without suspends cannot be cancelled - use `ensureActive()` or `yield()`.
 
-### Spring + Kotlin AOP gotcha (highest-yield class)
+### Proxy-backed annotations (highest-yield bug class)
 
-Kotlin classes and methods are `final` by default. CGLIB proxies require `open`:
+Proxied annotations and what they need to fire: `@Transactional`, `@Async`, `@Cacheable` / `@CacheEvict` / `@CachePut`, `@PreAuthorize` / `@PostAuthorize`, `@Retryable`, `@Validated`.
 
-- Without `kotlin-spring` plugin: `@Service` and `@Transactional` / `@Async` / `@Cacheable` methods need `open`. Otherwise the annotations silently no-op.
-- With `kotlin-spring`: classes annotated with Spring stereotypes are opened automatically. Verify the plugin in `build.gradle.kts`.
-- `data class` cannot be opened - cannot be a proxied Spring bean.
+**Three silent-failure modes** apply to every annotation above:
 
-**Self-invocation bypasses proxy** (same as Java). In Kotlin this also happens via `companion object` calls and extension-function dispatch.
+1. **Self-invocation** - `this.method()` from inside the same bean bypasses the proxy. In Kotlin this also fires via `companion object` calls and extension-function dispatch. Fix: extract to a separate bean, or self-inject.
+2. **`private` / `final` / `protected`** - CGLIB cannot override; the annotation is silently ignored. In Kotlin, every method is `final` by default - this is the dominant failure mode here.
+3. **Init-time call** (`@PostConstruct`, constructor, `@Bean` factory body calling the method on `this`) - the proxy isn't wired yet; the raw class runs.
+
+**The `kotlin-spring` plugin** opens `@Component` / `@Service` / `@Configuration` / `@RestController` / `@Repository` and `@Transactional` automatically. It does **not** open classes annotated with `@Retryable`, custom proxy annotations, or your own meta-annotations - those still need explicit `open class` / `open fun` or a custom `allopen` rule (`kotlin("plugin.allopen")`). Without it, `@Retryable` / `@Cacheable` / custom proxy annotations silently no-op.
+
+- `data class` cannot be opened - cannot host any of these annotations as a proxied bean.
+- `object` is not a Spring bean - compiled to a static holder. `@Autowired` doesn't inject it; annotations above are ignored. Use `@Component class`.
+- `internal` visibility name-mangles (`foo$module_name`). Works for constructor injection; can break reflection-based wiring.
 
 **`@Transactional` on `suspend`**: needs `kotlinx-coroutines-reactor` on the classpath so Spring 6 binds the TX across suspension. Even wired correctly, blocking JPA inside a suspend on `Dispatchers.IO` does not become non-blocking - the TX is held across suspension and any `withContext` switch detaches from it. Prefer non-suspend `@Transactional` services called from a suspend orchestrator that handles dispatcher switching.
 
 **External I/O inside `@Transactional`**: holds the DB connection through the round-trip. Move out, or publish `@TransactionalEventListener(AFTER_COMMIT)`.
-
-**`internal` visibility**: name-mangled (`foo$module_name`). Works for constructor injection; can break reflection-based wiring.
-
-**`object` is not a Spring bean.** Compiled to a static holder, not registered with Spring's ApplicationContext - `@Autowired` doesn't inject it, `@Transactional` / `@Async` on its methods are ignored. Use `@Component class` for DI / proxying.
 
 ### Null safety and platform types
 

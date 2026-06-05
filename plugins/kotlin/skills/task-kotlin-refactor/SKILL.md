@@ -187,6 +187,8 @@ Each step must be:
 
 **Convert `data class` JPA entity → regular class**: add test for equality / collection behavior → replace `data class` with `class` + ID-based `equals`/`hashCode` (see `kotlin-spring-jpa-performance`) → replace `.copy(...)` with constructor calls → add `kotlin-jpa` / `kotlin-spring` plugins if missing.
 
+**Replace JPA entity as `@RequestBody` with `data class` request DTO** (mass-assignment fix): assert current attack surface (e.g., `POST /orders` with `{"id":99,"ownerId":...,"status":"PAID"}` accepted) → introduce `<Verb><Noun>Request` `data class` with **only** client-controllable fields and `@field:` Bean Validation → service maps DTO → entity, ignoring server-only fields → security test verifies privilege-bearing fields rejected / ignored. Same fix for `@ModelAttribute` and JSON merge endpoints.
+
 **Eliminate `!!`**: per `!!`, pick intent - truly impossible → `requireNotNull(v) { "..." }`; default → `?:`; fail-fast → `error(...)`; optional → `?.let { } ?: alt`. Track `git grep -c "!!"` before/after.
 
 **`@PostUpdate` → `@TransactionalEventListener(AFTER_COMMIT)`**: test current behavior → publish domain event from service → handler runs post-commit. Cross-aggregate work moves to its own `@Service`.

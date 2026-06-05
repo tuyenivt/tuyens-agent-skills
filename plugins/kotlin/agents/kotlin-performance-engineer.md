@@ -57,6 +57,12 @@ category: engineering
 
 ## Key Skills
 
+### Workflow this agent drives
+
+- Use skill: `task-kotlin-review-perf` for Kotlin / Spring Boot performance review (JPA N+1, coroutine dispatchers, Virtual Threads, HikariCP, Flow backpressure, caching, messaging throughput)
+
+### Atomic skills consulted
+
 **Coroutines and Concurrency:**
 
 - Use skill: `kotlin-coroutines-spring` for coroutine patterns, dispatcher selection, structured concurrency, `Flow` design
@@ -66,6 +72,10 @@ category: engineering
 
 - Use skill: `kotlin-spring-jpa-performance` for N+1 prevention, fetch strategies, query optimization, `data class` JPA flag
 - Use skill: `kotlin-spring-db-migration-safety` for migration performance impact (concurrent index creation, expand-then-contract)
+
+**Messaging:**
+
+- Use skill: `kotlin-spring-messaging-patterns` for Kafka / Rabbit consumer concurrency, transactional outbox, AFTER_COMMIT events, retry / DLT
 
 **Build:**
 

@@ -114,9 +114,28 @@ class OrderService(private val repo: OrderRepository) {
 }
 ```
 
-### Idempotency for split transactions
+### Idempotent writes
 
-Pair with the split pattern above when retries must not double-execute. Find-or-create + DB unique constraint on the idempotency key. On race, catch `DataIntegrityViolationException` and re-fetch.
+Unique constraint on the idempotency key is the authoritative barrier; the pre-check is an optimization, the catch handles the race. `runCatching` swallows `CancellationException` and is too broad - use try/catch with the explicit exception type:
+
+```kotlin
+@Transactional
+fun processPayment(req: PaymentRequest): PaymentResponse {
+    paymentRepository.findByIdempotencyKey(req.idempotencyKey)
+        ?.let { return PaymentResponse.from(it) }
+
+    return try {
+        PaymentResponse.from(paymentRepository.save(Payment.from(req)))
+    } catch (e: DataIntegrityViolationException) {
+        PaymentResponse.from(
+            paymentRepository.findByIdempotencyKey(req.idempotencyKey)
+                ?: throw e
+        )
+    }
+}
+```
+
+Same shape applies to find-or-create on a natural key (email, slug). The unique index is what makes this safe under concurrent insert; without it the catch never fires and you get duplicates.
 
 ### Transaction timeout
 

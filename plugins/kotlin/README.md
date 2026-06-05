@@ -23,7 +23,7 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM, coroutine SecurityContext propagation.                                                                                    |
 | `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, dispatcher selection vs Virtual Threads, GC tuning.                                                                       |
 
-### Atomic skills (12)
+### Atomic skills (16)
 
 | Skill                              | Description                                                                                                                                                                            |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -37,6 +37,8 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-spring-db-migration-safety` | Flyway / Liquibase zero-downtime migration patterns, expand-then-contract, non-blocking index creation, Testcontainers migration validation in Kotlin                                 |
 | `kotlin-spring-test-integration`   | Spring test slice strategy (`@DataJpaTest`, `@WebMvcTest`, `@SpringBootTest`), Testcontainers via `@ServiceConnection`, `@MockkBean`, Awaitility, runTest patterns                     |
 | `kotlin-spring-async-processing`   | `@Async`, `ApplicationEvent`, `@TransactionalEventListener`, `@Scheduled` patterns with Virtual Thread / coroutine interop, executor configuration, `@Async` vs coroutines decision    |
+| `kotlin-spring-messaging-patterns` | Spring Kafka / RabbitMQ / Application Events: idempotent consumers, DLT/DLQ, transactional outbox, sealed event hierarchies, `suspend` consumer caveats, webhook discipline           |
+| `kotlin-spring-websocket`          | Kotlin / Spring WebSocket + STOMP: CONNECT-frame JWT, message-level `AuthorizationManager`, broker relay, `Mutex` for suspend handlers, Virtual Thread safety                          |
 | `kotlin-gradle-build-optimization` | Gradle Kotlin DSL, version catalog, build cache, configuration cache, parallel execution, kotlin-jpa / kotlin-spring / kotlin-allopen plugins, springmockk + mockito-core exclusion    |
 | `kotlin-code-explain`              | Coroutines and structured concurrency, suspend boundaries, null safety, data class equality, sealed hierarchies, AOP-proxy interactions with `final`-by-default - injected into `task-code-explain` |
 | `kotlin-onboard-map`               | Gradle Kotlin DSL layout, `kotlin-spring`/`kotlin-allopen`/`kotlin-jpa` plugin checks, coroutines runtime, application.yml profiles - injected into `task-onboard`                        |
