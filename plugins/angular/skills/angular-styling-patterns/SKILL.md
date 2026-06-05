@@ -125,6 +125,53 @@ export class ThemeService {
 }
 ```
 
+### Material 3 (M3) Theming
+
+M3 is the default in Angular 17+. Define a theme via `mat.define-theme()`, then apply globally with `mat.all-component-themes` or per-component (smaller CSS, fewer cascading surprises).
+
+```scss
+// src/styles.scss
+@use '@angular/material' as mat;
+
+$light-theme: mat.define-theme((
+  color:      ( theme-type: light, primary: mat.$violet-palette, tertiary: mat.$blue-palette ),
+  typography: ( brand-family: 'Inter', plain-family: 'Inter' ),
+  density:    ( scale: 0 ),
+));
+
+$dark-theme: mat.define-theme((
+  color:      ( theme-type: dark, primary: mat.$violet-palette, tertiary: mat.$blue-palette ),
+  density:    ( scale: 0 ),
+));
+
+html { @include mat.all-component-themes($light-theme); }
+.dark { @include mat.all-component-colors($dark-theme); }   // dark = color overrides only
+```
+
+Use `mat.all-component-themes` once at the root for new apps. For bundle-sensitive apps, swap to per-component (`@include mat.button-theme($t); @include mat.dialog-theme($t);`) and drop unused components from the SCSS - cuts theme CSS significantly.
+
+Read M3 tokens in component SCSS instead of hardcoded colors:
+
+```scss
+@use '@angular/material' as mat;
+.card { background: mat.get-theme-color($light-theme, surface-container); }
+```
+
+### CDK Overlay Theming
+
+Material's overlay (dialog, menu, tooltip, autocomplete) renders into `<div class="cdk-overlay-container">` appended to `<body>`. Component-encapsulated styles do not reach it. Put overlay styles in `styles.scss` (global) or use `ViewEncapsulation.None` with class scoping.
+
+```scss
+// global - applies to every overlay panel
+.cdk-overlay-container .mat-mdc-dialog-surface { border-radius: 16px; }
+
+// pass a panelClass when scoping per-instance
+this.dialog.open(FormDialogComponent, { panelClass: 'form-dialog-panel' });
+
+// styles.scss
+.form-dialog-panel .mat-mdc-dialog-surface { padding: 0; }
+```
+
 ### Tailwind + Angular Material Coexistence
 
 - Disable Tailwind's `preflight` only if it conflicts with Material; usually fine.

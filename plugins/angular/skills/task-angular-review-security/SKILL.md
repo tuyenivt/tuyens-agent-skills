@@ -1,6 +1,6 @@
 ---
 name: task-angular-review-security
-description: Angular security review - XSS via innerHTML/bypassSecurityTrust, CSP, functional guards/interceptors, token storage, open redirect, SSR, CSRF.
+description: Angular security review - XSS via innerHTML/bypassSecurityTrust, CSP, guards, interceptors, token storage, SSR, CSRF.
 agent: angular-security-engineer
 metadata:
   category: frontend
@@ -8,8 +8,6 @@ metadata:
   type: workflow
 user-invocable: true
 ---
-
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 
 # Angular Security Review
 
@@ -47,19 +45,23 @@ When co-location isn't obvious from diff: file separately at independent severit
 | `/task-angular-review-security <branch>` | `<branch>` vs base (3-dot diff)          |
 | `/task-angular-review-security pr-<N>`   | PR head fetched into `pr-<N>`            |
 
-Subagent mode: parent passes precondition handle + read diff/log; Step 2 skipped.
+Subagent mode: parent passes precondition handle + read diff/log; Step 3 skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. If not Angular, stop. Record `Angular: <version>`, `SSR: enabled | disabled | unknown`, `Auth: <library>`. When SSR is unknown from diff, state assumption and flag for verification.
 
-### Step 2 - Resolve the Diff
+### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read diff + commit log once. Skip if parent passed the handle.
 
-### Step 3 - Read the Security Surface
+### Step 4 - Read the Security Surface
 
 - Every changed `*.component.ts/.html` - `[innerHTML]`, sanitizer use, navigation calls
 - Every changed `*.guard.ts` / `*.resolver.ts` / `*.routes.ts` - functional guards, route config
@@ -73,9 +75,9 @@ Use skill: `review-precondition-check`. Read diff + commit log once. Skip if par
 
 When the diff weakens or removes a CSP rule, sanitizer call, guard, or interceptor, `git log -p` the prior revision to confirm what was protected.
 
-### Step 4 - OWASP Triage
+### Step 5 - OWASP Triage
 
-Triage pass only - produces one signal verdict per category (`yes` / `no signal in diff`). Steps 5-9 produce the findings; do not duplicate here.
+Triage pass only - produces one signal verdict per category (`yes` / `no signal in diff`). Steps 6-10 produce the findings; do not duplicate here.
 
 | Risk                          | Angular-specific check                                                                                                                                                                                  |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -88,7 +90,7 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 | Data Integrity Failures (A08) | `JSON.parse` on untrusted bounded; `eval` / `new Function` flagged (any occurrence = Critical)                                                                                                          |
 | Logging & Monitoring (A09)    | Sentry `beforeSend` strips PII; client logs do not include `password`, `token`, `authorization`                                                                                                        |
 
-### Step 5 - Authentication
+### Step 6 - Authentication
 
 **Angular SPA + separate backend (most common):**
 
@@ -108,14 +110,14 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 - [ ] **No shared per-user SSR cache** - per-user data must verify cookie/token on server-side fetch
 - [ ] **`TransferState` / hydration payload** - server resolvers project to a DTO (`select: { id, name, email }`); never serialize entire ORM rows
 
-### Step 6 - Authorization
+### Step 7 - Authorization
 
 - [ ] **Client guards mirror server** - guard redirect is UX; backend enforces authz independently
 - [ ] **Role checks** - role comes from server-validated session/JWT (parsed by auth library), never from request body / search param / unverified client claim
 - [ ] **Per-tenant isolation** - tenant scoped via session, not URL
 - [ ] **CSRF** - cookie-session auth needs token (`X-XSRF-TOKEN` via `withXsrfConfiguration`) or `SameSite=Strict/Lax`. Bearer-token apps should not enable it unnecessarily
 
-### Step 7 - Input Validation, Vulnerability Patterns, and Data Protection
+### Step 8 - Input Validation, Vulnerability Patterns, and Data Protection
 
 Combined to avoid cross-step duplication. Each pattern lives in exactly one place.
 
@@ -130,7 +132,7 @@ Combined to avoid cross-step duplication. Each pattern lives in exactly one plac
 **XSS / sanitizer / navigation:**
 
 - [ ] **`[innerHTML]`** - every binding has sanitizer in chain or comment justifying trust. Never `[innerHTML]="markdownService.render(userInput)"` without `DomSanitizer.sanitize(SecurityContext.HTML, ...)`
-- [ ] **`bypassSecurityTrust*`** - every call (`Html` / `ResourceUrl` / `Script` / `Style` / `Url`) has comment justifying trust. `bypassSecurityTrustHtml(userInput)` is Critical
+- [ ] **`bypassSecurityTrust*`** - every call (`Html` / `ResourceUrl` / `Script` / `Style` / `Url`) has comment justifying trust. `bypassSecurityTrustHtml(userInput)` is Critical. **Audit the upstream**: when `bypassSecurityTrustHtml` is used, the input must be DOMPurify-sanitized (or equivalent) before this point, OR sourced from a server-trusted endpoint - flag the chain end-to-end, not the call site alone
 - [ ] **`[href]` / `[src]` / `[routerLink]` from user URL** - scheme must be `http(s):`; allowlist hosts
 - [ ] **Open redirect** - `Router.navigateByUrl(query.returnTo)` requires `url.startsWith('/') && !url.startsWith('//')` or allowlist
 - [ ] **`window.addEventListener('message')`** origin check
@@ -153,14 +155,14 @@ Combined to avoid cross-step duplication. Each pattern lives in exactly one plac
 - [ ] **Secrets management** - build-injected env vars from secret store (Vault / Secrets Manager / Doppler / hosting)
 - [ ] **Production source maps** - `angular.json` `sourceMap: false` or upload-then-strip via Sentry plugin
 
-### Step 8 - SSR-Specific Exposure
+### Step 9 - SSR-Specific Exposure
 
 _Skipped on SPA-only._
 
 - [ ] **`TransferState` payload** - server resolver populating `TransferState` with `prisma.user.findUnique(...)` serializes the row (including `passwordHash`, `mfaSecret`) into the HTML payload. Project to a DTO at the data-fetch layer
 - [ ] **Module-level mutable state** - `let cache = {}` mutated by render leaks across SSR requests
 
-### Step 9 - Write Report
+### Step 10 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation line.
 
@@ -227,7 +229,7 @@ _Omit if no security issues found._
 
 ## Self-Check
 
-- [ ] Stack confirmed; Angular version, SSR, auth library recorded (SSR `unknown` flagged for verification when not visible in diff)
+- [ ] Principles loaded; stack confirmed; Angular version, SSR, auth library recorded (SSR `unknown` flagged for verification when not visible in diff)
 - [ ] Diff resolved once; precondition handle reused; prior revisions consulted when guards/interceptors removed
 - [ ] Security surface read directly before checklists
 - [ ] OWASP triage produces one signal verdict per category; not duplicated as findings

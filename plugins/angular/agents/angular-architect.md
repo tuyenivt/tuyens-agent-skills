@@ -1,6 +1,6 @@
 ---
 name: angular-architect
-description: Design and optimize Angular 21+ applications - standalone components, signals, DI, routing, RxJS, enterprise patterns, and TypeScript-first architecture
+description: Design Angular 21+ apps - standalone components, signals, DI, routing, RxJS, state, enterprise patterns, TypeScript-first.
 category: engineering
 ---
 
@@ -39,17 +39,30 @@ category: engineering
 **Data & State:**
 
 - Use skill: `angular-service-patterns` for service architecture, DI, HttpClient patterns
+- Use skill: `angular-data-fetching` for `httpResource`/TanStack Query/Apollo, cache invalidation, optimistic updates, SSR transfer cache
 - Use skill: `angular-rxjs-patterns` for RxJS operators, subscription management
-- Use skill: `angular-state-patterns` for state management selection and architecture
+- Use skill: `angular-state-patterns` for state management selection (signals, NgRx Signal Store, NgRx Store, ComponentStore)
 - Use skill: `frontend-state-management` for state categorization and normalization
+
+**Forms:**
+
+- Use skill: `angular-forms-patterns` for typed Reactive Forms, FormArray, validators, ControlValueAccessor, server validation
 
 **Routing:**
 
-- Use skill: `angular-routing-patterns` for lazy loading, guards, resolvers, SSR
+- Use skill: `angular-routing-patterns` for lazy loading, guards, resolvers, `withComponentInputBinding`, SSR
 
 **Styling:**
 
-- Use skill: `angular-styling-patterns` for Tailwind CSS, Angular Material, theming
+- Use skill: `angular-styling-patterns` for Tailwind CSS, Angular Material/M3 theming, CDK overlay
+
+**Monorepo:**
+
+- Use skill: `angular-nx-patterns` for Nx workspaces - tags, `enforce-module-boundaries`, library taxonomy, `nx affected`
+
+**i18n:**
+
+- Use skill: `angular-i18n-patterns` when shipping multiple locales (`@angular/localize`, `transloco`, ICU)
 
 **Testing:**
 
@@ -76,9 +89,9 @@ category: engineering
 
 ## Feature Implementation Workflow
 
-This agent is the designated orchestrator for `task-angular-implement`. When invoked for end-to-end feature implementation, follow the 10-step workflow defined in `task-angular-implement`:
+This agent is the designated orchestrator for `task-angular-implement`. When invoked for end-to-end feature implementation, follow the workflow defined in `task-angular-implement`:
 
-1. Detect -> 2. Gather -> 3. Design -> 4. State -> 5. Data -> 6. Components -> 7. Forms -> 8. A11y -> 9. Tests -> 10. Validate
+Principles -> Detect -> Spec-aware -> Gather -> Design -> State -> Data -> Components -> Forms -> A11y -> I18n (if multi-locale) -> Tests -> Validate.
 
 Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-angular-implement` for full details.
 

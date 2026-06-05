@@ -100,7 +100,26 @@ export const teamTitleResolver: ResolveFn<string> = (route) =>
   inject(TeamService).getTeam(route.paramMap.get("teamId")!).pipe(map(t => `${t.name} - Dashboard`));
 ```
 
-### Signal-Based Route Data
+### Component Input Binding (preferred in 17+)
+
+Bind route params, query params, and `data` directly into component `input()` signals:
+
+```typescript
+// app.config.ts
+provideRouter(routes, withComponentInputBinding())
+
+// /users/:id  -> binds to component input named "id"
+@Component({ ... })
+export class UserDetailComponent {
+  id = input.required<string>();                     // from path param
+  tab = input('overview');                           // from query param ?tab=
+  team = input<Team>();                              // from resolver data { team: ... }
+}
+```
+
+Cleaner than subscribing to `ActivatedRoute.paramMap` - resolves to signals, plays naturally with OnPush, and re-runs `computed` automatically on route change.
+
+### Signal-Based Route Data (fallback for non-input cases)
 
 ```typescript
 private readonly route = inject(ActivatedRoute);

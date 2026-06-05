@@ -30,6 +30,7 @@ category: quality
 ## Key Skills
 
 - Use skill: `angular-testing-patterns` for Angular-specific testing patterns, TestBed setup, harness testing
+- Use skill: `angular-forms-patterns` for Reactive Forms test coverage (validators, FormArray, ControlValueAccessor)
 - Use skill: `frontend-testing-patterns` for testing pyramid, snapshot discipline, e2e strategy
 
 ## Key Actions

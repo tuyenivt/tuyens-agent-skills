@@ -22,29 +22,57 @@ If only a feature name is given, ask for components, data sources, interactions,
 
 ## Workflow
 
-**STEP 1 - PRINCIPLES:** Use skill: `behavioral-principles`.
+### Step 1 - Behavioral Principles
 
-**STEP 2 - DETECT:** Use skill: `stack-detect`. Identify Angular version, SSR, styling, state library, test framework.
+Use skill: `behavioral-principles`.
 
-**STEP 3 - SPEC-AWARE (conditional):** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, Use skill: `spec-aware-preamble`. Follow its mode contract; skip STEP 4 (GATHER) and STEP 5 (DESIGN) when `plan.md` is present. Never edit `spec.md`/`plan.md`/`tasks.md`.
+### Step 2 - Confirm Stack
 
-**STEP 4 - GATHER:** Feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints.
+Use skill: `stack-detect`. Identify Angular version, SSR, styling, state library, test framework.
 
-**STEP 5 - DESIGN:** Use skill: `angular-component-patterns`. Propose component tree, file structure, routes. If routing is non-trivial (nested, lazy, guards), also Use skill: `angular-routing-patterns`. Present for user approval before generating code.
+### Step 3 - Spec-Aware (conditional)
 
-**STEP 6 - STATE:** Use skill: `angular-state-patterns` + `angular-signals-patterns`. Classify state (local, shared, global, server, URL, form) and assign owners. Filters/sort/pagination/search default to route query params. State the URL contract: param schema, sync direction (form -> URL, URL -> fetch), debounce on URL writes, and cancellation strategy.
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, Use skill: `spec-aware-preamble`. Follow its mode contract; skip Step 4 (Gather) and Step 5 (Design) when `plan.md` is present. Never edit `spec.md`/`plan.md`/`tasks.md`.
 
-**STEP 7 - DATA:** Use skill: `angular-service-patterns`. Service architecture, HTTP interceptors, loading/error/empty states, caching. Use `angular-rxjs-patterns` only if RxJS-specific timing (retry, multicast, complex flattening) is in scope. Skip entirely for pure-UI features.
+### Step 4 - Gather
 
-**STEP 8 - COMPONENTS:** Generate standalone OnPush components with signals, typed DI, content projection, project styling (Use skill: `angular-styling-patterns`). Use `@defer` for heavy below-the-fold subtrees only when present. On SSR, guard browser APIs with `isPlatformBrowser` and hydrate via `TransferState`.
+Feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints.
 
-**STEP 9 - FORMS:** Use skill: `frontend-form-handling`. Reactive Forms with validation, error display, submission, dirty tracking. Skip if no form.
+### Step 5 - Design
 
-**STEP 10 - A11Y:** Use skill: `frontend-accessibility`. Audit generated components for WCAG 2.1 AA.
+Use skill: `angular-component-patterns`. Propose component tree, file structure, routes. If routing is non-trivial (nested, lazy, guards), also Use skill: `angular-routing-patterns`. For Nx workspaces, also Use skill: `angular-nx-patterns` to place libraries and apply tag boundaries. Present for user approval before generating code.
 
-**STEP 11 - TESTS:** Use skill: `angular-testing-patterns`. Component, service, integration tests; flag critical paths for e2e.
+### Step 6 - State
 
-**STEP 12 - VALIDATE:** Run `ng build` + `ng test` + `ng lint`. Present file list, component tree, and test count.
+Use skill: `angular-state-patterns` + `angular-signals-patterns`. Classify state (local, shared, global, server, URL, form) and assign owners. Filters/sort/pagination/search default to route query params. State the URL contract: param schema, sync direction (form -> URL, URL -> fetch), debounce on URL writes, and cancellation strategy.
+
+### Step 7 - Data
+
+Use skill: `angular-data-fetching` (primary - HttpClient, `resource()`/`httpResource()`, TanStack Query for Angular, Apollo, cache invalidation, optimistic updates, SSR transfer cache). Use `angular-service-patterns` for service shape, DI scope, functional interceptors. Use `angular-rxjs-patterns` only if RxJS-specific timing (retry, multicast, complex flattening) is in scope. Skip entirely for pure-UI features.
+
+### Step 8 - Components
+
+Generate standalone OnPush components with signals, typed DI, content projection, project styling (Use skill: `angular-styling-patterns`). Use `@defer` for heavy below-the-fold subtrees only when present. On SSR, guard browser APIs with `isPlatformBrowser` and hydrate via `TransferState`.
+
+### Step 9 - Forms
+
+Use skill: `angular-forms-patterns` (typed Reactive Forms, validators, FormArray, ControlValueAccessor, server validation surfacing). Fall back to `frontend-form-handling` only for non-Reactive patterns. Skip if no form.
+
+### Step 10 - A11y
+
+Use skill: `frontend-accessibility`. Audit generated components for WCAG 2.1 AA. Apply Angular-specific patterns: CDK `FocusTrap`/`LiveAnnouncer`/`FocusMonitor`, `NgOptimizedImage` alt, `host: {'aria-*': ...}`, `MatDialog` focus management.
+
+### Step 11 - I18n (conditional)
+
+When the feature has user-facing strings and the project ships in multiple locales, Use skill: `angular-i18n-patterns` for `$localize` / `i18n` attribute / ICU and `LOCALE_ID` wiring. Skip if single-locale.
+
+### Step 12 - Tests
+
+Use skill: `angular-testing-patterns`. Component, service, integration tests; flag critical paths for e2e.
+
+### Step 13 - Validate
+
+Run `ng build` + `ng test` + `ng lint`. Present file list, component tree, and test count.
 
 ## Output Format
 
@@ -96,14 +124,15 @@ If only a feature name is given, ask for components, data sources, interactions,
 ## Self-Check
 
 - [ ] Principles loaded; stack detected
-- [ ] Spec-aware mode resolved if a spec exists; STEPS 4-5 skipped if `plan.md` present
+- [ ] Spec-aware mode resolved if a spec exists; Steps 4-5 skipped if `plan.md` present
 - [ ] Requirements captured or spec ingested
-- [ ] Component tree designed and approved by user (skipped under spec mode)
+- [ ] Component tree designed and approved by user (skipped under spec mode); Nx library placement decided when workspace is Nx
 - [ ] State classified and owned; URL state used for pagination/filters/search with explicit contract
-- [ ] Data layer defined with loading/error/empty states, or skipped for pure UI
+- [ ] Data layer defined with loading/error/empty states, cache invalidation strategy stated; or skipped for pure UI
 - [ ] Components are standalone, OnPush, signal-driven; SSR guards in place when applicable
-- [ ] Forms use Reactive Forms with validation, or step skipped
+- [ ] Forms use typed Reactive Forms with validation, or step skipped
 - [ ] WCAG 2.1 AA audit passed
+- [ ] i18n strategy applied when multi-locale, or step skipped
 - [ ] Tests cover components, services, integration, and critical flows
 - [ ] `ng build`, `ng test`, `ng lint` all pass
 

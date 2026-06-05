@@ -140,6 +140,8 @@ forkJoin({ users: users$, categories: categories$ }); // waits for all to comple
 | Streams (WebSocket, events)           | RxJS            | Continuous event streams            |
 | Complex timing (retry, debounce)      | RxJS            | Operators handle timing             |
 
+`resource()` is experimental in Angular 19 and stable from 20+. On projects pinned to 19, gate adoption or accept the experimental status explicitly. For data-layer composition (cache, mutations, optimistic updates), see `angular-data-fetching`.
+
 ## Output Format
 
 ```
@@ -150,6 +152,10 @@ forkJoin({ users: users$, categories: categories$ }); // waits for all to comple
 | Observable          | Source          | Flattening      | Cleanup           |
 | ------------------- | --------------- | --------------- | ----------------- |
 | {name}              | {HTTP/Subject}  | {switchMap/etc} | {async/toSignal}  |
+
+### Recommendations
+
+- {structural improvement: convert subscribe to async pipe, migrate hot stream to signal, etc.}
 
 ### Issues Found
 

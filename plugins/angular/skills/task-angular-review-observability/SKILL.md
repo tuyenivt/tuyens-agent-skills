@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Angular Observability Review
 
 Stack-specific delegate of `task-code-review-observability` for Angular. Focuses on Angular library + SDK wiring: `web-vitals`, `@sentry/angular` with `Sentry.createErrorHandler()` provided as `ErrorHandler` and `Sentry.TraceService` for router spans, OpenTelemetry browser SDK + SSR `@opentelemetry/sdk-node`, structured client logging, RUM correlation. Infra-level concerns (dashboards, alert rules, log forwarders) are out of scope.
@@ -27,7 +25,7 @@ Stack-specific delegate of `task-code-review-observability` for Angular. Focuses
 
 | Depth      | Runs                                              |
 | ---------- | ------------------------------------------------- |
-| `quick`    | Steps 3-5 (Surface Map + Web Vitals + Sentry)     |
+| `quick`    | Steps 4-6 (Surface Map + Web Vitals + Sentry)     |
 | `standard` | All steps (default)                               |
 | `deep`     | All steps + SLI/SLO suggestions per critical route |
 
@@ -39,19 +37,23 @@ Stack-specific delegate of `task-code-review-observability` for Angular. Focuses
 | `/task-angular-review-observability <branch>` | `<branch>` vs base (3-dot diff)          |
 | `/task-angular-review-observability pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch) |
 
-Subagent mode: parent passes precondition handle + read diff/log; Step 2 skipped.
+Subagent mode: parent passes precondition handle + read diff/log; Step 3 skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
 
-Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-review-observability`. Record `Angular: <version>`, `SSR: enabled | disabled`. Steps 6 and 8 branch on the SSR signal.
+Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
 
-### Step 2 - Resolve the Diff
+### Step 2 - Confirm Stack
+
+Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-review-observability`. Record `Angular: <version>`, `SSR: enabled | disabled`. Steps 7 and 9 branch on the SSR signal.
+
+### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read diff + commit log once, reuse. Skip if parent passed the handle.
 
-### Step 3 - Map the Instrumentation Surface
+### Step 4 - Map the Instrumentation Surface
 
 Produce a one-line verdict per surface (web-vitals / error tracker / OTel browser / OTel server SSR / structured logging / RUM) of the form `wired | partial | absent`.
 
@@ -62,7 +64,7 @@ Produce a one-line verdict per surface (web-vitals / error tracker / OTel browse
 
 Read the files that configure observability so findings cite real lines: `app.config.ts` / `app.config.server.ts` / `main.ts` / `main.server.ts` / `server.ts` / `*.interceptor.ts` / `*.service.ts` / `package.json` / `angular.json`.
 
-### Step 4 - Web Vitals Reporting
+### Step 5 - Web Vitals Reporting
 
 - [ ] `web-vitals` v4+ installed; reporter wired in `main.ts` (after `bootstrapApplication`) or via `provideAppInitializer`; SSR-guarded with `isPlatformBrowser` / `afterNextRender`. Legacy `APP_INITIALIZER` is valid but flag for migration when seen.
 - [ ] All Core Web Vitals: `onLCP` / `onINP` / `onCLS` (+ optional `onTTFB`, `onFCP`). INP must be present - missing INP signals legacy `getFID` config.
@@ -71,7 +73,7 @@ Read the files that configure observability so findings cite real lines: `app.co
 - [ ] Route correlation: subscribe to `Router.events` `NavigationEnd` so SPA navigations get distinct metrics.
 - [ ] Recommend `web-vitals/attribution` when slow paths exist.
 
-### Step 5 - Error Boundaries and Error Tracking
+### Step 6 - Error Boundaries and Error Tracking
 
 - [ ] `@sentry/angular` initialized in `main.ts` / `app.config.ts` via `Sentry.init({ dsn, integrations: [browserTracingIntegration(), replayIntegration()] })`
 - [ ] `Sentry.createErrorHandler()` provided as `ErrorHandler` in `app.config.ts`. Without this, uncaught errors only hit Angular's default handler (console).
@@ -83,7 +85,7 @@ Read the files that configure observability so findings cite real lines: `app.co
 - [ ] Sentry Replay vs strict CSP: Replay injects inline scripts; `script-src 'self' 'nonce-XXX'` without `'unsafe-inline'` blocks it - flag the conflict when both surfaces appear in the diff.
 - [ ] Source maps uploaded (`@sentry/cli` / `@sentry/webpack-plugin`); `angular.json` production `sourceMap: false` or stripped after upload.
 
-### Step 6 - OpenTelemetry / Tracing
+### Step 7 - OpenTelemetry / Tracing
 
 **Browser:**
 
@@ -99,23 +101,23 @@ Read the files that configure observability so findings cite real lines: `app.co
 - [ ] Resource attributes: `service.name`, `service.version`, `deployment.environment`
 - [ ] `BatchSpanProcessor` (not `SimpleSpanProcessor`); `sdk.shutdown()` on `SIGTERM`
 
-### Step 7 - Structured Client Logging
+### Step 8 - Structured Client Logging
 
 - [ ] No `console.log` / `console.error` in production paths; replaced with structured logger.
-- [ ] **Replay/breadcrumb compound check.** Sentry's `consoleIntegration` ships every `console.*` as a breadcrumb; Replay records console output. When diff has `console.*` of non-trivial payload AND high Replay sampling, surface as ONE finding cross-referenced to Step 5:
+- [ ] **Replay/breadcrumb compound check.** Sentry's `consoleIntegration` ships every `console.*` as a breadcrumb; Replay records console output. When diff has `console.*` of non-trivial payload AND high Replay sampling, surface as ONE finding cross-referenced to Step 6:
   - **High** when `replaysSessionSampleRate >= 0.5` without input `mask` / `block`
   - **Critical** when the High case also has `sendDefaultPii: true`
 - [ ] Sensitive fields stripped via `Sentry.beforeBreadcrumb`: no `password`, `token`, `authorization`, `Cookie`.
 - [ ] No log spam in `constructor` / `ngOnInit` (fires per instantiation - RUM cost).
 - [ ] Custom RUM events for business-critical actions (signup, checkout, payment).
 
-### Step 8 - User Identity and Session Correlation
+### Step 9 - User Identity and Session Correlation
 
 - [ ] `Sentry.setUser({ id })` on auth success; `Sentry.setUser(null)` on logout. Hook via `effect(() => Sentry.setUser(this.auth.currentUser() ? { id: ... } : null))`. `email` only with explicit consent.
 - [ ] `Sentry.setTag` for tenant / role / feature-flag keys (bounded cardinality - no full names).
 - [ ] `Sentry.setContext` for build version, route, sanitized query params.
 
-### Step 9 - RUM Integration
+### Step 10 - RUM Integration
 
 - [ ] RUM SDK initialized at app entry, before router hooks (else first navigation pageview lost)
 - [ ] SPA navigation tracked via `Router.events` `NavigationEnd` (Datadog auto-detects with `trackViewsManually: false`; custom RUM needs explicit subscription)
@@ -123,7 +125,7 @@ Read the files that configure observability so findings cite real lines: `app.co
 - [ ] DNT / consent respected
 - [ ] Correlation: shared `userId` / `sessionId` / `traceId` across RUM, Sentry, OTel
 
-### Step 10 - Health and SLIs (deep depth only)
+### Step 11 - Health and SLIs (deep depth only)
 
 - [ ] Critical journeys have a measurable SLI (CWV thresholds or journey-specific RUM metric)
 - [ ] SLOs documented in code
@@ -131,13 +133,13 @@ Read the files that configure observability so findings cite real lines: `app.co
 - [ ] Synthetic checks (Datadog Synthetics, Checkly) for critical journeys
 - [ ] `angular.json` `budgets` enforced in CI
 
-### Step 11 - Write Report
+### Step 12 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation line.
 
 ## Self-Check
 
-- [ ] Stack confirmed; Angular version + SSR recorded
+- [ ] Principles loaded; stack confirmed; Angular version + SSR recorded
 - [ ] Diff resolved once; precondition handle reused
 - [ ] Surface Map produced with `wired | partial | absent` per surface; absent collapsed into one finding each, partials emit per-misuse findings
 - [ ] Web Vitals (INP, transport, route correlation), Error tracker (`createErrorHandler`, `TraceService`, PII, Replay/CSP), OTel (browser + SSR `NodeSDK`), Structured logging, Identity, RUM checked per scope; SLI/SLO at `deep`

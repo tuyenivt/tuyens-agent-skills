@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Angular Refactor
 
 Produce a safe, step-by-step refactoring plan for a specific Angular target (component, service, guard, interceptor, route config, store). Identifies Angular-specific smells and proposes independently-committable steps with `ng build` + test-suite gates between each.
@@ -37,11 +35,15 @@ Stack-specific delegate of `task-code-refactor` for Angular.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-refactor`. Record `Angular: <version>`, `Change detection: zone.js | zoneless`, `SSR: enabled | disabled`.
 
-### Step 2 - Read the Target
+### Step 3 - Read the Target
 
 Refactor plans grounded in prose hallucinate smells that aren't there.
 
@@ -53,17 +55,17 @@ If the user named only a goal without a target, ask for the target before procee
 
 **Sibling-smell disposition.** If the target file contains smells outside the named goal (e.g., `bypassSecurityTrustHtml` co-located), list under `Sibling Smells (Out of Scope)` with a one-phrase deferral and follow-up skill - do not action.
 
-### Step 3 - Coverage Gate
+### Step 4 - Coverage Gate
 
 | Status       | Definition                                                                                  | Action                                                              |
 | ------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `Adequate`   | Happy path + at least 2 boundary outcomes per public entry point                            | Proceed                                                             |
 | `Thin`       | Happy path + exactly 1 boundary outcome                                                     | Proceed; plan includes mandatory `Step 0 - Coverage prerequisite`   |
-| `Inadequate` | No tests, or happy-path-only                                                                | **Refuse Steps 1+.** Output Coverage Gate verdict and recommend `task-angular-test`. Step 4 catalog still runs as preview. |
+| `Inadequate` | No tests, or happy-path-only                                                                | **Refuse later steps.** Output Coverage Gate verdict and recommend `task-angular-test`. Smell catalog (Step 5) still runs as preview. |
 
 **Internal-coupled tests count negatively.** Tests asserting `fixture.componentInstance.<internal>` or stream names the refactor will rename are surfaced as `internal-coupled: <test:line>` and require DOM/event rewrite in `Step 0` before that refactor step runs.
 
-### Step 4 - Identify Angular Smells
+### Step 5 - Identify Angular Smells
 
 Use judgment - these are signals, not hard rules.
 
@@ -106,7 +108,7 @@ For accessibility, security, and SSR-specific smells, defer to `task-angular-rev
 
 Use skill: `complexity-review` when the target shows over-engineering signals (single-impl generic, content-projection abstraction for one consumer).
 
-### Step 5 - Cross-Module Risk
+### Step 6 - Cross-Module Risk
 
 Use skill: `review-blast-radius`. Angular-specific signals:
 
@@ -119,7 +121,7 @@ Use skill: `review-blast-radius`. Angular-specific signals:
 
 State blast radius before proposing steps: **Narrow** | **Moderate** | **Wide** | **Critical**.
 
-### Step 6 - Propose the Step Sequence
+### Step 7 - Propose the Step Sequence
 
 Each step must be (1) independently committable, (2) behaviorally invariant unless labeled `coupled-fix`, (3) reversible in one revert, (4) tested.
 
@@ -183,7 +185,7 @@ Each step must be (1) independently committable, (2) behaviorally invariant unle
 
 **Subscription-boundary watch.** When introducing `takeUntilDestroyed()`, ensure the call site is in an injection context.
 
-### Step 7 - Validate Plan Against Goal
+### Step 8 - Validate Plan Against Goal
 
 - [ ] Goal achieved at the end of the sequence
 - [ ] Each step ≤30 min to review
@@ -208,7 +210,7 @@ Each step must be (1) independently committable, (2) behaviorally invariant unle
 
 [Adequate: one sentence on boundary cases that exist.]
 [Thin: list missing boundary tests; Step 0 covers them.]
-[Inadequate: state what coverage must exist; recommend `task-angular-test`. **Stop here** - omit Blast Radius, Step Sequence, Verification. Step 4 catalog still produces Smells Identified + Sibling Smells as preview.]
+[Inadequate: state what coverage must exist; recommend `task-angular-test`. **Stop here** - omit Blast Radius, Step Sequence, Verification. Step 5 catalog still produces Smells Identified + Sibling Smells as preview.]
 
 ## Smells Identified
 
@@ -265,7 +267,7 @@ _Include `CD stance` and `Subscription stance` only for steps that touch them._
 
 ## Self-Check
 
-- [ ] Stack confirmed; CD mode and SSR recorded
+- [ ] Principles loaded; stack confirmed; CD mode and SSR recorded
 - [ ] Target + tests read directly; sibling smells captured
 - [ ] Coverage gate evaluated (Adequate / Thin / Inadequate); happy-path-only = Inadequate; preview catalog runs if Inadequate
 - [ ] Primary recipe named; plan ≤~8 steps or split

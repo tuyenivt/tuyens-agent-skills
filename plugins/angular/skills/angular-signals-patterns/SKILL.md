@@ -66,6 +66,16 @@ effect((onCleanup) => {
 });
 ```
 
+`untracked()` reads a signal inside a reactive context **without** subscribing to it - used to read config or break dep cycles without re-triggering on every change:
+
+```typescript
+effect(() => {
+  // re-runs only when `selectedId` changes; reading `config()` here does not subscribe
+  const id = this.selectedId();
+  this.analytics.track('select', { id, traceId: untracked(() => this.config().traceId) });
+});
+```
+
 ### toSignal / toObservable
 
 ```typescript

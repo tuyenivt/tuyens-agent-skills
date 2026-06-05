@@ -36,13 +36,21 @@ user-invocable: true
 
 ## Workflow
 
-**STEP 1 - PRINCIPLES:** `Use skill: behavioral-principles`.
+### Step 1 - Behavioral Principles
 
-**STEP 2 - STACK:** `Use skill: stack-detect` to confirm Angular version, zoneless vs zone.js, SSR usage, state library.
+Use skill: `behavioral-principles`.
 
-**STEP 3 - INTAKE:** Capture error text, file, repro steps. If ambiguous, ask one clarifying question before proceeding.
+### Step 2 - Confirm Stack
 
-**STEP 4 - CLASSIFY:** Match the symptom to a row and load the relevant atomic skill.
+Use skill: `stack-detect`. Confirm Angular version, zoneless vs zone.js, SSR usage, state library.
+
+### Step 3 - Intake
+
+Capture error text, file, repro steps. If ambiguous, ask one clarifying question before proceeding.
+
+### Step 4 - Classify
+
+Match the symptom to a row and load the relevant atomic skill.
 
 **Routing rule for no-exception bugs:** When the symptom is "wrong value, no exception" (stale view, missing data, wrong route), use the No-error / wrong-behavior table. When an exception or framework warning fires, use the Errored category table. If both apply, prefer the No-error row - it isolates the silent failure mode.
 
@@ -83,17 +91,25 @@ user-invocable: true
 | Signal input read in constructor              | Value is `undefined` early                       | Read in `computed` / `effect`, set default, or use `input.required`            |
 | `toSignal` returns undefined                  | Type widened, template breaks                    | Add `initialValue` or `requireSync: true`                                      |
 
-**STEP 5 - LOCATE:** Open the failing file plus ~50 lines of context. Trace route -> parent -> failing component -> service. Name the layer: Component | Service | State | Routing | RxJS | Build | Test.
+### Step 5 - Locate
 
-**STEP 6 - ROOT CAUSE:** Explain WHY the error fires, citing the specific line. Rate confidence:
+Open the failing file plus ~50 lines of context. Trace route -> parent -> failing component -> service. Name the layer: Component | Service | State | Routing | RxJS | Build | Test.
+
+### Step 6 - Root Cause
+
+Explain WHY the error fires, citing the specific line. Rate confidence:
 
 - HIGH: error and code point to one cause unambiguously
 - MEDIUM: cause is likely but alternatives exist
 - LOW: need more input - state what (file, repro, version)
 
-**STEP 7 - FIX:** Show before/after for the exact change. If alternatives exist, rank by (1) correctness, (2) minimal surface, (3) project pattern alignment.
+### Step 7 - Fix
 
-**STEP 8 - PREVENT:** Suggest a test that would have caught this. If the pattern likely repeats, grep for similar usage (e.g., `\(\)\.[a-z]+\s*=` for nested signal mutation).
+Show before/after for the exact change. If alternatives exist, rank by (1) correctness, (2) minimal surface, (3) project pattern alignment.
+
+### Step 8 - Prevent
+
+Suggest a test that would have caught this. If the pattern likely repeats, grep for similar usage (e.g., `\(\)\.[a-z]+\s*=` for nested signal mutation).
 
 ## Output Format
 

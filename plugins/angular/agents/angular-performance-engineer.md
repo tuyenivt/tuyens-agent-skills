@@ -43,10 +43,12 @@ category: engineering
 
 ## Key Skills
 
-- Use skill: `frontend-performance` for Core Web Vitals patterns, bundle analysis, image optimization
+- Use skill: `task-angular-review-perf` for the Angular-specific perf review workflow (CWV, bundle, CD, signals, `@defer`, SSR + HTTP transfer cache)
+- Use skill: `frontend-performance` for stack-agnostic Core Web Vitals patterns, bundle analysis, image optimization
 - Use skill: `angular-component-patterns` for OnPush change detection optimization
 - Use skill: `angular-signals-patterns` for signals migration to reduce change detection overhead
 - Use skill: `angular-rxjs-patterns` for subscription management and caching
+- Use skill: `angular-data-fetching` for cache, SSR transfer cache, mutation invalidation patterns
 
 ## Principle
 

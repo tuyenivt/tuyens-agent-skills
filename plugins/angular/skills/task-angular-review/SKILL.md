@@ -1,6 +1,6 @@
 ---
 name: task-angular-review
-description: Angular code review - standalone, OnPush, signals, RxJS hygiene, bypassSecurityTrust, control-flow, SSR, a11y; spawns perf/security/obs subagents.
+description: Angular code review - standalone, OnPush, signals, RxJS, sanitizer, SSR, a11y; spawns perf/security/obs subagents.
 agent: angular-tech-lead
 metadata:
   category: frontend
@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
 > **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble`. Every change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**.
 
 # Angular Code Review
@@ -86,30 +84,30 @@ Use skills: `review-pr-risk`, `review-blast-radius`. Output risk level and blast
 
 **Auto-promote depth:** if Blast Radius Wide/Critical and user did not pass `quick`, set depth to `deep`. Note: depth can also be set in Step 4 evaluation if Blast Radius is known then - state it once.
 
-**Low-risk short-circuit:** if Risk Low + Blast Narrow + no architecture-relevant files (auth config, interceptors, route config, `app.config.ts`, root component, shared services/stores), skip Phases C-D and use streamlined output.
+**Low-risk short-circuit:** if Risk Low + Blast Narrow + no architecture-relevant files (auth config, interceptors, route config, `app.config.ts`, `angular.json`, `vite.config.ts`, root component, shared services/stores), skip Phases C-D and use streamlined output.
 
 ### Phase B - Angular Correctness and Safety
 
 Apply atomic skills - each owns canonical patterns:
 
-- `angular-component-patterns` - standalone, OnPush, signal IO, content projection
-- `angular-signals-patterns` - `computed` vs `effect`, `toSignal` init/sync, `linkedSignal`, `resource()`
+- `angular-component-patterns` - standalone, OnPush, signal IO, content projection, control flow, `@defer`
+- `angular-signals-patterns` - `computed` vs `effect`, `toSignal` init/sync, `linkedSignal`, `untracked`, `resource()`
 - `angular-rxjs-patterns` - `takeUntilDestroyed` / `async` / `toSignal`, flattening op selection
 - `angular-service-patterns` - functional interceptors with retry/refresh, DI scope, token origin scoping
+- `angular-data-fetching` - `httpResource`, TanStack Query for Angular, cache invalidation, optimistic updates, SSR transfer cache
 - `angular-state-patterns` - URL/NgRx/signal/service categorization, persistence, auth lifecycle
-- `angular-routing-patterns` - `canMatch` on lazy routes, functional guards, SSR hydration (when diff touches route config)
-- `angular-styling-patterns` - tokens, hybrid Tailwind+Material (when diff touches styles)
+- `angular-forms-patterns` - typed `FormGroup`, validators, `FormArray`, `ControlValueAccessor`, server-side validation surfacing (when diff touches forms)
+- `angular-routing-patterns` - `canMatch` on lazy routes, functional guards, `withComponentInputBinding`, SSR hydration (when diff touches route config)
+- `angular-nx-patterns` - tags + `enforce-module-boundaries`, library taxonomy, `nx affected` (when workspace is Nx)
+- `angular-styling-patterns` - tokens, hybrid Tailwind+Material, M3 theming (when diff touches styles)
 - `angular-testing-patterns` - coverage for changes (when diff adds logic)
 
-**Orphan checks (no atomic owns):**
+**Orphan checks (no atomic owns - cross-cutting only):**
 
-- **New control flow.** `*ngIf`/`*ngFor`/`*ngSwitch` in new code -> use `@if`/`@for`/`@switch`. Missing or `track $index` on `@for` is `[High]`.
-- **`@defer` triggers.** Default `on idle` is rarely intended; missing `@placeholder` causes CLS.
-- **NgModule in new code.** `[High]` when an equivalent standalone path exists.
-- **Reactive Forms.** Typed `FormGroup<{...}>` with `Validators.*` on the form, not in submit handlers.
+Control flow, `@defer`, NgModule, content projection, OnPush -> `angular-component-patterns`. Reactive Forms -> `angular-forms-patterns`. SSR hydration + `withHttpTransferCacheOptions` -> `angular-routing-patterns` + `angular-data-fetching`. Defer to those atomics, do not duplicate.
+
 - **Mutable module-level state.** `let cache = {}` leaks across SSR requests.
-- **SSR (skip when disabled).** `provideClientHydration(withHttpTransferCacheOptions({...}))`; guard `window`/`document`/`localStorage` with `isPlatformBrowser` or `afterNextRender`.
-- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Critical]`; `bypassSecurityTrust*` needs justification + is `[Critical]` on user content; open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist; `environment.ts` secrets are `[Critical]` (compile into client bundle).
+- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Critical]`; `bypassSecurityTrust*` needs justification + is `[Critical]` on user content (audit the *upstream* - input must be DOMPurify-sanitized or server-trusted); open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist; `environment.ts` privileged secrets are `[Critical]` (compile into client bundle).
 - **TypeScript strict.** No `: any` inputs; `as any` outside test setup is a finding.
 - **Accessibility.** `<input>` paired with `<label>`; dialogs use CDK `Dialog`; images use `NgOptimizedImage` or explicit `width`/`height`; `alt` present.
 - **Test coverage for logic added.** Missing tests is a named finding (`[Suggestion]`; `[High]` on critical paths: auth, billing UI, form validation, error handlers).
@@ -122,7 +120,7 @@ Use skill: `architecture-guardrail`.
 - **Lazy-load:** feature routes use `loadComponent` / `loadChildren`; eager `component:` for non-trivial routes is a finding.
 - **DI hierarchy:** `providedIn: 'root'` for app-wide singletons, route-scoped for per-route state, component-scoped for per-instance. Root-scoped per-user state without explicit logout reset bleeds.
 - **Configuration:** typed config via `InjectionToken<AppConfig>`; `environment.X` sprinkled across components is a finding.
-- **Module boundaries:** feature folders with defined public surface; cross-feature imports through `index.ts`.
+- **Module boundaries:** feature folders with defined public surface; cross-feature imports through `index.ts`. In Nx, missing `tags` on a new project or violation of `@nx/enforce-module-boundaries` is `[High]` - see `angular-nx-patterns`.
 - **NgModule sandwich:** legacy `AppModule` with >30 imports is a migration target when the diff touches it.
 
 ### Phase D - AI-Generated Code Quality
@@ -257,7 +255,7 @@ Drop Architecture Notes, Maintainability Notes, and any C/D-only sections. Keep 
 - [ ] Diff resolved and read once; pr-ref fetch surfaced to user when applicable
 - [ ] Auto-escalation evaluated; promotions logged with firing signals
 - [ ] Phase A: risk + blast radius stated before findings; low-risk short-circuit applied when applicable
-- [ ] Phase B: atomic skills applied; orphan checks (control flow, NgModule, SSR, `[innerHTML]`/secrets, a11y, tests) raised
+- [ ] Phase B: atomic skills applied (component/signals/rxjs/service/data-fetching/state/forms/routing/nx/styling/testing); orphan checks (module-level mutable state, `[innerHTML]`/`bypassSecurityTrust*` upstream audit, env-ts secrets, open redirect, a11y, tests) raised
 - [ ] Phase C-D-E: layering, AI smells, naming/length/logging applied (skipped if short-circuit)
 - [ ] Every finding has label + `file:line` + actionable fix; every Blocker states system risk
 - [ ] Extra scopes ran in parallel with pre-resolved diff handle; failures noted as `Scope incomplete`

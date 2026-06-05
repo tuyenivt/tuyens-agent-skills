@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Angular Performance Review
 
 Stack-specific delegate of `task-code-review-perf` for Angular. Names Angular idioms directly (`OnPush`, signals, `@defer`, `NgOptimizedImage`, `loadComponent`, HTTP transfer cache, `takeUntilDestroyed`, selector memoization). Findings carry measured or estimated impact (LCP delta, bundle delta, CD-cycle delta) and concrete fixes.
@@ -28,7 +26,7 @@ Stack-specific delegate of `task-code-review-perf` for Angular. Names Angular id
 
 | Depth      | Runs                                                                     |
 | ---------- | ------------------------------------------------------------------------ |
-| `quick`    | Steps 4 + 5 only (CD hotspots + bundle deltas)                           |
+| `quick`    | Steps 5 + 6 only (CD hotspots + bundle deltas)                           |
 | `standard` | All steps (default)                                                      |
 | `deep`     | All steps + capacity guidance, route budget plan, perf-test instructions |
 
@@ -40,19 +38,23 @@ Stack-specific delegate of `task-code-review-perf` for Angular. Names Angular id
 | `/task-angular-review-perf <branch>` | `<branch>` vs base (3-dot diff)          |
 | `/task-angular-review-perf pr-<N>`   | PR head fetched into `pr-<N>`            |
 
-Subagent mode: parent passes precondition handle + read diff/log; Step 2 skipped.
+Subagent mode: parent passes precondition handle + read diff/log; Step 3 skipped.
 
 ## Workflow
 
-### Step 1 - Confirm Stack
+### Step 1 - Behavioral Principles
+
+Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
+
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-review-perf`. Record `Angular: <version>`, `Change detection: zone.js | zoneless`, `SSR: enabled | disabled`, `HTTP transfer cache: on | off | n/a`.
 
-### Step 2 - Resolve the Diff
+### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read diff + commit log once. Skip if parent passed the handle.
 
-### Step 3 - Read the Performance Surface
+### Step 4 - Read the Performance Surface
 
 Before applying checklists, open the files governing rendering, CD, bundle, and data so impact estimates ground in real code:
 
@@ -67,7 +69,7 @@ Before applying checklists, open the files governing rendering, CD, bundle, and 
 
 For diffs that ripple through unchanged files (new shared component importing a heavy library), read those too.
 
-### Step 4 - Change Detection and Re-Render Hotspots
+### Step 5 - Change Detection and Re-Render Hotspots
 
 Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angular-signals-patterns`, `angular-rxjs-patterns`. Review-scoped scan:
 
@@ -79,7 +81,7 @@ Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angu
 - [ ] **Bare `.subscribe()` in component / directive** - [High] memory leak.
 - [ ] **`effect` misuse** - `effect(() => mySignal.set(...))` is [High] - use `computed` / `linkedSignal`. NgRx selectors returning fresh literals defeat memoization.
 
-### Step 5 - Bundle Size and Code Splitting
+### Step 6 - Bundle Size and Code Splitting
 
 - [ ] **Lazy-loaded routes** - feature routes use `loadComponent` / `loadChildren`. Eager `component:` for non-trivial routes is [High] bundle finding.
 - [ ] **`@defer` for heavy below-the-fold components** - charting (`chart.js`, `apexcharts`), rich text (`tiptap`, `quill`), date pickers, maps. Eager imports are [High].
@@ -88,7 +90,9 @@ Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angu
 
 > **Impact heuristic.** A 50KB gzip dependency on the home route adds ~50KB on every cold visit. Phrase impact as "+<N>KB on every cold visitor of every route that imports this," not "the bundle got bigger."
 
-### Step 6 - Data Fetching and Caching
+### Step 7 - Data Fetching and Caching
+
+Canonical patterns in `angular-data-fetching`. Review-scoped scan:
 
 - [ ] **SSR HTTP transfer cache** - `provideClientHydration(withHttpTransferCacheOptions({...}))` reuses server-fetched data. Flag SSR projects without it - double-fetch on every page.
 - [ ] **`TransferState`** for non-HTTP server-computed data.
@@ -97,7 +101,7 @@ Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angu
 - [ ] **Mutation invalidation** - post-mutation, dependent caches must be invalidated.
 - [ ] **`HttpClient.get()` in template binding** re-fires every CD cycle.
 
-### Step 7 - Core Web Vitals and Page Load
+### Step 8 - Core Web Vitals and Page Load
 
 _Skipped at `quick` unless diff touches a route, layout, or assets._
 
@@ -118,7 +122,7 @@ _Skipped at `quick` unless diff touches a route, layout, or assets._
 - [ ] **`@placeholder` with same dimensions** as deferred content (`h-64 w-full` for image slots).
 - [ ] **No late-injecting content at top** (A/B test snippets, banners, cookie modals).
 
-### Step 8 - SSR and Hydration
+### Step 9 - SSR and Hydration
 
 _Skipped on SPA-only projects._
 
@@ -127,13 +131,13 @@ _Skipped on SPA-only projects._
 - [ ] **Browser-only APIs guarded** - `window`/`document`/`localStorage`/`IntersectionObserver` wrapped with `isPlatformBrowser` or `afterNextRender` (the modern idiom).
 - [ ] **`ngOnInit` HTTP** that runs twice without transfer cache. Flag SSR projects where critical-path HTTP refires on hydration.
 
-### Step 9 - Observability for Perf (delegation)
+### Step 10 - Observability for Perf (delegation)
 
 _Skipped at `quick`._
 
 Presence check only - depth belongs to `task-angular-review-observability`. Confirm: critical journeys have some instrumentation (web-vitals reporter, RUM SDK, Sentry `BrowserTracing`, or server OTel). Note gap; do not duplicate the audit.
 
-### Step 10 - Write Report
+### Step 11 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation line.
 
@@ -176,10 +180,10 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Stack confirmed; CD mode, SSR, transfer cache recorded
+- [ ] Principles loaded; stack confirmed; CD mode, SSR, transfer cache recorded
 - [ ] Diff resolved once; precondition handle reused
 - [ ] Performance surface read directly before checklists
-- [ ] Steps 4-9 applied per depth; every finding states measured or estimated impact
+- [ ] Steps 5-10 applied per depth; every finding states measured or estimated impact
 - [ ] Findings ordered by impact; Next Steps tagged `[Implement]`/`[Delegate]`
 - [ ] Report written; confirmation line printed
 

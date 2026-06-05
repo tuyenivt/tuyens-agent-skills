@@ -55,6 +55,21 @@ export class UserService {
 }
 ```
 
+### `httpResource()` (signal-driven HTTP, 19+/20+)
+
+When the component owns the request inputs as signals, expose data via `httpResource` instead of subscribing manually. Auto-cancels prior requests when inputs change.
+
+```typescript
+@Component({...})
+export class UserDetailComponent {
+  id = input.required<string>();
+  user = httpResource<User>(() => `/api/users/${this.id()}`);
+  //         ^ value(), status(), error(), isLoading()  - all signals
+}
+```
+
+Experimental in 19, stable from 20+. For full data-layer patterns (TanStack Query, cache invalidation, optimistic updates), see `angular-data-fetching`.
+
 ### Signal-Based State Service
 
 ```typescript

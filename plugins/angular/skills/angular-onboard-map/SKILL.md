@@ -35,6 +35,8 @@ user-invocable: false
 | -------------------------------------------- | ------------------------------------------------------------- |
 | `angular.json`                               | CLI workspace, build/serve/test targets, multi-project layout |
 | `nx.json` / `apps/` / `libs/`                | Nx monorepo with app/lib split + boundary tags                |
+| `pnpm-workspace.yaml` / `turbo.json`         | pnpm or Turborepo monorepo (may coexist with or replace Nx)    |
+| `project.json` per project                   | Nx target config; `tags` field declares boundary scope/type    |
 | `package.json`                               | Angular/CLI/Material versions, RxJS, state libs, auth lib     |
 | `src/main.ts` / `apps/<app>/src/main.ts`     | `bootstrapApplication` (standalone) or `platformBrowserDynamic` |
 | `src/app/app.config.ts`                      | Standalone providers (router, http, hydration, zoneless)      |
@@ -64,7 +66,7 @@ user-invocable: false
 - HTTP: functional `HttpInterceptorFn` for auth/logging/retries; `provideHttpClient(withInterceptors([...]))`.
 - Templates 17+: `@if`/`@for`/`@switch` over `*ngIf`/`*ngFor`.
 - Lint: `@angular-eslint/*`.
-- Monorepo (Nx): `@nx/enforce-module-boundaries`, `nx affected`, project tags scope cross-lib imports.
+- Monorepo (Nx): `@nx/enforce-module-boundaries`, `nx affected`, project tags scope cross-lib imports. See `angular-nx-patterns`.
 
 ### Risk Hotspots
 

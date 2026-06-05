@@ -34,6 +34,7 @@ user-invocable: false
 | ------------------- | ---------------------------------------- |
 | `signal()`          | Component-local UI (modal, form dirty)   |
 | Signal service      | Shared UI/domain (cart, theme, prefs)    |
+| NgRx Signal Store   | Domain store with methods + computed + RxJS interop, less ceremony than NgRx Store |
 | HTTP service        | Server data with caching                 |
 | Router queryParams  | Filters, sort, pagination, search        |
 | Reactive Forms      | Form values + validation                 |
@@ -59,6 +60,47 @@ export class CartService {
   }
 }
 ```
+
+### NgRx Signal Store (`@ngrx/signals`)
+
+NgRx's recommended starting point for new code - signal-based, composable, less boilerplate than NgRx Store. Use for domain state that benefits from `withMethods` + `withComputed` + RxJS interop without effects/devtools.
+
+```typescript
+type CartState = { items: CartItem[]; loading: boolean };
+const initial: CartState = { items: [], loading: false };
+
+export const CartStore = signalStore(
+  { providedIn: 'root' },
+  withState(initial),
+  withComputed(({ items }) => ({
+    total: computed(() => items().reduce((s, i) => s + i.price * i.quantity, 0)),
+    count: computed(() => items().length),
+  })),
+  withMethods((store, http = inject(HttpClient)) => ({
+    add(p: Product): void {
+      patchState(store, (s) => ({
+        items: s.items.find((i) => i.productId === p.id)
+          ? s.items.map((i) => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i)
+          : [...s.items, { productId: p.id, name: p.name, price: p.price, quantity: 1 }],
+      }));
+    },
+    reset(): void { patchState(store, initial); },
+    loadFromApi: rxMethod<void>(pipe(
+      tap(() => patchState(store, { loading: true })),
+      switchMap(() => http.get<CartItem[]>('/api/cart').pipe(
+        tap((items) => patchState(store, { items, loading: false })),
+      )),
+    )),
+  })),
+);
+
+// component
+private cart = inject(CartStore);
+total = this.cart.total;            // Signal<number>
+add(p: Product): void { this.cart.add(p); }
+```
+
+For per-entity collections, layer on `withEntities` from `@ngrx/signals/entities`. Provide at route level instead of root when state should reset on route exit.
 
 ### Persistence & Auth Lifecycle
 

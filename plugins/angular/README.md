@@ -42,15 +42,19 @@ Atomic skills provide focused, reusable Angular patterns. These are hidden from 
 | Skill                        | Purpose                                                                           |
 | ---------------------------- | --------------------------------------------------------------------------------- |
 | `angular-component-patterns` | Standalone components, signals I/O, content projection, control flow, OnPush      |
-| `angular-signals-patterns`   | signal(), computed(), effect(), toSignal/toObservable, linkedSignal, model inputs |
-| `angular-routing-patterns`   | Lazy loading, functional guards/resolvers, nested routes, animations, SSR         |
-| `angular-service-patterns`   | DI hierarchy, functional interceptors, HttpClient, injection tokens               |
+| `angular-signals-patterns`   | signal(), computed(), effect(), untracked, toSignal/toObservable, linkedSignal, model inputs |
+| `angular-routing-patterns`   | Lazy loading, functional guards/resolvers, nested routes, `withComponentInputBinding`, SSR |
+| `angular-service-patterns`   | DI hierarchy, functional interceptors, HttpClient, `httpResource`, injection tokens |
+| `angular-data-fetching`      | HttpClient, `resource`/`httpResource`, TanStack Query for Angular, Apollo, SSR transfer cache, cache invalidation, optimistic updates |
 | `angular-rxjs-patterns`      | Async pipe, takeUntilDestroyed, flattening operators, error handling              |
-| `angular-state-patterns`     | Signals, NgRx Store, NgRx ComponentStore, service-based state, URL state          |
-| `angular-styling-patterns`   | Tailwind CSS, Angular Material/CDK, PrimeNG, CSS custom properties, theming       |
+| `angular-state-patterns`     | Signals, NgRx Signal Store, NgRx Store, ComponentStore, service-based state, URL state |
+| `angular-forms-patterns`     | Typed Reactive Forms, `FormArray`, async/cross-field validators, `ControlValueAccessor`, server validation surfacing |
+| `angular-nx-patterns`        | Nx monorepo - tags + `enforce-module-boundaries`, library taxonomy, `nx affected`, generators |
+| `angular-styling-patterns`   | Tailwind CSS, Angular Material/CDK + M3 theming, PrimeNG, CSS custom properties, CDK overlay |
+| `angular-i18n-patterns`      | `@angular/localize`, `$localize`, `i18n` attribute, ICU expressions, `LOCALE_ID`, `transloco` |
 | `angular-testing-patterns`   | Angular Testing Library, component harnesses, HttpTestingController, Playwright   |
 | `angular-code-explain`       | Signals and zoneless CD, standalone components, DI hierarchy, RxJS + async pipe, lifecycle, routing - injected into `task-code-explain` |
-| `angular-onboard-map`        | Angular CLI workspace, standalone vs NgModule, Signals vs Zone.js, RxJS, routing, state (NgRx/Signal Store) - injected into `task-onboard` |
+| `angular-onboard-map`        | Angular CLI workspace, standalone vs NgModule, Signals vs Zone.js, RxJS, routing, state (NgRx/Signal Store), Nx - injected into `task-onboard` |
 
 ## Agents
 

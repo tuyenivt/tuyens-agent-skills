@@ -1,6 +1,6 @@
 ---
 name: angular-security-engineer
-description: Identify security vulnerabilities in Angular applications - XSS prevention, DomSanitizer, CSP, auth guards, HTTP interceptors for tokens, input validation
+description: Audit Angular security - XSS, DomSanitizer/bypassSecurityTrust, CSP, auth guards, interceptor token scoping, input validation.
 category: quality
 ---
 
@@ -44,6 +44,7 @@ category: quality
 - Use skill: `angular-routing-patterns` for route protection and guard patterns
 - Use skill: `angular-service-patterns` for HTTP interceptor security patterns
 - Use skill: `angular-component-patterns` for secure component patterns
+- Use skill: `angular-state-patterns` for `localStorage` SSR guards, per-user state reset on logout
 
 ## Security Checklist
 

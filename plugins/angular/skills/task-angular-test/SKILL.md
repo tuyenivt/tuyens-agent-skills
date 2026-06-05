@@ -1,6 +1,6 @@
 ---
 name: task-angular-test
-description: Angular test plan and scaffolding - Vitest/Jest/Karma, Angular Testing Library, TestBed, HttpTestingController, CDK harnesses, MSW, Playwright.
+description: Angular test plan and scaffolding - Vitest/Jest, ATL, TestBed, HttpTestingController, CDK harnesses, Playwright.
 agent: angular-test-engineer
 metadata:
   category: frontend
@@ -48,7 +48,7 @@ Greenfield defaults (state explicitly, no silent invention): Vitest + ATL + `use
 
 Use skill: `angular-testing-patterns` for canonical forms.
 
-### Step 4.5 - Runner migration decision
+### Step 5 - Runner migration decision
 
 When legacy Karma exists alongside new test ambitions:
 
@@ -57,7 +57,7 @@ When legacy Karma exists alongside new test ambitions:
 
 State the choice explicitly in Strategy Doc output.
 
-### Step 5 - Angular test pyramid
+### Step 6 - Angular test pyramid
 
 | Layer       | Tooling                                                                    | What belongs here                                                          |
 | ----------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -71,7 +71,7 @@ State the choice explicitly in Strategy Doc output.
 
 **Many** unit + service + component, **some** integration, **few** E2E. One test per guard / interceptor covering happy + denial paths.
 
-### Step 6 - Apply Angular test patterns
+### Step 7 - Apply Angular test patterns
 
 Patterns live in `angular-testing-patterns`; workflow-level decisions:
 
@@ -79,6 +79,7 @@ Patterns live in `angular-testing-patterns`; workflow-level decisions:
 - **Functional guards.** `TestBed.runInInjectionContext(() => guardFn(route, state))` with stub providers. Happy + denial.
 - **Functional interceptors.** `provideHttpClient(withInterceptors([myInterceptor]))` + `provideHttpClientTesting()`; assert via `httpMock.expectOne(...)` request transformation. Happy + denial.
 - **Signals.** Read as function calls. Set signal inputs via `fixture.componentRef.setInput('value', 42)`. `effect()` runs during CD - trigger via `fixture.detectChanges()`, assert the side effect.
+- **Reactive Forms.** Cover valid + invalid + cross-field + async-validator pending paths; for server-validation, simulate `HttpErrorResponse` 422 and assert `control.errors['server']` is set. See `angular-forms-patterns`.
 - **Component test choice.** ATL by default (user-centric, `userEvent`, `render(Component, { inputs, on, providers })`). TestBed + `ComponentFixture` only for fixture-level control (manual CD, harness loader, `setInput` on OnPush).
 - **Router stubs.** `provideRouter([...stubRoutes])` over deprecated `RouterTestingModule`.
 - **MSW vs `HttpTestingController`.** `HttpTestingController` for component/service tests (faster, contract-aware). MSW only for browser-realistic flows (service worker, CORS) - typically Playwright.
@@ -98,7 +99,7 @@ Patterns live in `angular-testing-patterns`; workflow-level decisions:
 - **Error tracker.** `vi.mock('@sentry/angular', () => ({ captureException: vi.fn(), setUser: vi.fn() }))`; assert capture on the error path.
 - **A11y.** `axe(fixture.nativeElement)` via `jest-axe` / `vitest-axe` at route-level tests.
 
-### Step 7 - Test boundaries
+### Step 8 - Test boundaries
 
 **Unit:** utilities, pipes without DI, NgRx selectors/reducers, validators (edge cases).
 
@@ -122,7 +123,7 @@ Patterns live in `angular-testing-patterns`; workflow-level decisions:
 
 **Does NOT need a test:** framework behavior (`RouterLink`, NgRx internals, Forms primitives); typed inputs with no logic; trivial wrappers covered by parents; visual layout - belongs to visual regression; pure presentation - covered via parent.
 
-### Step 8 - Prioritize when coverage is low
+### Step 9 - Prioritize when coverage is low
 
 When coverage < ~50%, run before scaffolding:
 
@@ -134,7 +135,7 @@ When coverage < ~50%, run before scaffolding:
 
 **Multi-band rule.** Multi-band targets (checkout = P1 + P2) file under highest band, cover both axes.
 
-### Step 9 - Audit test infrastructure prerequisites
+### Step 10 - Audit test infrastructure prerequisites
 
 When any is missing, surface as **Test infrastructure prerequisites** subsection - "must land alongside P1":
 
@@ -188,7 +189,7 @@ When any is missing, surface as **Test infrastructure prerequisites** subsection
 4. P4 - High-churn: [files]
 5. P5 - Plumbing: [list]
 
-**Test infrastructure prerequisites** _(when any Step 9 item missing - must land alongside P1)_
+**Test infrastructure prerequisites** _(when any Step 10 item missing - must land alongside P1)_
 
 - [missing item]
 ```
