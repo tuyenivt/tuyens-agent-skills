@@ -139,6 +139,53 @@ const [optimisticTodos, addOptimistic] = useOptimistic(
 const [state, formAction, isPending] = useActionState(submitAction, { error: null });
 ```
 
+### Form hooks
+
+Client forms: react-hook-form + Zod via `zodResolver`. RHF owns dirty/touched/error state; Zod owns the schema. Don't sync RHF state into `useState` mirrors.
+
+```tsx
+const Schema = z.object({ email: z.string().email(), name: z.string().min(1) });
+type Values = z.infer<typeof Schema>;
+
+const { register, handleSubmit, formState: { errors, isSubmitting } } =
+  useForm<Values>({ resolver: zodResolver(Schema) });
+
+return (
+  <form onSubmit={handleSubmit(async (v) => save(v))}>
+    <input {...register("email")} aria-invalid={!!errors.email} />
+    {errors.email && <p role="alert">{errors.email.message}</p>}
+    <button disabled={isSubmitting}>Save</button>
+  </form>
+);
+```
+
+Server Action forms: bind directly with `useActionState` for progressive enhancement (works without JS); `useFormStatus` reads pending state from any descendant of `<form>`. Share the Zod schema between client and Server Action - one source of truth.
+
+```tsx
+"use client";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+import { createPost } from "./actions";
+
+function SubmitButton() {
+  const { pending } = useFormStatus(); // reads parent <form> state - no props
+  return <button disabled={pending}>{pending ? "Saving..." : "Save"}</button>;
+}
+
+export function CreatePostForm() {
+  const [state, action] = useActionState(createPost, null);
+  return (
+    <form action={action}>
+      <input name="title" required />
+      {state?.error?.title && <p role="alert">{state.error.title[0]}</p>}
+      <SubmitButton />
+    </form>
+  );
+}
+```
+
+Use `zod-form-data` inside the Server Action to parse `FormData` with the same schema (`Schema.parse(formData)`); avoid `Object.fromEntries(formData)` for fields that repeat (checkboxes, multi-select) - it drops duplicates.
+
 ### Refs
 
 ```tsx

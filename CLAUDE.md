@@ -26,7 +26,7 @@ plugins/
   go/            # Go 1.25+ / Gin / GORM+sqlx
   rust/          # Rust 1.94+ / Axum / sqlx
   php/           # PHP 8.5 / Laravel 12+
-  react/         # React 19+ / TypeScript / Next.js (primary), Vite (secondary)
+  react/         # React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router (primary), Vite 5+ (secondary)
   vue/           # Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)
   angular/       # Angular 21+ / TypeScript / Angular CLI
 ```

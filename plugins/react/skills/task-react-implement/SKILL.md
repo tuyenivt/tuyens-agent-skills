@@ -22,7 +22,7 @@ If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill
 
 **Step 3 - Gather.** Ask: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
 
-**Step 4 - Design.** Use skill: `react-component-patterns` + `react-routing-patterns`. Propose component tree with Server/Client boundaries (Next.js), file layout, routes. Request approval before code:
+**Step 4 - Design.** Use skill: `react-component-patterns` + `react-routing-patterns`. If the feature embeds into a non-React host (Rails / Django / PHP page, jQuery shell) or composes with other apps (Module Federation, single-spa), additionally Use skill: `react-legacy-integration` for mount, hydration, and routing-boundary rules. Propose component tree with Server/Client boundaries (Next.js), file layout, routes. Request approval before code:
 
 ```
 app/<feature>/(page.tsx | layout.tsx)            # Next.js route

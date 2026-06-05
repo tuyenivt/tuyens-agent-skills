@@ -164,7 +164,7 @@ Use judgment - these are signals, not rules. A 250-line component orchestrating 
 | Snapshot tests on visual layout | Churn on every styling change; no signal                                                       | Medium |
 | Render counts asserted          | `expect(renderSpy).toHaveBeenCalledTimes(2)` tests implementation                              | High   |
 
-**Over-engineering signals** (single-impl HoC, generic abstractions for one consumer, premature compound components): Use skill: `complexity-review` - these are simplifications, not new abstractions.
+**Over-engineering signals** (single-impl HoC, generic abstractions for one consumer, premature compound components, single-consumer Context, premature memoization, store-for-two-slices): Use skill: `complexity-review` + `react-overengineering-review` - these are simplifications, not new abstractions. Run before proposing the recipe so a refactor toward less structure isn't masked by a recipe toward more.
 
 ### Step 6 - Blast Radius
 

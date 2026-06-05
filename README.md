@@ -374,7 +374,7 @@ Angular (plugin: angular)
 | [dotnet](plugins/dotnet)             | .NET 8 LTS / ASP.NET Core Web API, Clean Architecture                                                                                                                               |
 | [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            |
 | [php](plugins/php)                   | PHP 8.5 / Laravel 12+                                                                                                                                                               |
-| [react](plugins/react)               | React 19+ / TypeScript / Next.js (primary), Vite (secondary)                                                                                                                        |
+| [react](plugins/react)               | React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router (primary), Vite 5+ (secondary)                                                                                      |
 | [vue](plugins/vue)                   | Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)                                                                                                                          |
 | [angular](plugins/angular)           | Angular 21+ / TypeScript / Angular CLI                                                                                                                                              |
 

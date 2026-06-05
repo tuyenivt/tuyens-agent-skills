@@ -215,6 +215,59 @@ import "server-only"; // build error if imported from a Client Component
 export const db = new PrismaClient();
 ```
 
+### Partial Prerendering (PPR)
+
+Next.js 15 ships PPR: a static shell renders instantly; dynamic holes stream at request time. The route is static *and* dynamic in one response - no `force-dynamic` for one personalized widget.
+
+```ts
+// next.config.ts
+import type { NextConfig } from "next";
+const config: NextConfig = { experimental: { ppr: "incremental" } };
+export default config;
+```
+
+```tsx
+// app/dashboard/page.tsx
+export const experimental_ppr = true; // opt this route in (incremental mode)
+
+export default function DashboardPage() {
+  return (
+    <>
+      <StaticHeader />                       {/* prerendered into the shell */}
+      <Suspense fallback={<UserSkeleton />}>
+        <UserPanel />                        {/* dynamic hole; streams per request */}
+      </Suspense>
+    </>
+  );
+}
+
+async function UserPanel() {
+  const user = await getCurrentUser(); // uses cookies() -> dynamic
+  return <p>Welcome, {user.name}</p>;
+}
+```
+
+Rules: every dynamic subtree (anything reading `cookies()` / `headers()` / `searchParams`, or `fetch` with `cache: "no-store"`) must be wrapped in `<Suspense>`. Without the boundary, PPR falls back to fully dynamic and you lose the static shell. Don't mix `force-dynamic` with PPR on the same route - they conflict.
+
+### Pages Router -> App Router Migration
+
+Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-route. App Router wins when both define the same path.
+
+| Pages Router                       | App Router equivalent                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------ |
+| `getStaticProps`                   | `fetch(url, { next: { revalidate: N } })` or `unstable_cache` in a Server Component |
+| `getStaticPaths` + `getStaticProps` | `generateStaticParams()` + Server Component fetch                              |
+| `getServerSideProps`               | Server Component reading `cookies()` / `headers()` / dynamic `searchParams`    |
+| `revalidate: N` (ISR)              | `next: { revalidate: N }` per fetch, or route-level `export const revalidate = N` |
+| `_app.tsx`                         | Root `app/layout.tsx` (shared shell) + per-segment layouts                      |
+| `_document.tsx`                    | `app/layout.tsx` (`<html>` / `<body>` live there)                              |
+| `pages/api/*` Route Handlers       | `app/api/*/route.ts` Route Handlers, or Server Actions for first-party forms   |
+| `next/router` (`useRouter`)        | `next/navigation`: `useRouter`, `useSearchParams`, `usePathname`, `useParams`  |
+| `next/head`                        | Metadata API (`export const metadata` / `generateMetadata`)                    |
+| `pages/_error.tsx`                 | `app/**/error.tsx` (segment-scoped) + `app/global-error.tsx` (root)            |
+
+Migration order: shared shell (`_app` -> root layout, `_document` -> `<html>`/`<body>`) first, then leaf routes one at a time, then `pages/api/*` to Route Handlers or Server Actions. Don't mix `getServerSideProps` with App Router patterns inside the same route - the App Router version owns the path once it exists.
+
 ## Output Format
 
 Consuming workflow skills parse this structure.

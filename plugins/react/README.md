@@ -4,9 +4,9 @@ Claude Code plugin for React 19+ / TypeScript / Next.js (primary), Vite (seconda
 
 ## Stack
 
-- React 19+
+- React 18+ baseline; React 19 hooks (`use`, `useOptimistic`, `useActionState`, `useFormStatus`) used throughout
 - TypeScript (strict mode)
-- Next.js App Router (primary), Vite + React Router (secondary)
+- Next.js 15 App Router (primary), Vite 5+ + React Router 6+ (secondary)
 
 ## Key Features
 
@@ -48,6 +48,8 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 | `react-data-fetching`      | TanStack Query, Server Component fetching, cache invalidation, optimistic updates              |
 | `react-styling-patterns`   | Tailwind CSS, CSS Modules, cva + cn, dark mode, design tokens                                  |
 | `react-testing-patterns`   | Vitest + React Testing Library, MSW, hook testing, Playwright e2e                              |
+| `react-legacy-integration` | Embed React into legacy apps: island adoption, React-in-Rails/Django/PHP, Module Federation, single-spa, hydration boundaries |
+| `react-overengineering-review` | Flag React overengineering: premature memo, single-consumer Context, store-for-two-slices, single-use hooks, generic-for-one-usage |
 | `react-code-explain`       | Hooks rules and dependencies, render lifecycle, server vs client components (Next App Router), Suspense, React 19 actions/use() - injected into `task-code-explain` |
 | `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library - injected into `task-onboard` |
 

@@ -58,7 +58,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 - **+Security:** new Server Action / Route Handler / `middleware.ts`, `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
 - **+Perf:** new route / page / layout, new `"use client"` component, new client dependency, new TanStack Query usage, `next/image` / `next/font` change, `next/dynamic` / `React.lazy`, ISR / `revalidate` change, long-list rendering
-- **+Observability:** new `instrumentation.ts`, Sentry / RUM SDK init, `web-vitals` reporter, new error boundary, new logging utility, analytics call
+- **+Observability:** new or modified `instrumentation.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
 - **2+ categories -> Full**
 
 ## Invocation
@@ -135,8 +135,7 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage? Minimum `[Suggestion]`; escalate to `[High]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
-
-ORM-row leak across RSC → Client, missing `auth()`/Zod on Server Actions, `dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*` secret leak — canonical in `react-nextjs-patterns`; cite by name, do not restate.
+- **Canonical security rules** (cite by name, do not restate): ORM-row leak across RSC -> Client, missing `auth()` / Zod on Server Actions, `dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*` secret leak. Defined in `react-nextjs-patterns`.
 
 ### Phase C - React Architecture Guardrails
 
@@ -157,6 +156,8 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 ### Phase D - AI-Generated Code Quality
 
 Use skill: `complexity-review` for verbosity, over-engineering, simplification.
+
+Use skill: `react-overengineering-review` for React-specific overengineering: premature memo / `useCallback`, single-consumer Context, store-for-two-slices, single-use custom hooks, generic-for-one-usage, premature compound components, prop -> state -> effect sync.
 
 **React AI smells:**
 
@@ -319,7 +320,7 @@ _Omit if no actionable findings._
 - [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; low-risk short-circuit applied when applicable
 - [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); test coverage, RSC -> Client ORM leak, Server Action auth + Zod, `dangerouslySetInnerHTML` / open-redirect / `NEXT_PUBLIC_*` secrets, TS strict, a11y checked
 - [ ] Phase C: layering, RSC / Client split, custom hook / prop drilling / context discipline, settings, module boundaries, provider sandwich applied
-- [ ] Phase D: `complexity-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)
+- [ ] Phase D: `complexity-review` + `react-overengineering-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)
 - [ ] Phase E: naming, co-location, magic numbers, component length, conditional ladders, logging hygiene
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Blocker states a system risk
