@@ -47,21 +47,27 @@ Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-refact
 
 Refactor plans grounded in prose hallucinate smells that aren't there.
 
+**Single-target mode (default).** A specific file or component is named.
+
 1. Read the target file top-to-bottom; note line count, CD mode, signal vs RxJS state, input/output declarations, subscriptions, lifecycle hooks, external collaborators.
 2. Read matching test file(s); count cases by outcome (happy, error, empty, validation, auth, a11y).
 3. For widely-used services or shared components, read at least one caller.
 
-If the user named only a goal without a target, ask for the target before proceeding.
+**Sweep mode.** Goal is "convert all X to Y" (every class-based guard → functional, every `BehaviorSubject` in `libs/data-access` → signal). Inventory targets via grep before planning: list every file matched, group by shape (small / medium / mixed), and emit a multi-PR plan where each PR is one shape group. Coverage Gate runs per group, not per file.
+
+If the user named only a goal without a target or a sweep scope, ask which before proceeding.
 
 **Sibling-smell disposition.** If the target file contains smells outside the named goal (e.g., `bypassSecurityTrustHtml` co-located), list under `Sibling Smells (Out of Scope)` with a one-phrase deferral and follow-up skill - do not action.
 
 ### Step 4 - Coverage Gate
 
+"Public entry point" = a component's user-driven interaction (click, type, submit, key), a service's exported method, a guard/interceptor/resolver function, or an exported pipe. Private helpers don't count.
+
 | Status       | Definition                                                                                  | Action                                                              |
 | ------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `Adequate`   | Happy path + at least 2 boundary outcomes per public entry point                            | Proceed                                                             |
-| `Thin`       | Happy path + exactly 1 boundary outcome                                                     | Proceed; plan includes mandatory `Step 0 - Coverage prerequisite`   |
-| `Inadequate` | No tests, or happy-path-only                                                                | **Refuse later steps.** Output Coverage Gate verdict and recommend `task-angular-test`. Smell catalog (Step 5) still runs as preview. |
+| `Adequate`   | Happy path + ≥2 boundary outcomes (error, empty, validation, auth) per public entry point   | Proceed                                                             |
+| `Thin`       | Happy path + exactly 1 boundary outcome per public entry point                              | Proceed; plan includes mandatory `Step 0 - Coverage prerequisite`   |
+| `Inadequate` | No tests, or happy-path-only across the public surface                                      | **Refuse later steps.** Output Coverage Gate verdict and recommend `task-angular-test`. Smell catalog (Step 5) still runs as preview. |
 
 **Internal-coupled tests count negatively.** Tests asserting `fixture.componentInstance.<internal>` or stream names the refactor will rename are surfaced as `internal-coupled: <test:line>` and require DOM/event rewrite in `Step 0` before that refactor step runs.
 
@@ -163,11 +169,17 @@ Each step must be (1) independently committable, (2) behaviorally invariant unle
 1. Verify `item` has a stable id; if not, add one via `crypto.randomUUID()` at fetch time (coupled-fix).
 2. Replace; run tests for reorder/filter/remove preservation.
 
-**Class-based guard/interceptor -> functional**
+**Class-based guard → functional**
 
 1. Convert: `export const authGuard: CanActivateFn = (route, state) => { const router = inject(Router); ... }`.
-2. Update route/provider config; remove the class registration.
-3. Rewrite tests using `TestBed.runInInjectionContext(() => authGuard(...))`.
+2. Update route config; remove the class registration from providers.
+3. Rewrite tests using `TestBed.runInInjectionContext(() => authGuard(routeStub, stateStub))`.
+
+**Class-based interceptor → functional**
+
+1. Convert: `export const authInterceptor: HttpInterceptorFn = (req, next) => { ... return next(req); }`.
+2. Replace `provideHttpClient(withInterceptorsFromDi(), HTTP_INTERCEPTORS provider)` with `provideHttpClient(withInterceptors([authInterceptor]))`.
+3. Rewrite tests using `provideHttpClient(withInterceptors([authInterceptor]))` + `HttpTestingController` to assert the transformed request.
 
 **NgModule component -> standalone**
 

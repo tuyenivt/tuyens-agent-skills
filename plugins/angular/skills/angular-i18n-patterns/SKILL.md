@@ -30,13 +30,13 @@ user-invocable: false
 
 ### Decision: Build-Time vs Runtime
 
-| Need                                                | Pick                              |
-| --------------------------------------------------- | --------------------------------- |
-| Few locales, ship per-locale bundles, SEO/SSR per locale | `@angular/localize` (build-time) |
-| Many locales, runtime language switcher, lazy translations | `transloco` (preferred) or `ngx-translate` |
-| Pure formatting (date, number, currency) only       | `LOCALE_ID` + built-in pipes only |
+| Need                                                          | Pick                              |
+| ------------------------------------------------------------- | --------------------------------- |
+| ≤6 locales, no in-app language switch, SEO/SSR per locale     | `@angular/localize` (build-time)  |
+| Any in-app language switch, or >6 locales, or lazy translations | `transloco` (preferred) or `ngx-translate` |
+| Pure formatting (date, number, currency) only                 | `LOCALE_ID` + built-in pipes only |
 
-`@angular/localize` is the official path; `transloco` (by ngneat) is the most actively maintained runtime alternative.
+`@angular/localize` is the official path and remains build-time only - it cannot switch locale at runtime. `transloco` (`@jsverse/transloco`, formerly `@ngneat/transloco`) is the most actively maintained runtime alternative.
 
 ### `@angular/localize` Setup
 
@@ -116,7 +116,7 @@ Never build plurals by concatenation (`${count} message${count === 1 ? '' : 's'}
 ### Runtime: `transloco` (alternative)
 
 ```typescript
-// app.config.ts
+// app.config.ts (package: @jsverse/transloco)
 providers: [
   provideTransloco({
     config: {
@@ -127,6 +127,7 @@ providers: [
     },
     loader: TranslocoHttpLoader, // loads assets/i18n/{lang}.json
   }),
+  provideTranslocoMessageformat(), // from @jsverse/transloco-messageformat - required for ICU plurals/selects
 ],
 ```
 
@@ -137,10 +138,15 @@ providers: [
 
 ```typescript
 private transloco = inject(TranslocoService);
-switchLocale(lang: 'en' | 'ja' | 'fr'): void { this.transloco.setActiveLang(lang); }
+
+switchLocale(lang: 'en' | 'ja' | 'fr'): void {
+  this.transloco.setActiveLang(lang);
+  // built-in pipes (date, currency, number) read LOCALE_ID, which transloco does NOT refresh.
+  // For format-aware switching, re-provide LOCALE_ID at runtime or rebuild affected components.
+}
 ```
 
-Trade-off vs `@angular/localize`: smaller initial bundle (translations are lazy JSON), runtime language switch, but no compile-time validation that every key exists.
+Trade-off vs `@angular/localize`: smaller initial bundle (translations are lazy JSON), runtime language switch, but no compile-time validation that every key exists, and built-in pipes don't follow the active lang without extra wiring.
 
 ### `LOCALE_ID` + Built-in Pipes
 
@@ -185,8 +191,8 @@ CSS uses logical properties (`margin-inline-start`, `padding-block`) instead of 
 
 - Namespace keys: `feature.area.element` (`dashboard.header.title`), not flat strings.
 - Do not translate proper nouns or brand names unless the brand book says so.
-- Pluralization always via ICU - even for English-only-for-now apps that may add locales later.
-- Avoid sentence fragments concatenated in code (`'Hello, ' + name`) - whole-sentence translations only.
+- Use `@@id` (build-time) or fixed keys (runtime) - never auto-hashed IDs: every copy edit breaks the file.
+- Whole-sentence translations only; never concatenate fragments in code (`'Hello, ' + name`) - word order is locale-specific.
 
 ## Output Format
 
@@ -218,9 +224,8 @@ CSS uses logical properties (`margin-inline-start`, `padding-block`) instead of 
 ## Avoid
 
 - Mixing `@angular/localize` and a runtime library in the same app
-- Auto-hashed `i18n` IDs - every copy edit breaks the translation file
-- String concatenation for plurals or genders
 - Hardcoded `en` formatting (`new Date().toLocaleString()` without a locale arg) leaking into a localized app
 - Forgetting attribute translations (`title`, `aria-label`, `placeholder`, `alt`)
 - Forgetting `registerLocaleData(...)` for runtime locale switching - pipes silently fall back to `en`
+- Switching `transloco` locale without also re-providing `LOCALE_ID` if `date`/`currency`/`number` pipes must follow
 - One giant `messages.xlf` per app in a multi-team monorepo - split by feature lib

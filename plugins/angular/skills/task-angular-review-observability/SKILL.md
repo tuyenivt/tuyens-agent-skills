@@ -75,15 +75,20 @@ Read the files that configure observability so findings cite real lines: `app.co
 
 ### Step 6 - Error Boundaries and Error Tracking
 
-- [ ] `@sentry/angular` initialized in `main.ts` / `app.config.ts` via `Sentry.init({ dsn, integrations: [browserTracingIntegration(), replayIntegration()] })`
-- [ ] `Sentry.createErrorHandler()` provided as `ErrorHandler` in `app.config.ts`. Without this, uncaught errors only hit Angular's default handler (console).
-- [ ] `Sentry.TraceService` provided after `Router` for route-aware tracing (Medium if missing).
+- [ ] `@sentry/angular` initialized in `main.ts` (before `bootstrapApplication`) via `Sentry.init({ dsn, integrations: [browserTracingIntegration(), replayIntegration()] })`
+- [ ] `Sentry.createErrorHandler()` provided as `ErrorHandler` in `app.config.ts`:
+  ```typescript
+  providers: [{ provide: ErrorHandler, useValue: Sentry.createErrorHandler({ showDialog: false }) }]
+  ```
+  Without this, uncaught errors only hit Angular's default handler (console).
+- [ ] Router span tracking: `@sentry/angular` v8+ - `browserTracingIntegration()` handles it automatically; v7 - provide `Sentry.TraceService` after `Router`. Flag mixing both as a finding.
 - [ ] DSN from env or `environment.ts` (public token by design); `release` / `environment` from build metadata.
 - [ ] PII discipline: `sendDefaultPii: false`; `beforeSend` strips sensitive keys; `replaysSessionSampleRate` / `replaysOnErrorSampleRate` chosen deliberately with `mask` / `block` selectors.
 - [ ] HTTP error `HttpInterceptorFn` routes to `Sentry.captureException` or structured logger; flag `catchError(() => of(null))` that swallows.
 - [ ] Sample rates explicit per env (`tracesSampleRate`, `profilesSampleRate`); not `1.0` in prod on high traffic.
-- [ ] Sentry Replay vs strict CSP: Replay injects inline scripts; `script-src 'self' 'nonce-XXX'` without `'unsafe-inline'` blocks it - flag the conflict when both surfaces appear in the diff.
+- [ ] Sentry Replay vs strict CSP: Replay injects inline scripts; `script-src 'self' 'nonce-XXX'` without `'unsafe-inline'` blocks it. v8+ `replayIntegration({ nonce: '<request-nonce>' })` resolves it - flag mismatched config when both surfaces appear in the diff.
 - [ ] Source maps uploaded (`@sentry/cli` / `@sentry/webpack-plugin`); `angular.json` production `sourceMap: false` or stripped after upload.
+- [ ] **Retry-amplification check.** When a new HttpInterceptor adds `retry(N)` without instrumenting attempt count, one failing request becomes N captured errors. Cap or tag retries (`Sentry.captureException(err, { tags: { retry: attempt } })`).
 
 ### Step 7 - OpenTelemetry / Tracing
 
@@ -103,7 +108,7 @@ Read the files that configure observability so findings cite real lines: `app.co
 
 ### Step 8 - Structured Client Logging
 
-- [ ] No `console.log` / `console.error` in production paths; replaced with structured logger.
+- [ ] No `console.log` / `console.error` in production paths; replaced with a structured logger (`ngx-logger`, `pino/browser`, or a project-local `LoggerService` that fans out to Sentry breadcrumbs + a RUM custom event).
 - [ ] **Replay/breadcrumb compound check.** Sentry's `consoleIntegration` ships every `console.*` as a breadcrumb; Replay records console output. When diff has `console.*` of non-trivial payload AND high Replay sampling, surface as ONE finding cross-referenced to Step 6:
   - **High** when `replaysSessionSampleRate >= 0.5` without input `mask` / `block`
   - **Critical** when the High case also has `sendDefaultPii: true`

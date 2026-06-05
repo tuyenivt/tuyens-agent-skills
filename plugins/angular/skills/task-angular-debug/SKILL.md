@@ -56,40 +56,39 @@ Match the symptom to a row and load the relevant atomic skill.
 
 ### Errored category table
 
-| Category          | Error pattern                                                        | Likely cause                              | Load skill                       |
-| ----------------- | -------------------------------------------------------------------- | ----------------------------------------- | -------------------------------- |
-| Change detection  | `ExpressionChangedAfterItHasBeenChecked` / NG0100                    | State mutation during CD or in lifecycle  | `angular-component-patterns`     |
-| Change detection  | "Change detection cycle exceeded"                                    | Infinite effect/computed/CD loop          | `angular-signals-patterns`       |
-| DI                | `NullInjectorError: No provider for X`                               | Missing provider or wrong scope           | `angular-service-patterns`       |
-| DI                | `NG0203 inject() must be called in context`                          | `inject()` outside constructor/factory    | `angular-service-patterns`       |
-| DI                | Circular / cyclic dependency                                         | Services injecting each other             | `angular-service-patterns`       |
-| RxJS              | Growing subscription count / leak                                    | Missing `takeUntilDestroyed`              | `angular-rxjs-patterns`          |
-| RxJS              | `ObjectUnsubscribedError`, `EmptyError`                              | Subject reused after complete / empty     | `angular-rxjs-patterns`          |
-| RxJS              | Duplicate HTTP / cancelled requests                                  | Wrong flattening op or cold re-subscribe  | `angular-rxjs-patterns`          |
-| Routing           | `Cannot match any routes`, NG04002, lazy load fails                  | Bad path, guard returning false, wrong `loadComponent` | `angular-routing-patterns` |
-| Build / TS        | `Cannot find module`, type-not-assignable                            | Path alias / signal-input type mismatch   | `angular-signals-patterns` (signal-typed) |
-| Runtime           | `Maximum call stack size exceeded`                                   | Infinite effect/computed cycle            | `angular-signals-patterns`       |
-| Test              | "No provider for HttpClient", "is not a known element"               | Missing `provideHttpClient` / import      | `angular-testing-patterns`       |
-| Test              | `fixture.detectChanges()` not updating                               | OnPush needs signal write / input change  | `angular-testing-patterns`       |
-| Performance       | Slow render, bundle bloat                                            | Hot path / change-detection scope         | `task-angular-review-perf`       |
+Match on the user-pasted message *first*; the `NG####` codes are listed but secondary. **Test errors take precedence over any other category** - if the stack trace contains a test runner path (`.spec.ts`, `karma`, `vitest`, `jest`), route to `angular-testing-patterns` even when the underlying error pattern matches another row.
+
+| Category          | Error pattern                                                        | Likely cause                                          | Load skill                       |
+| ----------------- | -------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| Test              | Any error originating from a `.spec.ts` / runner stack trace         | Missing `provideHttpClient` / standalone import / `setInput` / `detectChanges` | `angular-testing-patterns` |
+| Change detection  | "Expression has changed after it was checked" (NG0100)               | State mutation during CD or in lifecycle              | `angular-component-patterns`     |
+| Change detection  | "Change detection cycle exceeded", "Maximum call stack" in CD path   | Infinite effect/computed/CD loop                      | `angular-signals-patterns`       |
+| DI                | "NullInjectorError: No provider for X"                               | Missing provider or wrong scope                       | `angular-service-patterns`       |
+| DI                | "NG0203", "inject() must be called from an injection context"        | `inject()` outside constructor/factory                | `angular-service-patterns`       |
+| DI                | "Circular dependency in DI detected"                                 | Services injecting each other                         | `angular-service-patterns`       |
+| RxJS              | Growing subscription count, memory growth on nav                     | Missing `takeUntilDestroyed`                          | `angular-rxjs-patterns`          |
+| RxJS              | `ObjectUnsubscribedError`, `EmptyError`, duplicate HTTP              | Subject misuse / cold re-subscribe / wrong flattening | `angular-rxjs-patterns`          |
+| Routing           | "Cannot match any routes" (NG04002), lazy load fails                 | Bad path, guard returning false, wrong `loadComponent` | `angular-routing-patterns`      |
+| SSR / Hydration   | NG0500-series "hydration node mismatch"                              | Browser-only API in render path; DOM diff drift       | `angular-routing-patterns` (SSR section) |
+| Build / TS        | TS "Cannot find module" / "Type X is not assignable to Y"            | Path alias misconfigured / signal-input typing        | `angular-component-patterns` (or `angular-signals-patterns` if signal-typed) |
 
 ### No-error / wrong-behavior table
 
-| Surface                                       | Symptom                                          | Fix direction                                                                  |
-| --------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| OnPush + in-place mutation                    | Child never re-renders after `items.push(x)`     | Replace mutation: `items = [...items, x]` or `signal.update(s => [...s, x])`  |
-| Signal nested mutation                        | `state().nested.field = x` does not re-render    | `state.update(s => ({ ...s, nested: { ...s.nested, field: x } }))`             |
-| Pure pipe stale                               | Pipe never re-runs after array mutation          | Pure pipes track input reference; replace, do not mutate                       |
-| Cold HTTP re-subscribed                       | Duplicate requests via `async` pipe + manual sub | `shareReplay({ bufferSize: 1, refCount: true })` or sink into one signal       |
-| `@ViewChild` undefined in `ngOnInit`          | Populated after view init                        | Move to `ngAfterViewInit` or use reactive `viewChild()` (17+)                  |
-| `inject()` in callback                        | `NG0203` or wrong instance                       | Run in constructor/factory, or `EnvironmentInjector.runInContext(...)`         |
-| `takeUntilDestroyed` outside injection ctx    | Subscription leaks                               | Use at field init, or pass captured `DestroyRef`                               |
-| Guard reads async signal too early            | Wrong route / false negative                     | Resolver, or return `firstValueFrom(state$.pipe(filter(Boolean)))`             |
-| NgRx selector returns fresh literal           | Re-renders on every action                       | Return primitive/stable ref, or downstream `distinctUntilChanged`              |
-| SSR `localStorage` / `window` access          | Null on server, flicker on client                | Guard `isPlatformBrowser`, use `afterNextRender`, or `TransferState`           |
-| HTTP transfer cache miss                      | Client re-fetches SSR-fetched URL                | Align headers/URL; configure `withHttpTransferCacheOptions` deliberately       |
-| Signal input read in constructor              | Value is `undefined` early                       | Read in `computed` / `effect`, set default, or use `input.required`            |
-| `toSignal` returns undefined                  | Type widened, template breaks                    | Add `initialValue` or `requireSync: true`                                      |
+| Surface                                       | Symptom                                          | Fix direction                                                                  | Load skill                       |
+| --------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------ | -------------------------------- |
+| OnPush + in-place mutation                    | Child never re-renders after `items.push(x)`     | Replace mutation: `items = [...items, x]` or `signal.update(s => [...s, x])`  | `angular-signals-patterns`       |
+| Signal nested mutation                        | `state().nested.field = x` does not re-render    | `state.update(s => ({ ...s, nested: { ...s.nested, field: x } }))`             | `angular-signals-patterns`       |
+| Pure pipe stale                               | Pipe never re-runs after array mutation          | Pure pipes track input reference; replace, do not mutate                       | `angular-component-patterns`     |
+| Cold HTTP re-subscribed                       | Duplicate requests via `async` pipe + manual sub | `shareReplay({ bufferSize: 1, refCount: true })` or sink into one signal       | `angular-rxjs-patterns`          |
+| `@ViewChild` undefined in `ngOnInit`          | Populated after view init                        | Move to `ngAfterViewInit` or use reactive `viewChild()` (17.2+)                | `angular-component-patterns`     |
+| `inject()` in callback                        | `NG0203` or wrong instance                       | Run in constructor/factory, or `EnvironmentInjector.runInContext(...)`         | `angular-service-patterns`       |
+| `takeUntilDestroyed` outside injection ctx    | Subscription leaks                               | Use at field init, or pass captured `DestroyRef`                               | `angular-rxjs-patterns`          |
+| Guard reads async signal too early            | Wrong route / false negative                     | Resolver, or return `firstValueFrom(state$.pipe(filter(Boolean)))`             | `angular-routing-patterns`       |
+| NgRx selector returns fresh literal           | Re-renders on every action                       | Return primitive/stable ref, or downstream `distinctUntilChanged`              | `angular-state-patterns`         |
+| SSR `localStorage` / `window` access          | Null on server, flicker on client                | Guard `isPlatformBrowser`, use `afterNextRender`, or `TransferState`           | `angular-routing-patterns` (SSR) |
+| HTTP transfer cache miss                      | Client re-fetches SSR-fetched URL                | Align headers/URL; configure `withHttpTransferCacheOptions` deliberately       | `angular-data-fetching`          |
+| Signal input read in constructor              | Value is `undefined` early                       | Read in `computed` / `effect`, set default, or use `input.required`            | `angular-signals-patterns`       |
+| `toSignal` returns undefined                  | Type widened, template breaks                    | Add `initialValue` or `requireSync: true`                                      | `angular-rxjs-patterns`          |
 
 ### Step 5 - Locate
 

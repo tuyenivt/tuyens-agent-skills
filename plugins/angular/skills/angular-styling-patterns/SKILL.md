@@ -63,6 +63,10 @@ export class ButtonComponent {
 }
 ```
 
+### Tailwind 3 vs 4
+
+Tailwind 4 (default since early 2025) replaces `tailwind.config.{js,ts}` with a CSS-first config via `@theme {}` and `@import "tailwindcss"`. The token-reuse pattern below shows v3 syntax; on v4, declare tokens in CSS and reference them via `--color-brand-600: var(--brand-600)` inside `@theme`. Skill examples target v3 for legibility - port to `@theme` on v4 projects.
+
 ### Design Tokens (CSS Custom Properties)
 
 Tokens live in CSS; Tailwind config and Material theme both reference them.
@@ -118,9 +122,12 @@ export class ThemeService {
   }
 
   toggle(): void { this.mode.update((m) => (m === "dark" ? "light" : "dark")); }
+
   private load(): "light" | "dark" {
     if (!isPlatformBrowser(this.platformId)) return "light";
-    return (localStorage.getItem("theme") as "light" | "dark") ?? "light";
+    const stored = localStorage.getItem("theme") as "light" | "dark" | null;
+    if (stored) return stored;
+    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";  // first-visit honors OS preference
   }
 }
 ```
@@ -159,18 +166,22 @@ Read M3 tokens in component SCSS instead of hardcoded colors:
 
 ### CDK Overlay Theming
 
-Material's overlay (dialog, menu, tooltip, autocomplete) renders into `<div class="cdk-overlay-container">` appended to `<body>`. Component-encapsulated styles do not reach it. Put overlay styles in `styles.scss` (global) or use `ViewEncapsulation.None` with class scoping.
+Material's overlay (dialog, menu, tooltip, autocomplete) renders into `<div class="cdk-overlay-container">` appended to `<body>`. Component-encapsulated styles do not reach it. Prefer Material 19+ token overrides over `.mat-mdc-*` class targeting (which is internal and breaks across releases):
 
 ```scss
-// global - applies to every overlay panel
-.cdk-overlay-container .mat-mdc-dialog-surface { border-radius: 16px; }
+// Material 19+: use the supported token-override mixins
+@use '@angular/material' as mat;
 
-// pass a panelClass when scoping per-instance
+html { @include mat.dialog-overrides((container-shape: 16px)); }
+
+// per-instance scoping still uses panelClass
 this.dialog.open(FormDialogComponent, { panelClass: 'form-dialog-panel' });
 
-// styles.scss
-.form-dialog-panel .mat-mdc-dialog-surface { padding: 0; }
+// styles.scss - same selector form, just narrower scope
+.form-dialog-panel { @include mat.dialog-overrides((container-color: var(--surface))); }
 ```
+
+Token-override mixins (`mat.dialog-overrides`, `mat.button-overrides`, etc.) cover the supported customization surface. Reach for `.mat-mdc-*` selectors only when no token exists, and accept the upgrade-fragility cost.
 
 ### Tailwind + Angular Material Coexistence
 

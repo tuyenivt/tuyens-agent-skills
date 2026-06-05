@@ -43,40 +43,36 @@ Scope tag (`scope:orders`, `scope:billing`, `scope:shared`) sits alongside type 
 ### `project.json` with Tags
 
 ```json
+// Local lib - targets are inferred by the @nx/angular plugin in nx.json
 {
   "name": "orders-feature-cart",
   "tags": ["type:feature", "scope:orders"],
   "projectType": "library",
-  "sourceRoot": "libs/orders/feature-cart/src",
-  "targets": {
-    "build": { "executor": "@nx/angular:ng-packagr-lite", "options": {...} },
-    "test":  { "executor": "@nx/vite:test" },
-    "lint":  { "executor": "@nx/eslint:lint" }
-  }
+  "sourceRoot": "libs/orders/feature-cart/src"
 }
 ```
 
+Nx 18+ infers `build`/`test`/`lint` targets from `tsconfig`/`vite.config`/`eslint.config` when the matching plugin is registered in `nx.json`. Spell out `targets:` only when you need to override defaults, or for `--buildable` libs that need a `build` entry (`@nx/angular:ng-packagr-lite`).
+
 ### `enforce-module-boundaries` Rule
 
-```json
-// .eslintrc.json (root)
-{
-  "rules": {
-    "@nx/enforce-module-boundaries": ["error", {
-      "enforceBuildableLibDependency": true,
-      "allow": [],
-      "depConstraints": [
-        { "sourceTag": "type:feature",     "onlyDependOnLibsWithTags": ["type:feature", "type:ui", "type:data-access", "type:util"] },
-        { "sourceTag": "type:ui",          "onlyDependOnLibsWithTags": ["type:ui", "type:util"] },
-        { "sourceTag": "type:data-access", "onlyDependOnLibsWithTags": ["type:data-access", "type:util"] },
-        { "sourceTag": "type:util",        "onlyDependOnLibsWithTags": ["type:util"] },
-        { "sourceTag": "scope:orders",     "onlyDependOnLibsWithTags": ["scope:orders", "scope:shared"] },
-        { "sourceTag": "scope:billing",    "onlyDependOnLibsWithTags": ["scope:billing", "scope:shared"] },
-        { "sourceTag": "scope:shared",     "onlyDependOnLibsWithTags": ["scope:shared"] }
-      ]
-    }]
-  }
-}
+Configure in the root ESLint config (`eslint.config.js` flat config in Nx 19+, or legacy `.eslintrc.json`):
+
+```js
+// eslint.config.js
+'@nx/enforce-module-boundaries': ['error', {
+  enforceBuildableLibDependency: true,
+  allow: [],
+  depConstraints: [
+    { sourceTag: 'type:feature',     onlyDependOnLibsWithTags: ['type:feature', 'type:ui', 'type:data-access', 'type:util'] },
+    { sourceTag: 'type:ui',          onlyDependOnLibsWithTags: ['type:ui', 'type:util'] },
+    { sourceTag: 'type:data-access', onlyDependOnLibsWithTags: ['type:data-access', 'type:util'] },
+    { sourceTag: 'type:util',        onlyDependOnLibsWithTags: ['type:util'] },
+    { sourceTag: 'scope:orders',     onlyDependOnLibsWithTags: ['scope:orders', 'scope:shared'] },
+    { sourceTag: 'scope:billing',    onlyDependOnLibsWithTags: ['scope:billing', 'scope:shared'] },
+    { sourceTag: 'scope:shared',     onlyDependOnLibsWithTags: ['scope:shared'] },
+  ],
+}]
 ```
 
 Violations: a `type:ui` lib importing a `type:data-access` lib, a `scope:orders` lib importing `scope:billing`, an app imported by a lib.
@@ -84,9 +80,9 @@ Violations: a `type:ui` lib importing a `type:data-access` lib, a `scope:orders`
 ### Generators
 
 ```bash
-# Library types map to generator flags
-nx g @nx/angular:library libs/orders/feature-cart --tags=type:feature,scope:orders --standalone
-nx g @nx/angular:library libs/orders/ui-line-item   --tags=type:ui,scope:orders --standalone
+# Library types map to generator flags. --standalone is default in Nx 17+ - omit unless overriding.
+nx g @nx/angular:library libs/orders/feature-cart   --tags=type:feature,scope:orders
+nx g @nx/angular:library libs/orders/ui-line-item   --tags=type:ui,scope:orders
 nx g @nx/angular:library libs/orders/data-access    --tags=type:data-access,scope:orders
 nx g @nx/angular:library libs/shared/util-currency  --tags=type:util,scope:shared --buildable
 ```
@@ -95,13 +91,13 @@ Generators wire `project.json`, `tsconfig` paths, lint, test, and add the lib to
 
 ### Publishable vs Buildable
 
-| Kind            | Use                                                          | Flag                  |
-| --------------- | ------------------------------------------------------------ | --------------------- |
-| Local (default) | Internal-only lib; imported via TS path alias                | (none)                |
-| Buildable       | Compiles to its own `dist/`; enables incremental builds, can be cached separately, prerequisite for `enforceBuildableLibDependency` | `--buildable`         |
-| Publishable     | Will be published to npm; produces an Angular Package Format bundle | `--publishable --importPath=@org/util-currency` |
+| Kind            | Pick when                                                                                              | Flag                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| Local (default) | Lib is internal and rebuilds are fast at the app level                                                 | (none)                                            |
+| Buildable       | Lib's compile time hurts app builds and you want separate cache; OR a buildable downstream depends on it | `--buildable`                                     |
+| Publishable     | Lib will be released to npm or a private registry                                                      | `--publishable --importPath=@org/util-currency`   |
 
-A non-buildable lib cannot be imported by a buildable lib - `enforceBuildableLibDependency` blocks it.
+Default to Local. Reach for Buildable only when measurement shows the app-level rebuild is the bottleneck - the extra `dist/` adds friction in dev. A non-buildable lib cannot be imported by a buildable lib (blocked by `enforceBuildableLibDependency`).
 
 ### `nx affected` in CI
 
@@ -171,8 +167,6 @@ Angular 17+ standalone-first generators in Nx 17+: `nx g @nx/angular:library --s
 
 ## Avoid
 
-- Untagged projects - boundary rules fail open
-- Deep imports across libs (`@org/orders/feature-cart/src/lib/internal/...`) - import through `index.ts`
 - Putting a `type:data-access` service inside a `type:ui` lib because "it was easier"
 - One mega `type:feature` lib that contains the entire app - split by route or domain
 - CI running `nx run-many` for everything when `nx affected` would build only what changed

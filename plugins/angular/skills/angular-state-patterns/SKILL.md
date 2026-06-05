@@ -1,6 +1,6 @@
 ---
 name: angular-state-patterns
-description: Angular state - signals, NgRx Store/ComponentStore, signal services, URL state, persistence, auth lifecycle, BehaviorSubject migration.
+description: Angular state - signals, NgRx Signal Store/Store/ComponentStore, signal services, URL state, persistence, auth lifecycle.
 metadata:
   category: frontend
   tags: [angular, state, signals, ngrx, componentstore, rxjs, behaviorsubject]
@@ -19,9 +19,9 @@ user-invocable: false
 
 ## Rules
 
-- Climb the ladder only when justified: signal -> signal service -> ComponentStore -> NgRx. NgRx requires concrete need (devtools, effects, time-travel).
+- Climb the ladder only when justified: `signal` → signal service → NgRx Signal Store → NgRx Store. ComponentStore is acceptable in existing codebases; for greenfield, Signal Store has replaced it. Reach for NgRx Store only when you need devtools time-travel, structured `Effects`, or middleware (`@ngrx/router-store`, action-replay logs) - "devtools" alone is not enough.
 - One store per domain boundary; never one mega-store.
-- Server state lives in HTTP services with caching, never duplicated into stores.
+- Server state lives in HTTP services with caching (or TanStack Query - see `angular-data-fetching`), never duplicated into stores.
 - Filters, sort, pagination, and search belong in route query params (bookmarkable, shareable, back-button-safe).
 - Derived state is `computed()`/selectors, never stored.
 - Updates are immutable - return new references.
@@ -30,16 +30,16 @@ user-invocable: false
 
 ### Mechanism Selection
 
-| Mechanism           | Use for                                  |
-| ------------------- | ---------------------------------------- |
-| `signal()`          | Component-local UI (modal, form dirty)   |
-| Signal service      | Shared UI/domain (cart, theme, prefs)    |
-| NgRx Signal Store   | Domain store with methods + computed + RxJS interop, less ceremony than NgRx Store |
-| HTTP service        | Server data with caching                 |
-| Router queryParams  | Filters, sort, pagination, search        |
-| Reactive Forms      | Form values + validation                 |
-| ComponentStore      | Feature-scoped complex state             |
-| NgRx Store          | Enterprise: devtools/effects/middleware  |
+| Mechanism           | Use for                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `signal()`          | Component-local UI (modal, form dirty)                                               |
+| Signal service      | Shared UI/domain (cart, theme, prefs)                                                |
+| NgRx Signal Store   | Domain store with methods + computed + entity collections + RxJS interop             |
+| HTTP service / TanStack Query | Server data with caching                                                   |
+| Router queryParams  | Filters, sort, pagination, search                                                    |
+| Reactive Forms      | Form values + validation                                                             |
+| ComponentStore      | Existing codebases; Signal Store covers new feature-scoped state                     |
+| NgRx Store          | Devtools time-travel, structured Effects, action-replay - rarely justified on greenfield |
 
 ### Signal Service
 
@@ -177,21 +177,24 @@ readonly value = toSignal(this.form.valueChanges, { initialValue: this.form.getR
 readonly isValid = toSignal(this.form.statusChanges.pipe(map((s) => s === "VALID")), { initialValue: false });
 ```
 
-### ComponentStore (feature-scoped)
+### ComponentStore (legacy / feature-scoped)
 
 ```typescript
+// EditorState is genuinely component-local (not URL-bookmarkable): undo stack, cursor pos, focus mode.
 @Injectable()
-export class FilterStore extends ComponentStore<FilterState> {
-  constructor() { super({ category: "all", sortBy: "name", page: 1 }); }
-  readonly filters$ = this.select((s) => s);
-  readonly setCategory = this.updater((s, category: string) => ({ ...s, category, page: 1 }));
+export class EditorStore extends ComponentStore<EditorState> {
+  constructor() { super({ undoStack: [], cursorLine: 0, focusMode: false }); }
+  readonly cursorLine$ = this.select((s) => s.cursorLine);
+  readonly setCursor = this.updater((s, line: number) => ({ ...s, cursorLine: line }));
 }
 
-@Component({ providers: [FilterStore] })  // scoped to component subtree
-export class ProductListComponent {
-  private readonly store = inject(FilterStore);
+@Component({ providers: [EditorStore] })  // scoped to component subtree
+export class EditorComponent {
+  private readonly store = inject(EditorStore);
 }
 ```
+
+For greenfield, prefer NgRx Signal Store providing `provideComponentStore`-equivalent scoping via route-level providers.
 
 ### NgRx Store (enterprise only)
 
@@ -199,12 +202,16 @@ Use when you need devtools, effects, or middleware. Shape: `createActionGroup` +
 
 ### Server Cache + Pagination
 
+For multi-filter pagination, prefer TanStack Query (see `angular-data-fetching`) - its key factory + staleTime handles the eviction problem. A hand-rolled Map cache is acceptable only for a small, bounded key space (e.g., one resource, recent N pages):
+
 ```typescript
 private readonly cache = new Map<string, Observable<Page<Product>>>();
+private readonly MAX_ENTRIES = 50;  // bound the cache; LRU eviction below
 
 getPage(page: number, filters: Filters): Observable<Page<Product>> {
   const key = `${page}|${JSON.stringify(filters)}`;
   if (!this.cache.has(key)) {
+    if (this.cache.size >= this.MAX_ENTRIES) this.cache.delete(this.cache.keys().next().value!); // evict oldest
     this.cache.set(key, this.http.get<Page<Product>>("/api/products", { params: { page, ...filters } })
       .pipe(shareReplay({ bufferSize: 1, refCount: false })));
   }
@@ -213,6 +220,8 @@ getPage(page: number, filters: Filters): Observable<Page<Product>> {
 
 invalidate(): void { this.cache.clear(); }  // on mutation
 ```
+
+Unbounded caches leak memory across long sessions - always cap.
 
 ## Output Format
 
@@ -253,7 +262,7 @@ Omit `Issues Found` for greenfield design.
 - One mega-service holding unrelated domains
 - Storing derived values instead of `computed()`/selectors
 - Mutating state in place
-- `BehaviorSubject` for component-local state - use signals
+- `BehaviorSubject` for component-local state - use signals (see migration table in `angular-signals-patterns`)
 - Filters/sort/pagination in signals or services - they belong in queryParams
 - `providedIn: 'root'` for per-user state without an explicit reset on logout
 - `localStorage` access without `isPlatformBrowser` guard (SSR crash)

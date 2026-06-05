@@ -20,11 +20,11 @@ user-invocable: false
 
 ## Rules
 
-- One library per concern: pick HttpClient + signals, TanStack Query, or Apollo per app - do not mix two for the same domain.
+- One library per domain: HttpClient + signals, TanStack Query, or Apollo - do not mix two for the same domain.
 - Every mutation declares the cache it invalidates. No mutation ships without a written invalidation plan.
-- SSR projects with HTTP must wire `provideClientHydration(withHttpTransferCacheOptions({...}))` or expect a double-fetch.
+- SSR + HTTP requires `provideHttpClient(withFetch())` + `provideClientHydration(withHttpTransferCacheOptions({...}))` - `withFetch()` is the prerequisite for the transfer cache to intercept `HttpClient`.
 - Query keys are factory-derived (`userKeys.detail(id)`), never inline literals.
-- Read URL state via signal-driven primitives (`resource`/`injectQuery` with signal params); do not subscribe to `params` and call `http.get` imperatively.
+- Reactive request inputs use a signal-driven primitive (`resource`/`httpResource`/`injectQuery`) so re-fetch and cancellation are automatic.
 - Optimistic updates always pair with a rollback in the error path.
 
 ## Patterns
@@ -39,34 +39,19 @@ user-invocable: false
 | GraphQL                                          | Apollo Angular                              |
 | Full-app state for non-server data               | NgRx / Signal Store (see `angular-state-patterns`) |
 
-### `httpResource()` (Angular 19+/20+)
+### `httpResource()` (stable since Angular 20)
 
-Signal-driven HTTP primitive. Re-fetches when input signals change; exposes `value`, `status`, `error`, `isLoading` as signals.
+Signal-driven HTTP primitive: re-fetches on input change; exposes `value`/`status`/`error`/`isLoading` as signals; auto-aborts the prior request.
 
 ```typescript
 @Component({...})
 export class UserComponent {
   id = input.required<string>();
   user = httpResource<User>(() => `/api/users/${this.id()}`);
-  //         ^ value(), status(), error(), isLoading()
 }
 ```
 
-`httpResource` is experimental in Angular 19, stable from 20+. Pin behind a version check when targeting 19.
-
-### `resource()` (Angular 19+/20+)
-
-Lower-level signal-async primitive. Use for non-HTTP loaders (IndexedDB, WebSocket, computed cache hits) or when you need a custom `loader`.
-
-```typescript
-favorites = resource({
-  request: () => ({ userId: this.userId() }),
-  loader: ({ request, abortSignal }) =>
-    fetch(`/api/favorites?u=${request.userId}`, { signal: abortSignal }).then((r) => r.json()),
-});
-```
-
-Aborts the previous request when the request signal changes. Pair with `signal: abortSignal` in `fetch` / `HttpClient.request({ signal })`.
+For non-HTTP loaders (IndexedDB, custom fetcher), use `resource({ request, loader })` - see `angular-signals-patterns` for the full pattern.
 
 ### TanStack Query for Angular (`@tanstack/angular-query-experimental`)
 
@@ -115,17 +100,20 @@ private queryClient = inject(QueryClient);
 
 createUser = injectMutation(() => ({
   mutationFn: (input: CreateUser) => firstValueFrom(this.http.post<User>('/api/users', input)),
-  onSuccess: () => this.queryClient.invalidateQueries({ queryKey: userKeys.lists() }),
+  onSuccess: (created) => {
+    this.queryClient.setQueryData(userKeys.detail(created.id), created); // seed detail cache
+    this.queryClient.invalidateQueries({ queryKey: userKeys.lists() });   // mark lists stale
+  },
 }));
 ```
 
-Invalidate **lists**, not the specific entity you mutated - lists are stale, the cache for the new entity is fresh from the response.
+Lists go stale on every create/update/delete; the detail key is fresh because the response carries the new entity.
 
 ### Optimistic Update + Rollback
 
 ```typescript
 toggleFavorite = injectMutation(() => ({
-  mutationFn: (id: string) => firstValueFrom(this.http.post(`/api/favorites/${id}/toggle`, {})),
+  mutationFn: (id: string) => firstValueFrom(this.http.post<Favorite>(`/api/favorites/${id}/toggle`, {})),
   onMutate: async (id) => {
     await this.queryClient.cancelQueries({ queryKey: favoriteKeys.list() });
     const previous = this.queryClient.getQueryData<Favorite[]>(favoriteKeys.list());
@@ -155,8 +143,8 @@ profile = injectQuery(() => ({
 posts = injectInfiniteQuery(() => ({
   queryKey: ['posts'],
   queryFn: ({ pageParam, signal }) =>
-    firstValueFrom(this.http.get<Page<Post>>(`/api/posts`, { params: { cursor: pageParam ?? '' } })),
-  initialPageParam: '' as string,
+    firstValueFrom(this.http.get<Page<Post>>(`/api/posts`, { params: { cursor: pageParam } })),
+  initialPageParam: '',
   getNextPageParam: (lastPage) => lastPage.nextCursor,
 }));
 ```
@@ -180,7 +168,7 @@ userQuery = this.apollo.watchQuery<{ user: User }>({
   variables: { id: this.id() },
 });
 
-user = toSignal(this.userQuery.valueChanges.pipe(map((r) => r.data.user)));
+user = toSignal(this.userQuery.valueChanges.pipe(map((r) => r.data.user)), { initialValue: null });
 ```
 
 For mutations, use `apollo.mutate(...)` with `refetchQueries` or manual `cache.modify` for surgical updates.
@@ -190,19 +178,21 @@ For mutations, use `apollo.mutate(...)` with `refetchQueries` or manual `cache.m
 ```typescript
 // app.config.ts (browser)
 providers: [
+  provideHttpClient(withFetch()),         // required: transfer cache only intercepts fetch-backed HttpClient
   provideClientHydration(
     withHttpTransferCacheOptions({
-      includePostRequests: false,         // POSTs default to off; opt in deliberately
-      includeRequestsWithAuthHeaders: false, // never cache per-user auth responses in transfer cache
+      includePostRequests: false,         // POSTs default off; opt in deliberately
+      includeRequestsWithAuthHeaders: false, // never cache per-user auth responses
       includeHeaders: ['x-locale'],
       filter: (req) => !req.url.includes('/realtime/'),
     }),
   ),
-  provideHttpClient(withFetch()),
 ],
 ```
 
-Without `withHttpTransferCacheOptions`, every server-fetched URL is re-fetched on hydration -> double round-trip on every cold page load.
+Without `withHttpTransferCacheOptions`, every server-fetched URL is re-fetched on hydration - double round-trip on every cold page load.
+
+**TanStack Query under SSR.** The Angular transfer cache only sees direct `HttpClient` calls. TanStack runs `queryFn` on the server, but the *cache snapshot* doesn't cross the wire automatically - either (a) let TanStack re-execute on hydration (cheap if `HttpClient` calls inside `queryFn` hit the transfer cache), or (b) use TanStack's `dehydrate`/`HydrationBoundary` to ship the cache itself. Pick (a) for simplicity, (b) when queries are expensive or non-HTTP.
 
 ### Shared Cache for Hot Endpoints (no TanStack)
 
@@ -217,10 +207,6 @@ export class ConfigService {
 ```
 
 Use only for low-mutation, app-wide singletons (config, current user). For anything keyed by inputs or invalidated by mutations, use TanStack Query.
-
-### Cancellation
-
-Whatever the library, prefer signal-driven inputs so re-fetches auto-cancel via abort signals. Manual subscriptions need `takeUntilDestroyed()` - see `angular-rxjs-patterns`.
 
 ## Output Format
 
@@ -257,10 +243,6 @@ Omit `Issues Found` for greenfield design.
 ## Avoid
 
 - Calling `http.get` inside templates - re-fires every CD cycle
-- Mixing TanStack Query and a parallel signal cache for the same domain
-- Inline query keys (`['users', id]`) sprinkled across components - use a key factory
-- Mutations without an invalidation entry
-- Optimistic update with no rollback path
 - `includeRequestsWithAuthHeaders: true` on the transfer cache (cross-user leak on shared SSR)
 - Subscribing to `route.queryParamMap` and calling `http.get` imperatively when a signal-driven `resource`/`injectQuery` would auto-cancel
 - Apollo `cache: new InMemoryCache()` without a `typePolicies` entry for paginated fields (cache thrashes on every page)

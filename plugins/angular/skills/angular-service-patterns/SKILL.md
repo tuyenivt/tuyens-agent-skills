@@ -55,20 +55,7 @@ export class UserService {
 }
 ```
 
-### `httpResource()` (signal-driven HTTP, 19+/20+)
-
-When the component owns the request inputs as signals, expose data via `httpResource` instead of subscribing manually. Auto-cancels prior requests when inputs change.
-
-```typescript
-@Component({...})
-export class UserDetailComponent {
-  id = input.required<string>();
-  user = httpResource<User>(() => `/api/users/${this.id()}`);
-  //         ^ value(), status(), error(), isLoading()  - all signals
-}
-```
-
-Experimental in 19, stable from 20+. For full data-layer patterns (TanStack Query, cache invalidation, optimistic updates), see `angular-data-fetching`.
+For signal-driven HTTP (`httpResource`, `resource`), cache, mutations, and SSR transfer cache, see `angular-data-fetching` - it owns the data layer.
 
 ### Signal-Based State Service
 
@@ -87,32 +74,39 @@ export class NotificationService {
 
 ### Hybrid Auth Service (HTTP + State)
 
-Combining HTTP and signal state is appropriate when token lifecycle is the domain.
+Combine HTTP and signal state when one domain object owns both - here, the auth session is a single concept spanning the request that establishes it and the in-memory token + user it produces.
 
 ```typescript
 @Injectable({ providedIn: "root" })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly _user = signal<User | null>(null);
+  private readonly _accessToken = signal<string | null>(null);  // signal so interceptors can read reactively
   readonly user = this._user.asReadonly();
   readonly isAuthenticated = computed(() => this._user() !== null);
-  private accessToken: string | null = null;
 
-  getToken(): string | null { return this.accessToken; }
+  getToken(): string | null { return this._accessToken(); }
 
   login(creds: Credentials): Observable<User> {
     return this.http.post<AuthResponse>("/api/auth/login", creds).pipe(
-      tap((res) => { this.accessToken = res.token; this._user.set(res.user); }),
+      tap((res) => { this._accessToken.set(res.token); this._user.set(res.user); }),
       map((res) => res.user),
     );
   }
 
-  logout(): void {
-    this.accessToken = null;
-    this._user.set(null);
+  refresh(): Observable<string> {
+    return this.http.post<{ token: string }>("/api/auth/refresh", {}).pipe(
+      tap((res) => this._accessToken.set(res.token)),
+      map((res) => res.token),
+      shareReplay(1),  // single-flight: concurrent 401s share one refresh call
+    );
   }
+
+  logout(): void { this._accessToken.set(null); this._user.set(null); }
 }
 ```
+
+Access tokens stay in memory (signal). Refresh tokens belong in an `httpOnly` cookie set by the backend - never `localStorage` (XSS-readable). For SSR-safe persistence patterns, see `angular-state-patterns`.
 
 ### Component-Scoped Service
 
@@ -162,7 +156,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 // app.config.ts - request pipeline runs top-down (auth attaches token first);
 // response pipeline runs bottom-up (error catches after retry)
 export const appConfig: ApplicationConfig = {
-  providers: [provideHttpClient(withInterceptors([authInterceptor, errorInterceptor]))],
+  providers: [provideHttpClient(withFetch(), withInterceptors([authInterceptor, errorInterceptor]))],
+  // withFetch() required for SSR transfer cache; safe and recommended for SPA too
 };
 ```
 
@@ -174,14 +169,16 @@ export const refreshInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError((err: HttpErrorResponse) =>
       err.status === 401
-        ? auth.refresh().pipe(switchMap(() => next(req.clone({
-            setHeaders: { Authorization: `Bearer ${auth.getToken()}` },
+        ? auth.refresh().pipe(switchMap((token) => next(req.clone({
+            setHeaders: { Authorization: `Bearer ${token}` },
           }))))
         : throwError(() => err),
     ),
   );
 };
 ```
+
+`AuthService.refresh()` must single-flight (e.g., `shareReplay(1)` on an in-flight observable) so 10 concurrent 401s trigger one refresh, not ten. Order in the interceptor chain: this must run *after* `authInterceptor` so the new token attaches on replay.
 
 ### Injection Tokens for Config
 

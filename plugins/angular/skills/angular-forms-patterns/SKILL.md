@@ -20,13 +20,13 @@ user-invocable: false
 
 ## Rules
 
-- Reactive Forms only for non-trivial forms - typed `FormGroup<{...}>`. Template-driven is acceptable only for one-field opt-in toggles.
-- Build forms with `inject(NonNullableFormBuilder)`; `nonNullable: true` is the default for new controls.
+- Reactive Forms for any form with >1 control or any validation. Template-driven only for a single isolated checkbox/toggle.
+- Build via `inject(NonNullableFormBuilder)` so controls default to `nonNullable` (`getRawValue()` returns `string`, not `string | null`).
 - Validators live on the control, not in the submit handler.
-- Submit handler reads `form.getRawValue()` (typed), not `form.value` (loose).
-- Server-validation errors are mapped back to controls via `setErrors`; never surface raw 422 text only at the form level.
-- Custom inputs implement `ControlValueAccessor`; never write to a host `[(ngModel)]` from a parent component.
-- `[disabled]` on a reactive control is a TS finding - use `control.disable()`/`enable()`.
+- Submit reads `form.getRawValue()` (typed), not `form.value` (loose `Partial<...>`).
+- Server validation maps back to the offending control via `setErrors`, and clears via `setErrors(null)` on next edit. Never surface a 422 only as a toast.
+- Custom inputs implement `ControlValueAccessor`; never write to a child's `[(ngModel)]` from a parent.
+- `[disabled]` on a reactive control is a finding - call `control.disable()`/`enable()` (driven by an `effect` in an injection context when reactive).
 
 ## Patterns
 
@@ -100,13 +100,17 @@ Group-level errors surface on the parent (`form.errors`), not on the child contr
 private users = inject(UserService);
 
 uniqueEmail: AsyncValidatorFn = (ctrl) =>
-  timer(300).pipe( // debounce keystroke
+  timer(300).pipe( // delay to throttle requests; the validator framework cancels stale runs on new value
     switchMap(() => this.users.checkEmail(ctrl.value)),
     map((taken) => (taken ? { taken: true } : null)),
     catchError(() => of(null)), // network failure - do not block submit
   );
 
-email = this.fb.control('', { validators: [Validators.required, Validators.email], asyncValidators: [this.uniqueEmail] });
+email = this.fb.control('', {
+  validators: [Validators.required, Validators.email],
+  asyncValidators: [this.uniqueEmail],
+  updateOn: 'blur', // stops the check from running per keystroke
+});
 ```
 
 While async runs, `control.pending` is `true` - submit buttons should reflect it.
@@ -114,24 +118,32 @@ While async runs, `control.pending` is `true` - submit buttons should reflect it
 ### Server-Side Validation Surfacing
 
 ```typescript
+private destroyRef = inject(DestroyRef);
+
 submit(): void {
   if (this.form.invalid) { this.form.markAllAsTouched(); return; }
-  this.api.create(this.form.getRawValue()).subscribe({
-    error: (err: HttpErrorResponse) => {
-      if (err.status === 422 && err.error?.errors) {
+  this.api.create(this.form.getRawValue())
+    .pipe(takeUntilDestroyed(this.destroyRef))
+    .subscribe({
+      error: (err: HttpErrorResponse) => {
+        if (err.status !== 422 || !err.error?.errors) return;
         // { email: ["already in use"], "lines.0.sku": ["unknown SKU"] }
         for (const [path, messages] of Object.entries(err.error.errors)) {
           const ctrl = this.form.get(path);
-          ctrl?.setErrors({ server: messages });
+          if (!ctrl) continue;
+          ctrl.setErrors({ ...(ctrl.errors ?? {}), server: messages }); // merge, don't clobber client errors
+          ctrl.valueChanges.pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            const { server, ...rest } = ctrl.errors ?? {};
+            ctrl.setErrors(Object.keys(rest).length ? rest : null); // clear server slot, keep others
+          });
         }
         this.form.markAllAsTouched();
-      }
-    },
-  });
+      },
+    });
 }
 ```
 
-Server errors are first-class; render them alongside client-side messages in the same UI.
+Server errors must clear on next edit, or the field stays invalid after the user fixes it. Merge with `ctrl.errors` to keep client validation in play.
 
 ### `valueChanges` -> Signal
 
@@ -189,9 +201,34 @@ export class ColorPickerComponent implements ControlValueAccessor {
 
 Usage: `<app-color-picker formControlName="brandColor" />` - validators, disabled state, dirty/touched all flow through.
 
-### `updateValueAndValidity` Recompute
+### Conditional Validators
 
-When you change a validator at runtime (`addValidators`, `removeValidators`) or modify a dependent field, call `control.updateValueAndValidity({ emitEvent: false })` to re-run validation without firing `valueChanges`.
+When a control's validators depend on a sibling (`shipTo.required` only when `pickup === false`), swap them at runtime and recompute without re-emitting:
+
+```typescript
+this.form.controls.pickup.valueChanges.pipe(takeUntilDestroyed()).subscribe((pickup) => {
+  const shipTo = this.form.controls.shipTo;
+  shipTo.setValidators(pickup ? [] : [Validators.required]);
+  shipTo.updateValueAndValidity({ emitEvent: false });
+});
+```
+
+Same call (`updateValueAndValidity({ emitEvent: false })`) applies after `addValidators` / `removeValidators`.
+
+### CVA + Internal Validation
+
+If a custom input enforces format (hex color, IBAN, phone), register it as a validator too via `NG_VALIDATORS` so parent forms see the error without re-implementing the check:
+
+```typescript
+providers: [
+  { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => HexInputComponent), multi: true },
+  { provide: NG_VALIDATORS,     useExisting: forwardRef(() => HexInputComponent), multi: true },
+],
+// in class:
+validate(ctrl: AbstractControl): ValidationErrors | null {
+  return /^#[0-9a-f]{6}$/i.test(ctrl.value) ? null : { hex: true };
+}
+```
 
 ### Template Error Display
 
@@ -240,12 +277,7 @@ When you change a validator at runtime (`addValidators`, `removeValidators`) or 
 
 ## Avoid
 
-- `FormGroup` without an explicit type parameter on non-trivial forms
-- `Validators.required` on a control whose only purpose is conditional - use `setValidators` based on a sibling
-- Putting validation inside the submit handler instead of on the control
-- Reading `form.value` for a submit payload (typed as `Partial<...>`) - use `getRawValue()`
-- `[disabled]` template binding on a reactive control
-- Writing to a child component's `[(ngModel)]` from a parent - use `ControlValueAccessor`
-- Surfacing server validation only as a toast - map it to the offending control
-- `valueChanges.subscribe(...)` in components without `takeUntilDestroyed()` - or convert to `toSignal`
+- `FormGroup` without a type parameter on non-trivial forms - loses `getRawValue()` typing
+- `Validators.required` on a control that is only conditionally required - swap with `setValidators` based on a sibling
+- `valueChanges.subscribe(...)` without `takeUntilDestroyed()` - or convert to `toSignal`
 - Mixing template-driven and reactive on the same form

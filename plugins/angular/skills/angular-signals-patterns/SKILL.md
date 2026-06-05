@@ -30,6 +30,22 @@ user-invocable: false
 
 ## Patterns
 
+### Signal Inputs / Outputs / Model (17.1+)
+
+Replace `@Input()` / `@Output()` with signal-based equivalents:
+
+```typescript
+@Component({...})
+export class UserCard {
+  user = input.required<User>();              // ReadonlySignal<User>
+  highlighted = input(false);                 // ReadonlySignal<boolean> with default
+  selected = output<User>();                  // emits via this.selected.emit(user)
+  draft = model<string>('');                  // two-way: draft() reads, draft.set(v) writes; parent: [(draft)]="x"
+}
+```
+
+`input.required<T>()` raises a compile-time error if the parent forgets the binding. Reads outside templates must be in a reactive context (`computed`, `effect`) or after construction - reading an `input` in `constructor()` returns `undefined` for required inputs until the first CD pass.
+
 ### Updating
 
 ```typescript
@@ -97,9 +113,9 @@ results = toSignal(
 );
 ```
 
-### resource() - Async Data (Angular 19+)
+### resource() - Async Data (stable since Angular 20)
 
-Prefer over manual `toSignal + switchMap` when async data is driven by signal inputs. Exposes `status`, `value`, `error` signals.
+Prefer over manual `toSignal + switchMap` when async data is driven by signal inputs. Exposes `status`, `value`, `error` signals. (Experimental in Angular 19; for HTTP-specific use, see `httpResource` in `angular-data-fetching`.)
 
 ```typescript
 // Single signal input
@@ -130,22 +146,39 @@ selectedProductId = linkedSignal(() => this.products()[0]?.id ?? "");
 // User can override; resets when products() changes
 ```
 
+### BehaviorSubject → Signal Migration
+
+| BehaviorSubject               | Signal equivalent                            |
+| ----------------------------- | -------------------------------------------- |
+| `new BehaviorSubject(v)`      | `signal(v)`                                  |
+| `subj.next(v)`                | `sig.set(v)`                                 |
+| `subj.value`                  | `sig()` (read)                               |
+| `subj.asObservable()`         | `toObservable(sig)` (for RxJS consumers)     |
+| `subj.pipe(map(...))`         | `computed(() => fn(sig()))`                  |
+| Template `{{ subj$ \| async }}` | Template `{{ sig() }}`                      |
+
+When external consumers still need an observable (e.g., RxJS-heavy effects), bridge with `toObservable(sig)` rather than keeping both side by side.
+
+### Effect Injection Context
+
+`effect()` must run in an injection context - field initializer, `constructor()`, or `runInInjectionContext`. Calling `effect()` from `ngOnInit` throws `NG0203`. To register an effect after construction, capture an injector: `private inj = inject(Injector)`, then `runInInjectionContext(this.inj, () => effect(...))`.
+
 ### Signal-Based Service
 
 ```typescript
 @Injectable({ providedIn: "root" })
-export class CartService {
-  private readonly _items = signal<CartItem[]>([]);
-  readonly items = this._items.asReadonly();
-  readonly total = computed(() =>
-    this._items().reduce((sum, i) => sum + i.price * i.quantity, 0),
-  );
+export class FeatureFlagsService {
+  private readonly _flags = signal<Record<string, boolean>>({});
+  readonly flags = this._flags.asReadonly();
+  readonly isEnabled = (key: string) => computed(() => this._flags()[key] ?? false);
 
-  add(item: CartItem): void {
-    this._items.update((list) => [...list, item]);
+  set(key: string, value: boolean): void {
+    this._flags.update((f) => ({ ...f, [key]: value }));
   }
 }
 ```
+
+Writable signals stay private; consumers read via `.asReadonly()`. For service patterns with domain-specific examples (cart, auth), see `angular-state-patterns` and `angular-service-patterns`.
 
 ## Output Format
 
@@ -188,8 +221,6 @@ Omit sections without entries; omit `Issues Found` for greenfield design.
 ## Avoid
 
 - `effect()` that writes to other signals (use `computed()` / `linkedSignal`)
-- Mutating signal values in place; deep nested writes that miss a spread
-- Exposing writable signals from services
-- `toSignal()` without `initialValue`/`requireSync` on async sources
+- Calling `effect()` outside an injection context - throws `NG0203`
 - Circular computed dependencies
 - Manual observable subscriptions where `toSignal()` fits

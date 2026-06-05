@@ -73,31 +73,12 @@ State the choice explicitly in Strategy Doc output.
 
 ### Step 7 - Apply Angular test patterns
 
-Patterns live in `angular-testing-patterns`; workflow-level decisions:
+Canonical patterns (`HttpTestingController` shape, `runInInjectionContext` for guards/interceptors, `setInput` for signal inputs, ATL-vs-TestBed default, router stubs, NgRx effects, axe scans) live in `angular-testing-patterns`. **Workflow-level decisions** this skill owns:
 
-- **HTTP boundary.** `HttpTestingController` (`provideHttpClient()` + `provideHttpClientTesting()`); never `spyOn(service, 'http' as any)`. Verify method/URL/body/headers; `req.flush(...)`; `httpMock.verify()` in `afterEach`.
-- **Functional guards.** `TestBed.runInInjectionContext(() => guardFn(route, state))` with stub providers. Happy + denial.
-- **Functional interceptors.** `provideHttpClient(withInterceptors([myInterceptor]))` + `provideHttpClientTesting()`; assert via `httpMock.expectOne(...)` request transformation. Happy + denial.
-- **Signals.** Read as function calls. Set signal inputs via `fixture.componentRef.setInput('value', 42)`. `effect()` runs during CD - trigger via `fixture.detectChanges()`, assert the side effect.
-- **Reactive Forms.** Cover valid + invalid + cross-field + async-validator pending paths; for server-validation, simulate `HttpErrorResponse` 422 and assert `control.errors['server']` is set. See `angular-forms-patterns`.
-- **Component test choice.** ATL by default (user-centric, `userEvent`, `render(Component, { inputs, on, providers })`). TestBed + `ComponentFixture` only for fixture-level control (manual CD, harness loader, `setInput` on OnPush).
-- **Router stubs.** `provideRouter([...stubRoutes])` over deprecated `RouterTestingModule`.
 - **MSW vs `HttpTestingController`.** `HttpTestingController` for component/service tests (faster, contract-aware). MSW only for browser-realistic flows (service worker, CORS) - typically Playwright.
-- **NgRx.** Reducers/selectors as pure-function tests, no TestBed. Effects: `provideMockActions(() => actions$)` from `@ngrx/effects/testing`.
-- **Third-party auth SDK (Auth0, Okta, Firebase).** Mock the SDK's `AuthService` via `useValue: stubAuth`. For `@auth0/auth0-angular`:
-
-  ```typescript
-  const auth0 = {
-    isAuthenticated$: of(true),
-    user$: of({ sub: "auth0|123", email: "u@x.com" }),
-    loginWithRedirect: vi.fn(),
-    logout: vi.fn(),
-    getAccessTokenSilently: vi.fn(() => of("token")),
-  };
-  TestBed.configureTestingModule({ providers: [{ provide: AuthService, useValue: auth0 }] });
-  ```
-- **Error tracker.** `vi.mock('@sentry/angular', () => ({ captureException: vi.fn(), setUser: vi.fn() }))`; assert capture on the error path.
-- **A11y.** `axe(fixture.nativeElement)` via `jest-axe` / `vitest-axe` at route-level tests.
+- **Third-party SDK stubbing strategy.** Mock the SDK's Angular service surface (e.g., `@auth0/auth0-angular`'s `AuthService`) via `useValue:` stub, not the underlying library globals. Keeps tests fast and decouples from SDK version churn.
+- **Error tracker.** `vi.mock('@sentry/angular', ...)` at module scope - asserting capture on the error path belongs to the test, not the global setup.
+- **Zoneless test setup.** When the app is zoneless, configure tests with `provideZonelessChangeDetection()` in `TestBed.configureTestingModule`; `fixture.detectChanges()` is still required to flush effects.
 
 ### Step 8 - Test boundaries
 

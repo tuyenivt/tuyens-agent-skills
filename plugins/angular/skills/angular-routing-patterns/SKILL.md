@@ -119,12 +119,15 @@ export class UserDetailComponent {
 
 Cleaner than subscribing to `ActivatedRoute.paramMap` - resolves to signals, plays naturally with OnPush, and re-runs `computed` automatically on route change.
 
-### Signal-Based Route Data (fallback for non-input cases)
+### Other Guards
 
 ```typescript
-private readonly route = inject(ActivatedRoute);
-team = toSignal(this.route.data.pipe(map(d => d["team"] as Team)));
-tab = toSignal(this.route.queryParamMap.pipe(map(p => p.get("tab") ?? "overview")));
+// CanMatch - gates the lazy chunk load; preferred for auth-protected lazy routes.
+// CanActivate - runs per navigation; use when the gate depends on state that can change post-load (subscription expiry, feature flag).
+// CanActivateChild - runs on every child route change; use for breadcrumbs / context that must re-verify per step.
+// CanDeactivate - confirms leaving (dirty form):
+export const confirmLeave: CanDeactivateFn<EditorComponent> = (cmp) =>
+  cmp.form.pristine || confirm("Discard unsaved changes?");
 ```
 
 ### Navigation with Query Param Merge
@@ -139,25 +142,25 @@ this.router.navigate([], {
 
 ### SSR (Angular Universal)
 
-```typescript
-// app.config.ts - enable hydration + HTTP transfer cache so resolver fetches
-// reuse on the client instead of refiring
-export const appConfig: ApplicationConfig = {
-  providers: [
-    provideRouter(routes),
-    provideHttpClient(withFetch()),
-    provideClientHydration(withHttpTransferCacheOptions({})),
-  ],
-};
+Resolvers and guards run on the server too - any browser-only API (DOM, `window`, `localStorage`, `IntersectionObserver`) must wait for client init:
 
-// Guard browser-only APIs - resolvers and guards run on the server too
-private readonly platformId = inject(PLATFORM_ID);
-ngOnInit() {
-  if (isPlatformBrowser(this.platformId)) this.initChart();
+```typescript
+constructor() {
+  afterNextRender(() => this.initChart()); // runs only in the browser, after first DOM render
 }
 ```
 
-For non-HTTP server-computed data, use `TransferState` to pass from server to client and avoid recomputation on hydration.
+Pair with `TransferState` for any non-HTTP server-computed payload you want to reuse on hydration:
+
+```typescript
+private readonly state = inject(TransferState);
+private readonly KEY = makeStateKey<Team>('current-team');
+
+team = signal(this.state.get(this.KEY, null));
+constructor() { effect(() => isPlatformServer(this.platformId) && this.state.set(this.KEY, this.team()!)); }
+```
+
+For HTTP transfer cache wiring (`provideClientHydration(withHttpTransferCacheOptions({...}))` and the `withFetch()` prerequisite), see `angular-data-fetching` - it owns the security-relevant defaults.
 
 ## Output Format
 

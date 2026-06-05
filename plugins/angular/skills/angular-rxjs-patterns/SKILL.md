@@ -120,6 +120,12 @@ this.http.get<User[]>('/api/users').pipe(
 readonly config$ = this.http.get<AppConfig>('/api/config').pipe(
   shareReplay({ bufferSize: 1, refCount: true }),  // refCount lets GC reclaim when unused
 );
+
+// Without shareReplay, two subscribers = two HTTP requests:
+header.config$.subscribe(...);  // request 1
+sidebar.config$.subscribe(...); // request 2 - same URL, fires again
+
+// With shareReplay, request fires once and both subscribers see it.
 ```
 
 ### Combining
@@ -140,7 +146,7 @@ forkJoin({ users: users$, categories: categories$ }); // waits for all to comple
 | Streams (WebSocket, events)           | RxJS            | Continuous event streams            |
 | Complex timing (retry, debounce)      | RxJS            | Operators handle timing             |
 
-`resource()` is experimental in Angular 19 and stable from 20+. On projects pinned to 19, gate adoption or accept the experimental status explicitly. For data-layer composition (cache, mutations, optimistic updates), see `angular-data-fetching`.
+`resource()` stable since Angular 20 (experimental in 19). For data-layer composition (cache, mutations, optimistic updates), see `angular-data-fetching`.
 
 ## Output Format
 
@@ -174,3 +180,4 @@ State "No issues found" explicitly when usage is correct.
 - `catchError(() => EMPTY)` without surfacing state to the user.
 - `shareReplay` without `refCount: true` (subscription never drops, blocks GC).
 - `Subject` for component-local state a signal would handle.
+- `takeUntilDestroyed` / `toSignal` on projects pinned below Angular 16 - use a manual `destroy$` + `takeUntil(destroy$)` pattern there.

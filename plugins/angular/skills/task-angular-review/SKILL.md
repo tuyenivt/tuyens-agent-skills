@@ -31,17 +31,17 @@ Staff-level Angular code review covering correctness, architecture, AI-quality, 
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident | A-E + historical pattern matching |
 
-**Auto-promote to `deep`:** if Blast Radius is Wide or Critical and user did not pass `quick`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** evaluated once in Phase A after Blast Radius is known. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
 | Scope | What runs |
 |-------|-----------|
 | Core | Phases A-E (Angular-flavored) |
-| + Perf / + Security / + Observability | Core + matching `task-angular-review-*` subagent |
+| +Perf / +Security / +Observability | Core + matching `task-angular-review-*` subagent |
 | Full | Core + all three subagents in parallel |
 
-Default: **Core with auto-escalation**. Pass `core-only` to suppress.
+Default: **Core with auto-escalation**. Pass `core-only` to suppress escalation.
 
 **Auto-escalation signals:**
 
@@ -68,7 +68,7 @@ Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-review`. Record `Angular: <version>`, `Change detection: zone.js | zoneless`, `SSR: enabled | disabled`.
+Use skill: `stack-detect`. If not Angular, stop and recommend `/task-code-review`. Record `Angular: <version>`, `Change detection: zone.js | zoneless`, `SSR: enabled | disabled`, `Workspace: CLI | Nx`.
 
 ### Step 3 - Resolve the Diff
 
@@ -82,7 +82,7 @@ Scan diff for signals listed under **Scope**. Log each fire as `signal: <categor
 
 Use skills: `review-pr-risk`, `review-blast-radius`. Output risk level and blast radius before any findings.
 
-**Auto-promote depth:** if Blast Radius Wide/Critical and user did not pass `quick`, set depth to `deep`. Note: depth can also be set in Step 4 evaluation if Blast Radius is known then - state it once.
+**Auto-promote depth:** if Blast Radius Wide/Critical and user did not pass `quick`, set depth to `deep`. Log the promotion once (here, not in Step 4).
 
 **Low-risk short-circuit:** if Risk Low + Blast Narrow + no architecture-relevant files (auth config, interceptors, route config, `app.config.ts`, `angular.json`, `vite.config.ts`, root component, shared services/stores), skip Phases C-D and use streamlined output.
 
@@ -107,7 +107,7 @@ Apply atomic skills - each owns canonical patterns:
 Control flow, `@defer`, NgModule, content projection, OnPush -> `angular-component-patterns`. Reactive Forms -> `angular-forms-patterns`. SSR hydration + `withHttpTransferCacheOptions` -> `angular-routing-patterns` + `angular-data-fetching`. Defer to those atomics, do not duplicate.
 
 - **Mutable module-level state.** `let cache = {}` leaks across SSR requests.
-- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Critical]`; `bypassSecurityTrust*` needs justification + is `[Critical]` on user content (audit the *upstream* - input must be DOMPurify-sanitized or server-trusted); open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist; `environment.ts` privileged secrets are `[Critical]` (compile into client bundle).
+- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Blocker]`; `bypassSecurityTrust*` needs justification + is `[Blocker]` on user content (audit the *upstream* - input must be DOMPurify-sanitized or server-trusted); open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist = `[Blocker]`; `environment.ts` privileged secrets are `[Blocker]` (compile into client bundle).
 - **TypeScript strict.** No `: any` inputs; `as any` outside test setup is a finding.
 - **Accessibility.** `<input>` paired with `<label>`; dialogs use CDK `Dialog`; images use `NgOptimizedImage` or explicit `width`/`height`; `alt` present.
 - **Test coverage for logic added.** Missing tests is a named finding (`[Suggestion]`; `[High]` on critical paths: auth, billing UI, form validation, error handlers).
@@ -152,9 +152,9 @@ If scope is Core only, skip.
 
 | Scope | Subagent |
 |-------|----------|
-| + Perf | `task-angular-review-perf` |
-| + Security | `task-angular-review-security` |
-| + Observability | `task-angular-review-observability` |
+| +Perf | `task-angular-review-perf` |
+| +Security | `task-angular-review-security` |
+| +Observability | `task-angular-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt:** resolved review target (`base_ref`, `head_ref`), pre-read diff + commit log, depth level, pre-confirmed stack + detected configuration. Instruction to return findings in its own Output Format.
@@ -165,8 +165,8 @@ If scope is Core only, skip.
 
 Merge into the single Output Format below. Do not append raw subagent reports.
 
-- Deduplicate cross-cutting findings (one entry citing all scopes)
-- Highest severity wins. Map: `Critical` -> `Blocker`, `High` -> `High`, `Medium`/`Low` -> `Suggestion`
+- Dedupe key: identical `file:line` + same issue name = one finding (cite all scopes that raised it). Keep the most specific `Fix` text across versions.
+- Severity merge: Map subagent tiers to parent labels: `Critical` → `[Blocker]`, `High` → `[High]`, `Medium`/`Low` → `[Suggestion]`. Highest wins on collisions.
 - Preserve `file:line` citations
 - Order by severity, not scope
 - Merge Next Steps with `[Implement]` / `[Delegate]` tags preserved

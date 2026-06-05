@@ -90,6 +90,8 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 | Data Integrity Failures (A08) | `JSON.parse` on untrusted bounded; `eval` / `new Function` flagged (any occurrence = Critical)                                                                                                          |
 | Logging & Monitoring (A09)    | Sentry `beforeSend` strips PII; client logs do not include `password`, `token`, `authorization`                                                                                                        |
 
+**Privileged secret definition** (used in Steps 6 + 8): a value that grants write or admin access if exposed - `DATABASE_URL`, API keys with write scope, signing keys, JWT secrets, OAuth client secrets. NOT privileged: Sentry DSNs, OAuth client IDs, Stripe publishable keys (public by design).
+
 ### Step 6 - Authentication
 
 **Angular SPA + separate backend (most common):**
@@ -103,7 +105,7 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 - [ ] **Token storage** - prefer `httpOnly` cookies. Tokens in `localStorage` are XSS-readable (compounds with any `[innerHTML]` exploit)
 - [ ] **Refresh token** via httpOnly cookie POST; never in JS
 - [ ] **OAuth callback validation** - `state`/`nonce` validated; redirect URL allowlisted
-- [ ] **`environment.ts` privileged secrets** - flag DATABASE_URL, API keys with write scope, signing keys, client secrets (DSNs/OAuth client IDs are public by design)
+- [ ] **`environment.ts` privileged secrets** (see definition above) - flag any occurrence
 
 **Angular SSR:**
 
@@ -143,7 +145,7 @@ Combined to avoid cross-step duplication. Each pattern lives in exactly one plac
 
 - [ ] **`eval` / `new Function(string)`** - any occurrence is Critical
 - [ ] **Prototype pollution** - `Object.assign(target, JSON.parse(userInput))` or `{...defaults, ...userJson}` on user-controlled input
-- [ ] **`environment.ts` privileged secrets** are Critical even without runtime use - they compile into the client bundle (DATABASE_URL, API keys with write scope, signing keys)
+- [ ] **`environment.ts` privileged secrets** (see definition above) are Critical even without runtime use - they compile into the client bundle
 - [ ] **CSP** - `default-src 'self'`; `script-src 'self' 'nonce-XXX' 'strict-dynamic'`; `style-src 'self' 'unsafe-inline'` (Angular Material tradeoff); `img-src 'self' data: <CDN>`; `connect-src 'self' <API>`; `frame-ancestors 'none'`. Via response headers, not `<meta>`. Wildcards in `script-src`/`connect-src` or `unsafe-eval`/`unsafe-inline` in production = finding
 - [ ] **Third-party scripts** - SRI (`integrity`) required for non-first-party
 
@@ -206,7 +208,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Print con
 - **Location:** [file:line]
 - **Issue:** [vulnerability in Angular terms with file paths and code]
 - **Attack scenario:** [(a) concrete exploit walkthrough; (b) "Regression risk: ..." for missing-control gaps; (c) "Topology-dependent: ..." for infra-flavored findings - pick one and label]
-- **Severity rationale:** [tier] per rubric - [which clause]
+- **Severity rationale:** [tier] - matches rubric example "[paraphrase the canonical example used as the anchor]"
 - **Fix:** [specific Angular remediation with code: remove `bypassSecurityTrustHtml`, sanitize via `DomSanitizer.sanitize(SecurityContext.HTML, ...)`, etc.]
 
 ### High / Medium / Low

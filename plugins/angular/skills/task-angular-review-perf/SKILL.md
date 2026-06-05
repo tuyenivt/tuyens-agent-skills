@@ -69,6 +69,8 @@ Before applying checklists, open the files governing rendering, CD, bundle, and 
 
 For diffs that ripple through unchanged files (new shared component importing a heavy library), read those too.
 
+**Grouping rule.** When one root cause trips multiple checkboxes (eager `chart.js` import fires Step 5 OnPush, Step 6 bundle, Step 8 LCP), emit **one** finding citing the root cause and listing the symptoms. Per-symptom findings only when each is independently actionable.
+
 ### Step 5 - Change Detection and Re-Render Hotspots
 
 Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angular-signals-patterns`, `angular-rxjs-patterns`. Review-scoped scan:
@@ -124,12 +126,21 @@ _Skipped at `quick` unless diff touches a route, layout, or assets._
 
 ### Step 9 - SSR and Hydration
 
-_Skipped on SPA-only projects._
+_Skipped on SPA-only projects. Transfer-cache wiring is owned by Step 7 - do not double-flag._
 
 - [ ] **`provideClientHydration()`** enabled (else CD passes immediately re-render the entire tree).
-- [ ] **`withHttpTransferCacheOptions({})`** present.
+- [ ] **`provideHttpClient(withFetch())`** present - prerequisite for the transfer cache to intercept `HttpClient`.
 - [ ] **Browser-only APIs guarded** - `window`/`document`/`localStorage`/`IntersectionObserver` wrapped with `isPlatformBrowser` or `afterNextRender` (the modern idiom).
-- [ ] **`ngOnInit` HTTP** that runs twice without transfer cache. Flag SSR projects where critical-path HTTP refires on hydration.
+- [ ] **`provideEventReplay()`** for INP under SSR (Angular 18+).
+- [ ] **NG0500 hydration mismatch** in console - DOM diff drift between server and client render; usually a browser-only API in render path.
+
+### Zoneless
+
+_Only if `provideZonelessChangeDetection` is in the diff or already enabled._
+
+- [ ] **Third-party libs assuming Zone.js** (chart libraries, jQuery plugins) require manual CD trigger via `ApplicationRef.tick()` or migration.
+- [ ] **Async tasks not signal-tracked** (raw `setTimeout`, `setInterval`, `addEventListener`) won't trigger CD - wrap state mutations in signals.
+- [ ] **Tests** - `provideZonelessChangeDetection` in `TestBed.configureTestingModule`; `fixture.detectChanges()` still required.
 
 ### Step 10 - Observability for Perf (delegation)
 

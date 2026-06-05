@@ -18,10 +18,14 @@ user-invocable: false
 
 ## Rules
 
-- Identify Angular major version from `package.json`. 17+ defaults to standalone + new control flow; 18+ supports zoneless; 19+ standalone is default; 19+ adds `linkedSignal`/`resource`.
+- Identify Angular major version from `package.json`. Version-gated features:
+  - 17: standalone + new control flow available; `bootstrapApplication` CLI default.
+  - 18: zoneless experimental (`provideExperimentalZonelessChangeDetection`).
+  - 19: standalone-by-default; `linkedSignal` / `resource` / `httpResource` land experimental.
+  - 20+: zoneless stable (`provideZonelessChangeDetection`); `resource` / `httpResource` stable.
 - Identify bootstrap: standalone (`bootstrapApplication` in `main.ts`) vs NgModule (`AppModule` + `platformBrowserDynamic`).
-- Identify change detection: signal-based, `OnPush`, default Zone.js, or zoneless (`provideZonelessChangeDetection` / `provideExperimentalZonelessChangeDetection`).
-- Identify state: NgRx Store (`@ngrx/store`), NgRx Signals (`@ngrx/signals`), NGXS, or services with signals/`BehaviorSubject`. Note when mixed.
+- Identify change detection mode: Default | OnPush | Signal-based | Zoneless. The zoneless provider name reveals the version.
+- Identify state: NgRx Store (`@ngrx/store`) ± `@ngrx/effects` / `@ngrx/component-store`, NgRx Signals (`@ngrx/signals`), NGXS, or services with signals/`BehaviorSubject`. Note when mixed.
 - Identify routing: `provideRouter(routes)` vs `RouterModule.forRoot(routes)`.
 - Identify deployment: SPA, SSR (`@angular/ssr` + `provideClientHydration`), or SSG.
 - Identify monorepo: `nx.json` or multi-project `angular.json`.
@@ -107,8 +111,6 @@ Inject into `task-onboard` sections:
 
 ## Avoid
 
-- Treating pre-17 patterns as current
-- Recommending NgModule patterns on a standalone project (or vice versa)
 - Listing every dependency; name only architectural ones
-- Skipping change detection identification - it shapes everything else
+- Recommending modern idioms (`@if`, signals, standalone) on a pre-17 codebase as if they were current - report what exists, not what should be
 - Confusing `inject()` and constructor injection contexts
