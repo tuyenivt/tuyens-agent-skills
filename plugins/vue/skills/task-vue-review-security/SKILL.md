@@ -41,7 +41,7 @@ When called as subagent of `task-code-review-security` or `task-vue-review`, acc
 | **Medium**   | Hardening gap with mitigating control (CSP missing nonce but no untrusted HTML rendered), weak rate limit, Sentry collecting PII without redaction. Fix this PR or next.   |
 | **Low**      | Defense-in-depth, dependency advisory below actively-exploited threshold.                                                                                                   |
 
-**Combined-finding rule.** If a realistic exploit requires both findings to land on the *same code path* (same Nitro handler, same component, same route group with shared middleware), file as one finding at the elevated severity and cite each component. If either is exploitable alone, file separately. When co-location is unclear from the diff, file separately and add `Note: verify same-handler co-location; merge if confirmed` to the lower-severity entry.
+**Combined-finding rule.** If a realistic exploit requires both findings to land on the *same code path* (same Nitro handler, same component, same route group with shared middleware), file as one finding at the elevated severity and cite each component. If either is exploitable alone, file separately. When co-location is unclear from the diff, file separately and add `verify same-handler co-location; merge if confirmed` to the lower-severity entry's **Severity rationale** line.
 
 Archetypal compositions:
 
@@ -72,7 +72,7 @@ Open the files that wire security so findings cite real lines.
 
 **Nuxt 3:** changed `pages/**/*.vue`, `layouts/**/*.vue`, `app.vue`, `server/api/**`, `server/routes/**`, `server/middleware/**`, `middleware/**`; `nuxt.config.{js,ts,mjs}` (`routeRules.headers`, `nitro`, `image.domains`, `runtimeConfig`); auth module config (`nuxt-auth-utils` / `@sidebase/nuxt-auth` / Lucia / `iron-session`); components rendering untrusted HTML; forms posting to Nitro; `package.json` for sanitizers / CSRF libs; `.env*` for `NUXT_PUBLIC_*` referencing server secrets.
 
-**Vite + Vue Router:** components rendering untrusted HTML; `index.html` (`<meta>` CSP), `vite.config` `server.headers`; token storage location; API client config (`withCredentials`, CSRF headers); `package.json` sanitizers; `.env*` for `VITE_*` referencing secrets.
+**Vite + Vue Router:** components rendering untrusted HTML; `index.html` (`<meta>` CSP); token storage location; API client config (`withCredentials`, CSRF headers); `package.json` sanitizers; `.env*` for `VITE_*` referencing secrets. Note: `vite.config` `server.headers` is dev-only - production CSP/HSTS must ship from the edge or host.
 
 When the diff removes a CSP rule, removes a sanitizer, or relaxes auth middleware, `git log -p` the prior revision to confirm prior protection.
 
@@ -121,7 +121,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] **IDOR.** Endpoints accepting an `id` filter DB by `ownerId` / `tenantId` from the session, never just by param. Example: `prisma.order.findFirst({ where: { id, ownerId: session.user.id } })`. Authn alone is not authz
 - [ ] Role from server-validated session, never from body / query / header / unverified JWT claim
 - [ ] Multi-tenant: scope queries by `tenantId` from session, not URL
-- [ ] **SSR leak via Pinia / `useState`.** Server-side fetched data flows through `__NUXT__` into client HTML. Full ORM rows (`passwordHash`, `mfaSecret`) serialize to every viewer. Project to DTO or use Prisma `select` / `omit` before placing in store
+- [ ] **SSR leak via Pinia / `useState`.** Server-side fetched data flows through `__NUXT__` into client HTML. Full ORM rows (`passwordHash`, `mfaSecret`) serialize to every viewer. Project to DTO or use Prisma `select` / `omit` before placing in store. (Same check appears in Step 9 - audit once.)
 
 **Both frameworks:**
 
@@ -149,8 +149,8 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 - [ ] **`v-html` audit.** Every site has a sanitizer in the chain or a comment justifying trust (`"static markdown built at compile time"`)
 - [ ] **Sanitizer config.** Default `DOMPurify.sanitize(html)` is safe. Flag `ADD_TAGS` containing `iframe`/`script`/`object`/`embed`/`style` and `ADD_ATTR` containing event handlers (`onload`, `onclick`, `onerror`) or URL attrs (`src`, `href`) when input is user-controlled
 - [ ] **`:href="userUrl"` / `navigateTo` / `sendRedirect`.** Validate scheme is `http(s):` (block `javascript:`, `data:`, `vbscript:`); validate `url.startsWith('/') && !url.startsWith('//')` for internal redirects; otherwise allowlist hosts
-- [ ] **`NUXT_PUBLIC_*` / `VITE_*` secret leak (Critical).** Any `useRuntimeConfig().public.*` or `import.meta.env.VITE_*` naming an API key, DB URL, or signing secret ships in every client bundle
-- [ ] **Pinia / `useState` SSR hydration leak.** Server-side state populated with full ORM rows serializes into `window.__NUXT__`. Project to DTO before placing in store/state
+- [ ] **`NUXT_PUBLIC_*` / `VITE_*` secret leak (Critical).** Any `useRuntimeConfig().public.*` or `import.meta.env.VITE_*` naming an API key, DB URL, or signing secret ships in every client bundle. Server-only secrets must live in `runtimeConfig.<key>` (Nuxt) or backend env (Vite)
+- [ ] **Pinia / `useState` SSR hydration leak.** See Step 7 - same check; do not double-file
 - [ ] **CSP.** `default-src 'self'`; `script-src 'self' 'nonce-XXX' 'strict-dynamic'`; `frame-ancestors 'none'`; named CDN hosts only (wildcards flagged). Prefer response header (`routeRules.headers` / `server/middleware/`) over `<meta>` - meta cannot enforce `frame-ancestors` or `report-to`
 - [ ] **`unsafe-eval` / `unsafe-inline` in `script-src`.** Not allowed; any occurrence is a finding. Vue 3 compiles templates at build time so `unsafe-eval` is not needed (Vue 2 runtime templates require it - flag the dependency)
 - [ ] `eval` / `new Function(string)` any occurrence Critical; flag template engines using them (`lodash.template`)
@@ -172,7 +172,7 @@ Triage pass only - produce one verdict per category (`yes` / `no signal in diff`
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file before ending the session. Print the confirmation line to the console.
+Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file before ending the session. Print the confirmation line to the console. For surfaces the diff cannot see (CDN/edge headers, secret-store contents, runtime CSP), add a "could not verify from diff - flag for separate audit" note in Recommendations rather than inventing findings.
 
 ## Output Format
 

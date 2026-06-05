@@ -139,27 +139,29 @@ useIntersectionObserver(target, ([entry]) => (isVisible.value = entry.isIntersec
 
 `onActivated` / `onDeactivated` fire on cache enter/exit; use them (not `onMounted`/`onUnmounted`) to resume/pause work for cached components.
 
-### Vue 3.5+ primitives
+```ts
+onActivated(() => poller.resume());
+onDeactivated(() => poller.pause());
+```
 
-Bad - manual ref + template binding; collides on SSR rehydration:
+### SSR-safe IDs with useId (3.5+)
+
+Bad - hand-rolled ID collides on SSR rehydration:
 
 ```ts
-// composable producing a form-field ID
 function useFieldId() {
   return { id: Math.random().toString(36).slice(2) }; // SSR/client mismatch
 }
-// component
-const inputEl = ref<HTMLInputElement | null>(null); // string-keyed ref, untyped
 ```
 
-Good - `useTemplateRef` for typed template refs, `useId` for SSR-safe IDs:
+Good - `useId` is stable across SSR and client; unique per call site:
 
 ```ts
-import { useTemplateRef, useId } from "vue";
-
-const inputEl = useTemplateRef<HTMLInputElement>("search-input");
-const id = useId(); // stable across SSR and client; unique per call site
+import { useId } from "vue";
+const id = useId();
 ```
+
+(For typed template refs see `vue-component-patterns`.)
 
 ## Output Format
 
@@ -173,9 +175,9 @@ Consuming workflow skills depend on this structure.
 
 ### Composables
 
-| Composable | Concern | Dependencies | Cleanup Required |
-| ---------- | ------- | ------------ | ---------------- |
-| {name}     | {what}  | {deps}       | {Yes / No}       |
+| Composable | Concern | Dependencies (refs/router/store/external) | Cleanup Required |
+| ---------- | ------- | ------------------------------------------ | ---------------- |
+| {name}     | {what}  | {deps}                                     | {Yes / No}       |
 
 ### Issues Found
 

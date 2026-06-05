@@ -33,7 +33,7 @@ stores/<feature>.ts                                # Pinia, when shared/global
 types.ts
 ```
 
-**Step 5 - State.** Use skill: `vue-state-patterns` + `frontend-state-management`. Categorize: local | shared | global | server | URL | form. Assign owner. Filters and pagination belong in URL state; server data in `useFetch`/`useAsyncData` or TanStack Query; no server state in Pinia.
+**Step 5 - State.** Use skill: `vue-state-patterns` + `frontend-state-management`. Categorize: local | shared | global | server | URL | form. Assign owner. Filters and pagination belong in URL state; server data in `useFetch`/`useAsyncData` (Nuxt) or TanStack Query (either); no server state in Pinia.
 
 **Step 6 - Data.** Use skill: `vue-data-fetching` + `frontend-api-integration`. Define keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 
@@ -45,7 +45,7 @@ types.ts
 
 **Step 10 - Tests.** Use skill: `vue-testing-patterns` + `frontend-testing-patterns`. Component tests (Vue Test Utils), composable tests, integration with MSW. Assert behavior, not internals. List e2e candidates.
 
-**Step 11 - Validate.** Run `npx nuxi typecheck` (Nuxt) or `npx vue-tsc --noEmit` (Vite), lint, test. Fix failures before reporting.
+**Step 11 - Validate.** Run the project's typecheck/lint/test scripts if defined; otherwise `npx nuxi typecheck` (Nuxt) or `npx vue-tsc --noEmit` (Vite). Fix failures before reporting.
 
 ## Output Format
 
@@ -64,7 +64,7 @@ types.ts
 
 | State | Category | Owner | Mechanism |
 | ----- | -------- | ----- | --------- |
-| ...   | local/shared/global/server/URL/form | ... | ref / Pinia / useFetch / useAsyncData / route query / VeeValidate |
+| ...   | local/shared/global/server/URL/form | ... | ref / Pinia / useFetch / useAsyncData / TanStack Query / route query / form lib |
 
 ## Endpoints / Queries
 

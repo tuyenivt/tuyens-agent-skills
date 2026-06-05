@@ -21,9 +21,9 @@ user-invocable: false
 
 - Validate dynamic params before use (treat URL as untrusted input)
 - Every navigation has defined error and loading states
-- Middleware/guards are fast, stateless, and exclude their own redirect target
-- Lazy-load non-initial routes via dynamic `import()` (Vue Router) or file-based pages (Nuxt)
-- In Nuxt, use file-based routing and `navigateTo()`; do not hand-roll route configs or call `useRouter().push()` in middleware/plugins/server
+- Middleware/guards read state but do not mutate it; run fast; always exclude their own redirect target to avoid loops
+- Lazy-load non-initial routes via dynamic `import()` in Vue Router. Nuxt code-splits file-based pages by default - no manual `import()` needed
+- In Nuxt, use file-based routing; do not hand-roll route configs. In middleware/plugins/server use `navigateTo()`, not `useRouter().push()`
 
 ## Patterns
 
@@ -128,7 +128,7 @@ Attach guard inputs to `meta` so the guard reads declarative data instead of bra
 // router/guards.ts
 router.beforeEach((to) => {
   const auth = useAuthStore();
-  if (to.path === "/login") return; // never guard the redirect target
+  if (to.path === "/login") return; // allow - never guard the redirect target
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { path: "/login", query: { redirect: to.fullPath } };
   }

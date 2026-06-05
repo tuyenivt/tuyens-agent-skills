@@ -26,6 +26,7 @@ user-invocable: false
 - Use `provide`/`inject` with typed `InjectionKey` for cross-cutting state; never prop-drill past 2 levels.
 - Use `defineModel` (3.4+) for v-model and `useTemplateRef` (3.5+) for refs.
 - Destructured props are reactive in 3.5+; pre-3.5 use `toRefs(props)`.
+- Any child whose `<script setup>` contains top-level `await` must sit under a `<Suspense>` ancestor.
 
 ## Patterns
 
@@ -112,8 +113,6 @@ Render modals, toasts, tooltips outside the parent DOM tree so they escape `over
 </Suspense>
 ```
 
-Any child whose `<script setup>` contains a top-level `await` must sit under a `<Suspense>` ancestor.
-
 ### Error boundary with onErrorCaptured
 
 ```vue
@@ -156,7 +155,7 @@ Consuming workflow skills depend on this structure.
 
 | Component | Props       | Emits        | Slots       | Pattern                              |
 | --------- | ----------- | ------------ | ----------- | ------------------------------------ |
-| {name}    | {key props} | {key events} | {slot names}| {Composition | Generic | Compound | Async} |
+| {name}    | {key props} | {key events} | {slot names}| {Standard | Generic | Compound | Async} |
 
 ### Issues Found
 
@@ -170,4 +169,4 @@ Consuming workflow skills depend on this structure.
 - God components mixing unrelated concerns.
 - `v-html` on untrusted input (XSS).
 - Nested `v-if`/`v-else-if` chains - extract to computed or sub-components.
-- Returning `true` from `onErrorCaptured` unless propagation is intentional.
+- Letting `onErrorCaptured` propagate by default - return `false` to stop unless propagation is intentional.

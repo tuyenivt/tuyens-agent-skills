@@ -9,11 +9,11 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `// Satisfies: AC<N>` mapping or test-name suffix), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface coverage gaps as proposed amendments.
-
 # Vue Test
 
 Stack-specific delegate of `task-code-test` for Vue. Preserves the core workflow's output shape and prioritization rules; substitutes Vue idioms (Vitest, VTU / Testing Library Vue, `@nuxt/test-utils`, MSW, Playwright) and Vue-specific risks (composables, Nitro endpoints, Pinia, Suspense).
+
+If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` after Step 1 and follow its mode contract: one test per acceptance criterion (`// Satisfies: AC<N>`), one verification step per NFR from `plan.md`, no tests for behavior the spec marks out-of-scope. Never edit `spec.md`/`plan.md`/`tasks.md` from this workflow; surface coverage gaps as proposed amendments.
 
 ## When to Use
 
@@ -34,7 +34,7 @@ Use skill: `behavioral-principles`. These rules govern every step that follows.
 
 Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` with Vue already confirmed, skip re-detection. If the stack is not Vue, stop and direct the user to `/task-code-test`.
 
-Record for the output: `Framework: Nuxt 3 | Vite + Vue Router`, `Vue: <version>`, `Runner: Vitest | Jest`, `Helper: @vue/test-utils | @testing-library/vue`. Subsequent steps branch on these signals.
+Record for the output: `Framework: Nuxt 3 | Vite + Vue Router`, `Vue: <version>`, `Runner: Vitest` (flag Jest as legacy; recommend migration), `Helper: @vue/test-utils | @testing-library/vue`, `E2E: Playwright | Cypress | none`. Subsequent steps branch on these signals.
 
 ### Step 3 - Read Code Under Test and Existing Tests
 
@@ -169,12 +169,12 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - **E2E:** [critical journeys without Playwright coverage]
 - **Accessibility:** [pages without `axe`; interactive components without keyboard/focus tests]
 
-**Recommended pyramid balance:**
+**Recommended pyramid balance** *(rough targets - adjust to risk):*
 
-- Unit + composable: [target]
-- Component + integration: [target]
-- Nitro: [target - >=1 per route]
-- E2E: [target - keep small]
+- Unit + composable: ~50-60%
+- Component + integration: ~30-40%
+- Nitro: >=1 per endpoint (happy + auth + validation)
+- E2E: ~5-10% - critical journeys only
 
 **Prioritization** *(when coverage <50% or >5 gaps)*
 
@@ -197,7 +197,7 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - Component: happy path + error/empty/loading + a11y check
 - Composable: state transitions + cleanup + edge cases
 - Nitro: happy + validation failure + unauthorized
-- E2E: full journey with `storageState` for auth
+- E2E: full journey with auth state seeded via the project's E2E tool (Playwright `storageState`, Cypress session)
 - Strict TS; typed `vi.mock` factories; no `as any`
 
 **Strategy Doc:**
@@ -239,7 +239,7 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - Chasing coverage percentage instead of risk.
 - E2E for what a component test could cover.
 - Testing implementation details (`wrapper.vm`, render counts, lifecycle calls).
-- `getByTestId` as default; `fireEvent` over `userEvent` in TLV.
+- `getByTestId` as default (TLV); `fireEvent` over `userEvent` (TLV). In VTU, `wrapper.trigger()` is canonical - prefer `userEvent` only for high-fidelity input simulation.
 - Calling a composable outside a setup context.
 - Mounting a component to test Pinia state - test the store directly.
 - Sharing mutable fixtures or asserting CSS class names.
