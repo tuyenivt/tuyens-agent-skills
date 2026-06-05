@@ -18,7 +18,7 @@ user-invocable: false
 - Mounting React into a non-React shell (jQuery page, Backbone view, server-rendered template) without rewriting the host
 - Sharing user / cart / auth state across React and non-React code on the same page
 
-Out of scope: greenfield SPA setup, Next.js / Vite project bootstrap (covered by `react-routing-patterns`), classic Pages Router migration (covered by `react-nextjs-patterns`).
+Out of scope: greenfield SPA setup; Next.js Pages -> App Router migration inside the same Next.js app (covered by `react-nextjs-patterns`).
 
 ## Rules
 
@@ -26,7 +26,7 @@ Out of scope: greenfield SPA setup, Next.js / Vite project bootstrap (covered by
 - Exactly one copy of `react` and `react-dom` on the page. Duplicate copies break hooks, context, and `Suspense`. Enforce via bundler `resolve.alias` (host) or webpack `singleton: true` (Module Federation `shared`).
 - Server-rendered HTML inside a React mount point requires `hydrateRoot`, not `createRoot`. Markup mismatches throw - render exactly the same DOM on first paint.
 - Cross-boundary state crosses through DOM events (`CustomEvent`), a typed event bus, or a global store (Zustand / Redux) imported as a federated singleton. Never via `window.someGlobal = {...}` ad hoc.
-- One React copy owns one `<Suspense>` tree; do not nest islands from a separate React copy inside a suspended boundary - the parent's fallback won't catch the child.
+- A `<Suspense>` boundary only catches suspense thrown inside the same React tree. An island rendered by a separate React copy inside another tree's boundary will not be caught by that boundary's fallback.
 - Bootstrap CSS scoping: scope island CSS (CSS Modules, scoped Tailwind preflight off, or shadow DOM) so host styles don't bleed in and island styles don't break host pages.
 - Routing: in microfrontend setups, exactly one router owns the URL. Children consume the path via props or a shared history, not their own `<BrowserRouter>`.
 
@@ -137,6 +137,8 @@ When the host orchestrates React alongside Angular / Vue / vanilla apps.
 
 ```ts
 // react-app/main.tsx
+import React from "react";
+import * as ReactDOMClient from "react-dom/client";
 import singleSpaReact from "single-spa-react";
 import { App } from "./App";
 
@@ -202,11 +204,8 @@ If no issues, emit a single line: `No legacy-integration issues found in <scope>
 
 ## Avoid
 
-- `createRoot` on a node containing server-rendered HTML - use `hydrateRoot`.
-- Sharing a root between islands - each mount gets its own `createRoot` / `hydrateRoot`.
-- Two copies of `react` / `react-dom` on a page (federated or otherwise) - `singleton: true` plus version pin.
-- A child app running its own `<BrowserRouter>` inside a shell that already owns the URL.
-- Reading shared cross-boundary state from `window.X` without a typed singleton and a subscribe protocol.
-- Tailwind preflight enabled on an island mounted into a Bootstrap host - resets fight.
-- Federated remote loaded under a `<Suspense>` without an enclosing `ErrorBoundary` - load failures aren't suspense-catchable.
-- Mounting on `document.querySelector(".widget")` - multiple matches throw; use unique ids or iterate `querySelectorAll`.
+(Rules above cover the common cases; these are the extras.)
+
+- Federated remote loaded under a `<Suspense>` without an enclosing `ErrorBoundary` - load failures are not suspense-catchable.
+- Mounting on `document.querySelector(".widget")` - multiple matches throw or pick the wrong node; use unique ids or iterate `querySelectorAll`.
+- Tailwind preflight enabled on an island mounted into a Bootstrap / Foundation host - resets fight; set `corePlugins: { preflight: false }` and prefix utilities.

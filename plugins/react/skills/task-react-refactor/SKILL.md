@@ -185,7 +185,7 @@ Each step must be: independently committable (`tsc --noEmit` + Vitest pass), beh
 - **Hydration stance** - Server Component | Client Component | unchanged | converting X -> Y. Adding `"use client"` pulls descendants client-side; removing it requires no descendant uses hooks/events/browser APIs.
 - **Async stance** - sync | async (Server Component) | unchanged. Client Components cannot be `async`; flag any such attempt.
 
-**Common recipes:**
+**Common recipes** (any one can be the spine; supporting recipes fold as sub-steps where dependencies require. Gaps in numbering align with cross-stack recipe IDs and are intentional.):
 
 **R1 - Move `"use client"` to the leaf.**
 1. Identify the smallest interactive subtree (the actual hook / handler / browser-API surface)

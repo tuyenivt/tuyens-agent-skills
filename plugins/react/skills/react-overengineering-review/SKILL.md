@@ -78,15 +78,27 @@ Context earns its place at 3+ consumers across the same subtree, *or* when a dee
 ```tsx
 // Bad - any change to anything re-renders every consumer of AppContext.
 <AppContext.Provider value={{ user, cart, theme, ui, prefs, notifications }}>
+
+// Good - split per-update-frequency; a theme change does not re-render cart consumers.
+<AuthContext.Provider value={user}>
+  <ThemeContext.Provider value={theme}>
+    <CartContext.Provider value={cart}>{children}</CartContext.Provider>
+  </ThemeContext.Provider>
+</AuthContext.Provider>
 ```
 
-If you needed all of this, split per-update-frequency: `<AuthContext>` (stable), `<UiContext>` (occasional), `<CartContext>` (frequent). Or move frequent state to Zustand. The fix isn't `useMemo` on the whole bag - it's smaller contexts.
+The fix is *not* `useMemo` on the whole bag - it's smaller contexts (or a store like Zustand for high-churn slices).
 
 ### Redux / Zustand for Two Pieces of State
 
 ```tsx
-// Bad - Redux Toolkit slice + store wiring + provider for "is the sidebar open?"
-// Good - useState in the layout that owns the sidebar, prop into the child.
+// Bad - Redux Toolkit slice + store wiring + <Provider> for "is the sidebar open?".
+const sidebar = createSlice({ name: "sidebar", initialState: false, reducers: { toggle: (s) => !s } });
+// + configureStore + <Provider> + useDispatch + useSelector at every call site.
+
+// Good - useState in the layout that owns the sidebar.
+const [open, setOpen] = useState(false);
+<Sidebar open={open} onToggle={() => setOpen(o => !o)} />
 ```
 
 Bar: 3+ shared slices, OR cross-cutting devtools / middleware needs, OR a team that already runs the store. Otherwise local state + lift.
@@ -175,7 +187,7 @@ When auditing, emit one block per finding:
 
 ```
 - Location: <file>:<line> (<component / hook / module>)
-  Issue: {PrematureMemo | MemoOverReactMemo | ContextSingleConsumer | MegaProvider | StoreForTwoSlices | SingleUseHook | GenericForOneUsage | PrematureCompound | RenderPropOverkill | PropStateEffectSync | SpeculativeConfigurability | RedundantHoC | OverTypedBoundary | DeadOption}
+  Issue: {PrematureMemo | ReactMemoOveruse | ContextSingleConsumer | MegaProvider | StoreForTwoSlices | SingleUseHook | GenericForOneUsage | PrematureCompound | RenderPropOverkill | PropStateEffectSync | SpeculativeConfigurability | RedundantHoC}
   Severity: {High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Consumers found: <count + locations, or "1: <call-site>">

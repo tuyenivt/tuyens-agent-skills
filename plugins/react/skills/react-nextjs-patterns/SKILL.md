@@ -147,6 +147,7 @@ import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
   const sig = (await headers()).get("stripe-signature");
+  if (!sig) return new Response("missing signature", { status: 400 });
   const event = verifyStripe(await req.text(), sig); // throws on bad sig
   if (event.type === "product.updated") revalidateTag("products");
   return Response.json({ received: true });
@@ -155,12 +156,13 @@ export async function POST(req: Request) {
 
 ### Rendering Strategy
 
-| Strategy   | Trigger                                       | Use for                            |
-| ---------- | --------------------------------------------- | ---------------------------------- |
-| Static     | No dynamic APIs, no `cache: "no-store"`       | Marketing, docs, catalog           |
-| ISR        | `next.revalidate` or `unstable_cache` w/ TTL  | Periodically changing content      |
-| Dynamic    | `cookies()`, `headers()`, `searchParams`      | Personalized, auth-gated pages     |
-| Streaming  | `Suspense` around async children              | Slow data alongside fast shell     |
+| Strategy   | Trigger                                                   | Use for                                  |
+| ---------- | --------------------------------------------------------- | ---------------------------------------- |
+| Static     | No dynamic APIs, no `cache: "no-store"`                   | Marketing, docs, catalog                 |
+| ISR        | `next.revalidate` or `unstable_cache` w/ TTL              | Periodically changing content            |
+| Dynamic    | `cookies()`, `headers()`, `searchParams`                  | Personalized, auth-gated pages           |
+| Streaming  | `Suspense` around async children                          | Slow data alongside fast shell           |
+| PPR        | `experimental_ppr = true` + `Suspense` over dynamic holes | One mostly-static page with a per-user widget; avoids `force-dynamic` |
 
 ```tsx
 // Stream slow widgets without blocking the shell.
@@ -270,48 +272,23 @@ Migration order: shared shell (`_app` -> root layout, `_document` -> `<html>`/`<
 
 ## Output Format
 
-Consuming workflow skills parse this structure.
+When auditing, emit one block per finding. Consuming workflows synthesize the route/mutation summary; do not produce one here.
 
 ```
-## Next.js Architecture
-
-Next.js version: {detected version}
-Default rendering: {Static | ISR | Dynamic | Mixed}
-
-### Routes
-
-| Route          | Rendering | Revalidate | Data Source         | Auth      |
-| -------------- | --------- | ---------- | ------------------- | --------- |
-| /              | Static    | -          | None                | Public    |
-| /products/[id] | ISR       | 3600s      | unstable_cache + DB | Public    |
-| /dashboard     | Dynamic   | -          | DB via cookies()    | Protected |
-
-### Mutations
-
-| Endpoint              | Kind            | Validation   | Authorization | Invalidation              |
-| --------------------- | --------------- | ------------ | ------------- | ------------------------- |
-| createPost            | Server Action   | Zod          | requireUser   | revalidatePath("/posts")  |
-| POST /api/webhooks/x  | Route Handler   | signature    | HMAC          | revalidateTag("products") |
-
-### Issues Found
-
-- [Severity: {Blocker|High|Medium|Low}] [Category: {RSC-Boundary|Server-Action|Route-Handler|Caching|Rendering|Metadata|Image|Navigation}]
-  File: <path>:<line>
-  Issue: <one-line description>
-  Fix: <concrete change referencing a Pattern by name>
-
-Notes: <unresolved questions or "n/a">
+- Location: <file>:<line>
+  Issue: {RscBoundary | ClientLeak | ServerOnlyImport | UseClientAtRoot | ServerActionAuth | ServerActionValidation | ServerOnlyExport | OrmRowToClient | CachingMisuse | DynamicWithoutSuspense | PprConflict | MetadataManual | ImageRaw | NavigationPush | ParamsNotAwaited}
+  Severity: {Blocker | High | Medium | Low}
+  Evidence: <quoted snippet or symbol>
+  Fix: <one-line action; reference a Pattern by name>
 ```
 
-If the project is not Next.js App Router, emit `Next.js version: Unknown` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent).
+If the project is not Next.js App Router, emit `No Next.js findings (not App Router).` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent).
 
 ## Avoid
 
-- `"use client"` at the page root - push the boundary down to the interactive leaf.
-- Importing DB clients, secrets, or server SDKs from anything reachable by a Client Component (use `import "server-only"`).
-- Server Actions without input validation or authorization checks - they are public HTTP endpoints.
-- `force-dynamic` or `cache: "no-store"` as a workaround for stale data - use tags + `revalidateTag` from the mutation site.
-- Mutating data from a Route Handler that a first-party form could call as a Server Action (duplicates validation, loses progressive enhancement).
-- Raw `<img>` or manual `<head>` writes - bypasses optimization and the Metadata API.
-- `router.push` for navigation links instead of `<Link>` (no prefetch, no scroll restoration).
-- Fetching in a Client Component when the parent Server Component could pass props (extra round trip, ships fetch code).
+(Rules above cover boundary, validation, caching, metadata, and navigation defaults; these are the extras.)
+
+- Mutating data from a Route Handler that a first-party form could call as a Server Action - duplicates validation, loses progressive enhancement.
+- Fetching in a Client Component when the parent Server Component could pass props - extra round trip, ships fetch code, breaks streaming.
+- `'use server'` files that export anything other than Server Actions - any export becomes network-callable.
+- Returning a raw ORM row (`prisma.user.findUnique(...)`) into a Client Component - leaks fields like `passwordHash` into the HTML payload.

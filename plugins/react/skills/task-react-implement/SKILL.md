@@ -36,7 +36,7 @@ types.ts
 
 **Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
 
-**Step 7 - Components.** Use skill: `react-hooks-patterns` + `react-styling-patterns`. Next.js: Use skill: `react-nextjs-patterns`. Generate with named exports (default only for route pages), typed props interfaces (>2 props), `"use client"` only where required.
+**Step 7 - Components.** Use skill: `react-hooks-patterns` + `react-styling-patterns`. Next.js: Use skill: `react-nextjs-patterns`. Generate with named exports (default only for route pages), typed props (declare an `interface` once props >= 2; inline a single-prop type is fine), `"use client"` only where required.
 
 **Step 8 - Forms.** Use skill: `frontend-form-handling` (skip if no forms). Validation, error display, submission protection, dirty tracking.
 
@@ -51,7 +51,12 @@ types.ts
 ```markdown
 ## Files Generated
 
-[grouped: routes, components, hooks, lib (queries/actions), types, tests]
+Routes:      app/orders/page.tsx, app/orders/[id]/page.tsx
+Components:  components/orders/OrderList.tsx (+ .test.tsx), OrderRow.tsx
+Hooks:       hooks/useOrderFilters.ts (+ .test.ts)
+Lib:         lib/orders/queries.ts, lib/orders/actions.ts
+Types:       lib/orders/types.ts
+Tests:       (covered above) + e2e/orders.spec.ts (candidate)
 
 ## Component Tree
 

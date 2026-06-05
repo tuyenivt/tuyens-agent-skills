@@ -75,11 +75,11 @@ const total = items.reduce((s, i) => s + i.price, 0);
 ### Stale closures: deps, ref, or functional update
 
 ```tsx
-// Bad - count is captured once; interval always increments from the initial 0.
+// Bad - count captured once; interval increments from initial 0 forever.
 useEffect(() => {
   const id = setInterval(() => setCount(count + 1), 1000);
   return () => clearInterval(id);
-}, []); // missing `count`; adding it resets the interval every tick.
+}, []); // adding `count` would tear down + reschedule the interval every tick.
 
 // Good - functional update reads latest state without depending on it.
 useEffect(() => {
@@ -87,7 +87,8 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-// Good - ref for values the effect must read but should not re-subscribe on.
+// Good - ref for values the effect must read but should not re-subscribe on
+// (CallbackIdentityChurn: callback prop in deps tears down/re-subscribes every render).
 const onMessageRef = useRef(onMessage);
 useEffect(() => { onMessageRef.current = onMessage; });
 useEffect(() => {
@@ -122,98 +123,34 @@ Same shape for `setInterval`/`setTimeout`, subscriptions, observers, `AbortContr
 
 ### React 19 hooks
 
+| Hook | Use when |
+| ---- | -------- |
+| `use(promise)` | Read a promise in render; may be called inside conditions (unlike `useContext`). Suspends. |
+| `useOptimistic` | Show a mutation result immediately; reconcile when the server confirms. |
+| `useActionState` | Form action with pending + returned state (replaces `useFormState`). |
+| `useFormStatus` | Read parent `<form>` pending state from a descendant - no prop drilling. |
+
 ```tsx
-// `use` - read a promise or context in render; may be called conditionally (unlike useContext).
 function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
-  const user = use(userPromise); // suspends
+  const user = use(userPromise);
   return <div>{user.name}</div>;
 }
 
-// `useOptimistic` - show the update immediately; reconcile when the server confirms.
 const [optimisticTodos, addOptimistic] = useOptimistic(
   todos,
   (state, t: Todo) => [...state, t],
 );
 
-// `useActionState` - form action with pending + returned state (replaces useFormState).
 const [state, formAction, isPending] = useActionState(submitAction, { error: null });
 ```
 
-### Form hooks
+### Form hooks (boundary)
 
-Client forms: react-hook-form + Zod via `zodResolver`. RHF owns dirty/touched/error state; Zod owns the schema. Don't sync RHF state into `useState` mirrors.
+Form schemas, validation, and submission flow are owned by `frontend-form-handling`. Here, only the React-19 wiring matters: bind a Server Action with `useActionState`; read pending state with `useFormStatus` from any `<form>` descendant; share the Zod schema between client and Server Action (one source of truth, parsed inside the action with `zod-form-data`).
 
-```tsx
-const Schema = z.object({ email: z.string().email(), name: z.string().min(1) });
-type Values = z.infer<typeof Schema>;
+### Refs and Context (boundary)
 
-const { register, handleSubmit, formState: { errors, isSubmitting } } =
-  useForm<Values>({ resolver: zodResolver(Schema) });
-
-return (
-  <form onSubmit={handleSubmit(async (v) => save(v))}>
-    <input {...register("email")} aria-invalid={!!errors.email} />
-    {errors.email && <p role="alert">{errors.email.message}</p>}
-    <button disabled={isSubmitting}>Save</button>
-  </form>
-);
-```
-
-Server Action forms: bind directly with `useActionState` for progressive enhancement (works without JS); `useFormStatus` reads pending state from any descendant of `<form>`. Share the Zod schema between client and Server Action - one source of truth.
-
-```tsx
-"use client";
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
-import { createPost } from "./actions";
-
-function SubmitButton() {
-  const { pending } = useFormStatus(); // reads parent <form> state - no props
-  return <button disabled={pending}>{pending ? "Saving..." : "Save"}</button>;
-}
-
-export function CreatePostForm() {
-  const [state, action] = useActionState(createPost, null);
-  return (
-    <form action={action}>
-      <input name="title" required />
-      {state?.error?.title && <p role="alert">{state.error.title[0]}</p>}
-      <SubmitButton />
-    </form>
-  );
-}
-```
-
-Use `zod-form-data` inside the Server Action to parse `FormData` with the same schema (`Schema.parse(formData)`); avoid `Object.fromEntries(formData)` for fields that repeat (checkboxes, multi-select) - it drops duplicates.
-
-### Refs
-
-```tsx
-const inputRef = useRef<HTMLInputElement>(null);
-useEffect(() => { inputRef.current?.focus(); }, []);
-
-// Callback ref when you need to measure or react to mount of a dynamic node.
-const measuredRef = useCallback((node: HTMLDivElement | null) => {
-  if (node) setHeight(node.getBoundingClientRect().height);
-}, []);
-```
-
-### Context: typed, narrow, split by update frequency
-
-```tsx
-const AuthContext = createContext<AuthValue | null>(null);
-export function useAuth() {
-  const v = useContext(AuthContext);
-  if (!v) throw new Error("useAuth must be used within <AuthProvider>");
-  return v;
-}
-
-// Split contexts so a theme change does not re-render auth consumers.
-const ThemeContext  = createContext<Theme>("light");
-const UserContext   = createContext<User | null>(null);
-```
-
-For values that change every keystroke (form fields, cursor), use local state or a state library -- not context.
+`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. Deeper ref ergonomics (`forwardRef`, ref-prop conventions, callback refs for measurement) belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), context provider value rebuilt every render.
 
 ## Output Format
 
@@ -221,7 +158,7 @@ When reviewing hook code, emit one block per finding:
 
 ```
 - Location: <file>:<line> (<hook or component>)
-  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | ConflictingWriters | CallbackIdentityChurn | UnboundedMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
+  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
   Severity: {Critical | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
@@ -233,6 +170,6 @@ Severity guide:
 - **Critical**: hook called conditionally; memory leak from missing cleanup on long-lived component; race condition setting state after unmount.
 - **High**: stale closure producing wrong values; uncancelled fetch on unmount; effect-driven infinite loop.
 - **Medium**: derived state in effect; useEffect for fetching when a query library is available; suppressed exhaustive-deps.
-- **Low**: unnecessary useMemo/useCallback; overbroad context.
+- **Low**: unnecessary useMemo/useCallback; overbroad context; ref/state misuse without observable consequence.
 
 If no issues, emit a single line: `No hook issues found in <scope>.`

@@ -135,7 +135,7 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage? Minimum `[Suggestion]`; escalate to `[High]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
-- **Canonical security rules** (cite by name, do not restate): ORM-row leak across RSC -> Client, missing `auth()` / Zod on Server Actions, `dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*` secret leak. Defined in `react-nextjs-patterns`.
+- **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Security subagent is running, defer depth to it.
 
 ### Phase C - React Architecture Guardrails
 
@@ -203,7 +203,7 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 
 - The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff and commit log (no re-running git)
 - The depth level
-- Pre-confirmed stack (React) + detected framework (Next.js / Vite)
+- Pre-confirmed stack (React `<version>`) + detected framework (Next.js App Router / Pages Router / Vite + React Router) with version
 - Instruction to return findings in its own Output Format
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
