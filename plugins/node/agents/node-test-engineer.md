@@ -39,6 +39,10 @@ category: quality
 ### Atomic skills
 
 - Use skill: `node-testing-patterns` for Jest configuration, Supertest, Testcontainers, and NestJS testing module patterns
+- Use skill: `node-nestjs-patterns` for the `ValidationPipe` global config e2e tests must replicate
+- Use skill: `node-bullmq-patterns` for processor unit tests, in-memory Redis, and worker lifecycle
+- Use skill: `node-prisma-patterns` / `node-typeorm-patterns` for repository integration patterns
+- Use skill: `node-http-client-patterns` for MSW handler setup and exercising the real client wrapper
 
 ## Test Layer Decision Guide
 

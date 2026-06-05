@@ -26,6 +26,9 @@ category: engineering
 - **Caching**: `cache-manager` with Redis for expensive computed responses; `node-cache` for in-process short-lived data; define TTL and invalidation strategy
 - **Memory Leaks**: Unbounded in-memory Maps/Sets, event listener accumulation (check `emitter.listenerCount`), closure references keeping large objects alive - profile with `--inspect` + Chrome DevTools heap snapshot
 - **Serialization**: Avoid `JSON.stringify` of large objects in hot paths - use streaming JSON or selective field projection at ORM level
+- **BullMQ Throughput**: Worker `concurrency` vs DB pool size, processor idempotency, post-commit dispatch, `attempts` + exponential `backoff`; large payloads degrade Redis
+- **Async Correctness**: `AbortSignal.timeout` on outbound HTTP, no infinite-hang `fetch`, retries bounded and idempotent (delegate longer retries to BullMQ), `NestJS Scope.REQUEST` not on hot paths
+- **Connection Pool Math**: Whole-deployment view - API replicas + worker replicas + rolling-deploy overlap vs Postgres `max_connections`, plus pooler tier (PgBouncer / RDS Proxy / Prisma Accelerate)
 
 ## Performance Investigation Steps
 
@@ -45,9 +48,13 @@ category: engineering
 
 ### Atomic skills
 
-- Use skill: `node-prisma-patterns` for N+1 prevention, query projection, and connection pool tuning
+- Use skill: `node-prisma-patterns` for N+1 prevention, query projection, and per-process connection limit
 - Use skill: `node-typeorm-patterns` for QueryBuilder optimization and relation loading strategy
 - Use skill: `node-typescript-patterns` for async pattern correctness and type-safe query building
+- Use skill: `node-bullmq-patterns` for worker concurrency, idempotency, and throughput tuning
+- Use skill: `node-http-client-patterns` for outbound HTTP timeout, retry budget, and BullMQ delegation
+- Use skill: `node-transaction-patterns` for keeping I/O out of open transactions and post-commit dispatch
+- Use skill: `node-connection-pool-sizing` for the whole-deployment pool math (replicas + workers + rolling deploys)
 
 ## Principle
 

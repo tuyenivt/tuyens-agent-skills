@@ -157,22 +157,19 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 
 ### Step 8 - Common Node.js Vulnerability Patterns
 
-- [ ] **Prototype pollution**: `Object.assign(target, JSON.parse(userInput))`, `_.merge` on user input, `Object.assign({}, defaults, req.query)`. Use `Object.create(null)` for trusted maps; switch off `lodash.merge` or sanitize keys
-- [ ] **`eval` / `new Function(string)` / `vm.runInNewContext`** on user input - critical regardless of "controlled" framing. `vm2` deprecated (CVEs)
+Canonical "build it right" patterns: Use skill: `node-security-patterns` (JWT signing/verify, mass-assignment DTOs, prototype pollution, SSRF allowlist, file upload, webhook signatures, secrets, `eval`/`vm` prohibitions, open redirect, `child_process.execFile`, TLS). This step flags deviations.
+
+Surface-specific extras not covered by the atomic:
+
 - [ ] **`JSON.parse` bounded** by body-parser limit (`express.json({ limit: '100kb' })`); unbounded = DoS
-- [ ] **`require(userInput)` / dynamic `import(userInput)`** = RCE
+- [ ] **`require(userInput)` / dynamic `import(userInput)`** = RCE (delegate canonical handling to `node-security-patterns`)
 - [ ] **`fs.writeFile`/`fs.unlink` with user input** without path-base check = FS tampering
-- [ ] **`rejectUnauthorized: false`** on TLS clients flagged unless documented test fixture
-- [ ] **Open redirect**: `res.redirect(userInput)` validated (`url.startsWith('/') && !url.startsWith('//')` or allowlist)
 - [ ] **Raw SQL injection**: `$queryRawUnsafe(\`...${userInput}\`)` (Prisma) or `repository.query(\`...${userInput}\`)` (TypeORM) = critical. Use tagged template or `:param`
 - [ ] **SSTI**: rendering Handlebars/EJS/Nunjucks with user-controlled template strings = RCE; templates from disk only
-- [ ] **`JWT_SECRET`** from env/Vault, never committed; rotated on leak
 - [ ] **Debug exposure**: NestJS Swagger gated behind auth in prod or skipped (`if (NODE_ENV !== 'production')`)
-- [ ] **SSRF depth**: allowlist rejects (a) cloud metadata `169.254.169.254` + IPv6 `fd00:ec2::254`, (b) localhost/`127.0.0.0/8`/`::1`, (c) RFC1918 (`10/8`, `172.16/12`, `192.168/16`), (d) link-local `169.254/16`. Re-resolve host at request time (DNS rebinding). Watch `URL` quirks: backslash, unicode, `::ffff:127.0.0.1`
 - [ ] **BullMQ payloads**: validate with Zod/class-validator inside processor when queue is reachable from untrusted input
 - [ ] **ReDoS**: `@Matches(new RegExp(userInput))` / `z.string().regex(new RegExp(userInput))` from user/config hangs event loop. Compile patterns at module load; consider `safe-regex` at review
 - [ ] **HTTP request smuggling/desync**: flag custom HTTP/1.1 parsing or proxy middleware that re-emits headers without validation
-- [ ] **Webhook signature**: `crypto.timingSafeEqual` (not `===`); `bodyParser.raw` for signed payload
 
 ### Step 9 - Data Protection
 

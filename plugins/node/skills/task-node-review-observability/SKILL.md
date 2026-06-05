@@ -136,6 +136,8 @@ _Skip at `quick` unless diff touches lifecycle hooks or `AsyncLocalStorage`._
 
 _Skip at `quick` unless diff modifies error handlers, error-tracker config, or DSN handling._
 
+Canonical rescue strategy and capture-once discipline: Use skill: `node-exception-handling`. This step flags deviations from that contract (double-capture, leaked ORM types, per-handler try/catch that duplicates the global filter).
+
 - [ ] **SDK initialized with framework integration**: `Sentry.init({ integrations: [...] })` with `httpIntegration`, `expressIntegration` / `@sentry/nestjs`, `prismaIntegration`
 - [ ] **DSN in env / Vault**, not committed
 - [ ] **Release + environment tags** from build metadata

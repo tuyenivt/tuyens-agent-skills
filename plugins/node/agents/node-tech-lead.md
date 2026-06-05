@@ -55,7 +55,7 @@ When reviewing across a session or series of PRs, accumulate:
 - `strict: true` in `tsconfig.json` - never disabled or partially overridden
 - No `any` type - use `unknown` with type guards, or proper generics
 - All function parameters and return types explicitly annotated
-- `interface` for structural contracts; `type` for unions, intersections, aliases
+- `type` aliases for object shapes, unions, intersections (project preference - see `node-typescript-patterns`); `interface` only when declaration merging or `extends` is needed
 - Discriminated unions for multi-variant responses (not ad-hoc error codes)
 - No `@ts-ignore` without an explanatory comment - `@ts-expect-error` preferred
 - Strict null checks: no `!` non-null assertions without clear guarantee
@@ -65,7 +65,7 @@ When reviewing across a session or series of PRs, accumulate:
 ### Architecture and Layering
 
 - **NestJS**: Each module represents a bounded context - no cross-domain direct `import`; `exports` array explicitly lists what other modules may consume
-- **NestJS**: `@Injectable()` services have a corresponding interface for test mocking; constructor injection only - no service locator
+- **NestJS**: Constructor injection only - no service locator; inject the class directly (Nest mocks via `Test.createTestingModule(...).overrideProvider(...)`, so single-implementation interfaces are over-engineering)
 - **NestJS**: `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` applied globally
 - **NestJS**: Guards for authentication; Interceptors for transform/logging; Pipes for input validation
 - **NestJS**: `@Global` modules used sparingly
@@ -130,7 +130,11 @@ Flag as review findings when:
 - Use skill: `node-typeorm-patterns` for TypeORM entity and query builder review
 - Use skill: `node-bullmq-patterns` for BullMQ job design, retry, and queue review
 - Use skill: `node-testing-patterns` for Jest structure and coverage review
-- Use skill: `node-security-patterns` for JWT, validation, and CORS review
+- Use skill: `node-security-patterns` for JWT, validation, mass-assignment, SSRF, prototype pollution review
+- Use skill: `node-exception-handling` for global filter / middleware, AppError hierarchy, Sentry capture-once review
+- Use skill: `node-http-client-patterns` for outbound HTTP timeout / retry / idempotency review
+- Use skill: `node-transaction-patterns` for transaction boundary and post-commit dispatch review
+- Use skill: `node-connection-pool-sizing` for whole-deployment pool math review
 - Use skill: `complexity-review` for AI-generated over-abstraction
 
 ## Behavior Across PRs

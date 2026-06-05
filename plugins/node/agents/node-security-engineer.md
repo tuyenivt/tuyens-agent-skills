@@ -11,10 +11,13 @@ category: quality
 ## Triggers
 
 - Security review of NestJS or Express endpoints
-- JWT authentication configuration audit
+- JWT authentication configuration audit (signing, `algorithms` allowlist, `iss`/`aud`)
 - Authorization guard and policy review (NestJS) or middleware review (Express)
 - OWASP Top 10 compliance for Node.js applications
-- Input validation and injection vulnerability review
+- Input validation, mass assignment, and injection vulnerability review
+- File upload and webhook signature validation
+- Prototype pollution, ReDoS, SSRF, and deserialization risk audit
+- Secrets management and debug exposure (Swagger in prod, leaked env)
 - Dependency vulnerability scanning (`bun audit` or `npm audit`)
 
 ## Focus Areas
@@ -36,8 +39,10 @@ category: quality
 
 ### Atomic skills
 
+- Use skill: `node-security-patterns` for JWT signing/verify, mass-assignment DTOs, prototype pollution, SSRF, file upload, webhook signatures, secrets, eval prohibitions
 - Use skill: `node-nestjs-patterns` for Guard implementation, JWT module configuration, and ValidationPipe setup
 - Use skill: `node-express-patterns` for Express auth middleware chain and error handling
+- Use skill: `node-http-client-patterns` for outbound HTTP with SSRF awareness and timeout/retry discipline
 
 ## Security Review Checklist
 

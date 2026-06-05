@@ -125,6 +125,30 @@ afterEach(() => prisma.$executeRaw`ROLLBACK`);
 - Prisma: `prisma migrate deploy` on the container
 - TypeORM: `synchronize: true` only in test config
 
+### Test Data Factories
+
+Factories beat object literals: one place owns the default shape, tests override only the fields they care about, and adding a non-null column doesn't touch every test.
+
+```typescript
+import { Factory } from "fishery";
+import { faker } from "@faker-js/faker";
+
+export const orderFactory = Factory.define<Order>(({ sequence }) => ({
+  id: `ord_${sequence}`,
+  customerId: faker.string.uuid(),
+  status: "PENDING",
+  total: faker.number.int({ min: 1_00, max: 100_00 }),
+  createdAt: new Date(),
+}));
+
+// Per-test overrides
+const pending = orderFactory.build();
+const shipped = orderFactory.build({ status: "SHIPPED" });
+const batch   = orderFactory.buildList(5, { customerId: "cust-1" });
+```
+
+`fishery` (typed, sequence-aware) or a `createOrderFactory()` helper - both beat ad-hoc literals. `@faker-js/faker` for realistic field values; never hardcode `"test@test.com"` in 30 files.
+
 ### State Machine Transitions
 
 Use `it.each` for valid/invalid transition tables:

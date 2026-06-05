@@ -70,6 +70,10 @@ Match the error, then load the listed atomic skill:
 | BullMQ | Duplicate recurring jobs | Missing `jobId` on repeatable jobs | `node-bullmq-patterns` |
 | Express | Error handler not firing | Error middleware needs 4 params (arity detection) | `node-express-patterns` |
 | Express | Middleware order | `helmet` -> `cors` -> auth -> validation -> handler -> error handler | `node-express-patterns` |
+| ESM | `ERR_REQUIRE_ESM` | CJS `require()` of an ESM-only package; switch to dynamic `import()` or move the importer to ESM | `node-typescript-patterns` |
+| ESM | `ERR_MODULE_NOT_FOUND` | ESM relative import missing `.js` extension after TS compile; add the extension or set bundler resolver | `node-typescript-patterns` |
+| ESM | `__dirname is not defined` | ESM has no `__dirname`/`__filename`; use `fileURLToPath(import.meta.url)` | `node-typescript-patterns` |
+| ESM | Dual-package hazard | CJS + ESM build of the same package loaded twice; `instanceof` / singletons break - pin to one variant in `package.json` `exports` | `node-typescript-patterns` |
 
 ### STEP 3 - LOCATE
 

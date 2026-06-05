@@ -86,7 +86,7 @@ Canonical patterns: Use skill: `node-prisma-patterns` (Prisma) or `node-typeorm-
 - [ ] **Unbounded reads**: list endpoints use `take` + cursor pagination, not bare `findMany` / `find()`
 - [ ] **Per-row loops**: Prisma `createMany` / `updateMany`; TypeORM `repository.insert([...])` or QueryBuilder `.insert().values([...])`
 - [ ] **Existence checks**: `findFirst({ where, select: { id: true } })` / `repository.exist({ where })` over fetch-then-`length`
-- [ ] **Connection pool sized**: Prisma `connection_limit` / TypeORM `extra.max` x replicas <= DB `max_connections`
+- [ ] **Connection pool sized**: Canonical math in `node-connection-pool-sizing` (API replicas + workers + rolling deploys vs Postgres `max_connections`, plus pooler tier). Flag deviations
 - [ ] **Prod-unsafe config**: TypeORM `synchronize: true` (Critical); Prisma `log: ['query']` in prod (High)
 
 ### Step 5 - Indexes and Migrations
@@ -113,11 +113,13 @@ Use skill: `node-migration-safety` for changes in `prisma/migrations/` or `src/m
 
 **Impact heuristic.** A blocking call inside an async handler stalls _every request in flight on this Node process_. Phrase impact as "tail-latency contagion across in-flight requests," not "this request is slow." HTTP to a critical-path upstream inherits its tail: your p99 = max(your work, upstream p99); recommend `AbortSignal.timeout(500)` + fallback, or async via decision cache / circuit breaker.
 
+Canonical contracts: Use skill: `node-http-client-patterns` (timeout, retry budget, BullMQ delegation, per-vendor wrapper) and `node-transaction-patterns` (no I/O inside open transactions, post-commit dispatch, outbox). Flag deviations.
+
 - [ ] **No blocking I/O / CPU on the event loop**: `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse` of untrusted size, large regex on user input in request paths -> `worker_threads` (`piscina`) or BullMQ. Sync at startup is fine
-- [ ] **No external I/O inside a transaction**: `axios` / `fetch` / `queue.add()` inside `prisma.$transaction` / `dataSource.transaction` holds a pooled connection for the upstream's tail - 5ms write becomes 500ms of pool starvation. Capture inside, dispatch after commit
+- [ ] **No external I/O inside a transaction** (see `node-transaction-patterns`): `axios` / `fetch` / `queue.add()` inside `prisma.$transaction` / `dataSource.transaction` holds a pooled connection for the upstream's tail; capture inside, dispatch after commit
 - [ ] **Bounded concurrency**: `Promise.all` / `Promise.allSettled` over sequential `for...of await`; large fan-out bounded via `p-limit` / `bottleneck` / BullMQ
-- [ ] **`AbortSignal.timeout(...)` on every external call** - Node's default HTTP timeout is effectively infinite
-- [ ] **HTTP clients module-level**: shared `axios.create()` / `undici` Pool, not per-request
+- [ ] **`AbortSignal.timeout(...)` on every external call** (see `node-http-client-patterns`) - Node's default HTTP timeout is effectively infinite
+- [ ] **HTTP clients module-level**: shared `axios.create()` / `undici` Pool, not per-request (see `node-http-client-patterns`)
 - [ ] **NestJS request-scoped providers**: `Scope.REQUEST` only when needed (per-request transaction / multi-tenant); default-singleton otherwise. Move heavy interceptor / pipe logic post-response via `tap`
 
 ### Step 7 - Validation / Serialization

@@ -152,6 +152,8 @@ Each step must be:
 
 **Move side effects out of an open DB transaction**
 
+Canonical contract: Use skill: `node-transaction-patterns` (no I/O inside tx, post-commit vs outbox, lock-then-write, timeouts). The recipe below is the refactor sequence specifically.
+
 The case: `prisma.$transaction(async tx => { await tx.order.create(...); await queue.add('send-email', ...); await axios.post(webhookUrl, ...); })`. Worker may pick the job before the row is visible; HTTP call holds a pooled DB connection; rollback leaves email queued / webhook fired.
 
 Pick **one**; do not stack.

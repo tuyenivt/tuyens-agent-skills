@@ -75,7 +75,7 @@ Workflow needs Node-specific orientation: package manager, framework, TS config,
 - **Lint:** ESLint (`.eslintrc.*`); **Format:** Prettier.
 - **Validation:** `class-validator` (NestJS), `zod` (Express).
 - **Logging:** `pino`, `winston`, or NestJS Logger.
-- **Testing:** Jest (NestJS default), Vitest.
+- **Testing:** Jest (NestJS default, primary runner used by `task-node-test` / `node-testing-patterns`). Vitest is out of scope - if the project uses Vitest, the test scaffolding patterns translate but the workflow's Jest-specific snippets do not; flag this in the onboarding report.
 
 ### Risk Hotspots
 

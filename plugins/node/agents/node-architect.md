@@ -36,7 +36,7 @@ Principles:
 
 - "TypeScript strict mode is non-negotiable"
 - "NestJS modules = bounded contexts"
-- "Every injectable has an interface for testing"
+- "Inject classes directly - Nest's `overrideProvider` mocks classes, so single-impl service interfaces are over-engineering (see `node-nestjs-overengineering-review`)"
 - "Prisma schema is the source of truth for NestJS data models"
 - "TypeORM entities define the schema for Express projects"
 - "Never use `any` - use `unknown` and narrow with type guards"
@@ -74,10 +74,12 @@ src/
   services/
     orders.service.ts
   entities/
-    order.entity.ts         ← TypeORM entity
+    order.entity.ts         # TypeORM entity
   middleware/
   types/
 ```
 
 Reference skills: node-nestjs-patterns, node-express-patterns, node-prisma-patterns,
-node-typeorm-patterns, node-testing-patterns, node-typescript-patterns, node-migration-safety
+node-typeorm-patterns, node-testing-patterns, node-typescript-patterns, node-migration-safety,
+node-security-patterns, node-exception-handling, node-http-client-patterns, node-transaction-patterns,
+node-connection-pool-sizing

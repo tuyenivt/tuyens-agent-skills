@@ -85,7 +85,7 @@ NestJS: Use skill: `node-nestjs-patterns`. Module + controller + guards + DTOs w
 
 Express: Use skill: `node-express-patterns`. Router + controller + Zod middleware. Async handler wrapper on every route.
 
-Map domain errors to HTTP:
+Map domain errors to HTTP via the global exception filter (NestJS) / terminal error middleware (Express). Canonical contract: Use skill: `node-exception-handling` (AppError hierarchy, retryable flag, ORM error translation, Sentry capture-once, BullMQ retry propagation).
 
 | Domain Error | HTTP |
 |---|---|
@@ -96,7 +96,9 @@ Map domain errors to HTTP:
 | Invalid transition | 422 |
 | External timeout | 503 |
 
-For webhooks: raw body reading + signature validation in a route registered outside the global auth chain.
+For outbound HTTP to third parties (Stripe, SendGrid, internal services), Use skill: `node-http-client-patterns` (`AbortSignal.timeout`, retry budget, per-vendor wrapper). For multi-step writes with side effects, Use skill: `node-transaction-patterns` (capture inside, dispatch after commit; outbox for at-least-once).
+
+For webhooks: raw body reading + signature validation in a route registered outside the global auth chain (see `node-security-patterns`).
 
 ### STEP 6 - TESTS
 
