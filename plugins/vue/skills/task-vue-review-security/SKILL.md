@@ -221,10 +221,10 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat-model exercise). Order: Critical > High > Medium > Low.
+Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat-model exercise). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope] - [one-line action]
 
 _Omit this section if no security issues found._
 ```
@@ -241,7 +241,7 @@ _Omit this section if no security issues found._
 - [ ] Step 11: report written; confirmation printed
 - [ ] Severity rubric + Combined-finding rule applied; every finding has attack scenario, regression-risk, or topology-dependent framing
 - [ ] Items invisible in the diff noted "could not verify from diff - flag for separate audit"
-- [ ] Next Steps tagged `[Implement]`/`[Delegate]` and ordered Critical > High > Medium > Low
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]` and ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -250,3 +250,4 @@ _Omit this section if no security issues found._
 - Skipping clean OWASP categories - state "no signal in diff" explicitly.
 - Generic advice when a Vue idiom applies.
 - Treating client-side `v-if="user.role==='admin'"` as authorization.
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

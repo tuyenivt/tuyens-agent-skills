@@ -115,7 +115,7 @@ Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Security is not in scope, raise the most severe as a `[High]` and note "verify via `/task-rails-review-security`".
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Security is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`".
 
 Atomic skills (consult when PR touches the area):
 
@@ -135,7 +135,7 @@ Checks:
 - [ ] **Bulk operations**: partial-failure path defined; transaction wraps one chunk, not whole run or single row
 - [ ] **Concurrency**: no class-level mutable state, no `Time.zone=`; race-prone updates use row-level lock or `with_advisory_lock`
 
-**Test coverage** (named finding, not buried): logic added without RSpec coverage is `[Suggestion]`. Escalate to `[High]` on critical paths: auth, authz, money/billing, multi-record transactions, state machines, data-mutating Sidekiq jobs, migrations changing column semantics.
+**Test coverage** (named finding, not buried): logic added without RSpec coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth, authz, money/billing, multi-record transactions, state machines, data-mutating Sidekiq jobs, migrations changing column semantics.
 
 **Migration PRs** (`db/migrate/` change) - use skill: `ops-backward-compatibility`:
 
@@ -201,8 +201,8 @@ Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.rou
 
 Merge subagent findings:
 - Deduplicate cross-cutting findings; one entry citing all scopes that raised it
-- Highest severity wins on conflict (`Blocker > High > Suggestion > Question`)
-- Preserve `file:line` citations; order by severity, not scope
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
+- Preserve `file:line` citations; order by intent, not scope
 - Merge Next Steps into one prioritized list; preserve `[Implement]`/`[Delegate]` tags
 
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
@@ -215,7 +215,13 @@ Print confirmation line.
 
 ## Feedback Labels
 
-`[Blocker]` (must fix before merge) | `[High]` (significant impact) | `[Suggestion]` (non-blocking) | `[Question]` (clarification)
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
+
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -240,16 +246,22 @@ Print confirmation line.
 
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
-## Findings
+## High-Impact Findings
 
-Each entry, ordered Blocker > High > Suggestion > Question:
-
-### [Label] file:line
-
+### [Must] file:line
 - Issue: [Rails idiom named: callback abuse, fat controller, AR-in-API, missing authorize, etc.]
 - Impact: [user-visible or operational consequence]
-- System Risk: [why this is system-level] _(required for Blocker; optional otherwise)_
+- System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Rails change with code]
+
+### [Recommend] file:line
+- Issue:
+- Impact:
+- Fix:
+
+### [Question] file:line
+- Question:
+- Why it matters:
 
 ## Architecture Notes
 - Boundary impact / Coupling change / Drift detected
@@ -262,11 +274,11 @@ Each entry, ordered Blocker > High > Suggestion > Question:
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Prioritized; each `[Implement]` or `[Delegate]`; order Blocker > High > Suggestion.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - one-line action
-2. **[Implement]** [High] OldFile.rb:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [High] [scope] - one-line action
+1. **[Implement]** [Must] file:line - one-line action
+2. **[Implement]** [Recommend] OldFile.rb:88 - N+1 in listAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope] - one-line action
 ```
 
 _Omit empty sections. Omit Next Steps entirely if no actionable findings._
@@ -282,8 +294,8 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - [ ] Step 8: maintainability checks applied
 - [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts; failed scopes noted
 - [ ] Step 9.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Step 10: findings merged with dedup + highest-severity-wins; report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
-- [ ] Every Blocker states a system risk; every finding has label + `file:line` + actionable Rails fix
+- [ ] Step 10: findings merged with dedup + strongest-intent-wins; report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
+- [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Rails fix
 - [ ] If `--spec` was passed, every finding traces to AC/NFR/task or is flagged out-of-scope
 
 ## Avoid
@@ -292,11 +304,12 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Duplicating perf / security / observability depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first
 - Applying generic backend conventions where a Rails idiom exists
-- Nitpicking style; no `[Nitpick]` / `[Praise]` labels
-- Appending raw subagent reports instead of merging into one severity-ordered list
+- Nitpicking style
+- Appending raw subagent reports instead of merging into one intent-ordered list
 - Running extra-scope subagents sequentially or when `core-only` was passed

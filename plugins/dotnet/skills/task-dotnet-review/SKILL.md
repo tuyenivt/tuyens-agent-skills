@@ -175,13 +175,13 @@ Apply atomics; this phase adds review-level synthesis on top.
 
 **Review-level findings (raise as named entries, not buried in takeaways):**
 
-- **Missing tests.** PR adds/modifies logic without xUnit / `WebApplicationFactory` / Testcontainers coverage. Default `[Suggestion]`; escalate to `[High]` for critical paths (JWT / custom auth, `IAuthorizationHandler` / ownership checks, money / billing, multi-step transactions / state machines, `BackgroundService` / MassTransit / Hangfire that mutate data, migrations changing column semantics).
-- **Wrong-store tests.** `UseInMemoryDatabase("...")` (or SQLite) when `.csproj` references Postgres / SQL Server provider is `[High]` - in-memory skips FK enforcement, raw SQL, transactions, JSONB/array ops, concurrent updates.
+- **Missing tests.** PR adds/modifies logic without xUnit / `WebApplicationFactory` / Testcontainers coverage -> `[Recommend]`; escalate to `[Must]` for critical paths (JWT / custom auth, `IAuthorizationHandler` / ownership checks, money / billing, multi-step transactions / state machines, `BackgroundService` / MassTransit / Hangfire that mutate data, migrations changing column semantics).
+- **Wrong-store tests.** `UseInMemoryDatabase("...")` (or SQLite) when `.csproj` references Postgres / SQL Server provider is `[Recommend]` - in-memory skips FK enforcement, raw SQL, transactions, JSONB/array ops, concurrent updates.
 - **Domain entity in API response.** `Ok(entity)` leaks every property and triggers lazy-loaded navigations. Map to a response DTO record; audit DTO for `PasswordHash`, `MfaSecret`, `ApiKey`, `IsAdmin`, `DeletedAt`, `LastLoginIp`; prefer separate DTO over `[JsonIgnore]` on the entity.
 - **Mass assignment.** `[FromBody] DomainEntity` or `JsonSerializer.Deserialize<DomainEntity>(body)` -> request DTO record with explicit FluentValidation rules.
 - **HTTP `Idempotency-Key`** on retry-prone POSTs (`/payments`, `/orders`, `/refunds`) via `request_idempotency` table keyed by `(tenant_id, idempotency_key)` storing request hash + cached response. Distinct from worker-side message dedup - a system needs both.
-- **Hardcoded JWT signing key** (`new SymmetricSecurityKey(Encoding.UTF8.GetBytes("literal"))` or string-literal `IssuerSigningKey` in `Program.cs`) is `[Blocker]`. Stays in Core so `core-only` reviews still catch it.
-- **`db.Database.Migrate()` on startup** is `[High]` on multi-replica deployments (replicas race). Use `dotnet ef database update` as a deploy step.
+- **Hardcoded JWT signing key** (`new SymmetricSecurityKey(Encoding.UTF8.GetBytes("literal"))` or string-literal `IssuerSigningKey` in `Program.cs`) is `[Must]`. Stays in Core so `core-only` reviews still catch it.
+- **`db.Database.Migrate()` on startup** is `[Recommend]` on multi-replica deployments (replicas race). Use `dotnet ef database update` as a deploy step.
 
 **Concurrency safety:** shared mutable global state (`static Dictionary<...>` mutated by handlers); race-prone updates done in-process instead of with DB-level locking (`SELECT ... FOR UPDATE`, `[ConcurrencyCheck]` / `[Timestamp] byte[] RowVersion`); `Monitor.Enter` across `await` (use `SemaphoreSlim.WaitAsync(ct)`).
 
@@ -196,7 +196,7 @@ Use skill: `architecture-guardrail` for layer violations, new coupling, circular
 - [ ] **Constructor injection only** - no `IServiceProvider.GetRequiredService<T>()` in handlers; no `new` on dependencies. Optional config via `IOptions<T>` / `IOptionsMonitor<T>`.
 - [ ] **Typed config** - `services.Configure<JwtOptions>(...)` + `IOptions<JwtOptions>`. No `IConfiguration` injected into handlers. Secrets via env / Key Vault / `user-secrets`.
 - [ ] **Multi-tenant isolation** at EF Core query level (global query filters) or repository layer, not the controller alone.
-- [ ] **Middleware order in `Program.cs`** - `UseExceptionHandler` -> `UseHsts` -> `UseHttpsRedirection` -> `UseRouting` -> `UseCors` -> `UseAuthentication` -> `UseAuthorization` -> `MapControllers`. **`UseAuthorization` before `UseAuthentication` is `[Blocker]`** - framework default falls through and every `[Authorize]` endpoint silently allows all requests.
+- [ ] **Middleware order in `Program.cs`** - `UseExceptionHandler` -> `UseHsts` -> `UseHttpsRedirection` -> `UseRouting` -> `UseCors` -> `UseAuthentication` -> `UseAuthorization` -> `MapControllers`. **`UseAuthorization` before `UseAuthentication` is `[Must]`** - framework default falls through and every `[Authorize]` endpoint silently allows all requests.
 - [ ] **Controllers thin** - one per aggregate root with `[Route("api/v1/[controller]")]`; extract -> invoke handler -> map -> return.
 - [ ] **Central `IExceptionHandler`** maps domain exceptions to Problem Details.
 
@@ -254,11 +254,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 (Skip if Step 5 didn't run.) Merge subagent findings into one Output Format - do not append raw reports.
 
 - **Deduplicate cross-cutting findings** - one entry citing all scopes.
-- **Severity wins** when labels differ (`Blocker` > `High` > `Suggestion` > `Question`). Subagent scales map: `Critical` -> `Blocker`, `High` -> `High`, `Medium` / `Low` -> `Suggestion`. No `Critical` / `Medium` / `Low` in merged Findings.
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Subagent scales map: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted).
 - **Preserve `file:line`** citations.
-- **Order by severity, not by scope.**
+- **Order by intent, not by scope.**
 - **Note missing scopes** under Summary: `Scope incomplete: <scope> review did not complete`.
-- **Merge Next Steps** - dedupe items mapping to the same fix; re-sort by severity; preserve `[Implement]` / `[Delegate]`.
+- **Merge Next Steps** - dedupe items mapping to the same fix; re-sort by intent; preserve `[Implement]` / `[Delegate]`.
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -284,14 +284,13 @@ Write the assembled review to the report file before ending; print confirmation.
 
 ## Feedback Labels
 
-| Label          | Meaning                                     |
-| -------------- | ------------------------------------------- |
-| `[Blocker]`    | Must fix before merge - correctness or risk |
-| `[High]`       | Should fix - significant impact or smell    |
-| `[Suggestion]` | Would improve - non-blocking                |
-| `[Question]`   | Need clarity from author                    |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -321,26 +320,23 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the .NET idiom: `async void`, `.Result` blocking, EF Core N+1, `FromSqlRaw` interpolation, mass assignment via `[FromBody] DomainEntity`, missing `[Authorize]`, Singleton capturing Scoped, missing `CancellationToken`, swallowed exception, dispatch inside transaction, hardcoded JWT key, `UseAuthorization` before `UseAuthentication`]
 - Impact: [user-visible or operational consequence]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete .NET change with C# example]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue:
 - Impact:
 - Fix:
-
-### [Suggestion] file:line
-- Improvement:
 
 ### [Question] file:line
 - Question: [what is ambiguous in the change]
 - Why it matters: [what the right next step depends on]
 
-_Use [Question] only when the change is genuinely ambiguous. Not a softer Blocker._
+_Use [Question] only when the change is genuinely ambiguous. Not a softer Must._
 
 ## Architecture Notes
 - Boundary impact:
@@ -357,12 +353,11 @@ _Use [Question] only when the change is genuinely ambiguous. Not a softer Blocke
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] OldFile.cs:88 - N+1 in ListAll (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
-4. **[Implement]** [Suggestion] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] OldFile.cs:88 - N+1 in ListAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -381,13 +376,13 @@ Omit empty sections.
 - [ ] Phase C - layering, no `DbContext` in Application, MediatR pipeline order, repository placement, constructor injection, typed config, multi-tenant, middleware order, central `IExceptionHandler`
 - [ ] Phase D - `complexity-review` + `dotnet-overengineering-review` applied; remaining .NET AI smells covered
 - [ ] Phase E - maintainability applied
-- [ ] Every Blocker cites system risk; every finding has label, `file:line`, actionable .NET fix
+- [ ] Every Must cites system risk; every finding has label, `file:line`, actionable .NET fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged out-of-scope
 - [ ] Step 5 - for non-Core scopes, .NET subagents ran in parallel with pre-resolved diff handle + stack detection
-- [ ] Step 6 - subagent findings merged with dedup + highest-severity-wins; raw reports not appended; failed/missing scope noted under Summary
+- [ ] Step 6 - subagent findings merged with dedup + strongest-intent-wins; raw reports not appended; failed/missing scope noted under Summary
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7 - review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Blocker > High > Suggestion (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if none)
 
 ## Avoid
 
@@ -395,15 +390,16 @@ Omit empty sections.
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading full diff + commit log first
 - Generic backend conventions when a .NET idiom exists (say "register the repository interface in `Application/Interfaces`", not "use dependency inversion")
-- Nitpicking style where `dotnet format` applies; no `[Nitpick]` or `[Praise]`
+- Nitpicking style where `dotnet format` applies
 - Vague feedback without a concrete .NET fix
 - Blocking on personal preference
 - Running perf / security / observability when user passed `core-only`
 - Treating auto-escalation signals as advisory (default is to promote; user opts out via `core-only`)
 - Duplicating subagent depth checks here
 - Sequential subagent runs when they could be parallel
-- Appending raw subagent reports instead of merging into one severity-ordered list
+- Appending raw subagent reports instead of merging into one intent-ordered list

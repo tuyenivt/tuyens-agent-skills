@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Every finding cites the constraint that makes the code redundant: FK name, `nullable=False` column, unique index, SQLAlchemy `Mapped[T]` non-Optional type, Pydantic field constraint, Python type annotation, or framework guarantee.
-- Severity:
-  - **`[Suggestion]`** default. Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, bare `except` / `except Exception` defeating the global exception handler, sync I/O hidden in `async def` via broad except, or `Protocol` / `ABC` + single concrete subclass.
+- Intent:
+  - **`[Recommend]`** default. Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, bare `except` / `except Exception` defeating the global exception handler, sync I/O hidden in `async def` via broad except, or `Protocol` / `ABC` + single concrete subclass.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - A redundancy with **visible** justification is not a finding. See `Avoid`.
 
@@ -58,7 +57,7 @@ async def create(req: CreateOrderRequest):
 
 #### Manual unique-check before `INSERT`
 
-`[High]` - races and adds a SELECT per write; the unique index decides anyway.
+`[Must]` - races and adds a SELECT per write; the unique index decides anyway.
 
 ```python
 # Bad
@@ -107,7 +106,7 @@ customer_id = order.customer_id
 
 #### `bare except` / `except Exception` swallowing real bugs
 
-`[High]`. Bare `except` catches `KeyboardInterrupt`/`SystemExit`. `except Exception` masks `TypeError`, `AttributeError`, `asyncio.CancelledError`, and defeats the global exception handler in routers.
+`[Must]`. Bare `except` catches `KeyboardInterrupt`/`SystemExit`. `except Exception` masks `TypeError`, `AttributeError`, `asyncio.CancelledError`, and defeats the global exception handler in routers.
 
 ```python
 # Bad
@@ -128,7 +127,7 @@ except PaymentDeclinedError as e: raise HTTPException(402, str(e))
 
 #### Single-impl `Protocol` / `ABC` / wrapper classes
 
-`[High]` when the abstraction forces two-file refactors for no behavioral reason.
+`[Must]` when the abstraction forces two-file refactors for no behavioral reason.
 
 ```python
 # Bad - one Protocol, one implementer
@@ -191,12 +190,12 @@ Flag speculative settings only after a repo-wide search confirms zero read sites
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `model_validator` re-checking `Field(min_length=1)`}
 - Redundant because: {FK name | `nullable=False` column | unique index | non-Optional type | Pydantic rule | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | bare except hiding async cancellation} _(required for `[High]`; omit otherwise)_
+- Cost: {extra SELECT per save | masked exception | speculative surface area | bare except hiding async cancellation} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

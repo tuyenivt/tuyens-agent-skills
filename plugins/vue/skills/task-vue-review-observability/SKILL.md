@@ -198,10 +198,10 @@ _Omit empty buckets. Group by Surface within a bucket when >2 findings share one
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [action]
-2. **[Delegate]** [High] [scope: ops] - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: ops] - [action]
 ```
 
 ## Self-Check
@@ -225,3 +225,4 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - Approving `extra`/`setContext` payloads carrying email/phone - project to `{ id }`.
 - Infra scope (dashboards, org settings, forwarders, alert rules) - delegate to ops.
 - State-changing git.
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

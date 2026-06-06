@@ -187,11 +187,11 @@ _Omit empty sections._
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting / dashboards / ops). Order: High > Medium > Low.
+Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting / dashboards / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: ops] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -221,3 +221,4 @@ _Omit if no actionable findings._
 - Leaving `*` in `management.endpoints.web.exposure.include` for prod
 - `log.info("...", e)` (loses stack) instead of `log.error("...", e)`
 - Approving Sleuth on Boot 3 - migrate to Micrometer Tracing
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

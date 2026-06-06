@@ -162,10 +162,10 @@ _One row per category; `yes` rows must correspond to a Finding below. Do not dup
 
 ## Next Steps
 
-Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dependency upgrade, threat-model exercise). Order: Critical > High > Medium > Low.
+Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dependency upgrade, threat-model exercise). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
 _Omit if no security issues found._
 ```
@@ -191,3 +191,4 @@ _Omit if no security issues found._
 - Restating `rust-security-patterns` rules in findings - cite the pattern by name
 - Disabling middleware to silence a failing test - fix the test
 - Conflating with general code review or perf review - delegate
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

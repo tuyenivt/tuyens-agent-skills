@@ -160,10 +160,10 @@ Apply atomic skills - each owns canonical patterns:
 Control flow, `@defer`, NgModule, content projection, OnPush -> `angular-component-patterns`. Reactive Forms -> `angular-forms-patterns`. SSR hydration + `withHttpTransferCacheOptions` -> `angular-routing-patterns` + `angular-data-fetching`. Defer to those atomics, do not duplicate.
 
 - **Mutable module-level state.** `let cache = {}` leaks across SSR requests.
-- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Blocker]`; `bypassSecurityTrust*` needs justification + is `[Blocker]` on user content (audit the *upstream* - input must be DOMPurify-sanitized or server-trusted); open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist = `[Blocker]`; `environment.ts` privileged secrets are `[Blocker]` (compile into client bundle).
+- **Cross-cutting safety.** `[innerHTML]` on user content without sanitizer = `[Must]`; `bypassSecurityTrust*` needs justification + is `[Must]` on user content (audit the *upstream* - input must be DOMPurify-sanitized or server-trusted); open redirect via `Router.navigateByUrl(query.returnTo)` without allowlist = `[Must]`; `environment.ts` privileged secrets are `[Must]` (compile into client bundle).
 - **TypeScript strict.** No `: any` inputs; `as any` outside test setup is a finding.
 - **Accessibility.** `<input>` paired with `<label>`; dialogs use CDK `Dialog`; images use `NgOptimizedImage` or explicit `width`/`height`; `alt` present.
-- **Test coverage for logic added.** Missing tests is a named finding (`[Suggestion]`; `[High]` on critical paths: auth, billing UI, form validation, error handlers).
+- **Test coverage for logic added.** Missing tests is a named finding (`[Recommend]`; escalate to `[Must]` on critical paths: auth, billing UI, form validation, error handlers).
 
 ### Phase C - Angular Architecture Guardrails
 
@@ -173,7 +173,7 @@ Use skill: `architecture-guardrail`.
 - **Lazy-load:** feature routes use `loadComponent` / `loadChildren`; eager `component:` for non-trivial routes is a finding.
 - **DI hierarchy:** `providedIn: 'root'` for app-wide singletons, route-scoped for per-route state, component-scoped for per-instance. Root-scoped per-user state without explicit logout reset bleeds.
 - **Configuration:** typed config via `InjectionToken<AppConfig>`; `environment.X` sprinkled across components is a finding.
-- **Module boundaries:** feature folders with defined public surface; cross-feature imports through `index.ts`. In Nx, missing `tags` on a new project or violation of `@nx/enforce-module-boundaries` is `[High]` - see `angular-nx-patterns`.
+- **Module boundaries:** feature folders with defined public surface; cross-feature imports through `index.ts`. In Nx, missing `tags` on a new project or violation of `@nx/enforce-module-boundaries` is `[Recommend]` - see `angular-nx-patterns`.
 - **NgModule sandwich:** legacy `AppModule` with >30 imports is a migration target when the diff touches it.
 
 ### Phase D - AI-Generated Code Quality
@@ -219,9 +219,9 @@ If scope is Core only, skip.
 Merge into the single Output Format below. Do not append raw subagent reports.
 
 - Dedupe key: identical `file:line` + same issue name = one finding (cite all scopes that raised it). Keep the most specific `Fix` text across versions.
-- Severity merge: Map subagent tiers to parent labels: `Critical` → `[Blocker]`, `High` → `[High]`, `Medium`/`Low` → `[Suggestion]`. Highest wins on collisions.
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent tiers to parent labels: `Critical` -> `[Must]`, `High` -> `[Recommend]`, `Medium`/`Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted).
 - Preserve `file:line` citations
-- Order by severity, not scope
+- Order by intent, not scope
 - Merge Next Steps with `[Implement]` / `[Delegate]` tags preserved
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
@@ -248,14 +248,13 @@ Print confirmation line.
 
 ## Feedback Labels
 
-| Label | Meaning |
-|-------|---------|
-| [Blocker] | Must fix before merge - correctness / risk |
-| [High] | Should fix - significant impact |
-| [Suggestion] | Would improve - non-blocking |
-| [Question] | Need clarity from author |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -282,23 +281,20 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [Angular idiom name: bare `.subscribe()` without `takeUntilDestroyed`, `[innerHTML]` on user input, Default CD, missing `track`, `bypassSecurityTrustHtml` on user content, `environment.ts` secret, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level]
 - Fix: [concrete Angular change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue / Impact / Fix
-
-### [Suggestion] file:line
-- Improvement
 
 ### [Question] file:line
 - Question / Why it matters
 
-_Use [Question] for genuine ambiguity, not as a softer Blocker._
+_Use [Question] for genuine ambiguity, not as a softer Must._
 
 ## Architecture Notes
 
@@ -317,11 +313,11 @@ _Cross-cutting commentary. Reference findings by file:line; do not restate._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] old-list.component.ts:88 - missing track on @for (open since round 1)
-3. **[Delegate]** [High] [scope: design-system] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] old-list.component.ts:88 - missing track on @for (open since round 1)
+3. **[Delegate]** [Recommend] [scope: design-system] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -341,9 +337,9 @@ Drop Architecture Notes, Maintainability Notes, and any C/D-only sections. Keep 
 - [ ] Phase A: risk + blast radius stated before findings; low-risk short-circuit applied when applicable
 - [ ] Phase B: atomic skills applied (component/signals/rxjs/service/data-fetching/state/forms/routing/nx/styling/testing); orphan checks (module-level mutable state, `[innerHTML]`/`bypassSecurityTrust*` upstream audit, env-ts secrets, open redirect, a11y, tests) raised
 - [ ] Phase C-D-E: layering, AI smells, naming/length/logging applied (skipped if short-circuit)
-- [ ] Every finding has label + `file:line` + actionable fix; every Blocker states system risk
+- [ ] Every finding has label + `file:line` + actionable fix; every Must cites system risk
 - [ ] Extra scopes ran in parallel with pre-resolved diff handle; failures noted as `Scope incomplete`
-- [ ] Findings merged severity-ordered; raw subagent reports not appended
+- [ ] Findings merged intent-ordered; raw subagent reports not appended
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
@@ -353,7 +349,8 @@ Drop Architecture Notes, Maintainability Notes, and any C/D-only sections. Keep 
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading full diff and commit log first
 - Generic frontend feedback when an Angular idiom exists ("use `takeUntilDestroyed`", not "manage subscriptions")

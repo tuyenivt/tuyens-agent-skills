@@ -75,7 +75,7 @@ Use skill: `behavioral-principles`. Governs every subsequent step. When invoked 
 
 Use skill: `stack-detect` to confirm PHP / Laravel (skip if a parent dispatcher pre-detected). If not Laravel, stop and tell the user to invoke `/task-code-review`.
 
-Record: `PHP: <version>`, `Laravel: <version>`, `Auth: Sanctum (token) | Sanctum (SPA) | Passport | session`, `Queue: redis (Horizon) | database | sync` (sync in prod is a Blocker), `Tests: Pest | PHPUnit`. Phase B-E checklists branch on these signals where the idiom differs.
+Record: `PHP: <version>`, `Laravel: <version>`, `Auth: Sanctum (token) | Sanctum (SPA) | Passport | session`, `Queue: redis (Horizon) | database | sync` (sync in prod is `[Must]`), `Tests: Pest | PHPUnit`. Phase B-E checklists branch on these signals where the idiom differs.
 
 ### Step 3 - Resolve the Diff Under Review
 
@@ -154,9 +154,9 @@ If Blast Radius is `Wide|Critical` and the user did not pass `quick`, promote de
 
 Logical correctness, error handling, state-integrity edge cases, backward compatibility, transaction boundaries, queue dispatch safety.
 
-**Test coverage finding:** Changed logic without Pest/PHPUnit coverage -> at minimum `[Suggestion]`; escalate to `[High]` on critical paths (Sanctum/auth middleware, Policies/Gates/ownership, money or billing, multi-step `DB::transaction`, queue jobs with side effects, migrations changing column semantics). Raise as a named Findings entry, not in Key Takeaways.
+**Test coverage finding:** Changed logic without Pest/PHPUnit coverage -> `[Recommend]`; escalate to `[Must]` on critical paths (Sanctum/auth middleware, Policies/Gates/ownership, money or billing, multi-step `DB::transaction`, queue jobs with side effects, migrations changing column semantics). Raise as a named Findings entry, not in Key Takeaways.
 
-**Wrong-store test finding:** Feature tests on SQLite while prod uses MySQL/PostgreSQL -> `[High]`. SQLite FK/`JSON`/fulltext/concurrency semantics differ.
+**Wrong-store test finding:** Feature tests on SQLite while prod uses MySQL/PostgreSQL -> `[Recommend]`. SQLite FK/`JSON`/fulltext/concurrency semantics differ.
 
 **Correctness checklist** (canonical patterns in the cited atomic skills):
 
@@ -184,7 +184,7 @@ Use skill: `laravel-service-patterns` for service/action layering and event-driv
 
 **Migration PRs (only when `database/migrations/` changed):**
 
-- [ ] Every `up()` has a matching `down()` (missing `down()` is `[Blocker]` on multi-instance deploys)
+- [ ] Every `up()` has a matching `down()` (missing `down()` is `[Must]` on multi-instance deploys)
 - [ ] Two-phase deploys for column rename/drop (add -> backfill -> cut over -> remove); single-migration drops break rolling deploys
 - [ ] `NOT NULL` on existing columns: nullable -> backfill -> set-NOT-NULL on tables > 100K rows; flag `->change()` on tables > 1M rows for `pt-online-schema-change`
 - [ ] Indexes on large tables use `ALGORITHM=INPLACE, LOCK=NONE`
@@ -232,7 +232,7 @@ Additional Laravel AI smells:
 - [ ] **Duplicated query logic**: same `where(...)` chain in 3+ places extracted to a local scope (`scopeActive`) or query class
 - [ ] **`declare(strict_types=1)`** at file top
 - [ ] **PHP 8.2+ idioms**: `readonly` DTOs, constructor property promotion, first-class callables, enums for state machines
-- [ ] **Logging hygiene** (`[Suggestion]`): no `dd()`/`dump()` in prod paths; no PII in `Log::*`. Observability subagent owns depth.
+- [ ] **Logging hygiene** (`[Recommend]`): no `dd()`/`dump()` in prod paths; no PII in `Log::*`. Observability subagent owns depth.
 - [ ] **`composer normalize` / Pint / PHPStan** clean in CI
 
 Use skill: `backend-coding-standards` for cross-language naming/structure.
@@ -251,11 +251,11 @@ Each subagent prompt must include: resolved `base_ref`/`head_ref` + pre-read dif
 Merge subagent findings into the single Output Format. Do not append raw subagent reports.
 
 - **Deduplicate cross-cutting findings.** Same issue across scopes (e.g., per-iteration `Order::find($id)` flagged by both Phase B and Perf) -> one entry citing all scopes.
-- **Severity wins.** Highest across scopes: `Blocker` > `High` > `Suggestion` > `Question`. Map subagent scales: `Critical` -> `Blocker`, `High` -> `High`, `Medium`/`Low` -> `Suggestion`. Do not introduce `Critical`/`Medium`/`Low`.
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium`/`Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted).
 - **Preserve `file:line` citations** from the originating subagent.
-- **Order findings by severity, not scope.** One merged list.
+- **Order findings by intent, not scope.** One merged list.
 - **Note missing scopes** -> add `Scope incomplete: <scope> review did not complete` under Summary.
-- **Merge Next Steps** into one prioritized list; preserve `[Implement]`/`[Delegate]` tags; deduplicate; re-sort by severity.
+- **Merge Next Steps** into one prioritized list; preserve `[Implement]`/`[Delegate]` tags; deduplicate; re-sort by intent.
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -281,14 +281,13 @@ Write the assembled output to the report file before ending; print the confirmat
 
 ## Feedback Labels
 
-| Label        | Meaning                                     | Required |
-| ------------ | ------------------------------------------- | -------- |
-| [Blocker]    | Must fix before merge - correctness or risk | Yes      |
-| [High]       | Should fix - significant impact or smell    | Strong   |
-| [Suggestion] | Would improve - non-blocking                | No       |
-| [Question]   | Need clarity from author                    | Clarify  |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]` labels.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -318,14 +317,20 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 - Issue: [name the Laravel idiom]
 - Impact: [user-visible or operational consequence]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Laravel change with code example]
 
-### [High] / [Suggestion] / [Question] file:line
-Same shape (Issue/Impact/Fix; or Improvement; or Question/Why-it-matters). Use [Question] only when genuinely ambiguous - not a softer Blocker.
+### [Recommend] file:line
+- Issue:
+- Impact:
+- Fix:
+
+### [Question] file:line
+- Question:
+- Why it matters:
 
 ## Architecture Notes
 
@@ -341,11 +346,11 @@ _Cross-cutting commentary; reference Findings by file:line, do not duplicate._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Prioritized list tagged `[Implement]` or `[Delegate]`, ordered Blocker > High > Suggestion. Omit if no actionable findings.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized list tagged `[Implement]` or `[Delegate]`, ordered Must > Recommend > Question. Omit if no actionable findings.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] OldFile.php:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] OldFile.php:88 - N+1 in listAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 ```
 
 **Omit empty sections.**
@@ -373,10 +378,10 @@ On incremental rounds, prior-round Still open items are folded in with (open sin
 - [ ] Phase D: `complexity-review` + `laravel-overengineering-review` applied
 - [ ] Phase E: maintainability checks applied
 - [ ] Missing tests raised as a named Finding (not buried in Key Takeaways)
-- [ ] Every Blocker states a system risk; every finding has label, `file:line`, actionable Laravel fix
+- [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Laravel fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Step 5: non-Core subagents ran in parallel with pre-resolved diff/log + stack signals
-- [ ] Step 6: findings merged with deduplication and highest-severity-wins; raw subagent reports not appended; failed scopes noted as `Scope incomplete: <scope>`
+- [ ] Step 6: findings merged with deduplication and strongest-intent-wins; raw subagent reports not appended; failed scopes noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7: report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
@@ -386,10 +391,11 @@ On incremental rounds, prior-round Still open items are folded in with (open sin
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic backend phrasing when a Laravel idiom exists ("wrap in a Form Request", not "validate input")
 - Vague feedback without a concrete Laravel fix
 - Running extra scopes sequentially when they could spawn in parallel
-- Appending raw subagent reports instead of merging into one severity-ordered Findings list
+- Appending raw subagent reports instead of merging into one intent-ordered Findings list

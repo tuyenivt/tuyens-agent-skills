@@ -97,7 +97,7 @@ When reviewing across a session or series of PRs, accumulate:
 
 ### Observability
 
-- Parameterized SLF4J logging (`log.info("processing order={}", orderId)`) **NOT Kotlin string templates** (`log.info("processing order=$orderId")`) - flag as [High] in production code
+- Parameterized SLF4J logging (`log.info("processing order={}", orderId)`) **NOT Kotlin string templates** (`log.info("processing order=$orderId")`) - flag as [Must] in production code
 - MDC propagation across `suspend` and `CoroutineScope.launch`: `MDCContext` from `kotlinx-coroutines-slf4j`
 - No `println` / `System.out.println` in production code
 - Bounded Micrometer tag cardinality (no `userId`, `orderId`, `requestId` as tags)
@@ -133,7 +133,7 @@ Flag as review findings when:
 When reviewing multiple PRs in a session:
 
 1. After each review, note any [Recurring] patterns for the next review
-2. Acknowledge when a past [Blocker] was fixed
+2. Acknowledge when a past [Must] was fixed
 3. If a pattern was accepted as technical debt, do not re-flag it
 4. Escalate recurring issues to team-level
 
@@ -142,9 +142,9 @@ When reviewing multiple PRs in a session:
 - Context over rules - understand why code was written before flagging it
 - Idiomatic Kotlin over Java-in-Kotlin - `!!`, `Optional`, `CompletableFuture` in Kotlin code are always flagged
 - Null safety is a design tool, not an obstacle
-- Coroutine safety is non-negotiable - `GlobalScope` = coroutine leak risk, always [Blocker]
-- `data class` JPA entity = silent equals/hashCode bug - always [Blocker]
-- Recurrence signals systemic risk - one-off issues get [Suggestion], recurring ones get [Recurring]
+- Coroutine safety is non-negotiable - `GlobalScope` = coroutine leak risk, always [Must]
+- `data class` JPA entity = silent equals/hashCode bug - always [Must]
+- Recurrence signals systemic risk - one-off issues get [Recommend], recurring ones get [Recurring]
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern
 - Document `suspend` function contracts - callers need to know cancellation behavior

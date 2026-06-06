@@ -121,8 +121,8 @@ _Omit severity sections with no findings. If all are omitted, state "No security
 
 ## Next Steps
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 ```
 
 ## Self-Check
@@ -140,3 +140,4 @@ _Omit severity sections with no findings. If all are omitted, state "No security
 - Silently skipping OWASP categories that look clean
 - Recommendations that conflict with the framework's built-in security model
 - Treating the fallback as equivalent to a stack workflow
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

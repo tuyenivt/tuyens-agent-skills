@@ -71,7 +71,7 @@ If the stack is unfamiliar, apply the universal layering above and recommend the
 Good - specific, localized, references the existing convention:
 
 ```
-[High] orders/controllers/orders.rb:45
+[Must] orders/controllers/orders.rb:45
 - Issue: Controller calls Payment.find_by(...), bypassing PaymentService
 - Impact: Hidden coupling between orders and payments modules
 - Drift: Existing pattern routes payment access through PaymentClient
@@ -80,7 +80,7 @@ Good - specific, localized, references the existing convention:
 Bad - vague:
 
 ```
-[Suggestion] The architecture could be improved.
+[Recommend] The architecture could be improved.
 ```
 
 ## Output Format
@@ -92,7 +92,7 @@ Bad - vague:
 
 ### Violations
 
-#### [{Severity}] {file:line}
+#### [Must | Recommend | Question] {file:line}
 
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
@@ -103,11 +103,11 @@ Bad - vague:
 {State explicitly if no violations detected - do not omit this section silently}
 ```
 
-Severity:
+Intent:
 
-- **High**: layer bypass, circular dependency, cross-runtime import
-- **Medium**: new cross-module coupling, boundary erosion
-- **Low**: convention drift with limited structural impact
+- **[Must]**: layer bypass, circular dependency, cross-runtime import
+- **[Recommend]**: new cross-module coupling, boundary erosion
+- **[Question]**: drift with unclear intent - ask before flagging as a violation
 
 Omit "No Violations Found" only when violations were listed. Never omit the section entirely - consuming skills use its presence to confirm the check ran.
 

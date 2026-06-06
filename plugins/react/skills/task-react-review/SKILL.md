@@ -185,7 +185,7 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 
 **Additional React-specific checks (deviation-flagging only; canonical rules live in the atomics above):**
 
-- **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage? Minimum `[Suggestion]`; escalate to `[High]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
+- **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
 - **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Security subagent is running, defer depth to it.
@@ -266,11 +266,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Highest severity wins** (`Blocker` > `High` > `Suggestion` > `Question`). Map subagent scales: `Critical` -> `Blocker`, `High` -> `High`, `Medium` / `Low` -> `Suggestion`
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
 - **Preserve `file:line` citations** from the originating subagent
-- **Order by severity**, not by scope
+- **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
-- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by severity
+- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -296,14 +296,13 @@ Write before ending; print the confirmation line.
 
 ## Feedback Labels
 
-| Label | Meaning | Required |
-|-------|---------|----------|
-| [Blocker] | Must fix before merge - correctness / risk | Yes |
-| [High] | Should fix - significant impact | Strong |
-| [Suggestion] | Would improve - non-blocking | No |
-| [Question] | Need clarity from author | Clarify |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -331,26 +330,23 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the React idiom: `"use client"` at root of layout, missing Zod on Server Action, RSC leaking `passwordHash` across Client boundary, `useEffect` for derived state, missing `key`, `dangerouslySetInnerHTML` on user input, `NEXT_PUBLIC_` secret, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete React change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue: ...
 - Impact: ...
 - Fix: ...
-
-### [Suggestion] file:line
-- Improvement: ...
 
 ### [Question] file:line
 - Question: [what is ambiguous]
 - Why it matters: [what the right next step depends on]
 
-_Use [Question] for genuine ambiguity, not as a softer Blocker._
+_Use [Question] for genuine ambiguity, not as a softer Must._
 
 ## Architecture Notes
 
@@ -374,16 +370,16 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action, e.g., "Move `\"use client\"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx; revert layout to Server Component"]
-2. **[Implement]** [High] OldList.ts:88 - missing key on reorderable list (open since round 1)
-3. **[Delegate]** [High] [scope: design-system] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Move `\"use client\"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx; revert layout to Server Component"]
+2. **[Implement]** [Recommend] OldList.ts:88 - missing key on reorderable list (open since round 1)
+3. **[Delegate]** [Recommend] [scope: design-system] - [one-line action]
 
 _Omit if no actionable findings._
 ```
 
-**Omit empty sections.** No Blocker heading if there are none.
+**Omit empty sections.** No Must heading if there are none.
 
 ## Rules
 
@@ -407,11 +403,11 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` + `react-overengineering-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)
 - [ ] Phase E: naming, co-location, magic numbers, component length, conditional ladders, logging hygiene
 - [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Blocker states a system risk
+- [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable React fix
 - [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Step 5: extra scopes ran in parallel with the pre-resolved diff/log handle plus framework detection
-- [ ] Step 6: subagent findings merged into one severity-ordered Findings list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by severity
+- [ ] Step 6: subagent findings merged into one intent-ordered Findings list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by intent
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
@@ -421,7 +417,8 @@ _Omit if no actionable findings._
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic frontend conventions when a React idiom exists ("extract to a custom hook", not "extract to a helper")

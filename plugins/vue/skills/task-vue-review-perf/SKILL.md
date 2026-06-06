@@ -242,11 +242,11 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: High > Medium > Low.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: build] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: build] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -262,7 +262,7 @@ _Omit if no actionable findings._
 - [ ] Step 9: observability presence checked or `[Delegate]` added; report written; confirmation printed
 - [ ] Every finding cites `file:line` and states measured or estimated impact
 - [ ] Depth honored: `quick` runs Steps 4-5 only; `deep` adds capacity + budget plan
-- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered High > Medium > Low
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -273,3 +273,4 @@ _Omit if no actionable findings._
 - Treating high re-render counts as inherently bad without profile evidence.
 - Conflating perf with general/security review - delegate.
 - **Dual perf+security findings** (`v-html`, `eval`, prototype-pollution spread): report perf half once with `[Delegate] -> task-vue-review-security` in Next Steps.
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

@@ -230,11 +230,11 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: High > Medium > Low.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: build] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: build] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -252,7 +252,7 @@ _Omit if no actionable findings._
 - [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
 - [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
 - [ ] Depth honored: `quick` ran only Steps 4-5; `standard` ran 1-9; `deep` adds capacity + budget plan
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low (omit when no actionable findings)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit when no actionable findings)
 
 ## Avoid
 
@@ -268,3 +268,4 @@ _Omit if no actionable findings._
 - `useEffect(() => fetch(...), [])` in a Client Component when a Server Component parent could fetch
 - Conflating perf with general / security review - delegate
 - **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): report the perf half once with `[Delegate] -> task-react-review-security` in Next Steps. Do not enumerate parallel security concerns
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

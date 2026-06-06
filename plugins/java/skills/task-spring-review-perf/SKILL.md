@@ -165,11 +165,11 @@ _Omit empty sections._
 
 ## Next Steps
 
-1. **[Implement]** [High] file:line - [action]
-2. **[Delegate]** [High] [scope: schema] - [action]
-3. **[Implement]** [Medium] file:line - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: schema] - [action]
+3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test). Order High > Medium > Low. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test). Order Must > Recommend > Question. Omit if none._
 ```
 
 ## Self-Check
@@ -187,7 +187,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - [ ] Every finding states impact (measured or estimated), never "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Depth honored: `quick` ran 1-4, 5, 6, 10; `standard` ran all; `deep` adds capacity + load-test plan
-- [ ] Next Steps tagged and ordered (omit if none)
+- [ ] Next Steps tagged and ordered by intent (omit if none)
 
 ## Avoid
 
@@ -198,3 +198,4 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - Conflating perf with general review or security
 - Treating broker retries as a substitute for idempotency
 - Recommending `synchronized` in VT-enabled paths
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

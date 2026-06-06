@@ -138,10 +138,10 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: High > Medium > Low.
+Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -157,7 +157,7 @@ _Omit if no actionable findings._
 - [ ] Step 9: instrumentation gap flagged on new hot paths
 - [ ] Step 10: report via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise (`adds ~N queries at K rows`)
-- [ ] Findings ordered High > Medium > Low; Next Steps `[Implement]`/`[Delegate]` in same order
+- [ ] Findings ordered by impact; Next Steps `[Implement]`/`[Delegate]` ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -168,3 +168,4 @@ _Omit if no actionable findings._
 - Treating Sidekiq retries as a substitute for idempotency
 - Walking through DB-specific bullets for the wrong DB
 - Re-running the connection-pool checklist when the PR doesn't touch pool config
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

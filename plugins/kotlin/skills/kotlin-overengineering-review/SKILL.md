@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Every finding cites the constraint making the code redundant: FK, `nullable = false`, unique index, Kotlin non-null type, DTO Bean Validation, framework guarantee.
-- Severity:
-  - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
-  - **`[High]`** with measurable cost: extra SELECT on hot path, blanket catch masking real bugs, `!!` after `requireNotNull` (two checks where zero suffices), controller try/catch defeating `@RestControllerAdvice`, `data class` JPA annotation pattern fighting Hibernate. Cite cost in `Cost:`.
+- Intent:
+  - **Default `[Recommend]`.** Cite the constraint, recommend the edit. Escalate to **`[Must]`** with measurable cost: extra SELECT on hot path, blanket catch masking real bugs, `!!` after `requireNotNull` (two checks where zero suffices), controller try/catch defeating `@RestControllerAdvice`, `data class` JPA annotation pattern fighting Hibernate. Cite cost in `Cost:`.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - A redundancy with **visible** justification is not a finding. Classic exceptions:
   - Entity `@field:NotNull` when a non-controller write path (Kafka consumer, scheduled job) bypasses the DTO - defense in depth.
@@ -63,7 +62,7 @@ data class CreateOrderRequest(
 
 #### Manual unique-check before save
 
-`[High]` - races + extra SELECT per write; the unique index decides anyway.
+`[Must]` - races + extra SELECT per write; the unique index decides anyway.
 
 ```kotlin
 // Bad
@@ -93,7 +92,7 @@ Legitimate on platform types (`T!` from Java) and `lateinit` fields read before 
 
 #### `!!` after `requireNotNull` or smart-cast
 
-`[High]` - two checks where zero suffices, the redundant `!!` throws first with a worse message.
+`[Must]` - two checks where zero suffices, the redundant `!!` throws first with a worse message.
 
 ```kotlin
 // Bad
@@ -103,7 +102,7 @@ parse(token!!)
 
 #### Blanket `catch (e: Exception)`
 
-`[High]`. Swallows `IllegalStateException`, `DataAccessException`, etc. In a controller also defeats `@RestControllerAdvice` status mapping.
+`[Must]`. Swallows `IllegalStateException`, `DataAccessException`, etc. In a controller also defeats `@RestControllerAdvice` status mapping.
 
 ```kotlin
 // Bad
@@ -132,7 +131,7 @@ fun findOrder(id: Long): OrderResponse? = repo.findByIdOrNull(id)?.toResponse()
 
 #### Single-impl `@Service` interface
 
-`[High]` - MockK mocks final classes; CGLIB proxies concrete classes; the interface earns nothing.
+`[Must]` - MockK mocks final classes; CGLIB proxies concrete classes; the interface earns nothing.
 
 ```kotlin
 // Bad
@@ -188,11 +187,11 @@ shipper.send(user, user.address, country)
 ## Output Format
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation}
 - Redundant because: {constraints making it redundant}
-- Cost: {...}   _(required for [High])_
+- Cost: {...}   _(required for [Must])_
 - Recommendation: {concrete edit}
 - Justified when: {...}   _([Question] or unverified cases only)_
 ```

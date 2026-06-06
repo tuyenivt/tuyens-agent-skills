@@ -127,7 +127,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write to 
 - [ ] Step 8 - report written via `review-report-writer`; confirmation printed
 - [ ] Every finding includes an attack scenario, regression-risk rationale (test-coverage gaps), or topology-dependent framing (infra-flavored) - labeled which
 - [ ] Severity rubric applied consistently; combined-finding rule applied only when both land on the same action
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low (omitted only when no findings)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omitted only when no findings)
 
 ## Output Format
 
@@ -185,11 +185,11 @@ _Omit empty severity sections. If all omitted, state "No security issues found."
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dep upgrade, threat-model). Order: Critical > High > Medium > Low.
+Prioritized, each tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dep upgrade, threat-model). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Replace `[FromBody] Order` with typed `UpdateOrderRequest` record + explicit field copy"]
-2. **[Delegate]** [High] [scope: dependencies] - [e.g., "Run `dotnet list package --vulnerable` and upgrade flagged packages"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Replace `[FromBody] Order` with typed `UpdateOrderRequest` record + explicit field copy"]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [e.g., "Run `dotnet list package --vulnerable` and upgrade flagged packages"]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no security issues._
 ```
@@ -204,3 +204,4 @@ _Omit if no security issues._
 - Approving Hangfire / Swagger UI exposed in prod without auth, or `UseDeveloperExceptionPage` left enabled in prod
 - Disabling middleware to silence a failing test - fix the test
 - Conflating security review with code quality or performance review - delegate
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

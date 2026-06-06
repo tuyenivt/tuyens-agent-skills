@@ -183,7 +183,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write the ass
 - [ ] Step 11 - observability presence/absence noted; depth gaps delegated
 - [ ] Step 12 - report written via `review-report-writer`; confirmation line printed
 - [ ] Every finding states impact (measured `p95: 800ms -> 120ms`, or estimated `adds ~N queries per request at K rows`) - never just "this is slow"
-- [ ] Findings ordered High > Medium > Low; depth honored; Next Steps tagged `[Implement]` / `[Delegate]`
+- [ ] Findings ordered by impact; depth honored; Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 
 ## Output Format
 
@@ -222,10 +222,10 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting refactor / schema / load-test work). Order: High > Medium > Low.
+Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting refactor / schema / load-test work). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Replace `.Result` with `await` in OrdersController.GetById; propagate `CancellationToken ct` from action signature"]
-2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add `CREATE INDEX CONCURRENTLY` migration on (TenantId, CreatedAt) - spawn DB migration subagent"]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Replace `.Result` with `await` in OrdersController.GetById; propagate `CancellationToken ct` from action signature"]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action, e.g., "Add `CREATE INDEX CONCURRENTLY` migration on (TenantId, CreatedAt) - spawn DB migration subagent"]
 
 _Omit this section if there are no actionable findings._
 ```
@@ -241,3 +241,4 @@ _Omit this section if there are no actionable findings._
 - Treating background-worker retries as a substitute for idempotency
 - Conflating perf with general or security review - delegate
 - `FromSqlRaw($"...{input}")` is dual perf+security: file one perf finding (plan-cache pollution) and add `[Delegate] -> task-dotnet-review-security` to Next Steps. Don't enumerate parallel security concerns
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

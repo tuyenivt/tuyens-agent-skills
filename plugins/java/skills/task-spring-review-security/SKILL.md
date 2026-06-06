@@ -141,7 +141,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write to 
 - [ ] Step 9 - every OWASP row addressed; clean categories explicitly marked "No issues found"
 - [ ] Step 10 - report written via `review-report-writer`; confirmation printed
 - [ ] Every finding includes an attack scenario and a concrete Spring fix
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if none)
 
 ## Output Format
 
@@ -174,10 +174,10 @@ _Omit empty severity sections. If all omitted, state "No security issues found."
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, dep upgrade, threat-model). Order: Critical > High > Medium > Low.
+Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, dep upgrade, threat-model). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
 _Omit if no security issues._
 ```
@@ -193,3 +193,4 @@ _Omit if no security issues._
 - Recommending `WebSecurityConfigurerAdapter` (removed in 6.x) - use `SecurityFilterChain`
 - Widening `@PreAuthorize` (e.g., `hasRole('ADMIN')` to `permitAll`) without an explicit security note
 - Conflating security with perf or general review
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

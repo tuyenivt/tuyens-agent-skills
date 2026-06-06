@@ -97,9 +97,9 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 **Angular SPA + separate backend (most common):**
 
 - [ ] **Auth library consistent**: one path, not mixed
-- [ ] **Functional guards** in new code; class-based guards in new code are [Medium]
+- [ ] **Functional guards** in new code; class-based guards in new code are [Recommend]
 - [ ] **`CanMatchFn` for lazy routes** - blocks chunk load; `CanActivateFn` only redirects after load
-- [ ] **Guards are UX, not authorization** - backend must enforce; UX-only guard on privileged data is [High]
+- [ ] **Guards are UX, not authorization** - backend must enforce; UX-only guard on privileged data is [Recommend]
 - [ ] **No client-side authorization decisions** - `*ngIf="user.role === 'admin'"` is UX only
 - [ ] **Token in interceptor, scoped to own origin** - `req.url` allowlist check before adding `Authorization`. Direct headers in components or unconditional attachment is a finding
 - [ ] **Token storage** - prefer `httpOnly` cookies. Tokens in `localStorage` are XSS-readable (compounds with any `[innerHTML]` exploit)
@@ -221,10 +221,10 @@ Use skill: `review-report-writer` with `report_type: review-security`. Print con
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Critical > High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
 _Omit if no security issues found._
 ```
@@ -238,7 +238,7 @@ _Omit if no security issues found._
 - [ ] Authn / Authz / Input validation / Vuln patterns / Data protection / SSR checked per scope
 - [ ] Severity rubric applied consistently; Combined-finding rule applied where two findings compose on same path
 - [ ] Every finding has attack scenario, regression risk, or topology framing labelled
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 - [ ] Report written; confirmation line printed
 
 ## Avoid
@@ -249,3 +249,4 @@ _Omit if no security issues found._
 - Conflating security review with general review or perf - delegate
 - Treating client-side `*ngIf="user.role === 'admin'"` as authorization
 - Recommending JWT in `localStorage` because "stateless" - XSS exposure is the real cost
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

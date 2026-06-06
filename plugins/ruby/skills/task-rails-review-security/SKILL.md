@@ -142,10 +142,10 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 
 ## Next Steps
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
-`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Critical > High > Medium > Low. Omit if no issues.
+`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend > Question. Omit if no issues.
 ```
 
 ## Self-Check
@@ -167,3 +167,4 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 - Disabling `verify_authorized` instead of adding the missing call
 - N near-duplicate findings when one combined finding captures the shared root cause
 - Walking flavor-specific bullets when the diff doesn't touch that flavor
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

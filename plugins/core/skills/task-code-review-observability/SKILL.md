@@ -71,7 +71,7 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 | Frontend observability    | frontend         | Error tracking with source maps, global handlers, Core Web Vitals, no PII             |
 | SLO and alerting          | deep depth only  | SLI per critical service, SLO target + window, burn-rate alerts on symptoms not causes |
 
-Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **High** at deep depth. Every finding states what becomes invisible without the missing signal.
+Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal.
 
 ### Step 5 - Write Report
 
@@ -109,8 +109,8 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 ```
 
 ## Self-Check
@@ -128,3 +128,4 @@ _Omit sections with no findings._
 - Recommending more logging without considering volume cost and alert noise
 - Suggesting metrics with high-cardinality labels
 - Treating the fallback as equivalent to a stack workflow
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

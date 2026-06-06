@@ -111,8 +111,8 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
 ```
 
 ## Self-Check
@@ -130,3 +130,4 @@ _Omit sections with no findings._
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
 - Treating the fallback as equivalent to a stack workflow
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

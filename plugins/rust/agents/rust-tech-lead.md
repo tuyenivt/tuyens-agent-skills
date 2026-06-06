@@ -129,17 +129,17 @@ Flag as review findings when:
 When reviewing multiple PRs in a session:
 
 1. After each review, note any [Recurring] patterns for the next review
-2. Acknowledge when a past [Blocker] was fixed: "This addresses the unwrap issue from the last review"
+2. Acknowledge when a past [Must] was fixed: "This addresses the unwrap issue from the last review"
 3. If a pattern was accepted as technical debt, do not re-flag it - note it was previously accepted
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a shared clippy lint or team rule"
 
 ## Principles
 
-- Every unhandled Result is a hidden bug - always a [Blocker]
+- Every unhandled Result is a hidden bug - always a [Must]
 - No `.unwrap()` in production - it's a panic waiting to happen
 - The borrow checker is your ally - if it complains, the design likely has a flaw
 - Small traits (1-3 methods) enable testability; large traits are a design smell
 - Context over rules - understand why code was written before flagging it
-- Recurrence signals systemic risk - one-off issues get [Suggestion], recurring ones get [Recurring]
+- Recurrence signals systemic risk - one-off issues get [Recommend], recurring ones get [Recurring]
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern

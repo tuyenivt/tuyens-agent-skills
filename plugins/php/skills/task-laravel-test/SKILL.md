@@ -31,9 +31,9 @@ Laravel-aware test strategy and scaffolding (Pest primary, PHPUnit legacy) with 
 
 ## Rules
 
-- **Real MySQL/PostgreSQL, not SQLite.** SQLite skips FK enforcement, JSON path queries, FULLTEXT, generated columns, concurrent updates. SQLite-for-MySQL-app is `[High]` regardless of pass/fail.
+- **Real MySQL/PostgreSQL, not SQLite.** SQLite skips FK enforcement, JSON path queries, FULLTEXT, generated columns, concurrent updates. SQLite-for-MySQL-app is `[Must]` regardless of pass/fail.
 - Pyramid: many unit + feature, few Dusk. Prefer feature over unit for any framework-touching code.
-- Feature tests via `$this->postJson(...)` against `Tests\TestCase` (bypassing routes/middleware is `[High]`).
+- Feature tests via `$this->postJson(...)` against `Tests\TestCase` (bypassing routes/middleware is `[Must]`).
 - Job idempotency tests assert side-effect call count, not final state. Real `handle()` is the path; `Queue::fake` masks the handler.
 - `Http::preventStrayRequests()` in `Tests\TestCase::setUp` so unfaked outbound requests fail.
 

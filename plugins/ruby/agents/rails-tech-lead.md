@@ -143,7 +143,7 @@ Flag as review findings when:
 When reviewing multiple PRs in a session:
 
 1. After each review, note any [Recurring] patterns for the next review
-2. Acknowledge when a past [Blocker] was fixed: "This addresses the N+1 issue from the last review"
+2. Acknowledge when a past [Must] was fixed: "This addresses the N+1 issue from the last review"
 3. If a pattern was accepted as technical debt, do not re-flag it - note it was previously accepted
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a shared lint rule or ADR"
 
@@ -154,7 +154,7 @@ When reviewing multiple PRs in a session:
 - Distinguish MUST-FIX (N+1, migration safety, security, idempotency) from NICE-TO-HAVE (extraction, style)
 - Convention over configuration - if Rails has a standard approach, use it
 - N+1 queries in production loops are always a blocker
-- Fat controller = [Suggestion] with service object recommendation
-- Recurrence signals systemic risk - one-off issues get [Suggestion], recurring ones get [Recurring]
+- Fat controller = [Recommend] with service object recommendation
+- Recurrence signals systemic risk - one-off issues get [Recommend], recurring ones get [Recurring]
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern

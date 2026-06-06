@@ -76,11 +76,11 @@ When only one surface changed (new listener but no `application.yml`), read exis
 - [ ] **Sensitive-field masking**: covers `password`, `token`, `authorization`, `creditCard`, `ssn`, `apiKey`. DTOs use `@JsonIgnore`
 - [ ] **No `log.info("user={}", user)`** that serializes a JPA entity (lazy loads + may log PII / hashed passwords). Log specific fields by ID
 - [ ] **Log levels**: `error` for actionable, `warn` for recoverable, `info` for state transitions, `debug` for verbose
-- [ ] **Parameterized SLF4J only** (`log.info("processing order={}", orderId)`) - **NOT Kotlin string templates** (`log.info("processing order=$orderId")`). String templates build the string before the level check and prevent structured loggers from preserving placeholders. Flag every string-template log call as [High] in prod
+- [ ] **Parameterized SLF4J only** (`log.info("processing order={}", orderId)`) - **NOT Kotlin string templates** (`log.info("processing order=$orderId")`). String templates build the string before the level check and prevent structured loggers from preserving placeholders. Flag every string-template log call as [Recommend] in prod
 - [ ] **No log spam in hot loops** - `forEach` over large collections, scheduled jobs, Kafka listeners at high TPS use `log.atDebug()` or sampled logging
 - [ ] **Async appenders** for high-volume paths
 - [ ] **No `println` / `System.out.println` / `dump()`** in production
-- [ ] **No HTTP body logging in prod** - full body logs leak PII and explode volume. Only behind `debug` + env flag + masking. Flag unconditional body logs as [High]
+- [ ] **No HTTP body logging in prod** - full body logs leak PII and explode volume. Only behind `debug` + env flag + masking. Flag unconditional body logs as [Recommend]
 
 ### Step 6 - Spring Boot Actuator
 
@@ -133,7 +133,7 @@ Use skill: `kotlin-spring-messaging-patterns` for canonical Kafka / Rabbit / out
 - [ ] **Listener metrics**: per-topic `Timer` for handle latency; `Counter` for retries / DLT; queue lag metric
 - [ ] **`@Async` decoration**: `TaskDecorator` (or `ContextPropagatingTaskDecorator`) preserves MDC, security, trace context
 - [ ] **`@Scheduled`**: each method emits `Observation`; per-job duration timer; missed-execution metric
-- [ ] **`CoroutineScope.launch`**: scope built with `MDCContext` + `CoroutineExceptionHandler` logging uncaught exceptions; fire-and-forget without observability = [High]
+- [ ] **`CoroutineScope.launch`**: scope built with `MDCContext` + `CoroutineExceptionHandler` logging uncaught exceptions; fire-and-forget without observability = [Recommend]
 
 ### Step 10 - Error tracking
 
@@ -186,9 +186,9 @@ _Omit empty sections._
 [Structural improvements]
 
 ## Next Steps
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: ops] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 ```
 
 ## Self-Check
@@ -209,7 +209,7 @@ _Omit empty sections._
 - [ ] Findings name a Kotlin/Spring/Micrometer/Logback idiom directly
 - [ ] Library scope respected; infra explicitly deferred
 - [ ] Depth honored
-- [ ] Next Steps ordered High > Medium > Low
+- [ ] Next Steps ordered Must > Recommend > Question
 - [ ] Report written; confirmation printed
 
 ## Avoid
@@ -224,3 +224,4 @@ _Omit empty sections._
 - Approving Spring Cloud Sleuth on Boot 3 - migrate to Micrometer Tracing
 - Approving Kotlin string-template logging in production
 - Approving fire-and-forget `CoroutineScope.launch` without `MDCContext` + `CoroutineExceptionHandler`
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

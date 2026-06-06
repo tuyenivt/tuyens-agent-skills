@@ -185,9 +185,9 @@ _Omit empty severities. If all empty: "No security issues found."_
 [Prioritized hardening]
 
 ## Next Steps
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 ```
 
 ## Self-Check
@@ -209,7 +209,7 @@ _Omit empty severities. If all empty: "No security issues found."_
 - [ ] Coroutine `SecurityContext` reviewed for `suspend` touching auth
 - [ ] Every finding includes attack scenario
 - [ ] If no findings: "No issues found" per category
-- [ ] Next Steps ordered Critical > High > Medium > Low
+- [ ] Next Steps ordered Must > Recommend > Question
 - [ ] Report written; confirmation printed
 
 ## Avoid
@@ -224,3 +224,4 @@ _Omit empty severities. If all empty: "No security issues found."_
 - Recommending `WebSecurityConfigurerAdapter`
 - Omitting `@field:` target for Bean Validation on data classes
 - Forgetting to escape `$` in SpEL
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

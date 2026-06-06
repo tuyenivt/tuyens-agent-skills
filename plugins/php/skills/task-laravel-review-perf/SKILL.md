@@ -221,10 +221,10 @@ Bucket by `### High Impact` / `### Medium Impact` / `### Low Impact / Quick Wins
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Prioritized action list. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -250,5 +250,6 @@ _Omit if no actionable findings._
 - Generic backend advice where a Laravel pattern applies (say `Bus::batch` for fan-out, not "worker pool")
 - Reporting "missing index" without confirming the column appears in `where` / `orderBy` / `groupBy` in the diff
 - Treating `whereRaw($input)` as perf-only - the SQL injection surface is the bigger half. Add a `[Delegate] -> task-laravel-review-security` entry; do not silently absorb security into perf
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 > **Cross-workflow finding ownership.** Dual perf+security findings (`whereRaw($input)`, queue-job deserializing untrusted input, file uploads on hot endpoints) are reported once with a `[Delegate] -> task-laravel-review-security` entry in Next Steps. This workflow does **not** enumerate parallel security concerns (auth bypass, IDOR, mass assignment, open redirect) - those belong to the security delegate.

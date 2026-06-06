@@ -215,11 +215,11 @@ _Omit empty sections. Group by surface within a bucket when 3+ share one; otherw
 
 ## Next Steps
 
-Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
+Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Bind `orderId` via `als.run({ orderId }, () => ...)` at `OrdersService.place` entry; clear in finally"]
-2. **[Delegate]** [High] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Bind `orderId` via `als.run({ orderId }, () => ...)` at `OrdersService.place` entry; clear in finally"]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -234,7 +234,7 @@ _Omit if no actionable findings._
 - [ ] BullMQ, lifecycle / async, error tracker assessed when in scope and depth permits (Steps 7-9)
 - [ ] `deep`: SLIs and liveness / readiness / deps separation reviewed (Step 10)
 - [ ] Findings name a specific Node / OTel / pino / prom-client idiom; library-level scope respected
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed (Step 11)
 
 ## Avoid
@@ -247,6 +247,7 @@ _Omit if no actionable findings._
 - Approving template-string logging (`` `order=${orderId}` ``) over structured `{ orderId }` form
 - Approving `console.log` / `console.error` as logging
 - Approving `new Counter(...)` inside a request handler - duplicate-registration crash after first request
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Approving `OTEL_TRACES_SAMPLER=always_on` in high-traffic prod
 - Approving OTel SDK init AFTER application imports - auto-instrumentation cannot patch loaded modules
 - Prescribing OTLP endpoint URL or Sentry DSN - say "sourced from env / Vault" and stop

@@ -193,7 +193,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write before 
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when pprof / APM data exists, estimated otherwise (`adds ~N queries at K rows`)
 - [ ] Findings ordered by impact; quick wins separated from structural
 - [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered High > Medium > Low
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Output Format
@@ -228,10 +228,10 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -251,3 +251,4 @@ _Omit if no actionable findings._
 - `sync.Map` as a default (`map + sync.RWMutex` faster for typical workloads)
 - `sync.Pool` for long-lived objects
 - `panic` for "this should never happen"
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

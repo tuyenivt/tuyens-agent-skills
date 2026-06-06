@@ -63,7 +63,7 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
 
-**Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Suggestion] minimum; [High] for critical paths).
+**Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
 
 **Phase C - Architecture Guardrails.** Use skill: `architecture-guardrail` for layer violations, new coupling, circular dependency risk, boundary erosion.
 
@@ -71,7 +71,7 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+security`, `+observability`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by severity (highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+security`, `+observability`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
 ### Step 6 - Write Report
 
@@ -79,14 +79,13 @@ Use skill: `review-report-writer` with `report_type: review`.
 
 ## Feedback Labels
 
-| Label        | Meaning                                     |
-| ------------ | ------------------------------------------- |
-| [Blocker]    | Must fix before merge - correctness or risk |
-| [High]       | Should fix - significant impact or smell    |
-| [Suggestion] | Would improve - non-blocking                |
-| [Question]   | Need clarity from author                    |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -104,20 +103,21 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue:
 - Impact:
 - System Risk:
 - Fix:
 
-### [High] file:line
+### [Recommend] file:line
 
 [Same structure]
 
-### [Suggestion] file:line
+### [Question] file:line
 
-- Improvement:
+- Question:
+- Why it matters:
 
 ## Architecture Notes
 
@@ -136,8 +136,10 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 
 ## Next Steps
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Delegate]** [High] [scope] - [one-line action]
+Order: Must > Recommend > Question.
+
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope] - [one-line action]
 
 _Omit sections with no findings._
 ```
@@ -148,7 +150,7 @@ _Omit sections with no findings._
 - [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
 - [ ] Step 3: `stack-detect` ran
 - [ ] Step 4: if matched, stack workflow ran with all flags and spec context forwarded; Steps 5-6 skipped
-- [ ] Step 5: if no match, Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Blocker > High > Suggestion > Question
+- [ ] Step 5: if no match, Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
 - [ ] Step 6: report written via `review-report-writer` (fallback path only)
 
 ## Avoid
@@ -160,3 +162,4 @@ _Omit sections with no findings._
 - Stylistic nits without a project standard
 - Blocking on personal preference over correctness, risk, or maintainability
 - Treating the fallback as equivalent to a stack workflow
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

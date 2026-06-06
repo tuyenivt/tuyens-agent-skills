@@ -204,10 +204,10 @@ _Omit empty buckets. Group by Surface within a bucket when >2 findings share one
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [action]
-2. **[Delegate]** [High] [scope: ops] - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: ops] - [action]
 ```
 
 ## Self-Check
@@ -242,3 +242,4 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - Approving error boundaries with a blank-screen fallback
 - Infra scope (Datadog dashboards, Sentry org settings, log forwarders, alert rules) - delegate to ops review
 - State-changing git commands
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

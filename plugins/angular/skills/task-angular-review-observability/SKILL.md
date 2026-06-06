@@ -201,10 +201,10 @@ _Omit empty buckets. Group by surface when 3+ findings share one._
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [e.g., "Provide `Sentry.createErrorHandler()` as `ErrorHandler` in app.config.ts:24"]
-2. **[Delegate]** [High] [scope: ops] - [...]
+1. **[Implement]** [Must] file:line - [e.g., "Provide `Sentry.createErrorHandler()` as `ErrorHandler` in app.config.ts:24"]
+2. **[Delegate]** [Recommend] [scope: ops] - [...]
 
 _Omit if no actionable findings._
 ```
@@ -216,3 +216,4 @@ _Omit if no actionable findings._
 - Infra review (dashboards, alert rules, log forwarders, on-call rotation)
 - `Sentry.init` inside a component constructor (re-initializes per mount)
 - One finding per missing checkbox when an entire surface is absent - collapse per Step 3
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

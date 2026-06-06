@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Every finding cites the constraint making the code redundant: FK, `nullable(false)`, unique index, model cast, Form Request rule, Policy, or framework guarantee.
-- Severity:
-  - **Default `[Suggestion]`** - cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present (record in `Cost:`): extra SELECT in a hot path; blanket `catch (\Throwable)` defeating `renderable` mappings; single-impl Repository / interface forcing two-file refactors; synchronous Event + single Listener replacing a direct call.
+- Intent:
+  - **Default `[Recommend]`** - cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (record in `Cost:`): extra SELECT in a hot path; blanket `catch (\Throwable)` defeating `renderable` mappings; single-impl Repository / interface forcing two-file refactors; synchronous Event + single Listener replacing a direct call.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - A redundancy with **visible** justification is not a finding.
 
@@ -76,7 +75,7 @@ Middleware halted unauthenticated requests upstream. Delete the guard.
 
 #### Blanket `catch (\Throwable)` masking the exception handler
 
-`[High]`. Catches `\Error` subclasses that should crash and erases `renderable` mappings (`AuthorizationException -> 403`, `ModelNotFoundException -> 404`, domain exceptions -> typed JSON).
+`[Must]`. Catches `\Error` subclasses that should crash and erases `renderable` mappings (`AuthorizationException -> 403`, `ModelNotFoundException -> 404`, domain exceptions -> typed JSON).
 
 ```php
 // Bad
@@ -96,7 +95,7 @@ Delete it.
 
 #### Repository interface with one Eloquent implementation
 
-`[High]` - forces two-file refactors with no behavioral reason. Eloquent already abstracts storage.
+`[Must]` - forces two-file refactors with no behavioral reason. Eloquent already abstracts storage.
 
 ```php
 // Bad
@@ -123,7 +122,7 @@ Justified when: multi-step orchestration, cross-aggregate writes, or external I/
 
 #### Event + single synchronous Listener replacing a direct call
 
-`[High]` if the listener is synchronous. The indirection adds nothing.
+`[Must]` if the listener is synchronous. The indirection adds nothing.
 
 ```php
 // Bad - event(new OrderPlaced($order)) -> single sync listener calling $this->mailer->send(...)
@@ -157,12 +156,12 @@ Flag only after a repo-wide grep confirms zero `config('...')` read sites - queu
 One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `if (!$order)` after `Order::findOrFail($id)`}
 - Redundant because: {FK name | `nullable(false)` column | unique index | Form Request rule | Eloquent cast | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | unnecessary event dispatch} _(required for `[High]`; omit otherwise)_
+- Cost: {extra SELECT per save | masked exception | speculative surface area | unnecessary event dispatch} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

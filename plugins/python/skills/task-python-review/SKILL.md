@@ -184,13 +184,13 @@ Apply atomic skills. Each owns the canonical patterns; this phase flags deviatio
 
 **Additional Python-specific checks the atomics don't own:**
 
-- **Test coverage finding (named, not buried).** PR adds logic without pytest coverage? At minimum `[Suggestion]`; escalate to `[High]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. Surface as a dedicated finding.
+- **Test coverage finding (named, not buried).** PR adds logic without pytest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. Surface as a dedicated finding.
 - **Type hints on public functions.** Return types and parameters typed; mypy / pyright not silently disabled mid-file.
 - **`async def` discipline + `await` everywhere (FastAPI).** No blocking I/O on the event loop, no missing `await` returning a coroutine object. Catalog in `python-async-patterns`.
 - **Pydantic v2 (FastAPI).** Input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user inputs; `from_attributes=True` on response models built from ORM rows. `extra="allow"` on user input is a mass-assignment surface.
 - **DRF serializer (Django).** `fields` declared explicitly (never `"__all__"` user-facing); `read_only_fields` for server-controlled fields; `write_only_fields` for sensitive inputs.
 - **Authorization + IDOR.** Authn (`Depends(get_current_user)` / `permission_classes`) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where(...id == user.id)`, `tenant_id` injected by middleware.
-- **Response model field hygiene.** Compare the Pydantic / DRF response model against ORM columns. Flag `password_hash` / `mfa_secret` / `internal_notes` / `audit_log` / `is_test` / `last_login_ip` on the wire. Returning a `Mapped[...]` row or `model_to_dict` directly is `[High]` regardless of current fields - a new sensitive column silently leaks later.
+- **Response model field hygiene.** Compare the Pydantic / DRF response model against ORM columns. Flag `password_hash` / `mfa_secret` / `internal_notes` / `audit_log` / `is_test` / `last_login_ip` on the wire. Returning a `Mapped[...]` row or `model_to_dict` directly is `[Recommend]` regardless of current fields - a new sensitive column silently leaks later.
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via DB unique constraint. Distinct from worker-side task idempotency.
 - **Transaction boundaries + post-commit Celery dispatch.** Writes inside explicit transaction; `task.delay(...)` after `session.commit()` (FastAPI) or via `transaction.on_commit(...)` (Django).
 - **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, `select_for_update()`, advisory lock) or optimistic version field, not module globals.
@@ -246,7 +246,7 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 - **Hardcoded URLs / credentials:** env / Vault / settings, not inline
 - **Function length:** > 30 lines extracted; > 60 lines flagged unless clearly orchestrating
 - **Duplicated query logic:** same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager or repository method
-- **Logging hygiene:** surface `print(...)` in prod paths, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong levels as `[Suggestion]` (depth in observability subagent)
+- **Logging hygiene:** surface `print(...)` in prod paths, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong levels as `[Recommend]` (depth in observability subagent)
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
@@ -275,11 +275,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Highest severity wins** (`Blocker` > `High` > `Suggestion` > `Question`)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
 - **Preserve `file:line` citations**
-- **Order by severity**, not by scope
+- **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
-- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by severity
+- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -305,14 +305,13 @@ Write before ending; print the confirmation line.
 
 ## Feedback Labels
 
-| Label | Meaning | Required |
-|-------|---------|----------|
-| [Blocker] | Must fix before merge - correctness / risk | Yes |
-| [High] | Should fix - significant impact | Strong |
-| [Suggestion] | Would improve - non-blocking | No |
-| [Question] | Need clarity from author | Clarify |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -340,26 +339,23 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the Python idiom: blocking `requests.get` in `async def`, missing `permission_classes`, ORM model returned from endpoint, Celery `.delay()` inside transaction, `extra="allow"` on input schema, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Python change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue: ...
 - Impact: ...
 - Fix: ...
-
-### [Suggestion] file:line
-- Improvement: ...
 
 ### [Question] file:line
 - Question: [what is ambiguous]
 - Why it matters: [what the right next step depends on]
 
-_Use [Question] for genuine ambiguity, not as a softer Blocker._
+_Use [Question] for genuine ambiguity, not as a softer Must._
 
 ## Architecture Notes
 
@@ -382,16 +378,16 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by severity alongside new findings.
+Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] old_file.py:88 - missing await on async DB call (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] old_file.py:88 - missing await on async DB call (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
 _Omit if no actionable findings._
 ```
 
-**Omit empty sections.** No Blocker heading if there are none.
+**Omit empty sections.** No Must heading if there are none.
 
 ## Rules
 
@@ -417,14 +413,14 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` + the framework-matching necessity skill applied; Python AI smells covered
 - [ ] Phase E: naming, magic numbers, function length, logging hygiene
 - [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Blocker states a system risk
+- [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable Python fix
 - [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Extra scopes ran in parallel with the pre-resolved diff/log handle + framework detection
-- [ ] Subagent findings merged into one severity-ordered Findings list; no raw reports appended
+- [ ] Subagent findings merged into one intent-ordered Findings list; no raw reports appended
 - [ ] Failed/missing subagent scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by severity; carry-overs from prior round inline-suffixed, not in a separate section
+- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by intent; carry-overs from prior round inline-suffixed, not in a separate section
 - [ ] Review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
 ## Avoid
@@ -438,6 +434,7 @@ _Omit if no actionable findings._
 - Duplicating perf / security / observability depth here when the dedicated subagent owns them
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Recommending `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas, as acceptable patterns

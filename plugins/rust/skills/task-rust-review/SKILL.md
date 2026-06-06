@@ -179,10 +179,10 @@ Apply atomic skills; each owns canonical patterns:
 
 **Additional checks (not owned by atomics):**
 
-- **Test coverage finding (named, not buried).** PR adds logic without `#[cfg(test)]` / integration tests? `[Suggestion]`; escalate to `[High]` on critical path: auth (JWT, session middleware), authorization (ownership, role middleware), money / billing, multi-step transactions / state machines, background workers that mutate data, migrations changing column semantics
+- **Test coverage finding (named, not buried).** PR adds logic without `#[cfg(test)]` / integration tests -> `[Recommend]`; escalate to `[Must]` on critical path: auth (JWT, session middleware), authorization (ownership, role middleware), money / billing, multi-step transactions / state machines, background workers that mutate data, migrations changing column semantics
 - **Authorization in-handler.** Every per-owner endpoint scopes queries by principal in handler / service (`WHERE id = $1 AND user_id = $2`); middleware presence alone is insufficient
 - **Domain struct in `Json(...)`.** Flag `Json(<sqlx FromRow domain struct>)` regardless of current fields - adding a sensitive column later silently exposes it. Require an explicit `*Response` DTO at the boundary
-- **`unsafe` discipline.** Every `unsafe` block carries a `// SAFETY:` comment justifying invariants. Bare `unsafe` is a Blocker
+- **`unsafe` discipline.** Every `unsafe` block carries a `// SAFETY:` comment justifying invariants. Bare `unsafe` is `[Must]`
 - **`cargo clippy --all-targets -- -D warnings` clean** expectation noted
 
 ### Phase C - Rust Architecture Guardrails
@@ -246,11 +246,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 Merge subagent findings into single Output Format. Do not append raw reports.
 
 - Deduplicate cross-cutting findings (one entry citing all scopes)
-- Highest severity wins (`Blocker` > `High` > `Suggestion` > `Question`). Map subagent scales: `Critical` -> `Blocker`, `High` -> `High`, `Medium` / `Low` -> `Suggestion`
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
 - Preserve `file:line` citations from the originating subagent
-- Order by severity, not scope
+- Order by intent, not scope
 - Note missing scopes as `Scope incomplete: <scope>`
-- Merge Next Steps with `[Implement]` / `[Delegate]` tags; re-sort by severity
+- Merge Next Steps with `[Implement]` / `[Delegate]` tags; re-sort by intent
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -276,14 +276,13 @@ Write before ending; print confirmation.
 
 ## Feedback Labels
 
-| Label | Meaning | Required |
-|-------|---------|----------|
-| [Blocker] | Must fix before merge - correctness / risk | Yes |
-| [High] | Should fix - significant impact | Strong |
-| [Suggestion] | Would improve - non-blocking | No |
-| [Question] | Need clarity from author | Clarify |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -313,24 +312,21 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the Rust idiom: `.unwrap()` in production, `std::sync::Mutex` across `.await`, fire-and-forget `tokio::spawn`, sqlx `format!` interpolation, missing extractor validation, `IntoResponse` leaking `sqlx::Error`, domain struct in `Json(...)`, dispatch inside transaction, `unsafe` without SAFETY]
 - Impact: [user-visible or operational]
 - System Risk: [why system-level, not just local bug]
 - Fix: [concrete Rust change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue, Impact, Fix
-
-### [Suggestion] file:line
-- Improvement
 
 ### [Question] file:line
 - Question: [what is ambiguous]
 - Why it matters: [what the right next step depends on]
 
-_Use [Question] for genuine ambiguity, not as softer Blocker._
+_Use [Question] for genuine ambiguity, not as softer Must._
 
 ## Architecture Notes
 
@@ -350,16 +346,16 @@ _Cross-cutting commentary. Reference findings by file:line._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] old_file.rs:88 - N+1 in list_all (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] old_file.rs:88 - N+1 in list_all (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
 _Omit if no actionable findings._
 ```
 
-**Omit empty sections.** No Blocker heading if there are none.
+**Omit empty sections.** No Must heading if there are none.
 
 ## Rules
 
@@ -384,11 +380,11 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` + `rust-overengineering-review` applied; AI smells covered (redundant mapping, test verbosity, `anyhow::Error` in domain types)
 - [ ] Phase E: naming, magic numbers, function length, structured logging, doc comments on `pub` items
 - [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Blocker states system risk
+- [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable Rust fix
 - [ ] If `--spec`: every finding traces to AC/NFR/task or flagged out-of-scope blocker
 - [ ] Step 5: extra scopes ran in parallel with pre-resolved handle + stack detection
-- [ ] Step 6: subagent findings merged into one severity-ordered list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by severity
+- [ ] Step 6: subagent findings merged into one intent-ordered list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by intent
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
@@ -398,7 +394,8 @@ _Omit if no actionable findings._
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic backend conventions when a Rust idiom exists ("define trait in consuming module", not "use DI")

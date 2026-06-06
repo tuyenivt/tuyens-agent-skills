@@ -147,7 +147,7 @@ Flag as review findings when:
 When reviewing multiple PRs in a session:
 
 1. After each review, note any [Recurring] patterns for the next review
-2. Acknowledge when a past [Blocker] was fixed: "This addresses the N+1 issue from the last review"
+2. Acknowledge when a past [Must] was fixed: "This addresses the N+1 issue from the last review"
 3. If a pattern was accepted as technical debt, do not re-flag it - note it was previously accepted
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a shared lint rule or ADR"
 
@@ -156,8 +156,8 @@ When reviewing multiple PRs in a session:
 - Context over rules - understand why code was written before flagging it
 - Async correctness is non-negotiable - blocking the event loop is a production bug
 - Type safety is a readability and maintainability investment, not optional
-- Recurrence signals systemic risk - one-off issues get [Suggestion], recurring ones get [Recurring]
+- Recurrence signals systemic risk - one-off issues get [Recommend], recurring ones get [Recurring]
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern
-- Blocking sync call in async handler = always a [Blocker]
-- Missing type annotation on public function = [Suggestion] at minimum
+- Blocking sync call in async handler = always a [Must]
+- Missing type annotation on public function = [Recommend] at minimum

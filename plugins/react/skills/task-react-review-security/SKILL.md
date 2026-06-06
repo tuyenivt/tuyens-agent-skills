@@ -206,10 +206,10 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dependency upgrade, or threat-model exercise). Order: Critical > High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dependency upgrade, or threat-model exercise). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action, e.g., "Wrap `user.bio` in `DOMPurify.sanitize` (default config) and add Zod schema to `updateProfile` Server Action"]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action, e.g., "Run `pnpm audit` and upgrade flagged packages"]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Wrap `user.bio` in `DOMPurify.sanitize` (default config) and add Zod schema to `updateProfile` Server Action"]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action, e.g., "Run `pnpm audit` and upgrade flagged packages"]
 
 _Omit if no security issues found._
 ```
@@ -243,3 +243,4 @@ Aligns 1:1 with the Workflow steps above.
 - Treating client-side `if (user.role === 'admin')` as authorization - it is UX only; the server enforces
 - Disabling Server Action validation or middleware auth to silence a failing test - fix the test
 - Conflating with general code review or performance review - delegate to their workflows
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

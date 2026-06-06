@@ -239,11 +239,11 @@ _Omit empty sections. Group findings by surface (Logging / Tracing / Metrics / d
 
 ## Next Steps
 
-Prioritized. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dashboards, ops). Order: High > Medium > Low.
+Prioritized. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, dashboards, ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: ops] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit this section if there are no actionable findings._
 ```
@@ -260,3 +260,4 @@ _Omit this section if there are no actionable findings._
 - Approving Hangfire / Swagger UI / `dotnet-monitor` on a public bind without auth in prod
 - Prescribing concrete OTLP endpoint URLs or Sentry DSN values (env / Vault config)
 - Producing one finding per missing checkbox when a whole surface is absent - collapse per Step 4
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

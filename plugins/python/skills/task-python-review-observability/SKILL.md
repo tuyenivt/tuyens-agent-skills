@@ -209,11 +209,11 @@ _Omit empty sections. Group by surface within a bucket when 3+ share one; otherw
 
 ## Next Steps
 
-Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
+Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Bind `order_id` via `structlog.contextvars.bind_contextvars(order_id=...)` at `OrderService.place` entry; clear in `finally`"]
-2. **[Delegate]** [High] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Bind `order_id` via `structlog.contextvars.bind_contextvars(order_id=...)` at `OrderService.place` entry; clear in `finally`"]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -233,7 +233,7 @@ _Omit if no actionable findings._
 - [ ] Step 11: Report written via `review-report-writer`; confirmation line printed
 - [ ] Findings name a Python / OTel / structlog / prometheus-client idiom directly - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -245,3 +245,4 @@ _Omit if no actionable findings._
 - Prescribing OTLP endpoint URL or Sentry DSN - say "sourced from env / Vault" and stop
 - One finding per missing checkbox when a whole surface is absent - collapse per Step 3
 - Recommending only structlog when the team uses stdlib `logging` - `python-json-logger` + `LoggingInstrumentor` is acceptable
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

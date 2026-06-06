@@ -192,7 +192,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write bef
 - [ ] SQL parameterization, command injection, `text/template`, `gob.Decode`, `unsafe`, `reflect.FieldByName`, `InsecureSkipVerify`, open redirect checked when diff touches them
 - [ ] Severity rubric applied consistently
 - [ ] Every finding includes an attack scenario, "regression risk" rationale, or "topology-dependent" framing
-- [ ] Next Steps tagged `[Implement]` or `[Delegate]`; ordered Critical > High > Medium > Low (omitted only when no issues)
+- [ ] Next Steps tagged `[Implement]` or `[Delegate]`; ordered Must > Recommend > Question (omitted only when no issues)
 
 **Requires repo / infra access:**
 
@@ -254,10 +254,10 @@ _Omit severity sections with no findings. If all omitted: "No security issues fo
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Critical > High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: dependencies] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
 _Omit if no issues found._
 ```
@@ -279,3 +279,4 @@ _Omit if no issues found._
 - Conflating security with general or perf review
 - Exposed `pprof` in prod
 - `gob.Decode` on untrusted input
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

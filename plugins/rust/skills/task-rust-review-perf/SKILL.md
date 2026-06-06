@@ -191,11 +191,11 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / schema / load test). Order: High > Medium > Low.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / schema / load test). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: schema] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -228,3 +228,4 @@ _Omit if no actionable findings._
 - Approving `reqwest::Client::new()` per request (defeats connection pooling)
 - "Missing index" without confirming the column appears in `WHERE`/`ORDER BY`/`GROUP BY` in the diff
 - **Dual perf+security findings** (`format!`-built SQL, `Command::new("sh")`, untrusted deserialization): report the perf half once with `[Delegate] -> task-rust-review-security` in Next Steps. Do not enumerate parallel security concerns - that is the security delegate's job
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

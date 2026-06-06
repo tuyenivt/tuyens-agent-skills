@@ -140,10 +140,10 @@ _Omit empty sections._
 
 ## Next Steps
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: Sidekiq] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check
@@ -157,7 +157,7 @@ _Omit empty sections._
 - [ ] Step 9: scrub/user-context/Sidekiq capture every PR; setup checks only on initializer change
 - [ ] Step 10 (deep): liveness/readiness/SLI via `ops-observability`
 - [ ] Step 11: report via `review-report-writer`; confirmation printed
-- [ ] Every finding states the missing signal AND what becomes invisible; ordered High > Medium > Low
+- [ ] Every finding states the missing signal AND what becomes invisible; Next Steps ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -168,3 +168,4 @@ _Omit empty sections._
 - Reviewing infra-level config - stays at gem/library level
 - Filing the same correlation-ID gap as separate findings under logging + Sidekiq + outbound HTTP
 - Filing `filter_parameters` coverage as observability - that's security
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

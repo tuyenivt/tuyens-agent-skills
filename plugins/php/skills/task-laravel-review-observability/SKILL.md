@@ -198,7 +198,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 
 ## Next Steps
 
-Prioritized list, tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops), ordered High > Medium > Low.
+Prioritized list, tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops), ordered Must > Recommend > Question.
 
 _Omit if no actionable findings._
 ```
@@ -213,7 +213,7 @@ _Omit if no actionable findings._
 - [ ] Steps 8-10: applied or skipped per diff signals; gating recorded
 - [ ] Step 11: report written via `review-report-writer`; confirmation printed
 - [ ] Severity rubric applied; findings name a Laravel/Monolog/OTel/Pulse idiom; library-level scope respected
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 
 ## Avoid
 
@@ -222,3 +222,4 @@ _Omit if no actionable findings._
 - Reviewing infra-level concerns (Datadog/Grafana, log forwarder, on-call rotation) - not in source code
 - Approving high-cardinality metric tags (`user_id`, `order_id`); require enum/category tags
 - Producing one finding per missing checkbox when a surface is absent - collapse per Step 4 grouping rule
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

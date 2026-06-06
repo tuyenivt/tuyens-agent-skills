@@ -187,7 +187,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 - [ ] Findings name a Go / OTel / slog / Prometheus idiom - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
 - [ ] Depth honored: `quick` skipped tracing/Asynq/lifecycle/error-tracker/SLI unless signaled; `deep` ran SLI
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered High > Medium > Low
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Output Format
@@ -240,10 +240,10 @@ _Omit empty sections. Within each impact bucket, group by surface when > 2 findi
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope: ops] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -264,3 +264,4 @@ _Omit if no actionable findings._
 - Prescribing OTLP endpoint URL or Sentry DSN value (infra config, not source review)
 - One finding per missing checkbox when whole surface is absent
 - Plain `slog.Info(...)` when OTel is wired (log-trace correlation needs `slog.InfoContext`)
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

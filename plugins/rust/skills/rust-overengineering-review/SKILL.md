@@ -18,10 +18,10 @@ Rust's type system, `Option`/`Result`, exhaustive `match`, and the borrow checke
 ## Rules
 
 - Every finding cites the constraint making the code redundant: validator rule, sqlx column type, unique index, type system, exhaustive `match`, framework guarantee, or repo-wide grep showing no consumer.
-- Severity:
-  - `[High]` requires a `Cost:` field. Reserved for measurable waste: extra query in a hot path, dynamic dispatch on a single-callsite hot path, lock on never-mutated data, hot-loop allocation.
+- Intent:
+  - `[Must]` requires a `Cost:` field. Reserved for measurable waste: extra query in a hot path, dynamic dispatch on a single-callsite hot path, lock on never-mutated data, hot-loop allocation.
   - `[Question]` when justification is plausible but not visible in the diff.
-  - `[Suggestion]` otherwise.
+  - `[Recommend]` otherwise.
 - A redundancy with visible justification (mock derive, second impl, public API, hot-path benchmark) is not a finding.
 - Collapse co-located findings into one block when they share a root cause (e.g., `Box<dyn Trait>` field plus its single-impl trait declared in the same module -> one finding citing both lines).
 
@@ -42,7 +42,7 @@ No-op or type-shadowing rules:
 if req.customer_id.is_empty() { return Err(AppError::Validation(...)); }
 ```
 
-Manual unique-check before `INSERT` - `[High]`, races and adds a query per write:
+Manual unique-check before `INSERT` - `[Must]`, races and adds a query per write:
 
 ```rust
 // Bad
@@ -78,7 +78,7 @@ Justified when a trait signature requires `Result` or a fallible branch lands in
 
 ### Category 3: Premature abstraction
 
-Single-impl trait declared next to its only impl - `[High]` when the trait is module-private, has no `mockall` mock, and the `Box<dyn>` consumer sits in the same module:
+Single-impl trait declared next to its only impl - `[Must]` when the trait is module-private, has no `mockall` mock, and the `Box<dyn>` consumer sits in the same module:
 
 ```rust
 // Bad - trait + only impl in the same module, no mock, no second impl
@@ -90,7 +90,7 @@ impl OrderRepository for PgOrderRepository { /* ... */ }
 pub struct OrderService<R: OrderRepo> { repo: R }
 ```
 
-`Box<dyn Trait>` on a single-callsite hot path - `[High]`:
+`Box<dyn Trait>` on a single-callsite hot path - `[Must]`:
 
 ```rust
 // Bad
@@ -102,7 +102,7 @@ async fn handle<S: OrderService>(svc: S) -> ... { svc.fulfill().await }
 
 Justified for heterogeneous collections (`Vec<Box<dyn Trait>>`) or object-safe FFI boundaries. Justified at the trait-declaration site when (a) `#[cfg(test)] mockall` derives a mock, (b) two or more concrete impls exist, or (c) the trait is a documented public API.
 
-`Arc<Mutex<T>>` on never-mutated data - `[High]`. Applies to config, handles, repos cloned once at startup:
+`Arc<Mutex<T>>` on never-mutated data - `[Must]`. Applies to config, handles, repos cloned once at startup:
 
 ```rust
 // Bad - never mutates; lock serializes readers
@@ -114,7 +114,7 @@ let config: Arc<Config> = Arc::new(Config::load()?);
 
 ### Category 4: Wasted work and dead branches
 
-Owned parameter where a borrow suffices, especially with a hot-loop call site - `[High]`:
+Owned parameter where a borrow suffices, especially with a hot-loop call site - `[Must]`:
 
 ```rust
 // Bad - hot-loop clone driven by an owned-param signature
@@ -126,7 +126,7 @@ for tag in &tags { audit(tag); }
 fn audit(tag: &str) { ... }
 ```
 
-Same shape: `Vec<T>` -> `&[T]`, `String` -> `&str`, `Box<T>` -> `&T`. `[Suggestion]` outside hot paths.
+Same shape: `Vec<T>` -> `&[T]`, `String` -> `&str`, `Box<T>` -> `&T`. `[Recommend]` outside hot paths.
 
 Gratuitous `async` - `async fn` with no `.await` in the body inflates the `Future` and forces every caller to `.await`. Drop `async` or expose the underlying value.
 
@@ -137,7 +137,7 @@ Speculative `cfg(feature)` flags - feature-gated code with no consumer enabling 
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Wasted Work}
 - Code: {one-line citation, or multiple lines if collapsed}
@@ -147,7 +147,7 @@ Findings contribute to the consuming workflow's unified output. One block per fi
 - Justified when: {one-line note when a legitimate reason might apply, else omit}
 ```
 
-`Cost:` is required for `[High]` and omitted otherwise. For each of the four categories with no findings, state `No <category> findings.` so the consuming workflow sees the check ran.
+`Cost:` is required for `[Must]` and omitted otherwise. For each of the four categories with no findings, state `No <category> findings.` so the consuming workflow sees the check ran.
 
 ## Avoid
 

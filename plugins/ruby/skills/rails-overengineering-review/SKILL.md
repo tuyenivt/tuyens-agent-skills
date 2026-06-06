@@ -16,7 +16,7 @@ Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, 
 ## Rules
 
 - Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, or framework guarantee. No citation, no finding.
-- Default severity is `[Suggestion]`. Escalate to `[High]` only when redundancy has measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see.
+- Default intent is `[Recommend]`. Escalate to `[Must]` only when redundancy has measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see.
 - Use `[Question]` when justification is plausible but not in the diff (e.g., "needed for signup form's inline error UX?").
 - Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, or uniqueness validation paired with a unique index as advisory UX.
 
@@ -201,7 +201,7 @@ Justified when a second type is already designed and lands in the same release.
 Findings contribute to the consuming workflow's unified output. Each entry:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `validates :user, presence: true`}
@@ -211,7 +211,7 @@ Findings contribute to the consuming workflow's unified output. Each entry:
 - Justified when: {one-line note, if a legitimate reason might apply; otherwise omit}
 ```
 
-Severity escalation requires a measurable cost - omit the `Cost` line and stay at `[Suggestion]` otherwise.
+Escalation to `[Must]` requires a measurable cost - omit the `Cost` line and stay at `[Recommend]` otherwise.
 
 When a category has no findings, state it explicitly (`No redundant validations detected.`). The consuming workflow needs to know the check ran.
 

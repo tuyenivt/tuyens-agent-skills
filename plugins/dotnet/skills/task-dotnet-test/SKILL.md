@@ -84,9 +84,9 @@ Workflow-specific gates layered on top:
 
 **API:** Build with the **same global middleware as `Program.cs`** - skipping auth middleware masks authorization bugs. Per endpoint: happy + `401` anonymous + `403` wrong-role + validation-error. Response shape: assert status, key fields, `Content-Type`, headers.
 
-**Anti-pattern - controller-direct-call:** `var c = new OrdersController(...); await c.Create(req);` bypasses model binding, `[ApiController]` validation, `[Authorize]`, `IExceptionHandler`, middleware. Treat as `[High]` test-design finding. Use `_client.PostAsync(url, content)`.
+**Anti-pattern - controller-direct-call:** `var c = new OrdersController(...); await c.Create(req);` bypasses model binding, `[ApiController]` validation, `[Authorize]`, `IExceptionHandler`, middleware. Treat as `[Must]` test-design finding. Use `_client.PostAsync(url, content)`.
 
-**Repository / EF Core:** **Never** `UseInMemoryDatabase` or SQLite for a Postgres / SqlServer app - the in-memory provider skips FK enforcement, raw SQL, JSON, concurrency semantics. If a test calls `UseInMemoryDatabase` and prod references Npgsql / SqlServer EF Core, raise `[High]` even on green. Assert SQL semantics (filter, sort, JOIN), not "returns something". For unique / FK violations, assert `DbUpdateException` with inner `PostgresException.SqlState`.
+**Repository / EF Core:** **Never** `UseInMemoryDatabase` or SQLite for a Postgres / SqlServer app - the in-memory provider skips FK enforcement, raw SQL, JSON, concurrency semantics. If a test calls `UseInMemoryDatabase` and prod references Npgsql / SqlServer EF Core, raise `[Must]` even on green. Assert SQL semantics (filter, sort, JOIN), not "returns something". For unique / FK violations, assert `DbUpdateException` with inner `PostgresException.SqlState`.
 
 **FluentValidation:** `validator.TestValidate(req).ShouldHaveValidationErrorFor(x => x.Email)` - faster than full handler tests.
 

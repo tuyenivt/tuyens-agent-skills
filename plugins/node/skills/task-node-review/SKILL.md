@@ -184,11 +184,11 @@ Apply atomic skills. Each owns the canonical patterns; this phase flags deviatio
 
 **Additional Node-specific checks the atomics don't own:**
 
-- **Test coverage finding (named, not buried).** PR adds logic without Jest coverage? At minimum `[Suggestion]`; escalate to `[High]` when the change is critical path: auth (JWT / Passport / `AuthGuard`), authorization (guards / `requireAuth`), money / billing, multi-table writes, state machines, BullMQ mutators, migrations changing column semantics. Surface as a dedicated finding.
+- **Test coverage finding (named, not buried).** PR adds logic without Jest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (JWT / Passport / `AuthGuard`), authorization (guards / `requireAuth`), money / billing, multi-table writes, state machines, BullMQ mutators, migrations changing column semantics. Surface as a dedicated finding.
 - **Event-loop blocking in request paths.** `fs.readFileSync` / `crypto.pbkdf2Sync` / large `JSON.parse` / catastrophic regex flagged (presence/absence here; depth - impact heuristic, `worker_threads`, `AbortSignal` - belongs to perf subagent).
 - **Validation strict-mode wired.** NestJS `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` in `main.ts`; Express Zod schemas use `.strict()`. Absence is a critical correctness + security gap.
 - **Authorization + IDOR.** Authn (guard / middleware) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where: { id, userId: user.sub }`, `tenantId` injected by middleware/extension.
-- **Response DTO field hygiene.** Compare the DTO against entity columns. Flag `passwordHash` / `mfaSecret` / `recoveryCodes` / `apiKey` / `webhookSecret` / `internalNotes` / `auditLog` / `isAdmin` / `internalCreatedBy` on the wire. Returning a Prisma model or TypeORM entity directly is `[High]` regardless of current fields - a new sensitive column silently leaks later.
+- **Response DTO field hygiene.** Compare the DTO against entity columns. Flag `passwordHash` / `mfaSecret` / `recoveryCodes` / `apiKey` / `webhookSecret` / `internalNotes` / `auditLog` / `isAdmin` / `internalCreatedBy` on the wire. Returning a Prisma model or TypeORM entity directly is `[Recommend]` regardless of current fields - a new sensitive column silently leaks later.
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept an `Idempotency-Key` header and dedupe via DB unique constraint or Redis `SET NX EX`. Distinct from BullMQ `jobId` - the HTTP key protects the client→server boundary.
 - **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, Prisma `$queryRaw`, TypeORM `setLock('pessimistic_write')`) or optimistic version field, not in-process state.
 - **HTTP client sharing.** `axios.create()` / `undici` Pool shared at module level. Per-request instantiation breaks connection reuse.
@@ -244,7 +244,7 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 - **Hardcoded URLs / credentials:** env / config, not inline
 - **Function length:** > 30 lines extracted; > 60 lines unless clearly orchestrating
 - **Duplicated query logic:** same `where` / `find` predicate in 3+ places extracted to a repository method or QueryBuilder helper
-- **Logging hygiene:** surface `console.log` in prod paths, lines without correlation IDs, wrong levels as `[Suggestion]` (depth in observability subagent)
+- **Logging hygiene:** surface `console.log` in prod paths, lines without correlation IDs, wrong levels as `[Recommend]` (depth in observability subagent)
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
@@ -273,11 +273,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Highest severity wins** (`Blocker` > `High` > `Suggestion` > `Question`)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
 - **Preserve `file:line` citations**
-- **Order by severity**, not by scope
+- **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
-- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by severity
+- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -303,14 +303,13 @@ Write before ending; print the confirmation line.
 
 ## Feedback Labels
 
-| Label | Meaning | Required |
-|-------|---------|----------|
-| [Blocker] | Must fix before merge - correctness / risk | Yes |
-| [High] | Should fix - significant impact | Strong |
-| [Suggestion] | Would improve - non-blocking | No |
-| [Question] | Need clarity from author | Clarify |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -339,26 +338,23 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the Node idiom: blocking `crypto.pbkdf2Sync` in async handler, missing `@UseGuards`, ORM entity returned from controller, BullMQ `queue.add` inside transaction, `ValidationPipe` missing `whitelist: true`, `Object.assign(target, req.body)` prototype-pollution surface, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Node change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue: ...
 - Impact: ...
 - Fix: ...
-
-### [Suggestion] file:line
-- Improvement: ...
 
 ### [Question] file:line
 - Question: [what is ambiguous]
 - Why it matters: [what the right next step depends on]
 
-_Use [Question] for genuine ambiguity, not as a softer Blocker._
+_Use [Question] for genuine ambiguity, not as a softer Must._
 
 ## Architecture Notes
 
@@ -381,16 +377,16 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] OldFile.ts:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] OldFile.ts:88 - N+1 in listAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
 _Omit if no actionable findings._
 ```
 
-**Omit empty sections.** No Blocker heading if there are none.
+**Omit empty sections.** No Must heading if there are none.
 
 ## Rules
 
@@ -412,11 +408,11 @@ _Omit if no actionable findings._
 - [ ] Phase C: layering, DI, settings, listener / middleware, multi-tenant
 - [ ] Phase D: `complexity-review` + framework-matching necessity skill applied
 - [ ] Phase E: naming, magic numbers, function length, logging hygiene
-- [ ] Every Blocker states a system risk; every finding has label + `file:line` + actionable Node fix
+- [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
 - [ ] Spec mode: every finding traces to AC/NFR/task or is flagged out-of-scope
-- [ ] Extra scopes ran in parallel; subagent findings merged severity-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
+- [ ] Extra scopes ran in parallel; subagent findings merged intent-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by severity
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent
 - [ ] Report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
 ## Avoid
@@ -425,7 +421,8 @@ _Omit if no actionable findings._
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic backend conventions when a Node idiom exists ("extract to a service module", not "extract to a helper class")

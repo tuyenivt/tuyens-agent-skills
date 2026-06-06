@@ -222,10 +222,10 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [one-line action, e.g., "Add `.options(selectinload(Order.items).selectinload(OrderItem.product))` to OrderRepository.list"]
-2. **[Delegate]** [High] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at)"]
+1. **[Implement]** [Must] file:line - [one-line action, e.g., "Add `.options(selectinload(Order.items).selectinload(OrderItem.product))` to OrderRepository.list"]
+2. **[Delegate]** [Recommend] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at)"]
 
 _Omit if no actionable findings._
 ```
@@ -244,7 +244,7 @@ _Omit if no actionable findings._
 - [ ] Pydantic v2 / DRF serializer cost assessed when applicable
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
 - [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered High > Medium > Low
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Review report written via `review-report-writer`; confirmation printed
 
 ## Avoid
@@ -255,3 +255,4 @@ _Omit if no actionable findings._
 - Suggesting caching without invalidation strategy
 - Treating Celery retries as a substitute for idempotency
 - Reporting "missing index" without confirming the column appears in `where` / `order_by` / `group_by`
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

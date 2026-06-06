@@ -232,11 +232,11 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Critical > High > Medium > Low.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [action]
-2. **[Delegate]** [High] [scope: dependencies] - [action]
-3. **[Implement]** [Medium] file:line - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [action]
+3. **[Implement]** [Recommend] file:line - [action]
 
 _Omit if no security issues found._
 ```
@@ -250,7 +250,7 @@ _Omit if no security issues found._
 - [ ] When touched: file upload, path traversal, exec, prototype pollution, `eval`, raw SQL, dynamic require, `rejectUnauthorized: false`, open redirect (Step 8)
 - [ ] Severity rubric applied consistently; every finding has attack scenario, regression-risk, or topology-dependent framing
 - [ ] Infra-scope items (CORS, rate limiting, helmet, debug exposure, hashing config, Sentry `beforeSend`, `npm audit`) noted as "could not verify from diff alone - flag for separate audit" when not visible
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed (Step 10)
 
 ## Avoid
@@ -268,3 +268,4 @@ _Omit if no security issues found._
 - Approving `rejectUnauthorized: false` outside test fixtures
 - Approving Swagger UI / `/api-docs` exposed in any non-dev profile
 - Recommending `lodash.merge(target, req.body)` - prototype pollution vector
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

@@ -75,18 +75,18 @@ For diffs that ripple through unchanged files (new shared component importing a 
 
 Canonical CD/signal/RxJS discipline lives in `angular-component-patterns`, `angular-signals-patterns`, `angular-rxjs-patterns`. Review-scoped scan:
 
-- [ ] **OnPush mandate** on new `@Component` ([High] when diff touches the decorator).
+- [ ] **OnPush mandate** on new `@Component` ([Recommend] when diff touches the decorator).
 - [ ] **Signal-first new state** - prefer `signal()` / `computed()` over `BehaviorSubject` + `async`.
-- [ ] **`@for track`** - missing or `track $index` on reorderable list is [High].
+- [ ] **`@for track`** - missing or `track $index` on reorderable list is [Recommend].
 - [ ] **`@for` × 1000+ items without `cdk-virtual-scroll-viewport`** (threshold scales with row complexity).
 - [ ] **`@defer` placement/triggers** - heavy below-fold components (charts, editors, maps) wrapped with explicit `on viewport` / `on interaction`. Missing `@placeholder` -> CLS.
-- [ ] **Bare `.subscribe()` in component / directive** - [High] memory leak.
-- [ ] **`effect` misuse** - `effect(() => mySignal.set(...))` is [High] - use `computed` / `linkedSignal`. NgRx selectors returning fresh literals defeat memoization.
+- [ ] **Bare `.subscribe()` in component / directive** - [Recommend] memory leak.
+- [ ] **`effect` misuse** - `effect(() => mySignal.set(...))` is [Recommend] - use `computed` / `linkedSignal`. NgRx selectors returning fresh literals defeat memoization.
 
 ### Step 6 - Bundle Size and Code Splitting
 
-- [ ] **Lazy-loaded routes** - feature routes use `loadComponent` / `loadChildren`. Eager `component:` for non-trivial routes is [High] bundle finding.
-- [ ] **`@defer` for heavy below-the-fold components** - charting (`chart.js`, `apexcharts`), rich text (`tiptap`, `quill`), date pickers, maps. Eager imports are [High].
+- [ ] **Lazy-loaded routes** - feature routes use `loadComponent` / `loadChildren`. Eager `component:` for non-trivial routes is [Recommend] bundle finding.
+- [ ] **`@defer` for heavy below-the-fold components** - charting (`chart.js`, `apexcharts`), rich text (`tiptap`, `quill`), date pickers, maps. Eager imports are [Recommend].
 - [ ] **New dependencies measured** - flag > 50KB minified+gzipped not lazy-loaded. Prefer tree-shake-friendly imports (`import { format } from 'date-fns'`, not `import * as df`).
 - [ ] **`angular.json` budgets** - `{ type: "initial", maximumWarning: "500kb", maximumError: "1mb" }`; flag absence in projects > 1MB initial.
 
@@ -109,7 +109,7 @@ _Skipped at `quick` unless diff touches a route, layout, or assets._
 
 **LCP:**
 
-- [ ] **`NgOptimizedImage`** for images: `<img ngSrc="..." width="..." height="..." priority>` for hero. Raw `<img>` for non-decorative is [Medium].
+- [ ] **`NgOptimizedImage`** for images: `<img ngSrc="..." width="..." height="..." priority>` for hero. Raw `<img>` for non-decorative is [Recommend].
 - [ ] **`width` / `height` attributes** on every image (prevents CLS); `NgOptimizedImage` enforces.
 - [ ] **Hero image not deferred**, gated by `*ngIf` for slow data, or `loading="lazy"`.
 - [ ] **`font-display: swap`** for self-hosted webfonts.
@@ -181,10 +181,10 @@ _Omit empty buckets._
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: High > Medium > Low.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [e.g., "Add `changeDetection: OnPush` and convert `BehaviorSubject` to signal in src/app/orders/order-list.component.ts:12"]
-2. **[Delegate]** [High] [scope: build] - [e.g., "Add bundle budget for /dashboard route"]
+1. **[Implement]** [Must] file:line - [e.g., "Add `changeDetection: OnPush` and convert `BehaviorSubject` to signal in src/app/orders/order-list.component.ts:12"]
+2. **[Delegate]** [Recommend] [scope: build] - [e.g., "Add bundle budget for /dashboard route"]
 
 _Omit if no actionable findings._
 ```
@@ -205,3 +205,4 @@ _Omit if no actionable findings._
 - Generic frontend advice when an Angular pattern applies ("wrap in `@defer (on viewport)`", not "lazy load")
 - Treating high re-render counts as inherently bad - signals + OnPush make CD cheap; investigate only when a profile implicates re-renders
 - Conflating perf review with general review, security, or observability - delegate
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

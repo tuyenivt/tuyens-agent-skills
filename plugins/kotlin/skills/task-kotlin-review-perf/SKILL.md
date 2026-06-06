@@ -184,9 +184,9 @@ _Omit empty sections._
 [Structural improvements not tied to a specific finding]
 
 ## Next Steps
-1. **[Implement]** [High] file:line - [one-line action]
-2. **[Delegate]** [High] [scope] - [one-line action]
-3. **[Implement]** [Medium] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Delegate]** [Recommend] [scope] - [one-line action]
+3. **[Implement]** [Recommend] file:line - [one-line action]
 ```
 
 ## Self-Check
@@ -206,7 +206,7 @@ _Omit empty sections._
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] `behavioral-principles` loaded as Step 1
 - [ ] Depth honored
-- [ ] Next Steps with `[Implement]` / `[Delegate]`, ordered High > Medium > Low
+- [ ] Next Steps with `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 - [ ] Report written; confirmation printed
 
 ## Avoid
@@ -221,3 +221,4 @@ _Omit empty sections._
 - Recommending `synchronized` on VT paths
 - Recommending `withContext(Dispatchers.IO)` when VTs are enabled
 - Recommending `data class` for JPA entities
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

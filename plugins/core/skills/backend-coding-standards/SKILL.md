@@ -37,10 +37,10 @@ user-invocable: false
 
 ```
 # Bad - vague style comment
-[Suggestion] The naming could be more consistent across the codebase.
+[Recommend] The naming could be more consistent across the codebase.
 
 # Good - specific finding with fix
-[Severity: Medium] src/handlers/user_handler.go:12 - Mixed naming styles:
+[Recommend] src/handlers/user_handler.go:12 - Mixed naming styles:
 camelCase `getUserById` in a Go codebase that uses MixedCaps elsewhere
   - Rule: Go convention is MixedCaps/mixedCaps; initialisms are upper-case (ID, not Id)
   - Fix: Rename to `GetUserByID` (exported) or `getUserByID` (unexported)
@@ -79,7 +79,7 @@ Consuming workflows parse this structure.
 
 ### Violations
 
-- [Severity: High | Medium | Low] {file:line} - {description}
+- [Must | Recommend | Question] {file:line} - {description}
   - Rule: {the naming/structure/anti-pattern rule violated}
   - Fix: {concrete correction}
 
@@ -92,11 +92,11 @@ Consuming workflows parse this structure.
 {State explicitly if no violations - do not omit this section silently}
 ```
 
-**Severity:**
+**Intent:**
 
-- **High**: Breaks correctness, security, or layering (god class, entity exposed in API, disabled security feature)
-- **Medium**: Structural drift that compounds (mixed naming, magic numbers, wrong-layer placement)
-- **Low**: Cosmetic drift with no structural impact (inconsistent comment style)
+- **[Must]**: Breaks correctness, security, or layering (god class, entity exposed in API, disabled security feature)
+- **[Recommend]**: Structural drift that compounds (mixed naming, magic numbers, wrong-layer placement)
+- **[Question]**: Ambiguous case where the rule may or may not apply - ask before flagging
 
 Omit Anti-Patterns if none. Omit "No Issues Found" if violations were listed.
 

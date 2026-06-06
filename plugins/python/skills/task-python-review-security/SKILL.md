@@ -234,11 +234,11 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Critical > High > Medium > Low.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Must > Recommend > Question.
 
-1. **[Implement]** [Critical] file:line - [action]
-2. **[Delegate]** [High] [scope: dependencies] - [action]
-3. **[Implement]** [Medium] file:line - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: dependencies] - [action]
+3. **[Implement]** [Recommend] file:line - [action]
 
 _Omit if no security issues found._
 ```
@@ -256,7 +256,7 @@ _Omit if no security issues found._
 - [ ] Step 8: `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL via `text(...)` / `cursor.execute`, `verify=False`, dynamic ORDER BY, SSRF, Celery serializer, `secrets` randomness, trusted-proxy headers checked when touched
 - [ ] Severity rubric applied consistently (not invented)
 - [ ] Every finding has attack scenario, regression-risk, or topology-dependent framing - never "input not validated" alone
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Critical > High > Medium > Low (omit if no findings)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if no findings)
 
 **Requires repo / infra access (note "could not verify from diff alone - flag for separate audit" if not visible):**
 
@@ -275,3 +275,4 @@ _Omit if no security issues found._
 - Recommending `algorithms=None` / unspecified for JWT decode - explicit allowlist only
 - Approving `pickle` / `yaml.load` / `eval` / `exec` / `verify=False` outside fully trusted server input or test fixtures
 - Approving `DEBUG=True` or open `/docs` in any non-dev settings module
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

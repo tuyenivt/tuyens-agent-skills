@@ -17,12 +17,11 @@ user-invocable: false
 ## Rules
 
 - Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract. When multiple constraints stack (e.g., binding + GORM tag + "only HTTP write path"), list them comma-separated in `Redundant because:`.
-- Severity:
-  - **`[Suggestion]`** (default). Cite the constraint, recommend the edit
-  - **`[High]`** when measurable cost is present. Cite the cost in `Cost:`. Triggers: extra SELECT in a hot path; silent error swallow via `if err != nil { return nil }`; single-impl interface declared at the implementation; naked `go fn()` wrapping a sequential call
+- Intent:
+  - **`[Recommend]`** (default). Cite the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present. Cite the cost in `Cost:`. Triggers: extra SELECT in a hot path; silent error swallow via `if err != nil { return nil }`; single-impl interface declared at the implementation; naked `go fn()` wrapping a sequential call
   - **`[Question]`** when justification is plausible but not visible in the diff
 - A redundancy with **visible** justification is not a finding
-- `Cost:` for premature-abstraction `[High]` findings is maintenance cost (parallel definitions to keep in sync, indirect call, lost IDE jump-to-impl), not runtime cost - that is still measurable and worth citing
+- `Cost:` for premature-abstraction `[Must]` findings is maintenance cost (parallel definitions to keep in sync, indirect call, lost IDE jump-to-impl), not runtime cost - that is still measurable and worth citing
 
 ## Patterns
 
@@ -43,7 +42,7 @@ if req.CustomerID == 0 {                      // dead
 
 #### Manual unique-check before `db.Create`
 
-`[High]` - races (two concurrent requests pass the SELECT) and adds a query per write.
+`[Must]` - races (two concurrent requests pass the SELECT) and adds a query per write.
 
 ```go
 // Bad
@@ -83,13 +82,13 @@ svc := NewOrderService(repo)
 if svc == nil { log.Fatal("nil service") }    // unreachable
 ```
 
-Default severity `[Suggestion]` - unreachable code is dead, not costly. Escalate to `[High]` only when the check itself triggers expensive work (locking, allocation, metric emission).
+Default `[Recommend]` - unreachable code is dead, not costly. Escalate to `[Must]` only when the check itself triggers expensive work (locking, allocation, metric emission).
 
 Legitimate when the constructor returns `(T, error)` and the caller hasn't checked the error.
 
 #### `if err != nil { return nil }` silently swallowing
 
-`[High]`. Reports success on failure.
+`[Must]`. Reports success on failure.
 
 ```go
 // Bad
@@ -113,7 +112,7 @@ defer func() { if r := recover(); r != nil { err = fmt.Errorf("panic: %v", r) } 
 
 #### Single-impl interface at the implementation side
 
-`[High]` when the interface lives in the same package as its only implementer and no test mock exists. Idiom: interfaces belong to the consumer.
+`[Must]` when the interface lives in the same package as its only implementer and no test mock exists. Idiom: interfaces belong to the consumer.
 
 ```go
 // Bad - interface and only impl in repository; no test mock
@@ -147,7 +146,7 @@ func (s *OrderService) Find(ctx, id) (*Order, error)
 
 #### Naked `go fn()` wrapping a sequential call
 
-`[High]` - goroutine leaks (no `WaitGroup` / `errgroup`), error swallowed.
+`[Must]` - goroutine leaks (no `WaitGroup` / `errgroup`), error swallowed.
 
 ```go
 // Bad
@@ -188,12 +187,12 @@ Justified when callers genuinely read fields off the error (`*ValidationError` c
 One block per finding; consuming workflow merges them:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation}
 - Redundant because: {constraint(s) making the code dead; comma-separate when stacked}
-- Cost: {required for [High]; omit otherwise}
+- Cost: {required for [Must]; omit otherwise}
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if legitimate reason might apply; otherwise omit}
 ```

@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Every finding cites the constraint that makes the code redundant: FK name, `null=False` field, unique index, model field validator, DRF serializer rule, type annotation, or framework guarantee. No citation, no finding.
-- Severity:
-  - **Default `[Suggestion]`.** Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present: extra SELECT in a hot path, bare `except` defeating DRF's exception handler, single-impl `ABC` forcing two-file refactors, or a `post_save` signal hiding async dispatch / external side effects from the call site. Cite the cost in the `Cost:` field.
+- Intent:
+  - **Default `[Recommend]`.** Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present: extra SELECT in a hot path, bare `except` defeating DRF's exception handler, single-impl `ABC` forcing two-file refactors, or a `post_save` signal hiding async dispatch / external side effects from the call site. Cite the cost in the `Cost:` field.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - A redundancy with **visible** justification is not a finding. Skip it. Classic cases: DRF validation on a ViewSet serializer (owns 400 + field errors); defense-in-depth across multiple write paths (HTTP + Celery + management command + admin); `ABC` with a planned second implementer or a `pytest` substitution.
 
@@ -51,7 +50,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 #### Manual unique-check before `save()`
 
-`[High]` - races and adds a SELECT per write; `unique=True` and the DB unique index decide anyway. `UniqueValidator` does the same SELECT (same race) but produces a clean field-level error - pair it with the unique index, don't use it in place of one.
+`[Must]` - races and adds a SELECT per write; `unique=True` and the DB unique index decide anyway. `UniqueValidator` does the same SELECT (same race) but produces a clean field-level error - pair it with the unique index, don't use it in place of one.
 
 ```python
 # Bad
@@ -109,7 +108,7 @@ Prefer `is None` for nullable, drop the check for non-nullable types.
 
 #### `bare except` / `except Exception` defeating DRF's exception handler
 
-`[High]`. Bare `except` catches `KeyboardInterrupt` and `SystemExit`. `except Exception` masks `TypeError`, `AttributeError`, `DatabaseError`, and defeats `EXCEPTION_HANDLER` mapping - typed errors become opaque 500s.
+`[Must]`. Bare `except` catches `KeyboardInterrupt` and `SystemExit`. `except Exception` masks `TypeError`, `AttributeError`, `DatabaseError`, and defeats `EXCEPTION_HANDLER` mapping - typed errors become opaque 500s.
 
 ```python
 # Bad
@@ -132,7 +131,7 @@ except PaymentDeclined as e:
 
 #### Single-impl `ABC` / service class wrapping one ORM call / `BaseService` parent
 
-`[High]` when the abstraction forces refactors to touch two files for no behavioral reason.
+`[Must]` when the abstraction forces refactors to touch two files for no behavioral reason.
 
 ```python
 # Bad - one ABC with one implementer; or a class wrapping a single .filter().first()
@@ -153,7 +152,7 @@ Django's manager methods, model methods, and querysets are the idiomatic abstrac
 
 #### `post_save` signal hiding business logic
 
-`[High]` when the signal triggers async work or external side effects. Signals belong to genuinely cross-cutting concerns (audit, search index sync, cache invalidation); business logic belongs to an explicit service call so control flow is visible at the call site.
+`[Must]` when the signal triggers async work or external side effects. Signals belong to genuinely cross-cutting concerns (audit, search index sync, cache invalidation); business logic belongs to an explicit service call so control flow is visible at the call site.
 
 ```python
 # Bad - email + Celery dispatch hidden in a signal; bulk_create silently skips signals
@@ -209,12 +208,12 @@ Keep `Result[T]` only when callers branch on multiple distinct failure modes car
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `validate_quantity` re-running `MinValueValidator(1)`}
 - Redundant because: {FK name | `null=False` field | unique index | model validator | DRF rule | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | signal-hidden side effect} _(required for `[High]`; omit otherwise)_
+- Cost: {extra SELECT per save | masked exception | speculative surface area | signal-hidden side effect} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

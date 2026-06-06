@@ -181,11 +181,11 @@ Apply atomic skills; each owns canonical patterns:
 
 **Additional checks (not owned by atomics):**
 
-- **Test coverage finding (named, not buried).** PR adds logic without `*_test.go`? At minimum `[Suggestion]`; escalate to `[High]` when critical path: auth, ownership / role checks, money / billing, multi-table writes, state machines, Asynq / Kafka mutators, migrations changing column semantics
+- **Test coverage finding (named, not buried).** PR adds logic without `*_test.go` -> `[Recommend]`; escalate to `[Must]` when critical path: auth, ownership / role checks, money / billing, multi-table writes, state machines, Asynq / Kafka mutators, migrations changing column semantics
 - **Authorization + IDOR.** Every per-owner endpoint scopes queries by principal: `db.Where("id = ? AND user_id = ?", id, <principal-id>)` - where `<principal-id>` is whatever the project uses (`claims.UserID`, `claims.Sub`, `c.MustGet("user_id")`). JWT proves authn, not object access
-- **Response DTO hygiene.** Compare response DTO `json:` fields against the model. Flag `PasswordHash` / `MFASecret` / `RecoveryCodes` / `APIKey` / `WebhookSecret` / `InternalNotes` / `AuditLog` / `IsAdmin` / `Role` / `DeletedAt` / `LastLoginIP` on the wire. Raw `c.JSON(200, *model.User)` is `[High]` regardless of current fields (sensitive column added later silently exposes it)
+- **Response DTO hygiene.** Compare response DTO `json:` fields against the model. Flag `PasswordHash` / `MFASecret` / `RecoveryCodes` / `APIKey` / `WebhookSecret` / `InternalNotes` / `AuditLog` / `IsAdmin` / `Role` / `DeletedAt` / `LastLoginIP` on the wire. Raw `c.JSON(200, *model.User)` is `[Recommend]` regardless of current fields (sensitive column added later silently exposes it)
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via a `request_idempotency` table. Distinct from worker-side `asynq.TaskID`
-- **Client-controlled money fields.** Price / amount / discount on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`) come from the server (or a server-validated catalog), not the request DTO. Trusting `req.UnitPrice` is `[Blocker]`
+- **Client-controlled money fields.** Price / amount / discount on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`) come from the server (or a server-validated catalog), not the request DTO. Trusting `req.UnitPrice` is `[Must]`
 - **Postgres FK indexes.** `REFERENCES other(id)` does not create an index on the FK column - add one explicitly in the migration. Missing FK indexes cause sequential scans on join, lock contention on cascade delete, and degrade as the parent grows
 - **Go boundary quirks.** `net.JoinHostPort` (not `fmt.Sprintf("%s:%d", ...)`); `time.Now().UTC()` for stored timestamps; `slog` (not `fmt.Println` / `log.Printf`)
 - **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`clause.Locking{Strength: "UPDATE"}` or optimistic versioning), not in-process `sync.Mutex` (one replica only)
@@ -207,7 +207,7 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 - **Multi-tenant isolation** at the repository layer, not routes alone
 - **Gin middleware order:** `recovery -> logging -> request-id -> CORS -> auth -> rate-limit -> handler`. Auth at group level, not per-route
 - **GORM hooks** for genuine cross-cutting (audit, search-index sync) - not hidden control flow for emails / Asynq dispatch
-- **Error-handling middleware:** `c.Error(err)` flows to centralized middleware; per-handler `c.JSON(500, ...)` scattered is `[Suggestion]`
+- **Error-handling middleware:** `c.Error(err)` flows to centralized middleware; per-handler `c.JSON(500, ...)` scattered is `[Recommend]`
 - **Anemic domain (deep depth only):** rules in services while models stay pure data - flag for `task-go-refactor`. Don't raise on a single PR alone
 
 **Multi-service PRs:** API contract compatibility (OpenAPI diff, Pact); deployment order documented; use skill: `ops-backward-compatibility`.
@@ -260,11 +260,11 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 Merge subagent findings into single Output Format. Do not append raw reports.
 
 - Deduplicate cross-cutting findings (one entry citing all scopes)
-- Highest severity wins (`Blocker` > `High` > `Suggestion` > `Question`)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
 - Preserve `file:line` citations
-- Order by severity, not scope
+- Order by intent, not scope
 - Note missing scopes as `Scope incomplete: <scope>`
-- Merge Next Steps with `[Implement]` / `[Delegate]` tags; re-sort by severity
+- Merge Next Steps with `[Implement]` / `[Delegate]` tags; re-sort by intent
 
 **Cross-phase same root cause.** When one defect spans multiple phases (e.g., a layering violation that also degrades testability and DTO discipline), file the finding once under the phase where the root cause sits and reference its `file:line` from `Architecture Notes` or `Maintainability Notes`. Do not double-count by listing the same `file:line` as separate findings.
 
@@ -292,14 +292,13 @@ Write before ending; print confirmation.
 
 ## Feedback Labels
 
-| Label | Meaning | Required |
-|-------|---------|----------|
-| [Blocker] | Must fix before merge - correctness / risk | Yes |
-| [High] | Should fix - significant impact | Strong |
-| [Suggestion] | Would improve - non-blocking | No |
-| [Question] | Need clarity from author | Clarify |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -328,24 +327,21 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 
 - Issue: [name the Go idiom]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level]
 - Fix: [concrete Go change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue, Impact, Fix
-
-### [Suggestion] file:line
-- Improvement
 
 ### [Question] file:line
 - Question: [what is ambiguous]
 - Why it matters
 
-_Use [Question] for genuine ambiguity, not as softer Blocker._
+_Use [Question] for genuine ambiguity, not as softer Must._
 
 ## Architecture Notes
 
@@ -365,16 +361,16 @@ _Cross-cutting commentary. Reference findings by file:line._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] old_file.go:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [High] [scope: cross-service] - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] old_file.go:88 - N+1 in listAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
 _Omit if no actionable findings._
 ```
 
-**Omit empty sections.** No Blocker heading if there are none.
+**Omit empty sections.** No Must heading if there are none.
 
 ## Rules
 
@@ -402,14 +398,14 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` + `go-overengineering-review` applied
 - [ ] Phase E: naming, magic numbers, function length, structured logging
 - [ ] Missing tests raised as named finding (not buried)
-- [ ] Every Blocker states system risk
+- [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + Go fix
 - [ ] If `--spec`: every finding traces to AC/NFR/task or flagged out-of-scope
 - [ ] Extra scopes ran in parallel with pre-resolved handle + data-access detection
-- [ ] Subagent findings merged into one severity-ordered list; no raw reports appended
+- [ ] Subagent findings merged into one intent-ordered list; no raw reports appended
 - [ ] Failed / missing subagent scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by severity
+- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by intent
 - [ ] Review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
 ## Avoid
@@ -418,7 +414,8 @@ _Omit if no actionable findings._
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic backend conventions when a Go idiom exists ("define interface in consumer", not "use DI")

@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Cite the constraint that makes the code redundant: FK, `nullable = false`, unique index, DTO `@Valid` + `@NotNull`, `@RestControllerAdvice`, or framework guarantee. No citation, no finding.
-- Severity:
-  - `[Suggestion]` - default; pure redundancy with no runtime cost
-  - `[High]` - measurable cost (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics); requires `Cost:` field
+- Intent:
+  - `[Recommend]` - default; cite the constraint and recommend the edit. Escalate to `[Must]` when measurable cost is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics) - record cost in `Cost:` field
   - `[Question]` - plausible justification not visible in the diff; ask before recommending removal
 - Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
 
@@ -52,7 +51,7 @@ private String email;
 private String email;
 ```
 
-**Manual unique-check before save** - `[High]`. Race-prone (two concurrent SELECTs both pass), and the unique index rejects anyway. Costs one extra SELECT per write.
+**Manual unique-check before save** - `[Must]`. Race-prone (two concurrent SELECTs both pass), and the unique index rejects anyway. Costs one extra SELECT per write.
 
 ```java
 // Bad
@@ -92,7 +91,7 @@ Long id = Optional.ofNullable(req.customerId())
 Long id = req.customerId();
 ```
 
-**Blanket `catch (Exception)` in a controller or service** - `[High]`. Swallows `DataIntegrityViolationException`, `NullPointerException`, and domain exceptions; in controllers it erases `@RestControllerAdvice` status mapping (404/409 collapse to 500).
+**Blanket `catch (Exception)` in a controller or service** - `[Must]`. Swallows `DataIntegrityViolationException`, `NullPointerException`, and domain exceptions; in controllers it erases `@RestControllerAdvice` status mapping (404/409 collapse to 500).
 
 ```java
 // Bad
@@ -103,11 +102,11 @@ catch (Exception e) { log.error("failed", e); return ResponseEntity.status(500).
 return ResponseEntity.ok(service.fulfill(orderId));
 ```
 
-**Catch-and-rethrow with no transformation** - `[Suggestion]`. If the goal is HTTP status mapping, that belongs in `@RestControllerAdvice`. If the goal is logging, the advice logs once at the boundary.
+**Catch-and-rethrow with no transformation** - `[Recommend]`. If the goal is HTTP status mapping, that belongs in `@RestControllerAdvice`. If the goal is logging, the advice logs once at the boundary.
 
 ### Category 3 - Premature abstraction
 
-**`@Service` interface with one implementation** - `[High]`. Every refactor touches two files; Mockito mocks concrete classes via CGLIB; Spring proxies concrete classes by default.
+**`@Service` interface with one implementation** - `[Must]`. Every refactor touches two files; Mockito mocks concrete classes via CGLIB; Spring proxies concrete classes by default.
 
 ```java
 // Bad
@@ -120,9 +119,9 @@ public interface OrderService { OrderResponse fulfill(Long id); }
 
 Justified when a second implementation exists, an `@Aspect` needs a JDK-proxy pointcut, or a non-Mockito test seam requires the interface.
 
-**`BaseService<T, ID>` with one or two subclasses** - `[Suggestion]`. Generics propagation buys ~3 saved lines per child. Abstract only when 3+ services share real cross-cutting behavior (audit, metrics, tenant scoping).
+**`BaseService<T, ID>` with one or two subclasses** - `[Recommend]`. Generics propagation buys ~3 saved lines per child. Abstract only when 3+ services share real cross-cutting behavior (audit, metrics, tenant scoping).
 
-**Custom `Result<T>` wrapping a single failure mode** - `[Suggestion]`. `Optional` already expresses "found or not"; exceptions express domain failures. Use `Result<T>` only when callers branch on 2+ distinct failure variants and exceptions would be overkill.
+**Custom `Result<T>` wrapping a single failure mode** - `[Recommend]`. `Optional` already expresses "found or not"; exceptions express domain failures. Use `Result<T>` only when callers branch on 2+ distinct failure variants and exceptions would be overkill.
 
 ```java
 // Bad
@@ -136,21 +135,21 @@ public Result<Order> findOrder(Long id) {
 public Optional<Order> findOrder(Long id) { return orderRepository.findById(id); }
 ```
 
-**Speculative `@ConfigurationProperties` keys** - `[Suggestion]`. Flag fields declared and validated but never read in the repo (confirm with a repo-wide search for the property name).
+**Speculative `@ConfigurationProperties` keys** - `[Recommend]`. Flag fields declared and validated but never read in the repo (confirm with a repo-wide search for the property name).
 
-**Mapper proliferation** - `[Suggestion]`. Three mapper classes for one transformation; prefer a MapStruct interface or `OrderResponse.from(Order)` static factory.
+**Mapper proliferation** - `[Recommend]`. Three mapper classes for one transformation; prefer a MapStruct interface or `OrderResponse.from(Order)` static factory.
 
 ## Output Format
 
 One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@NotNull` on `Order.user`}
 - Redundant because: {FK, `nullable = false`, unique index, DTO `@NotNull`, `@RestControllerAdvice`, framework guarantee}
-- Cost: {extra SELECT | masked exception | proxy mismatch | speculative surface} _(required for `[High]`)_
+- Cost: {extra SELECT | masked exception | proxy mismatch | speculative surface} _(required for `[Must]`)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note, only for `[Question]`}
 ```

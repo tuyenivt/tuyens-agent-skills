@@ -197,10 +197,10 @@ _Omit empty buckets. Within each bucket, group by surface when >2 findings share
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
 
-1. **[Implement]** [High] file:line - [action]
-2. **[Delegate]** [High] [scope: ops] - [action]
+1. **[Implement]** [Must] file:line - [action]
+2. **[Delegate]** [Recommend] [scope: ops] - [action]
 ```
 
 ## Self-Check
@@ -227,3 +227,4 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - Prescribing concrete OTLP endpoint URLs or Sentry DSN values - say "from env / Vault" and stop
 - Infra-level scope (Datadog, Grafana, alerts, forwarders) - belongs to ops review
 - State-changing git commands
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

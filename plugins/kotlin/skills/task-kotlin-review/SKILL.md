@@ -168,7 +168,7 @@ Output risk level and blast radius before findings.
 
 ### Phase B - Kotlin correctness and safety
 
-**Test coverage finding** (named, explicit, not buried in takeaways): if PR adds or modifies logic without JUnit / kotest / Spring slice / Testcontainers coverage. Minimum [Suggestion]; [High] for auth / Spring Security / `@PreAuthorize` / billing / multi-table writes / state machines / `CoroutineScope.launch` / `@KafkaListener` mutating data / Flyway changing column semantics.
+**Test coverage finding** (named, explicit, not buried in takeaways): if PR adds or modifies logic without JUnit / kotest / Spring slice / Testcontainers coverage. Minimum `[Recommend]`; escalate to `[Must]` for auth / Spring Security / `@PreAuthorize` / billing / multi-table writes / state machines / `CoroutineScope.launch` / `@KafkaListener` mutating data / Flyway changing column semantics.
 
 **Kotlin checks:**
 
@@ -190,7 +190,7 @@ Output risk level and blast radius before findings.
 - [ ] **Authorization present**: every controller method has matcher or `@PreAuthorize` (depth in `task-kotlin-review-security`)
 - [ ] **Error handling**: `@RestControllerAdvice` + `ProblemDetail`; sealed-class results converted at controller boundary; no blanket `catch (e: Exception)`; no `println(e)` / `e.printStackTrace()`
 - [ ] **Bulk operations**: partial-failure defined; idempotency for retryable bulk; JPA batch size sized
-- [ ] **Idempotency on writes**: any new POST/PUT/PATCH that mutates state checks `Idempotency-Key` (or equivalent) and short-circuits replays. [Blocker] for money/billing, [High] otherwise
+- [ ] **Idempotency on writes**: any new POST/PUT/PATCH that mutates state checks `Idempotency-Key` (or equivalent) and short-circuits replays. `[Must]` for money/billing, `[Recommend]` otherwise
 - [ ] **Dual-write reliability**: DB write + event/HTTP publish uses outbox or `@TransactionalEventListener(AFTER_COMMIT)`. `BEFORE_COMMIT` for I/O = trap (rollback on listener exception); `AFTER_COMMIT` exceptions silently swallowed by default
 
 **Migration PRs (any change in `db/migration/` or `db/changelog/`):**
@@ -282,9 +282,9 @@ If a subagent fails: continue with remaining results. Note `Scope incomplete: <s
 ### Step 6 - Synthesize (if Step 5 ran)
 
 - Deduplicate cross-cutting findings (same issue across scopes → one entry citing all)
-- Highest severity wins (`Blocker > High > Suggestion > Question`)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
 - Preserve `file:line`
-- Order by severity, not scope
+- Order by intent, not scope
 - Merge Next Steps into one prioritized list
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
@@ -301,14 +301,13 @@ Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.rou
 
 ## Feedback Labels
 
-| Label        | Meaning                                       | Required |
-| ------------ | --------------------------------------------- | -------- |
-| [Blocker]    | Must fix before merge - correctness or risk   | Yes      |
-| [High]       | Should fix - significant impact or smell      | Strong   |
-| [Suggestion] | Would improve - non-blocking                  | No       |
-| [Question]   | Need clarity from author                      | Clarify  |
+| Label        | Meaning                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| [Must]       | Do not merge until this is fixed.                                        |
+| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Nitpick]` or `[Praise]`.
+No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 
 ## Output Format
 
@@ -335,19 +334,20 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Blocker] file:line
+### [Must] file:line
 - Issue: [Kotlin/Spring idiom: `!!` abuse, `data class` JPA, missing `kotlin-jpa` plugin, `GlobalScope.launch`, `synchronized` on VT, `@Transactional` self-invocation, `every` on suspend, etc.]
 - Impact: [user-visible / operational]
 - System Risk: [why systemic]
 - Fix: [concrete Kotlin change with code]
 
-### [High] file:line
+### [Recommend] file:line
 - Issue:
 - Impact:
 - Fix:
 
-### [Suggestion] file:line
-- Improvement:
+### [Question] file:line
+- Question:
+- Why it matters:
 
 ## Architecture Notes
 - Boundary impact:
@@ -362,12 +362,11 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - 2-4 bullets, systemic impact, what to address before merge
 
 ## Next Steps
-Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by severity alongside new findings.
+Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
 
-1. **[Implement]** [Blocker] file:line - [one-line action]
-2. **[Implement]** [High] OldFile.kt:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [High] [scope] - [one-line action]
-4. **[Implement]** [Suggestion] file:line - [one-line action]
+1. **[Implement]** [Must] file:line - [one-line action]
+2. **[Implement]** [Recommend] OldFile.kt:88 - N+1 in listAll (open since round 1)
+3. **[Delegate]** [Recommend] [scope] - [one-line action]
 
 _Omit empty sections._
 ```
@@ -391,11 +390,11 @@ Print the confirmation line.
 - [ ] Scope auto-escalation evaluated; depth auto-promoted on Wide/Critical; scope expansion vs. prior round noted when applicable
 - [ ] Risk + blast radius stated before findings
 - [ ] Phases B-E applied via the named atomic skills; missing tests raised as explicit finding
-- [ ] Every Blocker states system risk; every finding has label + file:line + Kotlin fix
+- [ ] Every Must cites system risk; every finding has label + file:line + Kotlin fix
 - [ ] If `--spec`, every finding traces to AC / NFR / task or flagged out-of-scope blocker
-- [ ] Extra scopes ran in parallel; findings deduped, highest-severity wins; failed scopes noted
+- [ ] Extra scopes ran in parallel; findings deduped, strongest intent wins; failed scopes noted
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by severity; carry-overs from prior round inline-suffixed, not in a separate section
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent; carry-overs from prior round inline-suffixed, not in a separate section
 - [ ] Report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
 ## Avoid
@@ -412,6 +411,7 @@ Print the confirmation line.
 - Running extra scopes when `core-only` was passed
 - Sequential extra scopes that could run in parallel
 - Appending raw subagent reports section-by-section
-- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Recommending `WebSecurityConfigurerAdapter`, `@Autowired` fields, `data class` JPA, `GlobalScope.launch`, `every` for suspend, `@MockBean` for Kotlin

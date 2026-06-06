@@ -16,9 +16,8 @@ Reviewing Express diffs that add Zod / class-validator schemas, null guards, mid
 ## Rules
 
 - Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, TypeORM non-`?` field, TS non-null type, Zod rule, validation middleware, or framework guarantee.
-- Severity:
-  - **`[Suggestion]`** default.
-  - **`[High]`** with `Cost:` field for: extra SELECT in hot path, blanket `catch` defeating error middleware, no-arg middleware factory, custom error hierarchy with no `instanceof` branching, Repository wrapper of passthroughs.
+- Intent:
+  - **`[Recommend]`** default. Escalate to **`[Must]`** with `Cost:` field for: extra SELECT in hot path, blanket `catch` defeating error middleware, no-arg middleware factory, custom error hierarchy with no `instanceof` branching, Repository wrapper of passthroughs.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - Redundancy with **visible** justification is not a finding. See `Avoid`.
 
@@ -52,7 +51,7 @@ Drop `.nullable()` or make the column nullable. Pick one.
 
 #### Manual unique-check before `repository.save`
 
-`[High]` - races and adds a SELECT per write; the unique index decides anyway.
+`[Must]` - races and adds a SELECT per write; the unique index decides anyway.
 
 ```ts
 // Bad
@@ -93,7 +92,7 @@ const o = result as unknown as Order;  // Bad - bypasses TS
 
 #### Blanket `catch (e)` defeating error-handling middleware
 
-`[High]`. The terminal error middleware maps thrown errors to typed responses; handler-level `try/catch -> 500` erases that mapping.
+`[Must]`. The terminal error middleware maps thrown errors to typed responses; handler-level `try/catch -> 500` erases that mapping.
 
 ```ts
 // Bad
@@ -117,7 +116,7 @@ Delete it. Wrap with `throw new Error('wrap', { cause: e })` only when the wrap 
 
 #### Middleware factory wrapping a one-line operation
 
-`[High]` when the factory takes no parameters.
+`[Must]` when the factory takes no parameters.
 
 ```ts
 // Bad - no-arg factory
@@ -133,7 +132,7 @@ Justified when parameters vary across mount points (`requireRole('admin')`, `rat
 
 #### Repository pattern on top of TypeORM
 
-`[High]` when the wrapper only passes through. `Repository<T>` is already the repository.
+`[Must]` when the wrapper only passes through. `Repository<T>` is already the repository.
 
 ```ts
 // Bad - passthroughs over Repository<Order>
@@ -186,12 +185,12 @@ Flag schema-validated config keys with zero read sites. Confirm with a repo-wide
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `if (!order)` after `findOneOrFail`}
 - Redundant because: {FK name | TypeORM `nullable: false` | unique index | TS strict-null | Zod schema rule | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | middleware factory of one | repository wrapper passthrough} _(required for `[High]`; omit otherwise)_
+- Cost: {extra SELECT per save | masked exception | speculative surface area | middleware factory of one | repository wrapper passthrough} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

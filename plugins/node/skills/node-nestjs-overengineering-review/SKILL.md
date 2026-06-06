@@ -17,9 +17,8 @@ user-invocable: false
 ## Rules
 
 - Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, DTO decorator, `ValidationPipe` whitelist, or framework guarantee.
-- Severity:
-  - **`[Suggestion]`** default. Cite the constraint, recommend the edit.
-  - **`[High]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider.
+- Intent:
+  - **`[Recommend]`** default. Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider.
   - **`[Question]`** when justification is plausible but not visible in the diff.
 - A redundancy with **visible** justification is not a finding. See `Avoid`.
 
@@ -54,7 +53,7 @@ async create(@Body() dto: CreateOrderDto) {
 
 #### Manual unique-check before insert
 
-`[High]` - races and adds a SELECT per write; the unique index decides anyway.
+`[Must]` - races and adds a SELECT per write; the unique index decides anyway.
 
 ```ts
 // Bad
@@ -111,7 +110,7 @@ async list(@Req() req: AuthenticatedRequest) {
 
 #### Blanket `catch (e)` defeating the global exception filter
 
-`[High]` - the default filter maps `HttpException` subclasses to typed responses; converting everything to generic 500 erases that mapping.
+`[Must]` - the default filter maps `HttpException` subclasses to typed responses; converting everything to generic 500 erases that mapping.
 
 ```ts
 // Bad
@@ -135,7 +134,7 @@ Delete it. Wrap only when `throw new Error('...', { cause: e })` adds context.
 
 #### Single-implementation service interface
 
-`[High]` - every refactor touches two files for no behavioral reason. Nest mocks classes via `Test.createTestingModule(...).overrideProvider(...)`.
+`[Must]` - every refactor touches two files for no behavioral reason. Nest mocks classes via `Test.createTestingModule(...).overrideProvider(...)`.
 
 ```ts
 // Bad
@@ -157,7 +156,7 @@ Inline until 3+ services share genuine cross-cutting behavior.
 
 #### `Scope.REQUEST` on a stateless provider
 
-`[High]` - allocates per request and propagates the scope to every transitive injector.
+`[Must]` - allocates per request and propagates the scope to every transitive injector.
 
 ```ts
 // Bad - no per-request state
@@ -203,12 +202,12 @@ Flag config keys declared in the Zod/Joi schema but never read via `ConfigServic
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Suggestion | High | Question] file:line
+### [Must | Recommend | Question] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@IsNotEmpty()` on non-optional `customerId: string`}
 - Redundant because: {FK name | Prisma `@unique` | TypeORM `nullable: false` | TS strict-null | class-validator on DTO | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | request-scope on stateless provider} _(required for `[High]`; omit otherwise)_
+- Cost: {extra SELECT per save | masked exception | speculative surface area | request-scope on stateless provider} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

@@ -176,7 +176,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 - [ ] Step 8: Report written via `review-report-writer`; confirmation line printed
 - [ ] Severity rubric applied consistently; Combined-finding rule applied where findings compose on the same action
 - [ ] Every finding has attack scenario, regression-risk rationale, or topology-dependent framing
-- [ ] Next Steps tagged `[Implement]` or `[Delegate]`, ordered Critical > High > Medium > Low
+- [ ] Next Steps tagged `[Implement]` or `[Delegate]`, ordered Must > Recommend > Question
 
 ## Output Format
 
@@ -217,7 +217,7 @@ _Omit severity sections with no findings. If all sections are omitted, state "No
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` or `[Delegate]`. Order: Critical > High > Medium > Low.
+Prioritized list. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
 
 _Omit if no security issues were found._
 ```
@@ -229,3 +229,4 @@ _Omit if no security issues were found._
 - Generic security advice when a Laravel idiom applies ("wrap in `->middleware('can:update,order')` and define `OrderPolicy::update`", not "add an authorization check")
 - Conflating security with general code quality or performance review
 - Approving file uploads in `public/` disks without auth-gated download
+- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

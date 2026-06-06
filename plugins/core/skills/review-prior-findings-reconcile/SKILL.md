@@ -39,7 +39,12 @@ The consuming workflow passes:
 
 ### Step 1 - Extract prior findings
 
-Parse the prior report's `## High-Impact Findings` section. Each finding has a heading like `### [Blocker] file:line` or `### [High] file:line` or `### [Suggestion] file:line`. Collect `(label, file, line, smell_summary)` where `smell_summary` is the first sentence of the `Issue:` or `Improvement:` line.
+Parse the prior report's `## High-Impact Findings` section. Each finding has a heading like `### [<Label>] file:line`. Accept both label vocabularies:
+
+- **Current (intent-based):** `[Must]`, `[Recommend]`, `[Question]`
+- **Legacy (severity-based):** `[Blocker]`, `[High]`, `[Suggestion]`, `[Nitpick]`, `[Praise]`
+
+Collect `(label, file, line, smell_summary)` where `label` is preserved **verbatim** as it appeared in the prior report (do not translate `[Blocker]` to `[Must]` - the reconciliation table reflects what was actually written). `smell_summary` is the first sentence of the `Issue:` or `Improvement:` line.
 
 If the section is empty or absent, return an empty reconciliation table and stop.
 
@@ -79,14 +84,16 @@ Emit a single Markdown table - this is what the workflow inserts under `## Prior
 ```markdown
 | Round N-1 Finding                          | file:line                | Status         | Notes                          |
 | ------------------------------------------ | ------------------------ | -------------- | ------------------------------ |
-| [Blocker] @Transactional self-invocation   | OrderService.java:42     | Addressed      |                                |
-| [Blocker] Missing @PreAuthorize            | AdminController.java:15  | Still open     | File touched (other changes); smell persists. |
-| [High] N+1 in listAll                      | ProductRepo.java:88      | Still open     | File untouched.                |
-| [Suggestion] Magic number 86400            | Config.java:23           | Obsolete       | File deleted.                  |
-| [High] Race on counter                     | TallyService.java:31     | Needs re-check | File restructured; verify manually. |
+| [Must] @Transactional self-invocation      | OrderService.java:42     | Addressed      |                                |
+| [Must] Missing @PreAuthorize               | AdminController.java:15  | Still open     | File touched (other changes); smell persists. |
+| [Recommend] N+1 in listAll                 | ProductRepo.java:88      | Still open     | File untouched.                |
+| [Blocker] Hardcoded credential             | Legacy.java:12           | Addressed      | Legacy label preserved verbatim from round 1. |
+| [Recommend] Race on counter                | TallyService.java:31     | Needs re-check | File restructured; verify manually. |
 ```
 
 Status column is one of exactly: `Addressed`, `Still open`, `Obsolete`, `Needs re-check`. Notes column is optional per row; keep to one short sentence.
+
+Labels in the first column appear **exactly as they were in the prior report**. If round 1 used the legacy severity vocabulary (`[Blocker]`, `[High]`, `[Suggestion]`), those rows keep those labels; round-2 *new* findings use the current intent vocabulary (`[Must]`, `[Recommend]`, `[Question]`). Mixing in one report during the transition is expected and correct.
 
 After the table, emit a one-line tally the workflow uses for the Round History row:
 
@@ -101,4 +108,5 @@ Reconciliation: <addressed_count> addressed, <still_open_count> still open, <obs
 - Reconciling Suggestions or notes from Architecture / Maintainability sections - only the `## High-Impact Findings` section.
 - Re-reading the file when the touch state is `untouched` - wastes tokens, the answer is `Still open`.
 - Speculating when restructuring makes the smell's presence unclear - mark `Needs re-check` and move on.
-- Changing the original severity label or `file:line` text - preserve exactly so the user can compare rounds at a glance.
+- Changing the original label or `file:line` text - preserve exactly so the user can compare rounds at a glance.
+- Translating legacy severity labels (`[Blocker]`/`[High]`/`[Suggestion]`) into intent labels (`[Must]`/`[Recommend]`) when surfacing prior findings - the table shows what was actually written.
