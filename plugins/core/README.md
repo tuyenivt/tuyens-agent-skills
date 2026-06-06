@@ -127,12 +127,13 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                                                                                                                                                                         |
 | `review-blast-radius`        | Failure propagation and change impact scope assessment                                                                                                                                                                                                |
 | `review-change-risk`         | Pre-implementation risk domain classification for proposed changes                                                                                                                                                                                    |
-| `review-precondition-check`  | Gate code-review workflows: verify clean working tree, non-trunk head, locally-resolvable head ref, and confirm head vs current branch when they differ. Returns minimal `(base_ref, head_ref)` handle. Local git only - no `gh` CLI or platform API. |
+| `review-precondition-check`  | Gate code-review workflows: verify clean tree, non-trunk head, locally-resolvable head ref, confirm head vs current branch when they differ, surface prior-round checkpoint (frontmatter of `review-<branch>.md`) so the workflow can decide incremental re-review. Local git only. |
 | `backend-coding-standards`   | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                                                                                                                                                                   |
 | `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                                                                                                                                                                      |
 | `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention                                                                                                                                                          |
 | `review-pr-risk`             | Lightweight heuristic PR risk classification based on change signals                                                                                                                                                                                  |
-| `review-report-writer`       | Writes the completed review output to a branch-named Markdown file (`review-<branch>.md`, `review-perf-<branch>.md`, etc.). Called as the final step of all `task-*-review*` workflows.                                                               |
+| `review-prior-findings-reconcile` | Round 2+ of any `task-*-review*` workflow: classify each prior finding as Addressed / Still open / Obsolete / Needs re-check by checking whether the cited smell persists in the new diff. Binary contract; no causation linking. |
+| `review-report-writer`       | Writes the completed review with YAML checkpoint frontmatter (head_sha, base_sha, mode, round) so the next round can auto-detect incremental scope. Called as the final step of all `task-*-review*` workflows.                                       |
 
 ### Frontend
 
@@ -182,6 +183,7 @@ Atomics used by the most workflows - highest customization leverage:
 | `review-blast-radius`        | `task-code-review`                                                                                                         |
 | `review-precondition-check`  | `task-code-review`, `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability`                 |
 | `dependency-impact-analysis` | `task-onboard`                                                                                                             |
+| `review-prior-findings-reconcile` | all `task-*-review` stack workflows (round 2+ only)                                                                  |
 | `review-report-writer`       | all `task-*-review*` workflows (core + all stack plugins)                                                                  |
 
 ## Usage Examples
@@ -203,6 +205,16 @@ Scope options - asks interactively if not specified:
 /task-code-review full                         # Core + performance + security + observability
 /task-code-review pr-50273 +security deep      # compose: PR + security + deep depth
 ```
+
+**Re-review (round 2+)** is auto-detected. Rerunning the same command after the commenter pushes fixes will:
+
+1. Look for `review-<branch>.md` from the prior round, parse its YAML checkpoint frontmatter (head_sha, base_sha, mode, round).
+2. Fetch the head branch via its upstream tracking ref (no checkout). Skip silently if no upstream.
+3. If the new head equals the prior head, exit with `No new commits...` - the report file is left byte-identical.
+4. Otherwise scope analysis to `<prior_head_sha>...<current_head_sha>` and reconcile prior High-Impact Findings as Addressed / Still open / Obsolete / Needs re-check. Open items fold into Next Steps with `(open since round <N>)`.
+5. Force fall back to full mode automatically when the prior SHA is unreachable (force-push) or the base branch advanced.
+
+No flags needed - same invocation works for every round. Reports without frontmatter (predating this behavior) are treated as round-1.
 
 **Test strategy:**
 

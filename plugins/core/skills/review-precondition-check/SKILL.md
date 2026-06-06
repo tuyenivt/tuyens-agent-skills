@@ -1,9 +1,9 @@
 ---
 name: review-precondition-check
-description: Gate code review workflows: verify clean tree, non-trunk branch, head ref resolves locally, confirm base/head pair. Local git only.
+description: Gate code review workflows: clean tree, non-trunk branch, resolve base/head pair, surface prior-round checkpoint for incremental re-review. Local git.
 metadata:
   category: review
-  tags: [review, git, pull-request, local-git, gating]
+  tags: [review, git, pull-request, local-git, gating, checkpoint, incremental]
 user-invocable: false
 ---
 
@@ -150,6 +150,37 @@ Proceed with review of `<head-short-name>` from your current branch? [y/N]
 
 Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop.
 
+### Step 7 - Surface prior-round checkpoint (read-only)
+
+This step enables flag-free re-review. It only **reads and reports** - it does not decide mode. The consuming workflow decides.
+
+Compute the prior-report filename from the resolved current branch (sanitization rules per `review-report-writer`: replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
+
+```
+review-<sanitized-branch>.md
+```
+
+If the file does not exist in the current working directory, omit `prior_checkpoint` from the handle and continue.
+
+If the file exists, read the leading YAML frontmatter (delimited by `---` lines at the start of the file). Parse fields:
+
+| Field            | Required for valid checkpoint                                 |
+| ---------------- | -------------------------------------------------------------- |
+| `branch`         | yes                                                            |
+| `base_ref`       | yes                                                            |
+| `base_sha`       | yes                                                            |
+| `head_ref`       | yes                                                            |
+| `head_sha`       | yes                                                            |
+| `mode`           | yes (`full` / `incremental`)                                   |
+| `round`          | yes (integer)                                                  |
+| `scope`          | yes                                                            |
+| `depth`          | yes                                                            |
+| `stack`          | yes                                                            |
+
+If the file lacks a frontmatter block, lacks `---` delimiters, or any required field is missing or unparseable, treat as legacy: emit `prior_checkpoint: legacy` (a single literal value) and continue. The workflow uses this signal to overwrite the legacy report with a fresh round-1 run.
+
+If frontmatter is valid, emit the full block in the handle (see Output Format below). Do not resolve SHAs against the live repository, do not check reachability, do not compare to the current head - those checks belong to the consuming workflow.
+
 ## Output Format
 
 When all preconditions pass, emit this handle and nothing more:
@@ -165,6 +196,19 @@ review-target:
   head_matches_current: true | false
   notes:
     - <ambiguities, fallbacks used, approval-gate outcome, non-trunk-base reminder for pr-ref>
+prior_checkpoint:                       # omit entirely if no prior report file
+  # OR the single literal `legacy` if file exists but frontmatter is missing/invalid
+  branch: <from prior report>
+  base_ref: <from prior report>
+  base_sha: <from prior report>
+  head_ref: <from prior report>
+  head_sha: <from prior report>
+  mode: full | incremental
+  round: <integer>
+  scope: <from prior report>
+  depth: <from prior report>
+  stack: <from prior report>
+  report_path: review-<sanitized-branch>.md
 ```
 
 When a precondition fails, emit only the stop message from the relevant step. Do not emit a partial handle.
@@ -179,3 +223,5 @@ When a precondition fails, emit only the stop message from the relevant step. Do
 - Gating head-vs-current when they already match - that just adds friction.
 - Forcing a `git checkout` of the head branch.
 - Reviewing working-tree changes, explicit commit ranges, or single commits - out of scope.
+- Deciding incremental vs. full mode in Step 7 - just surface the prior checkpoint; the workflow decides.
+- Validating `prior_head_sha` reachability or comparing it to the current head in Step 7 - that's the workflow's job.

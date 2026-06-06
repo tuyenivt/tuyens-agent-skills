@@ -89,6 +89,8 @@ Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Re
 
 Use skill: `review-precondition-check`. Forward `--base` if passed. If it fails fast (dirty tree, trunk branch, missing PR ref, denied head-vs-current confirmation), surface verbatim and stop. Never run state-changing git commands from this workflow.
 
+The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
+
 Once approved, read once and reuse:
 
 - `git diff <base>...<head>`
@@ -96,6 +98,57 @@ Once approved, read once and reuse:
 - `git log --oneline <base>..<head>`
 
 **Skip entirely** when invoked as a subagent and the parent passed the handle plus pre-read artifacts.
+
+Also capture the current SHAs for the report's checkpoint frontmatter:
+
+- `current_head_sha = git rev-parse <head_ref>`
+- `current_base_sha = git rev-parse <base_ref>`
+
+### Step 3.5 - Decide Mode (re-review auto-detect)
+
+Skip if the handle has no `prior_checkpoint` -> `mode = full`, `round = 1`, no fetch, no reconciliation. Continue to Step 4.
+
+If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `mode = full`, `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
+
+Otherwise (valid prior checkpoint present):
+
+**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the local tracking ref so a script can re-run the same command without manually fetching:
+
+```bash
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
+```
+
+If `upstream` resolves to `<remote>/<branch>` form, split and run:
+
+```bash
+git fetch <remote> <branch>
+```
+
+No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
+
+**Step 3.5b - Compare checkpoints.**
+
+| Condition                                                              | Decision                                                                                                                            |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `prior_checkpoint.head_sha == current_head_sha`                        | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` and stop. Do not call `review-report-writer`. |
+| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `mode = full`, `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten; full re-review.`      |
+| `prior_checkpoint.base_sha != current_base_sha`                        | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round> - full re-review.`       |
+| `prior_checkpoint.base_ref != base_ref`                                | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round> - full re-review.`           |
+| None of the above                                                       | `mode = incremental`, `round = prior.round + 1`, `incremental_range = <prior_head_sha>...<current_head_sha>`.                       |
+
+**Step 3.5c - Incremental: re-read the diff scoped to the new range.**
+
+If `mode = incremental`, replace the diff read from Step 3 with:
+
+- `git diff <prior_head_sha>...<current_head_sha>`
+- `git diff --name-status <prior_head_sha>...<current_head_sha>`
+- `git log --oneline <prior_head_sha>..<current_head_sha>`
+
+The full-range diff from Step 3 is discarded; all Phase A-E analysis operates on the incremental range only.
+
+**Step 3.5d - Scope expansion handling.**
+
+If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.` The reconciliation table only covers findings whose scope was active in the prior round.
 
 ### Step 4 - Evaluate Scope Auto-Escalation
 
@@ -219,9 +272,27 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
 - **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by severity
 
+### Step 6.5 - Reconcile Prior Findings (incremental mode only)
+
+Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
+
+- `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
+- `incremental_diff`: from Step 3.5c
+- `name_status`: from Step 3.5c
+
+The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
+
+Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings. Do not emit a standalone "Carry-Over Open Items" section.
+
 ### Step 7 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review`. Write before ending; print the confirmation line.
+Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
+
+- `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
+- `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
+- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted), `stack = react`
+
+Write before ending; print the confirmation line.
 
 ## Feedback Labels
 
@@ -246,6 +317,17 @@ No `[Nitpick]` or `[Praise]`.
 **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
 **Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Round:** <N>                                _(include from round 2 onward)_
+**Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
+**Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
+
+## Prior Round Reconciliation _(incremental rounds only; omit otherwise)_
+
+| Round <N-1> Finding | file:line | Status | Notes |
+| ------------------- | --------- | ------ | ----- |
+| ...                 | ...       | ...    | ...   |
+
+Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
@@ -292,10 +374,11 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by severity alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Blockers > High > Suggestions.
 
 1. **[Implement]** [Blocker] file:line - [one-line action, e.g., "Move `\"use client\"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx; revert layout to Server Component"]
-2. **[Delegate]** [High] [scope: design-system] - [one-line action]
+2. **[Implement]** [High] OldList.ts:88 - missing key on reorderable list (open since round 1)
+3. **[Delegate]** [High] [scope: design-system] - [one-line action]
 
 _Omit if no actionable findings._
 ```
@@ -315,7 +398,8 @@ _Omit if no actionable findings._
 
 - [ ] Step 1: `behavioral-principles` loaded (or accepted from parent)
 - [ ] Step 2: stack confirmed as React; framework and React version recorded
-- [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch command was surfaced; when `head_matches_current` was false, explicit approval was obtained
+- [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch command was surfaced; when `head_matches_current` was false, explicit approval was obtained; current_head_sha and current_base_sha captured
+- [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only` suppression) recorded with firing signals
 - [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; low-risk short-circuit applied when applicable
 - [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); test coverage, RSC -> Client ORM leak, Server Action auth + Zod, `dangerouslySetInnerHTML` / open-redirect / `NEXT_PUBLIC_*` secrets, TS strict, a11y checked
@@ -328,11 +412,17 @@ _Omit if no actionable findings._
 - [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Step 5: extra scopes ran in parallel with the pre-resolved diff/log handle plus framework detection
 - [ ] Step 6: subagent findings merged into one severity-ordered Findings list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by severity
-- [ ] Step 7: review report written via `review-report-writer`; confirmation line printed
+- [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
+- [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
 ## Avoid
 
-- `git fetch` / `git checkout` from this workflow - user runs these
+- State-changing git from this workflow (checkout/merge/pull/rebase). The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
+- Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
+- Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
+- Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
+- Reconciling against prior Suggestions or Architecture/Maintainability notes - only `## High-Impact Findings` rows.
+- Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic frontend conventions when a React idiom exists ("extract to a custom hook", not "extract to a helper")
 - Nitpicking style where no project standard exists
