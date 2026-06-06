@@ -111,7 +111,7 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`                        | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha`                        | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `mode = full`, `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten; full re-review.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round> - full re-review.`       |
 | `prior_checkpoint.base_ref != base_ref`                                | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round> - full re-review.`           |
@@ -129,11 +129,18 @@ The full-range diff from Step 4 is discarded; all Phase A-E analysis operates on
 
 **Step 4.5d - Scope expansion handling.**
 
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.` The reconciliation table only covers findings whose scope was active in the prior round.
+If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary based on mode:
+
+- `mode = incremental`: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.`
+- `mode = full`: `Scope expanded round <N>: +<list>.` (the incremental clause does not apply)
+
+The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
 ### Step 5 - Evaluate Auto-Escalation
 
 Scan files and diff against signal categories (above). Log `signal: <category> -> <file:line>` for each match. Resolve scope (Core / +X / Full) and surface in Summary: `auto-escalated from Core; signals: <list>` or, when user-pinned with conflicting signals, `Scope user-pinned; <category> signals present: <list>`.
+
+**Scope precedence on round 2+:** user flag > firing signals > inherit from `prior_checkpoint.scope`. If the user passed no flag and the (incremental, in incremental mode) diff fires no signals, inherit the prior round's scope so reviewer coverage does not silently narrow. Surface as `Scope: <inherited> (inherited from round <prior.round>)`.
 
 ### Phase A - PR Risk Snapshot
 

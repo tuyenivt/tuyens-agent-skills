@@ -35,6 +35,7 @@ The consuming workflow passes these fields when invoking this skill:
 
 ## Rules
 
+- If any required input from the Inputs table is missing or empty, halt and return `Missing required input: <field>` to the caller. Do not write a partial file, do not invent a default, do not blank the field.
 - Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`.
 - Build the filename from `report_type`:
   - `review` -> `review-<branch>.md`
@@ -52,7 +53,7 @@ The consuming workflow passes these fields when invoking this skill:
 
 ## Frontmatter Contract
 
-Emit exactly this block at the top of the file (omit `prior_head_sha` on round 1):
+Emit exactly this block at the top of the file. Emit `prior_head_sha` whenever `round > 1`, independent of `mode` - a full re-review on round 2+ still records the prior round's head for chain continuity. `generated_at` is the writer's current UTC time (ISO 8601, `Z` suffix); the workflow does not pass it.
 
 ```yaml
 ---
@@ -63,7 +64,7 @@ head_ref: <head_ref>
 head_sha: <full SHA>
 mode: full | incremental
 round: <N>
-prior_head_sha: <full SHA from prior round>
+prior_head_sha: <full SHA from prior round>   # omit on round 1; required on round 2+
 scope: core-only | +perf | +security | +observability | full
 depth: quick | standard | deep
 stack: <stack identifier>

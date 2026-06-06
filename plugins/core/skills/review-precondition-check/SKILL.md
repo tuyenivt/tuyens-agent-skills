@@ -32,9 +32,9 @@ This skill **gates only**: it emits ref names, not diffs or SHAs. The consuming 
 | `pr-<N>`, `pr/<N>`, `pull-<N>`, `mr-<N>` | `pr-ref`         | Matches `^(pr|pull|mr)[-/]\d+$`                                                         | Local branch must already exist (created by user via fetch).   |
 | `<branch>`                               | `branch-vs-base` | Resolves via `git rev-parse --verify refs/heads/<arg>` or `refs/remotes/<arg>`          | Self-review or teammate-branch cross-review.                   |
 
-Trunk list (default): `main`, `master`, `develop`, `trunk`. If the resolved head matches a trunk, fail fast.
+Trunk list (default): `main`, `master`, `develop`, `trunk`. Match is exact-name (case-insensitive), not substring - `develop-bug` is not a trunk. If the resolved head matches a trunk, fail fast.
 
-When an argument is ambiguous (a name that is both a branch and a tag), prefer branch resolution and note the ambiguity in the output.
+When an argument resolves to both a branch and a tag locally (check with `git for-each-ref refs/tags/<arg>`), prefer branch resolution and add this note to the output: `Argument <arg> matched both a local branch and a tag; resolved to branch.`
 
 ### Explicit base override
 
@@ -148,7 +148,7 @@ If you want to run or inspect the code locally:
 Proceed with review of `<head-short-name>` from your current branch? [y/N]
 ```
 
-Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop.
+Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop with `Review cancelled at approval gate.` and emit no handle.
 
 ### Step 7 - Surface prior-round checkpoint (read-only)
 
@@ -196,8 +196,9 @@ review-target:
   head_matches_current: true | false
   notes:
     - <ambiguities, fallbacks used, approval-gate outcome, non-trunk-base reminder for pr-ref>
-prior_checkpoint:                       # omit entirely if no prior report file
-  # OR the single literal `legacy` if file exists but frontmatter is missing/invalid
+prior_checkpoint:                       # omit entirely if no prior report file;
+                                        # OR emit as a scalar: `prior_checkpoint: legacy`
+                                        # if the file exists but frontmatter is missing/invalid
   branch: <from prior report>
   base_ref: <from prior report>
   base_sha: <from prior report>

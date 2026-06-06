@@ -32,7 +32,8 @@ The consuming workflow passes:
 - **Reconciliation is binary per finding: is the specific smell at the cited location still present?** Yes -> `Still open`. No -> `Addressed`. Cannot tell -> `Needs re-check`. File or symbol gone -> `Obsolete`.
 - **A fix attempt that does not remove the cited smell is `Still open`**, regardless of whether the file was touched. The commenter may have been addressing another reviewer's feedback or doing unrelated work; only the smell itself decides.
 - **Do not infer causation.** Never link a new finding to a prior one (no "Addressed-incorrectly", no "regression introduced by fix"). New smells appear in the workflow's New Findings section with no back-reference.
-- **Parse only the prior report's "High-Impact Findings" section.** Suggestions and notes from architecture/maintainability sections are not reconciled - they carry over implicitly via the next round's full Phase E pass on touched files.
+- **Parse every row under the prior report's `## High-Impact Findings` heading**, regardless of label (`[Must]`, `[Recommend]`, `[Question]`, `[Blocker]`, `[High]`, `[Suggestion]`). A `[Suggestion]` row placed inside High-Impact is still in scope. Architecture / Maintainability sections are not - they carry over implicitly via the next round's full Phase E pass on touched files.
+- **Treat `[Question]` rows as a smell defined by the answer the reviewer expected.** Reduce the question to its implicit smell ("Why X instead of Y?" -> "X used where Y expected"). Same Addressed / Still open / Obsolete / Needs re-check decision as any other row.
 - **One row per prior finding.** Preserve original severity label and `file:line` exactly as written in the prior report.
 
 ## Pattern
