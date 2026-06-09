@@ -20,7 +20,7 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +security | +observability | full | core-only] [quick | standard | deep] [--base <branch>] [--spec <slug>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [quick | standard | deep] [--base <branch>] [--spec <slug>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -71,7 +71,7 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+security`, `+observability`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
 ### Step 6 - Write Report
 
@@ -98,7 +98,7 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** unknown (generic fallback applied)
-**Scope:** Core | +Security | +Perf | +Observability | Full
+**Scope:** Core | +Sec | +Perf | +Obs | Full
 **Depth:** quick | standard | deep
 
 ## High-Impact Findings

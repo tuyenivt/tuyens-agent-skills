@@ -48,17 +48,17 @@ Staff-level React / Next.js / Vite code review umbrella. Covers correctness, arc
 |-------|-----------|
 | Core | Phases A-E (React-flavored) |
 | + Perf | Core + `task-react-review-perf` subagent |
-| + Security | Core + `task-react-review-security` subagent |
-| + Observability | Core + `task-react-review-observability` subagent |
+| + Sec | Core + `task-react-review-security` subagent |
+| + Obs | Core + `task-react-review-observability` subagent |
 | Full | Core + all three subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (React-tuned):**
 
-- **+Security:** new Server Action / Route Handler / `middleware.ts`, `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
+- **+Sec:** new Server Action / Route Handler / `middleware.ts`, `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
 - **+Perf:** new route / page / layout, new `"use client"` component, new client dependency, new TanStack Query usage, `next/image` / `next/font` change, `next/dynamic` / `React.lazy`, ISR / `revalidate` change, long-list rendering
-- **+Observability:** new or modified `instrumentation.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
+- **+Obs:** new or modified `instrumentation.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
 - **2+ categories -> Full**
 
 ## Invocation
@@ -69,7 +69,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-react-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-react-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-react-review pr-50273 --base release/2026.05 +security deep`.
+Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-react-review pr-50273 --base release/2026.05 +sec deep`.
 
 **No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
 
@@ -195,7 +195,7 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
-- **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Security subagent is running, defer depth to it.
+- **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Sec subagent is running, defer depth to it.
 
 ### Phase C - React Architecture Guardrails
 
@@ -255,8 +255,8 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 | Scope | Subagents |
 |-------|-----------|
 | + Perf | `task-react-review-perf` |
-| + Security | `task-react-review-security` |
-| + Observability | `task-react-review-observability` |
+| + Sec | `task-react-review-security` |
+| + Obs | `task-react-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt contract** - each must include:
@@ -321,7 +321,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** React <version> / TypeScript <version>
 **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

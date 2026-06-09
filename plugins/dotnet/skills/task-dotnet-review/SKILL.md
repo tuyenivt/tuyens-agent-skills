@@ -39,17 +39,17 @@ Default: `standard`. **Auto-promote to `deep`** when Phase A computes Blast Radi
 | --------------- | -------------------------------------------------------------------------- |
 | Core            | Phases A-E only                                                            |
 | + Perf          | Core + parallel subagent: `task-dotnet-review-perf`                        |
-| + Security      | Core + parallel subagent: `task-dotnet-review-security`                    |
-| + Observability | Core + parallel subagent: `task-dotnet-review-observability`               |
+| + Sec           | Core + parallel subagent: `task-dotnet-review-security`                    |
+| + Obs           | Core + parallel subagent: `task-dotnet-review-observability`               |
 | Full            | Core + all three .NET subagents in parallel                                |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals:**
 
-- `IFormFile`, `AddAuthentication` / `AddAuthorization` / policy changes, `[FromBody]` DTO changes, `FromSqlRaw` / `FromSqlInterpolated`, secrets in `appsettings*.json`, background workers consuming user input, `JsonSerializer.Deserialize<DomainEntity>`, `Process.Start` with user input, `unsafe` blocks -> **+Security**
+- `IFormFile`, `AddAuthentication` / `AddAuthorization` / policy changes, `[FromBody]` DTO changes, `FromSqlRaw` / `FromSqlInterpolated`, secrets in `appsettings*.json`, background workers consuming user input, `JsonSerializer.Deserialize<DomainEntity>`, `Process.Start` with user input, `unsafe` blocks -> **+Sec**
 - New EF Core migration, new `IQueryable` materialization, new `Include` / `ThenInclude`, new pagination, new payload endpoints, loops calling DB or HTTP, new `IMemoryCache` / `IDistributedCache`, new `Task.WhenAll` fan-out -> **+Perf**
-- New project / assembly, new external client, new `BackgroundService` / MassTransit consumer / Hangfire job, `Program.cs` / Serilog config change, new `Meter` / `Counter`, lifecycle / graceful-shutdown changes -> **+Observability**
+- New project / assembly, new external client, new `BackgroundService` / MassTransit consumer / Hangfire job, `Program.cs` / Serilog config change, new `Meter` / `Counter`, lifecycle / graceful-shutdown changes -> **+Obs**
 - Two or more signal categories -> **Full**
 
 ## Invocation
@@ -60,7 +60,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-dotnet-review <branch>` | `<branch>` vs base (3-dot diff)                                                                                                                               |
 | `/task-dotnet-review pr-<N>`   | PR head fetched into local branch `pr-<N>` (user runs `git fetch origin pull/<N>/head:pr-<N>`; see `review-precondition-check` for GitLab/Bitbucket variants) |
 
-No checkout required. Stay on your current branch; workflow reads via ref-qualified diffs. **Explicit base override:** pass `--base <branch>` when PR was opened against a non-trunk base. Flags compose: `/task-dotnet-review pr-50273 --base release/2026.05 +security deep`.
+No checkout required. Stay on your current branch; workflow reads via ref-qualified diffs. **Explicit base override:** pass `--base <branch>` when PR was opened against a non-trunk base. Flags compose: `/task-dotnet-review pr-50273 --base release/2026.05 +sec deep`.
 
 ## Workflow
 
@@ -155,7 +155,7 @@ Scan file list and diff for the auto-escalation signals above. Log `signal: <cat
 
 **Scope precedence on round 2+:** user flag > firing signals > inherit from `prior_checkpoint.scope`. If the user passed no flag and the diff (incremental, in incremental mode) fires no signals, inherit the prior round's scope so reviewer coverage does not silently narrow. Surface as `Scope: <inherited> (inherited from round <prior.round>)`.
 
-Surface decision in Summary. Escalated: `auto-escalated from Core; signals: <list>`. User-pinned with conflicting signals: `Scope user-pinned to Core; +Security signals present: <list>`.
+Surface decision in Summary. Escalated: `auto-escalated from Core; signals: <list>`. User-pinned with conflicting signals: `Scope user-pinned to Core; +Sec signals present: <list>`.
 
 ### Phase A - PR Risk Snapshot
 
@@ -243,8 +243,8 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 | Scope                | Subagents                                                                                                                    |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Core + Perf          | `task-dotnet-review-perf`                                                                                                    |
-| Core + Security      | `task-dotnet-review-security`                                                                                                |
-| Core + Observability | `task-dotnet-review-observability`                                                                                           |
+| Core + Sec           | `task-dotnet-review-security`                                                                                                |
+| Core + Obs           | `task-dotnet-review-observability`                                                                                           |
 | Full                 | All three in parallel                                                                                                        |
 
 **Subagent prompt contract:**
@@ -311,7 +311,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Data Access:** EF Core <version> | Dapper <version> | mixed
 **Mediator:** MediatR <version> | none
 **Messaging:** MassTransit | Hangfire | Channel | none
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

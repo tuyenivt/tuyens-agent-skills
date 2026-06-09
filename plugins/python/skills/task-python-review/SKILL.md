@@ -47,17 +47,17 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 |-------|-----------|
 | Core | Phases A-E (Python-flavored) |
 | + Perf | Core + `task-python-review-perf` subagent |
-| + Security | Core + `task-python-review-security` subagent |
-| + Observability | Core + `task-python-review-observability` subagent |
+| + Sec | Core + `task-python-review-security` subagent |
+| + Obs | Core + `task-python-review-observability` subagent |
 | Full | Core + all three subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (Python-tuned):**
 
-- **+Security:** file uploads (`UploadFile`, `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input
+- **+Sec:** file uploads (`UploadFile`, `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input
 - **+Perf:** new Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths
-- **+Observability:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
+- **+Obs:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
 - **2+ categories → Full**
 
 ## Invocation
@@ -68,7 +68,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-python-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-python-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-python-review pr-50273 --base release/2026.05 +security deep`.
+Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-python-review pr-50273 --base release/2026.05 +sec deep`.
 
 **No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
 
@@ -264,8 +264,8 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 | Scope | Subagents |
 |-------|-----------|
 | + Perf | `task-python-review-perf` |
-| + Security | `task-python-review-security` |
-| + Observability | `task-python-review-observability` |
+| + Sec | `task-python-review-security` |
+| + Obs | `task-python-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt contract** - each must include:
@@ -330,7 +330,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

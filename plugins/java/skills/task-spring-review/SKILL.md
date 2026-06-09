@@ -32,8 +32,8 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 | ----------------- | ------------------------------------------ |
 | Core (default)    | Phases A-E only                            |
 | + Perf            | `task-spring-review-perf` subagent         |
-| + Security        | `task-spring-review-security` subagent     |
-| + Observability   | `task-spring-review-observability` subagent|
+| + Sec             | `task-spring-review-security` subagent     |
+| + Obs             | `task-spring-review-observability` subagent|
 | Full              | All three in parallel                      |
 
 **Auto-escalation signals** (Step 4 scans the diff; pass `core-only` to suppress):
@@ -52,7 +52,7 @@ Two-plus categories -> Full. User-passed scope wins but signals are still record
 | `/task-spring-review <branch>`  | `<branch>` vs base (3-dot diff)                                   |
 | `/task-spring-review pr-<N>`    | User-fetched local ref `pr-<N>`; see `review-precondition-check`  |
 
-Flags compose: `/task-spring-review pr-50273 --base release/2026.05 +security deep`. No checkout required.
+Flags compose: `/task-spring-review pr-50273 --base release/2026.05 +sec deep`. No checkout required.
 
 ## Workflow
 
@@ -226,8 +226,8 @@ Skip if Core only. Spawn each extra subagent in parallel with the main thread.
 | Scope                | Subagents                                                          |
 | -------------------- | ------------------------------------------------------------------ |
 | Core + Perf          | `task-spring-review-perf`                                          |
-| Core + Security      | `task-spring-review-security`                                      |
-| Core + Observability | `task-spring-review-observability`                                 |
+| Core + Sec           | `task-spring-review-security`                                      |
+| Core + Obs           | `task-spring-review-observability`                                 |
 | Full                 | All three in parallel                                              |
 
 **Subagent prompt contract:** pass the resolved `base_ref`/`head_ref`, the already-read diff and commit log, depth level, and pre-confirmed stack. Subagent skips `review-precondition-check` and re-reading the diff. Return findings using its own Output Format.
@@ -274,7 +274,7 @@ The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` 
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Java <version> / Spring Boot <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** quick | standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

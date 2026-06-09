@@ -38,16 +38,16 @@ Staff-level Angular code review covering correctness, architecture, AI-quality, 
 | Scope | What runs |
 |-------|-----------|
 | Core | Phases A-E (Angular-flavored) |
-| +Perf / +Security / +Observability | Core + matching `task-angular-review-*` subagent |
+| +Perf / +Sec / +Obs | Core + matching `task-angular-review-*` subagent |
 | Full | Core + all three subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress escalation.
 
 **Auto-escalation signals:**
 
-- **+Security:** new `bypassSecurityTrust*`, new `[innerHTML]`, new functional interceptor / guard, auth config change, `Router.navigateByUrl` from user input, CSP change, secret-like `environment.ts` entries
+- **+Sec:** new `bypassSecurityTrust*`, new `[innerHTML]`, new functional interceptor / guard, auth config change, `Router.navigateByUrl` from user input, CSP change, secret-like `environment.ts` entries
 - **+Perf:** new lazy route, heavy dependency, Default CD, new `@defer`, new store, `HttpClient` call without caching, long list without `track`
-- **+Observability:** new `ErrorHandler`, Sentry / RUM SDK init, `web-vitals` reporter, analytics call, new `TransferState`
+- **+Obs:** new `ErrorHandler`, Sentry / RUM SDK init, `web-vitals` reporter, analytics call, new `TransferState`
 - **2+ categories -> Full**
 
 ## Invocation
@@ -58,7 +58,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress escalation.
 | `/task-angular-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-angular-review pr-<N>` | PR head fetched into `pr-<N>` (user runs fetch) |
 
-`--base <branch>` overrides default base. Scope and depth flags compose: `/task-angular-review pr-50273 --base release/2026.05 +security deep`.
+`--base <branch>` overrides default base. Scope and depth flags compose: `/task-angular-review pr-50273 --base release/2026.05 +sec deep`.
 
 ## Workflow
 
@@ -213,8 +213,8 @@ If scope is Core only, skip.
 | Scope | Subagent |
 |-------|----------|
 | +Perf | `task-angular-review-perf` |
-| +Security | `task-angular-review-security` |
-| +Observability | `task-angular-review-observability` |
+| +Sec | `task-angular-review-security` |
+| +Obs | `task-angular-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt:** resolved review target (`base_ref`, `head_ref`), pre-read diff + commit log, depth level, pre-confirmed stack + detected configuration. Instruction to return findings in its own Output Format.
@@ -272,7 +272,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack:** Angular <version> / <CD mode> / SSR: <enabled|disabled>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(append `auto-escalated; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated; signals: <list>` if applicable)_
 **Depth:** quick | standard | deep _(append `auto-promoted; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

@@ -42,17 +42,17 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 |-------|-----------|
 | Core | Phases A-E |
 | + Perf | Core + `task-go-review-perf` subagent |
-| + Security | Core + `task-go-review-security` subagent |
-| + Observability | Core + `task-go-review-observability` subagent |
+| + Sec | Core + `task-go-review-security` subagent |
+| + Obs | Core + `task-go-review-observability` subagent |
 | Full | Core + all three in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals:**
 
-- **+Security:** `c.FormFile`, JWT / auth changes, `ShouldBindJSON` DTO changes, raw SQL via `fmt.Sprintf` / `db.Raw`, secrets in config, Asynq / Kafka consuming user input, `mapstructure.Decode(req.Body, target)`, client-controlled price / amount / currency / discount fields on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`)
+- **+Sec:** `c.FormFile`, JWT / auth changes, `ShouldBindJSON` DTO changes, raw SQL via `fmt.Sprintf` / `db.Raw`, secrets in config, Asynq / Kafka consuming user input, `mapstructure.Decode(req.Body, target)`, client-controlled price / amount / currency / discount fields on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`)
 - **+Perf:** new migration, new GORM query statement (`Find` / `First` / `Preload` / `Joins` - new DB roundtrip, not a modifier like `Order` / `Limit` added to an existing query), new pagination, new endpoints with payloads, loops calling DB or HTTP, new cache reads, new goroutines / `errgroup`
-- **+Observability:** new service / package, new external client, new Asynq / Kafka producer / consumer, logging config change, `prometheus` registration, `pprof`, lifecycle changes
+- **+Obs:** new service / package, new external client, new Asynq / Kafka producer / consumer, logging config change, `prometheus` registration, `pprof`, lifecycle changes
 - **2+ categories -> Full**
 
 ## Invocation
@@ -318,7 +318,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** Go <version> / Gin <version>
 **Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

@@ -67,7 +67,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | `task-onboard`                   | **Composing workflow.** Codebase onboarding - composes a stack-specific `*-onboard-map` atomic for bootstrap commands, key files, conventions, and risk hotspots (Gradle/composer/cargo, Spring vs Rails layout, etc.). Falls back to universal map for unknown stacks. Supports `Focus: first-pr / architect-survey / full`.                                       |
 | `task-pr-create`                 | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                                                                                                                                                                                                                                    |
 | `task-code-refactor`             | **Router.** Detects stack and dispatches to `task-{stack}-refactor`. For unknown stacks, runs a minimal generic protocol with smell identification and test-coverage gate.                                                                                                                                                                                          |
-| `task-code-review`               | **Router.** Detects stack and dispatches to `task-{stack}-review`, forwarding scope (`+perf`/`+security`/`+observability`/`full`) and depth flags. For unknown stacks, runs a minimal Phases-A-E generic review.                                                                                                                                                    |
+| `task-code-review`               | **Router.** Detects stack and dispatches to `task-{stack}-review`, forwarding scope (`+perf`/`+sec`/`+obs`/`full`) and depth flags. For unknown stacks, runs a minimal Phases-A-E generic review.                                                                                                                                                                  |
 | `task-code-review-perf`          | **Router.** Detects stack and dispatches to `task-{stack}-review-perf`. For unknown stacks, runs a minimal generic perf review (DB / concurrency / caching / I/O / frontend).                                                                                                                                                                                       |
 | `task-code-review-security`      | **Router.** Detects stack and dispatches to `task-{stack}-review-security`. For unknown stacks, runs a minimal OWASP Top 10 review.                                                                                                                                                                                                                                 |
 | `task-code-review-observability` | **Router.** Detects stack and dispatches to `task-{stack}-review-observability`. For unknown stacks, runs a minimal generic review (logging / metrics / tracing / SLO).                                                                                                                                                                                             |
@@ -200,10 +200,10 @@ Scope options - asks interactively if not specified:
 
 ```
 /task-code-review +perf                        # Core + performance review
-/task-code-review +security                    # Core + security review
-/task-code-review +observability               # Core + observability review
+/task-code-review +sec                         # Core + security review
+/task-code-review +obs                         # Core + observability review
 /task-code-review full                         # Core + performance + security + observability
-/task-code-review pr-50273 +security deep      # compose: PR + security + deep depth
+/task-code-review pr-50273 +sec deep           # compose: PR + security + deep depth
 ```
 
 **Re-review (round 2+)** is auto-detected. Rerunning the same command after the commenter pushes fixes will:

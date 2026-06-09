@@ -47,17 +47,17 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 |-------|-----------|
 | Core | Phases A-E (Node-flavored) |
 | + Perf | Core + `task-node-review-perf` subagent |
-| + Security | Core + `task-node-review-security` subagent |
-| + Observability | Core + `task-node-review-observability` subagent |
+| + Sec | Core + `task-node-review-security` subagent |
+| + Obs | Core + `task-node-review-observability` subagent |
 | Full | Core + all three subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (Node-tuned):**
 
-- **+Security:** file uploads (`multer`, `FileInterceptor`, `@UploadedFile()`), auth strategy / guard changes (`AuthGuard('jwt')`, `JwtStrategy`, `requireAuth`), DTO / Zod schema changes, raw SQL via `$queryRawUnsafe` / `repository.query`, secrets in env / config, BullMQ consuming user input, `Object.assign(target, req.body)`
+- **+Sec:** file uploads (`multer`, `FileInterceptor`, `@UploadedFile()`), auth strategy / guard changes (`AuthGuard('jwt')`, `JwtStrategy`, `requireAuth`), DTO / Zod schema changes, raw SQL via `$queryRawUnsafe` / `repository.query`, secrets in env / config, BullMQ consuming user input, `Object.assign(target, req.body)`
 - **+Perf:** new Prisma / TypeORM migration, new ORM query (`findMany` / `find` / `createQueryBuilder`), new `include` / `relations`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `lru-cache` / Redis read paths
-- **+Observability:** new service / module, new external client (`axios.create`, `undici` Pool), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client`, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
+- **+Obs:** new service / module, new external client (`axios.create`, `undici` Pool), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client`, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
 - **2+ categories → Full**
 
 ## Invocation
@@ -68,7 +68,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-node-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-node-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-node-review pr-50273 --base release/2026.05 +security deep`.
+Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-node-review pr-50273 --base release/2026.05 +sec deep`.
 
 **No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
 
@@ -262,8 +262,8 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 | Scope | Subagents |
 |-------|-----------|
 | + Perf | `task-node-review-perf` |
-| + Security | `task-node-review-security` |
-| + Observability | `task-node-review-observability` |
+| + Sec | `task-node-review-security` |
+| + Obs | `task-node-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt contract** - each must include:
@@ -329,7 +329,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** Node.js <version> / TypeScript <version>
 **Framework:** NestJS <version> | Express <version> | mixed
 **ORM:** Prisma <version> | TypeORM <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

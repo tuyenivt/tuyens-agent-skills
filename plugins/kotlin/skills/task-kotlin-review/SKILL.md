@@ -46,8 +46,8 @@ Default: `standard`.
 | --------------- | -------------------------------------------------------- |
 | Core            | Phases A-E (Kotlin-flavored)                             |
 | + Perf          | Core + parallel `task-kotlin-review-perf`                |
-| + Security      | Core + parallel `task-kotlin-review-security`            |
-| + Observability | Core + parallel `task-kotlin-review-observability`       |
+| + Sec           | Core + parallel `task-kotlin-review-security`            |
+| + Obs           | Core + parallel `task-kotlin-review-observability`       |
 | Full            | Core + all three subagents in parallel                   |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
@@ -69,7 +69,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **No checkout required.** Read via ref-qualified diffs. Pass `--base <branch>` when PR opened against a non-trunk base.
 
-Scope and depth flags compose: `/task-kotlin-review pr-50273 --base release/2026.05 +security deep`.
+Scope and depth flags compose: `/task-kotlin-review pr-50273 --base release/2026.05 +sec deep`.
 
 ## Workflow
 
@@ -278,8 +278,8 @@ Spawn subagents in parallel:
 | Scope                | Subagents                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------- |
 | Core + Perf          | `task-kotlin-review-perf`                                                                          |
-| Core + Security      | `task-kotlin-review-security`                                                                      |
-| Core + Observability | `task-kotlin-review-observability`                                                                 |
+| Core + Sec           | `task-kotlin-review-security`                                                                      |
+| Core + Obs           | `task-kotlin-review-observability`                                                                 |
 | Full                 | All three in parallel                                                                              |
 
 Each subagent prompt includes: resolved review target (`base_ref`, `head_ref`) + pre-read diff + log, depth, pre-confirmed stack, instruction to use its own Output Format.
@@ -325,7 +325,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Kotlin <version> / Spring Boot <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

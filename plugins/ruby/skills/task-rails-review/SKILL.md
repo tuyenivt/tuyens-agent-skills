@@ -19,20 +19,20 @@ Pre-merge Rails PR review, post-AI quality gate, architecture-drift detection. N
 
 ## Depth and Scope
 
-Depth (`quick` | `standard` | `deep`, default `standard`) and scope (`Core` | `+Perf` | `+Security` | `+Observability` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
+Depth (`quick` | `standard` | `deep`, default `standard`) and scope (`Core` | `+Perf` | `+Sec` | `+Obs` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
 
 **Auto-promote depth to `deep`** after Step 4 when Blast Radius is Wide/Critical and user did not pass `quick`. Record in Summary.
 
 **Auto-escalate scope on Rails signals:**
 
-- **+Security**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input
+- **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input
 - **+Perf**: `db/migrate/`, `add_index`, new `.where`/`.order`/scopes, new payload endpoints, loops hitting DB or HTTP
-- **+Observability**: new service, external dependency, ActiveJob/Sidekiq class, log/notifications config
+- **+Obs**: new service, external dependency, ActiveJob/Sidekiq class, log/notifications config
 - Two or more categories -> **Full**
 
 ## Invocation
 
-`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+security|+perf|+observability|--full] [quick|deep|core-only]`
+`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+sec|+perf|+obs|--full] [quick|deep|core-only]`
 
 Defaults to current branch vs base; fails fast on trunk. Use `pr-<N>` for a local fetched ref. The workflow never modifies the working tree.
 
@@ -122,7 +122,7 @@ Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Security is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`".
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`".
 
 Atomic skills (consult when PR touches the area):
 
@@ -239,7 +239,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Ruby <version> / Rails <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** quick | standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

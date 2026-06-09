@@ -48,17 +48,17 @@ Staff-level Vue / Nuxt / Vite code review umbrella. Covers correctness, architec
 |-------|-----------|
 | Core | Phases A-E (Vue-flavored) |
 | + Perf | Core + `task-vue-review-perf` subagent |
-| + Security | Core + `task-vue-review-security` subagent |
-| + Observability | Core + `task-vue-review-observability` subagent |
+| + Sec | Core + `task-vue-review-security` subagent |
+| + Obs | Core + `task-vue-review-observability` subagent |
 | Full | Core + all three subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (Vue-tuned):**
 
-- **+Security:** new Nitro endpoint / `server/middleware/*`, `v-html` introduction, auth / session config, `NUXT_PUBLIC_*` / `VITE_*` additions, file upload, `navigateTo(...)` from user input, CSP / `routeRules.headers` change
+- **+Sec:** new Nitro endpoint / `server/middleware/*`, `v-html` introduction, auth / session config, `NUXT_PUBLIC_*` / `VITE_*` additions, file upload, `navigateTo(...)` from user input, CSP / `routeRules.headers` change
 - **+Perf:** new page / layout, new heavy component, new client dependency in `dependencies`, new TanStack Query / Pinia store, `<NuxtImg>` / `@nuxt/fonts` change, lazy component / async chunk, `routeRules` change, long-list rendering
-- **+Observability:** new `plugins/*.ts`, Sentry / RUM SDK init, `web-vitals` reporter, new error boundary / `error.vue`, new logging utility, analytics call
+- **+Obs:** new `plugins/*.ts`, Sentry / RUM SDK init, `web-vitals` reporter, new error boundary / `error.vue`, new logging utility, analytics call
 - **2+ categories -> Full**
 
 ## Invocation
@@ -69,7 +69,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-vue-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-vue-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-vue-review pr-50273 --base release/2026.05 +security deep`.
+Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-vue-review pr-50273 --base release/2026.05 +sec deep`.
 
 **No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
 
@@ -252,8 +252,8 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 | Scope | Subagents |
 |-------|-----------|
 | + Perf | `task-vue-review-perf` |
-| + Security | `task-vue-review-security` |
-| + Observability | `task-vue-review-observability` |
+| + Sec | `task-vue-review-security` |
+| + Obs | `task-vue-review-observability` |
 | Full | All three in parallel |
 
 **Subagent prompt contract** - each must include:
@@ -318,7 +318,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

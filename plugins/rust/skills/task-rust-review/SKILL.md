@@ -41,17 +41,17 @@ Staff-level Rust / Axum / sqlx / Tokio review umbrella. Covers correctness, arch
 |-------|-----------|
 | Core | Phases A-E |
 | + Perf | Core + `task-rust-review-perf` |
-| + Security | Core + `task-rust-review-security` |
-| + Observability | Core + `task-rust-review-observability` |
+| + Sec | Core + `task-rust-review-security` |
+| + Obs | Core + `task-rust-review-observability` |
 | Full | Core + all three in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals:**
 
-- **+Security:** `axum::extract::Multipart`, JWT / auth changes (`jsonwebtoken`, auth `from_fn`), DTO changes (request structs deriving `Deserialize` + `Validate`), raw SQL via `sqlx::query(&format!(...))`, secrets in config, background tasks consuming user input, `serde_json::from_value::<Domain>(req.body)`, `unsafe` blocks, `FromRow` struct returned via `Json(...)`
+- **+Sec:** `axum::extract::Multipart`, JWT / auth changes (`jsonwebtoken`, auth `from_fn`), DTO changes (request structs deriving `Deserialize` + `Validate`), raw SQL via `sqlx::query(&format!(...))`, secrets in config, background tasks consuming user input, `serde_json::from_value::<Domain>(req.body)`, `unsafe` blocks, `FromRow` struct returned via `Json(...)`
 - **+Perf:** new sqlx migration, new `query!` / `query_as!`, new `JOIN`, new pagination, loops calling DB / HTTP, new in-process cache (`moka` / `dashmap`) or Redis read paths, new `tokio::spawn` / `JoinSet`
-- **+Observability:** new module / crate, new external client (`reqwest::Client`, `redis::Client`, `aws-sdk-*`), new background worker / Kafka producer or consumer, `tracing_subscriber` change, new `metrics::counter!`, lifecycle changes, missing `#[tracing::instrument]` on new handlers
+- **+Obs:** new module / crate, new external client (`reqwest::Client`, `redis::Client`, `aws-sdk-*`), new background worker / Kafka producer or consumer, `tracing_subscriber` change, new `metrics::counter!`, lifecycle changes, missing `#[tracing::instrument]` on new handlers
 - **2+ categories -> Full**
 
 ## Invocation
@@ -62,7 +62,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 | `/task-rust-review <branch>` | `<branch>` vs base (3-dot diff) |
 | `/task-rust-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs fetch) |
 
-Pass `--base <branch>` for non-trunk base. Scope and depth flags compose: `/task-rust-review pr-50273 --base release/2026.05 +security deep`.
+Pass `--base <branch>` for non-trunk base. Scope and depth flags compose: `/task-rust-review pr-50273 --base release/2026.05 +sec deep`.
 
 **No checkout required.** Read via ref-qualified diffs; never modify the working tree.
 
@@ -303,7 +303,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Runtime:** Tokio <version>
 **Data Access:** sqlx <version> | diesel <version> | mixed
 **Messaging:** Tokio queue | AMQP (lapin) | Kafka (rdkafka) | none
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_

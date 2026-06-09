@@ -42,17 +42,17 @@ Default: `standard`. **Auto-promote to `deep`** when Phase A returns `Blast Radi
 | --------------- | -------------------------------------------------------------------------- |
 | Core            | Phases A-E (Laravel-flavored)                                              |
 | + Perf          | Core + `task-laravel-review-perf` subagent                                 |
-| + Security      | Core + `task-laravel-review-security` subagent                             |
-| + Observability | Core + `task-laravel-review-observability` subagent                        |
-| Full            | Core + Perf + Security + Observability (3 parallel subagents)              |
+| + Sec           | Core + `task-laravel-review-security` subagent                             |
+| + Obs           | Core + `task-laravel-review-observability` subagent                        |
+| Full            | Core + Perf + Sec + Obs (3 parallel subagents)                             |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress. Two or more signal categories -> **Full**.
 
 **Auto-escalation signals (Laravel):**
 
-- **+Security:** file uploads (`$request->file`, `Storage::put`), Sanctum/Passport/`auth:` middleware edits, Gate/Policy edits, `Model::create($request->all())`, `DB::raw($input)` / `whereRaw("...$input")`, `env()` in business code, jobs accepting webhook payloads, signed URLs, `Crypt::encrypt`, untrusted-input deserialization.
+- **+Sec:** file uploads (`$request->file`, `Storage::put`), Sanctum/Passport/`auth:` middleware edits, Gate/Policy edits, `Model::create($request->all())`, `DB::raw($input)` / `whereRaw("...$input")`, `env()` in business code, jobs accepting webhook payloads, signed URLs, `Crypt::encrypt`, untrusted-input deserialization.
 - **+Perf:** new Eloquent query / `with()` chain / Blade loop over relationship / `paginate*`, new endpoint with payload, loops calling DB or HTTP, new `Cache::remember`, `Http::pool` fan-out, new dispatched job.
-- **+Observability:** new service or external client (`Http::withToken`, AWS/Stripe SDK), new Job/Listener/`Schedule::*`, edits to `bootstrap/app.php` / `config/logging.php` / `config/queue.php`, new `Log::*` channel / Telescope / Horizon config, worker lifecycle changes.
+- **+Obs:** new service or external client (`Http::withToken`, AWS/Stripe SDK), new Job/Listener/`Schedule::*`, edits to `bootstrap/app.php` / `config/logging.php` / `config/queue.php`, new `Log::*` channel / Telescope / Horizon config, worker lifecycle changes.
 - **+Perf (migration):** migration on a hot table (alter/drop column/`change()`/index referenced by 5+ files or named in the PR title), `NOT NULL` on existing column without nullable->backfill->set-NOT-NULL, single-migration column rename/drop.
 
 ## Invocation
@@ -63,7 +63,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress. Two or mor
 | `/task-laravel-review <branch>` | Review `<branch>` vs its base (3-dot diff)                                                                                                                                             |
 | `/task-laravel-review pr-<N>`   | Review a PR head fetched into local branch `pr-<N>` - run `git fetch origin pull/<N>/head:pr-<N>` first (user runs it; see `review-precondition-check` for GitLab/Bitbucket variants)  |
 
-No checkout required (ref-qualified diffs). Pass `--base <branch>` when the PR was opened against a non-trunk base. Flags compose: `/task-laravel-review pr-50273 --base release/2026.05 +security deep`.
+No checkout required (ref-qualified diffs). Pass `--base <branch>` when the PR was opened against a non-trunk base. Flags compose: `/task-laravel-review pr-50273 --base release/2026.05 +sec deep`.
 
 ## Workflow
 
@@ -247,7 +247,7 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (subag
 
 ### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
-Skip if Core only. Otherwise spawn each extra-scope subagent **in parallel** with the main Core thread: `+Perf` -> `task-laravel-review-perf`; `+Security` -> `task-laravel-review-security`; `+Observability` -> `task-laravel-review-observability`; **Full** -> all three concurrently.
+Skip if Core only. Otherwise spawn each extra-scope subagent **in parallel** with the main Core thread: `+Perf` -> `task-laravel-review-perf`; `+Sec` -> `task-laravel-review-security`; `+Obs` -> `task-laravel-review-observability`; **Full** -> all three concurrently.
 
 Each subagent prompt must include: resolved `base_ref`/`head_ref` + pre-read diff/log (skips `review-precondition-check` and `git diff`); depth level + pre-confirmed stack/ORM/auth/queue signals (skips `stack-detect`); spec slug if `--spec` was passed; instruction to return findings in the subagent's own Output Format.
 
@@ -308,7 +308,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Auth:** Sanctum (token) | Sanctum (SPA) | Passport | session
 **Queue:** redis (Horizon) | database | sync
 **Tests:** Pest | PHPUnit
-**Scope:** Core | +Security | +Perf | +Observability | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
 **Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
