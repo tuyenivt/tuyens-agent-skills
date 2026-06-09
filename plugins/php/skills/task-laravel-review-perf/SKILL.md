@@ -40,7 +40,6 @@ Tie-breaker: "would this page on-call within 24h of a 2x traffic increase?" yes 
 
 | Depth      | When to Use                                                  | What Runs                                          |
 | ---------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `quick`    | Single endpoint or model ("is this query ok?")               | Steps 5 + 6 only                                   |
 | `standard` | Default - full Laravel perf review                           | All steps                                          |
 | `deep`     | Profiling-driven review with Telescope / Clockwork / APM     | All steps + capacity guidance and load plan        |
 
@@ -130,8 +129,6 @@ Use skill: `laravel-migration-safety` for any change in `database/migrations/`.
 
 ### Step 7 - Queue Throughput, Jobs, Scheduling
 
-_Skipped at `quick` depth unless diff touches queue files._
-
 Use skill: `laravel-queue-patterns`. Review-scoped scan:
 
 - [ ] `QUEUE_CONNECTION` is not `sync` in production env; `dispatchSync` not on user-request paths
@@ -145,8 +142,6 @@ Use skill: `laravel-queue-patterns`. Review-scoped scan:
 
 ### Step 8 - HTTP Client / External Calls
 
-_Skipped at `quick` depth unless diff touches HTTP/SDK calls._
-
 - [ ] `Http::timeout(...)` explicit on every outbound call (default relies on PHP `default_socket_timeout`); typical `Http::timeout(5)->retry(3, 100)`
 - [ ] `Http::retry(...)` with backoff filtered to recoverable cases: `retry(3, 100, fn ($e) => $e instanceof ConnectionException)`
 - [ ] `Http::pool(fn ($pool) => [...])` for parallel fan-out
@@ -155,8 +150,6 @@ _Skipped at `quick` depth unless diff touches HTTP/SDK calls._
 - [ ] `Http::fake([...])` in tests - never hit real network in CI
 
 ### Step 9 - Caching and Response Performance
-
-_Skipped at `quick` depth unless the diff touches caching primitives._
 
 - [ ] `Cache::remember($key, $ttl, fn () => ...)` for expensive reads; explicit TTL mandatory; `rememberForever` only with a clear invalidation story
 - [ ] `Cache::tags([...])->remember(...)` only on `redis` / `memcached` - `database` / `file` / `array` drivers throw; confirm driver
@@ -168,8 +161,6 @@ _Skipped at `quick` depth unless the diff touches caching primitives._
 
 ### Step 10 - Runtime, OPcache, Octane Readiness
 
-_Skipped at `quick` depth unless the diff touches runtime config (`composer.json`, `php.ini`, `bootstrap/app.php`, `config/octane.php`, Dockerfile)._
-
 - [ ] OPcache enabled in prod: `enable=1`, `memory_consumption=256`, `max_accelerated_files=20000`, `validate_timestamps=0`; `jit=tracing` + `jit_buffer_size=128M` on PHP 8.0+
 - [ ] Composer autoloader optimized (`--no-dev --optimize-autoloader --classmap-authoritative`); `php artisan optimize` in deploy pipeline
 - [ ] Octane / FrankenPHP / RoadRunner readiness: flag any `app()->singleton(...)` whose closure captures request data (current user/tenant) - foot-gun even when project isn't on Octane today; static class properties as cache also flagged
@@ -178,8 +169,6 @@ _Skipped at `quick` depth unless the diff touches runtime config (`composer.json
 - [ ] Response compression (gzip/brotli) on large JSON; Telescope disabled or strictly sampled in production
 
 ### Step 11 - Observability for Perf (delegation hand-off)
-
-_Skipped at `quick` depth._
 
 Narrow check - depth belongs to `task-laravel-review-observability`:
 

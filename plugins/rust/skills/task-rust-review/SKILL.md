@@ -29,11 +29,10 @@ Staff-level Rust / Axum / sqlx / Tokio review umbrella. Covers correctness, arch
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained snapshot | Phase A + B summary |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical patterns + cross-PR context |
 
-**Auto-promote to `deep`:** After Phase A, if Blast Radius is Wide/Critical and user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** After Phase A, if Blast Radius is Wide/Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -170,7 +169,7 @@ Output risk level + blast radius before any findings.
 
 **Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** change does not touch architecture-relevant files (auth middleware, JWT, router composition, shared traits, `main.rs` / `lib.rs` wiring, sqlx migrations), skip Phases C-D and produce streamlined output with Phase B only.
 
-If Blast Radius is Wide/Critical and user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+If Blast Radius is Wide/Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
 ### Phase B - Rust Correctness and Safety
 
@@ -304,7 +303,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Data Access:** sqlx <version> | diesel <version> | mixed
 **Messaging:** Tokio queue | AMQP (lapin) | Kafka (rdkafka) | none
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -381,7 +380,7 @@ _Omit if no actionable findings._
 - [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch was surfaced; when `head_matches_current` was false, approval obtained; current_head_sha and current_base_sha captured
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only`) recorded with firing signals
-- [ ] Phase A: risk + blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; low-risk short-circuit applied when applicable
+- [ ] Phase A: risk + blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; low-risk short-circuit applied when applicable
 - [ ] Phase B: atomic skills applied (`rust-error-handling`, `rust-async-patterns`, `rust-concurrency`, `rust-db-access`, `rust-web-patterns`, plus `rust-messaging-patterns` / `rust-migration-safety` when relevant); test coverage, authorization, `Json(<domain>)`, `unsafe` discipline checked
 - [ ] Phase C: layering, trait-at-consumer, `AppState` + typed config, multi-tenant, router + `IntoResponse` applied
 - [ ] Phase D: `complexity-review` + `rust-overengineering-review` applied; AI smells covered (redundant mapping, test verbosity, `anyhow::Error` in domain types)

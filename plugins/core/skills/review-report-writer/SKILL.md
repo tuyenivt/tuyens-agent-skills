@@ -30,7 +30,7 @@ The consuming workflow passes these fields when invoking this skill:
 | `round`           | yes               | `1` for first review on this branch; increment per re-review                        |
 | `prior_head_sha`  | only if `round>1` | The `head_sha` from the prior round's frontmatter                                   |
 | `scope`           | yes               | `core-only` / `+perf` / `+sec` / `+obs` / `full`                                    |
-| `depth`           | yes               | `quick` / `standard` / `deep`                                                       |
+| `depth`           | yes               | `standard` / `deep`                                                                 |
 | `stack`           | yes               | Stack identifier from `stack-detect` (e.g., `java-spring-boot`, `unknown`)          |
 
 ## Rules
@@ -66,7 +66,7 @@ mode: full | incremental
 round: <N>
 prior_head_sha: <full SHA from prior round>   # omit on round 1; required on round 2+
 scope: core-only | +perf | +sec | +obs | full
-depth: quick | standard | deep
+depth: standard | deep
 stack: <stack identifier>
 generated_at: <ISO 8601 UTC timestamp>
 ---

@@ -36,11 +36,10 @@ Staff-level Vue / Nuxt / Vite code review umbrella. Covers correctness, architec
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained risk snapshot | Phase A + top 3 Phase B findings |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
 
-**Auto-promote to `deep`:** after Phase A, if `Blast Radius` is Wide or Critical and the user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** after Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -175,7 +174,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 Output risk level and blast radius before any findings.
 
-**Auto-promote depth:** if Blast Radius is Wide / Critical and the user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+**Auto-promote depth:** if Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
 **Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, server middleware, route layouts, shared providers / Pinia stores, `nuxt.config.ts`, `vite.config.ts`, top-level `app.vue` / `App.vue`), skip Phases C-D and produce a streamlined output with Phase B only.
 
@@ -319,7 +318,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_

@@ -30,7 +30,6 @@ Stack-specific delegate of `task-code-review-observability` for Go.
 
 | Depth      | What runs                                                |
 | ---------- | -------------------------------------------------------- |
-| `quick`    | Logging + Prometheus check only                          |
 | `standard` | All steps                                                |
 | `deep`     | All steps + SLI/SLO suggestions                          |
 
@@ -114,16 +113,12 @@ Open files that configure observability so findings cite real lines:
 
 ### Step 7 - pprof
 
-_Skipped at `quick` unless diff touches pprof._
-
 - [ ] **`net/http/pprof` registered** on separate admin port, OR non-prod only, OR behind admin auth
 - [ ] **Profiles accessible**: `/debug/pprof/{heap,goroutine,profile,mutex,block}`
 - [ ] **`runtime.SetMutexProfileFraction(rate)` and `SetBlockProfileRate(rate)`** enabled - without these, mutex/block profiles are empty
 - [ ] **NOT on prod public port without auth** - delegate to security review
 
 ### Step 8 - Asynq / Kafka / Background Jobs
-
-_Skipped at `quick` unless diff touches them._
 
 - [ ] **Asynq OTel middleware** enabled - traceparent extracted, worker span links to dispatching request span
 - [ ] **Queue metrics:** `asynq.NewInspector(...)` polled into Prometheus gauges (`pending`, `active`, `scheduled`, `retry`, `archived`)
@@ -135,8 +130,6 @@ _Skipped at `quick` unless diff touches them._
 
 ### Step 9 - Graceful Shutdown
 
-_Skipped at `quick` unless diff touches lifecycle or `main.go`._
-
 - [ ] **`signal.NotifyContext`** pattern: `ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT); defer stop()`. HTTP server in goroutine; main blocks on `<-ctx.Done()`; then `srv.Shutdown(shutdownCtx)`
 - [ ] **Bounded shutdown timeout:** `context.WithTimeout(context.Background(), 30*time.Second)` - never indefinite
 - [ ] **`tp.Shutdown(shutdownCtx)`** flushes buffered spans
@@ -144,8 +137,6 @@ _Skipped at `quick` unless diff touches lifecycle or `main.go`._
 - [ ] **`db.Close()`** on shutdown
 
 ### Step 10 - Error Tracking (Sentry / Honeybadger)
-
-_Skipped at `quick` unless diff modifies error handlers or DSN/API-key handling._
 
 - [ ] **SDK initialized:** `sentry.Init(...)` in `main.go`; `sentrygin.New(...)` middleware applied - panics and `c.Error(err)` flow reach Sentry
 - [ ] **DSN / API key** from env / Vault, never committed
@@ -186,7 +177,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 - [ ] Error tracker: SDK + Gin middleware, DSN externalized, PII scrubbed, OTel correlation, sample rate explicit, `sentry.Recover()` at goroutine boundaries
 - [ ] Findings name a Go / OTel / slog / Prometheus idiom - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
-- [ ] Depth honored: `quick` skipped tracing/Asynq/lifecycle/error-tracker/SLI unless signaled; `deep` ran SLI
+- [ ] Depth honored: `standard` ran all; `deep` ran SLI
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed
 

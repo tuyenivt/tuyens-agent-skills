@@ -30,11 +30,10 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained snapshot | Phase A + B summary |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical patterns + cross-PR context |
 
-**Auto-promote to `deep`:** After Phase A, if Blast Radius is Wide/Critical and user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** After Phase A, if Blast Radius is Wide/Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -173,7 +172,7 @@ Output risk level + blast radius before any findings.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
-If Blast Radius is Wide / Critical and user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
 ### Phase B - Go Correctness and Safety
 
@@ -319,7 +318,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -398,7 +397,7 @@ _Omit if no actionable findings._
 - [ ] For `pr-ref` mode: fetch surfaced; ref existed before review continued
 - [ ] When `head_matches_current` was false: user approval obtained
 - [ ] Scope auto-escalation evaluated; promotion (or `core-only`) recorded
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`
+- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical
 - [ ] Risk + blast radius stated before any finding
 - [ ] Phase B: atomic skills applied; test coverage, authz, response DTO, Idempotency-Key, race safety checked
 - [ ] Phase C: layering, interface-at-consumer, constructor injection, settings, multi-tenant

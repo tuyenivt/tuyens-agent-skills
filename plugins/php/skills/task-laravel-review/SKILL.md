@@ -30,11 +30,10 @@ Laravel-aware staff-level code review umbrella covering correctness, architectur
 
 | Depth      | When to Use                                                               | What Runs                                                    |
 | ---------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `quick`    | "Is this safe to merge?" - fast risk snapshot                             | Phases A + B summary only                                    |
 | `standard` | Default - full Laravel staff-level review                                 | Phases A-E                                                   |
 | `deep`     | Architectural PRs, post-incident change review, Principal sign-off        | Phases A-E + historical pattern matching + cross-PR context  |
 
-Default: `standard`. **Auto-promote to `deep`** when Phase A returns `Blast Radius: Wide|Critical` and the user did not pass `quick`; surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in Summary.
+Default: `standard`. **Auto-promote to `deep`** when Phase A returns `Blast Radius: Wide|Critical`; surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)` in Summary.
 
 ## Scope
 
@@ -155,7 +154,7 @@ Use skill: `review-pr-risk` for cross-cutting risk signals; use skill: `review-b
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
-If Blast Radius is `Wide|Critical` and the user did not pass `quick`, promote depth to `deep` and surface in Summary **before** launching Phases B-E so deep-only behaviors (historical patterns, cross-PR context, anemic-domain assessment) are in scope.
+If Blast Radius is `Wide|Critical`, promote depth to `deep` and surface in Summary **before** launching Phases B-E so deep-only behaviors (historical patterns, cross-PR context, anemic-domain assessment) are in scope.
 
 ### Phase B - Laravel Correctness and Safety
 
@@ -309,7 +308,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Queue:** redis (Horizon) | database | sync
 **Tests:** Pest | PHPUnit
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -378,7 +377,7 @@ On incremental rounds, prior-round Still open items are folded in with (open sin
 - [ ] Step 3: `review-precondition-check` ran; diff and commit log read once and reused; current_head_sha and current_base_sha captured
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion or `core-only` recorded in Summary with firing signals
-- [ ] Step 4.5: depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`
+- [ ] Step 4.5: depth auto-promoted to `deep` when Blast Radius is Wide/Critical
 - [ ] Phase A: risk level and blast radius stated before any line-level findings
 - [ ] Phase B: Laravel correctness checklist applied; migration safety delegated to `laravel-migration-safety` when migrations changed
 - [ ] Phase C: architecture checks applied (thin controllers, services/actions, no model in responses, repository only when justified, multi-tenant isolation, middleware order)

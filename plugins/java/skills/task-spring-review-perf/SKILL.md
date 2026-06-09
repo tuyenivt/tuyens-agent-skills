@@ -28,7 +28,6 @@ Stack-specific delegate of `task-code-review-perf`.
 
 | Depth      | When                                                     | Steps Run                       |
 | ---------- | -------------------------------------------------------- | ------------------------------- |
-| `quick`    | Single endpoint or repo ("is this query ok?")            | 1-4, 5, 6, 11                   |
 | `standard` | Default                                                  | All                             |
 | `deep`     | Profiling-driven (JFR / async-profiler / Micrometer)     | All + capacity + load-test plan |
 
@@ -86,8 +85,6 @@ Use skill: `spring-db-migration-safety`.
 
 ### Step 7 - Concurrency, Virtual Threads, Async
 
-_Skipped at `quick`._
-
 Use skill: `spring-async-processing`.
 
 - [ ] **No `synchronized` on shared state in VT paths** - pins the carrier and defeats the model. Use `ReentrantLock`, `StampedLock`, or `ConcurrentHashMap.compute`.
@@ -99,8 +96,6 @@ Use skill: `spring-async-processing`.
 - [ ] `@Async` only when work is non-trivial; no `@Async` for sub-millisecond tasks.
 
 ### Step 8 - Caching and Response Shape
-
-_Skipped at `quick` unless diff touches `@Cacheable` / `@CacheEvict` / cache config or response payloads._
 
 **Caching:**
 
@@ -117,8 +112,6 @@ _Skipped at `quick` unless diff touches `@Cacheable` / `@CacheEvict` / cache con
 - [ ] `server.compression.enabled=true` for JSON > 2 KB
 
 ### Step 9 - Messaging and Background Work
-
-_Skipped at `quick` unless diff touches `@KafkaListener` / `@RabbitListener` / `@Scheduled` / outbox._
 
 Use skill: `spring-messaging-patterns`.
 
@@ -186,7 +179,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - [ ] Step 10: report written via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact (measured or estimated), never "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `quick` ran 1-4, 5, 6, 10; `standard` ran all; `deep` adds capacity + load-test plan
+- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load-test plan
 - [ ] Next Steps tagged and ordered by intent (omit if none)
 
 ## Avoid

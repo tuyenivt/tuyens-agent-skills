@@ -28,7 +28,6 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Single endpoint / repository | Steps 4 + 5 only |
 | `standard` | Default | All steps |
 | `deep` | Profiling-driven with pprof / OTel / benchmark data | All + capacity guidance + load plan |
 
@@ -117,8 +116,6 @@ Use skill: `go-concurrency`.
 
 ### Step 7 - Allocation Hotspots
 
-_Skipped at `quick` unless diff touches hot loops or large allocations._
-
 - [ ] **Slice pre-allocation:** `make([]T, 0, n)` over `var s []T` then `append` in a known-capacity loop
 - [ ] **`sync.Pool` for hot temporary objects** (byte buffers, large structs reused per request) - not for long-lived objects (defeats the pool)
 - [ ] **`strings.Builder` over `+`** in loops
@@ -131,8 +128,6 @@ _Skipped at `quick` unless diff touches hot loops or large allocations._
 
 ### Step 8 - Caching
 
-_Skipped at `quick` unless diff touches caching._
-
 - [ ] **In-process:** `ristretto` for LRU/LFU; `groupcache` shared distributed; `sync.Map` for tiny caches. TTL configured
 - [ ] **Redis cache:** shared across replicas; `SetEx` for TTL; `Pipeline` for batched ops
 - [ ] **Stampede protection:** hot keys with expensive regen use `golang.org/x/sync/singleflight`; distributed via Redis `SET NX EX` lock
@@ -142,8 +137,6 @@ _Skipped at `quick` unless diff touches caching._
 - [ ] **Per-request memoization** via `gin.Context.Set`
 
 ### Step 9 - Asynq / Kafka / Background Work
-
-_Skipped at `quick` unless diff touches them._
 
 Use skill: `go-messaging-patterns`.
 
@@ -161,8 +154,6 @@ Use skill: `go-messaging-patterns`.
 - [ ] **Bounded in-flight:** `franz.MaxConcurrentFetches`, `franz.FetchMaxBytes` tuned for memory
 
 ### Step 10 - Observability for Perf (delegation handoff)
-
-_Skipped at `quick`._
 
 Depth belongs to `task-go-review-observability`. Confirm only:
 
@@ -192,7 +183,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write before 
 - [ ] Caching assessed (in-process vs Redis, single-flight, invalidation)
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when pprof / APM data exists, estimated otherwise (`adds ~N queries at K rows`)
 - [ ] Findings ordered by impact; quick wins separated from structural
-- [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
+- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed
 

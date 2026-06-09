@@ -11,7 +11,7 @@ user-invocable: true
 
 # Vue Security Review
 
-Stack-specific delegate of `task-code-review-security` for Vue / Nuxt. Always runs at full depth - no quick/standard knob.
+Stack-specific delegate of `task-code-review-security` for Vue / Nuxt. Always runs at full depth - no depth knob.
 
 ## When to Use
 

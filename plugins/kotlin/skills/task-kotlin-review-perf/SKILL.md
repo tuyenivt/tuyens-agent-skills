@@ -28,7 +28,6 @@ Kotlin-aware perf review for JPA / Hibernate, Spring Data, coroutines, Virtual T
 
 | Depth      | When                                                | What runs                                          |
 | ---------- | --------------------------------------------------- | -------------------------------------------------- |
-| `quick`    | Single endpoint or repository                       | Steps 5 + 6 only                                   |
 | `standard` | Default                                             | All steps                                          |
 | `deep`     | Profiling-driven (JFR / async-profiler / Micrometer)| All steps + capacity guidance + load-test plan     |
 
@@ -99,8 +98,6 @@ Use skill: `kotlin-spring-db-migration-safety` for any migration.
 
 ### Step 7 - Coroutines, Virtual Threads, async
 
-_Skipped at `quick`._
-
 Use skill: `kotlin-coroutines-spring`.
 Use skill: `kotlin-spring-async-processing`.
 
@@ -116,8 +113,6 @@ Use skill: `kotlin-spring-async-processing`.
 
 ### Step 8 - Caching
 
-_Skipped at `quick` unless diff touches `@Cacheable` / cache config._
-
 - [ ] Spring Cache for expensive read paths with deterministic key; explicit `unless` for null/empty
 - [ ] Caffeine in-process; Redis (Spring Data Redis or Lettuce) for shared
 - [ ] **Stampede protection**: Caffeine `refreshAfterWrite` or `LoadingCache` for hot keys
@@ -131,8 +126,6 @@ _Skipped at `quick` unless diff touches `@Cacheable` / cache config._
 
 ### Step 9 - Messaging and background work
 
-_Skipped at `quick` unless diff touches messaging / scheduled work._
-
 Use skill: `kotlin-spring-messaging-patterns`.
 
 - [ ] Message handlers idempotent (re-fetch state, dedup key, upsert, return early on replay)
@@ -145,8 +138,6 @@ Use skill: `kotlin-spring-messaging-patterns`.
 - [ ] **Coroutine-based listeners**: `suspend @KafkaListener` supported but needs backpressure + ack-timing tests
 
 ### Step 10 - Observability for perf
-
-_Skipped at `quick`._
 
 Only the perf-relevant slice. Full instrumentation review lives in `task-kotlin-review-observability`.
 

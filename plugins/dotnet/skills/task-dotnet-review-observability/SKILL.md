@@ -27,7 +27,6 @@ Stack-specific delegate of `task-code-review-observability` for .NET. Library / 
 
 | Depth      | When                                                | Runs                                       |
 | ---------- | --------------------------------------------------- | ------------------------------------------ |
-| `quick`    | Single endpoint, handler, or job                    | Steps 1-6 only (logging + metrics)         |
 | `standard` | Default                                             | Steps 1-11                                 |
 | `deep`     | Pre-release of a critical service, or post-incident | All steps + SLI/SLO (Step 12)              |
 
@@ -100,8 +99,6 @@ Read so findings cite real lines: `Program.cs`, `appsettings.json`, `.csproj` / 
 
 ### Step 7 - OpenTelemetry SDK and Auto-Instrumentation
 
-_Skipped at `quick` unless the diff touches OTel wiring or `ActivitySource`._
-
 - [ ] OTel SDK initialized in `Program.cs` BEFORE `app.Run()` so middleware does not capture the no-op tracer
 - [ ] OTLP exporter via env (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`); endpoint not hardcoded
 - [ ] Resource attributes (`service.name`, `service.version`, `deployment.environment`) via `.ConfigureResource(r => r.AddService(...))`
@@ -115,16 +112,12 @@ _Skipped at `quick` unless the diff touches OTel wiring or `ActivitySource`._
 
 ### Step 8 - dotnet-counters / Runtime Diagnostics
 
-_Skipped at `quick` unless the diff touches diagnostic enablement or `EventCounters`._
-
 - [ ] `dotnet-counters` runnable in non-prod; runbook / CI documents the command
 - [ ] New `EventSource` + `EventCounter` is a smell; prefer `Meter` / `Counter<T>` / `Histogram<T>` (integrates with OTel)
 - [ ] `dotnet-monitor` sidecar for prod heap dumps / on-demand traces; flag raw EventPipe ports or in-process trace sessions
 - [ ] Diagnostic ports NOT exposed on a public bind without auth in prod - flag and delegate to `task-dotnet-review-security`
 
 ### Step 9 - Background Workers / MassTransit / Hangfire
-
-_Skipped at `quick` unless the diff touches workers / brokers._
 
 - [ ] Trace context propagated across dispatch. MassTransit handles this when `AddSource("MassTransit")` is registered. Hangfire is manual: capture `Activity.Current.TraceId` as a job argument, restore on the worker by starting a child activity with the parent context
 - [ ] Per-job metrics: latency histogram, retry counter, failure counter, queue-depth gauge
@@ -136,19 +129,15 @@ _Skipped at `quick` unless the diff touches workers / brokers._
 
 ### Step 10 - Lifecycle / Shutdown / Health Checks
 
-_Skipped at `quick` unless the diff touches lifecycle (`IHostApplicationLifetime`, `IHostedService`, `Program.cs`)._
-
 - [ ] `ApplicationStopping` used for cleanup; `BackgroundService.ExecuteAsync` exits when `stoppingToken` cancels; doesn't block past `HostOptions.ShutdownTimeout` (30s default)
 - [ ] OTel `TracerProvider.Shutdown()` covered by `services.AddOpenTelemetry()` hosted service; flag manual `Sdk.CreateTracerProviderBuilder()` that bypasses it
 - [ ] `Channel<T>` writers call `Writer.Complete()` on shutdown; MassTransit / Hangfire bus stops via hosted services
-- [ ] **Health checks split three ways - flag at any depth on multi-replica services:**
+- [ ] **Health checks split three ways - flag on multi-replica services:**
   - **`/livez` (kubelet restart gate):** `Predicate = _ => false`. **No dependency checks.** Bare `MapHealthChecks("/health")` wired to liveness causes restart cascades on transient downstream blips
   - **`/readyz` (LB gate):** `Predicate = c => c.Tags.Contains("ready")`. Own-pod dependencies only (DB pool, Redis, in-process queue). **No third-party API pings** (e.g., `AddUrlGroup("https://api.stripe.com/...", tags: ["ready"])` flag as High - takes every replica out of the LB on an upstream outage). Use a Polly v8 circuit breaker on the call site instead
   - **`/internal/deps` (dashboards only, NOT a probe):** optional deep endpoint pinging every dependency; per-dependency JSON via `UIResponseWriter.WriteHealthCheckUIResponse`
 
 ### Step 11 - Error Tracking (Sentry / Application Insights)
-
-_Skipped at `quick` unless the diff modifies error handlers, error-tracker config, or DSN handling._
 
 - [ ] SDK initialized: Sentry `AddSentry(...)` + `UseSentryTracing()`, or `AddApplicationInsightsTelemetry()`
 - [ ] DSN / connection string from env / Vault, not committed

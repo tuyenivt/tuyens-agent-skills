@@ -24,7 +24,6 @@ Stack-specific delegate of `task-code-review-observability` for Rust. Library / 
 
 | Depth      | When                                            | Runs                                |
 | ---------- | ----------------------------------------------- | ----------------------------------- |
-| `quick`    | Single handler / task                           | Steps 1-6                           |
 | `standard` | Default                                         | All steps except 12 (SLI / health)  |
 | `deep`     | Pre-release of critical service, post-incident  | All steps including 12              |
 
@@ -59,7 +58,7 @@ Produce one verdict per surface: `wired | partial | absent` with file:line evide
 
 **Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file / symbol - not one finding per sub-check. Per-callsite findings only apply when the surface exists.
 
-**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 at every depth (the absence is the finding); skip the per-step diff-touch gate.
+**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 regardless of diff-touch gate (the absence is the finding).
 
 ### Step 5 - Structured Logging
 
@@ -97,7 +96,7 @@ Produce one verdict per surface: `wired | partial | absent` with file:line evide
 
 ### Step 8 - tokio-console / Runtime Introspection
 
-_Skip at `quick` unless diff touches `console_subscriber` or task instrumentation (or greenfield exception applies)._
+_Skip unless diff touches `console_subscriber` or task instrumentation (or greenfield exception applies)._
 
 - [ ] `console_subscriber::init()` gated by feature flag / env var (overhead + debug port)
 - [ ] `RUSTFLAGS="--cfg tokio_unstable"` set when the feature is on (else `console_subscriber` compiles to no-op)
@@ -106,7 +105,7 @@ _Skip at `quick` unless diff touches `console_subscriber` or task instrumentatio
 
 ### Step 9 - Background Tasks / Messaging
 
-_Skip at `quick` unless diff touches tasks or brokers (or greenfield exception applies). Spawn-context propagation is owned by Step 6; this step is per-task observability._
+_Skip unless diff touches tasks or brokers (or greenfield exception applies). Spawn-context propagation is owned by Step 6; this step is per-task observability._
 
 - [ ] Per-task metrics: latency histogram, retry counter, failure counter, queue-depth gauge
 - [ ] `#[tracing::instrument(fields(task_id = %id, task_type = %t))]` at task entry
@@ -115,7 +114,7 @@ _Skip at `quick` unless diff touches tasks or brokers (or greenfield exception a
 
 ### Step 10 - Graceful Shutdown
 
-_Skip at `quick` unless diff touches lifecycle / `main.rs` (or greenfield exception applies)._
+_Skip unless diff touches lifecycle / `main.rs` (or greenfield exception applies)._
 
 - [ ] SIGINT + SIGTERM via `tokio::signal::ctrl_c` and `signal::unix::SignalKind::terminate()` combined under `tokio::select!`
 - [ ] `axum::serve(...).with_graceful_shutdown(...)` drains in-flight requests
@@ -126,7 +125,7 @@ _Skip at `quick` unless diff touches lifecycle / `main.rs` (or greenfield except
 
 ### Step 11 - Error Tracking (Sentry)
 
-_Skip at `quick` unless diff touches error handlers, Sentry config, or DSN handling._
+_Skip unless diff touches error handlers, Sentry config, or DSN handling._
 
 - [ ] `sentry::init` in `main.rs`; `sentry-tower::NewSentryLayer` + `SentryHttpLayer` on router
 - [ ] DSN, `release`, `environment` from env / build metadata; never committed

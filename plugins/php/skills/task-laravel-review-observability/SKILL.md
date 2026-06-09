@@ -30,7 +30,6 @@ Laravel-aware observability review at the library/SDK level: Monolog channels, O
 
 | Depth      | When to Use                                                  | What Runs                                          |
 | ---------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `quick`    | Single endpoint, controller, or job                          | Logging + metrics check only                       |
 | `standard` | Default - full Laravel observability review                  | All steps                                          |
 | `deep`     | Pre-release of a critical Laravel service, or post-incident review | All steps + SLI/SLO suggestions for Laravel endpoints |
 
@@ -122,8 +121,6 @@ Read files that configure observability:
 
 ### Step 8 - Queue Worker / Scheduled Job Observability
 
-_Skipped at `quick` depth unless the diff touches background workers or scheduled commands._
-
 - [ ] **Queue tracing via `contrib-auto-laravel`**: producer/consumer spans linked through queue-payload traceparent
 - [ ] **Per-job context**: `Log::withContext(['job_id' => $job->getJobId(), 'job_class' => static::class])` at `handle()` entry
 - [ ] **`failed(Throwable $e)` on every job**; **Horizon tags** for tag-filtered search: `public function tags(): array { return ['order:'.$this->orderId]; }`
@@ -131,8 +128,6 @@ _Skipped at `quick` depth unless the diff touches background workers or schedule
 - [ ] **Greenfield job minimum (zero instrumentation)**: one `Log::info(...)` at handle entry with business key, outer `try { ... } catch (Throwable $e) { Log::error($e); throw $e; }`, and a `failed()` method
 
 ### Step 9 - Lifecycle / Graceful Shutdown Observability
-
-_Skipped at `quick` depth unless the diff touches lifecycle, signal handling, deploy scripts, or `bootstrap/app.php`._
 
 - [ ] **`queue:work --max-time=N --max-jobs=N`** in prod supervisor (prevents memory bloat); `pcntl` installed for graceful SIGTERM
 - [ ] **Deploy pipeline calls `php artisan queue:restart`** after `composer install`; `horizon:terminate` (graceful drain) on Horizon; `octane:reload` on Octane
@@ -144,8 +139,6 @@ _Skipped at `quick` depth unless the diff touches lifecycle, signal handling, de
 - [ ] **`php-fpm` slow-log enabled** (non-prod, sampled in prod): `slowlog` + `request_slowlog_timeout = 5s`
 
 ### Step 10 - Error Tracking (Sentry / Bugsnag / Flare)
-
-_Skipped at `quick` depth unless the diff modifies error handlers or error-tracker config._
 
 - [ ] **SDK in `require` (not `require-dev`)** - common deploy bug
 - [ ] **DSN externalized** (`SENTRY_LARAVEL_DSN`); **release + environment tags** from build metadata; **sample rate explicit** (`SENTRY_TRACES_SAMPLE_RATE=0.1` in prod; not `1.0`)

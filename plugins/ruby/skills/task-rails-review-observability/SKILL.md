@@ -21,13 +21,12 @@ Rails PR observability check; pre-release for new service or major feature; post
 
 | Depth      | What Runs                         |
 | ---------- | --------------------------------- |
-| `quick`    | Steps 4 + 5 only                  |
 | `standard` | All steps except 10 (default)     |
 | `deep`     | All steps + SLI/SLO suggestions   |
 
 ## Invocation
 
-`/task-rails-review-observability [<branch>|pr-<N>] [quick|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
+`/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
 
 ## Workflow
 

@@ -27,7 +27,6 @@ Staff-level Angular code review covering correctness, architecture, AI-quality, 
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained risk snapshot | Phase A + top 3 Phase B findings |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident | A-E + historical pattern matching |
 
@@ -142,7 +141,7 @@ Scan diff for signals listed under **Scope**. Log each fire as `signal: <categor
 
 Use skills: `review-pr-risk`, `review-blast-radius`. Output risk level and blast radius before any findings.
 
-**Auto-promote depth:** if Blast Radius Wide/Critical and user did not pass `quick`, set depth to `deep`. Log the promotion once (here, not in Step 4).
+**Auto-promote depth:** if Blast Radius Wide/Critical, set depth to `deep`. Log the promotion once (here, not in Step 4).
 
 **Low-risk short-circuit:** if Risk Low + Blast Narrow + no architecture-relevant files (auth config, interceptors, route config, `app.config.ts`, `angular.json`, `vite.config.ts`, root component, shared services/stores), skip Phases C-D and use streamlined output.
 
@@ -273,7 +272,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack:** Angular <version> / <CD mode> / SSR: <enabled|disabled>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated; signals: <list>` if applicable)_
-**Depth:** quick | standard | deep _(append `auto-promoted; Blast Radius: <level>` if applicable)_
+**Depth:** standard | deep _(append `auto-promoted; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_

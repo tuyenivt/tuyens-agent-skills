@@ -26,7 +26,6 @@ Stack-specific delegate of `task-code-review-perf` for Angular. Names Angular id
 
 | Depth      | Runs                                                                     |
 | ---------- | ------------------------------------------------------------------------ |
-| `quick`    | Steps 5 + 6 only (CD hotspots + bundle deltas)                           |
 | `standard` | All steps (default)                                                      |
 | `deep`     | All steps + capacity guidance, route budget plan, perf-test instructions |
 
@@ -105,8 +104,6 @@ Canonical patterns in `angular-data-fetching`. Review-scoped scan:
 
 ### Step 8 - Core Web Vitals and Page Load
 
-_Skipped at `quick` unless diff touches a route, layout, or assets._
-
 **LCP:**
 
 - [ ] **`NgOptimizedImage`** for images: `<img ngSrc="..." width="..." height="..." priority>` for hero. Raw `<img>` for non-decorative is [Recommend].
@@ -143,8 +140,6 @@ _Only if `provideZonelessChangeDetection` is in the diff or already enabled._
 - [ ] **Tests** - `provideZonelessChangeDetection` in `TestBed.configureTestingModule`; `fixture.detectChanges()` still required.
 
 ### Step 10 - Observability for Perf (delegation)
-
-_Skipped at `quick`._
 
 Presence check only - depth belongs to `task-angular-review-observability`. Confirm: critical journeys have some instrumentation (web-vitals reporter, RUM SDK, Sentry `BrowserTracing`, or server OTel). Note gap; do not duplicate the audit.
 

@@ -32,7 +32,6 @@ Node.js-aware performance review naming Prisma `include` / `select` / `findMany`
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Single endpoint / repository | Steps 4 + 5 only |
 | `standard` | Default | All steps |
 | `deep` | Profiling-driven with clinic.js / 0x / OTel | All + capacity guidance + load plan |
 
@@ -124,8 +123,6 @@ Canonical contracts: Use skill: `node-http-client-patterns` (timeout, retry budg
 
 ### Step 7 - Validation / Serialization
 
-_Skipped at `quick` unless the diff touches DTOs with non-trivial validators._
-
 **NestJS:**
 - [ ] **`ValidationPipe` global** with `whitelist: true, forbidNonWhitelisted: true, transform: true` - per-route pipes are noisy and easy to forget
 - [ ] **`class-validator` / `class-transformer` overhead**: reflective, not free at high QPS; prefer Zod for hot paths. Flag expensive `@Transform` and `ClassSerializerInterceptor` use - project at the query layer (Prisma `select`, TypeORM `select`) over excluding at serialization
@@ -135,8 +132,6 @@ _Skipped at `quick` unless the diff touches DTOs with non-trivial validators._
 - [ ] **Body size limit**: `express.json({ limit: '100kb' })` - unbounded body parsing is a DoS surface
 
 ### Step 8 - Caching and Response Performance
-
-_Skipped at `quick` unless the diff touches caching primitives._
 
 - [ ] **In-process**: `lru-cache` (eviction-aware) for hot reads; Redis (`ioredis`) for shared / multi-instance
 - [ ] **Stampede protection**: hot keys with expensive regen use single-flight (`p-memoize` / per-key `Map<string, Promise<T>>`); distributed via Redis `SET NX EX`
@@ -148,8 +143,6 @@ _Skipped at `quick` unless the diff touches caching primitives._
 
 ### Step 9 - BullMQ / Background Work
 
-_Skipped at `quick` unless the diff touches BullMQ._
-
 Use skill: `node-bullmq-patterns`. Apply the review-scoped scan:
 
 - [ ] **Idempotent + ID payloads**: re-fetch state, return early if done; payload uses IDs / primitives, never ORM entities. `queue.add(name, data, { jobId: businessKey })` for server-side dedup
@@ -159,8 +152,6 @@ Use skill: `node-bullmq-patterns`. Apply the review-scoped scan:
 - [ ] **`lockDuration` matches job runtime**: jobs > 30s set higher `lockDuration` or split via flow producer / `addBulk` - else BullMQ marks stalled and reprocesses (double-execution)
 
 ### Step 10 - Observability for Perf (delegation handoff)
-
-_Skipped at `quick`._
 
 Depth on observability belongs to `task-node-review-observability`. Confirm only:
 
@@ -223,7 +214,7 @@ _Omit if no actionable findings._
 - [ ] Async audit: blocking I/O, `Promise.all` boundedness, `AbortSignal`, request-scoped providers, no I/O in transactions (Step 6)
 - [ ] Validation / serialization, caching, BullMQ assessed when diff touches them (Steps 7-9)
 - [ ] Observability presence/absence confirmed; depth delegated (Step 10)
-- [ ] Depth honored: `quick` = Steps 4-5; `standard` = 4-10; `deep` adds capacity + load plan
+- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
 - [ ] Every finding states measured or estimated impact; findings ordered by impact
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 - [ ] Report written via `review-report-writer`; confirmation printed

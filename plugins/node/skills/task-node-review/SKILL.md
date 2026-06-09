@@ -35,11 +35,10 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained risk snapshot | Risk snapshot + top 3 findings (Phase A + B summary) |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
 
-**Auto-promote to `deep`:** After Phase A, if `Blast Radius` is Wide or Critical and the user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** After Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -178,7 +177,7 @@ Output risk level and blast radius before any findings.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
-If Blast Radius is Wide / Critical and user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
 ### Phase B - Node Correctness and Safety
 
@@ -330,7 +329,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Framework:** NestJS <version> | Express <version> | mixed
 **ORM:** Prisma <version> | TypeORM <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_

@@ -25,7 +25,6 @@ Stack-specific delegate of `task-code-review-observability` for Angular. Focuses
 
 | Depth      | Runs                                              |
 | ---------- | ------------------------------------------------- |
-| `quick`    | Steps 4-6 (Surface Map + Web Vitals + Sentry)     |
 | `standard` | All steps (default)                               |
 | `deep`     | All steps + SLI/SLO suggestions per critical route |
 
@@ -147,7 +146,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Prin
 - [ ] Principles loaded; stack confirmed; Angular version + SSR recorded
 - [ ] Diff resolved once; precondition handle reused
 - [ ] Surface Map produced with `wired | partial | absent` per surface; absent collapsed into one finding each, partials emit per-misuse findings
-- [ ] Web Vitals (INP, transport, route correlation), Error tracker (`createErrorHandler`, `TraceService`, PII, Replay/CSP), OTel (browser + SSR `NodeSDK`), Structured logging, Identity, RUM checked per scope; SLI/SLO at `deep`
+- [ ] Web Vitals (INP, transport, route correlation), Error tracker (`createErrorHandler`, `TraceService`, PII, Replay/CSP), OTel (browser + SSR `NodeSDK`), Structured logging, Identity, RUM checked; SLI/SLO at `deep`
 - [ ] Findings name Angular / SDK idioms (`Sentry.createErrorHandler`, `web-vitals` `onINP`); library-scoped, infra deferred
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
 - [ ] Report written; confirmation line printed

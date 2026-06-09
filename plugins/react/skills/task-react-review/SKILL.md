@@ -36,11 +36,10 @@ Staff-level React / Next.js / Vite code review umbrella. Covers correctness, arc
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Time-constrained risk snapshot | Phase A + top 3 Phase B findings |
 | `standard` | Default | Phases A-E |
 | `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
 
-**Auto-promote to `deep`:** after Phase A, if `Blast Radius` is Wide or Critical and the user did not pass `quick`, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** after Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -175,7 +174,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 Output risk level and blast radius before any findings.
 
-**Auto-promote depth:** if Blast Radius is Wide / Critical and the user did not pass `quick`, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so historical pattern matching, cross-PR context, and anemic-prop assessment are in scope).
+**Auto-promote depth:** if Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so historical pattern matching, cross-PR context, and anemic-prop assessment are in scope).
 
 **Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.js`, `vite.config.js`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined output with Phase B only.
 
@@ -322,7 +321,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** React <version> / TypeScript <version>
 **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -404,7 +403,7 @@ _Omit if no actionable findings._
 - [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch command was surfaced; when `head_matches_current` was false, explicit approval was obtained; current_head_sha and current_base_sha captured
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only` suppression) recorded with firing signals
-- [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical and user did not pass `quick`; low-risk short-circuit applied when applicable
+- [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; low-risk short-circuit applied when applicable
 - [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); test coverage, RSC -> Client ORM leak, Server Action auth + Zod, `dangerouslySetInnerHTML` / open-redirect / `NEXT_PUBLIC_*` secrets, TS strict, a11y checked
 - [ ] Phase C: layering, RSC / Client split, custom hook / prop drilling / context discipline, settings, module boundaries, provider sandwich applied
 - [ ] Phase D: `complexity-review` + `react-overengineering-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)

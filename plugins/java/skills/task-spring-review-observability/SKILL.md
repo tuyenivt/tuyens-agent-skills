@@ -33,7 +33,6 @@ Stack-specific delegate of `task-code-review-observability` for Java / Spring Bo
 
 | Depth      | When                                                          | What Runs                                            |
 | ---------- | ------------------------------------------------------------- | ---------------------------------------------------- |
-| `quick`    | Single endpoint, controller, or listener                      | Steps 5-7 only (logging + Actuator + metrics)        |
 | `standard` | Default                                                       | All steps except 11                                  |
 | `deep`     | Pre-release of critical service or post-incident review       | All steps + SLI/SLO suggestions                      |
 
@@ -108,8 +107,6 @@ Open the files that wire observability so findings cite real lines, even when th
 
 ### Step 8 - Distributed Tracing
 
-_Skipped at `quick` depth._
-
 - [ ] **Tracing bridge configured** - `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp`, or `micrometer-tracing-bridge-brave` for Zipkin. Boot 2.x Sleuth flagged for migration
 - [ ] **Sampling explicit per env** - `management.tracing.sampling.probability` (e.g., `0.1` prod, `1.0` staging); never left at default
 - [ ] **`Observation` API** for custom spans (`Observation.start("process-order", registry)`) over manual span management
@@ -120,8 +117,6 @@ _Skipped at `quick` depth._
 
 ### Step 9 - Async / Messaging Observability
 
-_Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitListener` / `@JmsListener` / `@Async` / `@Scheduled`._
-
 - [ ] **Kafka** - `spring.kafka.listener.observation-enabled: true` (Boot 3+) bridges producer trace context
 - [ ] **RabbitMQ** - `spring.rabbitmq.listener.simple.observation-enabled: true`
 - [ ] **Consumer MDC propagation** - filter / aspect copies `traceId`, `userId`, `tenantId` from message headers and clears in `finally`
@@ -130,8 +125,6 @@ _Skipped at `quick` depth unless the diff touches `@KafkaListener` / `@RabbitLis
 - [ ] **`@Scheduled` instrumentation** - per-job `Observation` and duration timer; missed-execution alertable
 
 ### Step 10 - Error Tracking
-
-_Skipped at `quick` depth unless the diff modifies `@RestControllerAdvice`, error-tracker config, or DSN / API-key handling._
 
 - [ ] **Boot starter wired** - `sentry-spring-boot-starter-jakarta`, `honeybadger`, or `rollbar-spring-boot-starter`
 - [ ] **Secrets externalized** - DSN / API key in env var or Vault, never `application.yml`
@@ -205,9 +198,9 @@ _Omit if no actionable findings._
 - [ ] Step 5 - structured logging: JSON encoder, MDC, masking, payload discipline, levels, async appenders
 - [ ] Step 6 - Actuator: exposure minimal, sensitive endpoints gated, probes, health depth, info safe
 - [ ] Step 7 - Micrometer: registry, auto-instrumentation, namespaced custom metrics, tag cardinality bounded, no hot-loop registration
-- [ ] Step 8 - tracing: bridge + sampling + propagation + cross-thread context (skipped at `quick`)
-- [ ] Step 9 - messaging / async: listener observation flags, consumer MDC, listener metrics (gated by diff at `quick`)
-- [ ] Step 10 - error tracker: starter, secrets externalized, PII off, MDC forwarded, sample rate explicit (gated by diff at `quick`)
+- [ ] Step 8 - tracing: bridge + sampling + propagation + cross-thread context
+- [ ] Step 9 - messaging / async: listener observation flags, consumer MDC, listener metrics
+- [ ] Step 10 - error tracker: starter, secrets externalized, PII off, MDC forwarded, sample rate explicit
 - [ ] Step 11 - SLI / health indicators reviewed (`deep` only)
 - [ ] Step 12 - report written via `review-report-writer`; confirmation printed
 

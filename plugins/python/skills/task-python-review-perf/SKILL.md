@@ -32,7 +32,6 @@ Python-aware performance review naming SQLAlchemy 2.0+ async session, Django ORM
 
 | Depth | When | Runs |
 |-------|------|------|
-| `quick` | Single endpoint / repository | Steps 4 + 5 only |
 | `standard` | Default | All steps |
 | `deep` | Profiling-driven with py-spy / Scalene / OTel | All + capacity guidance + load plan |
 
@@ -119,7 +118,7 @@ Use skill: `python-migration-safety` for changes in `migrations/versions/` (Alem
 
 ### Step 6 - Async Correctness and Event Loop (FastAPI)
 
-_Skip on Django sync app. Skipped at `quick` otherwise._
+_Skip on Django sync app._
 
 Canonical patterns: Use skill: `python-async-patterns`. Apply the review-scoped scan:
 
@@ -137,8 +136,6 @@ Canonical patterns: Use skill: `python-async-patterns`. Apply the review-scoped 
 
 ### Step 7 - Pydantic / Serialization (FastAPI)
 
-_Skipped at `quick` unless the diff touches schemas with non-trivial validators._
-
 - [ ] `response_model` declared on every endpoint returning structured data - absent, FastAPI falls back to `dict` and skips validation / field filtering
 - [ ] Pydantic v2 (`pydantic>=2`) - v1 patterns (`class Config:`, `parse_obj`, `dict()`) flagged for migration to `model_config = ConfigDict(...)`, `model_validate`, `model_dump`
 - [ ] `from_attributes=True` in `model_config` for response models built from ORM rows
@@ -149,8 +146,6 @@ _Skipped at `quick` unless the diff touches schemas with non-trivial validators.
 
 ### Step 8 - Caching and Response Performance
 
-_Skipped at `quick` unless the diff touches caching primitives._
-
 - [ ] Per-request memoization: `functools.lru_cache` on pure functions; `request.state` cache for values used by multiple dependencies
 - [ ] Process-level: `cachetools.TTLCache` / `aiocache` in-process; Redis (`redis-py` async) for shared / multi-instance
 - [ ] Stampede protection: hot keys with expensive regen use single-flight (`asyncio.Lock` per key) or Redis `SET NX EX`
@@ -160,8 +155,6 @@ _Skipped at `quick` unless the diff touches caching primitives._
 - [ ] Response compression (`GZipMiddleware`) for JSON > 2KB
 
 ### Step 9 - Celery / Background Work
-
-_Skipped at `quick` unless the diff touches Celery._
 
 Canonical patterns: Use skill: `python-celery-patterns`. Apply the review-scoped scan:
 
@@ -175,8 +168,6 @@ Canonical patterns: Use skill: `python-celery-patterns`. Apply the review-scoped
 - [ ] Result backend used only when result is consumed
 
 ### Step 10 - Observability for Perf (delegation hand-off)
-
-_Skipped at `quick`._
 
 Depth on observability belongs to `task-python-review-observability`. Confirm only:
 
@@ -243,7 +234,7 @@ _Omit if no actionable findings._
 - [ ] Caching assessed (in-process vs Redis, single-flight, invalidation) when caching primitives in diff
 - [ ] Pydantic v2 / DRF serializer cost assessed when applicable
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
-- [ ] Depth honored: `quick` ran Steps 4 + 5; `standard` ran 4-10; `deep` adds capacity + load plan
+- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
 - [ ] Review report written via `review-report-writer`; confirmation printed
 

@@ -38,7 +38,6 @@ Tiebreaker: "would this page on-call within 24h of a 2x traffic spike?" - yes ->
 
 | Depth      | When                                                      | Runs                                          |
 | ---------- | --------------------------------------------------------- | --------------------------------------------- |
-| `quick`    | Single endpoint or repository                             | Steps 5 + 6                                   |
 | `standard` | Default                                                   | All steps                                     |
 | `deep`     | Profiler-driven (`dotnet-trace` / `PerfView` / OTel / BDN)| All steps + capacity guidance + load-test plan |
 
@@ -116,8 +115,6 @@ Workflow-specific gates:
 
 ### Step 8 - Allocations and CPU
 
-_Skipped at `quick` unless the diff touches hot loops or large allocations._
-
 - [ ] `string` concat / `string.Format` in hot loops - use `StringBuilder` (pre-sized) or structured logging templates
 - [ ] LINQ chains in tight loops - profile first; replace with `for` only when measured
 - [ ] Boxing: `List<object>` storing `int` / `Guid` - use typed generic collections
@@ -129,8 +126,6 @@ _Skipped at `quick` unless the diff touches hot loops or large allocations._
 
 ### Step 9 - Caching and Response
 
-_Skipped at `quick` unless the diff touches caching primitives._
-
 - [ ] `IMemoryCache`: `AddMemoryCache()`; **size limit mandatory** (`SizeLimit` on options + per-entry `SetSize`) - unbounded is a memory leak; absolute / sliding expiration mandatory; cache-aside via `GetOrCreateAsync(key, entry => { entry.SetAbsoluteExpiration(...); return ...; })`
 - [ ] `IDistributedCache` (Redis via `StackExchangeRedis`) for cross-replica state; explicit TTL via `DistributedCacheEntryOptions.SetAbsoluteExpiration`
 - [ ] Cache stampede protection on expensive regen: `SemaphoreSlim` per key, `LazyCache` / `FusionCache`, or Redis `SET NX EX`
@@ -140,8 +135,6 @@ _Skipped at `quick` unless the diff touches caching primitives._
 - [ ] `ETag` / `Last-Modified` on read-heavy endpoints supporting conditional requests
 
 ### Step 10 - Background Workers
-
-_Skipped at `quick` unless the diff touches workers or brokers._
 
 Use skill: `dotnet-messaging-patterns`. Apply against the diff.
 
@@ -153,8 +146,6 @@ Workflow-specific gates:
 - Hangfire: `WorkerCount` tuned for CPU + I/O profile; dashboard gated by `DashboardOptions.Authorization`
 
 ### Step 11 - Observability Hand-off
-
-_Skipped at `quick`._
 
 Narrow: confirm presence/absence only. Depth belongs to `task-dotnet-review-observability`.
 

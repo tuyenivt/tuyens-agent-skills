@@ -24,7 +24,6 @@ Stack-specific delegate of `task-code-review-observability` for Vue. Library/SDK
 
 | Depth      | When                                       | What Runs                             |
 | ---------- | ------------------------------------------ | ------------------------------------- |
-| `quick`    | Single component or route                  | Steps 1-6, 12                         |
 | `standard` | Default                                    | All steps except 11                   |
 | `deep`     | Pre-release of critical app, post-incident | All steps including SLI/SLO (Step 11) |
 
@@ -62,7 +61,7 @@ Read instrumentation wiring in the framework-appropriate files below, plus every
 
 **Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file/symbol - not one finding per sub-check.
 
-**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 at every depth; skip the per-step diff-touch gate.
+**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 regardless of diff-touch gate.
 
 ### Step 5 - Web Vitals
 
@@ -91,7 +90,7 @@ Read instrumentation wiring in the framework-appropriate files below, plus every
 
 ### Step 7 - OpenTelemetry / Tracing
 
-_Skip at `quick` unless diff touches OTel config or Nitro plugins (or greenfield applies)._
+_Skip unless diff touches OTel config or Nitro plugins (or greenfield applies)._
 
 **Browser:**
 
@@ -109,7 +108,7 @@ _Skip at `quick` unless diff touches OTel config or Nitro plugins (or greenfield
 
 ### Step 8 - Structured Client Logging
 
-_Skip at `quick` unless diff modifies logging utilities or adds `console.*` in prod paths (or greenfield applies)._
+_Skip unless diff modifies logging utilities or adds `console.*` in prod paths (or greenfield applies)._
 
 - [ ] No `console.log` / `console.error` in prod paths - routes to `Sentry.captureMessage` / `captureException` or a structured logger that hits RUM
 - [ ] No log calls in `<script setup>` body (fires on every component setup)
@@ -118,7 +117,7 @@ _Skip at `quick` unless diff modifies logging utilities or adds `console.*` in p
 
 ### Step 9 - Identity, Session, Trace Correlation
 
-_Skip at `quick` unless diff touches auth, RUM SDK init, or Sentry context wiring (or greenfield applies)._
+_Skip unless diff touches auth, RUM SDK init, or Sentry context wiring (or greenfield applies)._
 
 - [ ] `Sentry.setUser({ id })` after auth; `Sentry.setUser(null)` on logout; `email` only with consent. Nuxt + `nuxt-auth-utils`: hook in a plugin via `watch(() => useUserSession().user, ...)`
 - [ ] `Sentry.setTag` for low-cardinality dimensions (tenant, role, flag); no PII or unbounded values (no `userId` as tag)
@@ -128,7 +127,7 @@ _Skip at `quick` unless diff touches auth, RUM SDK init, or Sentry context wirin
 
 ### Step 10 - RUM Integration
 
-_Skip at `quick` and on apps without a chosen RUM provider (or greenfield applies)._
+_Skip on apps without a chosen RUM provider (or greenfield applies)._
 
 - [ ] SDK initialized once at app entry, before any router hook fires (first navigation otherwise unrecorded)
 - [ ] SPA navigation tracked via `router.afterEach` (Nuxt and Vite); vendor auto-detect verified

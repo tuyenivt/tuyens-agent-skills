@@ -22,11 +22,10 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 
 | Depth      | When                                                              | Runs                                  |
 | ---------- | ----------------------------------------------------------------- | ------------------------------------- |
-| `quick`    | Fast "safe to merge?" snapshot                                    | Phase A + B summary, top 3 findings   |
 | `standard` | Default                                                           | Phases A-E                            |
 | `deep`     | Architectural PRs, post-incident review, Principal sign-off       | A-E + historical pattern matching     |
 
-**Auto-promote to `deep`** when Phase A yields Blast Radius `Wide`/`Critical` and the user did not pass `quick`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`** when Phase A yields Blast Radius `Wide`/`Critical`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 | Scope             | Adds                                       |
 | ----------------- | ------------------------------------------ |
@@ -275,7 +274,7 @@ The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` 
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Java <version> / Spring Boot <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
-**Depth:** quick | standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
+**Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -337,7 +336,7 @@ Omit empty sections.
 - [ ] Step 4 - `review-precondition-check` ran (or handle received); diff/commit log read once; `current_head_sha` and `current_base_sha` captured
 - [ ] Step 4.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 5 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
-- [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical unless `quick`
+- [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; missing tests raised as named finding
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant
 - [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered

@@ -27,11 +27,10 @@ Not for: pre-implementation design (`task-dotnet-implement`), incident triage (`
 
 | Depth      | When                                                                | What Runs                                                   |
 | ---------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `quick`    | "Is this safe to merge?" - fast risk snapshot                       | Risk snapshot + top 3 findings (Phases A + B summary)       |
 | `standard` | Default                                                             | Phases A-E                                                  |
 | `deep`     | Architectural PRs, post-incident review, Principal sign-off         | Phases A-E + historical pattern matching + cross-PR context |
 
-Default: `standard`. **Auto-promote to `deep`** when Phase A computes Blast Radius `Wide` or `Critical` and the user did not pass `quick`. Surface in Summary as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+Default: `standard`. **Auto-promote to `deep`** when Phase A computes Blast Radius `Wide` or `Critical`. Surface in Summary as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -165,7 +164,7 @@ Surface decision in Summary. Escalated: `auto-escalated from Core; signals: <lis
 
 **Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` AND the change does not touch architecture-relevant files (auth middleware, JWT validation, `Program.cs` wiring, MediatR pipeline behaviors, `DbContext` / `IEntityTypeConfiguration`, EF Core migrations) -> skip Phases C-D; emit Phase B findings only.
 
-Blast Radius `Wide` or `Critical` AND user did not pass `quick` -> auto-promote depth to `deep` here, before Phases B-E.
+Blast Radius `Wide` or `Critical` -> auto-promote depth to `deep` here, before Phases B-E.
 
 ### Phase B - .NET Correctness and Safety
 
@@ -312,7 +311,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Mediator:** MediatR <version> | none
 **Messaging:** MassTransit | Hangfire | Channel | none
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
@@ -378,7 +377,7 @@ Omit empty sections.
 - [ ] Step 3 - `review-precondition-check` ran (or handle received); `base_ref` / `head_ref` / `current_branch` / `head_matches_current` captured; if `--base` was passed, `base_source: explicit-override`; diff and commit log read once; when `head_matches_current` was false, explicit user approval obtained; current_head_sha and current_base_sha captured
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4 - scope auto-escalation evaluated; promotion (or `core-only`) recorded with firing signals
-- [ ] Phase A - risk and blast radius stated before findings; depth auto-promoted when Blast Radius is Wide/Critical and not `quick`
+- [ ] Phase A - risk and blast radius stated before findings; depth auto-promoted when Blast Radius is Wide/Critical
 - [ ] Phase B - atomics (`dotnet-async-patterns`, `dotnet-exception-handling`, `dotnet-ef-performance`, `dotnet-transaction`, `dotnet-messaging-patterns`, `dotnet-security-patterns`, `dotnet-db-migration-safety`) applied; review-level findings raised as named entries (missing tests, wrong-store, entity-in-response, mass assignment, idempotency, hardcoded JWT key, `db.Database.Migrate()` on startup)
 - [ ] Phase C - layering, no `DbContext` in Application, MediatR pipeline order, repository placement, constructor injection, typed config, multi-tenant, middleware order, central `IExceptionHandler`
 - [ ] Phase D - `complexity-review` + `dotnet-overengineering-review` applied; remaining .NET AI smells covered

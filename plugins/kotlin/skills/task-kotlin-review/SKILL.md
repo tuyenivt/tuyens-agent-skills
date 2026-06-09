@@ -32,13 +32,12 @@ The stack-specific delegate of `task-code-review` for Kotlin / Spring Boot. Runs
 
 | Depth      | When                                       | What runs                                       |
 | ---------- | ------------------------------------------ | ----------------------------------------------- |
-| `quick`    | "Is this safe to merge?" - time-pressured  | Risk snapshot + top 3 findings (Phase A + B)    |
 | `standard` | Default                                    | Phases A-E                                      |
 | `deep`     | Architectural PRs, post-incident, Principal sign-off | Phases A-E + historical patterns + cross-PR |
 
 Default: `standard`.
 
-**Auto-promote to `deep`** if Phase A blast radius is Wide or Critical and user didn't pass `quick`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`** if Phase A blast radius is Wide or Critical. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
 
@@ -326,7 +325,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Kotlin <version> / Spring Boot <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
-**Depth:** quick | standard | deep _(if auto-promoted, append `auto-promoted from standard; Blast Radius: <level>`)_
+**Depth:** standard | deep _(if auto-promoted, append `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_

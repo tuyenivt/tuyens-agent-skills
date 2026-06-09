@@ -43,7 +43,6 @@ Tiebreaker: "would RUM flag this on a typical mobile cold visit?" yes -> High; "
 
 | Depth      | When                                                          | Runs                                        |
 | ---------- | ------------------------------------------------------------- | ------------------------------------------- |
-| `quick`    | Single component or route                                     | Steps 4 + 5 only (reactivity + bundle)      |
 | `standard` | Default - full Vue perf review                                | Steps 1-9                                   |
 | `deep`     | RUM-driven (Core Web Vitals data / profiling / route budgets) | All steps + capacity guidance + budget plan |
 
@@ -159,8 +158,6 @@ Use skill: `vue-data-fetching`. Workflow-specific verifications:
 
 ### Step 7 - Core Web Vitals
 
-_Skipped at `quick` depth unless the diff touches a route, layout, or assets._
-
 **LCP:**
 
 - Nuxt: `<NuxtImg :preload="true">` / `<NuxtPicture>` for hero / above-the-fold; flag raw `<img>`. Vite: `vite-imagetools` or explicit `srcset`/`sizes`/`width`/`height`
@@ -192,8 +189,6 @@ _Skipped on Vite-only projects._
 - Edge runtime (`nitro.preset: 'vercel-edge' / 'cloudflare'`) for low-TTFB handlers without Node APIs
 
 ### Step 9 - Observability Hand-off and Report
-
-_Observability check skipped at `quick` depth._
 
 Confirm presence only (depth belongs to `task-vue-review-observability`):
 
@@ -257,11 +252,11 @@ _Omit if no actionable findings._
 - [ ] Step 4: reactivity hotspots audited (deep `reactive`, watcher cascades, de-reactivity, `v-for` keys, virtualization, `v-memo`)
 - [ ] Step 5: bundle deltas sized; tree-shake-hostile and full UI-library imports flagged; heavy libs gated by `<LazyXxx />` / `defineAsyncComponent`
 - [ ] Step 6: `useFetch` key/transform/`getCachedData`/mutation invalidation audited; `$fetch` in `<script setup>` for initial data flagged
-- [ ] Step 7: LCP image/fonts, INP debounce, CLS reservations checked (skipped at `quick`)
+- [ ] Step 7: LCP image/fonts, INP debounce, CLS reservations checked
 - [ ] Step 8: hydration sources, `<Suspense>` streaming, `useState`, `routeRules`, Nitro caching reviewed (Nuxt only)
 - [ ] Step 9: observability presence checked or `[Delegate]` added; report written; confirmation printed
 - [ ] Every finding cites `file:line` and states measured or estimated impact
-- [ ] Depth honored: `quick` runs Steps 4-5 only; `deep` adds capacity + budget plan
+- [ ] Depth honored: `standard` runs 1-9; `deep` adds capacity + budget plan
 - [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend > Question
 
 ## Avoid

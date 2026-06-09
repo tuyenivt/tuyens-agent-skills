@@ -31,7 +31,6 @@ Stack-specific delegate of `task-code-review-observability`.
 
 | Depth      | When                                                                | What runs                                          |
 | ---------- | ------------------------------------------------------------------- | -------------------------------------------------- |
-| `quick`    | Single endpoint, controller, or listener                            | Logging + Micrometer metrics only                  |
 | `standard` | Default                                                             | All steps                                          |
 | `deep`     | Pre-release of a critical service, or post-incident                 | All steps + SLI/SLO suggestions for endpoints      |
 
@@ -109,8 +108,6 @@ When only one surface changed (new listener but no `application.yml`), read exis
 
 ### Step 8 - Distributed tracing
 
-_Skipped at `quick`._
-
 - [ ] **Bridge configured**: `io.micrometer:micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` (OTel) or `micrometer-tracing-bridge-brave` (Zipkin)
 - [ ] **Sampling explicit**: `management.tracing.sampling.probability` per env (e.g., `0.1` in prod)
 - [ ] **`Observation` API for custom spans** (Boot 3+) - `Observation.start("process-order", registry)`
@@ -121,8 +118,6 @@ _Skipped at `quick`._
 - [ ] **Not over-instrumented**: don't wrap `getUserById` in `Observation` if the JDBC span already covers it
 
 ### Step 9 - Async / messaging observability
-
-_Skipped at `quick` unless diff touches messaging / scheduled / launch._
 
 Use skill: `kotlin-spring-messaging-patterns` for canonical Kafka / Rabbit / outbox patterns.
 
@@ -136,8 +131,6 @@ Use skill: `kotlin-spring-messaging-patterns` for canonical Kafka / Rabbit / out
 - [ ] **`CoroutineScope.launch`**: scope built with `MDCContext` + `CoroutineExceptionHandler` logging uncaught exceptions; fire-and-forget without observability = [Recommend]
 
 ### Step 10 - Error tracking
-
-_Skipped at `quick` unless diff touches advice / error-tracker config / DSN handling._
 
 - [ ] **Boot starter** (`sentry-spring-boot-starter-jakarta`, `honeybadger`, `rollbar-spring-boot-starter`) integrates with `@RestControllerAdvice` + MDC + Logback automatically
 - [ ] **DSN / API key** in env / Vault, not `application.yml`

@@ -1,6 +1,6 @@
 {
   "name": "kotlin",
-  "version": "1.116.0",
+  "version": "1.117.0",
   "description": "Claude Code plugin for Kotlin 2.0+ / Spring Boot 3.5+ development. Covering Kotlin idioms, coroutines, data classes, JPA entity conventions, kotlin-jpa/spring Gradle plugins, MockK / Kotest / Turbine testing, Spring Security Kotlin DSL, and Kotlin-aware perf / security / observability / refactor workflows. Works with core plugin.",
   "author": {
     "name": "Tuyen"

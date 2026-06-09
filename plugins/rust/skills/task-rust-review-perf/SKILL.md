@@ -36,7 +36,6 @@ Steady-state production impact, not "how scary it looks".
 
 | Depth      | When                                                       | Runs                                       |
 | ---------- | ---------------------------------------------------------- | ------------------------------------------ |
-| `quick`    | Single endpoint or repository                              | Steps 3 + 4 only (sqlx + migrations)       |
 | `standard` | Default                                                    | Steps 1-9                                  |
 | `deep`     | Profiling-driven (`flamegraph` / OTel / `criterion` data)  | All steps + capacity guidance + load plan  |
 
@@ -101,8 +100,6 @@ Workflow-specific add-ons:
 
 ### Step 6 - Allocation Hotspots
 
-_Skipped at `quick` depth unless the diff touches hot loops or large allocations._
-
 Hot path = per-request on the request future, per-row in a `fetch_all` result, or inside a worker/consumer loop.
 
 - `&str` for params not stored; `Cow<'_, str>` for "sometimes owned"; `String` only when ownership is required
@@ -122,8 +119,6 @@ for u in &users { out.push(Row { name: u.name.as_str(), .. }); }
 
 ### Step 7 - Caching and Response
 
-_Skipped at `quick` depth unless the diff touches cache primitives._
-
 - In-process: `moka` (async LRU/LFU) or `dashmap`; configure capacity + TTL. `lazy_static!` `HashMap` is not a cache
 - Distributed: `redis-rs` + `bb8-redis` / `deadpool-redis`; `MGET` / `pipe()` for batches
 - Stampede: `moka::try_get_with` or Redis `SET NX EX`
@@ -133,8 +128,6 @@ _Skipped at `quick` depth unless the diff touches cache primitives._
 
 ### Step 8 - Background Tasks / Kafka / AMQP
 
-_Skipped at `quick` depth unless the diff touches workers or brokers._
-
 Use skill: `rust-messaging-patterns`. Workflow-specific perf invariants on top:
 
 - Dispatch happens after `tx.commit()`, not inside the transaction (`rust-db-access` rule, called out here because workers are where it leaks in)
@@ -142,8 +135,6 @@ Use skill: `rust-messaging-patterns`. Workflow-specific perf invariants on top:
 - Bounded `mpsc::channel(N)` with documented saturation; Kafka manual `commit_message` after success; AMQP manual `delivery.ack` after success with `basic_qos` prefetch
 
 ### Step 9 - Observability Hand-off and Report
-
-_Observability check skipped at `quick` depth._
 
 Confirm presence only (depth belongs to `task-rust-review-observability`):
 
@@ -207,12 +198,12 @@ _Omit if no actionable findings._
 - [ ] Step 3 - `review-precondition-check` ran or parent handle accepted; diff + log read once; performance surface opened (queries, pool, spawn sites, channels, locks)
 - [ ] Step 4 - `rust-db-access` and `rust-migration-safety` consulted; N+1, projection, pagination, pool sizing, post-commit dispatch, migration impact stated; index/column reasoning rule applied
 - [ ] Step 5 - `rust-async-patterns` and `rust-concurrency` consulted; task ownership, mutex-across-await, blocking on runtime, shared `reqwest::Client`, timeouts, bounded channels audited
-- [ ] Step 6 - allocation hotspots assessed on hot paths (skipped at `quick` unless triggered)
-- [ ] Step 7 - caching assessed: capacity/TTL, stampede, invalidation, compression (skipped at `quick` unless triggered)
-- [ ] Step 8 - `rust-messaging-patterns` consulted for any worker / broker change; post-commit dispatch + ID-only payloads + bounded channels verified (skipped at `quick` unless triggered)
+- [ ] Step 6 - allocation hotspots assessed on hot paths
+- [ ] Step 7 - caching assessed: capacity/TTL, stampede, invalidation, compression
+- [ ] Step 8 - `rust-messaging-patterns` consulted for any worker / broker change; post-commit dispatch + ID-only payloads + bounded channels verified
 - [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact (measured or estimated, never just "this is slow") and cites `file:line`
-- [ ] Depth honored: `quick` ran only Steps 3-4; `standard` ran 1-9; `deep` adds capacity + load-test plan
+- [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + load-test plan
 
 ## Avoid
 

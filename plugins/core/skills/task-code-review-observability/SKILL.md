@@ -23,7 +23,7 @@ Detects the project stack and delegates to the matching stack-specific observabi
 
 ## Invocation
 
-`/task-code-review-observability [<branch> | pr-<N>] [quick | standard | deep] [--base <branch>]`
+`/task-code-review-observability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
 When invoked as a subagent by `task-code-review`, the parent passes the precondition handle and read-once diff/log; forward to the dispatched stack workflow.
 

@@ -20,7 +20,7 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [quick | standard | deep] [--base <branch>] [--spec <slug>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [standard | deep] [--base <branch>] [--spec <slug>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -99,7 +99,7 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** unknown (generic fallback applied)
 **Scope:** Core | +Sec | +Perf | +Obs | Full
-**Depth:** quick | standard | deep
+**Depth:** standard | deep
 
 ## High-Impact Findings
 

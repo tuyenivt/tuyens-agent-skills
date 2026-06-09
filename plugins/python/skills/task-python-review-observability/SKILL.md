@@ -28,7 +28,6 @@ Stack-specific delegate of `task-code-review-observability` for Python. Names `s
 
 | Depth      | When                                           | Runs                                        |
 | ---------- | ---------------------------------------------- | ------------------------------------------- |
-| `quick`    | Single endpoint / view / task                  | Logging + Prometheus only                   |
 | `standard` | Default                                        | All steps                                   |
 | `deep`     | Pre-release of critical service, post-incident | All steps + SLI/SLO suggestions             |
 
@@ -109,8 +108,6 @@ Plus every changed file calling `logger.*`, registering a metric, defining middl
 
 ### Step 7 - Celery / Async Task Observability
 
-_Skip at `quick` unless diff touches Celery._
-
 - [ ] **`CeleryInstrumentor` enabled**: task spans link to dispatching request via traceparent through the broker
 - [ ] **Task signals wired**: `task_prerun` / `task_postrun` / `task_failure` / `task_retry` → counters + duration histograms
 - [ ] **`worker_ready` / `worker_shutting_down`** signals wired for lifecycle observability
@@ -122,8 +119,6 @@ _Skip at `quick` unless diff touches Celery._
 
 ### Step 8 - Async / Lifespan Observability (FastAPI)
 
-_Skip at `quick` unless diff touches `@app.on_event` / lifespan / `BackgroundTasks` / async generators._
-
 - [ ] **Lifespan span**: `@asynccontextmanager` lifespan emits `app.startup` / `app.shutdown` for cold-start / drain visibility
 - [ ] **`BackgroundTasks`**: trace context propagates to the background task; flag if missing
 - [ ] **`asyncio.create_task`**: context preserved via `contextvars` (Python 3.11+); confirm `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` does not exclude `asyncio`
@@ -131,8 +126,6 @@ _Skip at `quick` unless diff touches `@app.on_event` / lifespan / `BackgroundTas
 - [ ] **Long-running async generators**: span covers the full lifecycle, not just creation
 
 ### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar)
-
-_Skip at `quick` unless diff modifies error handlers, error-tracker config, or DSN handling._
 
 - [ ] **SDK initialized with framework integration**: `sentry_sdk.init(integrations=[FastApiIntegration(), SqlalchemyIntegration(), CeleryIntegration()])` or Django equivalent
 - [ ] **DSN in env / Vault**, not committed
@@ -226,9 +219,9 @@ _Omit if no actionable findings._
 - [ ] Step 4: Structured logging assessed - JSON, correlation, redaction, level discipline, parameterized form, no body logging, `exc_info`
 - [ ] Step 5: OTel SDK and auto-instrumentation reviewed - framework / DB / HTTP / Celery / Redis instrumentations, explicit sampling, resource attributes
 - [ ] Step 6: `prometheus-client` assessed - default + HTTP metrics, namespaced custom metrics, bounded label cardinality, module-level registration, multi-process mode
-- [ ] Step 7: Celery observability assessed (or skipped per depth) - instrumentation, task signals, trace propagation across dispatch, beat spans
-- [ ] Step 8: Async / lifespan assessed (or skipped per depth) - lifespan span, BackgroundTasks, executor-boundary re-binding
-- [ ] Step 9: Error tracker assessed (or skipped per depth) - SDK + framework integration, DSN externalized, PII scrubbed, OTel correlation, sample rate
+- [ ] Step 7: Celery observability assessed - instrumentation, task signals, trace propagation across dispatch, beat spans
+- [ ] Step 8: Async / lifespan assessed - lifespan span, BackgroundTasks, executor-boundary re-binding
+- [ ] Step 9: Error tracker assessed - SDK + framework integration, DSN externalized, PII scrubbed, OTel correlation, sample rate
 - [ ] Step 10: At `deep`, SLIs / liveness / readiness / dependency-health separation reviewed; skipped otherwise
 - [ ] Step 11: Report written via `review-report-writer`; confirmation line printed
 - [ ] Findings name a Python / OTel / structlog / prometheus-client idiom directly - not "add observability"

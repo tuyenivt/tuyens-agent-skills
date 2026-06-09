@@ -45,7 +45,6 @@ Tiebreaker: "would RUM flag this on a typical mobile cold visit?" yes -> High; "
 
 | Depth      | When                                                          | Runs                                       |
 | ---------- | ------------------------------------------------------------- | ------------------------------------------ |
-| `quick`    | Single component or route                                     | Steps 4 + 5 only (renders + bundle)        |
 | `standard` | Default - full React perf review                              | Steps 1-9                                  |
 | `deep`     | RUM-driven (Core Web Vitals data / profiling / route budgets) | All steps + capacity guidance + budget plan |
 
@@ -152,8 +151,6 @@ Use skill: `react-data-fetching`. Workflow-specific verifications:
 
 ### Step 7 - Core Web Vitals
 
-_Skipped at `quick` depth unless the diff touches a route, layout, or assets._
-
 **LCP:**
 
 - `next/image` with `priority` on the hero; raw `<img>` for above-the-fold flagged; Vite uses `vite-imagetools` or explicit `srcset`/`sizes`/`width`/`height`
@@ -180,8 +177,6 @@ _Skipped on Vite-only projects._
 - `runtime = 'edge'` for low-TTFB handlers without Node APIs; middleware kept thin (no uncached DB / HTTP)
 
 ### Step 9 - Observability Hand-off and Report
-
-_Observability check skipped at `quick` depth._
 
 Confirm presence only (depth belongs to `task-react-review-observability`):
 
@@ -247,11 +242,11 @@ _Omit if no actionable findings._
 - [ ] Step 4 - `react-hooks-patterns` + `react-component-patterns` consulted; `"use client"` placement, identity-stable props, context memo, list keys / virtualization, inline-component hazard audited
 - [ ] Step 5 - bundle deltas sized per new dep; tree-shake-hostile imports flagged; heavy libs gated by `next/dynamic` / `React.lazy`
 - [ ] Step 6 - `react-data-fetching` consulted; `fetch` cache intent, Server-vs-Client fetch placement, TanStack `staleTime` / keys / invalidation audited
-- [ ] Step 7 - LCP image / fonts, INP `useTransition` / `useDeferredValue`, CLS reservations checked when routes or assets changed (skipped at `quick`)
+- [ ] Step 7 - LCP image / fonts, INP `useTransition` / `useDeferredValue`, CLS reservations checked when routes or assets changed
 - [ ] Step 8 - hydration sources, Suspense streaming, ISR / SSG / SSR / runtime decisions reviewed (Next.js only; skipped on Vite)
 - [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
 - [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
-- [ ] Depth honored: `quick` ran only Steps 4-5; `standard` ran 1-9; `deep` adds capacity + budget plan
+- [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + budget plan
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit when no actionable findings)
 
 ## Avoid

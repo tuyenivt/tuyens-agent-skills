@@ -19,9 +19,9 @@ Pre-merge Rails PR review, post-AI quality gate, architecture-drift detection. N
 
 ## Depth and Scope
 
-Depth (`quick` | `standard` | `deep`, default `standard`) and scope (`Core` | `+Perf` | `+Sec` | `+Obs` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
+Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+Obs` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
 
-**Auto-promote depth to `deep`** after Step 4 when Blast Radius is Wide/Critical and user did not pass `quick`. Record in Summary.
+**Auto-promote depth to `deep`** after Step 4 when Blast Radius is Wide/Critical. Record in Summary.
 
 **Auto-escalate scope on Rails signals:**
 
@@ -32,7 +32,7 @@ Depth (`quick` | `standard` | `deep`, default `standard`) and scope (`Core` | `+
 
 ## Invocation
 
-`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+sec|+perf|+obs|--full] [quick|deep|core-only]`
+`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+sec|+perf|+obs|--full] [deep|core-only]`
 
 Defaults to current branch vs base; fails fast on trunk. Use `pr-<N>` for a local fetched ref. The workflow never modifies the working tree.
 
@@ -240,7 +240,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide
 **Stack Detected:** Ruby <version> / Rails <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
-**Depth:** quick | standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
+**Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_

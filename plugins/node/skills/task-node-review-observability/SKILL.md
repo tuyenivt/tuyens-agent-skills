@@ -28,7 +28,6 @@ Stack-specific delegate of `task-code-review-observability` for Node.js. Names `
 
 | Depth      | When                                           | Runs                                        |
 | ---------- | ---------------------------------------------- | ------------------------------------------- |
-| `quick`    | Single endpoint / controller / job             | Logging + prom-client only                  |
 | `standard` | Default                                        | All steps                                   |
 | `deep`     | Pre-release of critical service, post-incident | All steps + SLI/SLO suggestions             |
 
@@ -111,7 +110,7 @@ Plus every changed file calling `Logger`/`logger.*`, registering a metric, defin
 
 ### Step 7 - BullMQ / Background Job Observability
 
-_Skip at `quick` unless diff touches BullMQ. Defer in-depth queue patterns to `node-bullmq-patterns`._
+_Defer in-depth queue patterns to `node-bullmq-patterns`._
 
 - [ ] **`instrumentation-bullmq` enabled** for cross-broker trace propagation
 - [ ] **Queue events wired**: `completed`/`failed`/`stalled` → counters + duration histograms; `worker.on('error')` for crashes
@@ -123,8 +122,6 @@ _Skip at `quick` unless diff touches BullMQ. Defer in-depth queue patterns to `n
 
 ### Step 8 - NestJS Lifecycle / Async Observability
 
-_Skip at `quick` unless diff touches lifecycle hooks or `AsyncLocalStorage`._
-
 - [ ] **Bootstrap span**: `OnApplicationBootstrap` emits `app.bootstrap` for cold-start visibility
 - [ ] **Graceful shutdown**: `OnApplicationShutdown` closes Prisma, BullMQ workers, `sdk.shutdown()`; flushes telemetry. Absence drops in-flight spans/metrics
 - [ ] **`AsyncLocalStorage` preserved** through `setImmediate`/`setTimeout`/`Promise.then`; flag manual `context.with` that bypasses
@@ -133,8 +130,6 @@ _Skip at `quick` unless diff touches lifecycle hooks or `AsyncLocalStorage`._
 - [ ] **Response-time interceptor** when per-route logged timings are wanted alongside OTel histograms
 
 ### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar)
-
-_Skip at `quick` unless diff modifies error handlers, error-tracker config, or DSN handling._
 
 Canonical rescue strategy and capture-once discipline: Use skill: `node-exception-handling`. This step flags deviations from that contract (double-capture, leaked ORM types, per-handler try/catch that duplicates the global filter).
 
@@ -231,7 +226,7 @@ _Omit if no actionable findings._
 - [ ] Logging assessed: JSON, correlation, redaction, level discipline, no `console.log`, no entity logging, cause chain (Step 4)
 - [ ] OTel SDK reviewed: init BEFORE imports; framework / DB / HTTP / BullMQ / Redis instrumentations; explicit sampling; resource attributes (Step 5)
 - [ ] `prom-client` assessed: defaults + HTTP, namespaced customs, bounded labels, module-level registration, cluster aggregation, route normalization (Step 6)
-- [ ] BullMQ, lifecycle / async, error tracker assessed when in scope and depth permits (Steps 7-9)
+- [ ] BullMQ, lifecycle / async, error tracker assessed when in scope (Steps 7-9)
 - [ ] `deep`: SLIs and liveness / readiness / deps separation reviewed (Step 10)
 - [ ] Findings name a specific Node / OTel / pino / prom-client idiom; library-level scope respected
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question

@@ -21,13 +21,12 @@ Reviewing a Rails PR for perf regressions; investigating a slow controller/view/
 
 | Depth      | What Runs                            |
 | ---------- | ------------------------------------ |
-| `quick`    | Steps 4 + 5 only                     |
 | `standard` | All steps (default)                  |
 | `deep`     | All steps + capacity + load-test     |
 
 ## Invocation
 
-`/task-rails-review-perf [<branch>|pr-<N>] [quick|deep]` - current branch vs base; fails fast on trunk. When invoked as subagent with pre-read artifacts, Steps 1-3 are skipped.
+`/task-rails-review-perf [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. When invoked as subagent with pre-read artifacts, Steps 1-3 are skipped.
 
 ## Workflow
 
