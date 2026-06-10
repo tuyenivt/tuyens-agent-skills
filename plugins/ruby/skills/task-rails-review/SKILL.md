@@ -118,11 +118,11 @@ The reconciliation table (when emitted) only covers findings whose scope was act
 
 Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before line-level findings.
 
-**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only.
+**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules; Step 10 still writes the report (Summary + Step 5 findings). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command.
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security` and must not be duplicated here. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`".
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security`. When +Sec IS in scope, core stays silent on them - the subagent owns them and Step 10 dedups. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`". Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
 
 Atomic skills (consult when PR touches the area):
 
@@ -133,6 +133,9 @@ Atomic skills (consult when PR touches the area):
 - `rails-concurrency-patterns` (`load_async`, threads, fibers, fan-out)
 - `rails-actioncable-patterns` (channels, Turbo broadcasts)
 - `rails-exception-handling` (rescue logic, new error classes, Sidekiq error flow)
+- `rails-view-templates` (diffed `.erb`/`.haml`/`.slim` templates)
+
+`deep` depth in core steps: consult every listed atomic skill (not only touched-area ones) and read the surrounding code beyond the diff hunks before judging.
 
 Checks:
 
@@ -192,6 +195,10 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 **Failure isolation:** if a subagent fails or times out, continue with remaining results; note `Scope incomplete: <scope>` under Summary.
 
+**No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Inline runs behave as subagent runs: their Steps 1-3 are pre-satisfied and their report writers are skipped - this workflow owns the report. Depth propagates to delegates (security always runs full depth regardless).
+
+On incremental rounds, scopes added by *firing signals* review the incremental diff only (the signals fired from it); scopes added by *user flag* follow Step 3.5d.
+
 ### Step 9.5 - Reconcile Prior Findings (incremental mode only)
 
 Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
@@ -199,6 +206,7 @@ Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` wi
 - `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
 - `incremental_diff`: from Step 3.5c
 - `name_status`: from Step 3.5c
+- `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <head_ref>`), when the reconcile skill requests it
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
@@ -216,7 +224,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted), `stack = ruby-rails`
+- `scope` (resolved in Step 4; frontmatter uses the writer's enum - `Core` maps to `core-only`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
 
 Print confirmation line.
 
@@ -237,7 +245,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Ruby <version> / Rails <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
@@ -256,7 +264,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 ## High-Impact Findings
 
 ### [Must] file:line
-- Issue: [Rails idiom named: callback abuse, fat controller, AR-in-API, missing authorize, etc.]
+- Issue: [Rails idiom named: callback abuse, fat controller, mid-transaction HTTP, gap-lock range scan, etc.]
 - Impact: [user-visible or operational consequence]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Rails change with code]

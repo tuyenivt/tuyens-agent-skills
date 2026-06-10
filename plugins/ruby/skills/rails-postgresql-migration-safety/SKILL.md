@@ -31,6 +31,8 @@ user-invocable: false
 
 ### `strong_migrations` + concurrent index
 
+Thresholds used throughout: `CONCURRENTLY` for any table >100K rows (cheap insurance below that too); the NOT VALID + VALIDATE constraint path for >1M rows.
+
 ```ruby
 class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
   disable_ddl_transaction!
@@ -38,6 +40,16 @@ class AddIndexToOrdersStatus < ActiveRecord::Migration[7.2]
     add_index :orders, :status, algorithm: :concurrently
   end
 end
+```
+
+### `add_reference` on existing tables
+
+`add_reference :events, :account, foreign_key: true, index: true` bundles three locking operations. Decompose:
+
+```ruby
+add_column :events, :account_id, :bigint                          # 1. metadata-only
+add_index  :events, :account_id, algorithm: :concurrently         # 2. own migration, disable_ddl_transaction!
+add_foreign_key :events, :accounts, validate: false               # 3. then validate_foreign_key
 ```
 
 ### Adding a NOT NULL column
@@ -53,7 +65,7 @@ end
 change_column_null :orders, :status, false                                 # 3. enforce
 ```
 
-**Large tables (>1M rows): NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes.
+**Large tables (>1M rows): NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes - so the app must already write the column on every insert *before* the NOT VALID constraint ships, and existing NULL rows must be audited/backfilled before `VALIDATE` (it fails on the first NULL).
 
 ```ruby
 # Migration 1
@@ -66,7 +78,7 @@ def change
 end
 ```
 
-PG 12+: with a validated CHECK in place, `change_column_null` reuses it and becomes metadata-only.
+PG 12+: with a validated CHECK in place, `change_column_null` reuses it and becomes metadata-only; drop the now-redundant CHECK afterwards. Sequencing for new columns: deploy the app writing the column on every insert *before* enforcing NOT NULL, or the constraint fails on fresh rows. Cross-table backfills batch the same way - `b.update_all("col = (SELECT ... FROM other WHERE ...)")` or join via `UPDATE ... FROM` per batch.
 
 ### Partial indexes
 
@@ -82,9 +94,11 @@ add_index :orders, :status, where: "status IN (0, 1, 2)",
 
 ```ruby
 add_column :orders, :amount, :decimal                          # 1
-Order.in_batches { |b| b.update_all("amount = total") }        # 2
-# self.ignored_columns += ["total"] ; deploy                   # 3
-safety_assured { remove_column :orders, :total, :string }      # 4
+# Deploy dual-writes (model writes both columns) BEFORE the    # 2
+# backfill - rows inserted mid-backfill otherwise keep NULL
+Order.in_batches { |b| b.update_all("amount = total") }        # 3 backfill (rake)
+# Cut reads to :amount; self.ignored_columns += ["total"]      # 4 deploy
+safety_assured { remove_column :orders, :total, :string }      # 5
 ```
 
 ### Dropping columns (two deploys + audit)
@@ -97,7 +111,7 @@ Drops are final. Three phases.
 rg -n "legacy_field" app/ lib/ config/ spec/ db/ -g '*.{rb,erb,haml,slim,sql}' -g '!*.lock'
 ```
 
-Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical-replication subscribers, FDW foreign tables. Drop dependent FK / index / generated / CHECK / **views** in a *prior* migration. `strong_migrations` catches FK/index but not view dependencies - find them with `pg_depend`:
+Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical-replication subscribers, FDW foreign tables. External readers you can't migrate yourself (Looker, Metabase): hand the owning team a deadline and verify the cutover before Deploy B. Drop-or-recreate dependent FK / index / generated / CHECK / **views** in a *prior* migration (recreating a view without the column is one transaction - no read gap). `strong_migrations` catches FK/index but not view dependencies - find them with `pg_depend`:
 
 ```sql
 SELECT dependent_view.relname
@@ -110,7 +124,7 @@ JOIN pg_attribute ON pg_attribute.attrelid = pg_depend.refobjid
 WHERE source_table.relname = 'orders' AND pg_attribute.attname = 'legacy_field';
 ```
 
-**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails. Both metadata-only on PG 11+:
+**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails - so ship these *before* Deploy A (`from: nil` here means "no previous default"; any inert sentinel works). Both metadata-only on PG 11+:
 
 - `change_column_default :users, :legacy_field, from: nil, to: "guest"`
 - `change_column_null :users, :legacy_field, true`
@@ -123,14 +137,15 @@ class User < ApplicationRecord
   self.ignored_columns += ["legacy_field"]
 end
 # Remove read/write refs. Wait for full rollout - Sidekiq fleets lag web.
+# Soak before Deploy B: no errors referencing the column, external cutovers verified.
 
 # Deploy B: migration + remove ignored_columns in same PR
 safety_assured do
-  remove_column :users, :legacy_field, :string, null: false, default: "guest"
+  remove_column :users, :legacy_field, :string, null: true, default: "guest"
 end
 ```
 
-Restate type/null/default for `db:rollback`. `DROP COLUMN` is metadata-only in PG (no rewrite). Reclaim disk via autovacuum or `pg_repack` if needed promptly.
+Restate type/null/default as they exist *at drop time* (post-Phase-2: nullable) so `db:rollback` recreates that state. `DROP COLUMN` is metadata-only in PG (no rewrite). Reclaim disk via autovacuum or `pg_repack` if needed promptly.
 
 Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view via `pg_depend`), external systems (BI / ETL / logical replication / FDW), >100M-row tables where space reclamation is urgent (`pg_repack`).
 
@@ -139,7 +154,7 @@ Edge cases requiring extra steps: dependent objects (FK / index / generated / CH
 ```ruby
 create_table :orders do |t|
   t.references :user, null: false, foreign_key: true
-  t.decimal :total, precision: 10, scale: 2, null: false
+  t.integer :total_cents, null: false  # money as integer cents; decimal only to match an existing convention
   t.integer :status, null: false, default: 0
   t.datetime :fulfilled_at
   t.timestamps
@@ -233,13 +248,15 @@ Then `DROP INDEX CONCURRENTLY` and rerun.
 
 ## Output Format
 
+One block per operation, in execution order (multi-step plans emit a numbered sequence; rake backfills get blocks too). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
+
 ```
 Migration: {file name}
-Operation: {Create Table | Add Column | Add Index | Add FK | Backfill | Remove Column}
+Operation: {Create Table | Add Column | Change Column | Add Index | Add FK | Validate Constraint | Backfill | Remove Column | Drop/Recreate View}
 Table: {name}
 Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE}
-Lock window: {none | brief MDL | requires maintenance}
-Safety: {Zero-Downtime | Maintenance Window | Batched Backfill}
+Lock window: {none | brief lock | requires maintenance}
+Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Reject - rewrite required}
 Notes: {partial-index conditions, validate: false, etc.}
 ```
 

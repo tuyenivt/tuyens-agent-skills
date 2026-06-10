@@ -24,9 +24,8 @@ user-invocable: false
 - Every spawned thread / fiber that touches AR wraps DB work in `ActiveRecord::Base.connection_pool.with_connection { ... }`.
 - `load_async` for >=2 independent queries on the same request; serial chains stay serial.
 - `Ractor` is experimental - only for measured CPU work that survives sharing constraints. ActiveRecord is not Ractor-safe; do DB work in the parent.
-- `async` gem requires a fiber-scheduler host (`Async { ... }` block or Falcon). Under Puma it provides no parallelism.
-- `Fiber.scheduler` is a hook, not a free upgrade - the gem under it (`net/http`, `pg`, `mysql2`) must opt in. Verify per library.
-- Durable cross-service fan-out lives in Sidekiq, not in-process - survives process restarts.
+- `async` gem: outside an `Async { ... }` block (or Falcon) it adds nothing. Inside one, concurrency covers only scheduler-aware IO (`net/http` 3.1+, `pg`; `mysql2` blocks) - verify per library.
+- Durability boundary: fan-out that must survive a process restart starts from a Sidekiq job, never a web request. *Inside* a job, in-process futures with one aggregated write are fine when the job retries as a unit; split into child jobs when sources need independent retries.
 
 ## Patterns
 
@@ -36,9 +35,12 @@ user-invocable: false
 | ----------------------------------- | ----------------------------- | ---------------------------------------- |
 | 2-5 independent reads in a request  | `load_async` or `Async {}`    | Built-in, no scheduler change            |
 | Many parallel HTTP fetches          | `async-http` (Falcon)         | One fiber per request, no thread cost    |
-| CPU-bound transform (hashing, math) | Process pool / `Ractor`       | GVL serializes threads for CPU           |
+| CPU-bound batch (durable, chunkable)| Sidekiq fan-out, chunk jobs   | Process-level parallelism + retries; run CPU queues at concurrency ~1-2 per core (threads in one pod serialize under the GVL) and release the AR connection before the CPU phase |
+| CPU-bound transform, in-process     | Process forks (`Parallel` gem) / `Ractor` | GVL serializes threads for CPU |
 | Fire-and-forget side effect         | Sidekiq job                   | Durable across restarts, retry semantics |
-| In-request parallelism (Puma)       | `Concurrent::Promises` / pool | Thread-friendly, releases GVL during I/O |
+| I/O fan-out inside one request/job (results aggregated) | `Concurrent::Promises` / pool | Thread-friendly, releases GVL during I/O; aggregate into ONE write at the end |
+
+When work is both CPU-bound and a durable batch, durability wins: Sidekiq chunk jobs over Ractor/forks.
 
 ### Parallel Reads in a Request
 
@@ -58,7 +60,9 @@ Good - `load_async` overlaps DB time:
 # wall clock max(80, 60)
 ```
 
-`load_async` uses a pool sized by `config.active_record.async_query_executor` - tune for high-QPS endpoints. Each parallel query consumes one connection; for pool math, use skill: `rails-connection-pool-sizing`.
+`load_async` runs on the global async executor (default 4 threads) but each in-flight query checks a connection out of the *main* AR pool. Budget per request: `1 (request thread) + min(async queries, executor concurrency) + spawned AR threads` - at `pool: 5` with 4 async queries you are saturated, and the budget is *per request*: N concurrent Puma threads multiply the draw on one process pool. For pool math, use skill: `rails-connection-pool-sizing`.
+
+Mixing both fan-outs in one action is the normal shape: kick off `load_async` queries first (DB time overlaps everything after), then the HTTP futures, then consume.
 
 ### Fan-Out Across HTTP Services
 
@@ -72,6 +76,8 @@ balance_f = Concurrent::Promises.future(executor: :io) { BillingClient.fetch(use
 prefs_f   = Concurrent::Promises.future(executor: :io) { PrefsClient.fetch(user.id) }
 profile, balance, prefs = Concurrent::Promises.zip(profile_f, balance_f, prefs_f).value!(2.0)
 ```
+
+`value!` raises the first future's exception but **returns nil on timeout**. `zip(...).value!` is all-or-nothing - one failure or timeout takes the whole join. For per-service degradation, resolve futures individually (`f.value(deadline)`, rescue per future, substitute a fallback) with timeouts owned by each HTTP client. Pure-HTTP futures don't need `with_connection`; only AR-touching blocks do. Futures that each write the same row race - collect results and issue one write after the join.
 
 `async` gem (only on Falcon or inside an `Async { }` block):
 
@@ -123,6 +129,8 @@ Fiber.schedule { do_io }
 Use the `Async` gem rather than hand-rolling a scheduler. Falcon (`gem "falcon"`) provides fiber-per-request serving in place of Puma - a deployment change; validate adapter support (pg works, mysql2 partial, `net/http` hooks since 3.1).
 
 ## Output Format
+
+In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design.
 
 ```
 Workload: <I/O-bound | CPU-bound | mixed>

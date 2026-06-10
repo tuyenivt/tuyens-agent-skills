@@ -26,9 +26,10 @@ Not here: logic that belongs in a service (call it from the task); long-running 
 - `task: :environment` whenever touching Rails
 - Idempotent - re-runs after partial failure resume, never duplicate
 - Batch over large tables (`find_each` / `in_batches`); see `rails-batch-processing-patterns`
-- Every data-mutating task supports `DRY_RUN=1`
-- Production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`
-- Structured logs via `Rails.logger`; exit non-zero on failure (`raise` or `abort`, never `exit 0`)
+- Every data-mutating task supports `DRY_RUN=1` - dry runs write *nothing* (audit rows included) and log would-be actions
+- Human-triggered production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`. Scheduled (cron) tasks omit the gate - baking `CONFIRM=yes` into a manifest is ceremony; their safety is the leader lock plus reviewed, dry-run-tested code
+- Tasks needing durable proof (compliance, GDPR) write an audit row in the same transaction as the mutation - logs are not evidence
+- Structured logs via `Rails.logger` (no PII in log fields); exit non-zero on failure (`raise` or `abort`, never `exit 0` after an error)
 - Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
 - Namespace per domain, one `.rake` per top-level namespace, always include `desc`
 
@@ -74,13 +75,15 @@ User.where(welcome_sent_at: nil).find_each do |user|
   end
 end
 
-# Cursor (cache or column)
-last_id = Integer(args[:since_id] || Rails.cache.read("reports:rebuild:cursor") || 0)
+# Cursor - durable column/table for anything long; Rails.cache can evict mid-run and lose progress
+last_id = Checkpoint.for("reports:rebuild").last_id
 Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
   RebuildReportRows.call(orders: batch)
-  Rails.cache.write("reports:rebuild:cursor", batch.last.id)
+  Checkpoint.for("reports:rebuild").update!(last_id: batch.last.id)
 end
 ```
+
+Loops over independent rows isolate failures: rescue per row, collect errors, log the summary, raise at the end if any failed - one bad record must not abort the remaining 10K. The loop and its rescues live in the service (the task stays a thin wrapper); after a fan-out rewrite the same rule moves to the job.
 
 ### Dry Run and Production Confirmation
 
@@ -153,7 +156,7 @@ A rake task often fans out to Sidekiq for large backfills.
 
 ### Signal Handling
 
-Persist the cursor before checking the interrupt flag - on SIGTERM the next run resumes at the last completed batch.
+Persist the cursor (durable checkpoint, per Idempotency) before checking the interrupt flag - on SIGTERM the next run resumes at the last completed batch.
 
 ```ruby
 task :rebuild => :environment do
@@ -163,7 +166,7 @@ task :rebuild => :environment do
 
   Order.in_batches(of: 1_000) do |batch|
     RebuildReportRows.call(orders: batch)
-    Rails.cache.write("reports:rebuild:cursor", batch.last.id)
+    Checkpoint.for("reports:rebuild").update!(last_id: batch.last.id)
     break if interrupted
   end
 end
@@ -183,7 +186,10 @@ namespace :backfill do
       Sidekiq::Client.push_bulk("class" => "BackfillShardJob", "args" => jobs, "queue" => "low")
       true
     end
-    abort "another backfill:recompute_totals is running" unless acquired
+    unless acquired
+      Rails.logger.info(task: "backfill:recompute_totals", skipped: "another run active")
+      exit 0   # skip-if-held is expected, not a failure - nonzero would trip cron alerting
+    end
   end
 end
 ```
@@ -201,7 +207,7 @@ namespace :reports do
 end
 ```
 
-`Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
+`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain (children don't re-lock) and one set of `Signal.trap`s (per-child traps overwrite each other in the same process). `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
 ### Layout and Testing
 
@@ -214,6 +220,8 @@ spec/tasks/orders_rake_spec.rb
 Behavioral coverage lives on the service spec; the rake spec verifies wiring only. See `rails-testing-patterns` Rake Task Specs.
 
 ## Output Format
+
+One block per task (a composite plus its children each get one). In review mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected tasks.
 
 ```
 Task: {namespace:name}

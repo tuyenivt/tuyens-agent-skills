@@ -20,8 +20,9 @@ user-invocable: false
 
 ## Rules
 
-- DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (rate limits, cache stampede).
-- Acquire lock, do DB work, release. Never wrap network calls in an open transaction or held lock.
+- DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (rate limits, cache stampede). Hybrid work (DB write + external call): the DB is the consistency anchor - advisory lock for the DB side, idempotency key for the external call; never a Redis lock for the pair.
+- Locks prevent overlap, not duplicates - a crash-rerun or manual re-fire re-does the work. Pair every leader lock with row-level idempotency (unique index + create-if-absent / upsert).
+- Acquire lock, do DB work, release. Never wrap network calls in an open transaction or row lock. (A long-lived *leader* lock spanning a run that includes IO is legitimate - it serializes runs, holds no row locks - but it costs one connection for the duration; see Connection accounting.)
 - Never `find_each` inside `Model.transaction { ... }`.
 - Set `innodb_lock_wait_timeout` (MySQL) / `lock_timeout` (PG) to 5-10s at the worker session.
 - Default stays at the DB's default isolation; escalate per-transaction at the call site, not per-connection or globally.
@@ -53,7 +54,7 @@ end
 # Returns false when not acquired; the block doesn't run.
 ```
 
-MySQL `GET_LOCK` is session-scoped (auto-released on connection drop). PG `pg_advisory_xact_lock(key)` auto-releases at commit - cleaner crash-safety than ensure blocks.
+MySQL `GET_LOCK` is session-scoped (auto-released on connection drop). PG `pg_advisory_xact_lock(key)` auto-releases at commit - cleaner crash-safety than ensure blocks; acquire it *inside* the transaction it should bind to (`with_advisory_lock(..., transaction: true)`), whereas session locks wrap the transaction from outside.
 
 ### Leader election for cron rake tasks
 
@@ -68,7 +69,10 @@ namespace :reports do
       end
       true
     end
-    abort "another reports:rebuild is running; exiting cleanly" unless acquired
+    unless acquired
+      puts "another reports:rebuild is running - skipping"
+      exit 0   # skip-if-held is the expected outcome; nonzero exit would trip cron alerting
+    end
   end
 end
 ```
@@ -159,7 +163,20 @@ Inside `SKIP LOCKED` claim workers, claim small batches (50-500 rows) per transa
 
 ### Connection accounting
 
-Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours. For long coordinators, prefer `pg_advisory_xact_lock` inside short transactions, or release-and-reacquire with a heartbeat between work batches. See `rails-connection-pool-sizing`.
+Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours - usually acceptable for one coordinator, but it blocks nothing else and must be budgeted. When that's too costly, release-and-reacquire between work batches:
+
+```ruby
+loop do
+  done = ApplicationRecord.with_advisory_lock("billing:run", timeout_seconds: 0) do
+    batch = next_unprocessed_batch or break :finished   # re-derive progress from row state
+    process(batch)
+    :more
+  end
+  break if done == :finished || done == false           # false = another holder; exit cleanly
+end
+```
+
+The gap between iterations is a double-run window - safe only because progress lives in row state and row-level idempotency (Rules) makes re-processing a no-op. PG alternative: `pg_advisory_xact_lock` inside short per-batch transactions. See `rails-connection-pool-sizing`.
 
 ### Failure modes
 
@@ -174,13 +191,16 @@ Every advisory lock = one DB connection held for the lock duration. A 6-hour bac
 
 ## Output Format
 
+In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design.
+
 ```
 Lock kinds: {advisory leader | advisory per-resource | row pessimistic | optimistic | transaction-scoped advisory}
 Adapter: {MySQL | PostgreSQL} (primitive: {GET_LOCK | pg_advisory_lock | pg_advisory_xact_lock | with_advisory_lock gem})
 Scope: {session | transaction}
-Hold time: {expected ms / s; reviewed for network calls / find_each / external IO}
+Hold time: {expected per lock kind; long leader holds stated in minutes and flagged with connection cost}
 Lock target: {PK lookup | ID list | non-PK scan (flagged)}
-Isolation tier: {Tier 1 default | Tier 2 per-tx RC at call site | Tier 3 connection-level RC with documented rationale}
+Isolation tier: {Tier 1 default | Tier 2 per-tx escalation at call site (RC, or RR on PG for snapshot reads) | Tier 3 connection-level RC with documented rationale}
+Idempotency backing the lock: {unique index | upsert | state column | external idempotency key - list all that apply | none (flagged)}
 Failure modes considered: {deadlock cascade | leader-lock starvation | connection exhaustion | StaleObjectError storm}
 ```
 
@@ -192,7 +212,7 @@ Failure modes considered: {deadlock cascade | leader-lock starvation | connectio
 - Session-scoped advisory locks for transactions that should use `pg_advisory_xact_lock`
 - Blanket `READ COMMITTED` on the Sidekiq pool without shared-services audit and `ensure`-reset
 - "RR for web, RC for jobs" as a one-line recipe - changes shared-service behavior silently
-- Long-held `GET_LOCK` across a backfill - one connection consumed for hours, blocks rolling deploys
+- Long-held `GET_LOCK` without budgeting it - one coordinator connection for hours is fine *if counted*; release-and-reacquire when the pool is tight
 - Conflating advisory locks (mutual exclusion) with row locks (data consistency)
 - Default `innodb_lock_wait_timeout` / `lock_timeout` (50s) - makes stuck holders look like a hang
 - Optimistic locking on hot rows - use pessimistic by PK

@@ -18,8 +18,8 @@ user-invocable: false
 
 ## Rules
 
-- One service, one responsibility, verb-named (`FulfillOrder`, `ChargeCustomer`); place in `app/services/`, nest by domain when count grows.
-- `call` returns `Result` for expected failures; raise only for programmer errors / unexpected state.
+- One service, one responsibility, verb-named (`FulfillOrder`, `ChargeCustomer`); place in `app/services/`, nest by domain when count grows. Entrypoint is instance `.call` - not class-method `run`/`execute`.
+- `call` returns `Result` for expected failures; raise only for programmer errors / unexpected state. `RecordNotFound` on user-supplied IDs is expected (Result); on internal IDs it's a bug (raise).
 - Validate inputs in `initialize` (`ArgumentError` on invariants); authorization stays in controllers (Pundit).
 - DB writes inside `ActiveRecord::Base.transaction`; external API calls outside; Sidekiq dispatch after commit.
 - On partial failure after an external call succeeds, enqueue a reconciliation job - never inline refund / undo.
@@ -86,7 +86,14 @@ end
 
 ### External API Ordering + Compensating Action
 
-Network calls inside a transaction hold the DB connection across the round-trip and invert failure modes. Correct order: validate -> charge (outside txn) -> open transaction with the payment ID -> commit -> dispatch jobs. If the DB write fails after a successful charge, enqueue a reconciliation job:
+Network calls inside a transaction hold the DB connection across the round-trip and invert failure modes. Correct order: validate -> charge (outside txn) -> open transaction with the payment ID -> commit -> dispatch jobs.
+
+- Multiple external systems: the call whose failure must abort the flow (charge, refund) goes before the transaction; deferrable or flaky systems (ERP sync, notifications) go after commit as Sidekiq jobs. A post-commit external failure degrades to its reconciliation path - it never fails the Result.
+- Contended resource (slot, seat, stock): the canonical order above assumes the mutation isn't claiming a contended resource. When it is, prefer the two-transaction variant: txn 1 claims under row lock (pending state) -> charge -> txn 2 finalizes. On charge failure, releasing your own pending claim is normal rollback, not the forbidden inline undo (which refers to reversing a *succeeded* external call).
+- Orchestrators are replay-safe at the top: first line of `call` returns `Result.success` if the operation already completed (`order.cancelled?`). Result stays binary - deferred post-commit work pending is still Success, with the job listed in the output block.
+- A reconciliation job re-checks ground truth (was the charge captured? does the row exist?) and completes or reverses; it alerts after exhausting retries.
+
+If the DB write fails after a successful charge, enqueue a reconciliation job:
 
 ```ruby
 def call
@@ -106,7 +113,7 @@ end
 
 ### Idempotency Keys
 
-For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-click), thread one key through the chain and back it with a unique DB index:
+For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-click), thread one key through the chain and back it with a unique DB index (`add_index :payments, :idempotency_key, unique: true`). Key source by trigger: client `Idempotency-Key` header when the client cooperates; otherwise derive deterministically from intent (`"book-#{user_id}-#{slot_id}"`) for double-click/UI paths, or from job args for Sidekiq retries.
 
 ```ruby
 class ChargeCustomer
@@ -157,6 +164,8 @@ end
 ```
 
 ## Output Format
+
+One block per service (orchestrator and each child; plain jobs don't get blocks). In review mode, precede the blocks with a numbered findings list, each finding citing the violated rule; the block describes the corrected service. A service recommended for deletion gets findings only, no block.
 
 ```
 Service: {ClassName}

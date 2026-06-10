@@ -31,7 +31,7 @@ Use skill: `stack-detect`. Accept pre-confirmed stack from parent.
 
 Collect: full stack trace or error message, source file, expected behavior. If partial, ask for the full trace before proceeding. Identify the first application-code frame; read that file and the failing method. Trace the data path upstream (controller params -> service -> ORM); for Sidekiq, inspect both `perform` and the enqueue site.
 
-**No error, silent value drop** ("the field I added gets ignored"): trace the boundary chain.
+**No error, silent value drop** ("the field I added gets ignored"): trace the boundary chain - walk **every** hop even after finding a drop; multi-hop chains routinely drop the value twice (permit list AND a service whitelist), and fixing only the first leaves the symptom intact. Debug aids: the "Unpermitted parameter" log line; `action_on_unpermitted_parameters = :raise` in test.
 
 ```
 params -> strong params permit list -> form/DTO attribute -> service whitelist
@@ -44,7 +44,7 @@ For ActiveJob/Sidekiq: dispatch site -> `after_commit` snapshot -> GlobalID roun
 
 ### Step 4 - Classify
 
-Match the error and load the relevant atomic skill.
+Match the error and load the relevant atomic skill; follow that skill's cross-references when the fix pattern lives one hop away (deadlock fix shape sits in `rails-activerecord-patterns` via `rails-db-locking-patterns`). No-exception symptoms classify by their Step 3 path (silent value drop / unexpected queries), not these tables. When evidence shows multiple interacting causes (wrong arg shape AND a rollback path), report all of them - the tables name the entry point, not the whole story.
 
 **ActiveRecord / Database:**
 
@@ -56,7 +56,7 @@ Match the error and load the relevant atomic skill.
 | `PG::UniqueViolation`                                | Duplicate - needs upsert or idempotency guard             | `rails-activerecord-patterns`      |
 | `PG::LockNotAvailable`                               | Migration lock or long transaction                        | `rails-postgresql-migration-safety` |
 | `Mysql2::Error: Lock wait timeout`                   | Long-running transaction or advisory lock                 | `rails-db-locking-patterns`        |
-| `Mysql2::Error: Deadlock found` / `Deadlocked`       | Gap-lock cascade under RR; lock order mismatch            | `rails-db-locking-patterns`        |
+| `Mysql2::Error: Deadlock found` / `Deadlocked`       | Gap-lock cascade under RR; lock order mismatch            | `rails-db-locking-patterns` (+ retry pattern: `rails-transaction-patterns`) |
 | `StaleObjectError`                                   | Optimistic-lock conflict on hot rows                      | `rails-db-locking-patterns`        |
 | `ConnectionTimeoutError` / `PG::ConnectionBad`       | Pool exhausted; check `connection_pool.stat`              | `rails-connection-pool-sizing`     |
 | `Mysql2::Error: Too many connections` / `MySQL gone` | DB-side `max_connections` / `wait_timeout`                | `rails-connection-pool-sizing`     |
@@ -88,15 +88,17 @@ Match the error and load the relevant atomic skill.
 
 ### Step 5 - Reproduce
 
-Reduce to: a failing RSpec example (preferred - prevention builds on it), a `rails console` snippet, or a `curl` request. If reproduction is impossible (race, prod-only data, third-party outage), state it and lower confidence.
+Reduce to: a failing RSpec example (preferred - prevention builds on it), a `rails console` snippet, or a `curl` request. Concurrency bugs: a serial spec passing is expected, not exculpatory - say *why* it passes (transactional fixtures can't interleave; one process, no contention) and sketch the two-thread, non-transactional spec that would exercise it. If reproduction is genuinely impossible (prod-only data, third-party outage), state it.
 
 ### Step 6 - Root Cause
 
 Explain **why**, not just what, with `file:line`. State confidence:
 
-- **HIGH** - reproduced or obvious
+- **HIGH** - reproduced, or the mechanism is directly evidenced in the code/trace (an unreproduced race can still be HIGH)
 - **MEDIUM** - pattern match
 - **LOW** - multiple possible causes
+
+After proposing the fix, re-walk the failing path end-to-end with the fix applied - a multi-cause bug "fixed" at one point still fails.
 
 ### Step 7 - Fix and Prevention
 
@@ -116,13 +118,19 @@ Before/after diff; minimal; addresses root cause. Never bypass strong params, Pu
 
 ## Prevention
 [RSpec test, validation, or config change]
+
+## Remediation                       <!-- only when damage outlives the fix -->
+[Dead/poisoned jobs to drain, data to backfill, alerts to clear]
+
+## Also Found                        <!-- only when present -->
+[Secondary bugs noticed en route, each with file:line - report, don't silently fix]
 ```
 
 ## Self-Check
 
 - [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed
-- [ ] Step 3: full trace gathered; first app-code frame and data path located; "no error" cases consulted `rails-implicit-config-audit` before tracing
+- [ ] Step 3: full trace gathered; first app-code frame and data path located; unexpected-query symptoms consulted `rails-implicit-config-audit` before tracing; silent-drop cases walked the full boundary chain
 - [ ] Step 4: error classified; matching atomic skill consulted
 - [ ] Step 5: reproduction attempted; limitation stated if not feasible
 - [ ] Step 6: root cause references file:line; confidence stated
@@ -134,5 +142,5 @@ Before/after diff; minimal; addresses root cause. Never bypass strong params, Pu
 - Bypassing strong params with `permit!` / `to_unsafe_h` to silence `ParameterMissing`
 - `rescue => e; render json: { error: e.message }` instead of handling specific errors
 - `config.autoloader = :classic` to fix Zeitwerk autoload errors
-- Adding `dependent: :destroy` as a fix for `DeserializationError` (add a nil guard)
+- Treating `DeserializationError` as job-side: `discard_on`, nil guards, or `dependent: :destroy` mask an enqueue-site bug - fix the dispatch first, then drain jobs verified dead against the DB
 - Blanket `rescue StandardError` in Sidekiq jobs

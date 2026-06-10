@@ -65,21 +65,24 @@ If the DB write fails after the charge, enqueue a reconciliation job (compensati
 
 ### Nested transactions and `requires_new`
 
-Rails treats a re-entered `Model.transaction` block as part of the outer transaction unless `requires_new: true` is passed. A `raise` inside an inner block caught in the outer leaves the inner's writes committed.
+Rails fuses a re-entered `Model.transaction` block into the outer transaction unless `requires_new: true` is passed (`with_lock` also opens/joins a transaction). Two footguns follow:
 
 ```ruby
-# Bad - silent partial-commit
+# Bad - rescue INSIDE the transaction block commits everything
 ActiveRecord::Base.transaction do
   @user.update!(...)
-  InnerService.call(...)  # raises inside its own transaction; outer rescues
+  InnerService.call(...)  # raises; meant to cancel only the inner writes
 rescue => e
-  Rails.logger.warn(e)    # @user rolled back; inner writes already committed
+  Rails.logger.warn(e)    # txn never sees the raise -> ALL writes commit, inner included
 end
 ```
 
+- `ActiveRecord::Rollback` raised inside a fused inner block is swallowed by the inner `transaction` call and rolls back **nothing**.
+- Rescue placement decides the outcome: rescue outside the transaction block rolls everything back; rescue inside commits everything done so far. When a reported symptom (partial state persisted) contradicts the rescue placement you see, look for a rescue hidden inside the inner service.
+
 Two fixes:
 
-1. **Outer owns the transaction; inner opens none.** Preferred when the inner is only called from one place.
+1. **Outer owns the transaction; inner opens none.** Default.
 
    ```ruby
    class InnerService
@@ -89,7 +92,7 @@ Two fixes:
    end
    ```
 
-2. **Inner uses `requires_new: true`** (savepoint). Use when the inner is called from multiple places.
+2. **Inner uses `requires_new: true`** (savepoint; supported on MySQL and PG). Only when the inner must roll back independently while the outer continues.
 
    ```ruby
    ActiveRecord::Base.transaction(requires_new: true) { @record.update!(...) }
@@ -106,6 +109,11 @@ Two fixes:
 | Cache invalidation           | `after_commit`  | Avoid serving stale data after rollback          |
 
 A callback inside a locked transaction (`with_lock`, `Model.lock.find`) that makes a network call holds the row lock for the network round-trip - the most common cause of `Lock wait timeout` storms.
+
+Two failure modes the table implies but reviews miss:
+
+- A derived column maintained by `after_commit` updates in a *separate* transaction - it can fail or interleave with concurrent writers and leave the column stale. That asymmetry, not style, is why derived columns use `after_save`.
+- In bulk loops (`rows.each { create! }` inside one transaction), a per-row callback that recomputes an aggregate runs N times and grows lock-hold time. Recompute once after the loop, or use `counter_cache` / `update_counters` for sum-style columns. A callback that writes a *different* model also adds a cross-model lock-order deadlock surface.
 
 ### `after_commit_everywhere` for nested dispatch
 
@@ -138,7 +146,9 @@ ActiveRecord::Base.transaction(isolation: :serializable) do
 end
 ```
 
-Bump isolation only with a documented reason. Higher isolation -> more `SerializationFailure` (PG) / `Deadlock` (MySQL) - the caller must retry. For nested isolation behavior and the three-tier per-call-site escalation pattern, see `rails-db-locking-patterns`.
+Tie-breaker before bumping: row-locked read-modify-write (`SELECT ... FOR UPDATE`) already prevents lost updates at default isolation - prefer row locks; reserve `:serializable` for invariants spanning rows you can't enumerate and lock. On MySQL `REPEATABLE READ`, locking reads see the latest committed row (current read), not the transaction snapshot - that fact, not the isolation name, is what a compliance rationale should state.
+
+Bump isolation only with a documented reason. Higher isolation -> more `SerializationFailure` (PG) / `Deadlock` (MySQL) - the caller must retry. For lock-acquisition ordering (sort IDs to kill A->B/B->A deadlocks), nested isolation behavior, and the three-tier per-call-site escalation pattern, see `rails-db-locking-patterns`.
 
 ### Retry on deadlock / serialization failure
 
@@ -147,7 +157,7 @@ def with_retry(max: 3)
   attempts = 0
   begin
     yield
-  rescue ActiveRecord::Deadlocked, ActiveRecord::SerializationFailure
+  rescue ActiveRecord::Deadlocked, ActiveRecord::SerializationFailure  # SerializationFailure: PG-only; harmless to list on MySQL
     attempts += 1
     raise if attempts >= max
     sleep(0.05 * 2**attempts)
@@ -156,7 +166,7 @@ def with_retry(max: 3)
 end
 ```
 
-Idempotency keys belong outside this retry boundary - retrying the transaction is safe; retrying a side effect (charge, email) is not.
+Wrap the transaction only - side effects (charge, email) stay outside the retried block, per the idempotency rule.
 
 ### Long-running transactions
 

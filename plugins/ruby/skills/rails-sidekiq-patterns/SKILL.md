@@ -29,7 +29,15 @@ user-invocable: false
 
 ### Idempotency
 
-State check is the default. For external side effects, also forward an idempotency key.
+Pick by requirement; combine when requirements combine (list every mechanism used in the Output Format):
+
+| Requirement                                            | Mechanism                                          |
+| ------------------------------------------------------ | -------------------------------------------------- |
+| Re-run safety (always required)                         | State check in `perform` (DB column, S3 key, etc.) |
+| Duplicate enqueues (webhook retries, after_commit bulk) | `sidekiq-unique-jobs` `lock: :until_executed`      |
+| Mutual exclusion only (dups allowed, no overlap)        | `lock: :while_executing`                           |
+| Both dedup and mutual exclusion                         | `lock: :until_and_while_executing`                 |
+| No gem available                                        | Redis `SET NX` fence                               |
 
 ```ruby
 def perform(order_id)
@@ -41,17 +49,13 @@ def perform(order_id)
 end
 ```
 
-For duplicate-enqueue prevention (webhook retries, after_commit on bulk updates), prefer `sidekiq-unique-jobs`:
+For external side effects, also forward an idempotency key. For sources that deliver out of order (webhook retries), guard with a monotonic field: return early when the payload's `updated_at` <= the stored one.
 
 ```ruby
 sidekiq_options lock: :until_executed, on_conflict: :log,
                 lock_args_method: ->(args) { [args[0]] }
-```
 
-Ad-hoc fence with Redis `SET NX` when the gem isn't available:
-
-```ruby
-Sidekiq.redis { |r| r.set("sync_customer:#{id}", "1", nx: true, ex: 60) } or return
+Sidekiq.redis { |r| r.set("sync_customer:#{id}", "1", nx: true, ex: 60) } or return  # SET NX fence
 ```
 
 ### Post-Commit Dispatch
@@ -77,6 +81,8 @@ When the service runs inside a caller's transaction, "after the local block" sti
 | `Sidekiq::Job`   | Default. Direct access to `sidekiq_options`, `sidekiq_retry_in`         |
 | `ApplicationJob` | Only when swapping backends or using `deliver_later` / `Mail#deliver_later` |
 
+Converting an existing `ApplicationJob` changes the enqueue API (`perform_later` -> `perform_async`) at every call site - flag it in review, don't silently convert. Inside a `Sidekiq::Job`, mailers use `deliver_now`; the job is already the async boundary.
+
 For foreground ops / cron without retries, use a rake task (`rails-rake-task-patterns`).
 
 ### Queue Priority
@@ -101,7 +107,7 @@ class ImportDataJob
 
   sidekiq_retry_in do |count, exception|
     case exception
-    when RateLimitError then 60 * (count + 1)
+    when ExternalApi::RateLimitError then exception.retry_after || 60 * (count + 1)
     else (count ** 4) + 15 + (rand(10) * (count + 1))
     end
   end
@@ -109,14 +115,14 @@ class ImportDataJob
   def perform(id)
     resource = Resource.find(id)
     ExternalApi.sync(resource)
-  rescue ExternalApi::RateLimitError => e
-    self.class.perform_in(e.retry_after, id)
   rescue ExternalApi::NotFoundError
     resource.update!(sync_status: :not_found)
-  # Unknown errors propagate -> Sidekiq retries
+  # Rate-limit and unknown errors propagate -> Sidekiq retries via sidekiq_retry_in
   end
 end
 ```
+
+Pick one retry channel per error class: either let it propagate (counted, `sidekiq_retry_in` controls delay) or rescue-and-`perform_in` (re-enqueue resets the retry counter - unbounded; avoid unless intentional). Per-job `Retry-After` handling doesn't enforce a global rate budget - for hard provider limits, bound concurrency (dedicated low-concurrency queue/capsule or a rate limiter).
 
 Bare `rescue => e; logger.error(...)` swallows errors and blocks retry.
 
@@ -126,13 +132,14 @@ Sidekiq stores every job's args in Redis as JSON. 10 KB x 100K jobs = 1 GB.
 
 - Pass IDs; refetch in `perform`
 - For lists, pass ID arrays (not record arrays)
-- For large inputs, stage to S3 / a `JobInput` row, pass the key
+- For large inputs, stage to S3 / a `JobInput` row, pass the key; expire staged rows (TTL or sweep)
+- `DeserializationError` from already-enqueued AR-object payloads: fix the enqueue site, then drain or discard the poisoned jobs
 
 For >100 enqueues at once, use `push_bulk`. Cross-process fan-out, sharding, and `SKIP LOCKED` claim shapes: see `rails-work-splitter-patterns`.
 
 ### Graceful Shutdown
 
-Sidekiq sends `SIGTERM` on deploy, then `SIGKILL` after `timeout` seconds (default 25). Idempotent jobs are safe to re-enqueue. For long iterators, check `interrupted?`:
+Sidekiq sends `SIGTERM` on deploy, then `SIGKILL` after `timeout` seconds (default 25). Idempotent jobs are safe to re-enqueue (the server-side re-push bypasses client middleware, so uniqueness locks don't drop it). For long iterators, check `interrupted?`:
 
 ```ruby
 Batch.find(id).items.find_each do |item|
@@ -160,14 +167,16 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
+One block per job class (fan-out designs emit one per job):
+
 ```
 Job: {class name}
-Queue: {critical | default | mailers | low}
+Queue: {critical | default | mailers | low | custom (state why - e.g. dedicated concurrency cap)}
 Trigger: {what causes enqueue}
 Arguments: {names and types - IDs only}
-Idempotency: {state check | unique key | sidekiq-unique-jobs | Redis fence}
+Idempotency: {state check | sidekiq-unique-jobs | Redis fence - list all that apply}
 Retry: {count and backoff strategy}
-Dispatch: {post-commit | after_commit_everywhere | model after_commit}
+Dispatch: {post-commit | after_commit_everywhere | model after_commit | cron/scheduler}
 ```
 
 ## Avoid
@@ -175,5 +184,6 @@ Dispatch: {post-commit | after_commit_everywhere | model after_commit}
 - AR objects, request context (`current_user`, `session`), or payloads > 1 KB as args
 - `.perform_async` or any HTTP / S3 / Redis call inside `Model.transaction`
 - `rescue => e; log` that swallows errors and blocks retry
-- Jobs > 30 min (split or fan out)
+- `perform` > ~5 min without splitting or fanning out
+- rescue-and-`perform_in` for retryable errors - resets the retry counter
 - `Sidekiq::Testing.inline!` outside tests

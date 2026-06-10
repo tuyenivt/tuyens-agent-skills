@@ -63,7 +63,7 @@ end
 User.authenticate_by(email: params[:email], password: params[:password])
 ```
 
-Devise + JWT (API): `:jwt_authenticatable` with a revocation strategy (`JwtDenylist`); secret from credentials; `expiration_time` ≤ 1 hour.
+JWT for APIs: default to Devise + `:jwt_authenticatable` with a revocation strategy (`JwtDenylist` - a `jti` claim checked against a denylist table, rows expired past token TTL); secret from credentials; `expiration_time` <= 1 hour. Devise earns its weight whenever you need the account lifecycle (registration, password reset, lockout) - i.e. almost every email+password API, greenfield included. Hand-roll `authenticate_by` (above) + a JWT gem only for minimal token auth without that lifecycle - then you own encode/decode, `jti` revocation, and refresh yourself.
 
 ### Authorization - Pundit
 
@@ -80,9 +80,9 @@ class OrderPolicy < ApplicationPolicy
   end
 end
 
-class ApplicationController < ActionController::Base
+class ApplicationController < ActionController::API   # ActionController::Base for server-rendered apps
   include Pundit::Authorization
-  after_action :verify_authorized,    except: :index
+  after_action :verify_authorized,    except: :index  # index authorizes via policy_scope instead
   after_action :verify_policy_scoped, only:   :index
 
   rescue_from Pundit::NotAuthorizedError do
@@ -91,7 +91,9 @@ class ApplicationController < ActionController::Base
 end
 ```
 
-Policies that only check `user.admin?` (no owner clause) silently lock owners out. Missing `rescue_from` leaks stack traces on denial.
+Policies that only check `user.admin?` (no owner clause) silently lock owners out. Missing `rescue_from` leaks stack traces on denial. Relationship-based access (trainer->trainee, manager->team) extends the same shape: the member check tests the relationship, the Scope unions the related owner IDs (`scope.where(user_id: [user.id, *user.trainee_ids])`).
+
+IDOR: lookups on user-supplied IDs go through `policy_scope(Model).find(params[:id])` (404 on foreign records) or `find` + `authorize` (403). Never bare `Model.find(params[:id])` followed by render. Response exposure is part of authorization: render through a serializer field allowlist, never `render json: @record` raw.
 
 ### SQL Injection
 
@@ -119,11 +121,11 @@ Rack::Attack.throttle("logins/email_ip", limit: 5, period: 20.seconds) do |req|
 end
 ```
 
-Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies.
+Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. Back the counters with a shared store (`Rack::Attack.cache.store = Redis`) - the in-memory default resets per process and undercounts under multi-process Puma.
 
 ### Open Redirect
 
-Rails 7+ rejects cross-host `redirect_to` (`UnsafeRedirectError`), but same-origin open redirects still pass. Use a path allowlist:
+Rails 7+ rejects cross-host `redirect_to` (`UnsafeRedirectError`), but same-origin open redirects still pass. Use a path allowlist; exact-match comparison also kills protocol-relative bypasses (`//evil.com`) that naive prefix checks miss:
 
 ```ruby
 ALLOWED = %w[/dashboard /orders /profile].freeze
@@ -132,29 +134,33 @@ def safe_return_to
 end
 ```
 
-### Host Authorization
+### Host Authorization and Transport
 
 ```ruby
 config.hosts << "app.example.com"
 config.hosts << /.*\.example\.com/
 ```
 
-Blocks Host header injection; mismatched requests get 403.
+Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` disables the protection entirely - it is never the fix for a host mismatch.
+
+`config.force_ssl = true` in production (HTTPS redirect + HSTS + `secure` cookie flag). Disabling it for a proxy issue is solved with `config.assume_ssl`/forwarded headers, not by turning TLS enforcement off.
 
 ### Cookies and Credentials
 
 ```ruby
 cookies.signed[:cart_id]                     # tamper-evident, readable
 cookies.encrypted[:user_preferences]         # tamper-evident + opaque
-cookies.permanent.encrypted[:remember_token]
+cookies.permanent.encrypted[:remember_token, httponly: true, secure: true, same_site: :lax]
 ```
 
-Never store access-granting tokens / IDs in unsigned `cookies[...]`.
+Never store access-granting tokens / IDs in unsigned `cookies[...]`. Signing/encryption is not the same as `httponly`/`secure`/`same_site` - set the flags explicitly on auth cookies.
 
 ```ruby
 EDITOR=vim rails credentials:edit --environment production
 Rails.application.credentials.api_key!       # raises if missing
 ```
+
+A secret found hardcoded is already leaked (git history) - moving it into credentials is half the fix; rotate it at the provider.
 
 ### Content Security Policy
 
@@ -164,15 +170,21 @@ config.content_security_policy do |p|
   p.script_src  :self          # blocks inline scripts
   p.style_src   :self, :unsafe_inline
 end
+config.content_security_policy_nonce_generator = ->(req) { req.session.id.to_s }
 ```
+
+Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rather than `:unsafe_inline`. Roll out with `config.content_security_policy_report_only = true` first.
 
 ## Output Format
 
+One block per finding (reviews and audits emit several):
+
 ```
-Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth}
-Resource: {controller / model}
+Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport}
+Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening | Low - defense in depth}
+Resource: {controller / model / config file}
 Change: {what was applied}
-Risk Mitigated: {mass assignment | unauthorized access | injection | brute force | secret exposure | open redirect | session hijack | header injection}
+Risk Mitigated: {mass assignment | unauthorized access | data exposure | injection | brute force | secret exposure | open redirect | session hijack | header injection | MITM}
 ```
 
 ## Avoid

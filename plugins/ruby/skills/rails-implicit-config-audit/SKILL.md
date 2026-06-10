@@ -20,6 +20,9 @@ user-invocable: false
 - The declared `load_defaults` version is the contract the app was written against. Report state; never call 6.1 "wrong".
 - Findings inventory the *current state*. Suggestions are optional cherry-picks from 7.0+. Keep them in separate output sections.
 - Cite `file:line` on every Finding, Suggestion, and per-model/env entry.
+- `Current value` is the *effective* value; when a flag is textually set but not applied (initializer-timing), state both.
+- Severity mapping: Critical = security/data-loss exposure; High = active correctness bug or a set-but-not-applied flag tied to a reported symptom; Medium = latent footgun; Low = harmless redundancy; Informational = explicit setting matching the baseline.
+- Evidence not provided (env files, models): state "not provided" in that section - never silently omit it.
 
 ## Patterns
 
@@ -69,7 +72,7 @@ Individual flips adoptable without bumping `load_defaults`. **Never required, ne
 | ----------- | ---- | ----------- | ---- | ----- |
 | `active_record.automatic_scope_inversing = true` | 7.0 | Hot serializers/decorators/child callbacks traverse scoped associations; APM shows redundant parent SELECTs | Low | `application.rb` (initializer-timing) |
 | `active_record.raise_on_assign_to_attr_readonly = true` | 7.1 | Any `attr_readonly` declarations | Low | initializer |
-| `active_record.run_after_transaction_callbacks_in_order_defined = true` | 7.1 | Multiple `after_commit` per model AND reverse-order has caused a bug, OR gems with their own `after_commit` chains | Medium | `application.rb` (initializer-timing) |
+| `active_record.run_after_transaction_callbacks_in_order_defined = true` | 7.1 | Multiple `after_commit` per model AND reverse-order has caused a bug, OR gems with their own `after_commit` chains. (Baseline pre-7.1 behavior: `after_commit` fires in *reverse* declaration order.) | Medium | `application.rb` (initializer-timing) |
 | `active_record.partial_inserts = false` | 7.0 | Schema cleanup involving DB defaults, `ignored_columns` use, or Rails as sole source of truth for defaults | Low - audit `db/schema.rb`; DB defaults without matching `attribute ... default:` would insert `NULL` | initializer |
 | `active_record.default_column_serializer = nil` | 7.1 | Any `serialize` declarations without explicit coder; YAML deserialization is a known RCE vector | Medium | initializer |
 | `active_support.cache_format_version = 7.1` | 7.1 | Cache size/hit rate matters AND a cold-cache rollout window is acceptable | Low | initializer |
@@ -77,7 +80,11 @@ Individual flips adoptable without bumping `load_defaults`. **Never required, ne
 
 **Surgical alternative to `automatic_scope_inversing`**: add explicit `inverse_of:` (both sides) to the specific scoped associations in hot loops. Zero risk, no `application.rb` change. Skip for polymorphic `belongs_to` and for `:through` (set on the source associations). Candidates: `rg -nP "has_(many|one)\s+:\w+,\s*->" app/models`.
 
+Two matching rules: when a "Consider if" symptom matches a flag *already in effect*, the flag isn't the fix - route to the surgical alternative (or deeper diagnosis) instead. When an AND-condition is only half-evidenced, still list the Suggestion but name the unmet condition in `Consider if`.
+
 ## Output Format
+
+When the request includes symptoms ("update fires N queries", "callbacks run out of order"), open with a Diagnosis section before Findings - one line per symptom naming the finding(s) that explain it. The synthesis line may span models when behaviours on several models converge on one symptom.
 
 ```
 ## Implicit Configuration Audit
@@ -85,11 +92,15 @@ Individual flips adoptable without bumping `load_defaults`. **Never required, ne
 Rails version: {from Gemfile.lock}
 config.load_defaults: {version from config/application.rb:NN}
 
+## Diagnosis (only when symptoms were reported)
+
+- Symptom: {as reported} -> {finding/behaviour entries that explain it}
+
 ## Findings (baseline state)
 
 - Flag: {config.active_record.X}
   Source: {file:line OR "default at load_defaults <version>"}
-  Current value: {value}
+  Current value: {effective value; append "textually <other>" when set-but-not-applied}
   Modern default: {value at Rails 7.2}
   Severity: {Critical | High | Medium | Low | Informational}
   Why it matters: {one sentence}
@@ -98,7 +109,7 @@ config.load_defaults: {version from config/application.rb:NN}
 ## Implicit Per-Model / Per-Controller Behaviours
 
 - Path: {app/models/<file>.rb:NN}
-  Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | attr_readonly}
+  Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | attr_readonly | serialize-without-coder}
   Effect: {one sentence}
 
 When multiple behaviours on one model converge, append a synthesis line: "Behaviours X, Y, Z explain the N extra queries observed at <controller>#<action>."

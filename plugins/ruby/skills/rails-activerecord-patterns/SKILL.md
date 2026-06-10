@@ -26,7 +26,7 @@ user-invocable: false
 - `enum` with explicit integer mapping - positional shorthand shifts when entries reorder.
 - Parameterized queries only - never string interpolation.
 - `find_each` / `in_batches` for large datasets - never `.all.each`.
-- `exists?` over `any?`; `size` over `count` on loaded associations.
+- On unloaded relations: `exists?` over `any?`. On loaded associations: `size`/`any?` are free; `exists?`/`count` re-query.
 - `update!` over `update_attribute` (latter skips validations).
 - Pessimistic lock by PK only; keep the critical section short and free of network calls. Side-effect callbacks: see `rails-transaction-patterns`.
 
@@ -68,6 +68,8 @@ end
 | `:nullify`             | Sets FK to NULL             | Children can exist independently                |
 | `:restrict_with_error` | Prevents parent deletion    | Children must not be orphaned                   |
 
+Options chain: a `:destroy` cascade halts when a grandchild association uses `:restrict_with_error` (deleting Customer destroys Subscriptions - which fails if any Subscription has Invoices). Trace the full cascade before choosing; `:nullify` on the restricting level is the usual escape.
+
 ### Normalization (Rails 7.1+)
 
 Replaces hand-rolled `before_validation` for trim/downcase; also applied to lookup values in `find_by` / `where`.
@@ -93,30 +95,34 @@ User.where(email: x).exists?                  # LIMIT 1
 user.orders.size                              # uses counter_cache if available
 ```
 
+Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scale: aggregate in SQL (`group` + `sum` select, or a `counter_cache` column) and paginate - preloading every child row moves the N+1 into memory.
+
 `find_each` / `in_batches` ignore custom `ORDER BY` and force `ORDER BY id ASC`. If order matters, paginate with explicit `where("id > ?", cursor)`.
 
 ### Bulk inserts and upserts
 
-`create!` in a loop fires one INSERT plus all callbacks per row. For trusted data, `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations, don't auto-set timestamps, and don't coerce serialized columns.
+`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations, don't auto-set timestamps, and don't coerce serialized columns. Untrusted input (CSV, API payloads) must be validated/coerced before the call - DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
 
 ```ruby
-OrderRollup.insert_all(rows, returning: %w[id])
+rows.each_slice(2_000) { |batch| OrderRollup.insert_all(batch, returning: %w[id]) }
 OrderRollup.upsert_all(rows, unique_by: :order_id, update_only: %i[total_cents updated_at])
 ```
 
 ### Pessimistic locking
 
 ```ruby
-# with_lock opens its own transaction - don't wrap in an outer Model.transaction
+# with_lock opens its own transaction - the default for single-record critical sections
 order = Order.find(order_id)
 order.with_lock { order.update!(state: "closed") }
 
-# Or lock as part of the find inside an explicit transaction
+# lock.find inside an explicit transaction - when the txn spans more than the locked row
 Order.transaction do
   order = Order.lock.find(order_id)  # WHERE id = ? FOR UPDATE
   order.update!(state: "closed")
 end
 ```
+
+Retry on `ActiveRecord::Deadlocked` is the caller's job - pattern in `rails-transaction-patterns`.
 
 **MySQL default `REPEATABLE READ`: row + gap (next-key) locks.** Non-unique-index range scans gap-lock the range and block inserts - the #1 source of MySQL deadlocks in Sidekiq workloads. Lock by PK; keep the critical section short. PostgreSQL has no gap-lock equivalent; same discipline still applies.
 
@@ -166,7 +172,7 @@ Each async query holds an extra connection (see `rails-connection-pool-sizing`).
 ### DB-specific columns and indexes
 
 ```ruby
-# MySQL 8.0+ (InnoDB) - JSON, functional index, fulltext
+# MySQL 8.0+ (InnoDB) - JSON, functional index (8.0.13+; JSON_VALUE form 8.0.21+), fulltext
 add_column :orders, :metadata, :json, null: false
 add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_users_tier"
 add_index :products, :description, type: :fulltext
@@ -184,12 +190,14 @@ Migration safety for these operations: `rails-migration-safety` (MySQL) or `rail
 
 ## Output Format
 
+One block per pattern applied (a task spanning N+1 + Association emits two):
+
 ```
-Pattern: {N+1 Fix | Scope | Association | Callback | Batch | Locking | DB Feature}
+Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batch | Locking | DB Feature}
 Model: {name}
 Adapter: {MySQL | PostgreSQL}
 Change: {description}
-Queries: {before} -> {after}
+Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield
 ```
 
 ## Avoid

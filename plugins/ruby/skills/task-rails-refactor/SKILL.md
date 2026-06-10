@@ -37,9 +37,11 @@ Required: target scope (file/class/path), goal (what the refactor achieves). Rec
 Refactoring without test coverage is a rewrite with extra steps.
 
 1. Identify the RSpec specs covering the target
-2. Assess: **Adequate** / **Thin (boundary tests missing)** / **Inadequate**
-3. If **Inadequate**, stop and recommend `task-rails-test`. Do not proceed
-4. If **Thin**, add boundary-test prerequisite as the first refactor step
+2. Assess: **Adequate** / **Thin** / **Inadequate**. Thin = the spec'd paths are real but boundaries/side effects are unpinned, and the missing specs can be written as Step 1 by reading the code. Inadequate = the target's observable behavior is substantially unpinned (zero specs, or pinning requires product decisions / unknown call sites you can't resolve)
+3. If **Inadequate**, no refactor steps execute - but Steps 5-6 still run: the deliverable is the gate verdict + smells + blast radius + the exact coverage prerequisites, with `task-rails-test` recommended. (That scoping is what makes the recommendation actionable)
+4. If **Thin**, add the boundary-test prerequisite as the first refactor step
+
+**Pinning semantics:** pinning specs assert *current* behavior, bugs included. A pinned bug gets a `# BUG:` comment in the spec, a line in the plan, and a routing note to `task-rails-debug` - the refactor must neither fix nor silently change it. When the bug is urgent (money movement, data corruption), say so and recommend the debug workflow run *first* - this routing applies at any gate verdict, Inadequate included.
 
 ### Step 5 - Identify Smells
 
@@ -92,6 +94,9 @@ Use judgment - these are signals, not hard rules.
 | Job Receiving Records     | `perform(user, order)` instead of ids                                        | High   |
 | Missing Idempotency Guard | Re-runs side effects when called twice with same args                        | High   |
 | Job Without Retry Bound   | No `sidekiq_options retry:` - default 25 on a non-idempotent job             | High   |
+| Error Swallowing          | `rescue => e; log` per item or per job - hides failures, breaks retry        | High   |
+
+**Model (additional):** hand-rolled state machine (scattered transition methods + guards) - Medium; extract to a lifecycle module/concern as a refactor. Adopting `aasm`/`state_machines` is a behavior change - separate plan.
 
 For general OO smells: use skill `backend-coding-standards`.
 
@@ -113,11 +118,13 @@ State: **Narrow** / **Moderate** / **Wide** / **Critical**.
 Each step must be:
 
 1. **Independently committable** - suite passes after each
-2. **Behaviorally invariant** - no behavior change unless that's the step
+2. **Behaviorally invariant** - no behavior change unless that's the step. Some steps *are* intentional semantics changes (`after_save` -> `after_commit` promotion, adding idempotency keys, unswallowing a rescue): allowed only as explicitly labeled behavior-change steps - one change per step, named in the step title, new behavior spec'd in the test gate - never smuggled into a "pure" refactor step
 3. **Reversible** - rollback is one revert
 4. **Tested** - existing RSpec passes; new specs added when extracting new units
 
-**Transaction-boundary watch.** Extracting orchestration that runs inside `ActiveRecord::Base.transaction` - the extracted unit inherits transaction context. If it makes HTTP calls or enqueues Sidekiq, they now happen mid-transaction (regression). State the transaction stance per step.
+High-smell items that are a whole plan by themselves (`default_scope` removal, polymorphic splits, moving a synchronous charge out of a transaction) get their own follow-up plan - list them under Out of Scope with the reason; don't bundle. ("Whole plan" = every caller must be audited and the semantics observably change - regardless of how `review-blast-radius` grades the step's reversibility.)
+
+**Transaction-boundary watch.** Extracting orchestration that runs inside `ActiveRecord::Base.transaction` - the extracted unit inherits transaction context. If it makes HTTP calls or enqueues Sidekiq, they now happen mid-transaction (regression). The same watch applies to HTTP/mailers written *inline* in a controller's transaction block, not just callback-located ones. State the transaction stance per step.
 
 **Recipe: extract service from fat controller**
 
@@ -146,10 +153,11 @@ Thread-local "skip from service" flags leak across requests on threaded servers 
 
 **Recipe: split fat model into model + service + query object**
 
-1. Extract query object first (lowest risk - new file, model methods delegate)
+1. Extract query object first (lowest risk - new file, model methods delegate). Argument-accepting scopes and relation-building class methods migrate; zero-argument declarative scopes stay on the model
 2. Extract service - move orchestration; model methods delegate
-3. Update callers; remove model delegators
-4. Model retains only validations, associations, simple scopes, small instance methods
+3. Presentation methods (`display_*`, `*_badge_*`, `formatted_*`) move per the helper/presenter/component table in `rails-view-templates`
+4. Update callers; remove model delegators
+5. Model retains only validations, associations, simple scopes, small instance methods
 
 **Recipe: replace concern soup with role-based concerns**
 
@@ -175,7 +183,7 @@ Thread-local "skip from service" flags leak across requests on threaded servers 
 
 ## Coverage Gate
 **Status:** Adequate | Thin | Inadequate
-[If Inadequate: what coverage must exist; recommend `task-rails-test`]
+[Thin: boundary-pin prerequisite named as Step 1. Inadequate: replace `## Step Sequence` with `## Coverage Prerequisites` - the exact specs task-rails-test must produce; Smells and Blast Radius sections still appear.]
 
 ## Smells Identified
 | Smell  | Location  | Risk | Notes                          |

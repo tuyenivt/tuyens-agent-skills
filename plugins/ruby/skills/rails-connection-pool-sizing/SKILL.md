@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - Each AR-calling thread checks out one connection - count threads, not pods.
-- Per-process `pool == max_threads_in_that_process` (+1-2 if `load_async` / ActionCable share the process).
+- Per-process `pool == max_threads_in_that_process` (+ executor/Cable extras when `load_async` / ActionCable share the process - see Headroom).
 - Deployment-wide sum stays under DB `max_connections` with 15-25% headroom.
 - Rolling deploys hold old + new pool simultaneously - size for the peak.
 - A long-running query holds the connection for its full duration.
@@ -64,7 +64,7 @@ pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 ### Headroom for non-request work
 
-`load_async` (Rails 7.1+, default 4 threads), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. Set `pool = RAILS_MAX_THREADS + 2` when any are in use.
+`load_async` (Rails 7.1+), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. The async executor is one per process, shared across requests, sized by `global_executor_concurrency` (default 4) - 6 async queries in one request still cap at 4 extra connections. Size `pool = puma_threads + executor_concurrency (+ Cable worker threads, default 4, if mounted in-process)`. Count these extras in the deployment-wide sum as `pods x workers x (pool - threads)` - the formula's `threads` term misses them.
 
 ### Sidekiq sizing
 
@@ -80,17 +80,18 @@ Partition memory- or query-heavy queues onto a separate Sidekiq process with low
 
 ### Deploy-window doubling
 
-During rolling deploy, both ReplicaSets coexist (~60s). Peak ~2x steady-state.
+During rolling deploy, both ReplicaSets coexist (~60s). Worst case (full overlap) ~2x steady-state; with bounded surge, peak ≈ steady x (1 + maxSurge) per surging tier - compute both and size for the one your rollout strategy actually allows.
 
-Mitigations in leverage order:
+Mitigations, ordered for large fleets ("backend process" = OS process holding direct DB connections: puma pods x workers + sidekiq pods x processes):
 
-1. **Connection multiplexer** in front of the DB:
+1. **Connection multiplexer** in front of the DB - essentially mandatory above ~200 backend processes:
    - MySQL: **RDS Proxy** (managed) or **ProxySQL** (self-hosted)
-   - PostgreSQL: **PgBouncer** transaction-pool (set `prepared_statements: false`) or **RDS Proxy for Postgres**
-   - Essentially mandatory above ~200 backend processes
+   - PostgreSQL: **PgBouncer** transaction-pool or **RDS Proxy for Postgres**
 2. **Lower per-process thread counts** - `threads=5` to `threads=3` cuts pool footprint by 40%
 3. **`maxSurge=0`** in Kubernetes - old pods drain before new start; trades deploy speed for connection budget
 4. **Size the DB instance class for peak**, not steady-state
+
+Below ~200 processes, invert the order: raising `max_connections` (self-hosted with RAM to spare) or the instance class is simpler than operating a multiplexer.
 
 ### RDS / Aurora limits
 
@@ -105,7 +106,7 @@ RDS MySQL default: `max_connections = LEAST({DBInstanceClassMemory/12582880}, 16
 | `db.r6g.large`  | 16 GB  | ~1365                     |
 | `db.r6g.xlarge` | 32 GB  | ~2730                     |
 
-Aurora MySQL: per writer; readers have their own. RDS PG: similar formula (`/9531392`); per-connection memory higher.
+Aurora MySQL: per writer; readers have their own. RDS PG: similar formula (`/9531392`); per-connection memory higher. Always confirm the live value (`SHOW VARIABLES LIKE 'max_connections'` / `SHOW max_connections`) - parameter groups override the formula, and when observed errors contradict the computed budget, an override is the first suspect.
 
 ### Detection in production
 
@@ -155,7 +156,7 @@ on_worker_boot { ActiveRecord::Base.establish_connection }
 
 - **RDS Proxy**: transparent to Rails; pinning on `LOCK TABLES`, temp tables, prepared-statements-without-parameters. Watch `DatabaseConnectionsBorrowedSerial`.
 - **ProxySQL**: query routing, read/write splitting; more ops overhead than RDS Proxy.
-- **PgBouncer**: transaction-pool mode requires `prepared_statements: false`; session-pool bounds backends without breaking statement semantics; statement-pool breaks transactions.
+- **PgBouncer**: transaction-pool mode multiplexes (what you usually want); it requires `prepared_statements: false` (per-query replan cost) unless PgBouncer >= 1.21 with `max_prepared_statements` set. Session-pool only bounds backend count - one client per backend, no multiplexing - useful as a connection cap, not a fleet-size fix. Statement-pool breaks transactions.
 
 ## Output Format
 
@@ -168,10 +169,10 @@ Available for app: {value}
 
 Web tier: {pods} x {workers} x {threads} = {total}, pool = {N}
 Worker tier: {pods} x {processes} x {concurrency} = {total}, pool = {N}
-Cron / rake: {peak parallel count} = {total}
+Cron / rake: {peak parallel scheduled app processes} = {total}   # ad-hoc console/ops live in Reserved
 
 Steady-state total: {sum}
-Deploy peak (rolling): {~2x or measured}
+Deploy peak (rolling): {steady x (1 + maxSurge) bounded | ~2x full overlap | measured}
 Result: {within budget | exceeds by {N} - mitigation: {RDS Proxy | reduce threads | larger instance | maxSurge=0}}
 ```
 

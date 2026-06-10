@@ -22,7 +22,7 @@ user-invocable: false
 - Request specs, never controller specs
 - Test through the public interface; no private-method specs
 - FactoryBot only - no fixtures; use state traits, not inline attribute overrides
-- `build_stubbed` by default; `build` in-memory; `create` only when persistence is required
+- `build_stubbed` by default; `build` in-memory; `create` only when the example needs persistence: DB reads (scopes, `reload`, uniqueness), request specs, policy Scope resolution. Pure attribute/permission checks don't.
 - Mock at boundaries (HTTP, third-party SDKs); never mock internal code
 - Every Pundit policy has a spec covering each role
 - `travel` / `freeze_time`, never `Time.now =` stubs
@@ -100,8 +100,8 @@ end
 ```ruby
 RSpec.describe OrderPolicy do
   subject { described_class.new(user, order) }
-  let(:order) { create(:order, user: owner) }
-  let(:owner) { create(:user) }
+  let(:order) { build_stubbed(:order, user: owner) }  # pure permission checks: no DB needed
+  let(:owner) { build_stubbed(:user) }
 
   context "owner" do
     let(:user) { owner }
@@ -110,12 +110,12 @@ RSpec.describe OrderPolicy do
   end
 
   context "admin" do
-    let(:user) { create(:user, :admin) }
+    let(:user) { build_stubbed(:user, :admin) }
     it { is_expected.to permit_action(:fulfill) }
   end
 
   describe OrderPolicy::Scope do
-    it "admin sees all orders" do
+    it "admin sees all orders" do  # Scope resolution queries the DB - create required
       admin = create(:user, :admin)
       own, other = create(:order, user: admin), create(:order)
       expect(described_class.new(admin, Order).resolve).to include(own, other)
@@ -185,13 +185,16 @@ create(:order, :confirmed, :with_order_items)
 
 ### Sidekiq
 
+Two distinct assertions, two call shapes: *enqueueing* uses `perform_async` under `fake!` (jobs pushed to an array - assert size and `jobs.last["args"]`); *behavior* calls `described_class.new.perform(...)` directly, no Sidekiq involved.
+
 ```ruby
 require "sidekiq/testing"
 Sidekiq::Testing.fake!  # jobs pushed to array
 
 RSpec.describe ShipmentNotificationJob, type: :job do
-  it "enqueues" do
+  it "enqueues with the order id" do
     expect { described_class.perform_async(order.id) }.to change(described_class.jobs, :size).by(1)
+    expect(described_class.jobs.last["args"]).to eq([order.id])
   end
 
   it "is idempotent - skips already-shipped orders" do
@@ -201,6 +204,8 @@ RSpec.describe ShipmentNotificationJob, type: :job do
   end
 end
 ```
+
+Services with idempotency keys get the same two-call test at the service layer: call twice with one key, assert the side effect happened once and the second Result replays the first.
 
 ### Rake Task Specs
 
@@ -228,6 +233,14 @@ end
 ```
 
 For production-gate tasks, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset.
+
+### Suite Speed
+
+Slow CI is a data problem before it's a parallelism problem:
+
+- Profile first: `rspec --profile 20`. Usual culprits: `create` cascades (`after(:create)` chains), request specs testing what a model spec covers.
+- `create` costs 10-100x `build_stubbed`; apply the persistence criterion from Rules suite-wide.
+- Parallelize (`parallel_tests` / `turbo_tests`) only after per-spec hygiene - it multiplies waste otherwise.
 
 ### Database Isolation
 
@@ -330,10 +343,14 @@ end
 
 WebMock for client unit specs; VCR for service/request specs hitting the integration. One per spec - cassettes + ad-hoc stubs interact confusingly.
 
+Job specs follow the same boundary rule: the HTTP client wrapper (`app/clients/`) *is* the boundary, so either stub its class (`allow(EcbClient).to receive(...)`) or stub HTTP with WebMock - both comply with "never mock internal code"; pick by what the example asserts (translation logic -> WebMock on the client spec; orchestration -> class double in the job spec).
+
 ## Output Format
 
+One block per spec file written. In review mode, precede the blocks with a findings list (each finding citing the violated rule); blocks describe the rewritten specs. `Examples:` counts examples actually written.
+
 ```
-Test Type: {Model | Service | Policy | Request | Job | System | Rake}
+Test Type: {Model | Service | Policy | Request | Job | Client | System | Rake}
 File: spec/{type}/{path}_spec.rb
 Contexts: {happy path, not found, forbidden, validation failure, ...}
 Factories: {name with traits}
@@ -344,7 +361,7 @@ Examples: {count}
 
 - Mystery guests - data set up in shared `before` blocks far from the example
 - Factories without state traits - inline status overrides obscure intent
-- `sleep` waiting on async work - use `have_enqueued_job` / `Sidekiq::Testing`
+- `sleep` waiting on async work - use `Sidekiq::Testing.fake!` job assertions (`have_enqueued_job` is the ActiveJob equivalent)
 - Missing policy specs - authorization bugs are among the most damaging
 - Mocking internal code - boundaries only
 - Mixing session and bearer auth in the same `auth_headers` helper

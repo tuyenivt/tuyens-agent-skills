@@ -43,7 +43,7 @@ Use skill: `review-precondition-check`. On approval, read diff and log once. Ski
 
 Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`/`semantic_logger*.rb`, every diffed `Rails.logger.*` callsite.
 
-- [ ] **Production logger is structured** - `lograge.enabled = true` with JSON formatter, or `semantic_logger` JSON appender. No raw text logs in production
+- [ ] **Production logger is structured** - `lograge.enabled = true` with JSON formatter, or `semantic_logger` JSON appender. No raw text logs in production. (A pre-existing raw logger the diff doesn't touch is surfaced as `[Recommend]` context, not a merge blocker)
 - [ ] **Every new logger call**: structured payload (not interpolated string), correct level (`error` actionable / `warn` recoverable / `info` state transition / `debug` verbose), no PII, not inside an unbounded loop
 - [ ] **Sidekiq logger** structured (`Sidekiq.logger = Rails.logger` or dedicated); job context tags (`jid`, `class`, `args_summary`)
 
@@ -51,7 +51,7 @@ Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`/`semantic_
 
 ### Step 5 - Business Events (AS::Notifications & custom spans)
 
-Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - both answer "is this domain operation visible?" One finding per missing-visibility callsite, not one per signal type.
+Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - both answer "is this domain operation visible?" One finding per missing-visibility callsite, not one per signal type. The same merging applies across Steps 4/5: a callsite lacking both a structured log and a business event files once, here, with the log fix folded into the same finding.
 
 - [ ] **Custom business events instrumented**: domain operations (`order.fulfilled`, `payment.charged`) emitted via `ActiveSupport::Notifications.instrument` AND/OR wrapped in a tracer span (OTel `tracer.in_span`, Datadog `Datadog::Tracing.trace`)
 - [ ] **Subscribers exist or are documented** for emitted events
@@ -65,19 +65,22 @@ Skip when diff doesn't touch correlation config or add new Sidekiq jobs / outbou
 - [ ] **`ActionDispatch::RequestId`** enabled; LB `X-Request-ID` honored when present
 - [ ] **Request-scoped context** via `ActiveSupport::CurrentAttributes` for `user_id`, `tenant_id`, `request_id`. Flag new code adding the legacy `RequestStore` gem instead of extending `Current`
 - [ ] **Sidekiq middleware bridge**: client middleware captures `request_id`/`trace_id`/`tenant_id` at enqueue; server middleware restores it on `perform` (into `Current` or OTel context). Without this, new jobs orphan their trace
-- [ ] **Outbound HTTP propagates `traceparent` (W3C) + `X-Request-ID`** - Faraday middleware, `Net::HTTP` patch, or APM auto-instrumentation
+- [ ] **Outbound HTTP propagates `X-Request-ID`** (+ W3C `traceparent` when a tracer is configured - with `tracer: none`, request-ID propagation alone satisfies this) - Faraday middleware, `Net::HTTP` patch, or APM auto-instrumentation
 - [ ] **`config.active_record.query_log_tags_enabled = true`** in production (Rails 7+) with `query_log_tags` covering `:controller`, `:action`, `:job`, `:request_id` (+ `:tenant` if multi-tenant). No PII in tags
 
 ### Step 7 - Tracing Setup (initializer/gem-change PRs only)
 
 Skip unless diff touches `config/initializers/opentelemetry.rb`, `config/initializers/datadog.rb`, or adds/removes a tracer gem.
 
+- [ ] **Exporter configured** - `opentelemetry-exporter-otlp` (or vendor agent) plus endpoint env; an SDK with no exporter is inert. Gate instrumentation per environment (no dev/test span noise)
 - [ ] **Auto-instrumentation gems**: `opentelemetry-instrumentation-rails`, `-active_record`, `-active_job`, `-sidekiq`, `-faraday`, `-net_http`, `-redis` as appropriate
 - [ ] **ActiveJob tracing** if Sidekiq fronted by ActiveJob - both layers covered
 - [ ] **Sampling**: head-based 10-20% for high traffic; always-sample on errors and slow requests
 - [ ] **Tracer cached at class load** for custom-span paths
 
 ### Step 8 - Sidekiq Observability
+
+Skip when the diff touches no job code or Sidekiq config (state the skip).
 
 - [ ] **Job retries logged** with retry count and reason; **dead jobs alerted**
 - [ ] **Sidekiq metrics** (queue latency, busy workers, retry/dead counts) via `sidekiq-prometheus-exporter`, `yabeda-sidekiq`, or APM gem
@@ -86,7 +89,7 @@ Sidekiq Web auth-gating belongs to security; request-id bridging belongs to Step
 
 ### Step 9 - Error Tracker Capture
 
-Setup checks (gem install, DSN-from-credentials, test-mode silent, release tracking) fire only on initializer diffs. Every PR runs:
+Setup checks (gem install, DSN-from-credentials, test-mode silent, release tracking) fire only on *error-tracker* initializer diffs. Every PR runs:
 
 - [ ] **Scrub beyond `filter_parameters`** in `before_send`: cookies, `Authorization`, `X-Api-Key`
 - [ ] **User context** when authenticated: `Sentry.set_user(id: current_user.id)` in `ApplicationController` (no email/PII unless privacy policy permits)
@@ -103,11 +106,11 @@ Use skill: `ops-observability` for liveness/readiness shapes and SLI/SLO definit
 - Dependency-health (`/internal/deps`): ops-dashboard signal, not a probe target
 - **Sidekiq SLI** for time-sensitive queues
 
-A Rails service with no SLI/SLO is a **High** observability gap.
+A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces the service or feature. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High.
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation.
+Standalone runs: use skill `review-report-writer` with `report_type: review-observability` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
 
 ## Output Format
 
@@ -122,7 +125,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Prin
 
 ## Findings
 
-### High Severity (would prevent detection of a production failure)
+### High Severity (would prevent detection of a production failure; Medium = diagnosis materially slower or data leaks into telemetry; Low = polish)
 
 - **Location:** [file:line, controller, job, or initializer]
 - **Missing:** [absent signal - log field, AS::Notifications event, query tag, span, scrubbing]
@@ -142,7 +145,7 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium -> [Recommend], Low -> [Recommend] or [Question]. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check

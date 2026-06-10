@@ -37,7 +37,7 @@ user-invocable: false
 | HAML   | `= expr` | `!= expr` |
 | Slim   | `= expr` | `== expr` |
 
-Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path.
+Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path. Two adjacent escapes: user data interpolated into inline JS (`script` blocks, `data-` JSON) is Critical regardless of operator - HTML-escaping doesn't cover the JS string context; and user data in *attribute values* (`div class=user.theme`) is attribute-escaped but still allows class/attribute injection - allowlist the permitted values.
 
 ### Slim Traps
 
@@ -73,6 +73,8 @@ Enforce with `slim-lint` and a fixed 2-space indent.
 
 Helpers form a flat namespace - no encapsulation, easy collisions. ViewComponent renders via `render OrderCardComponent.new(order: @order)` with `render_inline` tests that skip controller boot.
 
+Presenter vs component when both fit: formatting that belongs to one reusable piece of UI lives in that component's class (`status_badge_class` in the row component); a presenter is for model-wide formatting consumed by *several* views/components. Conversion helpers (markdown-to-HTML) stay stateless application helpers feeding `sanitize` in the template.
+
 ### Partials
 
 ```erb
@@ -105,11 +107,13 @@ Russian-doll: `touch: true` on child associations bubbles writes so the parent c
 belongs_to :order, touch: true
 ```
 
-Hot-key stampede protection:
+Hot-key stampede protection (controller-computed aggregates cache here too, not in the view):
 
 ```ruby
 Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds) { expensive_render }
 ```
+
+Caching and streams compose: broadcasts render fresh HTML and bypass fragment caches; a `cache record` key embeds `updated_at`, so the next full page load re-renders too. The combination is safe by construction - no manual invalidation.
 
 ### Turbo Frames and Streams
 
@@ -119,7 +123,7 @@ Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds) { 
     p Loading...
 ```
 
-Reuse the same partial for initial render and stream update so markup stays consistent:
+Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share):
 
 ```ruby
 render turbo_stream: turbo_stream.append("orders", partial: "orders/order", locals: { order: @order })
@@ -158,7 +162,7 @@ end
   = sanitize comment.body, tags: %w[p br strong em a ul ol li blockquote code], attributes: %w[href]
 ```
 
-Markdown / rich-text passes through `sanitize` even if the renderer (Commonmarker, Redcarpet, Kramdown) claims safe-mode - one `raw_html: true` flag re-opens XSS. The allowlist is the trust boundary.
+Markdown / rich-text passes through `sanitize` even if the renderer (Commonmarker, Redcarpet, Kramdown) claims safe-mode - one `raw_html: true` flag re-opens XSS. The allowlist is the trust boundary. Allowlisting `href` keeps user links live - also force `rel="nofollow noopener"` (a custom scrubber or post-process; `sanitize` won't add attributes) so user content can't vouch for or script-reach its targets.
 
 ## Output Format
 
@@ -174,15 +178,17 @@ Layout Slots: {content_for / yield keys | None}
 Turbo: {Frames | Streams | None}
 Stimulus Controllers: {list | None}
 Fragment Caching: {Russian-doll on X | Low-level | None}
+Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
-Reviewing:
+Reviewing - one block per finding, fixed template after the blocks:
 
 ```
-Severity: {Critical (XSS) | High (broken cache, frame collision) | Medium (helper/presenter misplacement) | Low (style)}
+Severity: {Critical (XSS, JS-context injection) | High (broken cache, logic/indentation bug, frame collision) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
 Engine: {ERB | HAML | Slim}
 Location: file:line
 Issue: {one line, engine-specific idiom}
+Fix: {one-line remediation}
 ```
 
 ## Avoid

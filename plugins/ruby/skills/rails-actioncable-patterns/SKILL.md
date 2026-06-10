@@ -43,7 +43,7 @@ module ApplicationCable
 end
 ```
 
-For JWT/API apps, decode the token from the upgrade request (forwarded as `Sec-WebSocket-Protocol` or query param). Never put raw tokens in URLs that hit access logs.
+For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
 
 ### Subscription Authorization (IDOR Prevention)
 
@@ -76,7 +76,7 @@ Same rule for Turbo Stream scope:
 <%= turbo_stream_from current_user, :orders %>
 ```
 
-`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render.
+`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks.
 
 ### Broadcast Adapters
 
@@ -106,15 +106,27 @@ end
 
 `after_save` fires inside the transaction; subscribers re-querying see the pre-commit state, or nothing if the txn rolls back.
 
+One canonical broadcast source per message: the model `after_commit` (or an explicit service call) owns it - channel actions that also broadcast what the callback already broadcasts double-deliver. Persist in the action, let the callback announce.
+
 ### Fan-Out Batching
 
 ```ruby
 # Bad - blocks the request, holds the DB connection
 followers.find_each { |f| NotificationChannel.broadcast_to(f, payload) }
 
-# Good - hand off to Sidekiq in chunks
-followers.in_batches(of: 500) do |batch|
+# Good - hand off to Sidekiq in chunks; filter (mutes, prefs) in the enumeration query
+followers.merge(Follow.where(muted: false)).in_batches(of: 500) do |batch|
   BroadcastNotificationJob.perform_async(batch.pluck(:id), payload)
+end
+```
+
+Per-connection rate limiting for channel actions - a minimal Redis fence:
+
+```ruby
+def send_message(data)
+  key = "cable:rl:#{connection.connection_identifier}:send_message"
+  return transmit(error: "rate limited") if Sidekiq.redis { |r| r.incr(key).tap { r.expire(key, 10) } } > 20
+  ...
 end
 ```
 
@@ -146,13 +158,15 @@ it "broadcasts the updated card" do
 end
 ```
 
-For Turbo Stream HTTP-side assertions (`text/vnd.turbo-stream.html`), see `rails-testing-patterns`.
+`turbo_stream_from` subscriptions ride `Turbo::StreamsChannel` - there is no custom channel to spec; the broadcast assertion plus a request/system test covering the rendered `turbo_stream_from` tag is full coverage. For Turbo Stream HTTP-side assertions (`text/vnd.turbo-stream.html`), see `rails-testing-patterns`.
 
 ## Output Format
 
+In review mode, precede the block with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`).
+
 ```
 Channel: <name>
-Identified by: <current_user | session token>
+Identified by: <current_user | session token | JWT (transport)>
 Stream scope: <per-user | per-resource | global - reason>
 Authorization in subscribed: <Yes - policy/ownership check | No - GAP>
 Broadcast adapter: <redis | postgresql | async>

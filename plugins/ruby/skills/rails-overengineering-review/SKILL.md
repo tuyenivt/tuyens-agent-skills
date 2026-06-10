@@ -15,9 +15,10 @@ Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, 
 
 ## Rules
 
-- Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, or framework guarantee. No citation, no finding.
-- Default intent is `[Recommend]`. Escalate to `[Must]` only when redundancy has measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see.
-- Use `[Question]` when justification is plausible but not in the diff (e.g., "needed for signup form's inline error UX?").
+- Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, framework guarantee - or, for Category 3, the absence of a second call site/type/consumer. No citation, no finding.
+- Default intent is `[Recommend]`. Escalate to `[Must]` only when there is measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see, or silent data corruption (racing uniqueness with no index).
+- Use `[Question]` when justification is plausible but not evidenced. Facts supplied alongside the diff (schema, call-site counts, form usage) count as evidence - don't [Question] what the requester already answered.
+- Cite locations as the diff presents them (hunk/line); never invent file paths.
 - Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, or uniqueness validation paired with a unique index as advisory UX.
 
 ## Patterns
@@ -52,6 +53,8 @@ validates :email, uniqueness: { case_sensitive: false } # advisory; index is aut
 # MySQL (case-insensitive collation): add_index :users, :email, unique: true
 # MySQL 8 / PG functional index: add_index :users, "lower(email)", unique: true
 ```
+
+This is the *inverted* finding the review must still emit: nothing is redundant - a constraint is missing. Use `Unsafe because:` in place of `Redundant because:`, recommend adding the index (note the migration), and keep the validation when a form consumes the error.
 
 #### Inclusion on an enum
 
@@ -203,17 +206,17 @@ Findings contribute to the consuming workflow's unified output. Each entry:
 ```
 ### [Must | Recommend | Question] file:line
 
-- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
+- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction} (append "(inverted)" for missing-constraint findings)
 - Code: {one-line citation, e.g., `validates :user, presence: true`}
-- Redundant because: {FK name | NOT NULL column | unique index | enum | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area}
+- Redundant because: {FK name | NOT NULL column | unique index | enum | framework guarantee | speculative - no second call site/type/consumer}   (or `Unsafe because:` for inverted findings)
+- Cost: {extra SELECT per save | masked exception | silent duplicates | speculative surface area}   (required for [Must]; optional context otherwise)
 - Recommendation: {concrete edit}
 - Justified when: {one-line note, if a legitimate reason might apply; otherwise omit}
 ```
 
-Escalation to `[Must]` requires a measurable cost - omit the `Cost` line and stay at `[Recommend]` otherwise.
+A line that fits two categories gets one entry under the dominant category, with the second concern folded into the Recommendation. Several findings resolved by one fix (delete the class) merge into a single entry citing all of them.
 
-When a category has no findings, state it explicitly (`No redundant validations detected.`). The consuming workflow needs to know the check ran.
+When a category has no findings, state it explicitly (`No redundant validations detected.`), followed by one-line justification bullets for candidates that matched a don't-flag rule - reviewers and re-reviews need to see what was considered and why it passed.
 
 ## Avoid
 

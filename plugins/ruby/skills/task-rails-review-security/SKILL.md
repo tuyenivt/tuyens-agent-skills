@@ -21,12 +21,12 @@ Rails PR security regression check; pre-deploy hardening on auth/authz/upload/pa
 
 | Severity | Trigger |
 | -------- | ------- |
-| **Critical** (block deploy) | Unauth RCE, auth bypass, mass data exfiltration, SQLi on prod path, shell interpolation, `Marshal.load`/`YAML.load` / `ERB.new(user_input).result` on untrusted input, secrets/`master.key` committed, `permit!` on a model whose **schema** exposes role/admin/tenant/owner/billing fields (judge by table, not by diff) |
-| **High** (block merge) | Authenticated privilege escalation, IDOR via `Model.find(params[:id])` without policy scope, SSRF to cloud metadata, missing `authorize`/`verify_authorized`, path traversal via `send_file(params[:path])`, missing CSRF on cookie-auth POST, webhook HMAC compared with `==`, unauthorized `turbo_stream_from`, open `redirect_to params[:return_to]` |
-| **Medium** | Hardening gap with mitigation present, weak `Rack::Attack` limit, non-prod debug surface (Sidekiq Web, `letter_opener`), unfixed `bundle audit` advisory, missing `filter_parameters` entry |
+| **Critical** (block deploy) | Unauth RCE, auth bypass (incl. JWT decode with verification disabled or `alg: none` accepted), mass data exfiltration, SQLi on prod path, shell interpolation, `Marshal.load`/`YAML.load` / `ERB.new(user_input).result` on untrusted input, secrets/`master.key` committed, `permit!`/`to_unsafe_h` on a model whose **schema** exposes role/admin/tenant/owner/billing fields (judge by table, not by diff) |
+| **High** (block merge) | Authenticated privilege escalation, IDOR via `Model.find(params[:id])` without policy scope, SSRF to cloud metadata, missing `authorize`/`verify_authorized`, path traversal via `send_file(params[:path])`, missing CSRF on cookie-auth POST, webhook HMAC compared with `==`, CORS `origins '*'` with `credentials: true`, unauthorized `turbo_stream_from`, open `redirect_to params[:return_to]`, raw `render json: @model` exposing sensitive columns |
+| **Medium** | Hardening gap with mitigation present, secrets in ENV instead of credentials, weak `Rack::Attack` limit, non-prod debug surface (Sidekiq Web, `letter_opener`), unfixed `bundle audit` advisory, missing `filter_parameters` entry, raw `render json:` over-exposure of non-sensitive columns |
 | **Low** | Defense-in-depth, advisories below actively-exploited threshold |
 
-**Combined-finding rule.** N actions sharing a missing `before_action` gate file as **one** finding at elevated severity, citing the worst payload as the attack scenario. File separately only when actions have distinct auth paths or attack chains.
+**Combined-finding rule.** N actions sharing a missing `before_action` gate file as **one** finding at elevated severity (one level above the worst individual action, capped at Critical), citing the worst payload as the attack scenario. Findings with their own distinct attack chain (SQLi, path traversal, mass assignment) file separately and do **not** restate the missing-authz dimension - the combined finding owns it.
 
 ## Invocation
 
@@ -96,6 +96,7 @@ Run only the detected flavor's bullets.
 - [ ] **Rack::Attack**: rate limits on `/login`, `/password`, `/signup`, expensive search
 - [ ] **Open redirect**: `redirect_to params[:return_to]` validated or `allow_other_host: false`
 - [ ] **Mass assignment via JSON**: `params.require.permit`, not `Model.new(request.raw_post)`
+- [ ] **Webhook endpoints**: verify via the provider SDK (`Stripe::Webhook.construct_event`) over hand-rolled HMAC; comparisons use `ActiveSupport::SecurityUtils.secure_compare`, never `==`; enforce timestamp/replay tolerance; read `request.body` once (or rewind) - a second read returns empty
 - [ ] **Admin/dev mounts**: `Sidekiq::Web`, `Rails::MailersController` auth-gated in production
 
 ### Step 9 - Data Protection
@@ -107,7 +108,7 @@ Run only the detected flavor's bullets.
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation.
+Standalone runs: use skill `review-report-writer` with `report_type: review-security` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".
 
 ## Output Format
 

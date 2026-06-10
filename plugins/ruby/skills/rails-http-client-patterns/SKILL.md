@@ -21,6 +21,7 @@ Scoped to **Faraday 2+ / Retriable**. For `httpx` / `http.rb` / raw `Net::HTTP`,
 ## Rules
 
 - Every outbound call has explicit `open_timeout` and `timeout`.
+- Credentials travel in headers, never query strings - URLs land in logs, audit rows, and proxies.
 - Retry idempotent verbs (`GET HEAD PUT DELETE`) by default; retry `POST` only when `Idempotency-Key` is present.
 - Bounded in-process retry: <=3 attempts, exponential backoff with jitter. Long waits live in Sidekiq.
 - Every external call goes through a client class - never `Faraday.get` from services or controllers.
@@ -87,6 +88,10 @@ class ShipperClient
 end
 ```
 
+Expiring tokens (OAuth, 12h bearers): the client owns the refresh - cache the token (TTL slightly under its lifetime), and on 401 refresh once and retry once before raising `AuthError`. A 401 is only *permanent* after a fresh token also failed.
+
+One client serving both web and Sidekiq callers keeps the connection default at the web budget and overrides per call (`req.options.timeout = 15`) on job-path operations - don't build two clients.
+
 Callers consume domain errors only:
 
 ```ruby
@@ -137,6 +142,8 @@ f.request :retry,
 
 `retry_if` opts `POST` back in only when `Idempotency-Key` is present - required for Stripe-style APIs.
 
+`Retry-After` on 429: faraday-retry honors the header when the wait fits the in-process budget; longer waits re-raise as `RateLimitError` and Sidekiq reschedules. Make the seconds machine-readable - `translate` parses the header into the error (`RateLimitError.new(retry_after: ...)`), and `sidekiq_retry_in` returns `exception.retry_after` plus jitter (`+ rand(10)`) so recovering jobs don't re-herd. Hard quotas (60/min per token) need proactive throttling - a token bucket or low-concurrency queue (see `rails-work-splitter-patterns`) - reactive 429 handling alone herds.
+
 | Layer             | Count | Backoff       | When                                            |
 | ----------------- | ----- | ------------- | ----------------------------------------------- |
 | Faraday `:retry`  | 2-3   | <5s total     | Transient blips during one request              |
@@ -161,6 +168,11 @@ end
 ```
 
 Use when synchronous on the request path (outages cascade into Puma worker exhaustion), volume >10 req/s sustained, or upstream has documented SLOs. Low-volume background work doesn't need one.
+
+Two decisions the breaker forces on the caller:
+
+- **Open-circuit fallback** - decide fail-open vs fail-closed per call site: serve a cached/last-known value (rate quotes, display data), defer to Sidekiq (notifications), or fail the operation (anything moving money - never default to `0.0`-style sentinel values).
+- **Recovery herd** - when the breaker closes after an outage, queued Sidekiq retries plus live traffic fire at once and re-trip the partner's rate limit. Stagger re-entry: jittered `sidekiq_retry_in`, and keep the breaker's threshold low enough to re-open fast if recovery is partial.
 
 ### Logging
 
@@ -204,14 +216,17 @@ end
 
 ## Output Format
 
+In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected client.
+
 ```
 Client: {ClassName}
 Base URL: {url}
-Auth: {Bearer | API key header | OAuth}
-Timeouts: open={Ns}, total={Ns}
+Auth: {Bearer | API key header | OAuth (refresh: cached TTL + once-on-401)}
+Timeouts: open={Ns}, total={Ns} (+ per-call overrides for job-path ops)
 Retry: {faraday | retriable | none}, max={N}, backoff={strategy}
 Idempotency: {how POST/PATCH replay safety is achieved}
 Error taxonomy: {domain error classes}
+Circuit breaker: {none (justified) | Stoplight threshold/cool-off; open-circuit fallback per call site}
 Tests: {WebMock unit | VCR cassettes - file paths}
 ```
 

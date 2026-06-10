@@ -38,7 +38,8 @@ user-invocable: false
 | One-shot backfill of >100M rows, observable     | Shards table                       | Resumable, observable, throttle per-shard |
 | Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Modulo would skew                         |
 | Per-tenant batches                              | Modulo or shards on `tenant_id`    | Natural sharding key                      |
-| Continuous queue with strict per-key ordering   | Single-worker queue / Sidekiq Pro  | `SKIP LOCKED` won't preserve order        |
+| Ordered per key, parallel across keys (outbox)  | `SKIP LOCKED` claims the KEY       | Claim a per-key lease row (table unique on key, rows created with the first item); drain that key's items in `ORDER BY id`, stop on first failure (head-of-line blocking is the ordering guarantee); keys run parallel. Heartbeat the lease's `claimed_at` between items so the reaper frees only dead workers - reaping a live lease lets a second worker break ordering |
+| Strict global ordering                          | Single-worker queue / Sidekiq Pro  | Row-level `SKIP LOCKED` won't preserve order |
 
 ### (a) Static Modulo Partitioning
 
@@ -86,7 +87,15 @@ MySQL under default `REPEATABLE READ`: wrap the claim in per-transaction `:read_
 
 PostgreSQL default is RC, so the `isolation:` parameter is a no-op there but harmless.
 
-`process_one` must be safe to re-run - a worker can crash after `claimed` but before completing.
+Two non-negotiables for any claim shape:
+
+- **Slow work happens outside the claim transaction.** The transaction flips state and commits; HTTP, mail, rendering run after - row locks held across IO are the lock-wait cascade source.
+- **Crashed claims get reaped.** A worker can die after `claimed`, before done; without recovery, rows strand. Reap by staleness, idempotently (`process_one` must tolerate re-runs):
+
+```ruby
+WorkItem.where(state: "claimed").where("claimed_at < ?", 10.minutes.ago)
+        .update_all(state: "ready", claimed_at: nil)   # cron, or head of each drain loop
+```
 
 ### (c) Shards Table
 
@@ -108,7 +117,7 @@ end
 add_index :backfill_shards, [:name, :state]
 ```
 
-Seed with equal-row ranges (not equal-id) when data is skewed:
+Seed with equal-row ranges (not equal-id) when data is skewed. The boundary scan below walks the whole table - run it against a read replica (or off-hours); it's index-only and read-only, but not free at 100M+ rows:
 
 ```ruby
 def self.create_order_shards(name:, shard_size: 100_000)
@@ -163,7 +172,7 @@ Observability: `SELECT state, COUNT(*) FROM backfill_shards GROUP BY state`. Thr
 
 ### Fan-out Shapes
 
-- **Modulo:** rake (leader lock) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
+- **Modulo:** rake (leader lock via `with_advisory_lock`, `timeout_seconds: 0`, abort cleanly) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
 - **Shards table:** rake seeds the table once, then enqueues `BackfillShardWorker.perform_async(shard_name)` N times.
 - **`SKIP LOCKED` draining:** Sidekiq cron enqueues `DrainQueueJob` N times - workers self-coordinate, no rake leader needed.
 
@@ -196,16 +205,20 @@ Without Pro: the shards-table `SELECT COUNT(*) WHERE state != 'done'` works.
 
 Without a cap, N workers driving the DB at full tilt produce replication-lag spikes, connection exhaustion, lock-wait cascades.
 
-- Sidekiq queue concurrency (`concurrency: 5` for memory- or query-heavy queues)
+- Sidekiq queue concurrency (`concurrency: 5` for memory- or query-heavy queues); use a dedicated queue so deploy quiet/TERM cycles don't starve it
 - Per-shard `sleep(0.05)` between batches
-- Replication-lag-aware throttle: check `Aurora_replica_lag` / `pg_stat_replication.replay_lag`, pause above threshold
+- Replication-lag-aware throttle: in the worker's batch loop, poll lag (`SHOW REPLICA STATUS` / CloudWatch `ReplicaLag` / `pg_stat_replication.replay_lag`) every N batches; sleep until below ~half your alarm threshold
 - Token bucket via Redis for rate-limited downstream services
+
+Deriving worker count from a deadline: required rows/s = volume / deadline; run ONE worker on one shard to measure actual rows/s; N = ceil(required / measured) with 2-4x headroom for lag pauses and deploys - then verify lag stays under threshold as you step N up.
 
 ### Retry Budgets
 
-Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_options retry: 5`, route exhausted to dead set with alerting. **Sidekiq retries are not resumability** - design for shard-level retry instead (the shards table's `retries` column).
+Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_options retry: 5`, route exhausted to dead set with alerting. **Sidekiq retries are not resumability** - design for shard-level retry instead (the shards table's `retries` column). For non-idempotent side effects per item (email, charges), a crash between send and mark forces a choice - make it explicitly: flip state *before* the side effect = at-most-once (a crash loses the send; acceptable for emails), or flip after with an idempotency key the receiver dedupes on = at-least-once (required for charges/webhooks). "Send then mark" with retries and no key duplicates sends.
 
 ## Output Format
+
+In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design.
 
 ```
 Workload: {static backfill | streaming queue | per-tenant batch | one-shot migration}

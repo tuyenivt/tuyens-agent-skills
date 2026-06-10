@@ -23,7 +23,7 @@ user-invocable: false
 - Direct upload (`direct_upload: true`) for files > 1 MB - proxying through Puma blocks a worker for the upload duration
 - `has_one_attached` / `has_many_attached` use `dependent: :purge_later`; reserve `:purge` for admin/rake scripts
 - Validate `content_type` and `byte_size` in the model (or via `active_storage_validations`) - Active Storage does no validation itself
-- Re-detect content type via magic bytes (`Marcel::MimeType.for(io)`) for sensitive uploads; client `content_type` is untrusted
+- Re-detect content type via magic bytes for sensitive uploads; client `content_type` is untrusted. Run it in the attach-time background job using `blob.open { |f| Marcel::MimeType.for(f) }` - streaming, not `blob.download` (loads the whole file into memory). Gate visibility on the result: a `verified_at`/quarantine flag holds the file from viewers until the sniff passes; purge on confirmed mismatch
 - libvips processor (`config.active_storage.variant_processor = :vips`) - faster, lower memory, fewer CVEs than ImageMagick; install `libvips` + `image_processing` gem
 - Variants are lazy by default; warm them in a background job for high-traffic paths
 - Signed URLs only (`rails_blob_url` / `url_for`); never expose raw blob keys; tune `ActiveStorage.urls_expire_in`
@@ -86,7 +86,9 @@ Or via `active_storage_validations`:
 validates :avatar, content_type: AVATAR_TYPES, size: { less_than: 5.megabytes }
 ```
 
-Sensitive uploads (e.g., executables, PDFs): re-detect type with `Marcel::MimeType.for(blob.download)` before approving. Serve user content from a separate domain or with `Content-Disposition: attachment`.
+Sensitive uploads (e.g., executables, PDFs): re-detect type via the streaming magic-byte check (Rules) before any human approves or views the file. Serve user content from a separate domain or with `Content-Disposition: attachment`.
+
+Blob routes carry **no authorization** - anyone with a signed URL reads the file until it expires. For sensitive attachments: gate through your own controller (authorize, then redirect to a freshly signed URL), and shorten the window (`ActiveStorage.urls_expire_in` in minutes - e.g. 5 - for admin/underwriter viewing).
 
 ### Variants and Warming
 
@@ -138,29 +140,41 @@ Orphan cleanup - direct uploads abandoned before form submit accumulate as unatt
 ActiveStorage::Blob.unattached.where("created_at < ?", 1.day.ago).find_each(&:purge_later)
 ```
 
-### Migrating from CarrierWave / Paperclip
+Business retention (purge N days after an event) is its own scheduled job, distinct from orphan cleanup:
+
+```ruby
+LoanApplication.decided.where(decided_at: ..90.days.ago)
+               .find_each { |app| app.income_documents.each(&:purge_later) }
+```
+
+### Migrating from CarrierWave / Paperclip (or disk -> S3)
 
 1. `bin/rails active_storage:install` + migrate.
 2. Keep the old uploader; add `has_one_attached :new_<name>` on the model.
-3. Backfill rake: for each record, download from old uploader URL, attach to new association.
-4. Dual-read during transition: `record.new_<name>.attached? ? record.new_<name> : record.<name>`.
-5. Switch writes to Active Storage; backfill stragglers.
-6. Drop the old column and uploader once legacy read traffic is 0.
+3. Backfill rake: for each record, attach from the old storage. When source and target are the same S3 account (CW on S3), skip download-reupload: S3 server-side copy into the Active Storage key, then create the `ActiveStorage::Blob` row from the object's metadata (blobs need a base64-MD5 `checksum` - multipart ETags aren't MD5, so compute it once per object or copy single-part). Disk or cross-provider sources stream (`File.open` / `blob.open`) into `attach` - no copy shortcut. At millions of records, run as a sharded resumable backfill (`rails-work-splitter-patterns`).
+4. Warm variants inside the backfill job (before reads flip), not lazily after.
+5. Dual-read during transition (one helper/presenter owns it): `record.new_<name>.attached? ? record.new_<name> : record.<name>`.
+6. Switch writes to Active Storage; backfill stragglers.
+7. Drop the old column and uploader once legacy read traffic is 0.
 
-Keep old data until new attachments are verified - plan the rollback.
+Keep old data until new attachments are verified - plan the rollback. High-traffic public images: signed URLs rotate and bust CDN caches - use the proxy mode (`rails_storage_proxy_path`) behind a CDN, or a public bucket service, before flipping reads.
 
 ## Output Format
+
+In review mode, precede the block with numbered findings citing the violated rule; mark non-compliant fields `- GAP`.
 
 ```
 Attachment: <model>.<has_one_attached | has_many_attached :name>
 Service: <amazon | google | azure | disk - reason>
 Direct upload: <Yes (>1 MB expected) | No (small files only)>
-Validation: <content_type allowlist | size limit | magic-byte sniff>
+Validation: <content_type allowlist | size limit | magic-byte sniff - list all that apply>
 Variants: <list with sizes | none>
 Variant warming: <lazy | background job | preview job>
 Processor: <vips | mini_magick - reason>
 Purge: <purge_later (default) | purge (justified)>
 Orphan cleanup: <scheduled rake | none (GAP)>
+Retention: <business rule + scheduled job | indefinite (stated) | none (GAP for regulated data)>
+Access: <signed URL default | controller-gated + short expiry (sensitive) | proxy mode behind CDN (public high-traffic)>
 ```
 
 ## Avoid

@@ -26,7 +26,7 @@ user-invocable: false
 - `schema_format = :sql` - `:ruby` loses charset/collation, generated columns, functional indexes, INSTANT defaults, CHECK.
 - `ignored_columns` ships in a deploy before `remove_column`.
 - `safety_assured` only after verifying the operation is safe for the table size.
-- Tables >100M rows: `gh-ost` or `pt-online-schema-change`, never in-process.
+- Tables >100M rows: any rebuild (COPY or INPLACE) goes through `gh-ost` / `pt-online-schema-change`, never in-process - INPLACE may be online on the primary but replicates as one serialized DDL and stalls replicas. INSTANT (metadata-only) operations are exempt at any size.
 
 ## Patterns
 
@@ -47,11 +47,13 @@ Rails does **not** auto-emit `algorithm: :concurrently` (PG-only):
 # Bad - raises on MySQL
 add_index :orders, :status, algorithm: :concurrently
 
-# Good
+# Good (tables under the gh-ost threshold)
 add_index :orders, :status, algorithm: :inplace
 # Exact control:
 execute "ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE"
 ```
+
+`VARCHAR` resizes: widening within the same length-byte class (e.g. 50 -> 100) is INPLACE; crossing the 255-byte boundary or narrowing forces COPY - and narrowing risks truncation. Treat narrowing as a type change (add/backfill/remove).
 
 ### INSTANT DDL (MySQL 8.0)
 
@@ -121,11 +123,15 @@ add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "
 
 ### Renaming columns (four steps)
 
+`RENAME COLUMN` is INSTANT (8.0.13+) but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the four-step copy:
+
 ```ruby
 add_column :orders, :amount, :decimal, precision: 10, scale: 2          # 1
-Order.in_batches { |b| b.update_all("amount = total") }                 # 2
-# self.ignored_columns += ["total"] ; deploy                            # 3
-safety_assured { remove_column :orders, :total, :decimal }              # 4 next deploy
+# Deploy dual-writes (model writes both columns) BEFORE the backfill -  # 2
+# rows inserted mid-backfill otherwise keep NULL in the new column
+Order.in_batches { |b| b.update_all("amount = total") }                 # 3 backfill (rake)
+# Cut reads to :amount; self.ignored_columns += ["total"] ; deploy      # 4
+safety_assured { remove_column :orders, :total, :decimal }              # 5 next deploy
 ```
 
 ### Dropping columns (two deploys + audit)
@@ -139,12 +145,18 @@ rg -n "legacy_field" app/ lib/ config/ spec/ db/ \
   -g '*.{rb,erb,haml,slim,sql}' -g '!*.lock'
 ```
 
-Also check: BI dashboards, ETL pipelines, materialized views, triggers, replicas with custom subscribers. Drop dependent FK / index / generated column / CHECK / views in a *prior* migration - `strong_migrations` catches most.
+Find DB-side view dependencies (MySQL has no `pg_depend`):
 
-**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, the next insert fails. Both are metadata-only on MySQL 8.0:
+```sql
+SELECT TABLE_NAME FROM information_schema.VIEWS WHERE VIEW_DEFINITION LIKE '%legacy_field%';
+```
 
-- `change_column_default :users, :legacy_field, from: nil, to: "guest"`
-- `change_column_null :users, :legacy_field, true`
+Also check: BI dashboards, ETL pipelines, triggers, replicas with custom subscribers. External readers you can't migrate yourself (Metabase, Looker): hand the owning team a deadline and verify the cutover before Deploy B - their breakage is your incident. Drop or recreate dependent FK / index / generated column / CHECK / views in a *prior* migration - `strong_migrations` catches most.
+
+**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, the next insert fails - so ship these *before* Deploy A (any inert sentinel works as the default):
+
+- `change_column_default :users, :legacy_field, from: nil, to: "guest"` - INSTANT
+- `change_column_null :users, :legacy_field, true` - INPLACE online rebuild (not metadata-only); >100M rows route through gh-ost
 
 **Phase 3 - Two deploys.**
 
@@ -154,14 +166,15 @@ class User < ApplicationRecord
   self.ignored_columns += ["legacy_field"]
 end
 # Remove read/write refs. Wait for full rollout - Sidekiq fleets lag web.
+# Soak before Deploy B: confirm no errors referencing the column and external cutovers done.
 
 # Deploy B: migration + remove ignored_columns in one PR
 safety_assured do
-  remove_column :users, :legacy_field, :string, null: false, default: "guest"
+  remove_column :users, :legacy_field, :string, null: true, default: "guest"
 end
 ```
 
-Restate type/null/default on `remove_column` so `db:rollback` re-adds the column. `DROP COLUMN` is INSTANT-eligible on 8.0.29+.
+Restate type/null/default as they exist *at drop time* (post-Phase-2: nullable) so `db:rollback` re-adds the column in that state. `DROP COLUMN` is INSTANT-eligible on 8.0.29+.
 
 Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view), external systems consuming the column, tables >100M rows (use `gh-ost --alter="DROP COLUMN ..."`).
 
@@ -170,7 +183,7 @@ Edge cases requiring extra steps: dependent objects (FK / index / generated / CH
 ```ruby
 create_table :orders, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci" do |t|
   t.references :user, null: false, foreign_key: true
-  t.decimal :total, precision: 10, scale: 2, null: false
+  t.integer :total_cents, null: false  # money as integer cents; decimal only to match an existing convention
   t.integer :status, null: false, default: 0
   t.datetime :fulfilled_at
   t.timestamps
@@ -191,7 +204,7 @@ gh-ost --user=app --host=primary.db --database=app --table=orders \
   --max-lag-millis=1500 --execute
 ```
 
-Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills: see `rails-batch-processing-patterns`.
+On RDS/managed MySQL (no SUPER): add `--assume-rbr --allow-on-master`. After any out-of-band gh-ost ALTER, regenerate `db/structure.sql` (`db:schema:dump`) so the repo matches production. Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills - including lag-aware throttling and external-API safety in backfill loops: see `rails-batch-processing-patterns` and `rails-rake-task-patterns`.
 
 ### Foreign keys
 
@@ -240,14 +253,16 @@ end
 
 ## Output Format
 
+One block per operation, in execution order (a multi-step plan emits a numbered sequence of blocks; rake backfills and gh-ost runs get blocks too - use `Operation: Backfill`, `Algorithm: batched rake` / `gh-ost`). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
+
 ```
 Migration: {file name}
-Operation: {Create Table | Add Column | Add Index | Add FK | Backfill | Remove Column}
+Operation: {Create Table | Add Column | Change Column | Add Index | Add FK | Backfill | Remove Column | Drop/Recreate View}
 Table: {name}
 Adapter: MySQL {version}
-Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change}
-Lock window: {none (online) | brief MDL | maintenance required}
-Safety: {Zero-Downtime | Maintenance Window | Batched Backfill}
+Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake}
+Lock window: {none (online) | brief metadata lock | maintenance required}
+Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Reject - rewrite required}
 Notes: {charset/collation, INSTANT eligibility, gh-ost throttle config}
 ```
 

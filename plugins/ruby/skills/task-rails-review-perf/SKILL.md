@@ -46,6 +46,7 @@ Use skill: `rails-activerecord-patterns`.
 For N+1 on `update`/`save` paths (not list/index), also use skill: `rails-implicit-config-audit` - source is usually `touch:`, `autosave:`, `accepts_nested_attributes_for`, a callback, or missing `inverse_of` under `load_defaults <= 6.1`. Fix is to remove the source, not add `.includes`.
 
 - [ ] **N+1** in controllers/serializers/views/helpers/jobs; preload at the boundary (controller, not serializer). Multi-level: `includes(line_items: :product)`. Service N+1: preload before passing AR collection in
+- [ ] **Ruby-side aggregation** (`group_by`/`sum`/`count` over loaded records) -> push into SQL (`group`, `sum`, grouped selects)
 - [ ] **Indexes** on every column in `where`/`order`/`group`; composite indexes match leftmost-prefix; FKs indexed
 - [ ] `pluck`/`pick` over `.map(&:col)`; `exists?` over `any?`/`present?`
 - [ ] Iteration over >1k records uses `find_each`/`in_batches`
@@ -58,6 +59,8 @@ Use skill: `rails-postgresql-migration-safety` **or** `rails-migration-safety` (
 - [ ] Large-table indexes built non-blocking for the detected DB (PG: `algorithm: :concurrently` + `disable_ddl_transaction!`; MySQL: `algorithm: :inplace` or `INSTANT`)
 - [ ] Unique constraints at DB level, not just `validates :uniqueness`
 - [ ] PG-only: partial indexes for selective boolean/enum filters
+- [ ] MySQL-only: a lone index on a low-selectivity boolean/enum flag rarely helps - composite it with the range/sort column (`[settled, id]`) or rely on the PK scan
+- [ ] New flag column with a default makes the *entire table* eligible for the first consuming job/query - require a backfill or scope plan in the PR
 
 ### Step 6 - Transactions and Async Boundaries
 
@@ -68,6 +71,7 @@ Use skills: `rails-sidekiq-patterns`, `rails-transaction-patterns`.
 - [ ] Idempotency guard at top of `perform`: re-fetch state, return early if done
 - [ ] Retries bounded (`sidekiq_options retry: <N>`); queue priority explicit
 - [ ] Long-running jobs split (single `perform` p50 < 30s); bulk dispatch uses `Sidekiq::Client.push_bulk` for >100 jobs
+- [ ] Scheduled jobs whose runtime can exceed their cadence carry an overlap guard (uniqueness lock or leader lock)
 
 ### Step 7 - Caching and Rendering
 
@@ -105,7 +109,7 @@ Depth owned by `task-rails-review-observability`; do not duplicate.
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation.
+Standalone runs: use skill `review-report-writer` with `report_type: review-perf` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
 
 ## Output Format
 

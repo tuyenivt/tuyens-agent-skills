@@ -65,7 +65,7 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 
 Run **before scaffolding**. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
-1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs
+1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs; inbound webhook signature verification (invalid/missing signature -> 401)
 2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)
 3. **Business-critical flows** - revenue (checkout, billing, subscription transitions); multi-step state machines (AASM, `state_machines`)
 4. **High-churn code** - frequent recent commits (`git log --since="3 months ago"`); bug-fix history (`git log --grep=fix`)
@@ -85,9 +85,11 @@ Skip for internal/admin apps with a single frontend consumer where drift is caug
 
 ### Step 9 - Infrastructure Hygiene
 
-- [ ] `database_cleaner-active_record` configured (or transactional fixtures)
-- [ ] `Sidekiq::Testing` configured (default `:fake`; `:inline` per-spec when end-to-end needed)
-- [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`
+When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-checklist - don't claim items verified.
+
+- [ ] DB isolation: transactional fixtures (default; matches `rails-testing-patterns`) or `database_cleaner-active_record` truncation only for cross-connection state
+- [ ] `Sidekiq::Testing` defaults to `:fake`; `:inline` per-spec when end-to-end needed. A global `inline!` is a finding, not a pass
+- [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`; existing live third-party calls migrate to boundary stubs (WebMock on the client) or VCR cassettes
 - [ ] **Verify HTTP stubs intercept.** WebMock matches `Net::HTTP` and adapter shims. Faraday with `:typhoeus`/`:em_http`/`:patron`, custom `aws-sdk-*` handlers, and gRPC bypass WebMock silently. Write one stubbed test, assert `expect(stub).to have_been_requested` - if not, install the matching adapter, switch Faraday to `:net_http` in test, or stub the SDK client. Silent passthrough leaks production credentials into CI
 - [ ] `example_status_persistence_file_path` for `--only-failures`
 - [ ] `--order random` - tests pass in any order
@@ -102,6 +104,8 @@ Skip for internal/admin apps with a single frontend consumer where drift is caug
 | "Write tests for X" / "scaffold specs"               | Test Scaffolds               |
 | "Test strategy" / "test plan" / coverage < 50%       | Strategy Doc (+ Assessment)  |
 | Reviewing existing specs                             | Review Checklist (below)     |
+
+When several rows match, produce the most comprehensive (Strategy Doc subsumes Assessment). Review mode emits checklist findings + Step 9 infra findings; add an Assessment block only when coverage gaps are visible in the evidence. Policy/source files not shown: scaffold the known roles and mark unknowns `# TODO: confirm role`.
 
 **Review Checklist (existing specs):**
 
@@ -132,8 +136,10 @@ Skip for internal/admin apps with a single frontend consumer where drift is caug
 - **Job:** [Sidekiq jobs without idempotency specs]
 - **System:** [critical journeys not covered]
 
-**Pyramid target:** Unit {x} / Request {y} / System {z}
+**Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
+
+**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, infra findings (Step 9) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
 
 **Test Scaffolds:** ready-to-run RSpec files using project conventions. Each scaffold:
 

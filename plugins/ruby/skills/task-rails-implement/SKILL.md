@@ -41,7 +41,7 @@ Ask:
 5. Authorization rules (admin / owner / public)
 6. Status transitions
 
-If user gives a brief description, infer defaults and confirm. Edge cases:
+Ask-vs-infer threshold: brief-but-unambiguous requests get inferred defaults, confirmed at the design gate (one round trip). Ask first only when a missing decision changes the schema or endpoints (entity fields, relationships, who approves what). Edge cases:
 - Referenced model doesn't exist - ask whether to generate or assume
 - Partial input - ask for entity fields, relationships, operations before design
 
@@ -70,6 +70,7 @@ app/
   policies/order_policy.rb
   jobs/shipment_notification_job.rb         # if needed
   clients/shipment_api_client.rb            # if external API
+config/routes.rb                            # routes diff
 spec/{models,services,policies,requests,jobs,components}/...
 db/migrate/<ts>_create_orders.rb
 ```
@@ -78,7 +79,7 @@ db/migrate/<ts>_create_orders.rb
 
 ### Step 6 - Migrations
 
-Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration. Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status; `null: false` + defaults where appropriate; decimal precision/scale on monetary fields.
+Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration. Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status; `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention.
 
 ### Step 7 - Models
 
@@ -88,7 +89,7 @@ Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:`
 
 Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
 
-Canonical shape:
+Canonical shape (no external calls in the flow):
 
 ```ruby
 def call
@@ -100,6 +101,12 @@ def call
   Result.success(@order.reload)
 end
 ```
+
+When externals enter the flow, `rails-service-objects`' ordering arbitrates: abort-critical calls (charge) go *before* the transaction with an idempotency key; deferrable/flaky systems move to a post-commit Sidekiq job whose own service applies the same call-before-txn rule internally.
+
+Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where expressible - a model validation alone races.
+
+Time-based behavior (expiry, retention windows): owned here too - a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job; name the trigger in the design.
 
 ### Step 9 - External HTTP Clients
 
@@ -121,7 +128,7 @@ Strong params; pagination on list endpoints; delegate business logic to services
 
 **API versioning:** new APIs under `/api/v1/...`; for existing apps, match the convention.
 
-**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Controller forwards `Idempotency-Key` header; service short-circuits on replay (see `rails-service-objects`).
+**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). See `rails-service-objects`.
 
 ### Step 11 - Serializers (API only)
 
@@ -129,14 +136,16 @@ Skip for server-rendered. One serializer per resource; never `render json: @mode
 
 ### Step 12 - Views (server-rendered only)
 
-Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one. Generate only the files this feature needs (`index`/`show`/`new`/`edit`, `_form`, collection partial, ViewComponents, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers, fragment caching for hot collections). Intentional HTML via `sanitize` allowlist; never `.html_safe` on user input.
+Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one. Generate only the files this feature needs (`index`/`show`/`new`/`edit`, `_form`, collection partial, ViewComponents, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers, fragment caching for hot collections). Live in-place updates (`turbo_stream_from` + broadcasts): use skill `rails-actioncable-patterns` *here* for scope and broadcast hooks - don't defer it to Step 13. Intentional HTML via `sanitize` allowlist; never `.html_safe` on user input.
 
 ### Step 13 - Security + Exception Strategy
 
 Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_authorized` / `verify_policy_scoped`, strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
+Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
+
 - For file upload features: use skill `rails-active-storage-patterns`
-- For ActionCable channels or Turbo Stream subscriptions: use skill `rails-actioncable-patterns`
+- For ActionCable channels (custom channels, connection auth): use skill `rails-actioncable-patterns`
 
 ### Step 14 - Tests
 
@@ -151,7 +160,7 @@ Use skill: `rails-testing-patterns`. Cover:
 
 ### Step 15 - Validate
 
-Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presenting output.
+Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presenting output. If the environment can't execute them, say so explicitly, list the commands for the user to run, and report spec counts as "written, not executed" - never claim passes.
 
 ## Output Format
 
@@ -164,6 +173,8 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 | ------ | -------------------------- | ------------ | -------------------------- | ------ |
 | POST   | /api/v1/orders             | OrderParams  | OrderSerializer            | 201    |
 | POST   | /api/v1/orders/:id/fulfill | -            | OrderSerializer            | 200    |
+
+(Server-rendered: Response column holds the view rendered or redirect target; Status 302/422.)
 
 ## Sidekiq Jobs (if any)
 | Job                     | Queue   | Trigger               | Retry |

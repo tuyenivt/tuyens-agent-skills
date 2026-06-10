@@ -35,23 +35,31 @@ user-invocable: false
 
 ```ruby
 class ApplicationController < ActionController::API
-  rescue_from ActiveRecord::RecordNotFound,       with: :not_found
-  rescue_from ActiveRecord::RecordInvalid,        with: :unprocessable
-  rescue_from Pundit::NotAuthorizedError,         with: :forbidden
-  rescue_from ApplicationError::NotFound,         with: :not_found
-  rescue_from ApplicationError::ValidationFailed, with: :unprocessable
-  rescue_from ApplicationError::PolicyDenied,     with: :forbidden
+  rescue_from ActionController::ParameterMissing,        with: :bad_request
+  rescue_from ActiveRecord::RecordNotFound,              with: :not_found
+  rescue_from ActiveRecord::RecordInvalid,               with: :unprocessable
+  rescue_from Pundit::NotAuthorizedError,                with: :forbidden   # only gems actually present
+  rescue_from ApplicationError::NotFound,                with: :not_found
+  rescue_from ApplicationError::ValidationFailed,        with: :unprocessable
+  rescue_from ApplicationError::PolicyDenied,            with: :forbidden
+  rescue_from ApplicationError::IdempotencyConflict,     with: :conflict             # 409
+  rescue_from ApplicationError::ExternalUnavailable,     with: :service_unavailable  # 503 (502 if proxying the upstream's failure verbatim)
 
   private
 
-  def not_found(e)     = render json: { error: e.message }, status: :not_found
-  def forbidden(e)     = render json: { error: e.message }, status: :forbidden
-  def unprocessable(e) = render json: { error: e.message, details: e.try(:record)&.errors },
-                                status: :unprocessable_entity
+  def bad_request(e)          = render_error(e, :bad_request)
+  def not_found(e)            = render_error(e, :not_found)
+  def forbidden(e)            = render_error(e, :forbidden)
+  def service_unavailable(e)  = render_error(e, :service_unavailable)
+  def unprocessable(e)        = render json: { error: e.message, request_id: request.request_id,
+                                               details: e.try(:record)&.errors }, status: :unprocessable_entity
+  def render_error(e, status) = render json: { error: e.message, request_id: request.request_id }, status: status
 end
 ```
 
-Rails matches the **first** `rescue_from` whose class matches - narrow classes first, broad last. Don't `rescue_from StandardError` unless you also re-raise after reporting.
+Rails matches the **last-declared** `rescue_from` whose class matches first - declare broad classes first, narrow last when they overlap. Every domain error in the taxonomy gets a ladder entry and an HTTP status; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
+
+The 4xx handlers above intentionally do NOT report to Sentry - they are expected outcomes. The unexpected-bug path (500) is reported once by Rails/Sentry middleware *after* controllers, so don't `rescue_from StandardError` to render a friendly 500 - it hides bugs from the middleware unless you report-then-re-render yourself; prefer leaving it unrescued.
 
 ### Domain Error Taxonomy
 
@@ -119,13 +127,13 @@ class FulfillOrderJob
       OrderMailer.payment_failed(order_id).deliver_later
       # business-level failure - do not retry
     else
-      raise result.error_message   # transient or unknown - let Sidekiq retry
+      raise ApplicationError::ExternalUnavailable, result.error_message  # typed - sidekiq_retry_in can match the class
     end
   end
 end
 ```
 
-`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. If you swallow, document why and call the reporter explicitly.
+`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report the batch summary, raise if everything failed.
 
 ### Boundary Translation
 
@@ -147,18 +155,19 @@ class BillingClient
 end
 ```
 
-Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. For client structure, use skill: `rails-http-client-patterns`.
+Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. A client-local namespace (`BillingError::Declined`) is fine - it is boundary vocabulary, named for the *capability*, not the vendor or SDK; each class still maps onto one caller-response category from the taxonomy. SDKs that raise one class for everything: branch on the error's `code`/`status` attribute the same way this example branches on HTTP status. Auth-expiry belongs to the client too - refresh and retry once inside the client, then translate to `Unavailable` if it still fails. For client structure, use skill: `rails-http-client-patterns`.
 
 ### Single-Source Reporting
 
-```ruby
-# config/initializers/error_reporting.rb
-Rails.error.subscribe(Sentry::Rails::ErrorSubscriber.new)
-```
+Modern reporter gems self-wire: sentry-rails subscribes to `Rails.error` and captures unhandled controller errors; sentry-sidekiq captures job errors (configurable: every retry vs. retries-exhausted). Adding manual `Rails.error.subscribe(...)` or `Sentry.capture_exception` on top of that is the usual *cause* of duplicate alerts, not the fix.
 
-Rails 7.0+ `Rails.error` is the unified hook. Call `Rails.error.handle(context: {...}) { ... }` at the boundary where the error becomes terminal (controller, job, rake). Lower layers don't call `Sentry.capture_exception` directly.
+- Default: zero manual capture calls. The middleware reports unhandled errors once at the terminal boundary (controller, job, rake).
+- Manual capture is for errors you intentionally swallow: `Rails.error.handle(context: {...}) { ... }` (reports and suppresses) or `Rails.error.report(e)` - only at the layer that decided to swallow.
+- Lower layers never call the reporter; `rescue_from`-handled 4xx domain errors are not reported at all.
 
 ## Output Format
+
+One block per layer touched (a feature spanning client + service + job emits three). Fields that don't apply to a layer take `N/A`. In review mode, blocks describe the post-fix state, preceded by findings:
 
 ```
 Layer: <controller | service | job | client | rake>
@@ -176,5 +185,6 @@ Reporter call: <Rails.error / Sentry at <layer> | none | double-reported (FIX)>
 - Rescuing SDK errors in service code (`rescue Stripe::CardError`) - leaks vendor vocabulary upward
 - Logging an error and continuing - either re-raise, return Result, or render a typed response
 - `rescue_from StandardError` without re-raising after reporting - hides every bug
-- Multiple `Sentry.capture_exception` calls in one error path - alert spam, harder to debug
+- Manual `Sentry.capture_exception` / `Rails.error.subscribe` alongside auto-wired reporter gems - duplicate alerts
+- Unbounded `retry` or `sleep`-and-retry inside rescue blocks - infinite loops that hold a worker thread
 - Bare `rescue => e; logger.error(...)` in a Sidekiq job - silently kills retry

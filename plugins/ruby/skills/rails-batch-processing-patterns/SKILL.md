@@ -67,7 +67,7 @@ end
 | Large JSON / TEXT rows (KB-MB each)   | 100 - 500       |
 | Per-row external calls                | 100 or smaller  |
 
-Expose as `BATCH_SIZE` ENV in rake; `batch_size:` parameter in services.
+Sizes count rows of the *driving* relation; when each chunk also writes child tables, budget total rows touched per transaction. When two tiers apply (OLTP + large payload), take the smaller. A per-chunk external call (checksum POST, API notify) pushes toward the larger end of the tier - chunk count is also call count. Per-row derived values (`anon_email(a)`) that block `update_all`: per-row `update!`/`update_columns` inside the chunk transaction is fine; push the computation into SQL only when it's expressible. Expose as `BATCH_SIZE` ENV in rake; `batch_size:` parameter in services.
 
 ### Chunk-Granular Idempotency
 
@@ -92,9 +92,24 @@ end
 
 For multi-day backfills with retry/observability needs, use a shards table - see `rails-work-splitter-patterns`.
 
+Per-chunk external side effects (POST a checksum, notify an API) get their own completion flag (`posted_at`) separate from the write's - restart then re-sends only un-posted chunks, never re-writes posted ones.
+
+### Replication-Lag Throttle
+
+Any backfill on a replicated primary - not just >100M gh-ost territory - can lag replicas. Poll between chunks and pause below the alarm threshold:
+
+```ruby
+def wait_for_replica(threshold: 1.5)  # seconds; ~half the paging alarm
+  sleep(5) while replica_lag_seconds > threshold
+end
+# lag source: CloudWatch ReplicaLag / SHOW REPLICA STATUS / pg_stat_replication.replay_lag
+```
+
 ### Memory Mitigations (leverage order)
 
 Ruby's GC doesn't compact by default and glibc `malloc` arenas fragment, so a 200 MB process peaks at 1-2 GB and stays there. RSS doesn't shrink from `GC.start` - it consolidates the Ruby heap, not OS pages.
+
+First check what's *allocating*: `includes(...)` eager-loads every association's rows as full AR objects per batch - the most common batch-OOM source. Load associations per chunk (or `update_all` them by FK) instead of eager-loading on the driving relation. `pluck` only the columns you need - plucking a 50KB payload column still materializes the strings.
 
 **1. jemalloc** - single highest-leverage change; typically 30-50% RSS reduction.
 
@@ -114,7 +129,7 @@ Order.in_batches(of: 5_000) do |relation|
 end
 ```
 
-**4. `Sidekiq::WorkerKiller`** - restart before the kernel does:
+**4. `Sidekiq::WorkerKiller`** - restart before the kernel does. A backstop, not a fix: it quiets then TERMs the process, so in-flight jobs are interrupted (idempotency/state columns make the restart resume, not redo). Rake processes have no equivalent - they rely on chunking + cursor resume. Derive the queue's concurrency cap the same way: `cap = (pod_limit x 0.7) / per_job_peak_rss`.
 
 ```ruby
 Sidekiq.configure_server do |config|
@@ -136,6 +151,8 @@ Order.in_batches(of: 1_000).each_with_index do |batch, i|
   end
 end
 ```
+
+The same streaming discipline applies to file artifacts (CSV, PDF, exports): write rows to a tempfile/IO as you iterate - an artifact accumulated as an in-memory string is the peak that kills the pod, and it has phases (built / uploaded) that deserve their own completion flags.
 
 ### The "Peaky" Job
 
@@ -187,6 +204,8 @@ Database: {MySQL | PostgreSQL}
 Chunk size: {N} (rationale: {OLTP contention | cold table | large payload})
 Transaction shape: {chunked / per-statement / none}
 Idempotency: {state column | cursor | progress table | natural}
+External side effects: {none | per-chunk call with completion flag | post-commit only}
+Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s}
 Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB}
 Concurrency cap: {Sidekiq queue concurrency, if relevant}
 Telemetry: {RSS log every N batches | Prometheus | none}
