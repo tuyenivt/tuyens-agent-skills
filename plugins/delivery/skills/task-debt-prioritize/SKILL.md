@@ -35,9 +35,9 @@ For every item, assign a level on each axis. The "If no data, infer from" column
 
 | Axis | Narrow / Low | Moderate / Medium | Wide / High | If no data, infer from |
 | --- | --- | --- | --- | --- |
-| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment/billing path, high-traffic | Module name and described scope; auth/payment/billing default to Wide; checkout → Wide |
-| **Change Frequency** | <3 commits/90d - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint | Backend API handlers / business logic → High; shared utilities → Medium; admin UI / config / migrations / dead UI → Low |
-| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding | "Slow builds", "flaky", "incidents", "blocks merges", "takes hours" → High; "confusing", "inconsistent" → Medium; "old", "deprecated", "unused" → Low (unless security applies) |
+| **Blast Radius** | Isolated module, single consumer | 2-5 consumers or shared data | Core lib, auth/payment/billing path, high-traffic | Module name and described scope; auth/payment/billing default to Wide; checkout → Wide; CI/build pipeline and cross-cutting config (flags, shared settings) → Moderate, Wide if it blocks every team |
+| **Change Frequency** | <3 commits/90d - rarely touched | 3-10 - few times a quarter | >10 - debt compounds every sprint | Actively developed business logic → High; shared utilities, CI/build → Medium; admin UI / frozen or deprecated code / dead UI → Low |
+| **Team Pain** | Annoying but rarely blocking | Occasional friction, workable | Slows every sprint, causes incidents, blocks onboarding | "Slow builds", "flaky", "incidents", "blocks merges", "takes hours" → High; "confusing", "inconsistent" → Medium; "old", "deprecated", "unused" → Low (the security inference below may still force Fix now; it does not raise Pain) |
 
 Use `Use skill: review-blast-radius` only when coupling is non-obvious. If it returns `Critical`, map to **Wide** and tag the item `critical-data-risk` in Assumptions.
 
@@ -52,10 +52,11 @@ When inferring a CVE without explicit mention, note the assumption: `Assumed tim
 
 ### STEP 3 - Rank
 
-Sort by `(Blast Radius, Change Frequency, Team Pain)` lexicographically (Wide > Moderate > Narrow, then High > Medium > Low). Tiebreaks in order:
+Sort by `(Blast Radius, Change Frequency, Team Pain)` lexicographically (Wide > Moderate > Narrow, then High > Medium > Low). Tiebreaks apply between items with identical axis tuples, in order:
 
 1. Time-sensitive items rank above non-time-sensitive peers
-2. Cheaper effort (S before L, L before XL)
+2. Cheaper effort (S < M < L < XL); skip for items without an effort tier
+3. Input order - note the unresolved tie in Assumptions
 
 If an item bundles two workstreams (e.g., "fix flakes" + "speed up build", or "deprecate API" + "remove API"), split into separately-ranked entries and note the split in Assumptions.
 
@@ -64,7 +65,7 @@ If an item bundles two workstreams (e.g., "fix flakes" + "speed up build", or "d
 | Action | When |
 | --- | --- |
 | **Fix now** | Time-sensitive, OR Wide blast radius with Change Frequency or Pain at Medium+, OR High Change Frequency with Medium+ Pain |
-| **Spike** | Impact unclear; needs investigation before sizing |
+| **Spike** | Impact or sizing unclear; investigation must precede commitment |
 | **Defer** | Workable now but will degrade; revisit next quarter. Includes Wide-blast-radius items currently low on both other axes (e.g., framework upgrades with no deadline) |
 | **Accept** | Stable code, no functional or security risk - document and move on |
 
@@ -72,7 +73,7 @@ Defer means "will revisit"; Accept means "will not fix unless conditions change"
 
 ### STEP 5 - Effort
 
-For every **Fix now** and **Spike** item, assign an effort tier:
+For every **Fix now** and **Spike** item, assign an effort tier. For Spikes, the tier sizes the investigation, not the eventual fix.
 
 - **S** (<half day): rename, extract, dep bump
 - **M** (1-2 days): refactor a module, add coverage to a class, add structured logging to a service
@@ -80,6 +81,8 @@ For every **Fix now** and **Spike** item, assign an effort tier:
 - **XL** (>5 days): architectural change
 
 XL Fix-now items stay in the **Top Priorities** list (do not silently drop) and additionally appear in **Split as Separate Epic** with a scoping note. Their presence in both sections is intentional: the ranking shows urgency, the split section shows the planning unit.
+
+**Capacity.** When the input states available capacity, walk the ranked Fix-now and Spike items top-down, accumulate effort, and state in Assumptions where the capacity line falls (which items fit). Calendar arithmetic is allowed here because the caller supplied it.
 
 ## Output Format
 
@@ -107,7 +110,7 @@ XL Fix-now items stay in the **Top Priorities** list (do not silently drop) and 
 - **Action:** Fix now (effort: M)
 - **Why now:** <one sentence on why this beats the next item>
 
-[repeat for top 5 or fewer]
+[repeat for the top 5 (or fewer) ranked Fix-now and Spike items]
 
 ## Deferred
 
@@ -129,15 +132,15 @@ XL Fix-now items stay in the **Top Priorities** list (do not silently drop) and 
 - <bundled items split; critical-data-risk tags>
 ```
 
-Type enum is derived from the item's nature: tests/coverage gaps → `coverage`; god classes/cycles → `coupling`; library/runtime → `dependency`; vulnerable code/CVE → `security`; slow code → `performance`; missing logs/metrics → `observability`; high cyclomatic / unclear code → `complexity`; missing docs → `docs`.
+Type enum is derived from the item's nature: tests/coverage gaps and flaky tests → `coverage`; god classes/cycles/duplicated code or config → `coupling`; library/runtime → `dependency`; vulnerable code/CVE → `security`; slow code → `performance`; missing logs/metrics → `observability`; high cyclomatic / unclear / dead code → `complexity`; missing docs → `docs`.
 
-Every input must appear exactly once across the ranked backlog (incl. XL Fix-now), Deferred, Accepted, or Split as Separate Epic. Silent drops are the cardinal error.
+Every input appears once in the Ranked Backlog with its action (incl. XL Fix-now). Deferred, Accepted, and Split as Separate Epic restate those subsets with rationale - intentional restatement, not duplication. An item missing from the Ranked Backlog is the cardinal error. Omit sections with no items.
 
 ## Self-Check
 
 - [ ] **Score:** every item scored on all three axes; missing data filled from the inference column with the source noted; security inferences flagged in Assumptions
 - [ ] **Rank:** lex order on (BR, CF, Pain) with declared tiebreaks; time-sensitive forced to Fix now
-- [ ] **Action and Effort:** every item has Fix-now / Spike / Defer / Accept; Fix-now and Spike carry effort; XL Fix-now appears in both Top Priorities and Split as Separate Epic
+- [ ] **Action and Effort:** every item has Fix-now / Spike / Defer / Accept; Fix-now and Spike carry effort; XL Fix-now appears in both Top Priorities and Split as Separate Epic; capacity line stated when capacity was given
 - [ ] **Coverage:** no item silently dropped
 
 ## Avoid

@@ -26,6 +26,8 @@ Ask before slicing when **primary user** or **outcome** is missing or generic ("
 
 Echo the user's vocabulary ("customer" stays "customer", not silently promoted to "member") unless the user states the mapping.
 
+When a clarifying question cannot be answered (non-interactive run), record it under Assumptions and Open Questions and slice on stated assumptions.
+
 ## Workflow
 
 ### STEP 1 - Behavioral Setup
@@ -38,7 +40,7 @@ Restate as one sentence: **"As a <user>, I want to <capability>, so that <outcom
 
 ### STEP 3 - Pick a Slicing Pattern
 
-Pick a **primary** axis. Add a **secondary** axis only when the primary alone produces stories that still cover multiple actors or surfaces. Name each axis; briefly note why others were rejected.
+Pick a **primary** axis. Add a **secondary** axis only when the primary alone produces stories that still span multiple actors, surfaces, or variation sets (roles, event types, data shapes). For multi-user epics, User roles may serve as primary or secondary. Name each axis; briefly note why others were rejected.
 
 | Pattern | Cut along… | Use when |
 | --- | --- | --- |
@@ -59,14 +61,14 @@ Each story:
 
 - **Title** - imperative, user-facing. Example: "Member can save a draft order" (good); "Add draft persistence" (bad - implementation framing)
 - **Story** - `As a <user>, I want to <capability>, so that <outcome>`
-- **Acceptance Criteria** - 1-3 Given/When/Then bullets describing observable behavior, not implementation. Include at least one edge-case AC unless the story is single-path (size XS).
+- **Acceptance Criteria** - 1-3 Given/When/Then bullets describing observable behavior, not implementation. Include at least one edge-case AC (it counts toward the 3) unless the story is single-path (size XS).
 - **Demo** - one sentence on what's shown in sprint review
 - **Size** - XS (<1d) / S (1-2d) / M (3-5d), focused engineering effort. No L/XL - re-slice instead. If your team estimates in story points, map XS=1, S=2-3, M=5.
-- **Depends on** - story #N (sequencing only), external (<what>), or none. Sequencing deps do not violate Independence.
+- **Depends on** - story #N (one or more, sequencing only), external (<what>), or none. Sequencing deps do not violate Independence.
 - **Out of scope** - what is intentionally deferred
 - **Safety** - one line, only when the slice carries an irreversible side effect (data loss, money movement, external notification) AND is not gated by an existing safety net. Pure flag-gating without an irreversible action does not require a Safety line.
 
-When any story has a Safety line: load `Use skill: review-blast-radius` to ground the risk wording; load `Use skill: ops-feature-flags` if a flag is the proposed gate.
+When any story has a Safety line: load `Use skill: review-blast-radius` to ground the risk wording; load `Use skill: ops-feature-flags` if a flag is the proposed gate. These atomics supply vocabulary and the gate choice only - skip their stack-detect prerequisite (this workflow is stack-agnostic) and do not emit their output blocks; Safety stays one line.
 
 Micro-example of one slice:
 
@@ -83,9 +85,11 @@ Micro-example of one slice:
 - **Out of scope:** sharing drafts; auto-save; expiry
 ```
 
+No fixed story count - 3-8 is typical. More suggests the epic should split; a single story means the feature needs no slicing.
+
 ### STEP 5 - Sequence and INVEST Pass
 
-Order stories so highest-value lands first, but identify the **first demoable slice** as the smallest story that proves the concept end-to-end - it may sequence before higher-value stories when those need it as a foundation.
+Order stories highest-value first within dependency constraints (dependencies win when they conflict with value). Identify the **first demoable slice** as the smallest story that proves the concept end-to-end - it may sequence before higher-value stories when those need it as a foundation.
 
 INVEST validation - **I**ndependent (no semantic coupling; pure sequencing is fine), **N**egotiable, **V**aluable, **E**stimable, **S**mall, **T**estable. Flag any story failing one and re-slice or document: `#N fails <axis> (<reason>); accepted because <justification>`.
 
@@ -99,6 +103,7 @@ INVEST validation - **I**ndependent (no semantic coupling; pure sequencing is fi
 **Primary axis:** <pattern> - <why; one sentence>
 **Secondary axis:** <pattern or none>
 **Rejected:** <pattern> (<reason>); <pattern> (<reason>)
+**Epic out of scope:** <capabilities the user explicitly deferred; omit if none>
 
 ## Stories
 
@@ -110,7 +115,7 @@ INVEST validation - **I**ndependent (no semantic coupling; pure sequencing is fi
   - [edge-case AC]
 - **Demo:** <one sentence>
 - **Size:** XS / S / M
-- **Depends on:** none | #N | external (<what>)
+- **Depends on:** none | #N[, #M] | external (<what>)
 - **Out of scope:** <list>
 - **Safety:** <only when irreversible and ungated>
 
@@ -133,7 +138,7 @@ Omit if all pass.
 ## Assumptions and Open Questions
 
 - Assumptions made due to missing input
-- Questions whose answers would change slicing
+- Questions whose answers would change slicing, including clarifying questions that went unanswered
 ```
 
 ## Self-Check

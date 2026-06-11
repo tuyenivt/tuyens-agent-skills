@@ -30,7 +30,8 @@ When the release contains many unrelated high-risk changes, run per logical batc
 | Input | Required | Notes |
 | --- | --- | --- |
 | Commit range or PR list | Yes | e.g. `v1.4.0..HEAD` or PR numbers |
-| Version | No | Leave `<version>` placeholder if missing - never invent. Note in Assumptions. |
+| Version | No | If the range's upper bound is a release tag (`v2.9.0`, `app-4.3.0`), that is the version. Otherwise leave `<version>` placeholder - never invent. Note in Assumptions. |
+| Release date | No | Keep `<YYYY-MM-DD>` literal when not supplied - do not stamp the drafting date. Note in Assumptions. |
 | Audience | No | `internal` (default), `external`, or `both`. `external` drops Internal and CI-only items. `both` keeps Internal but writes Highlights for a non-engineer reader. |
 | Previous release | No | Bounds "what's new" if the range is open-ended |
 | Deploy target | No | Shapes rollback. Mobile (iOS/Android) requires app-store-aware rollback. |
@@ -76,15 +77,17 @@ Conditional deep-dives:
 - Migration present → `Use skill: backend-db-migration` (covers reverse-migration availability)
 - API contract or protocol change → `Use skill: ops-backward-compatibility`
 - Security or dependency change → `Use skill: dependency-impact-analysis`
-- Flag-gated rollout → `Use skill: ops-feature-flags`. A flag with no expiry goes to **Known Limitations**.
+- Flag-gated rollout → `Use skill: ops-feature-flags`. A flag with no expiry goes to **Known Limitations**. (A store staged rollout alone is not a flag.)
+
+Atomic outputs inform the register fields and rollback text - do not paste their assessment blocks into the document.
 
 **Risk Register inclusion rule.** A row is required for:
 - Every Wide or Critical blast-radius change
-- Every Moderate change that carries any of: a migration, a feature flag, a table-locking operation, a third-party-contract change, mobile-side breaking behavior
+- Every Moderate change that carries any of: a migration, a feature flag, a table-locking operation, a third-party-contract change, a money-path behavior change, mobile-side breaking behavior
 
 Narrow changes are covered by the Default Rollback paragraph.
 
-Each row needs: What could break, Detection signal, Rollback step, Data impact, Owner. Detection signal must name a concrete dashboard/metric/log; if unknown, emit `<dashboard: TBD>` and add an Assumption. Owner unknown → `TBD` and add an Assumption.
+Each row needs: What could break, Detection signal, Rollback step, Reversibility, Data impact, Owner. Detection signal must name a concrete dashboard/metric/log; if unknown, emit `<dashboard: TBD>` and add an Assumption. Owner unknown → `TBD` and add an Assumption.
 
 **Mobile rollback.** When deploy target includes iOS or Android, name the mobile-specific rollback path (staged rollout pause, server-side flag flip, force-update fallback) - native rollback via redeploy is not available.
 
@@ -106,7 +109,7 @@ Cite by PR number, not SHA. `[#1421]` renders as a literal token unless your CHA
 # Release Notes - <version> - <YYYY-MM-DD>
 
 > **Audience:** internal | external | both
-> **Range:** `<previous-tag>..<this-tag>` (<N> PRs)
+> **Range:** `<previous-tag>..<this-tag>` or PR list (<N> PRs)
 > **Deploy target:** <env(s) and platforms>
 
 ## Highlights
@@ -149,11 +152,13 @@ Cite by PR number, not SHA. `[#1421]` renders as a literal token unless your CHA
 
 **Rollout strategy:** <e.g. blue/green, canary 10%→100%, flag-gated to internal then GA, mobile staged rollout 1%→10%→100%>
 
+**Rollback triggers:** <1-3 bullets: metric threshold → action, per ops-release-safety>
+
 ### Risk Register
 
-| Change | Blast Radius | What Could Break | Detection Signal | Rollback Step | Data Impact | Owner |
-| --- | --- | --- | --- | --- | --- | --- |
-| <change> | Wide / Critical (or Moderate w/ material context) | <failure mode> | <dashboard / metric / log> | <revert / flag-flip / reverse-migration / staged-rollout pause> | clean \| dirty - <one-line> | <team or TBD> |
+| Change | Blast Radius | What Could Break | Detection Signal | Rollback Step | Reversibility | Data Impact | Owner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| <change> | Wide / Critical (or Moderate w/ material context) | <failure mode> | <dashboard / metric / log> | <revert / flag-flip / reverse-migration / staged-rollout pause> | <review-change-risk verdict for Wide/Critical; one plain-language line for Moderate rows> | clean \| dirty - <one-line> | <team or TBD> |
 
 ### Default Rollback
 
@@ -168,7 +173,7 @@ Cite by PR number, not SHA. `[#1421]` renders as a literal token unless your CHA
 - Anything inferred because input was incomplete. Omit if none.
 ```
 
-Omit empty categories. Rollout & Rollback is mandatory.
+Omit empty categories. Rollout & Rollback is mandatory for every audience; in `external` documents mark it `(internal - strip before publishing)`.
 
 ## Self-Check
 
@@ -176,7 +181,7 @@ Omit empty categories. Rollout & Rollback is mandatory.
 - [ ] **Categorize:** every change in exactly one bucket via precedence; no "Other"; Internal dropped for `external`
 - [ ] **Highlights:** 1-3 by user impact; non-engineer phrasing for `external` or `both`
 - [ ] **Risk inclusion:** ops-release-safety loaded; rollout strategy chosen; every Wide/Critical row present; every Moderate-with-material-context row present
-- [ ] **Risk content:** Reversibility sourced from review-change-risk for Wide/Critical; Detection signal concrete or `TBD` with Assumption; Owner present or `TBD` with Assumption
+- [ ] **Risk content:** Reversibility column sourced from review-change-risk for Wide/Critical; Detection signal concrete or `TBD` with Assumption; Owner present or `TBD` with Assumption; no atomic assessment blocks pasted into the document
 - [ ] **Rollback:** Default Rollback paragraph per deploy-target stack; Mobile path named when iOS/Android present; Migration Notes present iff migrations ship
 - [ ] **Compose:** Breaking entries lead with consumer action; PR numbers (not SHAs); no raw commit messages; Known Limitations populated for flags-without-expiry
 - [ ] **Placeholders:** `<version>` and date placeholders kept literal when not supplied; Assumption noted

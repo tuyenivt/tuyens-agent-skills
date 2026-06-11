@@ -55,16 +55,17 @@ Walk this checklist and state which signals apply with one-line evidence. Skippi
 | Deploy coordination | Cross-service or cross-team ordering; consumer SDK distribution |
 | Third-party integration | External APIs, webhooks, SDKs |
 
-A signal is **material** (load the deep-dive) when it will produce at least one L+ task or a Risk Register row downstream. Otherwise note the signal and move on.
+A signal is **material** (load the deep-dive) when it will produce at least one L+ task or a Scope and Risk Flags entry downstream. Otherwise note the signal and move on. Summarize non-applicable signals in one line ("Checked, not applicable: ...").
 
 Deep-dive mapping (load only when material):
 
-- DB changes → `Use skill: backend-db-migration`
+- DB schema or data changes (tables, indexes, backfills) → `Use skill: backend-db-migration` (data-store moves without relational schema work do not route here)
 - Schema, API, or protocol contract change → `Use skill: ops-backward-compatibility`
 - Cross-service / cross-team dependencies → `Use skill: dependency-impact-analysis`
 - Flag-gated rollout → `Use skill: ops-feature-flags`
-- Riskiest task by blast radius → `Use skill: review-blast-radius`
-- Riskiest task by change risk → `Use skill: review-change-risk`
+- Any L/XL task touching shared state, auth, money, or cross-service contracts → run `Use skill: review-blast-radius` and `Use skill: review-change-risk` on the single riskiest such task
+
+Deep-dives inform task descriptions, sizes, and flag rationales - cite verdicts inline in the relevant flag (e.g. "blast radius Critical, Wide with flag"); do not paste their output blocks into the artifact.
 
 ### STEP 3 - Generate Tasks
 
@@ -79,12 +80,14 @@ Group by phase; include only phases that apply:
 Each task:
 
 - **Name** - action-oriented ("Implement dual-mode /auth/validate"). Never "Backend work" or "Testing".
-- **Type** - one of: `implementation`, `infrastructure`, `data`, `validation`, `ops`
+- **Type** - one of: `implementation`, `infrastructure`, `data`, `validation`, `ops`, `analysis` (specs, contracts, audits, decision records)
 - **Description** - one or two sentences; what to build, not how
 - **Depends on** - task name(s), external (<team/system>), or none
-- **Size** - S (<1d) / M (1-2d) / L (3-5d focused engineering days) / XL (>5d - keep in the backlog but add a `split` note naming the cohorts/waves it should break into)
+- **Size** - S (<1d) / M (1-2d) / L (3-5d focused engineering days) / XL (>5d - keep in the backlog but add a `split` note naming the cohorts/waves it should break into). Size measures engineering effort; fixed elapsed time (soak windows, parallel runs) goes in the description, not the size.
 - **Complexity signals** - required for L or XL; cite which Step 2 signals justify the size
 - **Tag** - optional, only `nice-to-have` or `risk-reduction`
+
+When a size hinges on an unmade design choice (e.g., sync vs async), state the assumption in the task description and the alternative under Open Questions, or raise a spike.
 
 ### STEP 4 - Dependency Order and Critical Path
 
@@ -97,9 +100,9 @@ Number tasks with blocking relationships:
 4. Consumer SDK rollout - 30 services (requires: 2, 3)
 ```
 
-**Critical path** = longest chain by hop count of dependent tasks (do not sum sizes). Name the chain in arrow form and add one sentence on *why* it pins delivery (size, externality, cross-team sequencing).
+**Critical path** = longest chain by hop count of dependent tasks (do not sum sizes; external dependencies are not hops). If chains tie on hops, pick the one carrying more external coordination or larger sizes. Name the chain in arrow form and add one sentence on *why* it pins delivery (size, externality, cross-team sequencing).
 
-When tasks depend on other teams or external systems, name the owning team in `Depends on` so the critical path surfaces team-coordination risk.
+When tasks depend on other teams or external systems, name the owning team in `Depends on` so the critical path surfaces team-coordination risk. Another team's deliverable is an `external (<team>)` dependency, not a task - create tasks only for work your team executes. Spikes are numbered in the Dependency Order when other tasks depend on their outcome, but stay in the Spikes section and do not count toward the task count.
 
 ### STEP 5 - Scope and Risk Flags
 
@@ -119,7 +122,7 @@ When the verdict is `add spike`, define:
 ```markdown
 # Scope Breakdown: <Feature>
 
-**Stack:** <detected or "prompt-stated: <stack>"> | **Tasks:** <count>
+**Stack:** <detected | prompt-stated: <stack> | unknown> | **Tasks:** <count>
 
 ## Complexity Signals
 
@@ -130,7 +133,7 @@ When the verdict is `add spike`, define:
 ### Foundation
 
 #### <Task name>
-- **Type:** implementation | infrastructure | data | validation | ops
+- **Type:** implementation | infrastructure | data | validation | ops | analysis
 - **Description:** what to build
 - **Depends on:** task(s), external (<team/system>), or none
 - **Size:** S / M / L / XL
@@ -160,6 +163,8 @@ When the verdict is `add spike`, define:
 - <assumption made due to missing input>
 - <question that, if answered, would change the breakdown>
 ```
+
+Omit empty sections (Spikes, Scope and Risk Flags, Assumptions).
 
 ## Self-Check
 
