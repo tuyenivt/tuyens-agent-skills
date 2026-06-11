@@ -10,7 +10,7 @@ user-invocable: true
 
 # Code Test (Router)
 
-Detects the project stack and delegates to the matching stack-specific test workflow (`task-{stack}-test`). For unknown stacks, runs a minimal generic test-pyramid protocol.
+Detects the project stack and delegates to the matching stack-specific test workflow (`task-{stack}-test`). When no stack workflow matches, runs a minimal generic test-pyramid protocol.
 
 ## When to Use
 
@@ -54,9 +54,9 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Vue                  | `task-vue-test`     |
 | Angular              | `task-angular-test` |
 
-Forward the user's invocation and spec context. The dispatched workflow owns the output. **If matched, stop. Skip Step 5.**
+Forward the user's invocation and spec context. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 5.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 5 using the detected stack's idioms.
 
-### Step 5 - Generic Fallback (unknown stack only)
+### Step 5 - Generic Fallback (no dispatch match)
 
 **Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small.
 
@@ -71,7 +71,7 @@ Forward the user's invocation and spec context. The dispatched workflow owns the
 
 **Contract tests are mandatory for:** HTTP APIs consumed by independently-deployed teams; event/message schemas with separate producer/consumer deploys; shared client libraries imported by other services. Cover happy path, provider error (4xx/5xx), and forward-compatible schema evolution.
 
-For test scaffolds, use the project's existing test framework if detectable; otherwise state the assumed framework explicitly.
+For test scaffolds, use the project's existing test framework if detectable, else the detected language's conventional one. For pasted code with no project context, infer the language from the snippet. Always state assumed language and framework.
 
 ## Output Format
 
@@ -80,7 +80,7 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran, p
 ```markdown
 ## Test Coverage Assessment
 
-**Stack:** unknown (generic fallback applied)
+**Stack:** {detected stack or unknown} (generic fallback applied)
 **Coverage gaps:**
 
 - [Layer / component]: [what is missing and why it matters]
@@ -101,13 +101,13 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran, p
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
 - [ ] Step 3: `stack-detect` ran
-- [ ] Step 4: if matched, stack workflow ran with invocation and spec context forwarded; Step 5 skipped
-- [ ] Step 5: if no match, output covers pyramid balance + prioritized gaps (or scaffolds with a stated framework), matching the user's ask
+- [ ] Step 4: if matched and available, stack workflow ran with invocation and spec context forwarded; Step 5 skipped
+- [ ] Step 5: if not dispatched, output covers pyramid balance + prioritized gaps (or scaffolds with a stated framework), matching the user's ask
 
 ## Avoid
 
 - Running both Step 4 dispatch and Step 5 fallback
 - Producing findings when a stack workflow was dispatched
-- Falling through to Step 5 when stack-detect returned a known stack but the dispatch table entry feels imperfect - the table is authoritative
+- Falling through to Step 5 when a table row matched and its workflow is available - the table is authoritative
 - Chasing a coverage number instead of prioritizing by risk
 - Treating the fallback as equivalent to a stack workflow

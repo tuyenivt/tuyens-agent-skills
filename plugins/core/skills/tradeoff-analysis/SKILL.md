@@ -1,6 +1,6 @@
 ---
 name: tradeoff-analysis
-description: Structured trade-off record for an architectural decision - chosen option, rejected alternatives, costs, reversibility, risk, review triggers.
+description: Document an architectural decision as a trade-off record - chosen option, rejected alternatives, costs, reversibility, risk, review triggers.
 metadata:
   category: architecture
   tags: [architecture, decisions, trade-offs, adr]
@@ -40,6 +40,8 @@ For each decision, capture:
 7. **Risk** - the conditions under which this decision becomes wrong
 8. **Review Trigger** - an observable signal that says revisit now
 
+In the Output Format, the chosen option is always the first Alternatives row; its Reversibility and Risk cells carry items 6-7, and the Review Trigger makes that Risk observable.
+
 Good - specific, reversible-aware:
 
 ```
@@ -65,6 +67,13 @@ Reason: Events are better than REST for this
 ### Hybrid and Phased Decisions
 
 When the answer is phased (e.g. "sync now, async in Q3") record each phase as its own row in the Alternatives table, with its own reversibility and review trigger. Do not collapse phases into a single ambiguous decision.
+
+### Hard Constraints and Incomplete Inputs
+
+- **Hard constraint disqualifies an option:** keep the option in the Alternatives table and lead its Risk cell with `Disqualified: {constraint}` - the row is the evidence of evaluation.
+- **Decision already made ("write it up"):** analyze as if open - generate 2-3 credible alternatives (include the status quo or simplest option) and document genuine costs and risks. If the analysis favors a rejected option, state the mismatch in Rationale instead of justifying backwards.
+- **Options not yet known:** derive candidates from the constraints before analyzing; include at least one simple option and one hybrid or phased option.
+- **Missing context (volume, team, constraints):** ask for the facts that drive the decision, or record `Unknown: {fact}` in Context. Never fabricate numbers to make the Rationale look evidence-based.
 
 ### Common Trade-Off Dimensions
 

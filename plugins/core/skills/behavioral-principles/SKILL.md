@@ -27,7 +27,7 @@ Non-negotiable. Apply in addition to stack-specific or workflow-specific rules.
 6. **Push back on likely-wrong requests.** If a request would break a documented convention, introduce a known anti-pattern, or contradict a stated goal, say so before acting. Push back once; if the user insists, comply and state what you're giving up.
 7. **Goal-driven execution with verification.** Convert each task into verifiable success criteria. For multi-step work, state a brief plan with a verify check per step. Work is not done until verified.
 
-**Proportionality.** Apply rigor in proportion to blast radius. For a one-liner with unambiguous intent, state the assumption inline ("Assuming X since Y") rather than blocking on a question. Verification still applies, even if the check is "re-read the changed line."
+**Proportionality and disposition.** Apply rigor in proportion to blast radius. When an ambiguity, tradeoff, or conflict surfaces, the default disposition is: state the assumption or chosen default inline ("Assuming X since Y") and proceed. Stop and wait for confirmation only when the goal itself is unclear or the change is high blast radius (irreversible, or touches security, data integrity, or money). Verification always applies, even if the check is "re-read the changed line."
 
 **Rule interactions.**
 - Rule 3 vs Rule 4: surface pre-existing inconsistencies you notice; do not fix them unless asked.
@@ -71,19 +71,10 @@ Good: "Plan: (1) in-memory limit on one endpoint - verify 11th request returns 4
 
 This skill produces no textual artifact. Its output is the behavior of the consuming workflow.
 
-Consuming workflows **must** include these self-check items verbatim:
+Contract with consuming workflows:
 
-```
-- [ ] Stated assumptions before acting (Rule 1)
-- [ ] Wrote only the minimum code needed (Rule 2)
-- [ ] Touched only what the request required (Rule 3)
-- [ ] Surfaced any conflicts between requirements (Rule 4)
-- [ ] Presented tradeoffs before choosing an approach (Rule 5)
-- [ ] Pushed back on likely-wrong requests instead of complying silently (Rule 6)
-- [ ] Verified goal met after each step (Rule 7)
-```
-
-Items that did not apply mark as checked with `(N/A - reason)` rather than removed, so the checklist shape stays consistent.
+- The workflow's Self-Check section includes one line confirming this skill was loaded at Step 1, e.g. `- [ ] Step 1: behavioral-principles loaded`. No further body text is required.
+- At runtime, before reporting done, the executing agent confirms in-context that each Rule was honored or did not apply (with reason). This verification is behavior, not Markdown pasted into the consuming skill.
 
 ## Avoid
 

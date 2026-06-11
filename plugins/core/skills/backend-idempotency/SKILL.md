@@ -52,6 +52,14 @@ ON CONFLICT (key) DO NOTHING;
 -- If 0 rows inserted: another request owns the key - return its cached response.
 ```
 
+### Record schema and lifecycle
+
+Store enough to replay the original response: `key`, `status` (`processing | completed | failed`), `response_code`, `response_body`, `request_hash`, `expires_at`. If the same key arrives with a different `request_hash`, reject with `422` - never replay a response for a different payload.
+
+- Side effects inside the database: dedup insert and business operation in one transaction. A crash rolls everything back, so a retry re-executes cleanly; `processing` is never observed by others.
+- Side effects outside the database (payment gateway, email): commit `processing` first, execute, then commit `completed` with the response. A row stuck in `processing` past the operation timeout means outcome unknown - surface it for reconciliation, never silently re-execute.
+- `completed` and `failed` both replay the stored response. `failed` records deterministic business failures (e.g., insufficient funds); transient errors roll back and leave no row, so retries re-execute.
+
 ### In-flight duplicate
 
 When a key exists with `status = 'processing'`, the original is still running. Return `409 Conflict` or `202 Accepted` with a `Retry-After` header. Do not start a second execution.
@@ -64,12 +72,15 @@ on payment_intent.succeeded(event):
     order.status = PAID
     order.save()
 
-# Good - dedup by message ID, verify entity state
+# Good - dedup insert and state change in one transaction
 on payment_intent.succeeded(event):
-    if dedup.insert(event.id) == 0: return    # already processed
-    if order.status != AWAITING_PAYMENT: return  # out-of-order or replay
-    order.status = PAID
-    order.save()
+    with transaction:
+        if dedup.insert(event.id) == 0: return       # already processed
+        if order.status != AWAITING_PAYMENT: return  # out-of-order or replay
+        order.status = PAID
+        order.save()
+# Crash mid-handler rolls back the dedup row too - redelivery reprocesses
+# instead of silently dropping the event.
 ```
 
 External events may arrive out of order - check entity state, do not assume the event applies.
@@ -83,7 +94,7 @@ After stack-detect, wire the pattern using the detected ecosystem:
 - For HTTP, implement as middleware or a service wrapper
 - For background jobs, leverage broker dedup features (Kafka exactly-once, SQS dedup ID) when available; otherwise dedup at the application layer
 
-If the stack is unfamiliar, apply the rules above and recommend the user consult their framework's transaction docs.
+If the stack is unfamiliar, apply the rules above, emit `unknown` for **Stack**, and recommend the user consult their framework's transaction docs. If no datastore has been chosen yet, state idempotency as a requirement on that choice - the store must support an atomic conditional insert (unique constraint or conditional write) - rather than deferring the assessment.
 
 ## Output Format
 
@@ -92,7 +103,7 @@ Consuming workflows parse this structure.
 ```
 ## Idempotency Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {detected language / framework, or `unknown` if detection fails}
 
 ### Gaps
 
@@ -111,6 +122,8 @@ Consuming workflows parse this structure.
 - **High**: POST with financial or irreversible side effects lacking idempotency protection
 - **Medium**: Event consumer without dedup, or check outside the transaction boundary
 - **Low**: Natural business key available but not used as the idempotency key
+
+Severity follows impact: escalate a consumer gap to High when the duplicated side effect is financial or irreversible.
 
 Omit "No Gaps Found" if gaps were listed.
 

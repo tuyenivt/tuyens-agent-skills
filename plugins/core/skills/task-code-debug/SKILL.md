@@ -52,9 +52,11 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-debug`     |
 | Angular              | `task-angular-debug` |
 
-On match: delegate, stop. Skip Step 4.
+On match: delegate, forwarding the original error report and the `stack-detect` result. Stop; skip Step 4.
 
-### Step 4 - Generic Fallback (unknown stack only)
+If the matched workflow's plugin is not installed, tell the user and recommend installing it, then run Step 4.
+
+### Step 4 - Generic Fallback (unknown stack or missing plugin)
 
 **Classify** the error class with confidence (HIGH / MEDIUM / LOW):
 
@@ -83,12 +85,14 @@ For intermittent errors, hypothesize the operational cause (load, deploy, GC) be
 3. Trace the data path back to where the bad value originates.
 4. Name the exact line and variable.
 
+No stack trace (logs only, no local repro): locate by evidence instead - trace the logged message to the code that emits it, correlate timestamps with deploys/load/config changes, and name the evidence still missing.
+
 **Root cause** - state **why**, not just what. Tie the symptom to the upstream condition that produces it. State confidence; if LOW, list what would raise it.
 
 - Bad: "the value is null"
 - Good: "the value is null because the query returns no rows when X is true, and the caller assumes a result always exists"
 
-**Fix** - minimal before/after addressing the root cause. No refactoring. If multiple fixes exist, recommend one with tradeoffs.
+**Fix** - minimal before/after addressing the root cause. No refactoring. If multiple fixes exist, recommend one with tradeoffs. If root-cause confidence is LOW, output the diagnostic step that would confirm the cause instead of a code change.
 
 **Prevent** - one concrete step: a test that would have caught this, a static check, a guard clause, or a monitoring signal.
 
@@ -118,6 +122,7 @@ When fallback runs (Step 4):
 
 **After:**
 [code]
+[If confidence LOW: the confirming diagnostic instead of code]
 
 ## Prevention
 
@@ -128,13 +133,13 @@ When fallback runs (Step 4):
 
 - [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: stack matched -> dispatched and stopped; Step 4 skipped
-- [ ] Step 4: stack unmatched -> fallback produced Classify / Locate / Root Cause / Fix / Prevent
+- [ ] Step 3: stack matched -> dispatched with error report and stack-detect result, then stopped; plugin missing -> user told, fell through to Step 4
+- [ ] Step 4: stack unmatched or plugin missing -> fallback produced Classify / Locate / Root Cause / Fix / Prevent
 - [ ] Vague input was challenged, not guessed at
 
 ## Avoid
 
-- Running both Step 3 dispatch and Step 4 fallback
+- Running Step 4 after a successful Step 3 dispatch
 - Producing findings yourself when a stack workflow was dispatched
 - Proposing a fix before stating the root cause
 - Treating symptoms (adding a null check) instead of cause (why is it null)

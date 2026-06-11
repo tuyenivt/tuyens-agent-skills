@@ -1,6 +1,6 @@
 ---
 name: frontend-state-management
-description: Frontend state management: local vs global, lifting state, derived state, normalization. Adapts to detected stack and store library.
+description: Place and structure frontend state: local vs global, lifting, derived state, normalization. Adapts to detected stack and store library.
 metadata:
   category: frontend
   tags: [frontend, state, redux, pinia, ngrx, zustand, signals, multi-stack]
@@ -45,6 +45,8 @@ Classify each piece of state before choosing a tool:
 | Form         | Inputs, validation, dirty   | Field values, errors, touched     | Form library or local state       |
 | Transient    | Ephemeral, never persisted  | Animation progress, scroll pos    | Refs or local variables           |
 
+Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with BroadcastChannel or storage events for cross-tab sync.
+
 ### When to Lift State
 
 Lift only when:
@@ -64,6 +66,8 @@ const [isOpen, setIsOpen] = useState(false)
   <ProductList filters={filters} />
 </ProductPage>
 ```
+
+Lifting can create prop drilling. Passing through 2-3 layers is fine; deeper, escalate in order: component composition (children/slots) > context or provide/inject for low-frequency values > store. Drilling depth alone never justifies a global store - the lift conditions above do.
 
 ### Derived State
 
@@ -172,6 +176,8 @@ Consuming workflow skills depend on this structure.
 
 {State explicitly if state management is adequate - do not omit this section silently}
 ```
+
+Include exactly one of `Issues Found` / `No Issues Found`. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
 
 ---
 

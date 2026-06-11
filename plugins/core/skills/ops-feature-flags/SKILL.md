@@ -20,8 +20,9 @@ user-invocable: false
 
 ## Rules
 
-- Every flag has a single, named owner and a cleanup target set at creation.
-- Every high-risk feature has a **kill switch** that disables it without redeploy.
+- Every flag has a single, named owner. Release flags also get a cleanup target set at creation; permanent flags (kill switch, ops, permission) get documented valid states instead.
+- Name flags positively for the new behavior (`pricing_v2_enabled`); never negations or double negatives (`disable_legacy_pricing_off`).
+- Every high-risk feature has a **kill switch** that disables it without redeploy - the rollout flag itself when turning it off fully reverts behavior; a separate kill-switch flag only when the risky path must be disabled independently of rollout state.
 - Promotion to the next stage requires meeting promotion criteria; rollback triggers fire on any breach.
 - One flag controls one behavior. Flags that gate multiple behaviors cannot be rolled back cleanly.
 - Flags never bypass auth or security checks.

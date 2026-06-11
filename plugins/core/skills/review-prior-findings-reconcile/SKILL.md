@@ -25,7 +25,9 @@ The consuming workflow passes:
 | `prior_report`   | Full Markdown body of `review-<branch>.md` (frontmatter already parsed) |
 | `incremental_diff` | Output of `git diff <prior_head_sha>...<head_sha>` (already read)      |
 | `name_status`    | Output of `git diff --name-status <prior_head_sha>...<head_sha>`        |
-| `head_files`     | Function the workflow exposes for reading files at the new head         |
+| `head_files`     | Optional. File list at the new head: output of `git ls-tree -r --name-only <head_ref>`. Cross-check deleted/renamed paths; when absent, `name_status` alone decides touch state. |
+
+To read file content at the new head (Steps 3-4), use `git show <head_sha>:<path>` - after the workflow's auto-fetch, `head_sha` may not be the checked-out working tree.
 
 ## Rules
 
@@ -66,7 +68,7 @@ For each prior finding, check `name_status`:
 | Touch state | Classification logic                                                                                                                                                              |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `untouched` | `Still open`. No file read needed - the smell at `file:line` cannot have changed if the file was not modified. Note: line number references the prior commit; current line may differ if other commits shifted things, but the smell persists at the same logical site. |
-| `touched`   | Read the file at the new head. Search for the specific smell described in the prior finding. Present -> `Still open`. Absent -> `Addressed`. If the surrounding code restructured enough that presence cannot be determined without speculation -> `Needs re-check`. |
+| `touched`   | Read the file at the new head (`git show <head_sha>:<path>`). Search for the specific smell described in the prior finding. Present -> `Still open`. Absent -> `Addressed`. If the surrounding code restructured enough that presence cannot be determined without speculation -> `Needs re-check`. |
 | `renamed`   | Treat as `touched`; reconcile against the new path. Record original and new path in the row.                                                                                       |
 | `file-gone` | `Obsolete`. Note in the row.                                                                                                                                                       |
 

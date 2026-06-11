@@ -1,6 +1,6 @@
 ---
 name: ops-resiliency
-description: Circuit breakers, retries with backoff, timeouts, bulkheads, and graceful fallbacks across stacks.
+description: Assess resilience gaps - circuit breakers, retries with backoff, timeouts, bulkheads, graceful fallbacks - across stacks.
 metadata:
   category: ops
   tags: [resilience, circuit-breaker, retry, timeout, bulkhead, fallback, multi-stack]
@@ -22,7 +22,7 @@ user-invocable: false
 - Every external call has a timeout; no unbounded waits.
 - Retries use exponential backoff with jitter, max attempts capped (typically 3).
 - Retry only transient errors (5xx, timeouts, connection errors). Never retry 4xx (won't succeed) or non-idempotent operations without an idempotency key.
-- Circuit breakers define explicit thresholds (failure rate, open duration, half-open probes) and are monitored - a silent breaker is useless.
+- One circuit breaker per external dependency, with explicit thresholds (failure rate, open duration, half-open probes) and monitoring - a silent or shared breaker is useless.
 - Independent failure domains use bulkhead isolation (separate pools per downstream).
 - Every dependency has a defined fallback. Every fallback logs the original failure at WARN; silent fallbacks hide degradation until it compounds.
 
@@ -40,7 +40,7 @@ Configure: failure-rate threshold over a sliding window (e.g., 50%), open durati
 
 - Start backoff at ~500 ms, multiply by 2, cap at a reasonable maximum.
 - Add jitter to prevent thundering herd.
-- Pair retries with idempotency keys for non-idempotent ops.
+- Non-idempotent ops need an idempotency key before retry is safe - `Use skill: backend-idempotency` for key strategy and atomic dedup.
 
 ### Timeout
 
@@ -70,7 +70,7 @@ Retries amplify load. Three services chained with 3 retries each turn one failed
 
 ### Bulkhead
 
-Separate thread / connection pools per downstream dependency. One slow dependency cannot consume the pool used by other dependencies.
+Separate thread / connection pools per downstream dependency. In single-threaded runtimes (Node), bound concurrent in-flight requests per dependency instead. One slow dependency cannot consume the capacity used by other dependencies.
 
 ### Fallback Patterns
 
@@ -95,7 +95,7 @@ For provider failover, run a per-provider circuit breaker and try providers in o
 
 ### Stack Adaptation
 
-After `stack-detect`, apply the patterns using the ecosystem's standard library: Resilience4j (Java), Polly (.NET), gobreaker (Go), tenacity (Python), retriable / stoplight (Ruby), Guzzle retry middleware (PHP), or equivalent. Use the framework's decorator, middleware, or annotation mechanism; rely on background-job retry-with-backoff where built in. If the stack is unfamiliar, apply the rules above and recommend the user verify against their ecosystem's resilience library docs.
+After `stack-detect`, apply the patterns using the ecosystem's standard library: Resilience4j (Java/Kotlin), Polly (.NET), gobreaker (Go), tenacity (Python), retriable / stoplight (Ruby), Guzzle retry middleware (PHP), cockatiel or opossum (Node), tower middleware (Rust), or equivalent. Use the framework's decorator, middleware, or annotation mechanism; rely on background-job retry-with-backoff where built in. If the stack is unfamiliar, apply the rules above and recommend the user verify against their ecosystem's resilience library docs.
 
 ## Output Format
 
@@ -109,7 +109,7 @@ Consuming workflow skills parse this structure to surface resilience gaps.
 ### Gaps
 
 - [Severity: High | Medium | Low] {integration point or component} - {description of gap}
-  - Missing: {timeout | retry | circuit breaker | bulkhead | fallback | timeout budget | retry budget}
+  - Missing: {timeout | retry | circuit breaker | bulkhead | fallback | timeout budget | retry budget | idempotency key}
   - Risk: {failure mode this gap enables}
   - Recommendation: {concrete pattern and library for the detected stack}
 
@@ -118,11 +118,13 @@ Consuming workflow skills parse this structure to surface resilience gaps.
 {State explicitly if resilience is adequate - do not omit silently.}
 ```
 
-**Severity:**
+A pattern that is present but misconfigured (e.g., retry with no cap or backoff) counts as missing.
 
-- **High**: missing timeout or retry on an external call with no circuit breaker.
-- **Medium**: retry without jitter, circuit breaker without monitoring, missing timeout/retry budget on a chained call path.
-- **Low**: missing bulkhead isolation where one exists elsewhere in the codebase.
+**Severity** - judge by the worst plausible failure mode the gap enables, not by which pattern is absent:
+
+- **High**: unbounded blocking or load (missing timeout, uncapped retry), or unsafe retry of a non-idempotent op without a key.
+- **Medium**: failure is bounded but recovery or containment is impaired - retry without jitter, breaker absent or unmonitored where a timeout exists, missing timeout/retry budget on a chained path, no fallback for a critical dependency.
+- **Low**: hardening gaps with no immediate failure path - missing bulkhead isolation, fallback that fails fast where stale data would serve.
 
 Omit "No Gaps Found" if gaps were listed.
 

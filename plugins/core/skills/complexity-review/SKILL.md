@@ -1,6 +1,6 @@
 ---
 name: complexity-review
-description: Flag cyclomatic and cognitive complexity, long methods, deep nesting, oversized files, parameter bloat. Stack-aware thresholds.
+description: Flag cyclomatic/cognitive complexity, long methods, deep nesting, oversized files, parameter bloat, over-abstraction. Stack-aware thresholds.
 metadata:
   category: governance
   tags: [complexity, review, maintainability, multi-stack]
@@ -38,16 +38,19 @@ user-invocable: false
 | Parameter count                   | > 5                    | Parameter object, builder, or rebalance responsibilities   |
 | Branch chain (switch / if-else)   | > 10 branches          | Map lookup, strategy, or polymorphism                      |
 | Inheritance/mixin depth           | > 3-4 levels           | Composition over inheritance                               |
+| Indirection depth                 | > 3 pass-through delegation hops | Collapse layers that add no logic; inline single-use wrappers |
 | External calls per method         | > 3                    | Extract orchestration layer; explicit error handling per call |
 | Error-handling complexity         | Broad catch-all, empty catch, nested try > 2 | Specific exception types, Result/Either, error handler delegation |
 
-Cognitive complexity adds: +1 per nesting level, +1 per structural break (early return, break, continue), +1 per boolean operator sequence.
+Cognitive complexity: +1 per control-flow structure, +1 extra per nesting level it sits under, +1 per sequence of mixed boolean operators. A flat switch/match or top-level guard-clause sequence counts +1 total - branch count does not multiply the score.
 
 ### Severity
 
-- **High**: cyclomatic > 15, file > 400 lines, nesting > 4, or any signal blocking comprehension
-- **Medium**: cyclomatic 10-15, file 300-400 lines, nesting > 3
+- **High**: any signal at or beyond ~1.5x its threshold (cyclomatic > 15, cognitive > 22, file > 400 lines, nesting > 4), or any signal blocking comprehension
+- **Medium**: over threshold but below ~1.5x
 - **Low**: approaching threshold but not yet a maintenance burden
+
+Downgrade rule: a flat exhaustive mapping (uniform one-line branches, no shared mutable state) is at most Low regardless of branch count; suggest a data table only when branches duplicate logic.
 
 ### Refactor Priority
 

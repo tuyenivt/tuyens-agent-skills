@@ -77,6 +77,8 @@ mutate({
 
 Use for low-latency, high-success actions (favorite, comment). Avoid for payments, multi-step validation, or where rollback would confuse.
 
+The snapshot-rollback-settle sequence is library-agnostic: with framework-native fetchers (e.g., Nuxt `useFetch`), patch the `data` ref directly, restore the snapshot on error, and `refresh()` on settle.
+
 ### Pagination
 
 | Pattern         | When to Use                    | Tradeoff                         |
@@ -87,6 +89,8 @@ Use for low-latency, high-success actions (favorite, comment). Avoid for payment
 | Load more       | Search results, catalogs       | Extra click per page             |
 
 Infinite scroll requires a "Load more" button fallback, screen-reader announcement of new content, scroll restoration, and a reachable footer.
+
+Loaded pages go stale mid-scroll: cursor pagination tolerates server-side inserts/deletes; when acting on a rendered item returns 404, prune that item from the cache and inform the user - do not refetch every loaded page.
 
 ### Request Coordination
 
@@ -184,6 +188,8 @@ Consuming workflow skills depend on this structure.
 
 {State explicitly if API integration is adequate - do not omit this section silently}
 ```
+
+Include either `Issues Found` or `No Issues Found`, never both. Severity anchor: High = correctness or data integrity (silent failures, stale data after writes, races); Medium = degraded UX or performance (waterfalls, missing empty state); Low = polish.
 
 ---
 

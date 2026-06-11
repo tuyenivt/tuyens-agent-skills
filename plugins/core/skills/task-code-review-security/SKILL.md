@@ -10,7 +10,7 @@ user-invocable: true
 
 # Security Review (Router)
 
-Detects the project stack and delegates to the matching stack-specific security review (`task-{stack}-review-security`). For unknown stacks, runs a minimal generic OWASP Top 10 review.
+Detects the project stack and delegates to the matching stack-specific security review (`task-{stack}-review-security`). When no stack workflow matches (unknown or unsupported stack), runs a minimal generic OWASP Top 10 review.
 
 ## When to Use
 
@@ -53,9 +53,9 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review-security`     |
 | Angular              | `task-angular-review-security` |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.**
+A row matches only when the detected framework matches it (PHP / Symfony does not match PHP / Laravel - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), state that and run Steps 4-5 instead.
 
-### Step 4 - Generic Fallback (unknown stack only)
+### Step 4 - Generic Fallback (no dispatch)
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
 
@@ -84,7 +84,7 @@ Every finding states an attack scenario, not just a code observation.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`.
+Use skill: `review-report-writer` with `report_type: review-security`. Source its required inputs: refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (its identifier, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, `mode`/`round` from the handle's `prior_checkpoint` (absent or `legacy` -> `full`, round 1).
 
 ## Output Format
 
@@ -93,8 +93,12 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 ```markdown
 ## Security Review Summary
 
-**Stack Detected:** unknown (generic fallback applied)
+**Stack Detected:** [stack-detect result, or unknown] (generic fallback applied)
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low counts]
+
+## OWASP Coverage
+
+[One line per Top 10 category: `<Category>: No issues found | <N> finding(s)`]
 
 ## Findings
 
@@ -117,7 +121,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 [Same structure]
 
-_Omit severity sections with no findings. If all are omitted, state "No security issues found."_
+_Omit severity sections with no findings. If all are omitted, state "No security issues found." and omit Next Steps._
 
 ## Next Steps
 
@@ -129,8 +133,8 @@ _Omit severity sections with no findings. If all are omitted, state "No security
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped
-- [ ] Step 4: if no match, every OWASP category explicitly addressed (including clean ones); auth enforcement verified end-to-end (not spot-checked); no credentials in code/config; every finding states an attack scenario
+- [ ] Step 3: if matched and installed, stack workflow ran with arguments forwarded; Steps 4-5 skipped
+- [ ] Step 4: if not dispatched, every OWASP category in the coverage list (including clean ones); auth enforcement verified end-to-end (not spot-checked); no credentials in code/config; every finding states an attack scenario
 - [ ] Step 5: report written via `review-report-writer` (fallback path only)
 
 ## Avoid

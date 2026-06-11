@@ -35,6 +35,8 @@ Most backend codebases follow some form of:
 Presentation (Controller / Handler) -> Service / Domain -> Data Access (Repo / ORM / Query)
 ```
 
+Frontend equivalent: Component (presentation) -> hook / store / service -> API client or server action (data access).
+
 Flag when the change:
 
 - Calls data access directly from presentation, skipping the service layer
@@ -88,7 +90,7 @@ Bad - vague:
 ```
 ## Architecture Guardrail Findings
 
-**Stack:** {detected language / framework}
+**Stack:** {detected language / framework, or "unknown - universal layering applied" when detection fails}
 
 ### Violations
 
@@ -96,7 +98,7 @@ Bad - vague:
 
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
-- Drift: {how this diverges from the established pattern}
+- Drift: {how this diverges from the established pattern; "none observed" when no baseline is visible}
 
 ### No Violations Found
 
@@ -105,9 +107,11 @@ Bad - vague:
 
 Intent:
 
-- **[Must]**: layer bypass, circular dependency, cross-runtime import
-- **[Recommend]**: new cross-module coupling, boundary erosion
+- **[Must]**: any Layer Violations pattern, circular dependency, cross-runtime import
+- **[Recommend]**: other Module Coupling and Boundary Erosion patterns
 - **[Question]**: drift with unclear intent - ask before flagging as a violation
+
+A finding matching patterns in multiple sections takes the highest intent (Must > Recommend > Question).
 
 Omit "No Violations Found" only when violations were listed. Never omit the section entirely - consuming skills use its presence to confirm the check ran.
 

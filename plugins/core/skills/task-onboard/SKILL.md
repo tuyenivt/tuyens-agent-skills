@@ -31,7 +31,9 @@ Produces a structured codebase map calibrated to the reader's goal so engineer r
 | Scope focus       | No       | Module, service, or concern to prioritize                                   |
 | Known pain points | No       | User-flagged areas of concern                                               |
 
-If scope focus is given, prioritize it but still cover the repo.
+If scope focus is given, cover its modules, flows, and hotspots at full depth; compress the rest of the repo to one-line entries (still present, never omitted).
+
+If known pain points are given, investigate each: trace the implicated flow (Step 5), check it against hotspots (Step 7), and report a verdict with evidence in Pain Point Findings.
 
 **Focus modes** (every step still runs to gather context; output weight shifts):
 
@@ -41,7 +43,7 @@ If scope focus is given, prioritize it but still cover the repo.
 | `architect-survey` | Senior engineer / due diligence       | Architecture, patterns, tech debt, structural risk                                             |
 | `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
-If the user's stated goal implies a mode, confirm rather than defaulting silently.
+Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress the rest to their tables plus one-line notes. If the user's stated goal implies a mode, confirm rather than defaulting silently.
 
 ## Workflow
 
@@ -71,6 +73,8 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | React                | `react-onboard-map`   |
 | Vue                  | `vue-onboard-map`     |
 | Angular              | `angular-onboard-map` |
+
+If no atomic matches the detected stack (e.g., Elixir), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
 Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 
@@ -103,7 +107,7 @@ For each significant module / bounded context: responsibility (one sentence), da
 
 **External integrations** - third-party services, where integration code lives, credential management, failure handling.
 
-Trace the **primary request/event flow** end-to-end for the most important operation:
+Trace the **primary request/event flow** end-to-end for the most important operation - or the flow implicated by a known pain point or scope focus:
 
 ```
 Request -> [Layer 1] -> [Layer 2] -> [Data store]
@@ -141,9 +145,11 @@ Scan for:
 
 For each finding: location, signal observed, risk to anyone changing that area.
 
+For each known pain point, record a verdict: `confirmed` (cite the signal), `not confirmed` (state what was checked), or `not assessable from the repo`.
+
 ### Step 8 - Operational Context
 
-Local dev setup (`README`, `Makefile`, `docker-compose`, seed scripts); CI/CD (what runs on PR vs merge, deploy targets); deployment model (container, serverless, bare metal, cloud); env config (dev/staging/prod differences, secrets injection); observability (logging, metrics, tracing if detectable); migration trigger strategy.
+CI/CD (what runs on PR vs merge, deploy targets); deployment model (container, serverless, bare metal, cloud); env config (dev/staging/prod differences, secrets injection); observability (logging, metrics, tracing if detectable); migration trigger strategy. Local dev setup belongs to Step 9 - the Operational Context table carries only a one-line summary.
 
 Use skill: `ops-observability` to assess whether observability is production-sufficient.
 
@@ -239,7 +245,7 @@ Use skill: `dependency-impact-analysis` if the user names a candidate first-PR a
 | Concern         | Pattern               | Example Location |
 | --------------- | --------------------- | ---------------- |
 
-Include only rows relevant to detected `Stack Type`. Sample concerns - backend: DI, error handling, logging, config, auth, transactions, background jobs, caching. Frontend: components, state, data fetching, routing, styling, forms. All: tests.
+Include only rows relevant to detected `Stack Type`; draw concerns from the Step 6 lists.
 
 ## Domain Knowledge
 
@@ -259,7 +265,14 @@ Include only rows relevant to detected `Stack Type`. Sample concerns - backend: 
 
 ## Tech Debt and Risk Hotspots
 
-Order High -> Medium -> Low. For each:
+### Pain Point Findings (only when Known pain points given)
+
+| Pain point | Verdict | Evidence |
+| ---------- | ------- | -------- |
+
+Verdict: `confirmed` / `not confirmed` / `not assessable from the repo`.
+
+Order findings High -> Medium -> Low. For each:
 
 - **[Severity]** - [short label]
 - **Location:** [path]  **Signal:** [observed]  **Risk:** [what breaks]
@@ -311,8 +324,7 @@ Order High -> Medium -> Low. For each:
 | Logs                | |
 | Metrics / dashboards | |
 | Tracing             | |
-| Trace a request     | |
-| Reproduce locally   | |
+| Trace / reproduce a request locally | |
 | Error tracking      | |
 | Deployment platform | |
 | Feature flags       | |
@@ -346,7 +358,7 @@ Order High -> Medium -> Low. For each:
 
 ## Onboarding Recommendations
 
-Match the requested Focus. `first-pr`: lead with Mission Framing + First-PR Playbook. `architect-survey`: lead with First-Week Knowledge Gaps; omit First-PR Playbook unless asked. `full`: include all.
+Include subsections per their Focus tags; untagged subsections appear in every mode. `first-pr`: lead with Mission Framing + First-PR Playbook. `architect-survey`: lead with First-Week Knowledge Gaps. `full`: keep template order.
 
 ### Mission Framing (first-pr)
 
@@ -380,17 +392,17 @@ Areas to study before broader work: why it matters; suggested reading path.
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: `stack-detect` ran; stack atomic loaded if available; signals merged into Stack, Local Quickstart, Architecture, Patterns, Tech Debt, First-PR sections; System Summary captured or marked unknown
+- [ ] Step 2: `stack-detect` ran; stack atomic loaded, or no-atomic fallback noted under Stack table; signals merged into Stack, Local Quickstart, Architecture, Patterns, Tech Debt, First-PR sections; System Summary captured or marked unknown
 - [ ] Step 3: directory map plus "Where to look first" and "Safe to skip initially"
 - [ ] Step 4: architecture pattern classified with cited evidence
-- [ ] Step 5: modules table; primary flow traced
+- [ ] Step 5: modules table; primary flow traced (pain-point or scope flow when given)
 - [ ] Step 6: patterns table cites real paths; Domain Knowledge tables capped at 5, each cited
-- [ ] Step 7: tech debt findings ordered High -> Medium -> Low with concrete locations; pitfalls flagged with markers and paths
+- [ ] Step 7: tech debt findings ordered High -> Medium -> Low with concrete locations; pitfalls flagged with markers and paths; each known pain point given a verdict (or n/a)
 - [ ] Step 8: Operational Context populated
 - [ ] Step 9: Local Quickstart commands cited from real files; missing prerequisites flagged as documentation gaps
 - [ ] Step 10: ecosystem unknowns marked, not invented
 - [ ] Step 11: contribution workflow with exact commands, channels, rejection reasons (or `none cited`); First-PR Safe Zones and Avoid each 1-3 items
-- [ ] Focus mode honored; first-pr playbook included in first-pr/full, omitted otherwise; First-Day Checklist and First-Week Gaps each capped at 5
+- [ ] Focus mode honored: emphasized sections full depth, rest compressed, no section dropped; subsection tags applied; First-Day Checklist and First-Week Gaps each capped at 5
 - [ ] No invented paths, modules, commands, URLs, channels, PR numbers, or examples
 
 ## Avoid
@@ -401,4 +413,3 @@ Areas to study before broader work: why it matters; suggested reading path.
 - Over-exploring vendor, node_modules, build output
 - Producing an exhaustive inventory instead of a scannable summary
 - Recommending a first-PR area without cross-referencing hotspots and CODEOWNERS
-- Defaulting Focus silently when the user's stated goal implies a mode - confirm

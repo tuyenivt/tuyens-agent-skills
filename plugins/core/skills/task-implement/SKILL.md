@@ -10,14 +10,14 @@ user-invocable: true
 
 # Feature Implementation (Router)
 
-Detects the project stack and delegates to the matching implementation workflow. Falls back to a universal GATHER -> DESIGN -> IMPLEMENT -> VALIDATE protocol for unknown stacks.
+Detects the project stack and delegates to the matching implementation workflow. Falls back to a universal GATHER -> DESIGN -> IMPLEMENT -> VALIDATE protocol when no stack workflow matches.
 
 ## When to Use
 
 - New features spanning multiple layers (API, service, persistence, tests)
 - New routes, pages, or components for a frontend stack
 
-**Not for:** bug fixes (`task-code-debug`), refactors (`task-code-refactor`), isolated single-file edits, spec authoring (`task-spec-write`).
+**Not for:** bug fixes (`task-code-debug`), refactors (`task-code-refactor`), isolated single-file edits, spec authoring (`task-spec-specify`).
 
 ## Inputs
 
@@ -33,7 +33,7 @@ Detects the project stack and delegates to the matching implementation workflow.
 
 Use skill: `behavioral-principles`.
 
-**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles` and `stack-detect`. The preamble selects mode (`no-spec`, `spec-only`, `spec+plan`, `full-spec`) and decides which fallback phases to skip. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
+**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists: on dispatch (Step 3), forward the flag - the stack workflow loads the preamble itself. Only when the fallback runs (Step 4), load `Use skill: spec-aware-preamble` after `stack-detect`; its `spec_state` (`no-spec`, `spec-only`, `spec+plan`, `full-spec`) decides which fallback phases to skip. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow; surface conflicts as proposed amendments.
 
 ### Step 2 - Detect Stack
 
@@ -65,11 +65,11 @@ Use skill: `stack-detect`.
 
 **Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. If it spans both, delegate backend first for the API contract, then frontend; if parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
-On match: delegate, stop. Skip Step 4.
+On match: delegate, passing the feature description, any Inputs gathered, and `--spec <slug>` if given. Stop; skip Step 4. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
 
-### Step 4 - Universal Fallback (unknown stack only)
+### Step 4 - Universal Fallback (no matching stack workflow)
 
-The fallback adapts to the detected `Stack Type`. Phases are: GATHER -> DESIGN -> IMPLEMENT -> VALIDATE.
+Runs when the stack is unknown, unsupported by any table row, or the matched plugin is not installed. The fallback adapts to the detected `Stack Type`. Phases are: GATHER -> DESIGN -> IMPLEMENT -> VALIDATE.
 
 **GATHER** - confirm before proceeding:
 
@@ -129,9 +129,10 @@ When fallback runs (Step 4), output adapts to Stack Type:
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: stack matched -> dispatched and stopped; Step 4 skipped
+- [ ] Step 3: stack matched -> dispatched (feature context and `--spec` forwarded) and stopped; Step 4 skipped
+- [ ] Step 4: spec-aware preamble loaded if `--spec` or `.specs/<slug>/` present; phases skipped per `spec_state`
 - [ ] Step 4 (backend/fullstack): GATHER confirmed; DESIGN approved before code; all layers (migration, model, service, controller, DTOs, tests) present; no entities in API responses; explicit auth per endpoint; list endpoints paginated; migrations non-destructive
 - [ ] Step 4 (frontend/fullstack): GATHER confirmed; DESIGN approved before code; components single-responsibility; state scope appropriate; accessibility verified
 - [ ] Tests pass; file list, route/endpoint table, and test counts presented

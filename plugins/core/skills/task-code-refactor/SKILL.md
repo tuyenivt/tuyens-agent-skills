@@ -56,9 +56,11 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-refactor`     |
 | Angular              | `task-angular-refactor` |
 
-On match: delegate, stop. Skip Step 4.
+On match: delegate, forwarding the Inputs table values (target scope, goal, coverage status, public surface). Stop; skip Step 4.
 
-### Step 4 - Generic Fallback (unknown stack only)
+If the matched workflow is not installed: run Step 4 and recommend installing the matching plugin in the output.
+
+### Step 4 - Generic Fallback (unknown stack or plugin not installed)
 
 **Identify smells** (signals, not hard rules):
 
@@ -80,8 +82,9 @@ On match: delegate, stop. Skip Step 4.
 
 **Test coverage gate:**
 
-- Tests exist and pass: proceed to the refactoring sequence.
-- Tests absent or insufficient: do **not** propose refactor steps. Output a Test First plan instead - characterization tests pinning current behavior, prioritized by risk. Resume only after those tests pass.
+- Tests exist, pass, and exercise the behavior being refactored: proceed to the refactoring sequence.
+- Tests exist but fail: stop. Fix or quarantine the failures first - never refactor on red.
+- Tests absent or not exercising the target behavior: do **not** propose refactor steps. Output Smells Found plus a Test First plan (omit Refactoring Sequence) - characterization tests pinning current behavior, prioritized by risk. Resume only after those tests pass.
 
 **Safe step protocol:** tests pass -> commit -> apply ONE refactoring -> tests pass -> commit -> repeat. Each step independently committable.
 
@@ -94,10 +97,10 @@ When fallback runs (Step 4):
 ```markdown
 ## Refactoring Plan: [Target]
 
-**Stack:** unknown (generic fallback)
+**Stack:** [unknown / <stack> - plugin not installed, install <plugin>] (generic fallback)
 **Goal:** [what this achieves]
 **Test coverage:** [sufficient / insufficient - see Test First if insufficient]
-**Blast radius:** [Low / Medium / High] - [callers / modules]
+**Blast radius:** [Narrow / Moderate / Wide / Critical] - [callers / modules] (from `review-blast-radius`)
 
 ## Smells Found
 
@@ -126,8 +129,8 @@ Each step independently committable; run tests after each.
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: stack matched -> dispatched and stopped; Step 4 skipped
-- [ ] Step 4: stack unmatched -> smells identified, cross-module check ran, test gate enforced, steps committable
+- [ ] Step 3: stack matched and workflow installed -> dispatched with inputs forwarded, stopped; Step 4 skipped
+- [ ] Step 4: stack unmatched or workflow missing -> smells identified, cross-module check ran, test gate enforced, steps committable
 - [ ] `ops-backward-compatibility` invoked when any step touches public signatures
 - [ ] No refactor steps proposed when tests are insufficient
 

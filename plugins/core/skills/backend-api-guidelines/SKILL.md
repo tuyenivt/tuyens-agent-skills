@@ -25,11 +25,13 @@ user-invocable: false
 - Errors follow RFC 9457 (Problem Details): `type`, `title`, `status`, `detail`, `instance`. Never leak stack traces or internal IDs.
 - Responses use DTOs / serializers / response structs. Never return ORM entities directly.
 - Resource IDs live in path segments (`/users/123`). Query params are for filtering, sorting, pagination on collections.
+- Nest sub-resources one level (`/orders/{id}/refunds`). A child that is addressed independently gets its own top-level collection (`/refunds?order_id=`) instead of deeper nesting.
 - Paginate every collection. Use cursor-based for large or write-heavy datasets; offset only for small, stable ones.
 - Version on breaking change (`/v1/`, `/v2/` or header). Mark deprecated versions with `Sunset` header.
 - Non-idempotent POST endpoints (payments, order creation, message sends) accept an `Idempotency-Key` header; cache the response for the dedup window (typically 24h).
 - Validate input at the boundary using the framework's mechanism (annotations, struct tags, strong params, schema validators).
 - Rate limit at the gateway or middleware, never inside business logic. Return `429` with `Retry-After` and `X-RateLimit-*` headers. Limit by API key or user, not IP.
+- Deliberate non-REST endpoints (RPC-style actions, webhook receivers) are exempt from resource-naming rules; status codes, error format, and validation still apply. Prefer modeling actions as resources (`POST /balance-recalculations`, not `POST /recalculate-balances`). Webhook handlers deduplicate by the provider's event ID and acknowledge with 2xx before heavy processing.
 
 ## Patterns
 
@@ -88,7 +90,7 @@ After stack-detect, apply these patterns using the detected ecosystem's idioms: 
 
 ## Output Format
 
-Consuming workflows parse this structure.
+Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output the proposed endpoint table (method, path, status codes, pagination) instead of the assessment block.
 
 ```
 ## API Guidelines Assessment
@@ -111,6 +113,8 @@ Consuming workflows parse this structure.
 - **High**: ORM entity exposed, missing input validation, missing error format, non-idempotent financial POST without `Idempotency-Key`
 - **Medium**: Wrong method or status code, missing pagination, offset pagination on high-write collection
 - **Low**: Field naming drift, missing version header, missing `Sunset` on deprecated endpoint
+
+These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. One finding per rule violated.
 
 Omit "No Violations Found" if violations were listed.
 

@@ -23,6 +23,7 @@ user-invocable: false
 - Default to strong consistency inside a single module boundary
 - Eventual consistency is a choice - document the staleness tolerance and recovery path
 - Distributed transactions (2PC) are a last resort; prefer outbox or saga
+- Strong consistency across services or regions costs availability and write latency (CAP) - scope it per boundary and push back on blanket "strong everywhere" requirements
 - At-least-once delivery requires idempotent consumers - state the idempotency key
 - Schema changes during rolling deploys must be backward compatible
 
@@ -37,10 +38,11 @@ user-invocable: false
 | Cross-service, separate DBs      | Eventual         | Outbox + events                      |
 | Long-running multi-step process  | Eventual         | Saga (orchestrated or choreographed) |
 | Read-heavy, staleness acceptable | Eventual         | CQRS + async sync                    |
+| Multi-region writes              | Eventual         | Region-local strong + async replication |
 
 ### Outbox
 
-Use when publishing an event must be atomic with a database write.
+Use when publishing an event must be atomic with a database write - the dual-write problem (DB and broker cannot share a transaction).
 
 ```
 1. Write business data + outbox row in same transaction
@@ -54,8 +56,8 @@ Guarantee: at-least-once. Consumers must be idempotent.
 
 Use when a business operation spans services and each step must commit or compensate.
 
-- **Orchestrated** - central coordinator drives steps and compensation
-- **Choreographed** - services react to events and emit the next event
+- **Orchestrated** - central coordinator drives steps and compensation. Prefer for 3+ steps, branching compensation, or when one place must own saga state.
+- **Choreographed** - services react to events and emit the next event. Prefer for 2-3 steps with stable ordering and no central visibility need.
 
 Each step declares: forward action, compensating action, idempotency key.
 
@@ -117,10 +119,18 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 | -------- | ----- | ------- | ------------------- | ------------------ |
 | {e.g. Order -> Payment} | {Strong | Eventual} | {transaction | outbox | saga} | {N/A or duration} | {N/A or description} |
 
+### Saga Steps
+
+{Only when a boundary uses saga}
+
+| Step | Forward Action | Compensation | Idempotency Key |
+| ---- | -------------- | ------------ | --------------- |
+| {1. name} | {action} | {action, or "pivot - forward-only after this"} | {key} |
+
 ### Risks
 
 - [Severity: High | Medium | Low] {boundary} - {description}
-  - Issue: {implicit assumption | missing recovery | distributed transaction | schema break | unknown staleness}
+  - Issue: {implicit assumption | dual write | missing recovery | distributed transaction | schema break | unknown staleness}
   - Recommendation: {concrete pattern for the detected stack}
 
 ### No Risks Found
@@ -128,7 +138,7 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 {State explicitly if all boundaries have explicit strategies - do not omit this section silently}
 ```
 
-Always produce the Boundaries Assessed table. Omit "No Risks Found" only when risks were listed.
+Always produce the Boundaries Assessed table. Omit "No Risks Found" only when risks were listed. If boundaries are not yet defined, derive candidates from the described data flows, list each with its likely model, and flag a Medium risk per unconfirmed boundary.
 
 ## Avoid
 

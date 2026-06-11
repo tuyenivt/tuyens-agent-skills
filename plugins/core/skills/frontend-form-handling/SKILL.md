@@ -1,6 +1,6 @@
 ---
 name: frontend-form-handling
-description: Frontend form patterns: validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack.
+description: Apply frontend form patterns - validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack.
 metadata:
   category: frontend
   tags: [frontend, forms, validation, multi-step, submission, dirty-tracking, multi-stack]
@@ -60,6 +60,15 @@ Share a schema (Zod, Yup, Valibot) between client and server so validation rules
 />
 ```
 
+### Async Validation
+
+For server-checked fields (username availability, coupon codes):
+
+- Trigger on blur or debounced input (300-500ms), never per keystroke
+- Discard stale responses (AbortController or request sequence token) so an old result never overwrites a newer one
+- Submit awaits pending async validators - keep the button in loading state rather than racing the check
+- Show a pending indicator on the field while checking
+
 ### Error Display
 
 Field-level:
@@ -72,6 +81,7 @@ Form-level (server errors):
 - Error summary at the top with `role="alert"`
 - Include links to each errored field
 - Move focus to the summary on submission failure
+- Translate server field names to client names (snake_case to camelCase, nested paths); errors with no matching field stay in the summary
 
 ```html
 <label for="email">Email</label>
@@ -97,7 +107,7 @@ Form-level (server errors):
 ### Multi-Step Forms
 
 - Single form-state object across steps (not per-step state)
-- "Next" validates only the current step's fields (e.g., RHF `trigger(["field"])`; Angular nested `FormGroup`)
+- "Next" validates only the current step's fields (e.g., RHF `trigger(["field"])`; Angular nested `FormGroup`; VeeValidate per-step schema)
 - "Back" preserves all data without re-validating
 - Review step lists entered data with per-section "Edit" links
 - For long forms: save draft to localStorage on step change; restore with a "Resume?" prompt; clear on success
@@ -167,7 +177,7 @@ Consuming workflow skills depend on this structure.
 
 | Form        | Fields  | Validation        | Multi-step | Dirty Tracking |
 | ----------- | ------- | ----------------- | ---------- | -------------- |
-| {form name} | {count} | {client + server} | {Yes | No} | {Yes | No}     |
+| {form name} | {count} | {client + server | client only | server only | none} | {Yes | No} | {Yes | No} |
 
 ### Recommendations
 
@@ -183,6 +193,8 @@ Consuming workflow skills depend on this structure.
 
 {State explicitly if form handling is adequate - do not omit this section silently}
 ```
+
+Severity: High = data loss, security exposure, or blocked/duplicate submission; Medium = broken validation or error-display UX; Low = polish (timing, focus, copy).
 
 ---
 

@@ -53,9 +53,9 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review-perf`     |
 | Angular              | `task-angular-review-perf` |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.**
+Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
 
-### Step 4 - Generic Fallback (unknown stack only)
+### Step 4 - Generic Fallback (no dispatch)
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
 
@@ -77,7 +77,7 @@ Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K 
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`.
+Use skill: `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 
@@ -86,7 +86,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 ```markdown
 ## Performance Review Summary
 
-**Stack Detected:** unknown (generic fallback applied)
+**Stack Detected:** [detected stack, or unknown] (generic fallback applied)
 **Scope:** Backend | Frontend | Fullstack
 **Overall:** Clean | Issues Found - [High/Medium/Low counts]
 
@@ -107,7 +107,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 [Same structure]
 
-_Omit sections with no findings._
+_Omit sections with no findings. If all are omitted, state "No performance issues found." and omit Next Steps._
 
 ## Next Steps
 
@@ -119,9 +119,9 @@ _Omit sections with no findings._
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped
-- [ ] Step 4: if no match, every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states estimated impact; quick wins separated from structural changes
-- [ ] Step 5: report written via `review-report-writer` (fallback path only)
+- [ ] Step 3: if matched and installed, stack workflow ran with arguments forwarded; Steps 4-5 skipped
+- [ ] Step 4: if no dispatch, every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states estimated impact; quick wins separated from structural changes
+- [ ] Step 5: report written via `review-report-writer` with all checkpoint fields assembled (fallback path only)
 
 ## Avoid
 
@@ -129,5 +129,5 @@ _Omit sections with no findings._
 - Performance findings without estimated impact
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
-- Treating the fallback as equivalent to a stack workflow
+- Treating the fallback as equivalent to a stack workflow - install the matching stack plugin when one exists
 - Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

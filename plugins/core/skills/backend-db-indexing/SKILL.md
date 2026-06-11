@@ -20,10 +20,11 @@ user-invocable: false
 ## Rules
 
 - Index foreign keys, JOIN columns, and frequent WHERE/ORDER BY predicates.
-- Align indexes with actual query patterns - inspect EXPLAIN, not intuition.
+- Align indexes with actual query patterns - inspect EXPLAIN, not intuition. If EXPLAIN is unavailable, recommend from schema and query shape and mark each finding `(unverified - confirm with EXPLAIN)`.
 - Composite indexes: equality columns first, range columns last.
 - Functions on indexed columns disable the index - rewrite the query or add an expression index.
-- Avoid indexing low-cardinality columns (a few distinct values - optimizer prefers scan).
+- Avoid single-column indexes on low-cardinality columns (a few distinct values - optimizer prefers scan). The same column is fine as the leading equality column of a composite or as a partial-index predicate.
+- Every index taxes writes - on write-heavy tables, recommending no index is a valid outcome (state it with the trade-off).
 - Avoid duplicate or overlapping indexes - a composite `(a, b)` already covers single-column lookups on `a`.
 - Always include lock risk when recommending a new index (callers use it for migration planning).
 
@@ -89,7 +90,18 @@ CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
 CREATE INDEX idx_users_active ON users(email) WHERE deleted_at IS NULL;
 ```
 
-The query's WHERE must match or be a subset of the index's WHERE. Supported on PostgreSQL and SQLite; MySQL offers prefix indexes as a partial alternative.
+The query's WHERE must match or be a subset of the index's WHERE. Supported on PostgreSQL and SQLite; MySQL offers prefix indexes as a partial alternative. When both a composite and a partial index fit, prefer the composite unless the filtered subset is small and the predicate value is stable.
+
+### Write-heavy and append-only tables
+
+Each secondary index amplifies every insert (extra page and WAL writes). When ingest rate dominates:
+
+- Prefer a partial index when reads target a hot subset.
+- PostgreSQL append-only time ranges: BRIN is orders of magnitude smaller than B-tree.
+
+```sql
+CREATE INDEX idx_events_recorded_brin ON events USING BRIN (recorded_at);
+```
 
 ### Diagnosing "index exists but query scans"
 
@@ -104,7 +116,7 @@ Check, in order:
 
 ## Output Format
 
-Consuming workflows parse this structure.
+Consuming workflows parse this structure. When reviewing a diff, report problematic indexes the diff adds under `Existing Index Issues`.
 
 ```
 ## Database Indexing Assessment

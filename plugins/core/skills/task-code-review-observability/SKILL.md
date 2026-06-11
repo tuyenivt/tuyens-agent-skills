@@ -10,7 +10,7 @@ user-invocable: true
 
 # Observability Review (Router)
 
-Detects the project stack and delegates to the matching stack-specific observability review (`task-{stack}-review-observability`). For unknown stacks, runs a minimal generic review driven by `ops-observability`.
+Detects the project stack and delegates to the matching stack-specific observability review (`task-{stack}-review-observability`). When no stack workflow matches, runs a minimal generic review driven by `ops-observability`.
 
 ## When to Use
 
@@ -54,9 +54,9 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review-observability`     |
 | Angular              | `task-angular-review-observability` |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.**
+Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
 
-### Step 4 - Generic Fallback (unknown stack only)
+### Step 4 - Generic Fallback (no dispatch match)
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
 
@@ -73,9 +73,11 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 
 Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal.
 
+If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
+
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`.
+Use skill: `review-report-writer` with `report_type: review-observability` and `stack` set to the detected identifier from `stack-detect` (`unknown` only when detection failed).
 
 ## Output Format
 
@@ -84,7 +86,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 ```markdown
 ## Observability Review Summary
 
-**Stack Detected:** unknown (generic fallback applied)
+**Stack Detected:** [detected stack, or unknown] (generic fallback applied)
 **Scope:** Backend | Frontend | Fullstack
 **Overall:** Adequate | Gaps Found - [High/Medium/Low counts]
 
@@ -117,8 +119,8 @@ _Omit sections with no findings._
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
-- [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped
-- [ ] Step 4: if no match, every applicable category in the table covered; every finding states what becomes invisible
+- [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped (unless the workflow did not resolve)
+- [ ] Step 4: if no match, every applicable category in the table covered; every finding states what becomes invisible; docs/tests-only diff reported as Adequate
 - [ ] Step 5: report written via `review-report-writer` (fallback path only)
 
 ## Avoid

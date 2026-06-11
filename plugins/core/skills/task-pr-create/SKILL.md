@@ -83,11 +83,10 @@ Extract from above:
 
 ### Step 5 - Classify Risk
 
-Use skill: `review-pr-risk`. Produce one line that appears verbatim in the description:
+Use skill: `review-pr-risk`. Condense its output into the Risk section of the Output Format:
 
-```
-Risk: Low | Medium | High | Critical  -  [1-2 sentence rationale]
-```
+- `Risk Level:` + `Signals:` become `**[Low | Medium | High | Critical]** - [1-2 sentence rationale]`
+- If it emits `Action:` (e.g., split PR, require additional reviewer), append it as a second line under Risk: `Suggested action: [action]`. Never drop it.
 
 ### Step 6 - Write the PR Description
 
@@ -97,14 +96,16 @@ Compose using the Output Format below.
 - Imperative ("Add", "Fix", "Refactor") - not "Added" / "Adding"
 - Under 72 characters; no ticket number (goes in body)
 - Format: `<type>: <what changed>` where type is `feat`, `fix`, `refactor`, `perf`, `chore`, `docs`, or `test`
+- Mixed concerns: pick the type of the dominant user-facing change (a bugfix wrapped in refactoring is `fix`)
 
 **Summary:**
 - Explain the *why* (problem, motivation) more than the *what* (mechanics)
-- 3-5 bullets, each starting with a verb
+- Up to 5 bullets, each starting with a verb; proportional to the diff (a trivial change needs one)
+- If the *why* is not inferable from diff, commits, or ticket, ask the user - do not invent it
 - Reference ticket/ADR inline only if essential context
 
 **Test Plan:**
-- Concrete, runnable steps. Include the exact test command for the detected stack.
+- Concrete, runnable steps. Include the exact test command for the detected stack when production code changed; docs-only changes need only a relevant verification step (e.g., render check).
 - Manual verification for UI/API changes; migration steps when applicable.
 - New infrastructure dependency (Redis, DB, broker): include the setup step (e.g., `docker-compose up -d redis`).
 
@@ -128,6 +129,7 @@ Add a **Linked Context** section only if at least one of: ticket reference, ADR 
 ### Risk
 
 **[Low | Medium | High | Critical]** - [1-2 sentence rationale]
+Suggested action: [only if `review-pr-risk` emitted `Action:`; otherwise omit this line]
 
 ### Test Plan
 
@@ -162,7 +164,7 @@ Related: #[PR number or branch]
 - Risk appears before Test Plan
 - Omit sections with no content
 - No line-by-line diff description - orient reviewers, do not duplicate the diff
-- Test plan includes at least one runnable command for the detected stack
+- Test plan includes at least one runnable command for the detected stack when production code changed
 - Total description under 400 words
 
 ## Self-Check
@@ -171,14 +173,14 @@ Related: #[PR number or branch]
 - [ ] Step 2: branch and base resolved; trunk-branch HEAD rejected; base auto-detected or asked when ambiguous
 - [ ] Step 3: stack detected and reflected in test plan command
 - [ ] Step 4: diff and commits gathered against resolved `base_ref`, not hardcoded `main`
-- [ ] Step 5: risk classification present with rationale
-- [ ] Step 6: title imperative, under 72 chars, type-prefixed; summary explains *why*, not *how*; test plan has at least one runnable command
+- [ ] Step 5: risk classification present with rationale; `Action:` from `review-pr-risk` carried over if emitted
+- [ ] Step 6: title imperative, under 72 chars, type-prefixed; summary explains *why*, not *how*; test plan has a runnable command when production code changed
 - [ ] Step 7: Linked Context only when real references exist; nothing invented
 - [ ] Empty sections omitted; total under 400 words
 
 ## Avoid
 
-- Inventing ticket IDs, ADR titles, or PR references not found in git context
+- Inventing ticket IDs, ADR titles, PR references, or motivations not found in git context
 - Duplicating the diff in the summary - orient, do not re-describe
 - Vague test plans ("test it works") instead of concrete commands
 - Personal opinions about code quality - this is documentation, not review

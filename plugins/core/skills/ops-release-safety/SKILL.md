@@ -25,6 +25,8 @@ user-invocable: false
 - Rollback triggers are observable thresholds (error rate, latency, saturation), not judgement calls.
 - Destructive migrations (DROP / RENAME) deploy **after** the code that stops reading the column is live and verified.
 - Code that requires populated data in a new column deploys **after** the backfill is verified complete.
+- One risky change per deploy. Do not bundle schema migrations, config changes, and features in a single release - split so a triggered rollback is attributable and each piece reverts independently.
+- Irreversible steps (in-place backfill, third-party writes, sent emails) get a verification gate and a backup/export **before** execution, and a roll-forward plan instead of a rollback plan past that point.
 
 ## Patterns
 
@@ -104,6 +106,7 @@ Consuming workflow skills parse this structure to produce actionable rollout and
 ### Rollback Plan
 
 1. {step} - {data safety note if applicable}
+2. {mark irreversible steps "Point of no return" and give the roll-forward action instead}
 
 ### Risks
 
@@ -116,6 +119,10 @@ Consuming workflow skills parse this structure to produce actionable rollout and
 ```
 
 Rollout Plan, Rollback Triggers, and Rollback Plan are mandatory. Omit "No Risks Found" if risks were listed.
+
+- **Rollback speed:** report the fastest available control layer (flag kill switch > traffic shift > redeploy); note slower layers in the Rollback Plan.
+- **Bundled releases:** assess each part separately, recommend the split in the Rollout Plan, and report the strategy of the riskiest part.
+- **Irreversible releases:** the Rollback Plan states the roll-forward plan and the verification gate that precedes the point of no return - never fabricate rollback steps for state that cannot be restored.
 
 ## Avoid
 

@@ -1,6 +1,6 @@
 ---
 name: frontend-testing-patterns
-description: Frontend testing: component, integration, e2e (Playwright/Cypress), API mocking with MSW, snapshot discipline. Adapts to stack.
+description: Guide frontend testing: component, integration, e2e (Playwright/Cypress), MSW API mocking, snapshot discipline. Adapts to stack.
 metadata:
   category: frontend
   tags: [frontend, testing, playwright, cypress, msw, vitest, jest, multi-stack]
@@ -116,6 +116,13 @@ Cover critical revenue/blocking paths only:
 
 Use Playwright with a page object pattern, run against a stable seeded environment, and skip visual details covered by component tests.
 
+**E2E stability.** Flaky tests erode trust faster than missing tests:
+
+- Never use fixed sleeps (`waitForTimeout`, hard-coded delays) - they race network timing. Use auto-retrying assertions that wait for the UI state itself: `await expect(page.getByText("Order confirmed")).toBeVisible()`
+- Wait on user-visible outcomes (spinner gone, data rendered), never on timers or network internals
+- Each test creates or seeds its own data; never reuse state left by a previous test
+- Do not raise retry counts to mask flakiness - retries hide real race conditions; fix the wait or the data setup instead
+
 ### Third-Party SDK Integrations
 
 SDKs that render in their own iframe (Stripe Elements, PayPal, Maps, reCAPTCHA) cannot be queried with Testing Library. Mock them at the module level and test your integration boundary:
@@ -165,7 +172,7 @@ For unknown stacks, apply universal patterns and point the user to the framework
 
 ## Output Format
 
-Consuming workflow skills depend on this structure.
+Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
 
 ```
 ## Frontend Testing Assessment
@@ -197,6 +204,8 @@ Consuming workflow skills depend on this structure.
 {State explicitly if testing is adequate - do not omit this section silently}
 ```
 
+Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps); Low = maintainability (inline literals over factories, naming, duplication).
+
 ---
 
 ## Avoid
@@ -207,5 +216,6 @@ Consuming workflow skills depend on this structure.
 - Snapshots on large or fast-moving component trees
 - Duplicating component-level assertions in e2e
 - Order-dependent or shared-state tests
+- Fixed sleeps or raised retry counts in e2e instead of auto-retrying assertions
 - Testing third-party library behavior instead of your integration with it
 - Skipping error/loading state tests on data-fetching components

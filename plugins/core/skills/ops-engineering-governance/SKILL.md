@@ -23,6 +23,7 @@ user-invocable: false
 - Every guardrail must be enforceable (automated, structural, or alert-backed) and verifiable.
 - Every process change must be actionable, assignable, and tied to a trigger condition.
 - Match the weight of the control to the risk it mitigates; prefer structural enforcement over "be careful".
+- Weigh a guardrail's cost (deploy friction, reviewer load, false positives) against the blast radius it prevents. Reshape blanket manual gates into risk-scoped automated controls instead of adopting or silently dropping them; output the reshaped guardrail and name what it replaces in its Rule.
 - Prioritize by blast-radius reduction; do not ship an unbounded improvement wishlist.
 
 ## Patterns
@@ -61,7 +62,7 @@ Prefer higher-tier enforcement. If only manual is feasible, pair it with a plan 
 | Failure class prevented | Category of failure this guards against                  |
 | Priority                | immediate / next sprint / quarterly                      |
 
-Categorize each guardrail as **new** (no rule covers this class), **strengthen** (existing rule too weak), **automate** (manual rule needs CI enforcement), or **broaden** (rule exists but missed the affected area).
+Categorize each guardrail as **new** (no rule covers this class), **strengthen** (existing rule too weak), **automate** (manual rule needs CI enforcement), or **broaden** (rule exists but missed the affected area). All categories go in the output's New Guardrails table; prefix non-new rules with the category, e.g. `[automate] Enforce the N+1 review rule via a CI query-count gate`.
 
 ### Process Improvement Structure
 

@@ -20,16 +20,16 @@ user-invocable: false
 - Every NFR produces at least one measurable threshold - never "must be fast"
 - Each SLO states the measurement method, not just the target value
 - Compliance and security NFRs name the specific standard, not a generic category
-- Surface conflicting NFRs explicitly - do not silently pick one
+- Surface conflicting or infeasible NFRs explicitly with resolution options - never silently pick one or write down an impossible target
 - Surface gaps explicitly - unstated NFRs become hidden assumptions
 - When business context implies a regulated domain (payments, healthcare, personal data), name the likely standard and ask for confirmation rather than omit it
-- State confidence when the business context underdetermines a target - do not invent precision
+- When context underdetermines a target, propose a defensible default tagged `(assumed: basis)` and add a confirmation question to Gaps - never present an invented number as confirmed
 
 ## Patterns
 
 ### Six NFR Categories
 
-Elicit across all six. For each, extract from context or ask.
+Elicit across all six. For each, extract from context or ask the requester. When no one can answer (non-interactive run), record the question in Gaps and proceed with an `(assumed)` default.
 
 **Performance**
 
@@ -79,9 +79,9 @@ SLOs are internal targets that drive design and alerting. SLAs are contractual o
 
 ### Performance
 
-| Metric            | Target   | Measurement            | Notes                |
-| ----------------- | -------- | ---------------------- | -------------------- |
-| p99 read latency  | < 200ms  | API gateway percentile | Under peak load      |
+| Metric            | Target   | Measurement            | Notes                          |
+| ----------------- | -------- | ---------------------- | ------------------------------ |
+| p99 read latency  | < 200ms  | API gateway percentile | (assumed: B2B API norm) - confirm |
 | p99 write latency | < 500ms  | API gateway percentile | Includes DB write    |
 | Peak throughput   | 1000 RPS | Sustained over 5 min   | Black Friday profile |
 
@@ -122,11 +122,11 @@ Volume growth: {estimate}
 
 ## NFR Conflicts
 
-[List conflicts - e.g. "strong consistency target conflicts with 99.9% availability under network partition"]
+[One entry per conflicting or infeasible target: name the tension, then 1-2 resolution options with tradeoffs, decision left to the owner - e.g. "99.999% uptime conflicts with single-region constraint: (a) relax to 99.9%, (b) add a second region at roughly 2x infra cost"]
 
 ## NFR Gaps
 
-[List NFRs not specified that matter for this system type - e.g. "no RPO stated for a write-heavy system"]
+[NFRs not specified that matter for this system type, plus a confirmation question for each `(assumed)` target - e.g. "no RPO stated for a write-heavy system"]
 ```
 
 Always produce all six sections plus Conflicts and Gaps. If a category has no business signal, state "not specified" and list it in Gaps.
@@ -137,4 +137,4 @@ Always produce all six sections plus Conflicts and Gaps. If a category has no bu
 - Treating NFRs as a checklist - each must connect to a design decision
 - Omitting the Gaps section - unstated NFRs become hidden assumptions
 - Conflating SLOs with SLAs
-- Inventing precision the business context does not support
+- Inventing precision the business context does not support - propose defaults only with the `(assumed)` tag

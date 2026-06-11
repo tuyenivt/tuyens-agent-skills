@@ -19,7 +19,7 @@ user-invocable: false
 
 ## Rules
 
-- Additive optional changes are safe; modifications and removals are breaking until proven otherwise.
+- Judge "additive" from the consumer's view: optional field additions are safe; modifications, removals, tightened constraints, and widened value domains (new enum value, first null in a never-null field) are breaking until proven otherwise.
 - Breaking changes require an expand-contract plan with an explicit transition period.
 - Schema changes must be compatible with both current and previous code during rolling deploy.
 - Event schema changes must hold backward compatibility for at least one consumer release cycle.
@@ -35,7 +35,9 @@ user-invocable: false
 | REST API     | Add required field           | No         | Version or expand-contract (optional first, then enforce) |
 | REST API     | Remove / rename field        | No         | Add new, deprecate old, verify zero reads, then remove  |
 | REST API     | Change field type or path    | No         | Version the API                                         |
-| Event schema | Add optional field           | Yes        | Consumers must tolerate unknown fields                  |
+| REST API     | Tighten request validation (stricter pattern, smaller max, optional -> required) | No | Announce, grace period, then enforce; or version |
+| Any contract | Widen value domain (new enum value, newly nullable) | No | Verify consumers tolerate unknown/null values, then emit |
+| Event schema | Add optional field           | Yes        | Verify consumers tolerate unknown fields                |
 | Event schema | Add required field           | No         | Optional first, consumers update, then enforce required |
 | Event schema | Remove field / change meaning | No         | Two-phase removal or new event type                     |
 | DB schema    | Add nullable column / index  | Yes        | Migration then code                                     |
@@ -68,6 +70,8 @@ For storage or event-format changes, answer four questions:
 2. Dual-write: does new code write both formats?
 3. Dual-read: does new code read both formats?
 4. Backfill + cleanup: is existing data migrated, and when is old-format support removed?
+
+For events, dual-write means the producer emits both old and new shapes (both field names in one payload, or both event versions); dual-read means consumers accept both shapes during the transition.
 
 ### Good
 
@@ -116,7 +120,7 @@ Consuming workflow skills parse this structure to surface breaks and migration p
 {State explicitly if all changes are backward compatible - do not omit silently.}
 ```
 
-Always produce the Changes Assessed table even when all changes are compatible. Omit "No Breaking Changes" if breaking changes were listed.
+Always produce the Changes Assessed table even when all changes are compatible, one row per discrete change. Omit "No Breaking Changes" if breaking changes were listed.
 
 ## Avoid
 

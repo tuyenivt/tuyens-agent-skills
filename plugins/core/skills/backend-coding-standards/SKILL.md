@@ -27,6 +27,7 @@ user-invocable: false
 - Responses use DTOs / serializers / response structs, never data-layer entities.
 - Use the framework's native dependency injection. Depend on abstractions where the framework supports it.
 - No emojis in code, logs, comments, commit messages, or documentation.
+- Idiomatic error handling for the language: no bare or blanket catches that swallow errors, no discarded error returns, no panic/abort/raise for recoverable failures in request paths.
 - No magic numbers - extract named constants.
 - No dead code - delete it.
 - Comments explain why, not what.
@@ -66,7 +67,7 @@ After stack-detect, check for ecosystem-appropriate instances of:
 - **Security**: disabled framework safeguards, exposed internals, missing input validation
 - **Structural**: circular imports, files in the wrong layer directory, package structure that contradicts the documented architecture
 
-If the stack is unfamiliar, apply the universal rules and recommend the user verify against the framework's docs and linters.
+If stack-detect output is missing, infer the language from file extensions and syntax and report `**Stack:**` with an `(inferred)` marker. If the stack is unfamiliar, apply the language-agnostic rules (responsibility, layering, DTO boundaries, error handling, magic numbers, dead code) and recommend the user verify naming and DI conventions against the framework's docs and linters.
 
 ## Output Format
 
@@ -94,16 +95,15 @@ Consuming workflows parse this structure.
 
 **Intent:**
 
-- **[Must]**: Breaks correctness, security, or layering (god class, entity exposed in API, disabled security feature)
-- **[Recommend]**: Structural drift that compounds (mixed naming, magic numbers, wrong-layer placement)
+- **[Must]**: Breaks correctness, security, or layering - logic or data crossing layer boundaries (god class, entity exposed in API, business logic in the presentation layer, swallowed errors, disabled security feature)
+- **[Recommend]**: Structural drift that compounds (mixed naming, magic numbers, file placed in the wrong layer directory)
 - **[Question]**: Ambiguous case where the rule may or may not apply - ask before flagging
 
 Omit Anti-Patterns if none. Omit "No Issues Found" if violations were listed.
 
 ## Avoid
 
-- Mixing naming conventions from different languages
+- Applying one language's naming or idioms to a different detected stack
 - Modules / classes over ~300 lines without decomposition
-- Dead code kept "just in case"
 - Circular imports (extract shared types, inject dependencies, or restructure module boundaries)
-- Files placed contrary to their architectural role
+- Findings without `file:line`, the rule violated, and a concrete fix

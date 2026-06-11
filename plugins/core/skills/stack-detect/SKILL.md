@@ -62,6 +62,7 @@ Refinements (apply in this priority):
    - `drizzle.config.ts` -> Drizzle
    - `ormconfig.json` / `data-source.ts` -> TypeORM
    - `.sequelizerc` / `sequelize.config.js` -> Sequelize
+5. **Backend dependency inspection** (sets Framework): the marker file's own dependency declarations name the framework - `axum`/`actix-web` in `Cargo.toml`, `gin` in `go.mod`, `rails`/`sinatra` in `Gemfile`, `fastapi`/`django`/`flask` in `pyproject.toml`/`requirements.txt`, `laravel/framework` in `composer.json`, `phoenix` in `mix.exs`, `spring-boot` in `build.gradle*`/`pom.xml`, `@nestjs/core`/`express` in `package.json`. Same move for unlisted ecosystems: read the manifest's dependency section.
 
 File-based detection can determine Language, Build tool, sometimes Framework and ORM. It cannot determine Database or Test framework.
 
@@ -81,6 +82,7 @@ Extract only the `## Tech Stack` section (or equivalent heading containing "stac
 - `Database: PostgreSQL` -> database
 - `ORM: Diesel` -> orm
 - `Test: cargo test + rstest` -> test_framework
+- Any other key (`Cache: Redis`, `Queue: Kafka`, ...) -> carried into `Additional` unchanged.
 
 Skip silently if the section is missing. Per the precedence rule, instruction-file values override marker-file inference for overlapping fields.
 
@@ -93,6 +95,8 @@ If no language results from either step, emit `language: unknown` and suggest th
 | `frontend`  | React/Vue/Angular/Svelte SPA or SSR framework with no server-side routes or backend marker             |
 | `backend`   | Server framework (Spring, Django, FastAPI, Rails, NestJS, Express, Gin, Axum, ASP.NET, etc.)           |
 | `fullstack` | Both frontend and backend present, OR a meta-framework with server capability (see fullstack triggers) |
+
+No row matches (library, CLI tool, framework still unknown): fall back to `frontend` if only frontend markers exist, otherwise `backend`. Never leave Stack Type unset.
 
 Fullstack triggers:
 - Next.js with `app/api/`, Server Actions, or any DB ORM detected (Server Components can hit the DB directly).
@@ -120,7 +124,7 @@ Source: {context-file | file-detection | mixed | unknown}
 
 Contract:
 - `Stack Type`, `Language`, `Framework`, `Source` are always present.
-- `Source: context-file` when the instruction file's `## Tech Stack` supplied most fields; `file-detection` when only marker files were used; `mixed` when both contributed.
+- `Source`: a source contributes only if at least one of its values survives into the output (fully overridden inference does not count). `context-file` when only the instruction file contributed; `file-detection` when only marker files contributed; `mixed` when both did.
 - Fields beyond the required four may be omitted when neither source declared them.
 - `unknown` for Language means consumers must fall back to language-agnostic guidance.
 

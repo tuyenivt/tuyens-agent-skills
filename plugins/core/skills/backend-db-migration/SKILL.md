@@ -26,6 +26,7 @@ user-invocable: false
 - Never deploy a migration and the code that depends on it in the same release - rolling deploys leave old instances running against the new schema.
 - Flag any migration requiring a database restore to roll back - those are go/no-go decisions.
 - Lock risk must be stated for every recommendation.
+- Engine or version unknown: assume worst-case locking (table rewrite, exclusive lock) and state the assumption in the output.
 
 ## Patterns
 
@@ -48,9 +49,9 @@ Any exclusive-lock operation on a table > 1M rows is high risk by default.
 
 ### Expand-contract (default for non-additive)
 
-1. **Expand**: add the new structure alongside the old; deploy app that handles both.
-2. **Migrate**: backfill old to new in batches; validate completeness.
-3. **Contract**: deploy app using only the new structure; drop the old.
+1. **Expand**: add the new structure alongside the old; deploy app that reads the old and writes both (dual-write). During a rolling deploy, old instances still write only the old structure - either start the backfill after rollout completes or sync via database trigger.
+2. **Migrate**: backfill old to new in batches; re-run until drift is zero; validate completeness.
+3. **Contract**: deploy app using only the new structure; verify zero references to the old (code search + query/statement logs over a verification period); drop the old.
 
 Skip only when the change is purely additive, or downtime is scheduled.
 
@@ -82,13 +83,12 @@ Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding NOT NULL, CHECK, or FK t
 -- Bad - unbounded UPDATE locks the table
 UPDATE large_table SET new_col = old_col WHERE new_col IS NULL;
 
--- Good - bounded, idempotent, loop until 0 rows
-UPDATE table SET new_col = old_col
-WHERE id BETWEEN :start AND :end AND new_col IS NULL
-LIMIT 1000;
+-- Good - bounded key range, idempotent, loop until exhausted (any engine)
+UPDATE large_table SET new_col = old_col
+WHERE id > :last_id AND id <= :last_id + 1000 AND new_col IS NULL;
 ```
 
-For tables > 100K rows, prefer a background job over an in-migration script.
+For tables > 100K rows, prefer a background job over an in-migration script. On replicated databases, sleep between batches and pause when replica lag exceeds threshold - replication replays every backfilled row on each replica.
 
 ### Unique constraint without blocking
 

@@ -1,6 +1,6 @@
 ---
 name: frontend-performance
-description: Frontend performance: Core Web Vitals, bundle splitting, lazy loading, image optimization, render perf, memoization. Adapts to stack.
+description: Optimize frontend performance: Core Web Vitals, bundle splitting, lazy loading, image optimization, render perf, memoization. Adapts to stack.
 metadata:
   category: frontend
   tags: [frontend, performance, core-web-vitals, bundle, lazy-loading, memoization, multi-stack]
@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Measure before optimizing (Lighthouse, DevTools, RUM); do not optimize blind
+- Measure before optimizing (Lighthouse, DevTools, RUM); do not optimize blind. With no metrics, report static findings and make measurement the first High-impact recommendation
 - Fix issues in impact order: LCP blockers, CLS, INP, bundle size, render
 - Every route is code-split; no single bundle holds the whole app
 - Below-fold images lazy-load; serve modern formats (WebP/AVIF) with responsive sizing and explicit dimensions
@@ -89,7 +89,7 @@ Fixes:
 
 ### Render Performance
 
-Profile first (React DevTools Profiler, Vue DevTools, Angular DevTools). Common causes: parent passing new object/array refs as props, context value churn re-rendering all consumers, missing list keys. Fix at the source: stabilize references, split contexts into focused pieces, use selectors.
+Profile first (React DevTools Profiler, Vue DevTools, Angular DevTools). Common causes: parent passing new object/array refs as props, context value churn re-rendering all consumers, missing list keys. Fix at the source: stabilize references (hoist constants, memoize callbacks passed to memoized children), split contexts into focused pieces, use selectors.
 
 Memoize only when profiling shows a slow render. Memoizing simple components adds overhead without benefit.
 
@@ -137,6 +137,10 @@ For unknown stacks, apply universal patterns and point the user to the framework
 
 Consuming workflow skills depend on this structure.
 
+- Never invent numbers: when a value cannot be measured or estimated from the input (static diff, scoped component review), write `Unknown - not measured` and set Status to `Unknown`.
+- Issues Found = defects in the reviewed code (each with a fix). Recommendations = proactive improvements beyond fixing defects. Do not duplicate an item across both.
+- Emit `No Issues Found` only when `Issues Found` is empty; the two are mutually exclusive.
+
 ```
 ## Frontend Performance Assessment
 
@@ -147,9 +151,9 @@ Consuming workflow skills depend on this structure.
 
 | Metric | Current (estimated) | Target  | Status              |
 | ------ | ------------------- | ------- | ------------------- |
-| LCP    | {estimate}          | < 2.5s  | {Good | Needs Work} |
-| INP    | {estimate}          | < 200ms | {Good | Needs Work} |
-| CLS    | {estimate}          | < 0.1   | {Good | Needs Work} |
+| LCP    | {estimate}          | < 2.5s  | {Good | Needs Work | Unknown} |
+| INP    | {estimate}          | < 200ms | {Good | Needs Work | Unknown} |
+| CLS    | {estimate}          | < 0.1   | {Good | Needs Work | Unknown} |
 
 ### Bundle Analysis
 

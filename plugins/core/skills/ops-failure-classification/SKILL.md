@@ -19,7 +19,8 @@ user-invocable: false
 ## Rules
 
 - Classify on observable evidence (metrics, logs, error messages), not speculation.
-- A failure may have several types. List the **root type first** (the one whose resolution would resolve the others); subsequent entries are symptom types.
+- A failure may have several types. List the **root type first** (the one whose resolution would resolve the others); subsequent entries are symptom or trigger types. When a deploy shipped the defect, the defect's own type is root; list `Deployment / config drift` after it.
+- When evidence cannot discriminate between types, list plausible candidates root-first by likelihood, mark each `(candidate)`, and add a `Missing Evidence` line naming what would discriminate them. A single matching signal word is not a classification (intermittent alone does not imply Concurrency issue).
 - Identify the layer where the failure **originates**, not where the symptom appears.
 - Classification is a starting point for investigation, not a root cause conclusion.
 

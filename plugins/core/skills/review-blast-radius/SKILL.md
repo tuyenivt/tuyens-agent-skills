@@ -24,6 +24,7 @@ user-invocable: false
 - Overall classification is the maximum across dimensions.
 - One sentence per dimension. No prose padding.
 - If a feature flag or backup materially reduces the effective radius, state both the unmitigated and mitigated levels.
+- When the consumer set cannot be enumerated (shared library or engine, callers in repos you cannot see), classify at the highest plausible level and mark the rationale `(unverified)`.
 
 ## Patterns
 
@@ -34,13 +35,13 @@ user-invocable: false
 - Moderate: multiple features or consumers within one service
 - Wide: shared library, core module, or cross-service contract
 
-**Data Scope** - what happens to data if the change has a bug.
+**Data Scope** - what happens to data if the change has a bug. Includes wrong values that downstream consumers persist (e.g., a contract change misread by a consumer that stores the result).
 - Narrow: read-only or isolated writes, easily corrected
-- Moderate: writes to shared state but recoverable (soft delete, audit trail)
+- Moderate: writes to shared state but recoverable (soft delete, audit trail, message replay)
 - Wide: irreversible writes, corruption risk, no rollback path
 
 **User Scope** - how many users or systems are affected.
-- Narrow: internal tool, single team
+- Narrow: internal tool, single team, or one feature's small user subset
 - Moderate: one product surface, subset of users
 - Wide: all users, public API, external integrations
 
@@ -48,7 +49,7 @@ Wide data scope on a core model implies code scope expansion across every API th
 
 ### Overall Classification
 
-- **Critical** - Wide data with no rollback, OR public API break affecting external consumers
+- **Critical** - Wide data with no rollback, OR a break in an externally consumed contract (public API, published events, exports)
 - **Wide** - any single dimension is Wide
 - **Moderate** - any single dimension is Moderate
 - **Narrow** - all dimensions Narrow
@@ -56,8 +57,8 @@ Wide data scope on a core model implies code scope expansion across every API th
 ### Reversibility
 
 - **Recoverable** - rolled back by redeploy or schema rollback
-- **Conditional** - recoverable within a window (PITR retention, recent backup)
-- **Irreversible** - data destruction with no programmatic rollback
+- **Conditional** - recoverable within a window (PITR retention, recent backup, message replay within topic retention)
+- **Irreversible** - data destruction or corruption with no programmatic rollback (includes mis-attributed writes with no source to backfill from)
 
 ### Mitigations
 
@@ -97,7 +98,7 @@ User: {Narrow | Moderate | Wide} ({1-sentence rationale})
 Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale})
 ```
 
-When a mitigation materially changes the level, prepend a mitigated form:
+When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line naming the existing safeguard or the single action that achieves the mitigated level:
 
 ```
 Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
@@ -105,7 +106,7 @@ Reversibility: Conditional (PITR available for 7 days)
 Mitigation: Gate behind feature flag; verify PITR backup before proceeding
 ```
 
-Use "N/A" for a dimension only when it genuinely does not apply (e.g., Data: N/A for a read-only, stateless change). Always produce all five lines.
+Read-only changes are Data: Narrow. Use "N/A" only when a dimension genuinely has no path to impact (e.g., Data: N/A for a docs-only or pure copy change). Always produce all five lines.
 
 For Wide data on schema changes, consult `ops-backward-compatibility` for expand-contract and `backend-db-migration` for lock risk.
 

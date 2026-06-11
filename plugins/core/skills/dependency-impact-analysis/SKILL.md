@@ -36,6 +36,7 @@ For each changed component, identify:
 2. **Transitive consumers** - those that depend on direct consumers
 3. **Contract type** - API, event schema, shared library, DB view
 4. **Coupling** - compile-time (strong), runtime (weak), event (loose)
+5. **Ownership** - owning team per consumer; cross-team consumers need notification before any step that requires action from them
 
 ### Impact Classification
 
@@ -52,7 +53,8 @@ For each changed component, identify:
 ### Version Upgrade Specifics
 
 - **Transitive conflicts**: new version may require updated transitives (e.g., framework requiring newer runtime). Check against each module.
-- **Phased rollout**: in monorepos with a shared parent, upgrade one module and run its tests before propagating.
+- **Publish vs adopt**: publishing a library version deploys nothing to pinned consumers - each consumer's rebuild is its deploy. Floating ranges (`2.+`, `latest`) adopt on next build: pin them before publishing a breaking version.
+- **Phased rollout**: upgrade one consumer first and run its tests before propagating (monorepo: one module under the shared parent; polyrepo: one low-risk service).
 - **Deprecated APIs**: flag consumer usage of newly deprecated APIs; they may be removed in the next major.
 - **Blocker strategies** when no compatible transitive exists: **wait** (imminent release), **swap** to a compatible alternative, **shim** if surface is small, **fork** as last resort. Document the strategy and removal condition.
 
@@ -62,6 +64,7 @@ For each changed component, identify:
 - Consumer before provider for removals
 - Simultaneous only when feature-flagged on both sides
 - Expand-contract for breaking changes
+- Cyclic dependencies have no valid order while breaking both ways: make both sides tolerate old and new (additive), deploy in any order, then tighten behind a flag
 
 ### Good
 
@@ -87,9 +90,11 @@ Changed the Order API. Should be fine for everyone.
 
 ### Consumers Affected
 
-| Component Changed | Direct Consumers | Transitive Consumers | Contract Type | Coupling |
-| ----------------- | ---------------- | -------------------- | ------------- | -------- |
-| {name} | {list or "none"} | {list or "none"} | {API / event / library / DB view} | {compile-time / runtime / event} |
+| Component Changed | Direct Consumers | Transitive Consumers | Contract Type | Coupling | Impact |
+| ----------------- | ---------------- | -------------------- | ------------- | -------- | ------ |
+| {name} | {list or "none"} | {list or "none"} | {API / event / library / DB view} | {compile-time / runtime / event} | {breaking / additive / behavioral / none} |
+
+When impact differs across consumers, split into one row per consumer group so classification stays per consumer.
 
 ### Deployment Order
 
@@ -100,12 +105,16 @@ Changed the Order API. Should be fine for everyone.
 
 {For each: reference `ops-backward-compatibility` for the expand-contract plan, or "none"}
 
+### Cross-Team Notifications
+
+{For each consumer owned by another team: owner, required action, deadline relative to deploy. Omit when all consumers are same-team.}
+
 ### No Impact
 
 {Include only when the change has no consumer impact}
 ```
 
-Always produce the Consumers Affected table. Omit "No Impact" when impact was found.
+Always produce the Consumers Affected table. Omit "No Impact" when impact was found. Omit "Cross-Team Notifications" when no consumer is cross-team.
 
 ## Avoid
 

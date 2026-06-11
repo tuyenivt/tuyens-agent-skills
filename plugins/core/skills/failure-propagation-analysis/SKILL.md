@@ -17,13 +17,16 @@ user-invocable: false
 - Multiple services report errors simultaneously and the origin is unclear
 - Distinguishing a primary failure from downstream consequences
 - Blast radius is moderate or wider during an incident
+- What-if analysis of a hypothetical failure ("what happens if X dies?") - trace forward from the assumed failure; phrase Containment as what would stop propagation
 
 ## Rules
 
-- Trace from the earliest observable symptom backward to the origin.
-- Distinguish primary failures from cascading consequences. Temporal correlation is not causation.
+- Investigate backward from the earliest observable symptom to the origin; present the path forward from the origin.
+- Distinguish primary failures from cascading consequences. Temporal correlation is not causation. A scheduled job or traffic shift can be the primary - it need not be a component fault.
 - Identify every shared resource on the propagation path - these are the containment points.
+- When components degrade together with no call-graph edge between them, suspect a hidden shared resource (database instance, connection pool, broker, executor, host) - the call graph understates coupling.
 - Map both synchronous and asynchronous channels, and check for cycles.
+- Mark hops you cannot verify as "(unverified)" rather than guessing or omitting them.
 
 ## Patterns
 
@@ -71,7 +74,7 @@ When a cycle exists, containment must break the loop (circuit breaker, retry bud
 
 Shared resources: order-service HikariCP, payment-gateway circuit breaker (stayed closed)
 Primary: payment-gateway latency spike
-Cascading: order-service, cart-service, checkout-service
+Cascading: order-service (failed), cart-service (failed), checkout-service (failed)
 ```
 
 ### Bad
@@ -104,7 +107,7 @@ All services have issues.
 {What stopped propagation, or what would have stopped it earlier. Name the loop-breaker if a cycle was found.}
 ```
 
-Always produce all sections. Use "none" for Cascading only when the failure is demonstrably contained. Never skip Shared Resources - they are the containment levers.
+Always produce all sections. Annotate each cascading component with its impact mode: `(failed)` or `(degraded: <fallback>)`. When the failure fans out, branch path steps as 2a/2b instead of forcing a false linear order. Use "none" for Cascading only when the failure is demonstrably contained. Never skip Shared Resources - they are the containment levers.
 
 ## Avoid
 

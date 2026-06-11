@@ -28,7 +28,9 @@ Targeted explanation of an existing code unit so an engineer can modify it safel
 | Depth         | No       | `quick`, `standard` (default), or `deep`                    |
 | Caller intent | No       | What the caller is trying to do; shapes emphasis            |
 
-Infer depth from intent: onboarding -> `deep`; debug triage -> `quick`.
+Infer depth from intent: onboarding -> `deep`; debug triage -> `quick`; trivial self-contained unit (short pure function, no external calls) -> `quick`.
+
+Pasted code absent from the repo: skip repo lookups (inbound callers, tests) and record them under Confidence Gaps instead.
 
 ## Workflow
 
@@ -40,7 +42,7 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`.
 
-If the detected stack matches, load the atomic. It injects stack-specific signals into the universal sections produced below. If unknown, produce a universal explanation.
+If the detected stack has an atomic below, load it; it injects stack-specific signals into Flow Context, Non-Obvious Behavior, Key Invariants, and Change Impact (e.g., Spring stereotype, Rails filter chain, React stale closures). If the stack is unknown or has no atomic, produce a universal explanation from the steps below - framework magic still belongs in the output, sourced from general knowledge.
 
 | Stack                | Atomic                  |
 | -------------------- | ----------------------- |
@@ -70,8 +72,6 @@ Two to four sentences: what it does from the caller's perspective, what responsi
 - **Frequency:** hot path, background, edge case.
 - **Inbound callers:** grep the symbol name. Cite concrete `file:line`. If callers cannot be enumerated (DI, dynamic dispatch, framework auto-wiring), record under Confidence Gaps.
 
-Inject stack-atomic Flow Context signals if loaded (e.g., Spring stereotype, FastAPI dependency tree, Rails filter chain).
-
 ### Step 5 - Why It Exists (standard, deep)
 
 Domain reason (what business problem) and technical reason (what constraint forced this shape). If inferable only, mark under Confidence Gaps.
@@ -80,7 +80,7 @@ Domain reason (what business problem) and technical reason (what constraint forc
 
 Entry points, key branches, external calls (DB/cache/queue/HTTP), return values, side effects. For complex flows, trace one representative path end-to-end.
 
-Use skill: `architecture-guardrail` to spot layer-boundary violations.
+Use skill: `architecture-guardrail` to spot layer-boundary violations. Fold any finding into Non-Obvious Behavior or Change Impact as a gotcha or check - do not emit its findings report.
 
 ### Step 7 - Non-Obvious Behavior (standard, deep)
 
@@ -96,11 +96,9 @@ Surface what will surprise a careful reader. Universal categories:
 | Implicit retries    | Internal retry amplifies downstream load                              |
 | Async traps         | Blocking in async context; unhandled rejection; fire-and-forget       |
 | Lazy / caching      | Deferred computation; cached result; cache not invalidated on writes  |
-| Framework magic     | Lifecycle injection (covered by stack atomic when loaded)             |
+| Framework magic     | Lifecycle injection, implicit invocation, convention-based wiring     |
 
-Inject stack-atomic Non-Obvious signals if loaded (Spring AOP self-invocation, Kotlin platform types, Rails callbacks, React stale closures, etc.).
-
-Use skill: `architecture-concurrency` if concurrency gotchas are present.
+Use skill: `architecture-concurrency` if concurrency gotchas are present. Fold its issues into this table as gotchas phrased as checks, not fixes.
 
 ### Step 8 - Key Invariants (standard, deep)
 
@@ -108,8 +106,6 @@ Assumptions NOT enforced by types or compiler. Format:
 
 > **Invariant:** [statement]
 > **If violated:** [what breaks]
-
-Inject stack-atomic Key Invariant signals if loaded.
 
 ### Step 9 - Change Impact Preview (standard, deep)
 
@@ -121,8 +117,6 @@ Frame as checks, not edits:
 - **Timing / ordering:** async jobs, retries, sequenced operations at risk
 - **Remove / rename:** features or flows that depend on it
 - **Tests:** existing test files that exercise this code; coverage gaps
-
-Inject stack-atomic Change Impact signals if loaded.
 
 ### Step 10 - Confidence Gaps (standard, deep)
 
@@ -211,14 +205,14 @@ Standard, plus:
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: `stack-detect` ran; stack atomic loaded if available; code read before explaining
+- [ ] Step 2: `stack-detect` ran; stack atomic loaded if available and its signals injected into the four target sections; code read before explaining
 - [ ] Step 3: Purpose from caller's perspective with scope boundary
-- [ ] Step 4: Flow Context populated; inbound callers grepped or marked in Gaps; stack signals injected
+- [ ] Step 4: Flow Context populated; inbound callers grepped or marked in Gaps
 - [ ] Step 5: Why It Exists stated or marked in Gaps
-- [ ] Step 6: Data flow covers entry points, branches, external calls, side effects
-- [ ] Step 7: Non-obvious behavior flagged; stack signals injected
-- [ ] Step 8: Invariants named with violation consequence; stack signals injected
-- [ ] Step 9: Change Impact lists concrete checks tied to real callers; stack signals injected
+- [ ] Step 6: Data flow covers entry points, branches, external calls, side effects; guardrail findings folded in, not reported
+- [ ] Step 7: Non-obvious behavior flagged; concurrency issues folded in as checks
+- [ ] Step 8: Invariants named with violation consequence
+- [ ] Step 9: Change Impact lists concrete checks tied to real callers
 - [ ] Step 10: Confidence Gaps present wherever inferred
 - [ ] Step 11 (deep only): Design Intent and Complexity Assessment
 

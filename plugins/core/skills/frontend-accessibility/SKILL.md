@@ -1,6 +1,6 @@
 ---
 name: frontend-accessibility
-description: Frontend accessibility: WCAG 2.1 AA, semantic HTML, ARIA, keyboard nav, focus management, color contrast, screen reader testing.
+description: Audit and build UI for WCAG 2.1 AA - semantic HTML, ARIA, keyboard nav, focus management, color contrast, screen reader testing.
 metadata:
   category: frontend
   tags: [frontend, accessibility, a11y, wcag, aria, keyboard, screen-reader, multi-stack]
@@ -19,12 +19,14 @@ user-invocable: false
 
 ## Rules
 
-- Use native HTML semantics first (`button`, `a`, `nav`, `dialog`); ARIA only when no native element fits
-- Every interactive element must be keyboard-operable and have a visible focus indicator
-- Every form input must have a programmatically associated visible label
-- Every image must have `alt` (decorative: `alt=""`)
-- Never convey information by color alone
-- Dynamic content updates must be announced (live regions or focus management)
+Cite the WCAG criterion in parentheses when reporting a violation.
+
+- Use native HTML semantics first (`button`, `a`, `nav`, `dialog`); ARIA only when no native element fits (4.1.2)
+- Every interactive element must be keyboard-operable (2.1.1) and have a visible focus indicator (2.4.7)
+- Every form input must have a programmatically associated visible label (1.3.1, 3.3.2)
+- Every image must have `alt` (decorative: `alt=""`) (1.1.1)
+- Never convey information by color alone (1.4.1)
+- Dynamic content updates must be announced via live regions or focus management (4.1.3, 2.4.3)
 
 ---
 
@@ -50,6 +52,7 @@ ARIA only when no native element provides the semantics. Never duplicate native 
 | Dialog/modal       | `<dialog>`   | `role="dialog"` + `aria-modal="true"`               |
 | Expandable section | `<details>`  | `aria-expanded` + `aria-controls`                   |
 | Custom select      | `<select>`   | `role="listbox"` + `role="option"`                  |
+| Autocomplete       | `<datalist>` | `role="combobox"` + `aria-expanded` + `aria-controls` + `aria-activedescendant` |
 | Tabs               | (none)       | `role="tablist"` + `role="tab"` + `role="tabpanel"` |
 | Live update        | (none)       | `aria-live="polite"` or `"assertive"`               |
 
@@ -70,7 +73,7 @@ Key rules:
 
 ### Focus Management
 
-Modals/dialogs:
+Modals/dialogs (2.4.3; trap must be escapable per 2.1.2):
 1. Save previously focused element
 2. Move focus to first focusable in dialog
 3. Trap Tab/Shift+Tab within dialog
@@ -82,15 +85,15 @@ Provide a "Skip to main content" link as the first focusable element.
 
 ### Color and Status
 
-- Text contrast: 4.5:1 normal, 3:1 large (18px+ or 14px+ bold)
-- UI component contrast: 3:1 against adjacent colors
-- Never use color alone for state - pair with text/icon
+- Text contrast: 4.5:1 normal, 3:1 large (18px+ or 14px+ bold) (1.4.3)
+- UI component contrast: 3:1 against adjacent colors (1.4.11)
+- Never use color alone for state - pair with text/icon (1.4.1)
 
-```html
-<!-- Bad: color-only success -->
+```jsx
+{/* Bad: color-only success */}
 <button style={{color: success ? "green" : "red"}}>Add to Cart</button>
 
-<!-- Good: status announced -->
+{/* Good: status announced */}
 <button onClick={addToCart}>Add to Cart</button>
 <span role="status" aria-live="polite">{statusMessage}</span>
 ```
@@ -125,6 +128,8 @@ For unknown stacks, apply the universal patterns and point the user to the frame
 
 Consuming workflow skills depend on this structure.
 
+Severity: Critical = blocks task completion for keyboard or assistive-technology users; Major = significant barrier with a workaround; Minor = friction or best-practice deviation.
+
 ```
 ## Accessibility Assessment
 
@@ -143,8 +148,10 @@ Consuming workflow skills depend on this structure.
 
 ### No Issues Found
 
-{State explicitly if accessibility is adequate - do not omit this section silently}
+{If no issues: state explicitly that accessibility is adequate. If issues found: "See Audit Results." Never omit this section silently}
 ```
+
+Design-phase requests (no code yet): keep the same structure; Audit Results rows list required behaviors for the planned component, with Element/Component naming the planned element.
 
 ---
 

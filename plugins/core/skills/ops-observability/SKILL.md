@@ -22,7 +22,8 @@ user-invocable: false
 - Logs are structured (JSON), with mandatory fields `level`, `service`, `trace_id`, `span_id`.
 - Trace context propagates across every service boundary using a standard header; receiving services create child spans, never new trace IDs.
 - Never log secrets or PII (passwords, tokens, personal data).
-- Every API surface has RED metrics: **R**ate, **E**rrors, **D**uration.
+- Every entry point (API endpoint, queue consumer, scheduled job) has RED metrics: **R**ate, **E**rrors, **D**uration - measured per unit of work.
+- Log levels carry meaning: `info` for state changes, `debug` for per-item detail. Never log per-iteration at `info` in hot loops - aggregate or sample.
 - Every critical service has an SLO; alerting thresholds without an SLO are arbitrary.
 - Alert on **symptoms** (error rate, latency, saturation), not causes (CPU, memory).
 - Every metric and log signal has a corresponding alert or dashboard; unwatched signals are dead.
@@ -55,7 +56,7 @@ Use a standard propagation header end-to-end:
 - **`b3` / `x-b3-traceid`** - Zipkin; common in older Spring Cloud / Istio
 - **`uber-trace-id`** - Jaeger
 
-The receiving service extracts incoming context and creates a child span. Use the ecosystem's standard propagator and request-scoped context mechanism (MDC, `context.Context`, contextvars, framework middleware) so trace IDs reach every log line.
+The receiving service extracts incoming context and creates a child span. Use the ecosystem's standard propagator and request-scoped context mechanism (MDC, `context.Context`, contextvars, framework middleware) so trace IDs reach every log line. Across async boundaries (queues, jobs) the carrier is message headers or attributes, not HTTP headers; the consumer extracts context from the message before starting its span.
 
 ### RED Metrics
 

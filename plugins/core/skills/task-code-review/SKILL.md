@@ -10,7 +10,7 @@ user-invocable: true
 
 # Code Review (Router)
 
-Detects the project stack and delegates to the matching stack-specific review workflow (`task-{stack}-review`). For unknown stacks, runs a minimal generic Phases A-E review.
+Detects the project stack and delegates to the matching stack-specific review workflow (`task-{stack}-review`). When no stack workflow is available, runs a minimal generic Phases A-E review.
 
 ## When to Use
 
@@ -57,9 +57,22 @@ Use skill: `stack-detect`.
 
 Forward the user's invocation verbatim (target ref, `--base`, scope, depth, spec context). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 5-6.**
 
-### Step 5 - Generic Fallback (unknown stack only)
+If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 5-6 as a degraded generic review and note the degradation in the report.
 
-Use skill: `review-precondition-check` with the user's argument (default: current branch). On failure, surface the message verbatim and stop. On success, read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
+### Step 5 - Generic Fallback (no dispatch)
+
+Runs when no Step 4 row matched the detected stack, or the matched workflow is unavailable.
+
+Use skill: `review-precondition-check` with the user's argument (default: current branch). On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
+
+**Mode and round** (from the handle's `prior_checkpoint`):
+
+| Checkpoint state                                                        | Decision                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Absent, or `prior_checkpoint: legacy`                                    | `mode: full`, `round: 1` (legacy report is overwritten)            |
+| `prior head_sha == head_sha`                                             | Print `No new commits since prior review.` and stop - no report    |
+| `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
+| Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` |
 
 **Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
 
@@ -71,11 +84,11 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the (unknown) stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the detected stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
 ### Step 6 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review`.
+Use skill: `review-report-writer` with `report_type: review` and every required input: `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 5), `mode`/`round` (Step 5; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (the stack-detect identifier, e.g. `elixir-phoenix`; `unknown` only when detection failed).
 
 ## Feedback Labels
 
@@ -97,7 +110,7 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide
-**Stack Detected:** unknown (generic fallback applied)
+**Stack Detected:** <identifier or unknown> (generic fallback applied)
 **Scope:** Core | +Sec | +Perf | +Obs | Full
 **Depth:** standard | deep
 
@@ -149,9 +162,9 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
 - [ ] Step 3: `stack-detect` ran
-- [ ] Step 4: if matched, stack workflow ran with all flags and spec context forwarded; Steps 5-6 skipped
-- [ ] Step 5: if no match, Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
-- [ ] Step 6: report written via `review-report-writer` (fallback path only)
+- [ ] Step 4: if matched and available, stack workflow ran with all flags and spec context forwarded, Steps 5-6 skipped; if matched but unavailable, missing plugin named and fallback ran
+- [ ] Step 5: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
+- [ ] Step 6: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid
 

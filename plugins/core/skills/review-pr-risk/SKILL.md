@@ -39,20 +39,21 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 | Transaction boundary changes   | High   | New/modified transaction scope or isolation level           |
 | Security-adjacent changes      | High   | Auth, authorization, input validation, crypto               |
 | Async/event flow changes       | Medium | New publishers, listeners, message handlers                 |
-| Config or feature flag changes | Medium | Application properties, environment config                  |
-| New external dependencies      | Medium | New libraries or external service integrations              |
+| Config or feature flag changes | Medium | Application properties, environment config, CI/CD pipelines, flag default flips |
+| Dependency changes             | Medium | New libraries, lockfile version bumps, external service integrations |
 | PR size (lines changed)        | Medium | > 500 lines increases miss rate                             |
 | Missing test changes           | Medium | High-risk change with no corresponding tests                |
 | Author unfamiliarity           | Low    | Author's first PR to these modules or the repo              |
-| Test-only changes              | Low    | Only test files modified                                    |
-| Documentation-only changes     | Low    | Only docs/comments modified                                 |
+| No production code             | Low    | Only tests, docs, or comments modified (any mix)            |
 
 ### Classification
 
-- **Low** - single module, no shared state, no schema or API change, tests adequate
-- **Medium** - cross-module OR shared state OR config changes, bounded scope
-- **High** - one high-weight signal affecting multiple consumers
-- **Critical** - 2+ high-weight signals, OR migration on a high-traffic table + any high, OR breaking API change + security change
+Count triggered signals from the table, then apply top-down - first match wins. Same signals in, same level out.
+
+- **Critical** - 2+ High signals, OR a destructive migration (drop, rename, type change, or backfill) on an existing table
+- **High** - exactly one High signal
+- **Medium** - 1+ Medium signals, no High signals
+- **Low** - only Low signals (or none) triggered
 
 ### Good
 
@@ -80,19 +81,19 @@ Signals: {comma-separated triggered signals, 1-2 sentences max}
 Action: {split PR | add tests before merge | require additional reviewer}
 ```
 
-`Action:` is optional - include only when a specific action is warranted.
+`Action:` is optional - include only when a specific action is warranted, and pick exactly one value (the most impactful) from the set above.
 
 ### Examples
 
 ```
 Risk Level: High
-Signals: Public API contract change (POST /orders), schema migration on orders table.
+Signals: Public API contract change (POST /orders request schema), single module, tests updated.
 Action: require additional reviewer
 ```
 
 ```
 Risk Level: Low
-Signals: Test-only changes, no shared state or API modification.
+Signals: Tests and docs only, no production code modified.
 ```
 
 Never exceed four lines. Never omit `Signals:`.

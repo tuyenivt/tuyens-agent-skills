@@ -33,16 +33,19 @@ The consuming workflow passes these fields when invoking this skill:
 | `depth`           | yes               | `standard` / `deep`                                                                 |
 | `stack`           | yes               | Stack identifier from `stack-detect` (e.g., `java-spring-boot`, `unknown`)          |
 
+Only the workflow that owns the report invokes this skill. Sub-agents spawned for extra scopes return findings to the parent and never write - the parent supplies every field above. No field is optional for any caller except `prior_head_sha` on round 1. A plain core review (workflows display `Scope: Core`, with or without the `core-only` user flag) passes `scope: core-only`; there is no separate `core` value.
+
 ## Rules
 
 - If any required input from the Inputs table is missing or empty, halt and return `Missing required input: <field>` to the caller. Do not write a partial file, do not invent a default, do not blank the field.
-- Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`.
+- If a value-set field (`report_type`, `mode`, `scope`, `depth`) holds a value outside its set in the Inputs table, halt and return `Invalid input: <field>: <value>`. Do not coerce (`Core` does not auto-map to `core-only`) - mapping display values to enum values is the caller's job.
+- Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`. The frontmatter `branch` field keeps the raw value; only the filename is sanitized.
 - Build the filename from `report_type`:
   - `review` -> `review-<branch>.md`
   - `review-perf` -> `review-perf-<branch>.md`
   - `review-security` -> `review-security-<branch>.md`
   - `review-observability` -> `review-observability-<branch>.md`
-- Write a file containing the frontmatter (below) immediately followed by `report_body`.
+- Write the file in the current working directory (where the workflow runs - next round's `review-precondition-check` looks for it there): the frontmatter (below) immediately followed by `report_body`.
 - Overwrite without prompting - the file is a rolling checkpoint, not an archive. Round history lives inside the report body.
 - Run no git command (the workflow already captured `base_sha` and `head_sha`).
 - Print one confirmation line after writing:

@@ -36,10 +36,14 @@ After `stack-detect`, classify the runtime's primary model and reason about issu
 | Model                      | Primitive                    | Sync mechanisms                       | Common hazards                                                  |
 | -------------------------- | ---------------------------- | ------------------------------------- | --------------------------------------------------------------- |
 | Thread-based               | OS / virtual thread          | mutex, semaphore, monitor             | deadlock, lock contention, pool starvation, thread pinning      |
-| Coroutine / lightweight    | coroutine, task, goroutine   | channel, async/await, structured scope | blocking call in async context, lost cancellation, backpressure |
+| Coroutine / lightweight    | coroutine, task, goroutine   | channel, async/await, structured scope | blocking call in async context, lost update across await, lost cancellation, backpressure |
 | Process / actor            | process, actor               | message passing, mailboxes            | message ordering, serialization cost, supervision gaps          |
 
 If the runtime has well-known constraints (GIL-style global locks, thread pinning under certain locks, blocking-call restrictions in async runtimes), name them in the assessment.
+
+A single-threaded event loop is not race-free: any read-modify-write that spans an await or suspension point can interleave with another task - a lost update, even with one instance.
+
+If the stack cannot be detected, report `Stack: unknown` and apply the model table and database strategies generically - they are runtime-agnostic.
 
 ### Database-Level Concurrency
 
@@ -51,6 +55,7 @@ In-process locks protect one process. When multiple instances mutate the same ro
 | Optimistic          | Version column checked at UPDATE; retry on conflict | Read-heavy, low contention                     |
 | Serializable        | DB aborts conflicting transactions                  | Multi-row invariants                           |
 | Advisory lock       | DB-managed app-level lock (e.g. `pg_advisory_lock`)| Cross-process coordination without row locking |
+| Skip-locked claim   | `SELECT ... FOR UPDATE SKIP LOCKED`                 | Workers claiming queue/job rows without blocking peers |
 
 Bad - in-process mutex for a cross-instance race:
 
@@ -93,14 +98,14 @@ Concurrency bugs surface only under contention:
 ```
 ## Concurrency Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {detected language / framework | unknown}
 **Concurrency model:** {Thread-based | Coroutine/Lightweight | Process/Actor}
 **Primary primitive:** {thread | goroutine | coroutine | process | task | fiber}
 
 ### Issues
 
 - [Severity: High | Medium | Low] {file:line if available} - {description}
-  - Risk: {data race | deadlock | resource leak | blocking in async context | cross-instance race | etc.}
+  - Risk: {data race | lost update | deadlock | resource leak | blocking in async context | cross-instance race | etc.}
   - Fix: {concrete correction using the detected stack's idioms}
 
 ### No Issues Found
@@ -110,11 +115,13 @@ Concurrency bugs surface only under contention:
 
 Severity:
 
-- **High**: data race, deadlock risk, unbounded concurrency, in-process lock used for a cross-instance race
+- **High**: data race, lost update across a suspension point, deadlock risk, unbounded concurrency, in-process lock used for a cross-instance race
 - **Medium**: blocking call in cooperative context, missing cancellation or timeout, distributed lock without TTL
 - **Low**: idiomatic drift from the detected stack's conventions
 
 Omit "No Issues Found" only when issues were listed.
+
+For design tasks (no implementation yet), use the same format: list risks of the proposed design as Issues and omit {file:line}.
 
 ## Avoid
 

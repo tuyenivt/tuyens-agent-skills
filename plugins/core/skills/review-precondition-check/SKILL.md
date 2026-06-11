@@ -28,7 +28,7 @@ This skill **gates only**: it emits ref names, not diffs or SHAs. The consuming 
 
 | Argument                                 | Mode             | Trigger                                                                                 | Notes                                                          |
 | ---------------------------------------- | ---------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| _(none)_                                 | `branch-vs-base` | No argument; current branch (`HEAD`) is **not** a trunk branch                          | Default: self-review of the local feature branch.              |
+| _(none)_                                 | `branch-vs-base` | No argument; `HEAD` becomes the candidate head                                          | Default: self-review. Trunk `HEAD` fails fast in Step 3.       |
 | `pr-<N>`, `pr/<N>`, `pull-<N>`, `mr-<N>` | `pr-ref`         | Matches `^(pr|pull|mr)[-/]\d+$`                                                         | Local branch must already exist (created by user via fetch).   |
 | `<branch>`                               | `branch-vs-base` | Resolves via `git rev-parse --verify refs/heads/<arg>` or `refs/remotes/<arg>`          | Self-review or teammate-branch cross-review.                   |
 
@@ -69,6 +69,8 @@ Apply the Argument Modes table. The result is a candidate `head_ref`:
 - `<branch>` -> `head_ref = refs/heads/<branch>` if local, else `refs/remotes/<branch>`.
 
 If the argument matches no mode, stop and ask for a branch name or `pr-<N>` ref.
+
+Detached `HEAD`: with no argument, stop and ask for an explicit branch or `pr-<N>` ref; with an argument, set `current_branch: detached` and run the Step 6 gate as usual.
 
 ### Step 3 - Head must not be a trunk branch
 
@@ -160,6 +162,8 @@ Compute the prior-report filename from the resolved current branch (sanitization
 review-<sanitized-branch>.md
 ```
 
+The lookup is keyed to the current branch - the same key `review-report-writer` writes under - so rounds chain only when re-run from the same checked-out branch.
+
 If the file does not exist in the current working directory, omit `prior_checkpoint` from the handle and continue.
 
 If the file exists, read the leading YAML frontmatter (delimited by `---` lines at the start of the file). Parse fields:
@@ -183,7 +187,7 @@ If frontmatter is valid, emit the full block in the handle (see Output Format be
 
 ## Output Format
 
-When all preconditions pass, emit this handle and nothing more:
+When all preconditions pass, emit this handle and nothing more. Emit `base_ref` and `head_ref` as short names (`origin/main`, `feature/x`, `pr-<N>`), never fully qualified `refs/...`; `HEAD` only in no-argument mode. Omit `notes` when empty.
 
 ```yaml
 review-target:
@@ -218,11 +222,9 @@ When a precondition fails, emit only the stop message from the relevant step. Do
 
 - Reading the diff, computing SHAs, or pulling `git log` - the consuming workflow does that.
 - Running any state-changing git command - the user must run these to protect uncommitted work.
-- Calling `gh`, GitHub MCP, or any platform API.
 - Silently picking a base when `origin/HEAD` is unset and multiple candidates exist - ask.
 - Skipping the dirty-tree, trunk-branch, or missing-head fail-fasts.
 - Gating head-vs-current when they already match - that just adds friction.
 - Forcing a `git checkout` of the head branch.
-- Reviewing working-tree changes, explicit commit ranges, or single commits - out of scope.
 - Deciding incremental vs. full mode in Step 7 - just surface the prior checkpoint; the workflow decides.
 - Validating `prior_head_sha` reachability or comparing it to the current head in Step 7 - that's the workflow's job.
