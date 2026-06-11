@@ -8,7 +8,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
 
 # Monolith to Services Migration -- Staff Edition
 
@@ -42,9 +42,11 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 | Depth      | When to Use                                                   | Sections Produced                                          |
 | ---------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| `quick`    | Early feasibility check, "should we even decompose?"          | Domain analysis + extraction candidates + top risks        |
+| `quick`    | Early feasibility check, "should we even decompose?"          | Sections 1 (deploy profile + pain points), 2, the Extraction Order Summary table from 4, top risks from 6, Staff-Level Summary |
 | `standard` | Default -- migration plan for engineering leadership sign-off | All 8 sections                                             |
 | `deep`     | Large monolith, multi-team, multi-quarter migration           | All 8 sections + dependency deep-dive + failure simulation |
+
+At `quick`, keep template numbering, omit unproduced sections silently, waive Self-Check items for unproduced sections, and lead the deliverable with the Staff-Level Summary feasibility verdict. When the driver fails validation, the honest deliverable (any depth) is Sections 1-2 plus the Staff-Level Summary opening with **Not recommended** - duration and highest-risk fields become N/A, and two lines are added: "Why not recommended: {reason}" and "Recommended alternative: {modular monolith, CI/CD prerequisites, or do nothing}". Do not produce hypothetical extraction phases. When only the cadence gate fails (driver valid), proceed with the plan and make Phase 0 the gate's remedy.
 
 **Deep depth adds (on top of standard):**
 
@@ -55,7 +57,7 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 - Domain analysis before technical decomposition; service lines follow bounded contexts
 - All extraction is incremental with rollback per phase; no big-bang rewrite
-- Plan data ownership transfer explicitly per service; shared databases are tackled first
+- Plan data ownership transfer explicitly per service; shared-database separation work (schema separation, write-path inventory) starts first even when the owning services extract later
 - Extraction order is set by risk and dependency analysis, not convenience
 - No implementation code; omit empty sections
 
@@ -85,7 +87,7 @@ Use skill: `architecture-data-consistency` for inter-service consistency strateg
 Use skill: `ops-resiliency` for fault tolerance between services.
 Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
-One service owns each entity (no shared databases in steady state). Name the communication model per interaction (sync vs async) and the consistency requirement (strong vs eventual). The service-inventory table in the Output template is the contract.
+One service owns each entity (no shared databases in steady state). Name the communication model per interaction (sync vs async) and the consistency requirement (strong vs eventual). Map each target service to an owning team and flag services with no clear owner - team-autonomy drivers fail without Conway alignment. The service-inventory table in the Output template is the contract.
 
 If the target stack differs from the monolith, add an interoperability subsection covering serialization contracts, client-library strategy, and contract testing across the language boundary.
 
@@ -99,7 +101,7 @@ Use skill: `dependency-impact-analysis` for extraction ordering.
 
 **Deploy cadence prerequisite check:**
 
-Before planning service extraction, verify the team can deploy frequently. Microservices require independent, frequent deployment - a team on monthly or bimonthly release cycles cannot safely operate a distributed system. If current deploy frequency is less than weekly:
+Before planning service extraction, verify the team can deploy frequently. Microservices require independent, frequent deployment. The test is literal: if current deploy frequency is less than weekly (every-2-weeks fails this test):
 
 - Treat this as a prerequisite, not a nice-to-have
 - Recommend establishing continuous deployment (CI/CD pipeline, automated tests, canary tooling) before extracting services
@@ -126,6 +128,10 @@ Determine extraction order using these criteria:
 | Bounded context clarity | Clear domain boundary                               | Fuzzy boundary, shared logic    |
 
 Per phase, the Output template specifies the fields: what extracts, prerequisites, data strategy, coexistence, verification, rollback, duration. Every phase must have a rollback path.
+
+- Prerequisite work (CI/CD, event infrastructure such as broker/outbox when domain events are the integration plan, modular-monolith hardening) is **Phase 0** - include it in the Extraction Order Summary with Module = Foundation, and give it a phase block with inapplicable fields marked N/A
+- A phase may extract a group of modules into one service when they share a transaction boundary; name the group in the phase header (the ownership unit is the service, not the module)
+- When phases exceed a stated horizon, say so: cut scope or parallelize independent extractions - never compress verification or bake time
 
 ### 5. Data Ownership Transfer
 
@@ -158,7 +164,7 @@ Use skill: `ops-engineering-governance` for process guardrails.
 Use skill: `ops-release-safety` for rollout safety.
 Use skill: `ops-feature-flags` for migration feature flag strategy.
 
-Name: decision gates (who approves each phase), rollback triggers (specific conditions), feature flags for traffic routing, and cleanup discipline (removing monolith code and sync infrastructure post-extraction - tech debt is the predictable outcome otherwise).
+Name: decision gates (approver by role - EM, Staff, platform lead - not by individual), rollback triggers (specific conditions), feature flags for traffic routing, and cleanup discipline (removing monolith code and sync infrastructure post-extraction - tech debt is the predictable outcome otherwise).
 
 ## Review Mode
 
@@ -166,20 +172,22 @@ When reviewing a monolith-to-services decomposition plan authored by someone els
 
 Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Supply this decomposition-plan-specific factor list to the completeness audit:
+Depth levels apply to plan authoring only; reviews run the full lens (standalone formatting defaults; the lens's skip rule covers steps that do not fit). This skill's planning content (cadence gate, extraction-order criteria, lowest-risk-first candidates) is valid review evidence - cite it as the bar the plan must meet.
 
-| Factor                          | What "Present" Looks Like                                                          |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| Current state assessment        | Module inventory, deployment profile, pain points justifying decomposition         |
-| Domain decomposition            | Bounded contexts identified; data ownership per service stated                     |
-| Target architecture             | Services named with single-sentence responsibility and primary failure mode        |
-| Extraction order                | Sequenced with rationale (lowest-coupling first, highest-pain first, etc.)         |
-| Strangler-fig routing           | Coexistence phases, traffic routing strategy, sync between monolith and services   |
-| Data ownership transfer         | Per-service: how data moves out of monolith DB; dual-write or read-replica phase   |
-| Cross-cutting concerns          | Auth, observability, deployment pipeline addressed for new services                |
-| Risks and mitigations           | Distributed-transaction risk, latency, operational overhead with mitigations       |
-| Migration governance            | Decision gates, rollback triggers, feature flags, cleanup discipline               |
-| Per-extraction rollback         | Each extraction has a rollback path; data un-extraction is feasible or flagged     |
+Supply this decomposition-plan-specific factor list to the completeness audit. Required = Blocker-eligible when Missing; advisory (No) factors cap at Major:
+
+| Factor                          | Required | What "Present" Looks Like                                                          |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| Current state assessment        | No       | Module inventory, deployment profile, pain points justifying decomposition         |
+| Domain decomposition            | Yes      | Bounded contexts identified; data ownership per service stated                     |
+| Target architecture             | Yes      | Services named with single-sentence responsibility and primary failure mode        |
+| Extraction order                | Yes      | Sequenced with rationale (lowest-coupling first, highest-pain first, etc.)         |
+| Strangler-fig routing           | Yes      | Coexistence phases, traffic routing strategy, sync between monolith and services   |
+| Data ownership transfer         | Yes      | Per-service: how data moves out of monolith DB; dual-write or read-replica phase   |
+| Cross-cutting concerns          | No       | Auth, observability, deployment pipeline addressed for new services                |
+| Risks and mitigations           | No       | Distributed-transaction risk, latency, operational overhead with mitigations       |
+| Migration governance            | No       | Decision gates, rollback triggers, feature flags, cleanup discipline               |
+| Per-extraction rollback         | Yes      | Each extraction has a rollback path; data un-extraction is feasible or flagged     |
 
 Specific quality checks beyond the standard lens:
 
@@ -189,7 +197,13 @@ Specific quality checks beyond the standard lens:
 - **No cleanup plan for monolith code post-extraction**: Major; tech debt is the predictable outcome
 - **Distributed transactions assumed to work like local transactions**: Blocker
 
-Output header: `# Decomposition Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
+Record each quality-check hit once, in the lens step that owns it (Missing factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong content -> Per-Factor Findings), folded with the factor finding per the lens's record-once rule.
+
+Output header: `# Decomposition Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the plan Output template below. In this mode the Review Self-Check replaces the authoring Self-Check:
+
+- [ ] All factors audited with Required marking applied; verdict driven by highest severity
+- [ ] Quality-check hits recorded once in the correct lens step and numbered
+- [ ] Every finding cites a plan section; non-Approve verdict lists required changes
 
 ## Output
 
@@ -233,9 +247,9 @@ Pain Points:
 
 ### Service Inventory
 
-| Service | Responsibility | Data Owned | Communication | Consistency Model |
-| ------- | -------------- | ---------- | ------------- | ----------------- |
-| Name    | One sentence   | Entities   | Sync/Async    | Strong/Eventual   |
+| Service | Responsibility | Data Owned | Owning Team | Communication | Consistency Model |
+| ------- | -------------- | ---------- | ----------- | ------------- | ----------------- |
+| Name    | One sentence   | Entities   | Team        | Sync/Async    | Strong/Eventual   |
 
 ## 4. Extraction Plan
 

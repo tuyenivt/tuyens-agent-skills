@@ -9,7 +9,7 @@ user-invocable: false
 
 # Capacity Modeling
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. The math is stack-agnostic; stack only changes which named tools apply.
 
 ## When to Use
 
@@ -20,10 +20,11 @@ user-invocable: false
 
 ## Rules
 
-- State traffic assumptions explicitly (steady-state and peak); estimates without assumptions are unverifiable
-- Identify the bottleneck (lowest saturation point) - it sets system capacity
-- Plan headroom at 2-3x peak; sizing for current peak leaves no margin for growth or burst
-- External rate limits (payment gateways, SaaS APIs) are hard ceilings - no internal scaling lifts them
+- State traffic assumptions explicitly (steady-state and peak). When no numbers exist, derive them from business facts (seats x active share x actions per active user-hour, plus a burst factor; e.g., B2B: 10-20% of seats active per hour) and attach a validation action to every derived number. When infra specs are missing, state a baseline configuration as an assumption and validate it the same way
+- Identify the bottleneck (lowest saturation point) - it sets system capacity. If it saturates below current (or projected, when pre-launch) steady traffic, lead with that: the system is already over capacity
+- Usable capacity is ~75% of theoretical saturation; queueing effects dominate above that
+- Plan headroom at 2-3x peak: 2x minimum, 3x when growth is expected - name the multiplier used. For queue-absorbed workloads, apply the multiplier to long-run average demand, not the instantaneous burst peak
+- External rate limits (payment gateways, SaaS APIs) are hard ceilings - no internal scaling lifts them. If a ceiling sits below the headroom target, the recommendation is demand shaping (queue, cache, dedupe, negotiate the limit), not more instances
 - Throughput and latency are independent; a system can be high-throughput and high-latency simultaneously
 
 ## Pattern
@@ -40,8 +41,8 @@ user-invocable: false
 
 ### Saturation Math
 
-- **Pool throughput**: `pool_size / avg_query_duration`. Saturated pools queue or reject - increase pool size (up to DB max), reduce query time, offload reads, or add a connection pooler (PgBouncer, ProxySQL, equivalent for the stack).
-- **Async backlog**: `(producer_rate - consumer_rate) x burst_duration` = peak backlog. Recovery time: `backlog / (consumer_rate - steady_producer_rate)`. If recovery exceeds the interval between peaks, consumers cannot keep up.
+- **Pool throughput**: `pool_size / avg_query_duration`. Apply at every constraining level - the per-instance pool AND the server's global limit each get a component row. Check aggregate config: `pool_size x max_instances` must stay under the server limit (e.g., HikariCP 50 x 12 pods vs max_connections=200) - horizontal scaling multiplies client demand. Saturated pools queue or reject - increase pool size (up to the server max), reduce query time, offload reads, or add a connection pooler (PgBouncer, ProxySQL, equivalent for the stack).
+- **Async backlog**: effective consumer rate = `min(worker throughput, rate limits of downstream dependencies on the consumption path)`, derated to ~75% usable. Peak backlog: `(producer_rate - effective_consumer_rate) x burst_duration`. Recovery time: `backlog / (effective_consumer_rate - steady_producer_rate)`; if steady production >= effective consumption, recovery is never - report the divergence rate instead. Consumers cannot keep up if recovery (measured from burst end) exceeds the time to the next burst (start-to-start interval minus burst duration), or if long-run production per interval exceeds long-run consumption.
 
 ### Anti-pattern
 
@@ -56,38 +57,43 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 ```
 ## Capacity Model
 
-**Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x)
-**Bottleneck component:** {name} - saturates at {N} RPS/TPS
-**Headroom target:** {2-3x peak = N RPS; current capacity = N RPS}
+**Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x) {- mark derived numbers "(derived)"}
+**Bottleneck component:** {name} - saturates at {N} RPS/TPS; usable ~{0.75 x N}
+**Next bottleneck once mitigated:** {name} - saturates at {N}
+**Headroom target:** {2 or 3}x peak = {N} RPS vs usable capacity {N} RPS
 
 ### Component Saturation Points
 
-| Component | Capacity | Per-Request Cost | Saturates At | Bottleneck? |
-| --------- | -------- | ---------------- | ------------ | ----------- |
-| {name}    | {limit}  | {cost/request}   | {N RPS}      | Yes / No    |
+| Component | Limit (native unit) | Per-Request Cost (native unit) | Saturates At        | Bottleneck? |
+| --------- | ------------------- | ------------------------------ | ------------------- | ----------- |
+| {name}    | {limit}             | {cost/request}                 | {N RPS, or N/A (not limiting)} | Yes / No |
+
+State limits and costs in each component's native unit (ms, connections, ops, external calls). Every constrained component shows its computed saturation; N/A is only for effectively unlimited components.
 
 ### Scaling Recommendation
 
-{Primary recommendation - horizontal / vertical / sharding / async offload - with rationale citing the bottleneck}
+{Primary recommendation - horizontal / vertical / sharding / caching / async offload - with rationale citing the bottleneck, and the next bottleneck it exposes}
 
-### Queue Depth (async workloads only)
+### Queue Depth (any queue- or batch-fed component, existing or proposed)
 
 - Producer rate (peak): {N/s}
-- Consumer rate: {N/s/consumer} x {consumers} = {total/s}
+- Effective consumer rate: min({N/s/consumer} x {consumers}, {downstream limit}) = {total/s}
 - Peak backlog: ({peak} - {total}) x {burst seconds} = {N messages}
-- Recovery time: {backlog} / ({total} - {steady producer}) = {duration}
-- Max queue depth before back-pressure: {N messages}
+- Recovery time: {backlog} / ({total} - {steady producer}) = {duration} vs {burst interval, start-to-start}
+- Max queue depth before back-pressure: {configured limit, or "unbounded - recommend ~2x expected peak backlog"}
+
+Repeat the block for the recommended configuration when the recommendation changes consumer capacity.
 
 ### Assumptions
 
-- {stated assumption 1}
-- {stated assumption 2}
+- {assumption} - validate by: {measurement or source}
 ```
 
-Omit "Queue Depth" for synchronous workloads.
+Omit "Queue Depth" only when the entire flow is synchronous.
 
 ## Avoid
 
 - Estimates without stated assumptions
 - "Just add more instances" without naming the bottleneck
 - Sizing for current peak with no headroom for burst or growth
+- Sizing to raw saturation - usable capacity is ~75% of it

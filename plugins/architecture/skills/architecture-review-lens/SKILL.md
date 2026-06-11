@@ -9,15 +9,15 @@ user-invocable: false
 
 # Architecture Review Lens
 
-> Composed by workflow skills in review mode; not invoked directly. The workflow supplies the **artifact-specific factor list**; this skill supplies the **lens** (how to audit, score, judge).
+> Composed by workflow skills in review mode; not invoked directly. The workflow supplies the **artifact-specific factor list**; this skill supplies the **lens** (how to audit, score, judge). When a workflow names atomic skills for deeper checks and they are unavailable (standalone use), proceed on the lens's own judgment and say so in Review Context.
 
 ## Rules
 
-- Review the artifact as written, not the artifact you would have authored
+- Review the artifact as written, not the artifact you would have authored. Facts the reviewer knows that the artifact omits (regulatory scope, hidden consumers) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context"
 - Every finding cites a specific section, claim, or omission
 - Every finding carries a severity: Blocker | Major | Minor | Nit
-- Distinguish **Missing** (not present) from **Under-specified** (vague) from **Wrong** (incorrect)
-- Surface load-bearing assumptions in Section 4; only assumptions wrong enough to change the verdict become Per-Factor findings in Section 5
+- Distinguish **Missing** (not present) from **Under-specified** (vague) from **Wrong** (incorrect on the facts). An author-acknowledged TODO is still Missing or Under-specified, at full severity
+- Record each finding once, in the earliest lens step that captures it; number findings (F1, F2, ...) so later steps reference rather than restate them
 - The verdict is driven by the highest-severity findings, not their count
 - Recommend the smallest concrete change that resolves each finding; do not propose a redesign
 
@@ -34,7 +34,7 @@ Lead with the highest severity present. Do not pad a Blocker review with Nits.
 
 ## Lens
 
-Apply in order. Skip a step that does not fit (e.g., consistency scoring on a one-page ADR).
+Apply in order. A step that does not fit the artifact (e.g., Section 6 scoring on a one-page ADR) may be skipped - name the skipped step and the reason in one line.
 
 ### 1. Intake
 
@@ -46,6 +46,7 @@ The workflow provides the factor list. For each factor mark **Present** (explici
 
 - Missing -> Major minimum; Blocker if the factor is required to make the approval decision (e.g., rollback for a high-blast-radius change)
 - Under-specified -> Minor minimum; Major if the gap forces guesswork on a load-bearing decision
+- A factor can be Present yet **Wrong**: mark it Present here and raise the error once - in Section 3 if it contradicts the artifact, otherwise in Section 5 - Major minimum, Blocker if load-bearing. Arithmetic on the artifact's own numbers counts as artifact evidence, not reviewer context
 
 ### 3. Internal Consistency
 
@@ -63,13 +64,15 @@ Common patterns:
 
 Surface load-bearing assumptions: **Stated** (explicit; verify still plausible) and **Implicit** (the artifact only works if X, but the author did not say so). For each: assumption, what fails if wrong, severity if wrong.
 
+Assumptions live here; a verdict-driving assumption is cited by the finding it undermines (Section 2, 3, or 5), not restated there.
+
 Audit categories to consider: traffic volume and growth; dependency availability/SLOs; data volume and access patterns; team capacity/skills/timeline; existing infrastructure; regulatory scope.
 
 ### 5. Per-Factor Findings
 
-For each factor marked Present or Under-specified, evaluate quality. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution).
+For each factor marked Present or Under-specified, evaluate quality - one or more findings per factor. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution). If a supplied factor names the same axis as a Section 6 criterion (Reversibility = Reversibility; partial overlap does not count), evaluate it once - in Section 6, or here when Section 6 is skipped - and reference it from the other.
 
-Format:
+Format (repeat per finding):
 
 ```
 {Factor}
@@ -110,13 +113,13 @@ Unresolved, answerable questions grouped by purpose (**Clarification**, **Justif
 | **Approve with changes** | No Blockers; Major findings bounded and specifically addressable before merge                         |
 | **Needs rework**         | One or more Blockers, or structural issues spanning multiple factors                                  |
 
-The verdict references the driving findings. "Approve with changes" lists the required changes as a checkbox list.
+Required factors are those the workflow marks required; if unmarked, treat every supplied factor as required. The verdict references the driving findings. Any non-Approve verdict lists its required changes as a checkbox list (for Needs rework, the items that drive the Blockers).
 
 ## Output Structure
 
-The workflow shapes formatting (tables vs. lists) but produces sections in this order:
+The workflow shapes formatting (tables vs. lists); standalone, default to tables for audits and lists for findings. Produce sections in this order:
 
-1. **Review Context** - artifacts reviewed, depth, reviewer assumptions
+1. **Review Context** - artifacts reviewed; depth (workflow-supplied; "full" when standalone); reviewer assumptions, including reviewer-context facts and any unavailable composed skills
 2. **Intake** (Section 1)
 3. **Completeness Audit** (Section 2)
 4. **Internal Consistency** (Section 3)
@@ -134,3 +137,4 @@ The workflow shapes formatting (tables vs. lists) but produces sections in this 
 - Recommending a redesign when a targeted change resolves the gap
 - Issuing "Approve with changes" without naming the changes
 - Scoring criteria that do not apply; mark N/A with a one-line reason instead
+- Duplicating one root cause as separate findings across sections

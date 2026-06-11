@@ -8,7 +8,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
 
 # Legacy System Modernization -- Staff Edition
 
@@ -44,7 +44,9 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 | ---------- | ----------------------------------------------------- | ---------------------------------------------------------- |
 | `quick`    | Early feasibility, "should we modernize and to what?" | Legacy assessment + target evaluation + top risks          |
 | `standard` | Default -- modernization plan for leadership sign-off | All 8 sections                                             |
-| `deep`     | Large legacy system, multi-year migration, high risk  | All 8 sections + behavioral inventory + failure simulation |
+| `deep`     | Large legacy system, multi-year migration, high risk  | All 8 sections + full behavioral matrix (Section 4) + Failure Simulation section |
+
+**Failure Simulation (deep only):** rendered as `## Failure Simulation` between Section 8 and the Staff-Level Summary. Per scenario (one to two), walk the highest-risk migration phase end to end - failure cause -> propagation path -> user-visible impact -> mitigation that activates -> recovery - then state Blast radius {Narrow | Moderate | Wide}, MTTR estimate, and the gap the plan must close.
 
 ## Rules
 
@@ -60,9 +62,9 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 Before analysis, confirm the modernization scope:
 
-- If the user mentions "modular architecture", "services", or "microservices" as a target, clarify: "Is the goal to restructure within the monolith (this skill), or to extract into independently deployable services (use `/task-decompose-monolith`)?"
+- If the user mentions "modular architecture", "services", or "microservices" as a target, clarify: "Is the goal to restructure within the monolith (this skill), or to extract into independently deployable services (use `/task-decompose-monolith`)?" If clarification is impossible (async run), default to modernization-only on the current architecture shape, set the output's Scope line to "modernize now, decompose later (deferred)", and recommend `/task-decompose-monolith` after cutover. The answer is "both" when the request names services/microservices as an explicit target (a passing mention defaults to modernize-only); even then, modernize-then-decompose is the default order - behavioral parity is verifiable against an unchanged shape; decompose during modernization only when the monolith itself blocks migration.
 - If the user specifies a target stack, note it for validation in Section 3.
-- If the user does not specify depth, default to `standard`. Auto-escalate to `deep` for systems older than 5 years or with more than 50K lines.
+- If the user does not specify depth, default to `standard`. Auto-escalate to `deep` when the stack is 5+ years behind (measured from the last major framework/runtime upgrade) or the system exceeds 50K lines.
 
 ### 1. Legacy System Assessment
 
@@ -121,7 +123,7 @@ The legacy system's behavior is the specification. Capture it before rewriting.
 
 Capture across: documented vs. undocumented behaviors, edge cases and workarounds, integration contracts (exact request/response, error codes), business rules in code (validation, calculation, state machines), business rules in DB (triggers, stored procedures, computed columns).
 
-Discovery methods (use multiple): existing tests, production traffic analysis, code reading, stakeholder interviews, shadow testing against legacy.
+Discovery methods (use multiple): existing tests, production traffic analysis, code reading, stakeholder interviews, shadow testing against legacy. In a planning-only run with no codebase access, matrix rows are discovery tasks (method + owner), never hypotheses stated as facts. At deep, the matrix is added on top of the prose summary, one row per capability.
 
 For deep depth, produce a behavioral matrix:
 
@@ -147,7 +149,9 @@ Choose the primary migration approach:
 | Parallel run          | Must verify behavioral equivalence before cutover      | Expensive (run two systems); highest confidence   |
 | Component extraction  | One module has clear boundaries, extract and rewrite   | Smallest scope; good starting point               |
 
-Per phase, the Output template specifies the fields: capability, prerequisites, behavioral verification, traffic migration, data migration, rollback, duration. Every phase needs a rollback path and behavioral verification (shadow/replay/diff) - matching legacy is the gate.
+Per phase, the Output template specifies the fields: capability, prerequisites, behavioral verification, traffic migration, data migration, rollback, duration. Every phase needs a rollback path and behavioral verification (shadow/replay/diff) - matching legacy is the gate. Foundation work (routing layer, CI, test harness, verification tooling) is Phase 0, numbered ahead of the template's Phase 1 with the same block (inapplicable fields N/A). Check summed phase durations against stated deadlines; on conflict, say so and re-scope - parallelize independent capabilities or cut scope, never compress verification.
+
+Frozen external contracts (regulatory or contractual notice periods): preserve the legacy protocol behind a facade at the routing layer and freeze it until the notice period ends. The implementation may migrate behind the facade earlier; only the contract cutover is pinned past the notice date. Record the constraint in Section 1 and the phase plan.
 
 Migration order heuristics:
 
@@ -168,7 +172,7 @@ Address: schema evolution (legacy -> modern), who is the source of truth during 
 
 **Calendar-critical systems:** For mandatory processing windows (payroll 1st/15th, month-end closes, regulatory deadlines), identify blackout periods explicitly and schedule risky phases between them with at least a 3-business-day pre-blackout freeze.
 
-For detailed schema-change planning (zero-downtime DDL, rollback scripts), use `task-db-migration`.
+DB-engine EOL upgrades (e.g., MySQL 5.7 -> 8.0) are in scope here as a coexistence prerequisite; detailed schema-change planning (zero-downtime DDL, rollback scripts) still defers to `task-db-migration`.
 
 ### 7. Team and Knowledge Transition
 
@@ -188,21 +192,23 @@ When reviewing a legacy-modernization plan authored by someone else:
 
 Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Supply this modernization-plan-specific factor list to the completeness audit:
+Depth levels apply to plan authoring only; reviews run the full lens (tables for audits, lists for findings; report depth as "full"; the lens's skip rule covers steps that do not fit). This skill's planning content (driver analysis, approach table, migration-order heuristics) is valid review evidence - cite it as the bar the plan must meet.
 
-| Factor                       | What "Present" Looks Like                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------- |
-| Legacy system assessment     | Technology, architecture, age, team size, hidden behaviors / undocumented features |
-| Modernization justification  | Specific drivers (hiring, EOL, scaling ceiling, security); not just "it's old"     |
-| Target stack                  | Named language/framework/runtime with rationale, not "modern stack"                |
-| Behavioral inventory          | How current behavior is captured (tests, characterization, prod traffic capture)   |
-| Strangler-fig migration       | Coexistence phases, traffic routing, gradual replacement; not big-bang             |
-| Data migration                | Schema mapping, backfill plan, rollback safety, consistency during dual-run        |
-| Behavioral verification       | Shadow traffic, replay, diff testing - how new system is proven to match old       |
-| Cutover strategy              | Phased traffic shift with rollback gates; not a one-shot DNS swap                  |
-| Team transition               | Training plan, knowledge transfer from legacy maintainers, hiring timeline         |
-| Scope discipline              | Explicit non-goals (no new features during migration); cleanup of old system       |
-| Risks and mitigations         | Behavioral drift, performance regression, scope creep with mitigations             |
+Supply this modernization-plan-specific factor list to the completeness audit. Required factors carry no severity cap (Missing - or critically under-specified - required factors may be Blockers); advisory (No) factors cap at Major:
+
+| Factor                       | Required | What "Present" Looks Like                                                          |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| Legacy system assessment     | No       | Technology, architecture, age, team size, hidden behaviors / undocumented features |
+| Modernization justification  | Yes      | Specific drivers (hiring, EOL, scaling ceiling, security); not just "it's old"     |
+| Target stack                 | Yes      | Named language/framework/runtime with rationale, not "modern stack"                |
+| Behavioral inventory         | Yes      | How current behavior is captured (tests, characterization, prod traffic capture)   |
+| Strangler-fig migration      | Yes      | Coexistence phases, traffic routing, gradual replacement; not big-bang             |
+| Data migration               | Yes      | Schema mapping, backfill plan, rollback safety, consistency during dual-run        |
+| Behavioral verification      | Yes      | Shadow traffic, replay, diff testing - how new system is proven to match old       |
+| Cutover strategy             | Yes      | Phased traffic shift with rollback gates; not a one-shot DNS swap                  |
+| Team transition              | No       | Training plan, knowledge transfer from legacy maintainers, hiring timeline         |
+| Scope discipline             | No       | Explicit non-goals (no new features during migration); cleanup of old system       |
+| Risks and mitigations        | No       | Behavioral drift, performance regression, scope creep with mitigations             |
 
 Specific quality checks beyond the standard lens:
 
@@ -213,12 +219,21 @@ Specific quality checks beyond the standard lens:
 - **No team transition plan for the legacy maintainers**: Major; the people who understand the legacy are critical during migration
 - **No diff testing or shadow traffic plan**: Major; behavioral parity must be measurable
 
-Output header: `# Modernization Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
+Record each quality-check hit once, in the lens step that owns it (Missing factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong or Under-specified content -> Per-Factor Findings). A check's preset severity overrides the advisory cap - the cap binds only completeness-status findings.
+
+Output header: `# Modernization Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the plan Output template below. In this mode the Review Self-Check replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+
+- [ ] All factors audited with Required marking applied; verdict driven by highest severity
+- [ ] Quality-check hits recorded once in the correct lens step and numbered
+- [ ] Every finding cites a plan section; non-Approve verdict lists required changes
 
 ## Output
 
 ```markdown
 # Legacy System Modernization Plan
+
+Scope (from Section 0): {modernize-only | modernize now, decompose later (deferred)}
+Assumptions: {stated assumptions from partial inputs}
 
 ## 1. Legacy System Assessment
 
@@ -272,11 +287,12 @@ Recommendation: Modernize / Incremental improvement / Defer
 
 ## 5. Migration Plan
 
-### Migration Approach: {Strangler Fig / Branch by Abstraction / Parallel Run}
+### Migration Approach: {Strangler Fig / Branch by Abstraction / Parallel Run / Component Extraction / hybrid - name the combination}
 
 ### Phase 1: {Capability}
 
 What: {capability being migrated}
+Prerequisites: {what must be in place}
 Behavioral verification: {how to confirm parity}
 Traffic migration: {routing strategy}
 Data migration: {how data moves}

@@ -8,7 +8,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. If a delegated skill is unavailable (standalone use), apply the step's inline instructions on judgment and say so in the output.
 
 # Migration Plan
 
@@ -92,7 +92,7 @@ Use skill: `backend-db-indexing` for index creation lock behavior.
 | Operation                         | PostgreSQL                                      | MySQL/MariaDB                     |
 | --------------------------------- | ----------------------------------------------- | --------------------------------- |
 | ADD COLUMN (nullable, no default) | Brief lock - safe                               | Brief (InnoDB)                    |
-| ADD COLUMN with DEFAULT (PG11+)   | Metadata only - safe                            | Full table copy on older versions |
+| ADD COLUMN with DEFAULT (PG11+)   | Metadata only - safe                            | INSTANT on 8.0.12+ (any position 8.0.29+); table copy older |
 | ADD COLUMN with DEFAULT (< PG11)  | Full table rewrite - dangerous                  | -                                 |
 | CREATE INDEX                      | Full scan; use CONCURRENTLY (cannot run in txn) | Online DDL in InnoDB              |
 | ADD CONSTRAINT NOT NULL / FK      | Full table scan to validate                     | Full table copy                   |
@@ -100,11 +100,11 @@ Use skill: `backend-db-indexing` for index creation lock behavior.
 
 For each migration step, state:
 
-- Lock type acquired (ACCESS SHARE, SHARE, EXCLUSIVE, ACCESS EXCLUSIVE)
+- Lock type acquired, in the engine's vocabulary (PostgreSQL: ACCESS SHARE through ACCESS EXCLUSIVE; MySQL: metadata lock + InnoDB row locks - and note that an MDL request queues behind long-running queries and blocks everything behind it)
 - Estimated lock duration relative to table size
 - Whether a concurrent/online alternative exists
 
-Flag any step with an exclusive lock on a table larger than estimated threshold (default: 1M rows = high risk).
+Flag any step whose exclusive lock duration scales with table size on tables larger than the threshold (default 1M rows = high risk). Brief metadata-only exclusive locks (e.g., ADD COLUMN) pass, but set a `lock_timeout` with retry so they cannot queue behind long transactions. The reference table shows the naive form of each operation; Step 3's sequences avoid the worst cases (e.g., NOT NULL via validated CHECK is metadata-only).
 
 ### Step 3 - Expand-Contract Strategy
 
@@ -116,9 +116,11 @@ Apply to any change that is not purely additive (renames, type changes, table sp
 | **Migrate** | New populated and validated | Read flips to new after verification |
 | **Contract** | Drop old in separate deploy | Stop dual-write; verify no readers/writers reference old |
 
-**PostgreSQL: adding NOT NULL on large tables.** Validating with a full scan acquires ACCESS EXCLUSIVE. Use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking) whenever validating against >1M rows. Sequence: nullable column -> dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT`.
+**PostgreSQL: adding NOT NULL on large tables.** Validating with a full scan acquires ACCESS EXCLUSIVE. Use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking) whenever validating against >1M rows. Sequence: nullable column -> dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT` -> `SET NOT NULL` (metadata-only on PG12+ once a validated CHECK exists) -> drop the redundant CHECK. On a rename, relax the old column's NOT NULL before stopping dual-write.
 
-Skip expand-contract only when: the change is purely additive, or downtime is explicitly acceptable and scheduled.
+**MySQL/InnoDB:** prefer `ALGORITHM=INPLACE` or `INSTANT` and verify support per operation and server version; use pt-osc/gh-ost for operations that force a table rebuild. Multi-table `RENAME TABLE` is atomic - use it for cutovers. Unique-index builds fail on duplicate data - dedupe first (Step 4). For table splits, bake new constraints into the new table's DDL (no online constraint add needed) and keep the old table write-complete until cutover so a reverse RENAME is lossless.
+
+Name the dual-write mechanism and its failure modes in the Expand phase's "Application changes required" field: trigger-based survives mixed app versions during rolling deploys; application-level is simpler to remove. Renames and table swaps carry dependent objects - inventory indexes, FKs, views, triggers, RLS policies, grants, and replication publications in the pre-conditions. Build secondary indexes after bulk backfill (denser, faster) unless reads need them during dual-write. Skip expand-contract only when: the change is purely additive, or downtime is explicitly acceptable and scheduled.
 
 Use skill: `ops-release-safety` for deploy ordering across phases.
 Use skill: `dependency-impact-analysis` for multi-service ordering.
@@ -127,7 +129,9 @@ Use skill: `dependency-impact-analysis` for multi-service ordering.
 
 If data migration is required (existing rows need updating), plan the backfill operation.
 
-**Never run unbounded UPDATE on a production table.** Always batch by ID range or cursor, 100-1000 rows per batch, in a loop until 0 rows updated.
+**Never run unbounded UPDATE on a production table.** Always batch by ID range or cursor, 100-1000 rows per batch, in a loop until 0 rows updated. (The batch and rate numbers below are for in-place UPDATEs; bulk copies via batched INSERT...SELECT size by measured rows/sec on a staging slice, and any job over ~1 hour needs checkpointed resume.)
+
+Backfills that prepare a constraint include data repair: define the survivor policy for duplicates (keep newest, merge, quarantine) and run dedupe as a batched, idempotent job before adding a unique constraint. Throttle backfills on replica lag (default: pause above 10s, resume below 5s); the same throttle protects logical-replication/CDC consumers - backfill WAL floods their slots, so watch slot lag, WAL retention (`max_slot_wal_keep_size` or equivalent), and how schema changes appear in decoded events. Ongoing jobs a migration creates (e.g., a permanent archiver for a hot/cold split) are in scope as a final-phase deliverable.
 
 Estimate for the backfill plan:
 
@@ -170,7 +174,7 @@ Use skill: `review-blast-radius` to assess the impact if the rollback itself fai
 
 ### Step 6 - Execution Plan
 
-For each step: action, pre-condition, lock acquired with duration, step-level rollback, concrete validation that confirms success before the next step. Vague validation ("verify the migration ran") is not acceptable on Blocker-risk steps.
+For each step: action, pre-condition, lock acquired with duration, step-level rollback, concrete validation that confirms success before the next step - every phase's step table carries all five columns. Vague validation ("verify the migration ran") is not acceptable on Blocker-risk steps. This step renders as the per-phase step tables in the Output; the three template phases are canonical, not exhaustive - insert additional deploy phases (e.g., a per-service read/write flip between Migrate and Contract) and renumber. State which steps run as migration-tool versions vs runbook/background jobs, and flag tool constraints (e.g., `CREATE INDEX CONCURRENTLY` cannot run in a transaction - mark the migration non-transactional in Flyway/Alembic; MySQL DDL is non-transactional regardless - one statement per golang-migrate version, plan dirty-state recovery).
 
 ## Review Mode
 
@@ -178,20 +182,24 @@ When reviewing a migration plan authored by someone else:
 
 Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Supply this migration-plan-specific factor list to the completeness audit:
+Reviews run the full lens (standalone formatting defaults; the lens's skip rule covers steps that do not fit). This skill's planning content (classification, lock reference, backfill discipline) is valid review evidence - cite it as the bar the plan must meet. Mark structurally inapplicable factors N/A with one line (e.g., no phase could ever need backup restore) - N/A is not Missing.
 
-| Factor                          | What "Present" Looks Like                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------- |
-| Change classification           | Schema change type and risk level per sub-change; compound migrations sequenced |
-| Lock risk per operation         | Lock type, estimated duration, concurrent/online alternative when applicable    |
-| Expand-contract strategy        | Three phases for non-additive changes, or explicit justification for skipping   |
-| Application backward compat     | Code stays compatible with old AND new schema during transition                 |
-| Backfill plan                   | Batched (100-1000 rows), idempotent, re-run safe, monitored                     |
-| Rollback per phase              | What rolls back, time estimate, data safety, trigger condition                  |
-| Backup-restore dependency       | Phases requiring backup restore explicitly flagged as go/no-go                  |
-| Multi-service coordination      | Deploy order across services with schema compatibility requirements             |
-| Per-step pre-conditions         | What must be true before each step runs                                         |
-| Per-step validation             | Concrete, checkable confirmation that the step succeeded                        |
+Supply this migration-plan-specific factor list to the completeness audit. Required = Blocker-eligible when Missing; advisory (No) factors cap at Major:
+
+| Factor                          | Required | What "Present" Looks Like                                                       |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------- |
+| Change classification           | Yes      | Schema change type and risk level per sub-change; compound migrations sequenced |
+| Lock risk per operation         | Yes      | Lock type, estimated duration, concurrent/online alternative when applicable    |
+| Expand-contract strategy        | Yes      | Three phases for non-additive changes, or explicit justification for skipping   |
+| Application backward compat     | Yes      | Code stays compatible with old AND new schema during transition                 |
+| Backfill plan                   | Yes*     | Batched (100-1000 rows), idempotent, re-run safe, monitored                     |
+| Rollback per phase              | Yes      | What rolls back, time estimate, data safety, trigger condition                  |
+| Backup-restore dependency       | No       | Phases requiring backup restore explicitly flagged as go/no-go                  |
+| Multi-service coordination      | No       | Deploy order across services and non-app consumers with compat requirements     |
+| Per-step pre-conditions         | No       | What must be true before each step runs                                         |
+| Per-step validation             | No       | Concrete, checkable confirmation that the step succeeded                        |
+
+*Required only when existing rows need updating.
 
 Specific quality checks beyond the standard lens:
 
@@ -202,7 +210,13 @@ Specific quality checks beyond the standard lens:
 - **Vague validation ("verify migration ran")**: Minor; promote to Major when on a Blocker-risk step
 - **Lock duration estimated relative to table size for high-risk operations**: required - absence is Major
 
-Output header: `# Migration Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
+A check fires when a compound change is non-additive in aggregate even if each sub-change looks additive alone (column add + backfill + same-deploy read flip is not "single phase additive"), and when content is concretely stated but wrong - wrongness promotes, vagueness does not excuse. Record each quality-check hit once, in the lens step that owns it (Missing factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong or Under-specified content -> Per-Factor Findings), numbered with the lens's F-numbers. A check's preset severity overrides the advisory cap - the cap binds only completeness-status findings.
+
+Output header: `# Migration Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the plan Output template below. In this mode the Review Self-Check replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+
+- [ ] All factors audited with Required marking applied; verdict driven by highest severity
+- [ ] Quality-check hits recorded once in the correct lens step and numbered
+- [ ] Every finding cites a plan step; non-Approve verdict lists required changes
 
 ## Output
 
@@ -211,11 +225,13 @@ Output header: `# Migration Plan Review` and use the output structure defined in
 
 ## Change Classification
 
-- **Type**: [schema change type]
-- **Risk level**: Low / Medium / High / Very High
+- **Type**: [schema change type; for compound migrations list sub-changes: {sub-change | type | risk | depends on}]
+- **Risk level**: Low / Medium / High / Very High (highest sub-change)
 - **Zero-downtime strategy**: Expand-contract / Single-phase additive / Scheduled downtime
 - **Backfill required**: Yes / No
 - **Multi-service coordination required**: Yes / No
+
+Phases may split per service or sub-change (Phase 2a, 2b) when independent deploys or separate gates are needed.
 
 ## Lock Risk Assessment
 
@@ -249,8 +265,8 @@ Output header: `# Migration Plan Review` and use the output structure defined in
 - Estimated duration: [estimate]
 - Idempotent: Yes / No
 
-| Step | Action | Pre-condition | Rollback | Validation |
-| ---- | ------ | ------------- | -------- | ---------- |
+| Step | Action | Pre-condition | Lock Risk | Rollback | Validation |
+| ---- | ------ | ------------- | --------- | -------- | ---------- |
 
 ### Phase 3: Contract -- [deploy N+2 or later]
 
@@ -283,11 +299,11 @@ Output header: `# Migration Plan Review` and use the output structure defined in
 
 ## Multi-Service Coordination
 
-[Only if applicable]
+[Only if applicable. Non-app consumers (ETL jobs, BI dashboards, replication slots) get rows too - their "deploy" is a query/config update.]
 
-| Service | Deploy Order | Schema Compatibility Requirement |
-| ------- | ------------ | -------------------------------- |
-| Name    | Before/After | What it requires                 |
+| Service / Consumer | Deploy Order | Schema Compatibility Requirement |
+| ------------------ | ------------ | -------------------------------- |
+| Name               | Before/After | What it requires                 |
 
 ## Assumptions
 

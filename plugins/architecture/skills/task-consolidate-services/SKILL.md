@@ -8,7 +8,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
 
 # Microservices Consolidation -- Staff Edition
 
@@ -44,9 +44,11 @@ For inputs naming only 1-3 specific services, skip the full landscape map and fo
 
 | Depth      | When to Use                                           | Sections Produced                                     |
 | ---------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `quick`    | Initial assessment, "which services should merge?"    | Smell detection + merge candidates + top risks (skips Section 1; uses provided inventory directly) |
+| `quick`    | Initial assessment, "which services should merge?"    | Sections 2, 3, top risks from 7, Staff-Level Summary + Assumptions (skips Section 1; uses provided inventory directly) |
 | `standard` | Default -- consolidation plan for leadership sign-off | All 7 sections                                        |
 | `deep`     | Large service mesh, multi-team ownership              | All 7 sections + dependency deep-dive (per merge group, transitive call/data dependencies) + latency model (synchronous call chain p50/p99 per critical path) |
+
+At `quick`, keep template numbering, omit unproduced sections silently, and waive their Self-Check items; "top risks" means the 3-5 highest-severity rows of Section 7. At `standard`, state the expected hop reduction qualitatively per merge group in Section 3; the quantitative latency model is deep-only.
 
 ## Rules
 
@@ -90,7 +92,7 @@ Per smell detected: services affected, evidence (call frequency, deploy coupling
 Use skill: `system-boundary-design` for boundary redesign.
 Use skill: `tradeoff-analysis` for merge vs keep-separate decisions on borderline candidates.
 
-Per merge group: which services combine, resulting service (name, responsibility, data ownership), smells resolved, boundary improvement vs. the split. Also list services that stay separate and why. Produce a merge map:
+Per merge group: which services combine, resulting service (name, responsibility, data ownership), smells resolved, boundary improvement vs. the split. Also list services that stay separate and why. Borderline candidates may resolve to "keep separate, fix the boundary" - record them under Services That Stay Separate with the boundary fix named. Cross-language/runtime merges mean rewriting the smaller service: account for rewrite cost and behavioral fidelity, or co-locate both behind one API as a modular service instead of merging code. Produce a merge map (if nothing merges, one row: "none - boundary fixes only"):
 
 | Merge Group      | Services Merging             | Resulting Service | Justification               |
 | ---------------- | ---------------------------- | ----------------- | --------------------------- |
@@ -133,6 +135,8 @@ Determine merge order:
 | Team readiness  | Same team owns both services        | Different teams, coordination needed  |
 | Consumer impact | Internal consumers only             | External API consumers                |
 
+When merge-order criteria conflict for one group (e.g., coupling says first, blast radius says later), blast radius wins: split the group across phases, merging low-risk members first. Decommission and cleanup steps belong inside their merge group's phase, not as separate phases.
+
 Per phase, the Output template specifies the fields: what merges, prerequisites, API migration, data migration, routing, verification, rollback. Every phase needs a rollback path - undoing a merge is harder than undoing a split.
 
 ### 6. Consumer Migration [standard/deep only]
@@ -163,20 +167,22 @@ When reviewing a service-consolidation plan authored by someone else:
 
 Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Supply this consolidation-plan-specific factor list to the completeness audit:
+Depth levels apply to plan authoring only; reviews run the full lens (standalone formatting defaults; the lens's skip rule covers steps that do not fit). This skill's planning content (smell table, merge-order criteria, data-migration case split) is valid review evidence - cite it as the bar the plan must meet.
 
-| Factor                       | What "Present" Looks Like                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| Service landscape            | Inventory, dependency graph, operational overhead justifying consolidation      |
-| Over-split detection         | Specific signals (sync-call count, shared DB, single team owns many services)   |
-| Merge candidates             | Named target service(s) with bounded-context rationale, not just "merge these"  |
-| Target boundaries            | Post-merge module boundaries explicit; data ownership clear                     |
-| Data reunification           | How separate DBs/schemas merge; foreign-key reintroduction; backfill plan       |
-| Consumer migration           | Old service endpoints kept compatible or migration window stated per consumer   |
-| Consolidation phases         | Stepwise: code merge -> data merge -> endpoint deprecation -> decommission      |
-| Backward compatibility       | Old endpoints, events, and contracts remain consumable during transition        |
-| Risks and mitigations        | Re-coupling risk, blast-radius expansion, single-deploy risk with mitigations   |
-| Rollback per phase           | Each phase has a rollback path; data un-merging is feasible or flagged          |
+Supply this consolidation-plan-specific factor list to the completeness audit. Required = Blocker-eligible when Missing; advisory (No) factors cap at Major:
+
+| Factor                       | Required | What "Present" Looks Like                                                       |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------- |
+| Service landscape            | No       | Inventory, dependency graph, operational overhead justifying consolidation      |
+| Over-split detection         | Yes      | Specific signals (sync-call count, shared DB, single team owns many services)   |
+| Merge candidates             | Yes      | Named target service(s) with bounded-context rationale, not just "merge these"  |
+| Target boundaries            | Yes      | Post-merge module boundaries explicit; data ownership clear                     |
+| Data reunification           | Yes      | How separate DBs/schemas merge; foreign-key reintroduction; backfill plan       |
+| Consumer migration           | Yes      | Old service endpoints kept compatible or migration window stated per consumer   |
+| Consolidation phases         | No       | Stepwise: code merge -> data merge -> endpoint deprecation -> decommission      |
+| Backward compatibility       | No       | Old endpoints, events, and contracts remain consumable during transition        |
+| Risks and mitigations        | No       | Re-coupling risk, blast-radius expansion, single-deploy risk with mitigations   |
+| Rollback per phase           | Yes      | Each phase has a rollback path; data un-merging is feasible or flagged          |
 
 Specific quality checks beyond the standard lens:
 
@@ -186,7 +192,13 @@ Specific quality checks beyond the standard lens:
 - **Recombined service that exceeds the team's deploy/operate capacity**: Major
 - **Endpoints unified but data stays sharded across the old service DBs**: Major; partial consolidation often worse than none
 
-Output header: `# Consolidation Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the New Plan output template.
+Record each quality-check hit once, in the lens step that owns it (Missing factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong or Under-specified content -> Per-Factor Findings). A check's preset severity overrides the advisory cap - the cap binds only completeness-status findings. A check fires when its substance is met even if the plan's wording differs (a big-bang code merge with a deferred data merge still fires the big-bang check).
+
+Output header: `# Consolidation Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the plan Output template below. In this mode the Review Self-Check replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+
+- [ ] All factors audited with Required marking applied; verdict driven by highest severity
+- [ ] Quality-check hits recorded once in the correct lens step and numbered
+- [ ] Every finding cites a plan section; non-Approve verdict lists required changes
 
 ## Output
 
@@ -247,6 +259,7 @@ What: {services merging}
 Prerequisites: {what must be in place}
 API migration: {facade / versioned / direct}
 Data migration: {strategy}
+Routing: {how consumer traffic shifts during the merge}
 Verification: {success criteria}
 Rollback: {revert plan}
 Duration: {estimate}
@@ -265,15 +278,19 @@ Duration: {estimate}
 
 ## 7. Risks and Mitigations
 
-| Risk                  | Blast Radius | Mitigation              | Rollback           |
-| --------------------- | ------------ | ----------------------- | ------------------ |
-| Blast radius increase | Wide         | Bulkhead within service | Re-split if needed |
+| Risk                  | Blast Radius (Narrow/Moderate/Wide) | Mitigation              | Rollback           |
+| --------------------- | ----------------------------------- | ----------------------- | ------------------ |
+| Blast radius increase | Wide                                | Bulkhead within service | Re-split if needed |
+
+## Assumptions
+
+- {assumption stated due to partial input}
 
 ## Staff-Level Summary
 
 - Consolidation feasibility: Recommended / Conditional / Not recommended
 - Services before: {N} -> Services after: {N}
-- Estimated duration: {quarters}
+- Estimated duration: {weeks or quarters; match the Phase Summary when produced, else N/A}
 - Highest-risk merge: {which and why}
 - Operational cost reduction: {qualitative or quantitative}
 ```

@@ -8,7 +8,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` - the detected stack shapes Section 3 (caching, resiliency), Section 7 (capacity), and Section 11 (API conventions); when no project context exists, use the stack stated in the request. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
 
 # Architecture Design -- Staff Edition
 
@@ -25,11 +25,11 @@ Staff-level architecture design or review prioritizing boundaries, failure conta
 
 ## Mode Detection
 
-If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
+If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored artifact (design doc, proposal, spec) with no authoring request is Review Mode even without a verb; the user's own rough sketch or idea inside the request is input to New Design, not an artifact to review. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
 
 ### New Design Mode
 
-Run all 10 sections per the Design Model below.
+Run the Design Model sections the chosen depth produces (all 12 at `standard`).
 
 ### Review Mode
 
@@ -39,26 +39,33 @@ For a single proposal:
 
 Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
 
-Supply this design-specific factor list to the completeness audit:
+Supply this design-specific factor list to the completeness audit. Required factors carry no severity cap (Missing - or critically under-specified - required factors may be Blockers); advisory (No) factors cap at Major:
 
-| Factor                                | What "Present" Looks Like                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Problem framing and NFRs              | Business objective, measurable NFRs, explicit constraints                                  |
-| System context and boundaries         | Upstream/downstream, module boundaries, data ownership                                     |
-| Component design                      | Named components, responsibilities, failure modes                                          |
-| Data and consistency model            | Per-boundary consistency, partial-failure behavior, recovery                               |
-| Failure mode analysis                 | Per-component failure modes, blast radius, mitigations                                     |
-| Observability plan                    | Metrics, logs, traces, alerts, SLO candidates                                              |
-| Performance and capacity              | Traffic estimates, bottlenecks, scaling model                                              |
-| Deployment and rollback               | Rollout approach, migration order, rollback trigger                                        |
-| Trade-off analysis                    | Alternatives considered, why rejected, reversibility                                       |
-| Guardrails                            | Architecture constraints implementation must follow                                        |
-| API contracts                         | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat |
-| Diagrams                              | At minimum a C4 Container; sequence/data-flow/deployment when relevant                     |
+| Factor                        | Required | What "Present" Looks Like                                                                  |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| Problem framing and NFRs      | Yes      | Business objective, measurable NFRs, explicit constraints                                  |
+| System context and boundaries | Yes      | Upstream/downstream, module boundaries, data ownership                                     |
+| Component design              | No       | Named components, responsibilities, failure modes                                          |
+| Data and consistency model    | Yes      | Per-boundary consistency, partial-failure behavior, recovery                               |
+| Failure mode analysis         | Yes      | Per-component failure modes, blast radius, mitigations                                     |
+| Security and auth             | Yes      | Authn/authz model, secret/key rotation, rate limiting and abuse controls                   |
+| Observability plan            | No       | Metrics, logs, traces, alerts, SLO candidates                                              |
+| Performance and capacity      | No       | Traffic estimates, bottlenecks, scaling model                                              |
+| Deployment and rollback       | Yes      | Rollout approach, migration order, rollback trigger                                        |
+| Trade-off analysis            | No       | Alternatives considered, why rejected, reversibility                                       |
+| Guardrails                    | No       | Architecture constraints implementation must follow                                       |
+| API contracts                 | Yes*     | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat |
+| Diagrams                      | No       | At minimum a C4 Container; sequence/data-flow/deployment when relevant                     |
 
-For per-factor depth, compose the same atomic skills as authoring mode (see Design Model sections 2-12) to evaluate quality of what the author wrote. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets, not "flag-only-if-gap."
+*Required only when the design exposes an API surface.
 
-Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens`. Skip the New Design output template.
+The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 2, 3, and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit.
+
+Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full"). Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+
+- [ ] All factors audited with Required marking applied; verdict driven by highest severity
+- [ ] Specific quality findings recorded once in the correct lens step and numbered
+- [ ] Every finding cites a doc section; non-Approve verdict lists required changes
 
 ## Inputs
 
@@ -84,6 +91,8 @@ Handle partial inputs gracefully. When input is missing, state assumptions expli
 
 Default: `standard`. Use `quick` for "rough architecture" or "is this direction sensible"; use `deep` for cross-team changes, capacity-sensitive systems, or post-incident redesigns. Deep adds the Capacity Model, Failure Simulation, and Evolution Notes sections in the Output template plus extra diagrams beyond C4 Container.
 
+The Staff-Level Summary ships at every depth. At `quick`, produce template Sections 1, 2, and 9 (top 1-2 decisions only) plus the Staff-Level Summary, keeping template numbering; omit the rest silently and waive their Self-Check items. For "is this direction sensible?" inputs, place a one-line verdict immediately below the H1: **Direction: {Sensible | Sensible with changes | Reconsider}** - {reason}. The Self-Check is applied internally, never emitted in the deliverable.
+
 ## Rules
 
 - Boundaries and data ownership first, not classes or endpoints
@@ -91,7 +100,7 @@ Default: `standard`. Use `quick` for "rough architecture" or "is this direction 
 - Every significant decision states at least one trade-off and one rejected alternative with reason
 - No implementation code; describe components, responsibilities, and interactions
 - Make conflicting constraints explicit; propose resolution options
-- Omit empty sections; output is strategic, concise, high-signal
+- Omit empty sections silently - except Sections 11 and 12, which require an explicit skip one-liner at the depths where they run; output is strategic, concise, high-signal
 
 ## Design Model
 
@@ -154,7 +163,7 @@ Use skill: `architecture-capacity` for throughput estimation and bottleneck iden
 Use skill: `backend-caching` for cache-based load reduction.
 Use skill: `backend-db-indexing` for query performance.
 
-The bottleneck (component saturating first) and the scaling model are non-optional. Name cost drivers when scaling has material cost implications.
+The bottleneck (component saturating first) and the scaling model are non-optional. At `standard`, coarse numbers suffice: stated or derived RPS (steady and peak) and the binding bottleneck with its approximate saturation point; the per-component capacity model is deep-only. Name cost drivers when scaling has material cost implications.
 
 ### 8. Deployment and Release Strategy
 
@@ -167,23 +176,23 @@ The rollback trigger (specific condition, not "if something goes wrong") and the
 
 Use skill: `tradeoff-analysis` for structured decision documentation.
 
-For each significant decision: chosen option, alternatives, reasons, what is sacrificed, reversibility, risk-of-being-wrong. Flag High-reversibility-cost decisions (messaging broker, consistency model, primary storage, async vs sync) under a **Significant Decisions** subsection and require an ADR before implementation.
+For each significant decision: chosen option, alternatives, reasons, what is sacrificed, reversibility, risk-of-being-wrong. Flag High-reversibility-cost decisions (messaging broker, consistency model, primary storage, async vs sync) under a **Significant Decisions** subsection - a bullet list referencing the decision tables, not duplicates of them - and require an ADR before implementation.
 
 ### 10. Guardrails and Review Guidance
 
 Use skill: `architecture-guardrail` for boundary enforcement rules.
 Use skill: `ops-engineering-governance` for evolving existing guardrails.
 
-Each constraint must be concrete and detectable: rule, what violation looks like, consequence. "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
+Each constraint must be concrete and detectable: rule, what violation looks like, consequence - at least one guardrail per module (per Module Boundaries row). "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
 
 ### 11. API Contracts
 
-Run for any design exposing APIs to external clients, services, or browsers. Skip with a one-liner only if there is no HTTP surface (e.g., "Internal event-driven worker").
+Run at `standard` and `deep` for any design exposing APIs to external clients, services, or browsers. Skip with a one-liner only if there is no HTTP surface (e.g., "Internal event-driven worker").
 
 Use skill: `backend-api-guidelines` for HTTP semantics, naming, pagination, RFC 9457 errors, idempotency, multi-tenancy patterns.
 Use skill: `ops-backward-compatibility` for versioning and breaking-change classification.
 
-The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone.
+The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for HTTP endpoints - Communication Model rows for HTTP interactions write "see Section 11" in the Idempotent cell; the column itself covers non-HTTP interactions (events, queues). Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
 
 ### 12. Diagrams
 
@@ -374,13 +383,13 @@ _Skip with a one-liner if no public API surface._
 
 ### Multi-Tenancy
 
-Pattern: [Path segment | JWT claim | Header X-Tenant-ID]
+Pattern: [Path segment | JWT claim | Header X-Tenant-ID | Single-tenant - N/A]
 Isolation enforced at: [middleware / repository / both]
 Rate limits: per-tenant or global
 
 ### Error Format
 
-RFC 9457 problem details; example examples for 400, 404, 409, 422.
+RFC 9457 problem details; example bodies for the error statuses the API actually returns (typically 400, 404, 409, 422).
 
 ### Backward Compatibility (if modifying existing API)
 
