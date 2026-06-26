@@ -40,9 +40,9 @@ Use skill: `behavioral-principles`.
 Use skill: `codemap-schema` (guide shape). Use skill: `codemap-query` (traversal patterns, freshness check).
 
 1. Missing `.codemap/graph.json` -> suggest `/task-codemap` and stop.
-2. Missing `.codemap/guides.json` -> offer `--rebuild` and stop.
+2. Missing `.codemap/guides.json` -> if `--rebuild` was passed, proceed (that's the remedy); otherwise offer `--rebuild` and stop.
 3. Run the `codemap-query` freshness check; warn but proceed when stale.
-4. Load both.
+4. Load the graph (and guides.json when present).
 
 ### Step 3 - Branch on Mode
 
@@ -64,12 +64,13 @@ Run: /task-codemap-guide --guide <name> [--depth basic|full]
 1. Apply the guide-selection heuristic from `codemap-build-pipeline` Phase 7.
 2. Write `.codemap/guides.json`.
 3. `Use skill: codemap-validate`.
-4. Print a one-line summary (`Rebuilt N guides, total M steps`).
+4. Print a one-line summary (`Rebuilt N guides, total M steps`). If **zero** guides qualified (e.g., a library with no entry/api/data/domain layers), that is a valid outcome - say so explicitly: `No guides generated - this graph has no request/auth/data/entry flow to walk. Use /task-codemap-ask for targeted questions.`
 
 **Play (default)** - continue to Step 4:
 
 1. If `--guide` missing, list guides and ask the user to pick.
-2. Look up the guide; apply `--depth` override if given.
+2. Look up the guide. Unknown name -> list the available guides and stop. Apply `--depth` override if given.
+3. Verify each step's `nodeId` still resolves in the freshly loaded graph (guides.json can lag a rebuild). Drop steps whose node was deleted, renumber `order`, and note `(N steps dropped - guide stale, run --rebuild)`.
 
 ### Step 4 - Render Steps
 
@@ -86,11 +87,11 @@ For each step, follow the depth contract:
 ```
 
 **Full:** basic plus
-- Source excerpt from `node.lineRange` (cap 40 lines per step).
-- "Incoming" line: top 3 callers/importers.
+- Source excerpt from `node.lineRange` (cap 40 lines per step, from the start of the range). Abstract nodes (`table`, `concept`, `module`, `service`) have no `lineRange` - render the node `summary` in place of an excerpt; don't fabricate source.
+- "Incoming" line: top 3 callers/importers, ranked by edge weight then ascending node ID (per `codemap-query` cap rule).
 - "Outgoing" line: next-step calls/imports.
 
-Full mode without source excerpts is just basic with extra words - skip it or include excerpts.
+A guide authored `basic` has a basic-sized step set (5-8). `--depth full` over it adds excerpts/context to those steps but keeps the count - label the header `(full render of a basic guide, N steps)` so it isn't mistaken for a 10-20 step full guide. For a true full guide, run `--rebuild`.
 
 ### Step 5 - Render Summary + Footer
 
@@ -136,20 +137,20 @@ Append the freshness footer per Output Format.
 - Connected concepts: `JWT`, `Session`
 ```
 
-Stale variant of the freshness footer:
+Stale variant of the freshness footer (use the canonical `codemap-query` format verbatim):
 
 ```
-> Codemap built from commit abc1234. Run `/task-codemap` for current data.
+> Codemap built from commit abc1234 (12 commits behind HEAD, 9 days old). Run `/task-codemap` to sync.
 ```
 
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: graph + guides loaded; freshness warning when stale
-- [ ] Step 3: mode branched correctly; `--list` / `--rebuild` exited; play mode proceeded
-- [ ] Step 4: depth contract honored; full mode includes source excerpts within the 40-line cap
+- [ ] Step 3: mode branched correctly; `--list` / `--rebuild` exited (0-guides outcome stated when applicable); unknown guide name listed available; play-path step nodeIds re-verified against the graph
+- [ ] Step 4: depth contract honored; full mode includes excerpts (or summary for abstract nodes) within the 40-line cap; basic-guide full render labeled
 - [ ] Step 5: guide summary + freshness footer included
-- [ ] All cited node IDs resolve in the current graph
+- [ ] All cited node IDs resolve in the current graph (stale steps dropped in Step 3.3)
 
 ## Avoid
 

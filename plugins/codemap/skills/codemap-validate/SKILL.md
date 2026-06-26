@@ -22,8 +22,9 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 ## Rules
 
 1. **Errors block persistence; warnings log only.**
-2. **Exhaustive single pass.** Run every check; do not short-circuit - users want the full report.
-3. **Report only, no fixing.** Auto-repair belongs in merge, not here.
+2. **Exhaustive single pass.** Run every check against every node/edge; do not short-circuit. A node failing several checks produces one finding per failed check (independent predicates), not one combined finding.
+3. **One finding per check.** Each check emits at most one entry, aggregating all affected entities in `details` (e.g., W5 lists all empty layers in one finding). So `errors.length`/`warnings.length` and the summary counts are deterministic regardless of graph size.
+4. **Report only, no fixing.** Auto-repair belongs in merge, not here.
 
 ## Patterns
 
@@ -37,7 +38,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | 4 | Every node `type` is in the 12-value enum | `type: "method"` |
 | 5 | Node IDs globally unique | Two nodes with `id: file:src/auth/login.ts` |
 | 6 | Node ID format matches `<type>:<path>[:<name>]` | `id: login` |
-| 7 | Code nodes reference an existing file node | `function:src/foo.ts:bar` exists but `file:src/foo.ts` does not |
+| 7 | Code nodes (`function`, `class`) reference an existing file node | `function:src/foo.ts:bar` exists but `file:src/foo.ts` does not |
 | 8 | Every edge `type` is in the 14-value enum | `type: "invokes"` |
 | 9 | Edge `source` and `target` reference existing nodes | Edge to a node not in `nodes` |
 | 10 | `lineRange` is `[start, end]`, `start <= end`, `start >= 1` | `[42, 10]` |
@@ -55,7 +56,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | W2 | Self-edges (`source == target`) | Recursion not flagged |
 | W3 | Duplicate edges (`source, target, type`) | Same import twice |
 | W4 | >25% of nodes have no `layer` | Layout doesn't match patterns table |
-| W5 | A layer has 0 nodes (use `stack.stackType` to skip benign cases: frontend-only -> `data` may be empty; library -> `entry`/`api` may be empty) | `data` empty in a fullstack |
+| W5 | A layer has 0 nodes (skip when `nodes` < 50 - small/partial graphs won't populate all 6 layers; use `stack.stackType` to skip benign cases: frontend-only -> `data` may be empty; library -> `entry`/`api` may be empty) | `data` empty in a fullstack |
 | W6 | Hub node with > 50 outgoing edges | God-module candidate |
 | W7 | 0 `document` nodes despite `README.md` at root | Docs not analyzed |
 | W8 | 0 `tested_by` edges when stack-detect found tests | Tests not linked |

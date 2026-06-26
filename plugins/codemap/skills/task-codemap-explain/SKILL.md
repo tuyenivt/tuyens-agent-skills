@@ -65,6 +65,8 @@ Use skill: `stack-detect`. Load the stack's `*-code-explain` atomic when present
 | Vue | `vue-code-explain` |
 | Angular | `angular-code-explain` |
 
+Unlisted/uninstalled stack (e.g., Elixir/Phoenix, or the stack plugin isn't installed) -> no atomic loads. Render section 10 from general framework knowledge, or `none` if there's nothing stack-specific to flag. Never omit the section silently.
+
 ### Step 5 - Collect Context from Graph
 
 For the resolved node N, gather these slices via `codemap-query` patterns:
@@ -73,13 +75,15 @@ For the resolved node N, gather these slices via `codemap-query` patterns:
 | --- | --- |
 | Identity | `N.id`, `type`, `filePath`, `lineRange`, `summary`, `tags`, `complexity`, `layer` |
 | Containers / Members | `belongs_to` up / down |
-| Callers (top 10) | Incoming `calls` by fan-in |
-| Callees (top 10) | Outgoing `calls` by fan-out |
+| Callers (top 10) | Incoming `calls`, ranked by edge weight then ascending node ID |
+| Callees (top 10) | Outgoing `calls`, same ranking |
 | File imports / importers | `imports` from / into `file:<N.filePath>` |
-| Data touchpoints | Outgoing `reads_from` / `writes_to` |
+| Data touchpoints | Outgoing `reads_from` / `writes_to` (tables, schemas, configs, resources) |
 | Tests | Incoming `tested_by` |
-| Related concepts | `concept` nodes within 2 hops |
-| Blast radius | Reverse BFS depth 3 over `calls`/`imports`/`uses`; count by layer |
+| Related concepts | `concept` nodes reachable within 2 undirected hops |
+| Blast radius | `codemap-query` "Impact of change" pattern (reverse BFS depth 3 over `imports`/`calls`/`uses`/`routes_to`); count by layer |
+
+When N is a **file** node, Callers/Callees aggregate over its member functions/classes. When N is **abstract** (`concept`, `service`, `table`) with no `filePath`/`lineRange`, skip What-it-does/Inputs-outputs/source-read and render from edges + `summary`.
 
 Use skill: `architecture-guardrail` for layer-violation participation. Use skill: `complexity-review` for function/class complexity grading.
 
@@ -200,10 +204,10 @@ Low blast radius.
 - Consider transactional pairing for `audit.Append` + token issuance.
 ```
 
-Stale variant of the freshness footer:
+Stale variant of the freshness footer (use the canonical `codemap-query` format verbatim):
 
 ```
-> Codemap built from commit abc1234. Run `/task-codemap` for current data.
+> Codemap built from commit abc1234 (12 commits behind HEAD, 9 days old). Run `/task-codemap` to sync.
 ```
 
 ## Self-Check
@@ -211,8 +215,8 @@ Stale variant of the freshness footer:
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: graph loaded; freshness warning; fallback to `task-code-explain` when graph missing
 - [ ] Step 3: target resolved; ambiguous matches surfaced; zero-match fallback offered
-- [ ] Step 4: `stack-detect` ran; stack-specific atomic loaded when available
-- [ ] Step 5: graph context collected per the section list
+- [ ] Step 4: `stack-detect` ran; stack-specific atomic loaded when available; section 10 from general knowledge or `none` when no atomic
+- [ ] Step 5: graph context collected per the section list; file/abstract node kinds handled; blast radius via `codemap-query` impact pattern
 - [ ] Step 6: targeted reads to `lineRange`; total <= 3 files
 - [ ] Step 7: all populated sections rendered; empty sections marked `none`; freshness footer present
 - [ ] No invented callers, callees, or tests

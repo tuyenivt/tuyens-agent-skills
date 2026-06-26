@@ -22,8 +22,9 @@ Any consumer workflow that reads `.codemap/graph.json`. Not for producers - that
 1. **Load once per workflow.** Read `graph.json` at workflow start; do not re-read between queries.
 2. **Edges are directed.** Incoming = scan all edges for `target == nodeId`; outgoing for `source`.
 3. **Resolve before traversing.** Map user-named entities to node IDs first, query in ID space, render back to file paths and line ranges.
-4. **Cap large results.** Queries returning >50 nodes get summarized top-N by weight or frequency, never dumped.
+4. **Cap large results.** Queries returning >50 nodes get summarized top-N, ranked by edge `weight` then call-frequency; **break ties by ascending node ID** so the same 50 surface every run. Never dump the full set.
 5. **Don't fabricate.** Empty result -> say so. Never invent nodes the graph doesn't contain.
+6. **BFS uses a visited set.** Mark nodes on first visit; never re-expand. Graphs have cycles (mutual recursion, DI loops) - without dedup, traversal loops or double-counts.
 
 ## Patterns
 
@@ -49,6 +50,7 @@ Multiple matches -> list with type+path, ask user to pick. Zero matches -> sugge
 | Functions in file F | `filePath == F`, `type == function`. |
 | Endpoints | `type == endpoint`. Group by HTTP verb when present in `name`. |
 | Tables touched by handler H | BFS from H via `calls`/`uses` until hitting `reads_from`/`writes_to`. Cap depth 4 (handler -> service -> repository -> table + 1 hop slack). |
+| Handlers that touch table T | Reverse: collect functions with a direct `reads_from`/`writes_to` edge to T, then reverse-BFS over `calls`/`routes_to` to the entry/api node that reaches each. Cap depth 4. Filter to `writes_to` when the question says "write". |
 | Layer of X | `node.layer`. If absent, walk `belongs_to` up to a layered ancestor. |
 | Nodes in layer L | Filter `nodes` by `layer == L`. |
 | Fan-in / fan-out for X | Count distinct edge sources/targets. |
@@ -71,19 +73,20 @@ Edges in-scope = both endpoints in-scope. Cross-boundary edges answer "what depe
 
 ### Freshness check (shared by all consumers)
 
-Run once per workflow before answering. Compare `.codemap/meta.json` against the working tree:
+Run once per workflow before answering. Compare `.codemap/meta.json` against the working tree. If `meta.json` is missing, stop and tell the user to run `/task-codemap`. Otherwise the graph is `stale` if **either** trigger holds (evaluate both - the footer reports whichever fired):
 
-| Signal | Action |
+| Stale trigger | |
 | --- | --- |
-| `meta.json` missing | Stop; tell the user to run `/task-codemap`. |
-| `meta.json#gitCommitHash != git rev-parse HEAD` and HEAD is >10 commits ahead | Warn `stale`; proceed; append stale footer. |
-| `meta.json#builtAt` older than 7 days | Warn `stale`; proceed; append stale footer. |
-| Otherwise | `in-sync`; proceed without warning. |
+| `meta.json#gitCommitHash != git rev-parse HEAD` and HEAD is >10 commits ahead | warn `stale`, proceed, append footer |
+| `meta.json#builtAt` older than 7 days | warn `stale`, proceed, append footer |
 
-Footer format:
+Neither -> `in-sync`; proceed without warning.
+
+Footer format (the single canonical form; consumers render it verbatim). Keep only the parenthetical clauses whose trigger fired - both, or just one:
 
 ```
 > Codemap built from commit <hash> (<N> commits behind HEAD, <D> days old). Run `/task-codemap` to sync.
+> Codemap built from commit <hash> (<D> days old). Run `/task-codemap` to sync.
 ```
 
 Workflows reference this rule instead of re-defining it.

@@ -30,9 +30,10 @@ Composed into `task-codemap` for both modes (full build and sync). Pure-LLM extr
 ## Rules
 
 1. **Pure-LLM extraction.** No tree-sitter, no Node, no language parsers. Python does deterministic work; LLM does semantics.
-2. **Sub-agent parallelism.** Up to 5 concurrent via `Agent`. Each gets a batch manifest, returns `{ nodes, edges }`.
+2. **Sub-agent parallelism.** At most 5 `Agent` calls run concurrently; dispatch batches in waves of 5 until all are done. Each gets a batch manifest, returns `{ nodes, edges }`.
 3. **Persistence is gated by validate.** Errors block; warnings don't.
 4. **Batches cap at 25 files or 800 KB total.** Larger degrades extraction quality.
+5. **Abort thresholds.** Scan finding 0 files -> stop with a friendly message, write nothing. More than half the batches landing in `*-error.json` after retries -> abort without persisting; the partial graph is worse than the prior one.
 
 ## Patterns
 
@@ -42,7 +43,7 @@ Composed into `task-codemap` for both modes (full build and sync). Pure-LLM extr
 python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/scan.py" --root <path> [--scope <dir>] --output .codemap/intermediate/scan.json
 ```
 
-Pass `--scope` when the caller passed it (or when `.codemap/config.json#scope` is set - the CLI flag wins). Prefers `git ls-files`, falls back to `os.walk`. Applies `.codemapignore` patterns and (in `os.walk` fallback) `.gitignore` patterns. Default ignore set drops `.git`, `node_modules`, etc. Files larger than `--max-file-bytes` (default 500 KB) are skipped and listed under `manifest.oversize`. Classifies language by extension. Output:
+Pass `--scope` when the caller passed it (or when `.codemap/config.json#scope` is set - the CLI flag wins). Prefers `git ls-files`, falls back to `os.walk`. Applies `.codemapignore` patterns and (in `os.walk` fallback) `.gitignore` patterns. Default ignore set drops `.git`, `node_modules`, etc. Files larger than `--max-file-bytes` (default 500 KB) are skipped and listed under `oversize`. Classifies language by extension. Output:
 
 ```json
 {
@@ -51,6 +52,7 @@ Pass `--scope` when the caller passed it (or when `.codemap/config.json#scope` i
   "files": [
     { "path": "src/auth/login.ts", "language": "TypeScript", "lines": 142, "bytes": 4821, "category": "code" }
   ],
+  "oversize": ["assets/bundle.min.js"],
   "totalFiles": 412,
   "skipped": 18
 }
@@ -64,7 +66,7 @@ Pass `--scope` when the caller passed it (or when `.codemap/config.json#scope` i
 python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/batch.py" --scan .codemap/intermediate/scan.json --output .codemap/intermediate/batches.json
 ```
 
-Groups files into ~25-file batches, prioritizing same-directory cohesion. Oversized files (over the scan `--max-file-bytes` cap, default 500 KB) are already excluded by Phase 1 and listed under `scan.json#oversize`; the build report surfaces the count under skipped stats. Output:
+Groups files into ~25-file batches, prioritizing same-directory cohesion. Oversized files are already excluded upstream (Phase 1, `scan.json#oversize`); the build report surfaces the count under skipped stats. Output:
 
 ```json
 {
@@ -77,7 +79,7 @@ Groups files into ~25-file batches, prioritizing same-directory cohesion. Oversi
 
 ### Phase 3 - Parallel analysis
 
-Dispatch one `Agent` per batch, **5 concurrent waves**. Each sub-agent receives the manifest + schema rules, reads each file, emits `{ nodes, edges }` to `.codemap/intermediate/batch-<index>.json`.
+Dispatch one `Agent` per batch, **at most 5 concurrent** (waves of 5 until done, per Rule 2). Each sub-agent receives the manifest + schema rules, reads each file, emits `{ nodes, edges }` to `.codemap/intermediate/batch-<index>.json`.
 
 Interpolate `{{stack}}` from the cached `stack-detect` output (e.g., `"Go 1.25 / Gin"`) and pair with stack-specific recognition hints from `codemap-layer-patterns`. The skeleton is calibrated - extend, do not freehand-rewrite.
 
@@ -135,11 +137,10 @@ Batch manifest: <files list>
 
 ### Phase 3 retry policy
 
-After the first wave of sub-agent dispatches completes, for each expected `batch-<INDEX>.json`:
+Budget: **3 attempts max per batch** (1 initial + 2 retries). For each expected `batch-<INDEX>.json`:
 
-1. **Missing or empty:** retry once with the same prompt.
-2. **JSON parse fails on the retry output:** retry once more.
-3. **Still missing/malformed:** write `batch-<INDEX>-error.json` with `{ "error": "<reason>", "index": <INDEX>, "files": [...] }` and continue. Do not abort the build.
+1. Missing, empty, or unparseable JSON -> re-dispatch the same prompt.
+2. Still missing/empty/unparseable after attempt 3 -> write `batch-<INDEX>-error.json` with `{ "error": "<reason>", "index": <INDEX>, "files": [...] }` and continue (subject to the Rule 5 abort threshold).
 
 Surface the dropped batch count in the Phase 3 log line and in the build report's Pipeline table.
 
@@ -149,7 +150,7 @@ Surface the dropped batch count in the Phase 3 log line and in the build report'
 python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/merge.py" --batches-dir .codemap/intermediate --output .codemap/intermediate/merged.json
 ```
 
-Concatenates nodes (dup IDs: first wins, dup logged), dedupes edges by `(source, target, type)`, drops edges with missing endpoints. Tolerant: malformed batch files are skipped with a warning rather than aborting the merge. Reports `{ nodes, edges, droppedDanglingEdges, duplicateNodeIds, malformedBatches, errorBatches }`. When any non-zero, writes `intermediate/merge-log.json` enumerating the affected files.
+Concatenates nodes in ascending batch-index order (dup IDs: lowest batch index wins, dup logged - deterministic regardless of sub-agent completion order), dedupes edges by `(source, target, type)`, drops edges with missing endpoints. Tolerant: malformed batch files are skipped with a warning rather than aborting the merge. Reports `{ nodes, edges, droppedDanglingEdges, duplicateNodeIds, malformedBatches, errorBatches }`. When any non-zero, writes `intermediate/merge-log.json` enumerating the affected files.
 
 ### Phase 5 - Cross-batch repair
 
@@ -204,7 +205,7 @@ Load `codemap-validate`. All 15 errors + 8 warnings against `merged.json` + `gui
 1. `merged.json` -> `.codemap/graph.json`.
 2. Write `.codemap/guides.json`, `.codemap/meta.json`.
 3. `python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/fingerprint.py" --mode compute --scan .codemap/intermediate/scan.json --output .codemap/fingerprints.json`.
-4. Delete `.codemap/intermediate/`.
+4. Delete `.codemap/intermediate/` **only after** steps 1-3 all succeed - it is the sole recovery source if persist fails midway.
 
 ## Output Format
 

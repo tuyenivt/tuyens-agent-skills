@@ -23,7 +23,7 @@ Per-file structural fingerprint used by `task-codemap` sync mode to decide which
 1. **Hash content + path only.** No timestamps, no inode, no git blob SHA. Deterministic across machines and re-clones.
 2. **File-level granularity.** Sub-file change detection is out of scope - belongs in a future schema version, not producer-side improvisation.
 3. **Whitespace-insensitive.** Trim trailing whitespace per line and collapse blank-line runs before hashing - reformats don't trigger re-analysis.
-4. **Detect renames by hash.** During `fingerprint.py --mode compare`, a hash present in the previous set but missing in the current set, paired with a new path whose hash matches, is emitted as a rename rather than a delete + add. The refresh then updates `filePath` on existing nodes rather than rebuilding.
+4. **Detect renames by hash.** During `fingerprint.py --mode compare`, a hash present in the previous set but missing in the current set, paired with a new path whose hash matches, is emitted as a rename rather than a delete + add. The refresh rewrites the path on existing nodes - both `filePath` and the path segment embedded in `id` (e.g., `function:src/old.ts:foo` -> `function:src/new.ts:foo`) - plus every edge endpoint that references those IDs. No re-analysis. If two files share a hash (empty stubs, identical headers), the pairing is ambiguous - fall back to delete + add for those.
 5. **Schema-version gate.** `fingerprints.json#schemaVersion` mismatch forces full rebuild.
 
 ## Patterns
@@ -71,26 +71,28 @@ Per-file structural fingerprint used by `task-codemap` sync mode to decide which
 
 ### Refresh decision matrix
 
-| Signal | Action |
+Rows are **not** mutually exclusive - a real change-set mixes added/modified/deleted/renamed. Evaluate top-down and take the **first** matching row; that row governs, and a mixed change-set folds the per-list handling (drop deleted, rewrite renamed) into the incremental pass.
+
+| Signal (first match wins) | Action |
 | --- | --- |
+| `schemaVersion` mismatch, or churn >= 30% | Escalate to full rebuild. |
 | All lists empty, HEAD matches `meta.json` | No-op. |
 | All lists empty, HEAD stale | Update `meta.json#gitCommitHash` only. |
-| `added` or `modified` non-empty, churn < 30% | Incremental: re-analyze affected, splice. |
-| Churn >= 30%, or `schemaVersion` mismatch | Escalate to full rebuild. |
-| `deleted` only | Drop nodes + edges; no analysis pass. |
-| `renamed` only | Rewrite `filePath` and IDs; no analysis pass. |
+| `deleted` and/or `renamed` only (no `added`/`modified`) | Drop deleted nodes+edges; rewrite renamed paths/IDs; no analysis pass. |
+| Any `added`/`modified` (alone or mixed with deleted/renamed) | Incremental: re-analyze added+modified, splice, and within the splice also drop deleted and rewrite renamed. |
 
-The 30% threshold avoids incremental becoming slower than rebuild.
+**Churn** = changed files / total scanned files, where changed = added + modified + renamed + deleted. The 30% threshold avoids incremental becoming slower than rebuild.
 
 ### Splice semantics (incremental refresh)
 
-1. Drop nodes whose `filePath` is in `modified` or `deleted`.
-2. Drop edges where either endpoint is a dropped node.
-3. Analyze `added` + `modified` -> new nodes/edges.
-4. Merge into the existing graph.
-5. Re-validate. Dangling cross-file edges from un-touched files to dropped nodes are acceptable - analysis of `modified` files reproduces them.
-6. Layer-assign **only new nodes**. Preserve existing assignments.
-7. Guides do **not** regenerate on sync - run `task-codemap-guide --rebuild` or `task-codemap --full`.
+1. Rewrite `renamed` nodes in place (Rule 4): update `filePath`, the path in `id`, and referring edge endpoints. These nodes are not dropped or re-analyzed.
+2. Drop nodes whose `filePath` is in `modified` or `deleted`.
+3. Drop edges where either endpoint is a dropped node.
+4. Analyze `added` + `modified` -> new nodes/edges.
+5. Merge into the existing graph.
+6. Re-validate. Dangling cross-file edges from un-touched files to dropped nodes are acceptable - analysis of `modified` files reproduces them. If validation errors, keep the prior graph and escalate to full rebuild.
+7. Layer-assign **only new nodes**. Preserve existing assignments (including renamed nodes).
+8. Guides do **not** regenerate on sync - run `task-codemap-guide --rebuild` or `task-codemap --full`.
 
 ## Output Format
 
@@ -99,8 +101,10 @@ Hashing logic lives in `task-codemap/fingerprint.py`. Change-set JSON is produce
 End-of-refresh log line:
 
 ```
-Refreshed graph: +N added, M modified, R renamed, D deleted, U unchanged (X% churn)
+Refreshed graph: +N added, M modified, R renamed, D deleted, U unchanged (X.X% churn)
 ```
+
+Churn renders to one decimal place.
 
 ## Avoid
 

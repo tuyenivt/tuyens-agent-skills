@@ -51,7 +51,7 @@ Use skill: `behavioral-principles`.
 
 | Condition | Mode |
 | --- | --- |
-| `--validate-only` | Validate-only -> Step 7. |
+| `--validate-only` | Validate-only -> Step 6 (validate existing `graph.json`), then Step 7 (report only). |
 | `--full`, or any of `graph.json` / `meta.json` / `fingerprints.json` missing | Full build -> Step 4. |
 | All three present | Sync -> Step 5. |
 
@@ -84,10 +84,12 @@ Use skill: `codemap-fingerprints` for the change-set contract, the refresh decis
 
 Apply the refresh decision matrix from `codemap-fingerprints`:
 
-- **Escalation rows** (`schemaVersionChanged: true`, churn >= 30% or `--rebuild-on` override): switch to Step 4, surface a note.
-- **No-op rows**: jump to Step 7.
+Churn = changed files / total scanned files, where changed = added + modified + renamed + deleted. The threshold defaults to 30%; `--rebuild-on <ratio>` overrides it.
+
+- **Escalation rows** (`schemaVersionChanged: true`, or churn >= threshold): switch to Step 4 and run a full rebuild. Escalation is an intended response to high churn, so do not re-prompt for overwrite confirmation (that gate is only for an explicit `--full`); instead surface a note that sync escalated, and Step 7 renders the **full build report** with the escalation note in its header.
+- **No-op rows**: jump to Step 7. When HEAD drifted but no files changed, update `meta.json#gitCommitHash` before reporting.
 - **Splice-only rows** (`deleted` only, `renamed` only): apply splice semantics from `codemap-fingerprints`, skip 5c.
-- **Analysis rows** (`added`, `modified`, or `--force`): run 5c then 5d.
+- **Mixed rows** (any of `added`/`modified` combined with `deleted`/`renamed`, or `--force`): run 5c then 5d; the splice in 5d also drops `deleted` nodes and rewrites `renamed` paths/IDs per `codemap-fingerprints`.
 
 #### 5c. Analyze Changed Files
 
@@ -103,6 +105,7 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 
 - Full build: validation already ran inside pipeline phase 8. Skip.
 - Sync: validate the spliced graph. **On error, keep the prior `graph.json` intact** - do not overwrite.
+- Validate-only: validate the existing `graph.json` (+ `guides.json` when present), promote the report to `.codemap/validation.json`, then go to Step 7 to render the validate-only report. No persistence of the graph.
 
 ### Step 7 - Persist & Report
 
@@ -191,14 +194,27 @@ Added: 3, Modified: 18, Renamed: 2, Deleted: 1, Unchanged: 388
 **Graph commit:** abc1234 | **Last built:** 2026-05-30T11:42:00Z
 ```
 
+### Validate-only
+
+```markdown
+# Codemap Validation Report
+
+**Mode:** validate-only (existing graph; nothing rebuilt)
+**Graph commit:** abc1234 | **Validated at:** 2026-05-30T12:00:00Z
+
+(Render `codemap-validate` Output Format: errors grouped by check, warnings, stats, and the outcome summary line.)
+
+Report written to `.codemap/validation.json`.
+```
+
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: Python/git preflight passed; `intermediate/` exists and empty
-- [ ] Step 3: mode decided; `--full` overwrite confirmed
-- [ ] Step 4: stack detected, ignore initialized, scope resolved, pipeline ran (full path)
-- [ ] Step 5: change-set computed; decision matrix applied; analysis only on changed files (sync path)
-- [ ] Step 6: validation ran; on error the prior `graph.json` was preserved
+- [ ] Step 3: mode decided; `--full` overwrite confirmed; `--validate-only` routed through Step 6
+- [ ] Step 4: stack detected, ignore initialized, scope resolved, pipeline ran (full path or sync escalation)
+- [ ] Step 5: change-set computed; decision matrix applied; analysis only on changed files (non-escalated sync path)
+- [ ] Step 6: validation ran (sync, escalation-skip, or validate-only); on error the prior `graph.json` was preserved; `validation.json` promoted when `--validate-only`
 - [ ] Step 7: persisted (unless `--validate-only`); auto-update config + caveat surfaced when flag set; correct report rendered
 
 ## Avoid

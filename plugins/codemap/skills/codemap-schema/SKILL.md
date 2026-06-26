@@ -60,7 +60,7 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 
 | Field | Required for | Notes |
 | --- | --- | --- |
-| `id` | all | Format `<type>:<path>[:<name>]`. Stable across rebuilds. |
+| `id` | all | File-backed: `<type>:<path>:<name>` (e.g., `function:src/auth/login.ts:authenticate`). Abstract (`concept`, `service`, `table`, `schema`, `resource`, `endpoint`) have no path: `<type>:<name>` (e.g., `table:orders`, `endpoint:POST /orders`). Stable across rebuilds. |
 | `type` | all | One of the 12 node types. |
 | `name` | all | Symbol for code; basename for files; short label for abstract nodes. |
 | `filePath` | code, config, document | Repo-relative, forward slashes. Omit for `concept`/`service`/`schema`. |
@@ -112,7 +112,17 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 | `documents` | Document target describes source |
 | `configures` | Config source configures target |
 | `routes_to` | Endpoint source routes to handler target |
-| `belongs_to` | Source is owned by container target (function -> file, file -> module) |
+| `belongs_to` | Source is owned by container target (function -> file, file -> module; method -> class) |
+
+### Producer conventions
+
+Resolve the recurring extraction decisions consistently:
+
+- **Route handler = two nodes.** Emit an `endpoint` (the route) and the `function` (the handler), linked by `routes_to`. Both may carry the same `lineRange`.
+- **File nodes are mandatory.** Every file with extracted members gets a `file` node; members `belongs_to` it. `imports` edges connect `file:<path>` IDs, never bare paths (bare-path endpoints dangle and are dropped at merge).
+- **DTOs/validation models** (Pydantic, Zod, DTO classes) are `schema` nodes, not `class`. They omit `layer`.
+- **`reads_from`/`writes_to`** target any data node: `table`, `schema`, `config`, or `resource` (queue/topic publish counts as `writes_to`).
+- **`complexity`** (code nodes): `simple` < 30 lines, `moderate` 30-150, `complex` > 150 or deeply nested.
 
 ### Layer enum (6)
 

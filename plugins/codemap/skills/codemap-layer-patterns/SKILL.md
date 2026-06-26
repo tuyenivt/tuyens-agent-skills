@@ -1,6 +1,6 @@
 ---
 name: codemap-layer-patterns
-description: Directory-to-layer mapping for codemap (entry/api/service/domain/data/infra) across 12 stacks (Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, Next, Nuxt, Angular).
+description: Directory-to-layer mapping for codemap (entry/api/service/domain/data/infra) across 11 stacks - Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, React, Vue, Angular.
 metadata:
   category: core
   tags: [codemap, layers, architecture, mapping]
@@ -17,14 +17,21 @@ Heuristic mapping from directory naming to the 6 codemap layers (`entry`, `api`,
 ## When to Use
 
 - During the layer-assignment phase of `codemap-build-pipeline`.
-- Match by **deepest matching directory segment** in the file path, not by file name or extension.
 
 ## Rules
 
-1. **Patterns are hints.** Defer to project convention when it contradicts the table.
-2. **No match -> omit `layer`.** Better undefined than guessed.
-3. **Files inherit to their members.** Functions and classes get the same layer as their file.
-4. **Frontend trees collapse.** SPAs rarely use all 6 layers - expect `data` empty unless the app has a server runtime.
+**Precedence** (apply in order; first that resolves wins):
+
+1. **Stack-specific exception** keyed on an exact filename or path (e.g., `routes.rb`, `*Application.java`, `main.py`). These override the directory map.
+2. **Deepest matching directory segment** in the cross-stack map.
+3. **Content axis** for ambiguous model dirs only - the rich-vs-anemic rule below.
+
+Then:
+
+4. **Patterns are hints.** Defer to explicit project convention when it contradicts the table.
+5. **No match -> omit `layer`.** Better undefined than guessed.
+6. **Files inherit to their members.** Functions and classes get the same layer as their file.
+7. **Frontend trees collapse.** SPAs rarely use all 6 layers - expect `data` empty unless the app has a server runtime.
 
 ## Patterns
 
@@ -39,7 +46,9 @@ Heuristic mapping from directory naming to the 6 codemap layers (`entry`, `api`,
 | `repositories/`, `repos/`, `dao/`, `persistence/`, `db/`, `database/`, `migrations/`, `mappers/`, `orm/` | `data` |
 | `infrastructure/`, `infra/`, `adapters/`, `gateways/`, `clients/`, `integrations/`, `messaging/`, `queues/`, `pubsub/`, `observability/`, `logging/`, `metrics/`, `tracing/`, `config/` | `infra` |
 
-Singular and plural forms are equivalent (`controller/` = `controllers/`).
+Singular and plural forms are equivalent (`controller/` = `controllers/`). Stems count too (`migrate/` = `migrations/`).
+
+**Presentational UI** (`components/`, `views/`, `widgets/`, `ui/`) maps to `api` - it is the frontend's presentation surface. Route-level pages/components already map to `entry`/`api` per the stack blocks; leaf components join them at `api` rather than falling to `unassigned`.
 
 ### Rich-vs-anemic model rule (shared)
 
