@@ -45,8 +45,7 @@ services:
       type: sibling-path | git | image
       path: <string>          # type=sibling-path
       url: <git-url>          # type=git
-      ref: <git-ref>          # type=git, required
-      ref: <image-ref>        # type=image, must include @sha256:
+      ref: <string>           # type=git -> git-ref (required); type=image -> image-ref (must include @sha256:)
     ports: [<int>, ...]       # default empty (no host mapping)
     healthcheck:
       cmd: [<string>, ...]    # docker compose healthcheck syntax

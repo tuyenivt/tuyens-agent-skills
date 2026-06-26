@@ -107,6 +107,7 @@ For each `services.yaml#services[].role == backend`, emit one candidate:
 ```yaml
 - name: skeleton-<backend>-write
   kind: api
+  owner: "<USER FILL: owner-team>"   # required per Rule 9; writer rejects on accept until filled
   entryPoint: { service: <backend>, action: "<USER FILL: an externally-triggerable write>" }
   hops: []                       # USER FILL
   observableOutcome: []          # USER FILL

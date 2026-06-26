@@ -21,7 +21,7 @@ Catches accessibility regressions at scenario time: missing labels, contrast vio
 1. **Browser flows only.** API flows can not be a11y-scanned. The skill aborts emission when applied to `kind: api`.
 2. **WCAG 2.1 AA is the default rule set.** Configurable per flow via `a11y: { tags: [wcag21a, wcag21aa] }`. Stricter sets (`best-practice`, `experimental`) opt-in only.
 3. **Disable list per flow,** not global. A flow with a known false positive declares `a11y: { disable: ["color-contrast"] }`; the disabled rule names appear in the report so they cannot rot.
-4. **One scan per `@smoke`** after the golden-path assertion succeeds. Negative-path tests do not scan (they're asserting on the error surface, which is allowed to be ugly).
+4. **Scan `@smoke` only,** after the golden-path assertion succeeds - one scan per UI-state-change observable (see Patterns). Negative-path tests do not scan (they're asserting on the error surface, which is allowed to be ugly).
 5. **Failure is a `real-bug` verdict.** A11y regressions ship to real users; they are not flake.
 
 ## Patterns

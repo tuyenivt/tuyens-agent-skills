@@ -99,9 +99,8 @@ doppler run --project regression --config ci -- /path/to/regression-runner
 ```ts
 // .regression/fixtures/secrets.ts - committed, no values.
 const ALLOWED = new Set([
-  "STRIPE_TEST_KEY",
+  "STRIPE_API_KEY",      // mirror .env.example exactly (same name shown there)
   "SENDGRID_TEST_KEY",
-  // mirror .env.example exactly
 ]);
 
 export const requireSecret = (name: string): string => {
@@ -116,7 +115,7 @@ export const requireSecret = (name: string): string => {
 };
 ```
 
-Scenarios call `requireSecret("STRIPE_TEST_KEY")`, never `process.env.STRIPE_TEST_KEY`. The allowed-list guard makes a typo / new env reference loud at scenario start instead of silent undefined.
+Scenarios call `requireSecret("STRIPE_API_KEY")`, never `process.env.STRIPE_API_KEY`. The allowed-list guard makes a typo / new env reference loud at scenario start instead of silent undefined.
 
 ### Detection of accidentally-committed sensitive values
 

@@ -167,7 +167,7 @@ Discover writes these on first scaffold; they are committed in `.regression/scri
   screenshots/        # on failure (config)
 ```
 
-Exit code: `0` = green, Playwright's non-zero = test failures, `3` = seed failure, `137` = SIGKILL. Teardown runs regardless.
+Exit code: `0` = green, Playwright's non-zero = test failures, `3` = seed failure, `23` = clock skew (propagated from `regression-preflight`'s post-`up` check; that skill owns 20-23), `137` = SIGKILL. Teardown runs regardless.
 
 ## Avoid
 

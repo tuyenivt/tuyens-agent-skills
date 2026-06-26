@@ -22,7 +22,7 @@ user-invocable: false
    - **Layer 1 (capture-time):** Playwright `mask` selectors hide DOM nodes from screenshots / videos / traces. The user marks sensitive elements with `data-sensitive` (or a project-specific attribute); the global config masks them.
    - **Layer 2 (post-capture):** pattern-based redaction sweeps `compose.log`, `line.log`, and trace JSON for known patterns (emails not under `*.acme-test.local`, card-number Luhn matches, JWT bodies). Replaces with `[REDACTED:<kind>]`.
 2. **Allowlist of test-domain identifiers.** Anything matching `*@acme-test.local` (per `regression-data-isolation` convention) or `acme-test-*` IS allowed - it is by definition synthetic. The pattern list is configurable per project.
-3. **Fail-open by default for missing patterns.** A pattern the regex did not catch slips through; the user is the gate. The skill writes a one-line summary into `summary.md`: `Scrub: N email matches, N card-number matches, N JWT body matches redacted.` So the user sees the volume of what was caught.
+3. **Fail-open by default for missing patterns.** A pattern the regex did not catch slips through; the user is the gate. The skill records per-kind redaction counts to `.scrub-summary.json`; `regression-report-format` renders them as one line under `## Run Metadata` (see Summary integration) so the user sees the volume of what was caught.
 4. **Scrub before teardown,** not after. Volumes go with `down -v`; if we scrub after, we have to write into the artifact dir from outside the container - which means the unscrubbed bytes already left.
 5. **Never modify the source DOM.** Layer 1 masks at capture time via Playwright; it does not edit page content.
 

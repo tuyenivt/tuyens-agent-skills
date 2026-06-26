@@ -44,13 +44,13 @@ Drops the silent-out-of-scope deflection from `regression-scenario-author` Rule 
 ```yaml
 - name: order-emits-event
   kind: api
-  sinks: [orders-events]
-  archetype:
-    sinks:
-      orders-events:
-        predicate: "msg.type === 'OrderCreated' && msg.orderId === orderId"
-        pollTimeoutMs: 15000
+  sinks:                          # map form when a sink carries per-flow config
+    orders-events:
+      predicate: "msg.type === 'OrderCreated' && msg.orderId === orderId"
+      pollTimeoutMs: 15000        # overrides the 15s default (Rule 3)
 ```
+
+`sinks:` accepts a list of names (`sinks: [orders-events]`, see When to Use) when no per-flow config is needed, or a map keyed by sink name when a flow overrides `predicate` / `pollTimeoutMs`. Rule 3's `sinks.<name>.pollTimeoutMs` path refers to the map form.
 
 ### Scenario emission - Kafka example
 

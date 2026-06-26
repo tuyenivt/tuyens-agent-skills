@@ -108,7 +108,7 @@ Timestamp is ISO-8601 UTC (deterministic across re-runs). Use `_missing_` for ab
 
 **Workspace:** .regression/
 **Generated at:** {ISO-8601 UTC}
-**Group-by:** {flow-kind | service | none}
+**Group-by:** {flow-kind | service | owner | none}
 
 ## Summary
 
@@ -122,7 +122,7 @@ Timestamp is ISO-8601 UTC (deterministic across re-runs). Use `_missing_` for ab
 
 ## Flows
 
-### {group label - e.g. "Kind: mixed", "Service: gateway-api", "All flows"}
+### {group label - e.g. "Kind: mixed", "Service: gateway-api", "Owner: checkout-squad", "All flows"}
 
 #### {flow-name}
 

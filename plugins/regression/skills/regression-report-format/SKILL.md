@@ -69,6 +69,7 @@ First trace: traces/order-checkout-happy.zip
 - Infra: 0
 - Seed-drift: 0
 - Skipped: 0
+- BudgetViolations: 1
 - Duration: 3m 47s
 
 ## Per-Flow

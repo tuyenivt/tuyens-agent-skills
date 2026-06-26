@@ -22,7 +22,7 @@ Catches latency regressions that pass functional assertions but blow past the us
 2. **Always opt-in via `checks: [perf]`.** Presence of `latencyBudget:` alone is data, not a gate.
 3. **OVER status does not change the exit code.** `task-regression` exit is `real-bug` only (Rule 5 of `regression-report-format`). OVER surfaces in `## Counts` as `BudgetViolations: N` for CI greps.
 4. **Per-step budget syntax.** `latencyBudget: { p95Ms: <total>, steps: { <step-name>: <ms> } }` - total is required when `checks: [perf]`, per-step optional.
-5. **Cold-cache warning.** First run on a fresh runner skews high; the writer emits `_warm-up_` in Status for the first 3 runs of a given runner / image set.
+5. **Cold-cache warning.** First runs on a fresh runner skew high; the writer emits `_warm-up_` in Status while there are fewer than 4 prior runs for a given runner / image set (see Rolling window).
 
 ## Patterns
 
