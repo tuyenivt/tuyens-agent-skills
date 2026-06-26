@@ -48,7 +48,7 @@ If `analysis.md` exists, default to **amend** (preserve audit trail); offer repl
 
 - **Spec**: AC IDs (regex `^AC\d+`), NFR categories with targets, user story IDs, out-of-scope items, unresolved `spec-review` blockers.
 - **Plan**: components, API endpoints, data-model entities, NFR mapping rows, alternatives (rejected items become out-of-scope mirror), all section headers and anchors.
-- **Tasks**: tasks with `Type`, `Satisfies`, `Depends on`, `Status`; dependency graph.
+- **Tasks**: tasks with `Type`, `Satisfies`, `Deps`, `Status`; dependency graph.
 
 If unresolved `spec-review` blockers exist on `spec.md`, stop and recommend `task-spec-clarify`.
 
@@ -71,8 +71,8 @@ A `Satisfies` value is valid iff it matches `AC<n>`, `NFR-<category>`, or the li
 | R3  | reverse    | No task touches a spec out-of-scope item or a plan-rejected alternative                          | blocker  |
 | R4  | reverse    | No plan element contradicts another                                                              | major    |
 | S1  | structural | Tasks dependency graph is acyclic                                                                | blocker  |
-| S2  | structural | Every `Depends on:` task ID exists in `tasks.md`                                                  | blocker  |
-| S3  | structural | At least one task has `Depends on: none`                                                          | major    |
+| S2  | structural | Every `Deps:` task ID exists in `tasks.md`                                                        | blocker  |
+| S3  | structural | At least one task has `Deps: none`                                                                | major    |
 | S4  | structural | Every cross-artifact reference resolves to a Markdown heading slug, task ID (`T\d+`), AC ID (`AC\d+`), or `NFR-<category>` in the target file | major |
 
 **Finding record** (every field required):

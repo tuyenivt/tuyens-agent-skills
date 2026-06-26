@@ -58,7 +58,7 @@ If `.specs/<slug>/checklists/` exists, count `- [ ]` vs `- [x]/[X]` per file and
 | Flag             | Pick                                                            |
 | ---------------- | --------------------------------------------------------------- |
 | `--task <ID>`    | That task. Error if missing or already `[x]`. If a different task is `[~]`, warn and continue; the resume breadcrumb survives. |
-| (default)        | First `[~]`; else first `[ ]` whose `Depends on:` are all `[x]`. |
+| (default)        | First `[~]`; else first `[ ]` whose `Deps:` are all `[x]`. |
 
 If nothing is selectable, list unfinished deps and stop. If every task is `[x]`, exit. On `--dry-run`, print and exit.
 
@@ -87,7 +87,7 @@ By task `Type`:
 | --------------------------- | ------------------------------------------------------------------------------------- |
 | `data` / `service` / `api`  | Backend workflow per the table above.                                                 |
 | `frontend`                  | Frontend workflow per the table above.                                                |
-| `validation`                | Same workflow as the task it validates (read `Validates:` field, else last `Depends on:` entry). |
+| `validation`                | Same workflow as the task it validates: read its `Validates:` field (else last `Deps:` entry), look up that task's `Type` in this table. |
 | `ops`                       | No workflow. Run inline with `ops-*` and per-stack atomics.                           |
 
 For fullstack ambiguity, read `plan.md`'s API contract section. If still ambiguous, ask once and remember for the rest of the run. If the detected stack has no implement workflow, stop and surface the gap.
@@ -96,23 +96,24 @@ For fullstack ambiguity, read `plan.md`'s API contract section. If still ambiguo
 
 Mutate `tasks.md`: `[ ]` -> `[~]` (first run on this task) OR append a `resume` Revisions entry (re-run on an existing `[~]`). Never append a duplicate `[~]` entry. Bump `Last updated`.
 
-Revisions entry format:
+Every Revisions entry (here and in STEP 11) uses this grammar:
 ```
-<YYYY-MM-DD HH:MM>: T<NN> -> [~] (start | resume) (by task-spec-implement)
+<YYYY-MM-DD HH:MM>: T<NN> -> <marker> (<reason>) (by task-spec-implement)
 ```
+Here `<marker>` is `[~]` and `<reason>` is `start` or `resume`.
 
 ### STEP 10 - Delegate
 
-If `Type: ops`, execute inline using the listed `ops-*` skills; do not invoke a delegate workflow. Otherwise, invoke the chosen workflow with `--spec <slug>`, passing only the task's slice (description, `Satisfies`, `Depends on`) and the relevant `plan.md` sections - not the full `tasks.md`. The delegate's spec-aware behavior is contracted by `spec-aware-preamble`. Surface clarifying questions to the user; do not answer for them.
+If `Type: ops`, execute inline using the listed `ops-*` skills; do not invoke a delegate workflow. Otherwise, invoke the chosen workflow with `--spec <slug>`, passing only the task's slice (description, `Satisfies`, `Deps`) and the relevant `plan.md` sections - not the full `tasks.md`. The delegate's spec-aware behavior is contracted by `spec-aware-preamble`. Surface clarifying questions to the user; do not answer for them.
 
 ### STEP 11 - Mark Outcome
 
 | Outcome              | Action                                                                              |
 | -------------------- | ----------------------------------------------------------------------------------- |
-| Clean completion     | `[~]` -> `[x]`. Revisions: `T<NN> -> [x] (complete)`.                               |
-| Blocked / errored    | Leave `[~]`. Revisions captures the blocker. Stop the loop.                         |
-| Spec gap surfaced    | Leave `[~]`. Append **Proposed Spec Amendment** to Revisions. Stop the loop.        |
-| User aborted         | Leave `[~]`. Revisions notes the abort.                                             |
+| Clean completion     | `[~]` -> `[x]`. Revisions reason `complete`.                                        |
+| Blocked / errored    | Leave `[~]`. Revisions reason `blocked: <cause>`. Stop the loop.                    |
+| Spec gap surfaced    | Leave `[~]`. Revisions reason `spec-gap`; append **Proposed Spec Amendment** below. Stop the loop. |
+| User aborted         | Leave `[~]`. Revisions reason `aborted`.                                            |
 
 Bump `Last updated` on every mutation. Never edit `spec.md` or `plan.md` (amendments are proposals only). Never add or reword downstream tasks.
 

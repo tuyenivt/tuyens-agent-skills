@@ -42,6 +42,8 @@ Once per orchestration iteration to route the next step. Inputs: `handoffs_dir` 
 | `needs-clarification`   | -                                 | `escalate`            | -             |
 | (unknown status)        | -                                 | `error`               | -             |
 
+`routed_step: dev` on a `loop` names the role the orchestrator dispatches (the dev/tech-lead agent does the fixing); the envelope that agent writes is `step: fix` per `agent-handoff-contract`, which is what advances `fix_iterations`. `routed_step` is the agent selector, not the envelope step.
+
 ## Evaluation Decision Table (sidecar present)
 
 | `score.status` | Other signals                       | Decision              | Routed step |
@@ -86,6 +88,7 @@ feedback:
   source_step: review | test | fix
   iteration: <fix_iterations + 1>           # the upcoming fix index
   blocker_count: <int>                      # score.blocking_issues.length when sidecar drove;
+                                            # else len(latest.review.blockers) for a review envelope,
                                             # else len(latest.blocking_questions)
   highlights: [<one-line summary, max 5>]   # from score.blocking_issues when signal_source == evaluation
   full_findings_path: <relative path to envelope>

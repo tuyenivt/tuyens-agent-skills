@@ -106,9 +106,16 @@ spec_coverage:
     - item: <out-of-scope item>
       drift_ref: <file or test name>
   summary:
-    ac_total, ac_covered, ac_uncovered, ac_violated, ac_drift   # ac_covered counts both covered and covered-by-code-only
-    nfr_total, nfr_verified, nfr_unverified, nfr_failed         # nfr_verified counts both verified and partially-verified
-    drift_count
+    ac_total: <int>
+    ac_covered: <int>          # counts both covered and covered-by-code-only
+    ac_uncovered: <int>
+    ac_violated: <int>
+    ac_drift: <int>
+    nfr_total: <int>
+    nfr_verified: <int>        # counts both verified and partially-verified
+    nfr_unverified: <int>
+    nfr_failed: <int>
+    drift_count: <int>
   hard_fail_inputs:
     ac_violated: <int>
     nfr_failed: <int>

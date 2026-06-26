@@ -54,7 +54,7 @@ If neither CLAUDE.md nor any standards skill is present, stop and ask the user f
 
 Each rule must be:
 - A constraint (must / must not / measurable target), not a suggestion.
-- Sourced: cite as `<source>#<anchor>, <YYYY-MM-DD>` where the date is the file's last commit date (`git log -1 --format=%cs -- <path>`). For user input, use today.
+- Sourced: cite as `<source>#<anchor>, <YYYY-MM-DD>`. `<anchor>` is the slugified heading of the section the rule came from (e.g. `## Tech Stack` -> `tech-stack`). The date is the source file's last commit date (`git log -1 --format=%cs -- <path>`); if that returns empty (file not tracked in this repo, e.g. an installed skill), use today.
 - Quoted verbatim from the source.
 
 If CLAUDE.md and a standards skill state the same rule, cite both with ` | ` separator. If they conflict, stop and ask.
@@ -95,7 +95,7 @@ If the bump type is ambiguous, propose your reasoning and chosen bump in chat be
 
 ### STEP 9 - Sync Impact Report and Propagation Scan
 
-Prepend (or refresh) a Sync Impact Report as an HTML comment at the top of `constitution.md`. Propagation scan - surface findings only, never auto-edit:
+Prepend (or refresh) a Sync Impact Report as an HTML comment at the top of `constitution.md`. Propagation scan - surface findings only, never auto-edit. Skip any target that does not exist (first-time create usually has no `.specs/<slug>/` features yet):
 
 | Target                                | Check                                                                          | Mode       |
 | ------------------------------------- | ------------------------------------------------------------------------------ | ---------- |

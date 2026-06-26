@@ -19,20 +19,34 @@ Auditing `spec.md` for requirements quality before planning. Output routes on `s
 
 - Every finding cites `location` (list of headings/line-ranges) and verbatim `excerpt`. No citation -> reject.
 - `severity` and `category` follow the rubric; no defaults, no inline overrides.
+- One finding per defect. When two rules could both apply to one span, classify by the **first matching row** of the Category Precedence table - never emit two findings for one span. When the same defect appears at multiple sites (e.g., a scope leak in both a story and an AC), emit one finding listing every site in `location`.
 - `suggested_clarification` proposes a question, never an implementation choice.
 - `id` is `F-NNN` in document order of `location[0]`. Stable across re-runs while `spec.md` is unchanged.
+- `spec_path` is the actual path of the reviewed file, not a template placeholder.
 - NFR exception: an explicit `n-a-because-<reason>` satisfies that category.
-- A user story or AC that contradicts an Out-of-Scope entry is category `out-of-scope`, severity `major` (not `conflict`/blocker).
-- Vague language inside an AC or NFR is always `acceptance-measurability` major (not `ambiguity` minor).
 
 ## Patterns
+
+### Category Precedence
+
+When several rules fit one span, the first matching row wins. Emit exactly one finding.
+
+| Order | Condition | `category` | `severity` |
+| ----- | --------- | ---------- | ---------- |
+| 1 | Two ACs/NFRs cannot simultaneously hold, or an AC contradicts itself or the feature premise | `conflict` | `blocker` |
+| 2 | A story or AC restates something the Out-of-Scope list excludes (semantic match) | `out-of-scope` | `major` |
+| 3 | Vague/unmeasurable language inside an AC or NFR target | `acceptance-measurability` | `major` |
+| 4 | Story missing role/want/value, or AC traceable to no story | `weak-story` | `major` |
+| 5 | Vague language outside ACs/NFRs, undefined-but-obvious term, cosmetic gap | `ambiguity` | `minor` |
+
+A degenerate story (e.g., "User checks out.") matches row 4 (`weak-story`, `major`), not the zero-AC blocker trigger - that trigger is for a fleshed-out story whose behavior no AC covers.
 
 ### Severity Rubric
 
 | Severity | Trigger |
 | -------- | ------- |
-| `blocker` | Internal contradiction (ACs/NFRs that cannot simultaneously hold); user story with zero ACs; stub spec (< 3 ACs or no NFRs section) |
-| `major` | Unmeasurable AC; missing NFR category without `n-a-because-X`; out-of-scope leakage; weak story (missing role/want/value, or AC not traceable to any story) |
+| `blocker` | Internal contradiction (row 1); fleshed-out user story with zero ACs; stub spec (< 3 ACs or no NFRs section) |
+| `major` | Unmeasurable AC; missing NFR category without `n-a-because-X`; out-of-scope leakage; weak story |
 | `minor` | Vague language outside ACs/NFRs; undefined-but-obvious term; cosmetic gap |
 
 ### NFR Coverage Checklist
@@ -59,10 +73,15 @@ Each marked `covered`, `missing`, or `n-a-because-<reason>`. Emit one `nfr-cover
 - `needs-clarification` iff blockers == 0 and majors >= 1.
 - `pass` otherwise.
 
+### Degraded Input
+
+- **`spec.md` missing**: emit one finding pointing at the absent file; `status: needs-rewrite`.
+- **Stub spec** (< 3 ACs or no NFRs section): emit one `blocker` (`acceptance-measurability` or `nfr-coverage`); do not nitpick beyond it.
+
 ## Output Format
 
 ```yaml
-spec_path: <root>/.specs/<slug>/spec.md
+spec_path: <actual path of the reviewed spec.md>
 reviewed_at: <ISO-8601 UTC>
 nfr_coverage:
   performance: covered | missing | n-a-because-<reason>
@@ -88,12 +107,6 @@ summary:
   minors: <n>
   status: pass | needs-clarification | needs-rewrite
 ```
-
-## Edge Cases
-
-- **`spec.md` missing**: one finding pointing at the absent file, `status: needs-rewrite`.
-- **Stub spec**: one `blocker` (`acceptance-measurability` or `nfr-coverage`); do not nitpick.
-- **Duplicates**: consolidate into one finding with multiple `location` entries.
 
 ## Avoid
 

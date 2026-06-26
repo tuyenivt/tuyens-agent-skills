@@ -61,6 +61,9 @@ inputs: [<paths read>]
 outputs: [<paths written>]                # on `failed`, list partially-written paths
 satisfies: [<typed-id>]                   # e.g., task:T5, ac:1.2, nfr:perf-1 (no zero-padding; match spec text)
 blocking_questions: [<question>]          # required when status in {blocked, needs-clarification}
+review:                                   # review step only; omit on other steps
+  blockers:    [<one-line blocking finding>]    # must-fix; drives review_blockers downstream
+  suggestions: [<one-line non-blocking finding>]
 proposed_amendments:                      # omit the key entirely when none
   spec:  [{target: <section>, change: <diff>, reason: <why>}]
   plan:  [...]
@@ -93,6 +96,7 @@ notes_excerpt: <up to 200 chars; single sentence>
 | `outputs`             | all                   | On `failed`, list partial paths. Empty `complete` legal only on read-only steps (body explains) |
 | `proposed_amendments` | when any are proposed | Omit the key entirely when none; never empty-stub                        |
 | `blocking_questions`  | blocked, needs-clar.  | At least one question; omit on other statuses                            |
+| `review`              | review step           | `blockers` are must-fix findings (drive `review_blockers`); `suggestions` are non-blocking. Omit on non-review steps |
 | `next`                | all                   | See Status x Next                                                        |
 | `notes_excerpt`       | all                   | Scan-time tag; do not duplicate the Summary opening                      |
 

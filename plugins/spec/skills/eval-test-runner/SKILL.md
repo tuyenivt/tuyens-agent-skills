@@ -21,7 +21,7 @@ Composed by `task-spec-evaluate` to produce one measurement of the test suite. O
 - Read-only: no installs, no source/config/lockfile edits, no service startup.
 - `timeout` is its own status; do not retry to filter flakes.
 - Counts come from the runner's machine-readable output (XML/JSON) when available, else stdout parsing.
-- When `notes` records a truncation or fallback, use the literal tokens `truncated`, `no-tests-collected`, `parser-fallback`, `missing-dependency` so downstream skills key off them.
+- When `notes` records a truncation or fallback, use the literal tokens `truncated`, `no-tests-collected`, `parser-fallback`, `missing-dependency:<name>` so downstream skills key off them.
 
 ## Inputs
 
@@ -92,7 +92,7 @@ First that resolves wins:
 | `no-runner-detected` | No table match and no override                                                |
 | `error`              | Runner could not be invoked (binary missing, services unavailable, OOM)       |
 
-Tests needing services (DB, Redis, Docker) that fail to connect: `error` with `missing-dependency` in `notes`.
+`error` outranks `fail` only when the runner or whole suite could not execute (e.g., setup/collection-time service-connection failure). When the suite ran and some tests failed on a service dependency while others passed, it is `fail`; record `missing-dependency:<name>` in `notes` either way.
 
 ## Output Format
 

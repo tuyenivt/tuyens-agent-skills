@@ -53,18 +53,14 @@ Scan `spec.md` for `[NEEDS CLARIFICATION]` and `clarifications.md` for unanswere
 
 ### 5. Reconcile chat vs. spec
 
-For each chat-provided requirement:
-
-- **Aligned**: restates/narrows an AC, honors NFRs, stays in scope. Proceed.
-- **Orthogonal**: chat introduces something neither covered nor excluded by spec. Append `conflicts` entry with `kind: orthogonal`, remedy `clarify`.
-- **Conflict**: matches a row below.
+For each chat-provided requirement: if it restates/narrows an AC, honors NFRs, and stays in scope, it is **aligned** - proceed with no entry. Otherwise append one `conflicts` entry using the first matching row:
 
 | `kind`            | Trigger                                                         | `remedy` |
 | ----------------- | --------------------------------------------------------------- | -------- |
 | `out-of-scope`    | Chat overlaps an `out_of_scope` item (semantic match)           | `amend` (default); `clarify` if overlap is ambiguous |
 | `contradicts-ac`  | Chat contradicts an existing AC                                  | `clarify` |
 | `violates-nfr`    | Chat would breach an NFR target                                  | `amend` if user accepts cost; `abort` otherwise |
-| `orthogonal`      | Chat introduces an unmodeled requirement                         | `clarify` |
+| `orthogonal`      | Chat introduces a requirement the spec neither covers nor excludes | `clarify` |
 
 If `conflicts` is non-empty, halt and surface. Quote both chat phrase and `spec_ref` text.
 

@@ -47,7 +47,7 @@ If `analysis.md` exists for this slug, read its Traceability Matrix; reuse it an
 
 ### STEP 5 - Complexity Signal Scan
 
-Skip atomics whose findings `plan.md` already recorded (rerun only if plan is >7 days old or marked stale).
+Skip an atomic only if `plan.md` already carries its **structured verdict line** (`Overall Risk Level:`, `Blast Radius:`, etc.) - a prose risk list does not count. Rerun anyway if the plan is >7 days old or marked stale.
 
 Use skill: review-change-risk
 Use skill: review-blast-radius
@@ -56,7 +56,7 @@ Use skill: ops-backward-compatibility
 
 Conditional:
 - Use skill: backend-db-migration (plan touches schema)
-- Use skill: ops-feature-flags (high risk or gradual rollout)
+- Use skill: ops-feature-flags (`review-change-risk` >= High, or plan describes a gradual/CDN rollout). Feeds flag scaffolding -> Foundational, flag cleanup -> Polish.
 
 ### STEP 6 - Mode Branch
 
@@ -90,7 +90,7 @@ Fields:
 - **`[P]`**: target files do not overlap with any other `[P]` task in the same phase, AND all Deps are in earlier phases (not same-phase peers)
 
 Rules:
-- Every task carries `Satisfies` (AC IDs or `NFR-<category>`). No traceability -> plan bug or scope creep; flag.
+- Every task carries `Satisfies` (AC IDs or `NFR-<category>`; Setup/scaffolding tasks with no AC use `bootstrap (no AC)`). No traceability on a feature task -> plan bug or scope creep; flag.
 - Validation tasks pair with the code they cover, in the same phase.
 - If `delivery` is installed AND the breakdown exceeds one sprint (>10 must-have tasks or >2 story phases sized L+), STOP and recommend the user run `task-breakdown-story` first; this workflow consumes that output.
 

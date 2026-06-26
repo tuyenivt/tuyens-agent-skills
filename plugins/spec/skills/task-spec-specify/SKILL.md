@@ -56,7 +56,7 @@ Interview the user on the sections below, asking only what is not already in cha
 | **Open questions**      | Items the user could not answer; resolved later by `task-spec-clarify`.                               |
 
 Ambiguity routing:
-- `[NEEDS CLARIFICATION: <question>]` only when no reasonable default exists and downstream planning would pick arbitrarily.
+- `[NEEDS CLARIFICATION: <question>]` inline inside the AC, NFR, or story it qualifies - only when no reasonable default exists and downstream planning would pick arbitrarily. Inlining keeps it where `spec-review` (driving `task-spec-clarify`) will find it.
 - Open Question with `Assumed default: <value>` when a reasonable default can be recorded for later override.
 
 Open Question entry format (shared with `task-spec-clarify`):
@@ -92,6 +92,7 @@ Print: paths written, counts (stories, ACs, open questions, clarification marker
 
 ## Acceptance Criteria
 - **AC1 (S1):** <falsifiable, measurable>
+- **AC2 (S1):** <criterion> [NEEDS CLARIFICATION: <blocking question>]   # inline marker, omit when none
 
 ## Non-Functional Requirements
 <NFR table from nfr-specification. Only categories that apply.>

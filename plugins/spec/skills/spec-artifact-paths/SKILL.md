@@ -27,17 +27,17 @@ A spec workflow needs canonical paths for a feature's artifacts before reading o
 1. Lowercase the input.
 2. Replace runs of non-`[a-z0-9]` with a single `-`.
 3. Trim leading/trailing `-`.
-4. If `length > 60`: let `i` = index of last `-` at or before position 60; if `i >= 20`, trim to `i`; else hard-cut at 60.
+4. If `length > 60`: let `i` = 0-based index of the last `-` at or before index 60; if `i >= 20`, trim to `i`; else hard-cut at 60.
 5. Empty result -> abort and ask the user for an explicit slug.
 
-A pre-formed slug is accepted unchanged iff re-running the algorithm yields the same string. Slugs > 60 chars are always re-trimmed even when otherwise idempotent.
+A pre-formed slug is accepted unchanged iff re-running the algorithm yields the same string (which re-applies step 4, so any slug > 60 chars is re-trimmed).
 
-| Input                                       | Slug                              |
-| ------------------------------------------- | --------------------------------- |
-| `Add 2FA (TOTP) for staff accounts`         | `add-2fa-totp-for-staff-accounts` |
-| `Re-architect billing -> events bus`        | `re-architect-billing-events-bus` |
-| `Build Comprehensive Notification Center With Email SMS Push` (60+) | `build-comprehensive-notification-center-with-email` |
-| `verylongsingletokenwithoutanyhyphensorbreaks` (no `-` before 20)  | `verylongsingletokenwithoutanybre` (hard-cut at 60 if >60; this 45-char input passes through) |
+| Input                                                                            | Slug                                                        |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `Add 2FA (TOTP) for staff accounts`                                              | `add-2fa-totp-for-staff-accounts`                           |
+| `Re-architect billing -> events bus`                                             | `re-architect-billing-events-bus`                           |
+| `Build Comprehensive Notification Center With Email SMS Push And In-App Alerts` (77-char base, >60) | `build-comprehensive-notification-center-with-email-sms-push` (trimmed at hyphen before index 60) |
+| `verylongsingletokenwithoutanyhyphensorbreaks` (44-char base, <=60)              | `verylongsingletokenwithoutanyhyphensorbreaks` (passes through; hard-cut at 60 only when >60 with no `-` at index >= 20) |
 
 ## Path Contract
 

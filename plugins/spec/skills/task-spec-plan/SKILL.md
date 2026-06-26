@@ -76,7 +76,9 @@ Gaps surface as **Proposed Spec Amendments** in `plan.md` - never edit `spec.md`
 | Throughput      | `per_request_cost * target_rps` vs instance capacity                    |
 | Storage         | `users * size * retention` vs storage budget                            |
 
-Show the calculation in the NFR table. If floor exceeds budget by `> 2x` or breaks a blocker NFR, stop and recommend `task-spec-clarify`. Smaller gaps -> Proposed Spec Amendment.
+Plug in the payload the NFR actually measures (e.g. the **served/processed** size for fetch latency, not the upload cap). When that size is unspecified, state the assumed value, design to it, and raise a Proposed Spec Amendment. Name every assumed input (bandwidth, per-request cost, instance capacity) in the calculation cell. Verdict enum: `Feasible | Feasible-with-design (<note>) | Infeasible (<Nx>; flagged)`.
+
+Show the calculation in the NFR table. Stop and recommend `task-spec-clarify` only when no feasible design exists - the floor exceeds budget by `> 2x` or breaks a blocker NFR *under every reasonable interpretation*. If a feasible design exists under a stated assumption, proceed with it and record a Proposed Spec Amendment. Smaller gaps -> Proposed Spec Amendment.
 
 Composition rules:
 - Stay at contract level. No class names, no SQL syntax.
@@ -126,10 +128,10 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 
 ## NFR Mapping
 
-| NFR Category | Spec Target  | Plan Element              | Floor Calculation              | Verdict       | Verification |
-| ------------ | ------------ | ------------------------- | ------------------------------ | ------------- | ------------ |
-| Throughput   | 1000 rps     | horizontal autoscale 4 pods | 250 rps/pod * 4 = 1000 rps     | Feasible      | k6 in CI     |
-| Latency      | p95 < 200ms  | read-through cache         | 5MB / 10Mbps = 4s              | Infeasible (20x; flagged) | load test |
+| NFR Category | Spec Target  | Plan Element              | Floor Calculation                              | Verdict       | Verification |
+| ------------ | ------------ | ------------------------- | ---------------------------------------------- | ------------- | ------------ |
+| Throughput   | 1000 rps     | horizontal autoscale 4 pods | 250 rps/pod (assumed) * 4 = 1000 rps         | Feasible      | k6 in CI     |
+| Latency      | p95 < 200ms  | serve resized ~100KB via cache | 0.8Mbit / 10Mbps (assumed) + 30ms = ~110ms; raw 5MB = 4s (20x) | Feasible-with-design (resize; serving raw is 20x, flagged) | load test |
 
 ## Alternatives Considered
 
@@ -163,7 +165,7 @@ Print path, sections populated, alternatives recorded, ADR candidates, mode, pro
 - [ ] STEP 1-4: behavioral-principles, stack-detect, speckit-detect, paths loaded; `Stack Type: unknown` flagged if undetermined
 - [ ] STEP 5: aborted on missing `spec.md` or unresolved blockers
 - [ ] STEP 6: mode branch followed
-- [ ] STEP 7: plan composed per table; floor formula run on quantitative NFRs; `>2x` infeasibility routed to clarify
+- [ ] STEP 7: plan composed per table; floor formula run on served-payload size with named assumptions; clarify only when no feasible design exists
 - [ ] STEP 8: cross-check (stories, ACs, out-of-scope, no internal conflicts)
 - [ ] STEP 9: `plan.md` written; `spec.md` not edited
 - [ ] STEP 10: summary lists sections, alternatives, ADR candidates, mode, amendments, next command

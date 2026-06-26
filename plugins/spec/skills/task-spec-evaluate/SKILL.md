@@ -60,7 +60,7 @@ Pass `spec_path`, `plan_path`, `tasks_path`, `test_run`, `changed_files`. Captur
 
 ### STEP 7 - Collect Review Verdict
 
-Under `--scope tests-only`, set `review_verdicts = null` and skip. Otherwise set `review_verdicts = [latest review envelope]` if present, else `null`. Pass the envelope's `status`, `blockers`, `suggestions`, `proposed_amendments` verbatim.
+Under `--scope tests-only`, set `review_verdicts = null` and skip. Otherwise set `review_verdicts = [latest review envelope]` if present, else `null`. Pass the envelope's `status`, `review.blockers`, `review.suggestions`, `proposed_amendments` verbatim (envelope fields per `agent-handoff-contract`).
 
 ### STEP 8 - Score
 

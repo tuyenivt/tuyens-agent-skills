@@ -89,8 +89,13 @@ A: "not a concern for this feature" -> declined
 
 **`spec.md`**:
 
-- Apply each `resolved` answer to its target section.
-- `deferred` -> append to `## Open Questions` (create at H2 immediately above `## Revisions` if absent; do not duplicate).
+- Apply each `resolved` answer to its target section. When a contradiction was resolved in STEP 4.4, also edit or remove the losing text so the spec no longer contradicts itself.
+- `deferred` -> append to `## Open Questions` (create at H2 immediately above `## Revisions` if absent; do not duplicate), using the entry format shared with `task-spec-specify`:
+  ```
+  **Q<N>:** <text>
+     Assumed default: <user's hedge | none>
+     Source: clarify
+  ```
 - `declined` -> spec untouched.
 - Bump `Last updated: YYYY-MM-DD`.
 - Append a `## Revisions` entry:
@@ -123,7 +128,7 @@ Spec clarify - <slug> (<mode>)
 - [ ] STEP 1-2: behavioral-principles loaded; mode detected; aborted if `spec.md` missing
 - [ ] STEP 3: drove questions from `spec-review` findings; stopped on `needs-rewrite`; honored `--non-interactive`
 - [ ] STEP 4: one question at a time, severity then id order; verbatim answers; surfaced contradictions before appending
-- [ ] STEP 5: `clarifications.md` append-only; `spec.md` `Revisions` entry references `clarifications.md` session
+- [ ] STEP 5: `clarifications.md` append-only; resolved contradictions edit the losing text; deferred items use the shared Open Question format (`Source: clarify`); `spec.md` `Revisions` entry references `clarifications.md` session
 - [ ] STEP 6: re-ran `spec-review`; reported post-pass status
 
 ## Avoid

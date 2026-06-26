@@ -16,7 +16,7 @@ Composed by `task-spec-evaluate` after `eval-test-runner` and `eval-spec-coverag
 ## Rules
 
 - Fixed weights: Test 30, Coverage 50, Review 20. Coverage outweighs tests because ACs encode user-visible behavior; tests may be green yet miss ACs.
-- Hard-fail = `spec_coverage.hard_fail_inputs` non-zero OR `test_run.status in {fail, timeout, error, no-tests-collected}` OR `review_blockers > 0`. Hard-fail blocks `pass` regardless of score.
+- Hard-fail = any `spec_coverage.hard_fail_inputs` field truthy (int > 0 or boolean true) OR `test_run.status in {fail, timeout, error, no-tests-collected}` OR `review_blockers > 0`. Hard-fail blocks `pass` regardless of score.
 - Hard-fail never promotes to `fail` here. `fix-loop-controller` owns iteration-cap escalation.
 - Blocker count dominates review status: any `review_blockers > 0` is a failed review regardless of envelope `status`.
 
@@ -26,7 +26,7 @@ Composed by `task-spec-evaluate` after `eval-test-runner` and `eval-spec-coverag
 | ---------------- | ---------------------------------------------------------------------------------------------------------- |
 | `test_run`       | `status`, `counts.{passed, failed, errored}`, `notes`                                                      |
 | `spec_coverage`  | `acceptance_criteria[].verdict`, `nfrs[].verdict`, `summary.*`, `hard_fail_inputs`                         |
-| `review_verdicts`| optional list from `handoffs/*-review-*.md`: `status`, `blockers[]`, `suggestions[]`, `proposed_amendments[]` |
+| `review_verdicts`| optional list from `handoffs/*-review-*.md`: `status`, `review.blockers[]`, `review.suggestions[]`, `proposed_amendments` (per `agent-handoff-contract`) |
 | `thresholds`     | optional caller override; may tighten the pass band only, never widen it                                   |
 
 Derive locally from per-AC/per-NFR verdicts:
@@ -37,7 +37,9 @@ Derive locally from per-AC/per-NFR verdicts:
 
 `covered_by_code_only` is partial credit 0.7.
 
-**Multiple review envelopes**: take the worst - max blocker count across envelopes; any non-`complete` status escalates.
+`review_blockers = len(review.blockers)`; "only suggestions" means `review.blockers` empty AND `review.suggestions` non-empty.
+
+**Multiple review envelopes**: take the worst - max `review_blockers` across envelopes; any non-`complete` status escalates.
 
 ## Sub-Scores
 
@@ -79,7 +81,7 @@ Structural hard-fails (ac_violated, drift, nfr_failed) surface as `needs-fix` so
 ### Worked Example
 
 `test 18/2/0; ac_total=4, covered_full=2, covered_by_code_only=1; nfr 2/2; drift=1; blockers=1`.
-`test=90`, `ac=67.5`, `nfr=100`, `coverage=77.25`, `review=65`, `overall=round(27 + 38.625 + 13)=79`. Hard-fail triggers: drift (`out_of_scope_drift`), test fail, review_blockers. Status: `needs-fix`.
+`test=90`, `ac=67.5`, `nfr=100`, `coverage=77.25`, `review=65`, `overall=round(27 + 38.625 + 13)=79`. Hard-fail triggers: `drift_count:1`, `test_run.fail`, `review_blockers:1`. Status: `needs-fix`.
 
 ### Edge Cases
 
@@ -106,7 +108,7 @@ score:
     test_status: pass | fail | timeout | error | no-runner-detected | no-tests-collected
     review_blockers: <int | null>
     notes: [<string>, ...]
-  hard_fail_triggers: [<string>, ...]   # spec_coverage.hard_fail_reasons verbatim, plus test_run.<status> and review_blockers:<n> when scorer-owned
+  hard_fail_triggers: [<string>, ...]   # derived: one token per truthy hard_fail_inputs field (ac_violated:<n>, nfr_failed:<n>, drift_count:<n>, out_of_scope_drift when any_out_of_scope_drift_verdict), plus test_run.<status> and review_blockers:<n>
   blocking_issues: [<string>, ...]      # one-line summaries, cap 10
   recommendation: <one sentence>        # e.g., "loop on <top blocker category>" / "escalate: <reason>" / "ship"
 ```

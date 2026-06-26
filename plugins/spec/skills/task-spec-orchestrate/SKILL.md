@@ -50,6 +50,16 @@ Use skill: fix-loop-controller
 
 If the controller returns `error.code: no-envelopes`, treat as bootstrap: start at ordinal `01`, step `architect`. Otherwise route on the controller's `decision`. If `--start-from` is set and no envelope exists for an earlier step, abort.
 
+Map `decision` to the next action:
+
+| `decision`                                                    | Action                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `loop`                                                        | Dispatch the `routed_step` agent (STEP 5); the envelope step label is `fix`     |
+| `proceed-next`                                                | Dispatch the `routed_step` agent (STEP 5); the envelope step label is `routed_step` |
+| `proceed-done` / `escalate` / `pause-for-amendment` / `error` | Terminate the loop; go to STEP 9                                                |
+
+On `loop` the dev/tech-lead agent does the fixing but writes `step: fix` (per `agent-handoff-contract`); only `fix` envelopes advance `fix_iterations`. Labeling it `step: dev` silently breaks the iteration cap.
+
 ### STEP 5 - Select Agent
 
 Probe `plugins/<stack>/agents/` for the file matching the role. Use this resolver per step:
@@ -81,7 +91,8 @@ Assemble the prompt:
 1. Absolute paths to `spec.md`, `plan.md`, `tasks.md`, and the most recent prior envelope.
 2. The fix-loop `feedback` packet, when present.
 3. **Assigned ordinal** `NN = max(existing ordinal in handoffs_dir) + 1` (`01` if empty). Agents must not recompute.
-4. Pointer: agent ends its run by writing `<NN>-<step>-<agent>.md` per `agent-handoff-contract`.
+4. **Assigned step label** from the STEP 4 decision map (`fix` on `loop`, else `routed_step`). The agent must not relabel.
+5. Pointer: agent ends its run by writing `<NN>-<step>-<agent>.md` (using the assigned ordinal and step label) per `agent-handoff-contract`.
 
 Invoke via the Agent tool (`subagent_type` matches the agent file name without `.md`). Wait.
 
@@ -142,9 +153,9 @@ On `proceed-done`, flip `tasks.md` checkboxes from `[ ]`/`[~]` to `[x]` for ever
 
 - [ ] STEP 1-2: behavioral-principles loaded; stack + `Stack Type` captured; fullstack aborted
 - [ ] STEP 3: artifacts confirmed
-- [ ] STEP 4: routed via `fix-loop-controller`; no in-memory iteration state
+- [ ] STEP 4: routed via `fix-loop-controller`; `decision` mapped to action; no in-memory iteration state
 - [ ] STEP 5: agent file resolved per resolver; reviewer variant chosen by spec parse; abort if file missing
-- [ ] STEP 6: ordinal assigned by orchestrator and passed to agent
+- [ ] STEP 6: ordinal and step label assigned by orchestrator and passed to agent (`fix` on `loop`)
 - [ ] STEP 7: envelope verified; STEP 7.5 sidecar written when applicable
 - [ ] STEP 9: summary derived from envelopes; `tasks.md` checkbox sync ran on `proceed-done`
 

@@ -23,7 +23,6 @@ Once per workflow run, before any artifact read or write.
 - If `feature.json` points at a missing directory, stay `speckit-installed`, set `feature_json_path: null`, append a `notes` warning.
 - Re-detect every run; never cache.
 - `delegate_target` is the calling workflow's slash command (e.g., `task-spec-plan` -> `/speckit-plan`). Detection never infers it from chat content.
-- When multiple warnings apply, emit them as separate lines in `notes`; never drop a warning to stay terse.
 
 ## Decision Table
 
