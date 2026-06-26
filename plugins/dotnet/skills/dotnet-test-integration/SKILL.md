@@ -40,7 +40,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().WithImage("postgres:16-alpine").Build();
     public string ConnectionString => _db.GetConnectionString();
-    public async Task InitializeAsync() { await _db.StartAsync(); /* migrate */ }
+    public async Task InitializeAsync() { await _db.StartAsync(); await Migrate(); } // MigrateAsync(), not EnsureCreated() (bypasses migrations, hides drift)
     public async Task DisposeAsync() => await _db.DisposeAsync();
 }
 ```
@@ -55,6 +55,18 @@ protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         s.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
     });
 ```
+
+### Authenticating API tests
+
+Register a test scheme in `ConfigureWebHost`, then vary the caller's claims per test via a header the handler reads. Avoids minting real JWTs.
+
+```csharp
+s.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
+// TestAuthHandler builds a ClaimsPrincipal from a "X-Test-Sub"/"X-Test-Role" header (or fixed claims)
+_client.DefaultRequestHeaders.Add("X-Test-Sub", ownerId.ToString()); // owner vs other-user vs absent -> 200/403/401
+```
+
+Override an external client/bus the same way: `s.RemoveAll<IMessagePublisher>(); s.AddSingleton<IMessagePublisher>(_fakePublisher);`.
 
 ### API test through HTTP
 
@@ -95,13 +107,13 @@ When asked to add or review integration tests, produce:
 
 - **Layer:** `{Domain | Application | Repository | API}`
 - **Fixtures:** `IClassFixture` / `[Collection]` types introduced or reused.
-- **Isolation:** `{Respawn | per-test transaction | fresh container}` with justification.
+- **Isolation:** `{Respawn | per-test transaction | fresh container}` with justification. Use Respawn (not a wrapping transaction) for commit-dependent flows - outbox / post-commit dispatch / `SaveChanges` interceptors fire only on commit, so a rolled-back test transaction makes them silently never run.
 - **Test list:** `Method_Scenario_ExpectedResult` names with the assertion target.
 - **Service overrides:** DI registrations replaced in `ConfigureWebHost`.
 
 ## Avoid
 
-- `Thread.Sleep` - use `await Task.Delay` or polling assertions.
+- `Thread.Sleep` - poll instead: `await WaitFor(() => _fakePublisher.Count == 1, timeout)` for async/background assertions.
 - Shared mutable state between tests.
 - Asserting on implementation details instead of observable behaviour.
 - A new container per test class when `[Collection]` would share one.

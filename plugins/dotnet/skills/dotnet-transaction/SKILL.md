@@ -35,7 +35,7 @@ await _uow.SaveChangesAsync(ct);   // atomic: order + outbox row
 
 ### Explicit transaction under retry
 
-With `EnableRetryOnFailure`, calling `BeginTransactionAsync` outside an execution strategy throws. `await using` handles rollback on exception; no manual `catch` needed.
+The explicit transaction here is justified by the non-default isolation level, not by the two `Add`s - a single `SaveChangesAsync` is already atomic. With `EnableRetryOnFailure`, calling `BeginTransactionAsync` outside an execution strategy throws. `await using` handles rollback on exception; no manual `catch` needed.
 
 ```csharp
 var strategy = _context.Database.CreateExecutionStrategy();
@@ -73,8 +73,8 @@ Default is `ReadCommitted`. Escalate only with cause:
 | Level                   | Use when                                                       |
 | ----------------------- | -------------------------------------------------------------- |
 | `ReadCommitted`         | Default; standard CRUD                                         |
-| `RepeatableRead`        | Read-then-write where the read value must not change mid-tx    |
-| `Serializable`          | Strict sequential ordering (financial postings, balance debit) |
+| `RepeatableRead`        | Read-then-write on fixed rows (balance debit on a known account row) |
+| `Serializable`          | Read-then-write over a range/aggregate where a phantom insert would change the result (e.g. "max 5 active bookings per user") |
 | `Snapshot` (SQL Server) | Long reads that must neither block nor be blocked              |
 
 ## Output Format

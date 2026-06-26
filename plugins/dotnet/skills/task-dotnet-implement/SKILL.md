@@ -58,6 +58,8 @@ Present for user approval, then halt:
 
 ### Step 4 - Entity + Migration
 
+Skip this step for a no-persistence / proxy feature. For an additive change to an existing entity, modify the entity + configuration and add an `AddColumn` migration named after the change - not a new `Create` migration.
+
 Use skill: `dotnet-ef-performance`, `dotnet-db-migration-safety`.
 
 - Domain entity: private setters, audit fields, navigation properties, factory method for invariants
@@ -76,7 +78,7 @@ builder.HasIndex(x => x.IdempotencyKey).IsUnique();
 
 ### Step 5 - Repository
 
-Use skill: `dotnet-ef-performance`. Interface in `Application/Interfaces`; implementation in `Infrastructure/Persistence/Repositories`. `AsNoTracking()` reads, DTO projections for list endpoints.
+Skip for a no-persistence feature; instead define the outbound client interface in `Application/Interfaces` and its typed `HttpClient` impl in `Infrastructure`. Otherwise: interface in `Application/Interfaces`; implementation in `Infrastructure/Persistence/Repositories`. `AsNoTracking()` reads, DTO projections for list endpoints.
 
 ### Step 6 - Application Layer
 
@@ -117,14 +119,14 @@ Use skill: `dotnet-test-integration`.
 
 ### Step 9 - Validate
 
-Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and `dotnet test --no-build`. Present file list, endpoint table, test counts, and manual steps (e.g., `dotnet ef migrations add Create<Name>`).
+Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and `dotnet test --no-build`. Present file list, endpoint table, test counts, and manual steps (e.g., `dotnet ef migrations add <Name>`; omit when no persistence changed).
 
 ## Self-Check
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: requirements gathered (fields, transitions, idempotency, auth)
 - [ ] Step 3: design presented and approved before code
-- [ ] Step 4: entity, EF configuration, CHECK constraint, unique idempotency index, migration via `dotnet ef`
+- [ ] Step 4: entity, EF configuration, migration via `dotnet ef` (CHECK constraint / unique idempotency index when applicable; whole step skipped for no-persistence features)
 - [ ] Step 5: repository interface in `Application`, impl in `Infrastructure`, `AsNoTracking` reads
 - [ ] Step 6: command/query records, validators, MediatR handlers; transitions enforced; idempotency check present
 - [ ] Step 7: `[Authorize]` / `[AllowAnonymous]` explicit on every action
@@ -148,7 +150,7 @@ Use skill: `dotnet-build-optimization`. Run `dotnet build --no-incremental` and 
 - [ ] Unit tests: `tests/YourApp.Application.Tests/{Feature}/*HandlerTests.cs`
 - [ ] Repo tests: `tests/YourApp.Infrastructure.Tests/Persistence/{Name}RepositoryTests.cs`
 - [ ] API tests: `tests/YourApp.Api.Tests/Controllers/{Name}sControllerTests.cs`
-- [ ] Migration: `dotnet ef migrations add Create{Name} -p src/YourApp.Infrastructure`
+- [ ] Migration: `dotnet ef migrations add {Name} -p src/YourApp.Infrastructure` (`Create{Name}` for a new entity, `Add{Field}To{Name}` for an additive change; omit for no-persistence features)
 
 ## Endpoints
 

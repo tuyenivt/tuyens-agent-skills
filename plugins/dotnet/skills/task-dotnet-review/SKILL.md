@@ -162,7 +162,7 @@ Surface decision in Summary. Escalated: `auto-escalated from Core; signals: <lis
 - Use skill: `review-blast-radius` for failure-propagation scope
 - Output risk level and blast radius before findings
 
-**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` AND the change does not touch architecture-relevant files (auth middleware, JWT validation, `Program.cs` wiring, MediatR pipeline behaviors, `DbContext` / `IEntityTypeConfiguration`, EF Core migrations) -> skip Phases C-D; emit Phase B findings only.
+**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` AND the change does not touch architecture-relevant files (auth middleware, JWT validation, `Program.cs` wiring, MediatR pipeline behaviors, `DbContext` / `IEntityTypeConfiguration`, EF Core migrations) -> run Phases A, B, E only; skip Phases C-D.
 
 Blast Radius `Wide` or `Critical` -> auto-promote depth to `deep` here, before Phases B-E.
 
@@ -305,7 +305,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** .NET <version> / ASP.NET Core <version>
 **Data Access:** EF Core <version> | Dapper <version> | mixed
 **Mediator:** MediatR <version> | none
@@ -379,8 +379,8 @@ Omit empty sections.
 - [ ] Step 4 - scope auto-escalation evaluated; promotion (or `core-only`) recorded with firing signals
 - [ ] Phase A - risk and blast radius stated before findings; depth auto-promoted when Blast Radius is Wide/Critical
 - [ ] Phase B - atomics (`dotnet-async-patterns`, `dotnet-exception-handling`, `dotnet-ef-performance`, `dotnet-transaction`, `dotnet-messaging-patterns`, `dotnet-security-patterns`, `dotnet-db-migration-safety`) applied; review-level findings raised as named entries (missing tests, wrong-store, entity-in-response, mass assignment, idempotency, hardcoded JWT key, `db.Database.Migrate()` on startup)
-- [ ] Phase C - layering, no `DbContext` in Application, MediatR pipeline order, repository placement, constructor injection, typed config, multi-tenant, middleware order, central `IExceptionHandler`
-- [ ] Phase D - `complexity-review` + `dotnet-overengineering-review` applied; remaining .NET AI smells covered
+- [ ] Phase C - layering, no `DbContext` in Application, MediatR pipeline order, repository placement, constructor injection, typed config, multi-tenant, middleware order, central `IExceptionHandler` _(or skipped via the Phase A low-risk short-circuit)_
+- [ ] Phase D - `complexity-review` + `dotnet-overengineering-review` applied; remaining .NET AI smells covered _(or skipped via the Phase A low-risk short-circuit)_
 - [ ] Phase E - maintainability applied
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable .NET fix
 - [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged out-of-scope

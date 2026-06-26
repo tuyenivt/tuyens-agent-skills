@@ -22,6 +22,7 @@ A workflow needs .NET-specific signals for a target in a .NET project (`*.csproj
 - List middleware in `app.Use*` order before describing endpoint behavior.
 - Mark the `IQueryable` -> in-memory boundary (`ToList`, `ToListAsync`, `First`, `AsEnumerable`); operators after the boundary run in memory.
 - Note missing `CancellationToken` on async DB / HTTP calls.
+- When a signal lives outside the snippet (DI registration, middleware in `Program.cs`, pipeline-behavior registration), state it as unknown rather than guess.
 
 ## Patterns
 
@@ -62,12 +63,12 @@ db.Users.Where(u => u.Active)   // SQL
 - `DbContext` is Scoped and not thread-safe; one per request, one operation at a time.
 - `AsNoTracking()` for read-only queries.
 - Navigation properties require explicit `Include(...)` unless lazy-loading proxies are configured.
-- Non-translatable methods after the boundary cause full-table client evaluation.
+- Non-translatable methods after the boundary run client-side over the full materialized result set (only predicates before the boundary reach SQL).
 
 ### MediatR / CQRS (when present)
 
 - `IRequest<TResponse>` -> single handler resolved from DI.
-- `IPipelineBehavior<TRequest, TResponse>` wraps every handler (validation, logging, transactions).
+- `IPipelineBehavior<TRequest, TResponse>` wraps every handler (validation, logging, transactions); execution order follows DI registration order.
 - `INotification` is one-to-many publish.
 
 ### Clean Architecture (when present)

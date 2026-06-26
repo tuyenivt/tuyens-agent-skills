@@ -67,7 +67,7 @@ If no tests exist, propose these defaults (one-line rationale each):
 | Job         | In-process OR Testcontainers broker + real consumer              | Worker happy path, retry, idempotency, scheduled behavior       |
 | E2E         | `WebApplicationFactory` + full app + broker                      | Critical journeys only (signup, checkout, payment)              |
 
-Many unit, some API / integration, few E2E.
+Many unit, some API / integration, few E2E. Default when nothing else dictates: ~60-70% unit / ~20-30% API+integration / <10% E2E - use to fill the Strategy Doc `{x}%/{y}%/{z}%` fields, adjusting for the service's risk profile.
 
 ### Step 5 - Apply .NET Test Patterns
 
@@ -207,7 +207,7 @@ Pick output by request shape:
 - Bogus `Faker<T>` for data
 - API: happy + 401 + 403 + validation; IDOR triple for per-owner resources
 - Repository: Testcontainers Postgres / SqlServer; per-test cleanup via Respawn or tx rollback
-- Auth: anonymous + wrong-role + correct-role via test-issued JWT
+- Auth: anonymous + wrong-role + correct-role via `TestAuthHandler` + claims header (see `dotnet-test-integration`), or a test-issued JWT
 - Jobs: idempotency + retry + max-retries when applicable
 - `public async Task` methods; FluentAssertions; `dotnet format`-clean
 

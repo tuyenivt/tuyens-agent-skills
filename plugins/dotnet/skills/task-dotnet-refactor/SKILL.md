@@ -58,6 +58,8 @@ Plans grounded in prose hallucinate smells. Read directly:
 
 > **Severity inversion detected.** This file contains <N> higher-severity sibling smells (<list>). Pause this refactor; route through `task-dotnet-review-security` first; branch the refactor PR off the security fix.
 
+A fired banner supersedes the Coverage Gate action regardless of verdict: halt, emit Smells + Sibling Smells only, and route to `task-dotnet-review-security` before any `task-dotnet-test` coverage prerequisite.
+
 ### Step 4 - Coverage Gate (mandatory)
 
 | Status       | Definition                                                                              | Action                                                     |
@@ -73,7 +75,7 @@ Plans grounded in prose hallucinate smells. Read directly:
 
 **Lint baseline.** `dotnet format --verify-no-changes` must be clean and `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` on, else `Step 0a` covers them. Values: `clean` | `warnings present` | `not run (no baseline)`.
 
-**Concurrency downgrade.** Target uses `Task.Run` / `Parallel.ForEachAsync` / `BackgroundService` / `ConcurrentDictionary` / `SemaphoreSlim` / channels but tests do not exercise the concurrent path -> downgrade one tier.
+**Concurrency downgrade.** Target uses `Task.Run` / `Parallel.ForEachAsync` / `BackgroundService` / `ConcurrentDictionary` / `SemaphoreSlim` / channels but tests do not exercise the concurrent path -> downgrade one tier. A `.Result` / `.Wait()` chain being converted to `await` also downgrades when its boundaries are untested (deadlock-removal risk).
 
 ### Step 5 - Identify .NET Smells
 

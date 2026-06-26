@@ -16,9 +16,9 @@ Centralizing ASP.NET Core error handling, mapping domain/application exceptions 
 ## Rules
 
 - Handle errors centrally via `IExceptionHandler` (.NET 8+) or `UseExceptionHandler`; no `try/catch` in controllers for response shaping.
-- Return `application/problem+json` (RFC 7807) for every error response, including `traceId`.
+- Return `application/problem+json` (RFC 7807) for every error response, including `traceId`. Keep `title` the human-readable status phrase; when `type` is omitted it defaults to `about:blank`, which *requires* `title` to be the status phrase. Put any stable machine code in a `code` extension member, never in `title`.
 - Define one domain exception hierarchy rooted at `DomainException`; map to status codes in exactly one place.
-- Disambiguate when both a domain `ValidationException` and `FluentValidation.ValidationException` exist - use the FQN in switch arms.
+- Disambiguate when both a domain `DomainValidationException` and `FluentValidation.ValidationException` exist - use the FQN in switch arms.
 - Log unhandled (`>= 500`) at `Error` with full context; log expected domain exceptions at `Warning`; do not log `OperationCanceledException` as an error.
 - Expose `detail`/stack traces only in Development (`IHostEnvironment.IsDevelopment()`).
 

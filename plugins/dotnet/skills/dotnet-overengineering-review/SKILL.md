@@ -17,7 +17,7 @@ Reviewing a .NET / ASP.NET Core diff that adds FluentValidation rules, null chec
 
 - Every finding cites the constraint that makes the code redundant: FK, `nullable: false`, unique index, EF Core `IsRequired()`, FluentValidation rule on the DTO, NRT, or framework guarantee.
 - Intent:
-  - `[Recommend]` is the default. Cite the constraint, recommend the edit. Escalate to `[Must]` when a measurable cost is present (extra SELECT in a hot path, blanket `catch (Exception)` masking real bugs, single-impl interface, controller `try/catch` defeating `IExceptionHandler`, MediatR latency on a trivial read). State the cost in `Cost:`.
+  - `[Recommend]` is the default. Cite the constraint, recommend the edit. Escalate to `[Must]` when a measurable cost is present (extra SELECT per write, blanket `catch (Exception)` masking real bugs, single-impl interface, controller `try/catch` defeating `IExceptionHandler`, MediatR on a trivial read). State the cost in `Cost:`; path heat raises magnitude but is not required for the escalation. Dead/no-op code (value-type `ThrowIfNull`, bare `catch(X){throw;}`) is `[Recommend]` - no runtime cost to cite.
   - `[Question]` when justification is plausible but not visible in the diff.
 - Do not flag when the justification is visible in the diff: DTO-side FluentValidation owning 400 errors, defense-in-depth across non-HTTP write paths (MassTransit, Hangfire), interface required by a proxy aspect or planned second implementer, MediatR with registered pipeline behaviors.
 
@@ -92,7 +92,7 @@ public class OrderService : IOrderService { ... }
 public class OrderService { ... }
 ```
 
-`[Must]` MediatR for a trivial read on a hot path. MediatR earns its keep through pipeline behaviors (validation, logging, transaction, authorization). A handler that only calls `FindAsync` adds latency for no cross-cutting concern. Direct DbContext call; reserve MediatR for commands and cross-cutting concerns.
+`[Must]` MediatR for a trivial read (cost rises on a hot path). MediatR earns its keep through pipeline behaviors (validation, logging, transaction, authorization). A handler that only calls `FindAsync` adds latency for no cross-cutting concern. Direct DbContext call; reserve MediatR for commands and cross-cutting concerns.
 
 `[Recommend]` AutoMapper for 1:1 mappings; `BaseRepository<T>` / `BaseService<T>` for one or two consumers; speculative `IOptions<T>` keys with no readers; `Result<T>` when no caller branches on multiple distinct failure modes.
 
@@ -113,8 +113,8 @@ Findings contribute to the consuming workflow's unified output. One block per fi
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `RuleFor(x => x.Items).NotNull()`}
-- Redundant because: {FK | `nullable: false` column | unique index | NRT | DTO FluentValidation rule | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | MediatR latency on hot path} _(required for `[Must]`; omit otherwise)_
+- Unnecessary because: {FK | `nullable: false` column | unique index | NRT | DTO FluentValidation rule | framework guarantee | mockable without a seam | defeats `IExceptionHandler`}
+- Cost: {extra SELECT per save | masked exception | speculative surface area | MediatR latency} _(required for `[Must]` carrying a runtime cost; omit for dead/no-op code)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```

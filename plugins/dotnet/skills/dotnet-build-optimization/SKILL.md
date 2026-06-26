@@ -19,7 +19,8 @@ user-invocable: false
 
 - Centralize NuGet versions in `Directory.Packages.props` with `ManagePackageVersionsCentrally=true`; pin exact versions, never float.
 - Share MSBuild properties (TFM, nullable, warnings-as-errors, lang version) via `Directory.Build.props` at solution root.
-- Cache `~/.nuget/packages` in CI keyed on `Directory.Packages.props` hash; build with `--no-restore` after a successful `dotnet restore`.
+- Commit `packages.lock.json` (`RestorePackagesWithLockFile=true`) and restore with `--locked-mode` in CI for reproducible, transitive-pinned restores.
+- Cache `~/.nuget/packages` in CI keyed on the lock-file hash (falls back to `Directory.Packages.props`); build with `--no-restore` after a successful `dotnet restore`.
 - Enforce a one-way dependency graph: `Domain` <- `Application` <- `Infrastructure`/`Api`. Domain references nothing.
 
 ## Patterns
@@ -65,13 +66,13 @@ GitHub Actions NuGet cache:
 - uses: actions/cache@v4
   with:
     path: ~/.nuget/packages
-    key: nuget-${{ hashFiles('**/Directory.Packages.props') }}
+    key: nuget-${{ hashFiles('**/packages.lock.json', '**/Directory.Packages.props') }}
     restore-keys: nuget-
 ```
 
 Clean Architecture layout: `src/{App}.Domain`, `{App}.Application`, `{App}.Infrastructure`, `{App}.Api`; `tests/<Project>.Tests` mirror.
 
-**Migrating to CPM:** strip every `Version="..."` from `<PackageReference>`, declare each package once in `Directory.Packages.props`, run `dotnet nuget locals all --clear`, then restore. Test-only packages still declare their version centrally.
+**Migrating to CPM:** inventory current versions (`dotnet list package`) first; when projects disagree, consolidate to the highest compatible version (use `VersionOverride` on the one project that genuinely needs another). Strip every `Version="..."` from `<PackageReference>`, declare each package once in `Directory.Packages.props`, run `dotnet nuget locals all --clear`, then restore. Test-only packages still declare their version centrally.
 
 **Multi-TFM:** use `<TargetFrameworks>net8.0;net9.0</TargetFrameworks>` and verify every central package supports both targets.
 

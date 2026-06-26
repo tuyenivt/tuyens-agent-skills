@@ -37,10 +37,16 @@ public async Task<OrderDto> GetOrderAsync(Guid id)
     return await _repo.GetByIdAsync(id);
 }
 
-// Good: token threaded through every await.
+// Good: token threaded through every await - including EF and HTTP sinks.
 public async Task<OrderDto> GetOrderAsync(Guid id, CancellationToken ct)
-    => _mapper.Map<OrderDto>(await _repo.GetByIdAsync(id, ct));
+{
+    var resp = await _http.GetAsync(url, ct);
+    var order = await _db.Orders.Where(o => o.Id == id).FirstOrDefaultAsync(ct);
+    return _mapper.Map<OrderDto>(order);
+}
 ```
+
+`ToListAsync(ct)` / `FirstOrDefaultAsync(ct)` / `SaveChangesAsync(ct)` and `HttpClient` calls are the sinks where dropped tokens hide; minimal-API handlers auto-bind `CancellationToken` from `HttpContext.RequestAborted`.
 
 ### BackgroundService loop
 
@@ -61,7 +67,7 @@ public sealed class OutboxProcessorService(
 }
 ```
 
-Common `ExecuteAsync` bugs: `Thread.Sleep` or `.Result` blocking the host startup path; `while (true)` ignoring `stoppingToken`; `IServiceProvider.CreateScope()` for async-disposable services; unhandled exceptions silently stopping the service (set `HostOptions.BackgroundServiceExceptionBehavior = StopHost` or try/catch the loop body).
+Common `ExecuteAsync` bugs: `Thread.Sleep` or `.Result` blocking the host startup path; `while (true)` ignoring `stoppingToken`; `IServiceProvider.CreateScope()` for async-disposable services; unhandled exceptions silently stopping the service. For the last, choose per intent: a resilient worker try/catches *inside* the loop and continues (re-throwing `OperationCanceledException` when `stoppingToken` fired, so shutdown still works); a fail-fast critical service sets `HostOptions.BackgroundServiceExceptionBehavior = StopHost`. Do not do both.
 
 ### Edge cases
 
@@ -80,7 +86,7 @@ Fix: <minimal change>
 ```
 
 Severity guide:
-- Critical: `async void`, `.Result`/`.Wait()`, missing `stoppingToken` check, `HttpContext` capture in background work.
+- Critical: `async void`, `.Result`/`.Wait()`, missing `stoppingToken` check, unhandled exception silently stopping a `BackgroundService`, `HttpContext` capture in background work.
 - High: missing `CancellationToken` propagation, `Task.Run` in request handlers.
 - Medium: `ConfigureAwait(false)` noise, `ValueTask` misuse.
 

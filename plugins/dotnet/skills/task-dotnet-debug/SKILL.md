@@ -58,7 +58,8 @@ Pick one category and apply the named atomic skill if listed.
 | Category | Indicators | Atomic skill |
 | --- | --- | --- |
 | DI / Startup | `Unable to resolve service`, captive scoped, startup crash | - |
-| EF Core / Database | `DbUpdateException`, migration error, `NullReference` on navigation | `dotnet-ef-performance` |
+| Serialization / Mapping | No exception; wrong / `default` value at a boundary (resolved via Step 3 table) | - |
+| EF Core / Database | `DbUpdateException` (constraint violation -> map to 4xx, not 500), migration error, `NullReference` on navigation; query/N+1 -> `dotnet-ef-performance` | `dotnet-ef-performance` (perf only) |
 | Transactions / SaveChanges | Partial writes, cross-aggregate atomicity | `dotnet-transaction` |
 | Async / Deadlock | `.Result` / `.Wait()` in stack, `TaskCanceledException` | `dotnet-async-patterns` |
 | Null Reference | `NullReferenceException`, `ArgumentNullException` | - |
@@ -79,6 +80,7 @@ Fix must be minimal and target root cause, not symptom. Add exactly one guardrai
 | Blocking async | `AsyncFixer` / VS Threading Analyzers |
 | DI lifetime mismatch | `ValidateOnBuild = true` + `ValidateScopes = true` |
 | Migration failure | Testcontainers migration test in CI |
+| Unmapped DB constraint (500) | Translate `DbUpdateException` -> Problem Details in the central handler |
 | Silent boundary drop | Round-trip serialization / mapping test |
 
 ## Output Format

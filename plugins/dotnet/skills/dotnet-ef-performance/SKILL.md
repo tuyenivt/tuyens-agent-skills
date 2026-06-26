@@ -22,7 +22,7 @@ user-invocable: false
 - Bulk mutate via `ExecuteUpdateAsync` / `ExecuteDeleteAsync`. Never loop `SaveChangesAsync`.
 - Paginate large/unbounded sets by keyset (`WHERE key > @last`), not `Skip/Take`.
 - `EF.CompileAsyncQuery` only for hot single-entity lookups (no `Include`, no `AsSplitQuery`).
-- Drop to Dapper for SQL EF translates poorly (window functions, recursive CTEs). Share the EF transaction via `_context.Database.GetDbConnection()`.
+- Drop to Dapper for SQL EF translates poorly (window functions, recursive CTEs). Share the open EF transaction: pass both `_context.Database.GetDbConnection()` and `CurrentTransaction?.GetDbTransaction()` to the Dapper call.
 
 ## Patterns
 
@@ -69,6 +69,11 @@ ctx.Products.OrderBy(p => p.Id).Skip((page - 1) * size).Take(size);
 
 // Good: filter by last seen key
 ctx.Products.Where(p => p.Id > lastId).OrderBy(p => p.Id).Take(size);
+
+// Non-unique sort column needs a tie-broken composite cursor (index on (Name, Id))
+ctx.Products
+    .Where(p => p.Name.CompareTo(lastName) > 0 || (p.Name == lastName && p.Id > lastId))
+    .OrderBy(p => p.Name).ThenBy(p => p.Id).Take(size);
 ```
 
 **Compiled query for hot-path single-entity lookup.**
@@ -84,7 +89,7 @@ private static readonly Func<AppDbContext, Guid, CancellationToken, Task<Order?>
 ```
 Finding: <one-line problem>
 Location: <file:line or query name>
-Cause: {N+1 | Cartesian | Tracking overhead | Deep Skip | Loop SaveChanges | Over-fetch | Other}
+Cause: {N+1 | Cartesian | Tracking overhead | Deep Skip | Loop SaveChanges | Over-fetch | Untranslatable SQL | Other}
 Fix: <pattern name from this skill> - <one-line change>
 Impact: {Latency | Memory | DB load} - <rough magnitude if measurable>
 ```

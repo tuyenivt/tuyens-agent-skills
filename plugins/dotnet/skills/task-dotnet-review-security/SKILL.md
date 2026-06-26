@@ -83,6 +83,7 @@ Apply its rules against the diff. The atomic owns the patterns; this workflow ow
 **Workflow gates (always evaluated):**
 
 - [ ] **Authorization drift sweep** - every new action has `[Authorize]` / `[Authorize(Policy=...)]` OR explicit `[AllowAnonymous]` when the controller is not `[Authorize]`-decorated. Missing -> High
+- [ ] **Resource-based ownership** - actions loading a user-owned entity by id enforce ownership via `AuthorizeAsync(User, entity, policy)` (a resource handler), not `[Authorize]` alone. Missing -> High (IDOR)
 - [ ] **Mass-assignment fields** - request DTO does not include `Role`, `IsAdmin`, `OwnerId`, `UserId`, `TenantId`, `IsActive`, `Verified`, `Id`, `CreatedAt`, or any field used as an `IMemoryCache` key (cache-key fields are mass assignment even when innocuous: client writes attacker payload, victim reads on next lookup)
 - [ ] **Response shape** - actions return DTO records, not EF entities (`Ok(user)` leaks every column added later)
 - [ ] **JWT validation parameters** - all `Validate*` flags `true`, `ValidAlgorithms` allowlist set, `ClockSkew` <= 30s. Any `Validate* = false` in the diff -> at minimum High
@@ -113,7 +114,9 @@ Note as "flag for separate audit" when not visible in diff: `dotnet list package
 
 ### Step 8 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write to the report file; print confirmation.
+**Subagent mode:** if invoked by `task-dotnet-review`, do not write a file - return the Findings + OWASP Triage in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-security`. Write to the report file; print confirmation.
 
 ## Self-Check
 
@@ -124,7 +127,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write to 
 - [ ] Step 5 - `dotnet-security-patterns` applied; workflow gates (drift sweep, mass-assignment fields, response shape, JWT params, signing key, middleware order, combined-finding rule) evaluated
 - [ ] Step 6 - OWASP triage produced one verdict per category; not duplicated as standalone findings
 - [ ] Step 7 - out-of-diff audits flagged
-- [ ] Step 8 - report written via `review-report-writer`; confirmation printed
+- [ ] Step 8 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding includes an attack scenario, regression-risk rationale (test-coverage gaps), or topology-dependent framing (infra-flavored) - labeled which
 - [ ] Severity rubric applied consistently; combined-finding rule applied only when both land on the same action
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omitted only when no findings)

@@ -157,7 +157,9 @@ Anything beyond presence/absence -> `task-dotnet-review-observability`.
 
 ### Step 12 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Write the assembled review; print the confirmation line.
+**Subagent mode:** if invoked by `task-dotnet-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-perf`. Write the assembled review; print the confirmation line.
 
 ## Self-Check
 
@@ -172,7 +174,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write the ass
 - [ ] Step 9 - caching strategy assessed (size limit, expiration, stampede, invalidation, output caching)
 - [ ] Step 10 - `dotnet-messaging-patterns` applied on any worker / MassTransit / Hangfire change
 - [ ] Step 11 - observability presence/absence noted; depth gaps delegated
-- [ ] Step 12 - report written via `review-report-writer`; confirmation line printed
+- [ ] Step 12 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding states impact (measured `p95: 800ms -> 120ms`, or estimated `adds ~N queries per request at K rows`) - never just "this is slow"
 - [ ] Findings ordered by impact; depth honored; Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
 

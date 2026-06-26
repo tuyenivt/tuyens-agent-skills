@@ -21,7 +21,7 @@ user-invocable: false
 - MassTransit for cross-service async messaging; Hangfire for in-process scheduled/delayed jobs
 - Implement `IConsumer<T>`; never subscribe to raw broker APIs from application code
 - Use `AddEntityFrameworkOutbox` (bus outbox) so publishes commit with `SaveChangesAsync` in one transaction
-- Consumers and Hangfire jobs are idempotent; guard side effects by message/job id
+- Consumers and Hangfire jobs are idempotent: MassTransit consumers dedup on `MessageId`; Hangfire jobs (whose id changes across reschedules) guard on the business key or target state
 - Configure retry and dead-letter (`_error` / `_skipped`) for every consumer
 - Pass identifiers (not entities, `DbContext`, or `CancellationToken`) as Hangfire job arguments
 
@@ -45,6 +45,8 @@ await _publishEndpoint.Publish(new OrderPlaced(orderId)); // buffered in outbox 
 await _db.SaveChangesAsync(); // commits row + outbox entry atomically
 ```
 
+The outbox needs a migration for its tables and a delivery service to drain them - `SaveChangesAsync` persists the row but does not itself publish. Delivery is at-least-once, which is why consumers must be idempotent.
+
 **Idempotent consumer - dedupe by message id.**
 
 ```csharp
@@ -55,6 +57,8 @@ public async Task Consume(ConsumeContext<OrderPlaced> ctx)
     await _processed.RecordAsync(ctx.MessageId.Value);
 }
 ```
+
+The `Exists` check and `Record` must be atomic with the side effect, or concurrent redelivery double-applies it. Write the dedup row in the same `DbContext`/transaction as the side effect (or put `UseInMemoryOutbox()` in front and a unique constraint on `MessageId` so the second commit fails).
 
 **Retry + DLQ - bounded exponential, then dead-letter.**
 

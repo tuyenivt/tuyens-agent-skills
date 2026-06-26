@@ -157,7 +157,9 @@ Read so findings cite real lines: `Program.cs`, `appsettings.json`, `.csproj` / 
 
 ### Step 13 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Write the assembled output to the report file; print the confirmation line.
+**Subagent mode:** if invoked by `task-dotnet-review`, do not write a file - return the Surface Map + findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-observability`. Write the assembled output to the report file; print the confirmation line.
 
 ## Self-Check
 
@@ -173,7 +175,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 - [ ] Step 10 - lifecycle and three-way health-check split assessed
 - [ ] Step 11 - error tracker assessed
 - [ ] Step 12 - at `deep`, SLIs and per-dependency health depth assessed
-- [ ] Step 13 - report written via `review-report-writer`; confirmation line printed
+- [ ] Step 13 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 
 ## Output Format
 

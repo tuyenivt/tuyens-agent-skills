@@ -47,6 +47,8 @@ migrationBuilder.AlterColumn<string>("email_address", "users", nullable: false);
 migrationBuilder.DropColumn("email", "users");
 ```
 
+During the expand window deployed code must dual-write both columns (or new writes to the old column are lost from the new one). On a large table, tighten via the `NOT VALID` CHECK + `VALIDATE` path below instead of a bare `AlterColumn(nullable: false)`.
+
 ### NOT NULL on Large Tables (PostgreSQL)
 
 `AlterColumn(nullable: false)` issues `ALTER COLUMN SET NOT NULL`, taking `AccessExclusiveLock` and scanning every row. Use a `NOT VALID` CHECK constraint, then validate separately. EF Core does not generate this; use `migrationBuilder.Sql()`.
@@ -63,7 +65,7 @@ migrationBuilder.Sql(
     "ALTER TABLE users VALIDATE CONSTRAINT users_email_address_not_null;");
 ```
 
-SQL Server equivalent: `ALTER TABLE ... ADD CONSTRAINT ... WITH (ONLINE = ON)` (Enterprise).
+SQL Server equivalent: `ALTER TABLE ... ADD CONSTRAINT ... WITH (ONLINE = ON)` (Enterprise). Once the CHECK is validated, `SET NOT NULL` on the column skips its own scan (PG12+); then drop the now-redundant CHECK.
 
 ### Index on Large Tables
 
@@ -77,7 +79,7 @@ migrationBuilder.Sql(
     suppressTransaction: true);
 ```
 
-`CONCURRENTLY` cannot run inside a transaction - `suppressTransaction: true` is required.
+`CONCURRENTLY` cannot run inside a transaction - `suppressTransaction: true` is required (Postgres only; SQL Server `ONLINE = ON` is transactional and needs no suppression). Because it is non-atomic, a failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index that still consumes space - `DROP INDEX` it before retrying.
 
 ### Apply Migrations
 

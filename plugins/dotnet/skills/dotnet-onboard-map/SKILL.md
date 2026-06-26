@@ -41,7 +41,7 @@ Workflow needs .NET-specific orientation: target framework, solution layering, E
 
 ### Layout Variants
 
-Detect which the project uses (drives new-code placement):
+Detect which the project uses (drives new-code placement); variants can compose - e.g. a Worker Service host over a modular/Clean layout - so report the combination rather than forcing one bucket:
 
 - **Clean Architecture** (default for .NET): `src/{Domain, Application, Infrastructure, Api}` as separate projects. Domain has no refs; Application -> Domain; Infrastructure -> Application; Api -> all. Layer rules enforced by `<ProjectReference>` graph. New logic: `Application/Features/<F>/`; persistence: `Infrastructure/Persistence/`; HTTP: `Api/Controllers/` or `Api/Endpoints/`.
 - **Vertical slice / feature folders**: single `Api` project with `Features/<F>/{Handler, Endpoint, Request, Repository}.cs`. Layering by namespace, not project; no compile-time gate.
@@ -56,9 +56,9 @@ Detect which the project uses (drives new-code placement):
 1. SDK: match `global.json` to `dotnet --version`.
 2. `dotnet restore`.
 3. Services: `compose.yml` for SQL Server / Postgres / Redis; `dotnet user-secrets set` for dev secrets.
-4. Migrations (EF Core): `dotnet ef database update --project src/Infrastructure --startup-project src/Api`. Multi-DbContext: add `--context <Name>`.
-5. Run: `dotnet run --project src/Api` (or `dotnet watch run`).
-6. Verify: URL from `launchSettings.json` or `Kestrel:Endpoints`; `/swagger` if Swashbuckle is referenced.
+4. Migrations: if EF Core, `dotnet ef database update --project <persistence-project> --startup-project <startup-project>`; discover DbContexts via `: DbContext` and run once per context with `--context <Name>` (each may have its own output dir). If no EF Core, report the observed mechanism (Dapper + `schema.sql`/DbUp/FluentMigrator) instead.
+5. Run: `dotnet run --project <startup-project>` (`--project` optional for a single-project repo).
+6. Verify: for a web app, URL from `launchSettings.json` / `Kestrel:Endpoints`, `/swagger` if Swashbuckle is referenced. For a Worker Service, no URL - verify via logs.
 
 ### Conventions (call out what's present)
 
@@ -91,7 +91,7 @@ Riskier: `Program.cs` edits (DI order, middleware order), EF Core migrations, DI
 Inject into `task-onboard` sections:
 
 - **Stack and Tooling**: target framework; layout variant; ORM + provider; presentation style; MediatR/CQRS yes/no; validation lib; logging stack; test framework.
-- **Local Bootstrap**: SDK check, `dotnet restore`, services compose, `dotnet user-secrets`, `dotnet ef database update` (with `--project`/`--startup-project`/`--context`), `dotnet run --project ...`, URL, swagger path.
+- **Local Bootstrap**: SDK check, `dotnet restore`, services compose, `dotnet user-secrets`, schema/migration step (EF Core `database update` with `--project`/`--startup-project`/`--context`, or the observed non-EF mechanism), `dotnet run --project ...`; for web apps the URL + swagger path, for Workers the log-based verification.
 - **Architecture Map**: project graph (which references which), `Program.cs` location, controllers/endpoints directory, `DbContext` + `IEntityTypeConfiguration<T>` locations, migrations directory.
 - **Conventions**: DI, `IOptions<T>`, logging, async/cancellation, validation, tests - only what the repo actually uses.
 - **Risk Hotspots**: subset from the list above that applies to the observed code.
