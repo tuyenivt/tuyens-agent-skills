@@ -158,7 +158,7 @@ Each step is:
 | --------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------ |
 | Extract service from fat controller           | Add `<Verb><Noun>Service` + test -> controller calls it -> remove old logic -> verify `@WebMvcTest` | -                       |
 | `@PostUpdate` -> `AFTER_COMMIT`               | Pin behavior test -> publish domain event -> add `@TransactionalEventListener(AFTER_COMMIT)` -> delete callback | `spring-transaction`  |
-| Untangle fat controller + entity callbacks    | Pin behavior -> promote callbacks to AFTER_COMMIT -> introduce service -> delete callbacks   | `spring-transaction`           |
+| Untangle fat controller + entity callbacks    | Pin behavior -> promote callbacks to AFTER_COMMIT -> introduce service -> delete callbacks (use this only when a controller smell is also in scope; for a callback alone use the row above) | `spring-transaction` |
 | Split god service                             | Identify orthogonal concerns -> extract one at a time, god delegates -> migrate callers -> delete shell | -                    |
 | Eliminate single-impl interface               | Confirm no doubles / AOP / second impl -> inline impl, delete interface (skip if published API) | `complexity-review`         |
 | `@Autowired` field -> constructor injection   | Add constructor with `final` fields -> remove `@Autowired` (`@RequiredArgsConstructor` works) | -                              |

@@ -70,6 +70,10 @@ plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
 
 Without this, fresh CI runners fail when no matching JDK is found.
 
+### Diagnose before optimizing
+
+Measure where the time goes before changing anything: `./gradlew <task> --scan` (shareable build scan, the richest view), `--profile` (HTML timing report under `build/reports/profile/`), and `:<module>:dependencyInsight --dependency <name>` to trace a version conflict to its requester. "Cache enabled but still slow" is usually cache misses from non-reproducible task inputs (absolute paths, timestamps) - a build scan shows the miss reasons.
+
 ### `gradle.properties` for build speed
 
 ```properties
@@ -84,6 +88,20 @@ org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseG1GC
 ```
 
 ### Multi-module via convention plugin
+
+Wire the modules and the `build-logic` included build in the root `settings.gradle.kts` first - without `includeBuild` the convention plugin id does not resolve:
+
+```kotlin
+rootProject.name = "acme"
+includeBuild("build-logic")
+include(":domain", ":app")
+```
+
+`build-logic/build.gradle.kts` needs the `kotlin-dsl` plugin so its `*.gradle.kts` files compile to plugins:
+
+```kotlin
+plugins { `kotlin-dsl` }
+```
 
 `build-logic/src/main/kotlin/java-conventions.gradle.kts`:
 
@@ -144,8 +162,15 @@ dependencies {
 }
 
 // Avoid `failOnVersionConflict()` with Spring BOM - the BOM intentionally
-// pins versions that may conflict with transitive requests. Prefer explicit
-// `strictly { }` on the few deps that actually matter.
+// pins versions that may conflict with transitive requests.
+
+// Resolve a specific conflict (e.g. CVE-patched transitive) one of two ways:
+ext["jackson-bom.version"] = "2.18.2"   // override a Boot-managed BOM property (Spring's idiom)
+dependencies {
+    implementation("com.fasterxml.jackson.core:jackson-databind") {
+        version { strictly("2.18.2") }   // hard pin one dependency, fails the build if unsatisfiable
+    }
+}
 
 dependencyLocking { lockAllConfigurations() }
 // ./gradlew dependencies --write-locks  (commit gradle.lockfile)

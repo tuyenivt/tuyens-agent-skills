@@ -25,7 +25,7 @@ If no `org.springframework.*` / `jakarta.persistence.*` imports and no Spring an
 - External IO (HTTP, Kafka, email) inside `@Transactional` is a correctness signal - the side effect can happen before commit or be retried on rollback
 - JPA mutations flush at commit via dirty checking, not `save()` - say so when the code mutates entities
 - Entities crossing the transaction boundary are detached - lazy access fails after return
-- Identify the security context (filter chain / method security / none) before describing endpoint behavior
+- Identify the security context (filter chain / method security / none) before describing endpoint behavior. When the chain isn't in the snippet, say so and note it's defined elsewhere rather than guessing the policy
 
 ## Patterns
 

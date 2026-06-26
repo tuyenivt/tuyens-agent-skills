@@ -21,9 +21,9 @@ Workflow needs Spring-specific orientation: where code lives, how to run, what w
 - Locate `@SpringBootApplication` package = component-scan root. Flag any `scanBasePackages`, `@EntityScan`, `@EnableJpaRepositories` that diverge from it - beans outside become invisible.
 - Inventory every `application-<profile>.yml` / `.properties` and state precedence: CLI args > env (`SPRING_APPLICATION_JSON`, `SPRING_*`) > `application-<profile>` > `application.yml`. Note `spring.profiles.active` default and `spring.config.import`.
 - List `@ConfigurationProperties` classes (and any `@EnableConfigurationProperties`) - typed config beats grepping yml for keys.
-- Identify persistence stack (JPA / JDBC / MyBatis / R2DBC / none) and migration tool. Flyway + Liquibase both present is a misconfiguration - call it out.
+- Identify persistence stack (JPA / JDBC / MyBatis / R2DBC / none) and migration tool. Flyway + Liquibase both present is a misconfiguration - call it out and state which actually runs (both auto-configs fire unless one is disabled via `spring.flyway.enabled` / `spring.liquibase.enabled`).
 - Identify the `SecurityFilterChain` bean. `WebSecurityConfigurerAdapter` = unsupported pre-Boot-3 pattern, surface as migration signal. No security config + `spring-boot-starter-security` on classpath = HTTP Basic with generated password; starter absent = no auth.
-- Cross-reference route inventory (`@RequestMapping` / `@GetMapping` family) with `SecurityFilterChain.requestMatchers(...)` so each route is labeled public / authenticated / role-restricted.
+- Cross-reference route inventory (`@RequestMapping` / `@GetMapping` family) with `SecurityFilterChain.requestMatchers(...)` so each route is labeled public / authenticated / role-restricted. Also check `@PreAuthorize` / `@PostAuthorize` on controllers and services - these enforce auth outside the chain, so a route that looks "authenticated" from matchers alone may carry a stricter role rule.
 
 ## Patterns
 
@@ -43,7 +43,7 @@ Workflow needs Spring-specific orientation: where code lives, how to run, what w
 2. Local deps from `compose.yml` (Postgres, Redis, Kafka) or external URLs in profile yml.
 3. Active profile from `spring.profiles.active` or `SPRING_PROFILES_ACTIVE`.
 4. Migrations: Flyway (`src/main/resources/db/migration/`) or Liquibase (`db/changelog/`) - run at startup.
-5. Run: `./mvnw spring-boot:run` or `./gradlew bootRun`. Port `server.port` (default 8080).
+5. Run: `./mvnw spring-boot:run` or `./gradlew bootRun` (multi-module: qualify the runnable module, `./gradlew :app:bootRun`). Port `server.port` (default 8080).
 6. Verify `/actuator/health`; springdoc -> `/v3/api-docs`, `/swagger-ui.html`.
 
 ### Key locations

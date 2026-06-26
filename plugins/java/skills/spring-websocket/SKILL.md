@@ -20,7 +20,7 @@ user-invocable: false
 
 - Authenticate once at the STOMP `CONNECT` frame via `ChannelInterceptor`. Prefer CONNECT-frame JWT over handshake query params (query strings leak to proxy logs and browser history).
 - `/topic/**` for broadcasts; `/user/queue/**` via `convertAndSendToUser` for per-user delivery. Never broadcast sensitive payloads on `/topic`.
-- `enableSimpleBroker` is in-process. For >1 instance, use `enableStompBrokerRelay` (RabbitMQ / Artemis / ActiveMQ).
+- `enableSimpleBroker` is in-process. For >1 instance, use `enableStompBrokerRelay` (RabbitMQ / Artemis / ActiveMQ). `convertAndSendToUser` still breaks across instances unless the sender's instance knows where the user is connected: enable `setUserRegistryBroadcast` / `setUserDestinationBroadcast` on the relay (or pin connections with sticky sessions). A relay alone does not fix per-user routing.
 - Set heartbeats, message size, send buffer, and send time limits. Without them stale or slow clients consume threads and memory indefinitely.
 - Use `ReentrantLock` or concurrent collections in handlers - `synchronized` pins Virtual Threads.
 - Handle errors with `@MessageExceptionHandler`. Unhandled exceptions close the session with no client-visible reason.
@@ -126,7 +126,10 @@ public class ChatController {
     }
 
     @MessageMapping("/chat.private")
-    public void privateMessage(@Payload PrivateMessageDTO m) {
+    public void privateMessage(@Payload PrivateMessageDTO m, Principal sender) {
+        // Authorize the relationship: never trust recipientId from the payload alone -
+        // destination matchers don't cover business rules (e.g. blocked users, non-contacts).
+        chatService.assertCanMessage(sender.getName(), m.recipientId());
         template.convertAndSendToUser(m.recipientId(), "/queue/messages", m);
     }
 

@@ -139,7 +139,16 @@ class OrderService {
 }
 ```
 
-Domain-object checks use `hasPermission(...)` backed by a `PermissionEvaluator` bean - prefer this over scattering ownership checks across services.
+Domain-object checks use `hasPermission(...)` backed by a `PermissionEvaluator` - prefer this over scattering ownership checks across services. SS6 wires it through a custom expression handler (the old `GlobalMethodSecurityConfiguration` override is gone):
+
+```java
+@Bean
+static MethodSecurityExpressionHandler expressionHandler(PermissionEvaluator evaluator) {
+    var handler = new DefaultMethodSecurityExpressionHandler();
+    handler.setPermissionEvaluator(evaluator);  // @PreAuthorize("hasPermission(#id, 'Order', 'read')")
+    return handler;
+}
+```
 
 ### Password encoding
 
@@ -174,8 +183,14 @@ CorsConfigurationSource corsConfigurationSource(
 http.csrf(AbstractHttpConfigurer::disable)
     .sessionManagement(s -> s.sessionCreationPolicy(STATELESS));
 
-// Stateful SPA: cookie token, SPA echoes via X-XSRF-TOKEN header
-http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()));
+// Stateful SPA: cookie token, SPA echoes via X-XSRF-TOKEN header.
+// SS6 defers/BREACH-encodes the token by default, which breaks SPAs that read the raw
+// cookie value - pair the repository with a request handler that resolves it eagerly.
+var requestHandler = new CsrfTokenRequestAttributeHandler();
+requestHandler.setCsrfRequestAttributeName(null);          // opt out of deferred lookup
+http.csrf(csrf -> csrf
+    .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+    .csrfTokenRequestHandler(requestHandler));
 ```
 
 ### Security headers

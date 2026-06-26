@@ -84,7 +84,14 @@ If the side effect must survive a crash between commit and publish, use a transa
 
 Virtual threads (Java 21, Spring Boot 3.5+) do not change this: a parked HTTP call still holds the JDBC connection bound to that thread. Pool sizing matters more, not less.
 
-### Checked exception rollback
+### "Not rolling back" - four causes
+
+Before assuming a Spring bug, rule these out in order:
+
+1. **Checked exception** - Spring rolls back on unchecked only by default. Add `rollbackFor`.
+2. **Exception caught inside the method** - a swallowed `try/catch` means nothing propagates to trigger rollback. Rethrow or mark `setRollbackOnly()`.
+3. **Self-invocation** - `this.txMethod()` never enters the proxy, so no transaction exists to roll back (see above).
+4. **Non-public method** - the proxy cannot advise it; the annotation is silently ignored.
 
 ```java
 // Bad - PaymentException is checked → transaction COMMITS despite the failure

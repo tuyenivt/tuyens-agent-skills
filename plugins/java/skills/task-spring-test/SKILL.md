@@ -55,7 +55,7 @@ If no existing tests, state conventions explicitly in the strategy.
 | Contract     | Spring Cloud Contract / Pact                       | Consumer/provider API contracts                                        |
 | E2E          | `@SpringBootTest(RANDOM_PORT)` + REST Assured      | Critical journeys only (signup, checkout, payment)                     |
 
-Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it.
+Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it. A workable default balance to anchor the percentage fields below: ~60-70% unit, ~20-30% slice, <10% full-context/E2E; shift toward slice for repository/controller-heavy services. State it as a target, not a measured value.
 
 ### Step 5 - Apply Patterns
 

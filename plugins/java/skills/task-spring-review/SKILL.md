@@ -271,7 +271,7 @@ The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` 
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Java <version> / Spring Boot <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
@@ -338,8 +338,8 @@ Omit empty sections.
 - [ ] Step 5 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
 - [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; missing tests raised as named finding
-- [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant
-- [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered
+- [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
+- [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase E - maintainability applied
 - [ ] Step 6 - subagents ran in parallel with pre-resolved handle (when scope > Core)
 - [ ] Step 7 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted

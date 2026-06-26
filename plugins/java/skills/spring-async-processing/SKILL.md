@@ -21,7 +21,7 @@ user-invocable: false
 
 - Name the executor on `@Async("name")` - the unnamed default is `SimpleAsyncTaskExecutor`, unbounded (a thread per task; VT-backed when `spring.threads.virtual.enabled=true` on Boot 3.2+, platform otherwise)
 - Pick the executor by workload: `ThreadPoolTaskExecutor` (bounded + queue + back-pressure) for CPU-bound or rate-limited; Virtual Threads for IO-bound fan-out
-- Async handlers must be idempotent (retries and redelivery are expected)
+- Async handlers should be idempotent where redelivery is possible (`@Retryable`, broker redelivery). In-process `@TransactionalEventListener(AFTER_COMMIT)` events are NOT redelivered - a crash after commit loses them; use a transactional outbox when the side effect must survive (see `spring-messaging-patterns`)
 - `@Async` self-invocation is silently ignored (proxy bypass) - see `spring-transaction`
 - Configure `AsyncUncaughtExceptionHandler` - unchecked exceptions on `void` returns are otherwise swallowed; for `CompletableFuture` returns use `.exceptionally(...)`
 - Prefer `@TransactionalEventListener(AFTER_COMMIT)` over `@EventListener` when the handler must not run on rollback
@@ -129,7 +129,7 @@ public void recover(MailSendException ex, Long orderId) {
 }
 ```
 
-Always define `@Recover` - without it, exhausted retries are swallowed.
+Always define `@Recover` - without it, exhausted retries are swallowed. `@Async` needs `@EnableAsync`, `@Retryable`/`@Recover` need `@EnableRetry` (Spring Retry dependency) on a `@Configuration`; without them the annotations are silent no-ops.
 
 ### Context propagation across the async boundary
 

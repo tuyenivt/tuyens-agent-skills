@@ -35,6 +35,7 @@ user-invocable: false
 | `NotFoundException` (domain)                             | 404    |
 | `HttpRequestMethodNotSupportedException`                 | 405    |
 | `ConflictException`, `DataIntegrityViolationException`, `OptimisticLockingFailureException` | 409 |
+| `PaymentDeclinedException` (domain)                      | 402    |
 | `HttpMediaTypeNotSupportedException`                     | 415    |
 | `MaxUploadSizeExceededException`                         | 413    |
 | `UnprocessableEntityException` (domain)                  | 422    |
@@ -97,8 +98,10 @@ public class GlobalExceptionHandler {
 
     private static ProblemDetail problem(HttpStatus status, String code, String detail) {
         var pd = ProblemDetail.forStatusAndDetail(status, detail);
-        pd.setTitle(code);
-        pd.setProperty("traceId", MDC.get("traceId"));
+        pd.setType(URI.create("urn:problem:" + code.toLowerCase().replace('_', '-')));  // RFC 9457 machine id
+        pd.setTitle(status.getReasonPhrase());                                            // human-readable summary
+        pd.setProperty("code", code);                                                     // machine code for clients
+        pd.setProperty("traceId", MDC.get("traceId"));  // populated by a request-boundary MDC filter
         return pd;
     }
 }

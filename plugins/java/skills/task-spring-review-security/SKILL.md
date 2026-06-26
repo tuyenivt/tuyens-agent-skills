@@ -126,7 +126,9 @@ Plus Spring-specific: open redirect (`response.sendRedirect(userInput)` allowlis
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write to the report file before ending; print confirmation.
+**Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-security`. Write to the report file before ending; print confirmation.
 
 ## Self-Check
 
@@ -139,7 +141,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write to 
 - [ ] Step 7 - authorization drift sweep complete; every new endpoint has a matcher or `@PreAuthorize`
 - [ ] Step 8 - Bean Validation on every `@RequestBody`; no entity as input DTO; file-upload / process-execution checks where applicable
 - [ ] Step 9 - every OWASP row addressed; clean categories explicitly marked "No issues found"
-- [ ] Step 10 - report written via `review-report-writer`; confirmation printed
+- [ ] Step 10 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding includes an attack scenario and a concrete Spring fix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if none)
 

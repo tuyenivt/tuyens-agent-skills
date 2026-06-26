@@ -61,7 +61,7 @@ class OrderRepositoryTest {
 }
 ```
 
-`@DataJpaTest` defaults to in-memory DB; the container override is what activates Postgres.
+`@DataJpaTest` defaults to in-memory DB; `@ServiceConnection` on the container overrides that (no `@AutoConfigureTestDatabase(replace = NONE)` needed). It runs Flyway/Liquibase by default, so tests exercise the real schema - required for JSONB columns, generated columns, or anything `ddl-auto` cannot reproduce. Disable migrations only deliberately (`spring.flyway.enabled=false` + `ddl-auto: create-drop`).
 
 ### `@WebMvcTest` controller slice
 
@@ -131,7 +131,7 @@ public abstract class AbstractIntegrationTest {
 
 ### Security tests
 
-Controller slices auto-wire the filter chain but bind no user. Import your `SecurityConfig` and use Spring Security Test post-processors.
+Controller slices auto-wire the filter chain but bind no user. Import your `SecurityConfig` and use Spring Security Test post-processors. `@WebMvcTest` does not pick up `@EnableMethodSecurity`, so `@PreAuthorize`/`@PostAuthorize` silently no-op unless you `@Import` the method-security config (or the test passes for the wrong reason). Method-security rules are better asserted in a `@SpringBootTest` that loads them.
 
 ```java
 @WebMvcTest(OrderController.class) @Import(SecurityConfig.class)
@@ -160,7 +160,7 @@ class OrderControllerSecurityTest {
 
 ### Transactional rollback gotcha
 
-`@DataJpaTest` auto-rolls back. `@SpringBootTest` does not - add `@Transactional` on the test class. `@Transactional` does not cover spawned threads (`@Async`, `REQUIRES_NEW`, event listeners with their own tx). Clean those with `@Sql(executionPhase = AFTER_TEST_METHOD)` or an `@AfterEach` truncate.
+`@DataJpaTest` auto-rolls back. `@SpringBootTest` does not - add `@Transactional` on the test class for cheap cleanup. But `@Transactional` on the test wraps the whole method in one open tx, so a test exercising `@TransactionalEventListener(AFTER_COMMIT)`, `@Async`, `REQUIRES_NEW`, or any commit-gated path will never see it fire - the commit never happens. For those flows, drop `@Transactional` and clean up explicitly with `@Sql(executionPhase = AFTER_TEST_METHOD)` or an `@AfterEach` truncate; then poll for the post-commit effect with Awaitility (below).
 
 ### Async with Awaitility
 

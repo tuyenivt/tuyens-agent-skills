@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Consumers idempotent - any message can be redelivered.
+- Consumers idempotent - any message can be redelivered. Dedup on the producer's **event ID** (unique per logical event), not the routing/partition key - one key can carry many distinct events. `markProcessed(id)` returns `true` when the ID is newly recorded (proceed), `false` when already seen (skip); back it with a unique-PK insert so the check is atomic under concurrency.
 - DLT / DLQ configured for every listener; permanent failures excluded from retry.
 - Use the **transactional outbox** whenever a publish must atomically follow a DB commit. Never call `send()` inside `@Transactional` without it - rollback leaves phantom events.
 - Payloads are records / primitives. Never serialize JPA entities (lazy proxies, schema coupling).
@@ -54,8 +54,8 @@ class OrderPlacedConsumer {
         exclude = { ValidationException.class, IllegalArgumentException.class })
     @KafkaListener(topics = "order.placed", groupId = "fulfillment")
     public void onOrderPlaced(OrderPlacedEvent e,
-                               @Header(KafkaHeaders.RECEIVED_KEY) String key) {
-        if (!processed.markProcessed(key)) return;  // unique-PK insert; duplicate = skip
+                               @Header("eventId") String eventId) {
+        if (!processed.markProcessed(eventId)) return;  // false = already seen, skip
         fulfillment.initiate(e.orderId());
     }
 
@@ -93,8 +93,8 @@ spring:
 }
 
 @RabbitListener(queues = "order.fulfillment")
-public void handle(OrderPlacedEvent e) {
-    if (!processed.markProcessed(e.orderId().toString())) return;
+public void handle(OrderPlacedEvent e, @Header("eventId") String eventId) {
+    if (!processed.markProcessed(eventId)) return;  // false = already seen, skip
     fulfillment.initiate(e.orderId());
 }
 ```
@@ -139,7 +139,11 @@ public void publishOne(UUID id) {
 ```
 
 ```sql
--- Native query (JPQL lacks SKIP LOCKED):
+-- Native query (JPQL lacks SKIP LOCKED). Claim and publish must share ONE transaction:
+-- the FOR UPDATE row lock is what stops a second instance from grabbing the same rows,
+-- and it releases at commit. Claiming in tx A and publishing in tx B reopens the double-
+-- publish window. Either publish inside the claim tx, or stamp a `claimed_at`/owner column
+-- in the claim tx so the next poll's WHERE excludes in-flight rows.
 SELECT id FROM outbox_events
 WHERE published = false
 ORDER BY created_at

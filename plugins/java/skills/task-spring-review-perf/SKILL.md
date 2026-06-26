@@ -125,7 +125,9 @@ Use skill: `spring-messaging-patterns`.
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Write to the report file, then print confirmation.
+**Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-perf`. Write to the report file, then print confirmation.
 
 ## Output Format
 
@@ -176,7 +178,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - [ ] Step 7: `spring-async-processing` consulted; VT pinning, HikariCP sizing, HTTP-client reuse checked
 - [ ] Step 8: caching invalidation explicit; response shape and HTTP caching verified
 - [ ] Step 9: `spring-messaging-patterns` consulted; outbox and post-commit verified
-- [ ] Step 10: report written via `review-report-writer`; confirmation printed
+- [ ] Step 10: standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding states impact (measured or estimated), never "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Depth honored: `standard` ran all; `deep` adds capacity + load-test plan

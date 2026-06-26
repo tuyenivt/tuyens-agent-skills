@@ -47,6 +47,8 @@ ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 
 Batched backfill avoids long-held locks and WAL bloat. Run from app or job, not as a single `UPDATE`.
 
+`SET NOT NULL` on an *existing* column scans the whole table under an ACCESS EXCLUSIVE lock. Postgres 12+ skips the scan if a validated equivalent CHECK already proves no nulls - add `CHECK (status IS NOT NULL) NOT VALID`, `VALIDATE CONSTRAINT` (lock-free), then `SET NOT NULL` (now instant), then drop the CHECK.
+
 ### Three-step rename with dual-write
 
 ```sql
@@ -82,6 +84,8 @@ Flyway wraps each script in a transaction. `CREATE INDEX CONCURRENTLY` cannot ru
 -- flyway:executeInTransaction=false
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
+
+A failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index behind (it is not rolled back - the script ran outside a transaction). `IF NOT EXISTS` will not replace it; `DROP INDEX CONCURRENTLY` first, then re-run.
 
 MySQL equivalent (InnoDB):
 

@@ -102,7 +102,7 @@ Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile
 - Repository: `src/main/java/.../repository/{Name}Repository.java`
 - Service: `src/main/java/.../service/{Name}Service.java`
 - Controller: `src/main/java/.../controller/{Name}Controller.java`
-- Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql`
+- Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql` (new table) or `__add_{column}_to_{table}.sql` (additive change to an existing entity; omit entirely if no schema change)
 - Tests: service unit, `@DataJpaTest` repository, `@WebMvcTest` controller
 
 ## Endpoints

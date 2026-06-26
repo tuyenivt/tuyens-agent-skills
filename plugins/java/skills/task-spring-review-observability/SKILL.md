@@ -144,7 +144,9 @@ Open the files that wire observability so findings cite real lines, even when th
 
 ### Step 12 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Write the file before ending; print confirmation.
+**Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-observability`. Write the file before ending; print confirmation.
 
 ## Output Format
 
@@ -202,7 +204,7 @@ _Omit if no actionable findings._
 - [ ] Step 9 - messaging / async: listener observation flags, consumer MDC, listener metrics
 - [ ] Step 10 - error tracker: starter, secrets externalized, PII off, MDC forwarded, sample rate explicit
 - [ ] Step 11 - SLI / health indicators reviewed (`deep` only)
-- [ ] Step 12 - report written via `review-report-writer`; confirmation printed
+- [ ] Step 12 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 
 ## Avoid
 

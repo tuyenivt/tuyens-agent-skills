@@ -121,12 +121,12 @@ List<Order> nextPage(@Param("lastId") Long lastId, Pageable p);
 // Bad - one INSERT per row, no batching
 orders.forEach(repository::save);
 
-// Good - JDBC batching
+// Good - JDBC batching; flush/clear chunk matches batch_size
 @Transactional
 public void insertAll(List<Order> orders) {
     for (int i = 0; i < orders.size(); i++) {
         em.persist(orders.get(i));
-        if (i % 50 == 0) { em.flush(); em.clear(); }
+        if ((i + 1) % 50 == 0) { em.flush(); em.clear(); }  // (i+1): no empty flush at i=0
     }
 }
 ```
@@ -137,7 +137,7 @@ spring.jpa.properties.hibernate.order_inserts: true
 spring.jpa.properties.hibernate.order_updates: true
 ```
 
-Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts.
+Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts. PostgreSQL also needs `reWriteBatchedInserts=true` on the JDBC URL to collapse a batch into one multi-row INSERT. For very large jobs, chunk into multiple transactions and consider Hibernate `StatelessSession` (no persistence context, no dirty checking).
 
 ### `@Modifying` queries
 

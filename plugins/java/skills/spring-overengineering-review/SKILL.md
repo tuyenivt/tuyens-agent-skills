@@ -148,10 +148,10 @@ One block per finding:
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@NotNull` on `Order.user`}
-- Redundant because: {FK, `nullable = false`, unique index, DTO `@NotNull`, `@RestControllerAdvice`, framework guarantee}
-- Cost: {extra SELECT | masked exception | proxy mismatch | speculative surface} _(required for `[Must]`)_
+- Unnecessary because: {FK | `nullable = false` | unique index | DTO `@NotNull` | `@RestControllerAdvice` | framework guarantee | single impl | `Optional` already expresses this | unread/speculative}
+- Cost: {extra SELECT | masked exception | proxy mismatch | forced two-file refactor | speculative surface} _(required for `[Must]`)_
 - Recommendation: {concrete edit}
-- Justified when: {one-line note, only for `[Question]`}
+- Justified when: {one-line note - on `[Question]` always; on `[Must]`/`[Recommend]` when a known exception exists, e.g., "no unique index present"}
 ```
 
 For each of the three categories with no findings, state `No <category> findings.` so the workflow sees the check ran.

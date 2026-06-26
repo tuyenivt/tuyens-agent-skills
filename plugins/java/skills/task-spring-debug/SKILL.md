@@ -49,6 +49,8 @@ Classify and load the relevant atomic skill if any. Common mappings:
 | Build / dependency conflict                    | `java-gradle-build-optimization` |
 | Plain `NullPointerException`, JSON binding, `MethodArgumentNotValidException`, `NoSuchBeanDefinitionException`, `BeanCurrentlyInCreationException`, `ConverterNotFoundException`, compilation, generic test failure | none (handle inline) |
 
+When there is no exception (behavior mismatch), route by symptom, not class: silent commit / "not rolling back" / lost update -> `spring-transaction`; data missing after save, stale read -> `spring-jpa-performance` or `spring-transaction`; missing post-commit side effect -> `spring-async-processing` / `spring-messaging-patterns`; wrong auth outcome -> `spring-security-patterns`.
+
 If a skill loaded, its Patterns drive Steps 5-6. Do not re-derive.
 
 ### Step 4 - Locate in codebase
@@ -74,7 +76,7 @@ Show exact before -> after diff. Minimal fix, not redesign. If Step 3 loaded an 
 
 Use skill: `spring-test-integration` for test-slice patterns (singleton Testcontainers, security post-processors, Awaitility for async).
 
-Suggest one regression test that would have caught this bug class. Pick the slice that exercises the actual failure boundary (e.g. integration test outside the original `@Transactional` for LIE; `@WebMvcTest` for binding / validation; concurrent threads for optimistic lock; Testcontainers Postgres for schema / constraint bugs - not H2). If the bug class can recur, grep for sibling occurrences and list them.
+Suggest one regression test that would have caught this bug class. Pick the slice that exercises the actual failure boundary (e.g. integration test outside the original `@Transactional` for LIE; `@WebMvcTest` for binding / validation; concurrent threads for optimistic lock; Testcontainers Postgres for schema / constraint bugs - not H2; a `@SpringBootTest` context-load smoke test for wiring / startup failures like `NoSuchBeanDefinitionException`). If the bug class can recur, grep for sibling occurrences and list them.
 
 ## Output Format
 
