@@ -163,18 +163,16 @@ it("respects max", () => {
 ### Nuxt (@nuxt/test-utils)
 
 ```ts
+// runtime (in-process): mount pages/components with Nuxt context
 import { mountSuspended } from "@nuxt/test-utils/runtime";
-import { $fetch } from "@nuxt/test-utils";
 
 it("renders product page", async () => {
   const wrapper = await mountSuspended(ProductPage, { route: "/products/1" });
   expect(wrapper.text()).toContain("Widget");
 });
 
-it("server route returns products", async () => {
-  const products = await $fetch("/api/products");
-  expect(products[0]).toHaveProperty("name");
-});
+// server routes use the e2e harness: `import { setup, $fetch } from "@nuxt/test-utils/e2e"`
+// with `await setup({ server: true })` in describe - distinct from the runtime helper above.
 ```
 
 ### Playwright E2E (critical paths only)

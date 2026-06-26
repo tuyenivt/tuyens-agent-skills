@@ -326,8 +326,8 @@ _Other smells in the target file; listed for hand-off, not action. Omit if none.
 
 ## Step Sequence
 
-### Step 0 - Coverage prerequisite _(skip if Adequate)_
-- **Change:** add missing boundary tests from Prerequisite Tests
+### Step 0 - Coverage prerequisite _(skip only if Adequate and no internal-coupled tests)_
+- **Change:** add missing boundary tests from Prerequisite Tests; rewrite internal-coupled tests flagged in Step 4
 - **Risk:** Low (tests only)
 - **Test gate:** new tests pass; suite green
 - **Rollback:** revert added test files

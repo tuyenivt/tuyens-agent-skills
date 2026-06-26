@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
 });
 ```
 
-Use `getQuery(event)`, `getRouterParam(event, "id")`, `readBody(event)`, `getHeader(event, ...)` for input. Throw via `createError({ statusCode, message })` -- never return bare error objects.
+Read input via `getQuery(event)`, `getRouterParam(event, "id")`, `readBody(event)`, `getHeader(event, ...)`. Prefer the validating helpers `readValidatedBody(event, schema.safeParse)` and `getValidatedQuery(event, schema.safeParse)` to read and validate in one step. Throw via `createError({ statusCode, message })` -- never return bare error objects.
 
 ### Hybrid Rendering
 
@@ -86,14 +86,15 @@ Pick rendering per route in `nuxt.config.ts`:
 export default defineNuxtConfig({
   routeRules: {
     "/": { prerender: true },           // SSG at build
-    "/products/**": { swr: 3600 },      // ISR: revalidate hourly
+    "/products/**": { swr: 3600 },      // cache on server, revalidate hourly
+    "/blog/**": { isr: 3600 },          // cache on CDN (Netlify/Vercel), revalidate hourly
     "/dashboard/**": { ssr: true },     // SSR every request
     "/admin/**": { ssr: false },        // client-only SPA
   },
 });
 ```
 
-Default to `prerender` or `swr`. Use `ssr: true` only when the response depends on cookies, headers, or per-request personalization. Use `ssr: false` only for authenticated app shells where SEO is irrelevant.
+Default to `prerender`, `swr`, or `isr` (`isr` when deploying to Netlify/Vercel for CDN-edge caching; `swr` otherwise). Use `ssr: true` only when the response depends on cookies, headers, or per-request personalization. Use `ssr: false` only for authenticated app shells where SEO is irrelevant.
 
 ### SEO Metadata
 

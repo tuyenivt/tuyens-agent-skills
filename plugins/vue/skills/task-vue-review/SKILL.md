@@ -230,7 +230,7 @@ Use skill: `complexity-review` for verbosity, over-engineering, simplification.
 
 ### Phase E - Maintainability and Clarity
 
-Use skill: `frontend-coding-standards` for cross-stack naming. Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth belongs to `task-vue-review-observability`).
+Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth belongs to `task-vue-review-observability`).
 
 **Vue-specific:**
 

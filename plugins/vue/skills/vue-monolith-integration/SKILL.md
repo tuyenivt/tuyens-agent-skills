@@ -180,7 +180,7 @@ For islands and widgets the server template owns the layout; Vue controls only m
 
 **Backend:** {Rails | Django | Laravel}
 **Mount strategy:** {Inertia.js | Islands | Widget | Full SPA}
-**Asset pipeline:** {Vite | Webpack}
+**Asset pipeline:** Vite ({vite-plugin-ruby | laravel-vite-plugin | django-vite})
 
 ### Integration Points
 

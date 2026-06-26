@@ -51,7 +51,9 @@ const { data: products, status, error, refresh } = await useFetch("/api/products
   <ProductSkeleton v-if="status === 'pending'" />
   <ErrorState v-else-if="error" :message="error.message" @retry="refresh()" />
   <EmptyState v-else-if="!products?.length" message="No products" />
-  <ProductCard v-for="p in products" :key="p.id" :product="p" v-else />
+  <template v-else>
+    <ProductCard v-for="p in products" :key="p.id" :product="p" />
+  </template>
 </template>
 ```
 

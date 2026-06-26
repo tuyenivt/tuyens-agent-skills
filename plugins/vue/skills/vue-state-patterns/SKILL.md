@@ -133,7 +133,7 @@ Consuming workflow skills depend on this structure.
 ## Vue State Architecture
 
 **Stack:** {detected framework}
-**State library:** {Pinia | Composable only | URL state}
+**Primary client store:** {Pinia | Composable only | None}
 
 ### State Map
 
