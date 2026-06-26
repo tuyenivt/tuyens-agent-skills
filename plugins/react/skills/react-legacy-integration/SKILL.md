@@ -59,6 +59,8 @@ if (node) {
 
 Rules: read props from `data-*` attributes (already JSON-safe), never from inline `<script>` JSON without parsing through `JSON.parse(node.dataset.payload)`. Use a stable id; for multi-instance islands, use `data-island="cart"` and iterate.
 
+`root.unmount()` is needed only when the host swaps DOM without a full reload (Turbo / pjax / HTMX). Under classic full-page navigation the browser discards the document and the root with it - no unmount handler needed; at most a `pagehide` unmount for bfcache restore. Don't wire an unmount that never fires.
+
 ### Hydrating Server-Rendered HTML
 
 When the host server (Rails ERB, Django template) renders HTML *inside* the island's mount node to avoid FOUC, hydrate instead of replacing.
@@ -119,8 +121,11 @@ new ModuleFederationPlugin({
   shared: {
     react:     { singleton: true, requiredVersion: "^18.0.0", eager: true },
     "react-dom": { singleton: true, requiredVersion: "^18.0.0", eager: true },
+    "react-router-dom": { singleton: true }, // one history owner across remotes
+    zustand:   { singleton: true },          // shared store = one instance all remotes import
   },
 });
+// Remotes declare the same `shared` block but WITHOUT `eager` - the host bootstraps the singletons.
 ```
 
 ```tsx

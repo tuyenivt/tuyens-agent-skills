@@ -175,13 +175,20 @@ Dark mode: {class strategy | media query | none}
 
 - [Severity: High | Medium | Low] <one-line issue>
   Location: <file>:<line>
-  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | Inline-Style | RSC-Incompat | A11y-Focus | Important-Override}
+  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | Inline-Style | RSC-Incompat | A11y | Important-Override}
   Fix: <minimal correction>
 
 ## Recommendations
 
 - <change with rationale>
 ```
+
+`A11y` covers focus indicators (`outline-none` without a `focus-visible` replacement), missing/empty `alt` on images, and insufficient contrast.
+
+Severity guide:
+- **High**: runtime CSS-in-JS in an RSC without `"use client"` + registry (`RSC-Incompat`, ships runtime/FOUC); any `A11y` defect (stripped focus indicator, missing `alt`, insufficient contrast).
+- **Medium**: variant logic via string concat/ternary (`Variant-Concat`); per-component dark-mode/theme-prop branching (`Dark-Mode-Branch`); hex literal where a token exists (`Token-Literal`); desktop-first responsive (`Responsive-Direction`); mixed paradigms (`Approach-Mix`).
+- **Low**: inline `style` for a static value (`Inline-Style`); `!important` overrides (`Important-Override`).
 
 ## Avoid
 
@@ -191,5 +198,5 @@ Dark mode: {class strategy | media query | none}
 - Per-component theme props or `useState`-driven dark mode branches
 - styled-components or emotion in Server Components without `"use client"` + SSR registry
 - `!important` to win specificity battles (fix the cascade or the variant order)
-- `outline-none` without a `focus-visible` replacement
+- `outline-none` without a `focus-visible` replacement; images without `alt` (use `alt=""` for decorative)
 - Reimplementing primitives the headless library already ships (Dialog, Menu, Tooltip)

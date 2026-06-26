@@ -34,7 +34,7 @@ types.ts
 
 **Step 5 - State.** Use skill: `react-state-patterns` (canonical for React-specific guidance) + `frontend-state-management` (framework-neutral; the React skill wins on conflict). Categorize each slice: **local** (one component, `useState`/`useReducer`), **shared** (small subtree, lifted state or scoped context), **global** (cross-feature, Zustand/Redux), **server** (TanStack Query/SWR), **URL** (`searchParams`), **form** (RHF + Zod). Filters and pagination belong in URL state; server data in TanStack Query; no server state in client stores.
 
-**Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states, optimistic updates if needed.
+**Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states. Optimistic updates: with TanStack Query use the cancel/snapshot/set/rollback/settle mutation flow; with a Server Action over a server-rendered (RSC) list, pass the server data into a Client Component, wrap it in `useOptimistic`, and let the action's `revalidatePath`/`revalidateTag` reconcile the canonical list on re-render. A list rendered by a Server Component is `server` category with mechanism `RSC fetch` (not TanStack Query) in the State Map.
 
 **Step 7 - Components.** Use skill: `react-hooks-patterns` + `react-styling-patterns`. Next.js: Use skill: `react-nextjs-patterns`. Generate with named exports (default only for route pages), typed props (declare an `interface` once props >= 2; inline a single-prop type is fine), `"use client"` only where required.
 

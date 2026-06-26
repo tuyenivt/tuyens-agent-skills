@@ -85,7 +85,25 @@ export const useCart = create<CartStore>((set, get) => ({
 const count = useCart((s) => s.items.length);
 ```
 
-Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store.
+Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store. With SSR (Next.js), a `persist` store hydrates from storage after first paint, so reading it during render risks a hydration mismatch - gate on a mounted flag (or `persist`'s `skipHydration` + manual `rehydrate()`) before rendering persisted values.
+
+### Jotai for independent atoms
+
+```tsx
+import { atom, useAtom } from "jotai";
+import { atomFamily } from "jotai/utils";
+
+// One atom per cell - editing a cell re-renders only that cell, not the grid.
+const cellAtom = atomFamily((id: string) => atom(""));
+const selectedCellAtom = atom<string | null>(null);
+
+function Cell({ id }: { id: string }) {
+  const [value, setValue] = useAtom(cellAtom(id));
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+```
+
+Reach for Jotai over Zustand when consumers read disjoint slices that would otherwise force a shared store to re-render broadly (large grids, per-row selection, many independent toggles). `atomFamily` scales to thousands of keyed atoms.
 
 ### Context re-render pitfall
 
@@ -158,7 +176,7 @@ Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
 ### Findings
 
 - Severity: {Critical | High | Medium | Low}
-  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate}
+  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch}
   Location: {file/component or "design"}
   Fix: {one-line action}
 ```
@@ -174,3 +192,4 @@ If the project has no React sources, emit `Findings: none (no React detected)` a
 - Reaching for Redux when useState + one Zustand store would do.
 - Mirroring URL state into memory - the URL is the source.
 - Prop drilling past 2 levels when a store or scoped context fits.
+- Reading a whole store/slice when you use one field (`Over-Subscription`) - subscribe via a narrow selector so only relevant changes re-render. High-frequency writes (per-keystroke dispatch) compound this; debounce or move to local/URL state.

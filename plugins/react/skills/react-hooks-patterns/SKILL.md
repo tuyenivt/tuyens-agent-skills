@@ -150,7 +150,7 @@ Form schemas, validation, and submission flow are owned by `frontend-form-handli
 
 ### Refs and Context (boundary)
 
-`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. Deeper ref ergonomics (`forwardRef`, ref-prop conventions, callback refs for measurement) belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), context provider value rebuilt every render.
+`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. One hook-level trap: when an effect must run once a DOM node mounts (observe it, measure it), store the node via a ref **callback** (`const [node, setNode] = useState<T|null>(null); <div ref={setNode}/>`) and list it as a dep - a `useRef` object mutation does not re-run the effect, so the observer never attaches. Deeper ref ergonomics (`forwardRef`, ref-prop conventions) belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), context provider value rebuilt every render.
 
 ## Output Format
 
@@ -158,18 +158,20 @@ When reviewing hook code, emit one block per finding:
 
 ```
 - Location: <file>:<line> (<hook or component>)
-  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
+  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnstableDepIdentity | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest}
   Severity: {Critical | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
 ```
 
-`ConflictingWriters`: same state mutated by two sources (e.g., incremented in a handler and overwritten by a derivation effect). Usually means the state is derivable and should be computed in render. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; use a ref.
+`ConflictingWriters`: same state mutated by two sources (e.g., incremented in a handler and overwritten by a derivation effect). Usually means the state is derivable and should be computed in render. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; use a ref. `UnstableDepIdentity`: a non-primitive dep (object/array literal, inline-built `config`/`options`) recreated every render re-fires the effect every render - hoist to a module constant, wrap in `useMemo`, or depend on its primitive fields. Use this for plain data; use `CallbackIdentityChurn` for functions.
 
 Severity guide:
 - **Critical**: hook called conditionally; memory leak from missing cleanup on long-lived component; race condition setting state after unmount.
-- **High**: stale closure producing wrong values; uncancelled fetch on unmount; effect-driven infinite loop.
-- **Medium**: derived state in effect; useEffect for fetching when a query library is available; suppressed exhaustive-deps.
+- **High**: stale closure producing wrong values; uncancelled fetch on unmount; effect-driven infinite loop; unstable dep identity causing a refetch/re-subscribe loop.
+- **Medium**: derived state in effect; useEffect for fetching when a query library is available; suppressed exhaustive-deps; unstable dep identity causing redundant (non-looping) effect runs.
 - **Low**: unnecessary useMemo/useCallback; overbroad context; ref/state misuse without observable consequence.
+
+Emit one finding per distinct root cause. An uncancelled fetch inside an effect is `EffectForFetch` plus `UncancelledRequest` only when both the wrong tool and the missing cancellation are independently worth fixing; if a query library is available, the single `EffectForFetch` fix subsumes cancellation - emit one.
 
 If no issues, emit a single line: `No hook issues found in <scope>.`

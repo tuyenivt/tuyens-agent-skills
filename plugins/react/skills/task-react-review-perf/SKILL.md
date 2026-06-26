@@ -223,6 +223,8 @@ _Omit empty sections._
 
 [Structural items not tied to a single finding - route-level `next/dynamic` for editor pages, split filters context into state + dispatch, add bundle budget to CI, adopt `react-virtual` across list views.]
 
+[**`deep` only:** capacity guidance (virtualization / batched endpoints for large datasets) and a per-route budget plan (LCP / INP / bundle thresholds wired to CI) go here, each prefixed `[deep]`.]
+
 ## Next Steps
 
 Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend > Question.
@@ -262,5 +264,5 @@ _Omit if no actionable findings._
 - Treating high re-render counts as inherently bad - investigate only when a profile or interaction lag implicates them
 - `useEffect(() => fetch(...), [])` in a Client Component when a Server Component parent could fetch
 - Conflating perf with general / security review - delegate
-- **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): report the perf half once with `[Delegate] -> task-react-review-security` in Next Steps. Do not enumerate parallel security concerns
+- **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): emit a single `[Delegate] -> task-react-review-security` line in Next Steps only - no Findings-section entry and no parallel security commentary. If the issue has no independent perf cost, it is Next Steps only; if it also has a real perf cost, file that perf cost as its own Finding and still delegate the security half once
 - Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

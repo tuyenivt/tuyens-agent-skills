@@ -167,7 +167,12 @@ qc.invalidateQueries({ queryKey: userKeys.all });
 ```tsx
 const { data, error, isLoading } = useSWR<User>(`/api/users/${id}`, fetcher);
 const { trigger, isMutating } = useSWRMutation("/api/posts", postFetcher);
-// Cache key is the URL string. Invalidate via mutate(key) or revalidate via useSWRConfig().
+// Cache key is the URL string. The read key and the mutation key usually differ,
+// so SWR will NOT auto-revalidate the read; refresh it explicitly:
+const { mutate } = useSWRConfig();
+await trigger(changes);
+mutate(`/api/users/${id}`);              // revalidate the affected read key
+// Optimistic equivalent: mutate(key, optimisticData, { revalidate: false }) then mutate(key) on settle.
 ```
 
 ## Output Format

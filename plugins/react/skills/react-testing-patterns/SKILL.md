@@ -140,6 +140,40 @@ it("has no a11y violations", async () => {
 
 Pair axe runs with role-based queries; a violation in axe and a missing role both signal the same gap.
 
+### Server Components and Server Actions
+
+jsdom cannot render an async Server Component - don't `render(<RSC/>)`. Two paths:
+
+```tsx
+// Async RSC: call it as a function, assert on the returned tree (mock the data boundary).
+const ui = await OrderSummary({ orderId: "1" });
+render(ui);
+expect(screen.getByText("Total: $42")).toBeInTheDocument();
+
+// Server Action: import and call directly with FormData; mock the DB/auth boundary.
+const result = await submitOrder({}, formDataFrom({ qty: "2" }));
+expect(result).toEqual({ ok: true });
+```
+
+Prefer covering the full RSC + action render/submit cycle in a Playwright E2E - the function-call approach tests logic, not the server render pipeline.
+
+### Timer-driven behavior (debounce / throttle)
+
+```tsx
+it("debounces search", async () => {
+  vi.useFakeTimers();
+  // user-event uses real timers internally; wire it to the fake clock or it hangs.
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  render(<Search />);
+  await user.type(screen.getByRole("searchbox"), "ab");
+  await vi.advanceTimersByTimeAsync(300);          // flush the debounce
+  expect(await screen.findByText("results")).toBeInTheDocument();
+  vi.useRealTimers();
+});
+```
+
+The `advanceTimers` option is mandatory under fake timers - without it `userEvent` waits on a clock that never moves.
+
 ### Playwright E2E
 
 Reserve for critical paths (auth, checkout). Query with `getByRole`/`getByLabel`, never CSS selectors.

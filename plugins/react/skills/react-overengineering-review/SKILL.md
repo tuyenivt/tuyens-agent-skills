@@ -189,10 +189,13 @@ When auditing, emit one block per finding:
 - Location: <file>:<line> (<component / hook / module>)
   Issue: {PrematureMemo | ReactMemoOveruse | ContextSingleConsumer | MegaProvider | StoreForTwoSlices | SingleUseHook | GenericForOneUsage | PrematureCompound | RenderPropOverkill | PropStateEffectSync | SpeculativeConfigurability | RedundantHoC}
   Severity: {High | Medium | Low}
+  Verdict: {Finding | Question}
   Evidence: <quoted snippet or symbol>
-  Consumers found: <count + locations, or "1: <call-site>">
+  Consumers found: <count + locations; "n/a" when the issue is not consumer-counted, e.g. PrematureMemo, PropStateEffectSync>
   Fix: <one-line action; reference a Pattern by name>
 ```
+
+Set `Verdict: Question` (not `Finding`) when an abstraction is under-bar now but plausibly justified soon - a second consumer in flight, a design-system component hosted for future use. A Question asks the author to confirm; a Finding asserts overengineering. When in doubt, prefer Question.
 
 Severity guide:
 - **High**: `PropStateEffectSync` (correctness drift, not just complexity); `MegaProvider` causing measurable re-render cost; `StoreForTwoSlices` adding a global concept the team must learn for trivial benefit.
@@ -200,8 +203,6 @@ Severity guide:
 - **Low**: `PrematureMemo` on cheap values; `SpeculativeConfigurability` on unused variants; `RedundantHoC` parallel to an existing hook.
 
 If no issues, emit a single line: `No overengineering signals found in <scope>.`
-
-When uncertain, prefer **Question** in the consuming workflow's findings over a forced finding here - sometimes a generic does have a real second consumer in flight.
 
 ## Avoid
 

@@ -37,7 +37,11 @@ Not for codebase orientation (use `react-onboard-map`) or framework tutorials.
 | `app/api/*/route.ts`                  | Route Handler    | `Request` -> `Response`, server-only                 | JSX rendering                           |
 | Hook module (`useX.ts`)               | Custom hook      | composes other hooks                                 | JSX as return                           |
 
-`'use client'` is a **boundary marker**: every module imported transitively from a client file is client. Server Components can only be passed into Client Components as `children`, not imported.
+`'use client'` is a **boundary marker**: every module imported transitively from a client file is client. Server Components can only be passed into Client Components as `children`, not imported. Props crossing the server->client boundary must be serializable - primitives, plain objects/arrays - never functions, class instances, or `Date`s needing methods.
+
+Next.js 15: `params` and `searchParams` reach a Server Component as `Promise`s - `const { slug } = await params`. This is a framework data-access change, distinct from React's `use(promise)`; flag synchronous `params.slug` access as a bug.
+
+A file with no directive that nonetheless calls hooks/handlers has an **implicit client boundary** (Boundary: `needs 'use client' (uses client features, none declared)`). A module exporting several symbols of different kinds (a hook plus a provider) gets one `Flow Context` block per exported unit.
 
 ### Hook triggers (one-liners)
 
@@ -107,9 +111,9 @@ Server Component (top-level `await`), Route Handler, `useQuery`/`useSWR`, `useEf
 This atomic emits signals consumed by `task-code-explain`. Produce exactly four blocks with the field enums below.
 
 ```
-Flow Context:
+Flow Context:                          (one block per exported unit when a module exports several of different kinds; label each "Flow Context (export N of M): <name>")
 - Kind: {Server Component | Client Component | Route Handler | Custom Hook | Plain module}
-- Boundary: {none | 'use client' at top | this file imports server-only X | this file imports client-only X}
+- Boundary: {none | 'use client' at top | needs 'use client' (uses client features, none declared) | this file imports server-only X | this file imports client-only X}
 - Hooks: <list each call with deps and trigger, e.g., `useState(filters) [setter]; useEffect [orgId, filters.status] (commit, dep change); useEffect [] (mount-only)`>
 - Custom hooks: {none | <list and what each owns>}
 - Context: {none | reads <Ctx>; provides <Ctx>}

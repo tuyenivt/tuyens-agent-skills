@@ -22,7 +22,7 @@ user-invocable: false
 - Every route segment that can fail has an error boundary; every segment that fetches has a loading UI.
 - Validate dynamic params before use; treat them as untrusted input.
 - Layouts must not re-fetch data the parent already provides; pass via props/context or co-locate the fetch in the deepest segment that needs it.
-- Next.js: enforce auth in `middleware.ts` or a Server Component layout, not on the client. Keep middleware allocation-light (no DB calls, no heavy parsing).
+- Next.js: enforce auth in `middleware.ts` or a Server Component layout, not on the client. Keep middleware allocation-light (no DB calls, no heavy parsing) and scope `matcher` to the protected prefixes - a catch-all matcher runs that work on every asset/request and amplifies the cost.
 - Next.js: error boundaries (`error.tsx`) must be Client Components; layouts default to Server Components unless interactivity is required.
 - React Router: prefer `loader` for data and `<Outlet />` for nested rendering. Navigate via the router (`<Link>`, `useNavigate`), never `window.location`.
 - File-based routing: follow framework conventions. Do not hand-roll a router on top of Next.js.
@@ -100,6 +100,12 @@ export default function Layout({ children, analytics, notifications }: {
 // Slots resolve to app/dashboard/@analytics/page.tsx, @notifications/page.tsx
 ```
 
+Each parallel slot needs a `default.tsx` (often returning `null`) so the slot resolves on routes that don't fill it - otherwise navigation 404s.
+
+### Intercepting Routes (modal-over-page)
+
+`@modal/(.)photo/[id]/page.tsx` renders a modal when navigating in-app from the same level; a direct URL load, refresh, or share resolves the real `photo/[id]/page.tsx` full page. Both are mandatory: the interceptor handles soft navigation, the full page handles hard loads. Add `@modal/default.tsx` returning `null` so the slot is empty elsewhere. `(.)` = same level, `(..)` = one up, `(...)` = from root.
+
 ### Middleware (Next.js)
 
 ```ts
@@ -168,6 +174,8 @@ function DashboardLayout() {
 }
 ```
 
+Loading UI in React Router: read `useNavigation().state === "loading"` for a global pending indicator, or `defer()` a slow loader value and render it inside `<Suspense>` via `<Await>`. (Layouts persisting state via `<Outlet />` applies here the same as Next.js layouts.)
+
 ### Route Guards
 
 - **Next.js:** `middleware.ts` for redirect-style guards; Server Component layout for richer checks (`if (!user) redirect("/login")`).
@@ -211,8 +219,8 @@ Stack: {Next.js App Router | React Router (Vite) | Other}
 
 Severity rubric:
 - **Blocker**: route fails to compile/run (e.g., async Client Component, wrong `params` shape), or middleware does DB/heavy work on every edge request.
-- **High**: client layout used for trivial state; missing error boundary on a fetching segment; unvalidated dynamic params reaching ORM.
-- **Medium**: missing loading UI; auth duplicated client-side that middleware/layout should own.
+- **High**: client layout used for trivial state; missing error boundary on a fetching segment; unvalidated dynamic params reaching ORM; missing `default.tsx` for a parallel/intercepting slot (404s on unfilled routes).
+- **Medium**: missing loading UI; auth duplicated client-side that middleware/layout should own; over-broad `matcher` even with cheap logic (excess per-request work).
 - **Low**: minor convention drift.
 
 If stack is neither Next.js App Router nor React Router, apply only the stack-neutral Rules (validate params, error/loading boundaries, no `window.location` navigation).

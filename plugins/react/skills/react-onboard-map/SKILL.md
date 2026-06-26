@@ -17,7 +17,7 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 
 ## Rules
 
-- Detect build framework first - Next.js (`next.config.*`) App Router (`app/`) vs Pages Router (`pages/`); Vite (`vite.config.*`); Remix; CRA (legacy). Routing and mental model diverge.
+- Detect build framework first - Next.js (`next.config.*`) App Router (`app/`) vs Pages Router (`pages/`); Vite (`vite.config.*`); Remix; CRA (legacy). Routing and mental model diverge. A repo with both `app/` and `pages/` is mid-migration - report both routers as live and flag the dual mental model.
 - Detect React version - 18 vs 19 (`use()`, Server Actions). Server Components only in Next App Router today.
 - Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`).
 - Detect state layer - `useState`+`useContext`, Zustand, Redux Toolkit, Jotai, Recoil, MobX, or none.
@@ -35,7 +35,7 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 | `tailwind.config.*` / `postcss.config.*` | Tailwind / PostCSS pipeline                          |
 | `.env.local`, `.env.example`      | Env vars; Next public prefix `NEXT_PUBLIC_*`               |
 | `eslint.config.*` / `.prettierrc.*` | Lint/format config                                       |
-| `vitest.config.*`                 | Vitest unit/component tests                                |
+| `vitest.config.*` / `jest.config.*` | Vitest or Jest unit/component runner                     |
 | `playwright.config.*` / `cypress.config.*` | E2E framework                                     |
 
 ### Bootstrap
@@ -52,7 +52,7 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 | Location                        | Purpose                                          |
 | ------------------------------- | ------------------------------------------------ |
 | `app/layout.tsx`                | Root layout (Server Component); HTML shell       |
-| `app/<seg>/page.tsx`            | Route page (`[id]` for dynamic)                  |
+| `app/<seg>/page.tsx`            | Route page (`[id]` dynamic; `(group)` = no URL segment, layout grouping) |
 | `app/<seg>/layout.tsx`          | Nested layout                                    |
 | `app/<seg>/loading.tsx` / `error.tsx` | Suspense fallback / error boundary         |
 | `app/<seg>/route.ts`            | API route handler                                |
@@ -79,7 +79,7 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 - **Styling:** Tailwind, CSS Modules, styled-components, emotion, vanilla CSS.
 - **Forms:** React Hook Form + zod, Formik, controlled inputs.
 - **Auth:** NextAuth/Auth.js, Clerk, Auth0, Supabase Auth, custom JWT.
-- **Tests:** Vitest + React Testing Library + jsdom; Playwright/Cypress for E2E.
+- **Tests:** Vitest or Jest + React Testing Library + jsdom; Playwright/Cypress for E2E. An E2E-only setup with no unit/component runner is a coverage gap worth noting.
 
 ### Risk Hotspots
 
@@ -90,6 +90,8 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 - **Hydration mismatch** - timestamps, random IDs, browser-only APIs in render body; `next-themes` needs `suppressHydrationWarning` on `<html>`.
 - **Server → Client leaks** - full ORM rows as props, `dangerouslySetInnerHTML` XSS, `NEXT_PUBLIC_*` secret leak, Server Action without auth/Zod: see `task-react-review-security`.
 - **Store-on-server (Next.js + Zustand/Redux)** - module-level stores share state across requests on the server. Instantiate per-request in a provider or keep stores in `"use client"` modules only.
+
+The hydration / `"use client"` / fetch-caching / `NEXT_PUBLIC_*` / store-on-server hotspots above are Next.js-only - omit them for a Vite/CRA SPA. SPA-specific hotspots to report instead: unstable Redux/Zustand selectors causing wide re-renders, axios/fetch without `AbortController` (no query-cache dedupe), and `MUI sx={{}}` / inline-object props defeating memoization.
 
 ### First-PR Safe Zones
 
@@ -105,7 +107,7 @@ Inject into `task-onboard` sections:
 - **Local Bootstrap**: install command, env file, run command, default port, entry route.
 - **Architecture Map**: routing convention (file-based vs config), components/hooks/utilities layout, server/client boundary if Next App Router, API location (`app/*/route.ts`, `pages/api`, or external).
 - **Conventions**: TS strict, styling, data fetching, form handling, auth provider, test framework.
-- **Risk Hotspots**: stale closures, inline JSX identity, `"use client"` boundary, Next fetch caching, hydration mismatch, `NEXT_PUBLIC_*` rules.
+- **Risk Hotspots**: stale closures and inline JSX identity (all stacks); for Next.js add `"use client"` boundary, fetch caching, hydration mismatch, `NEXT_PUBLIC_*`, store-on-server; for a Vite/CRA SPA add unstable Redux/Zustand selectors, axios/fetch without `AbortController`, inline-object/`sx` props defeating memoization. Emit only the hotspots that match the detected framework.
 - **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid

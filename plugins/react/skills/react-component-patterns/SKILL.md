@@ -1,6 +1,6 @@
 ---
 name: react-component-patterns
-description: "React 19 component design: composition, compound components, Server vs Client boundaries, error boundaries, polymorphic and prop-typing patterns."
+description: "React 19 component design: composition, compound components, Server vs Client boundaries, error boundaries, ref forwarding, polymorphic and prop-typing patterns."
 metadata:
   category: frontend
   tags: [react, components, composition, server-components, error-boundaries, typescript]
@@ -23,7 +23,7 @@ user-invocable: false
 - Function components only. Class components only for error boundaries (until `onCaughtError` is adopted everywhere).
 - Server Components are the default in Next.js. Add `"use client"` only for hooks, event handlers, or browser APIs - and push it as deep in the tree as possible.
 - Never pass functions or non-serializable values from a Server Component to a Client Component. Pass data; let the Client own its handlers.
-- Compose with `children` and slots before adding more props. New feature => new slot, not a new boolean prop.
+- Compose with `children` and slots before adding more props. A prop that injects open-ended content or a whole region (header, footer, body) becomes a slot; a prop that selects a variant (`variant`, `size`), carries data, or sets a single fixed adornment (`icon`) stays a prop. New feature => new slot, not a new boolean prop.
 - One responsibility per component; split when state or props diverge.
 - Named exports for reusable components; default export only for route files (`page.tsx`, `layout.tsx`).
 - Props typed inline for <=2 fields; named `interface` once props grow or repeat across call sites.
@@ -107,6 +107,18 @@ interface DataTableProps {
 ### Polymorphic `as` prop
 
 Use only when one component must render as different elements (Button-as-link). Otherwise the generics are noise.
+
+### Ref forwarding
+
+React 19: `ref` is a normal prop - declare it in the props type and forward it to the DOM node. No `forwardRef` for new code. Forward a ref only when callers need imperative access (focus, scroll, measure); don't expose one by default. On a polymorphic component the ref type tracks `as` (`<button>` => `Ref<HTMLButtonElement>`).
+
+```tsx
+function TextInput({ ref, ...props }: { ref?: Ref<HTMLInputElement> } & InputHTMLAttributes<HTMLInputElement>) {
+  return <input ref={ref} {...props} />;
+}
+```
+
+`forwardRef` is still required only when supporting React 18 and earlier.
 
 ## Output Format
 

@@ -50,7 +50,7 @@ Before producing output, read both production code and a representative sample o
 
 Greenfield (no existing tests): state choices explicitly, do not invent silently. Defaults: Vitest + RTL + `user-event`; MSW with `onUnhandledRequest: 'error'`; Playwright for journeys; `vitest-axe`; `renderWithProviders` in `src/test/render.tsx`; factories in `src/test/factories/`.
 
-Use skill: `react-testing-patterns` for canonical React test forms (`renderWithProviders`, MSW handler reset, `next/navigation` mock, Server Action flavors, React 19 form primitives, TanStack Query isolation).
+Use skill: `react-testing-patterns` for canonical React test forms (`renderWithProviders`, MSW handler reset, `next/navigation` mock, Server Action flavors, React 19 form primitives, TanStack Query isolation, and timer-driven behavior - fake timers + the `userEvent.setup({ advanceTimers })` wiring required for debounce/throttle hooks).
 
 ### Step 5 - React test pyramid
 
@@ -156,6 +156,8 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 - "test strategy" / "test plan" / coverage < 50% without scaffold request -> Strategy Doc
 - Multiple deliverables in one ask -> produce in order separated by `---`: Coverage Assessment, Strategy Doc, Test Scaffolds. Do not silently drop one.
 - Unclear -> Strategy Doc as default.
+
+Precedence when one ask matches several rows: an explicit verb ("write/scaffold" -> Scaffolds; "strategy/plan" -> Strategy Doc) wins over the coverage-threshold heuristic. "Review coverage" combined with low coverage (no scaffold/strategy verb) is one ask matching two rows: lead with the Coverage Assessment - its Prioritization block already answers "what to write first" - and append the Strategy Doc only if a forward plan was also requested.
 
 **Coverage Assessment:**
 

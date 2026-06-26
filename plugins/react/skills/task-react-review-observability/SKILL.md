@@ -41,6 +41,8 @@ Use skill: `stack-detect`. Confirm React. Record framework: Next.js App Router |
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip if a parent workflow passed the handle plus pre-read artifacts.
 
+**Audit mode.** When the request is a full pre-release or post-incident audit (not a single PR), set `audit mode`: every surface is in scope and the per-step diff-touch gates in Steps 7-10 are lifted (same effect as the greenfield exception), so no surface is skipped for not being "touched". Note `Mode: audit` in the Summary.
+
 ### Step 4 - Surface Map
 
 Read instrumentation wiring in the framework-appropriate files below, plus every changed file calling `Sentry.*`, `useReportWebVitals`, OTel APIs, or a logger. Produce one verdict per surface: `wired | partial | absent` with file:line evidence. A missing wire is the finding, not a precondition.
@@ -97,7 +99,7 @@ Read instrumentation wiring in the framework-appropriate files below, plus every
 
 ### Step 7 - OpenTelemetry / Tracing
 
-_Skip unless diff touches OTel config or `instrumentation.ts` (or greenfield applies)._
+_Skip unless diff touches OTel config or `instrumentation.ts` (or greenfield / audit mode applies)._
 
 **Browser:**
 
@@ -114,7 +116,7 @@ _Skip unless diff touches OTel config or `instrumentation.ts` (or greenfield app
 
 ### Step 8 - Structured Client Logging
 
-_Skip unless diff modifies logging utilities or adds `console.*` in prod paths (or greenfield applies)._
+_Skip unless diff modifies logging utilities or adds `console.*` in prod paths (or greenfield / audit mode applies)._
 
 - [ ] No `console.log` / `console.error` in prod paths - routes to `Sentry.captureMessage` / `captureException` or a structured logger that hits RUM
 - [ ] No log calls in render bodies (fires every render)
@@ -123,7 +125,7 @@ _Skip unless diff modifies logging utilities or adds `console.*` in prod paths (
 
 ### Step 9 - Identity, Session, Trace Correlation
 
-_Skip unless diff touches auth, RUM SDK init, or Sentry context wiring (or greenfield applies)._
+_Skip unless diff touches auth, RUM SDK init, or Sentry context wiring (or greenfield / audit mode applies)._
 
 - [ ] `Sentry.setUser({ id })` after auth; `Sentry.setUser(null)` on logout; `email` only with consent
 - [ ] `Sentry.setTag` for low-cardinality dimensions (tenant, role, flag); no PII or unbounded values (no `userId` as tag)
@@ -133,7 +135,7 @@ _Skip unless diff touches auth, RUM SDK init, or Sentry context wiring (or green
 
 ### Step 10 - RUM Integration
 
-_Skip on apps without a chosen RUM provider (or greenfield applies)._
+_Skip on apps without a chosen RUM provider (or greenfield / audit mode applies)._
 
 - [ ] SDK initialized once at app entry, before any router hook fires (first navigation otherwise unrecorded)
 - [ ] SPA navigation tracked: Next.js via `usePathname`; Vite via React Router location; vendor auto-detect verified

@@ -260,6 +260,8 @@ Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-
 | `getStaticProps`                   | `fetch(url, { next: { revalidate: N } })` or `unstable_cache` in a Server Component |
 | `getStaticPaths` + `getStaticProps` | `generateStaticParams()` + Server Component fetch                              |
 | `getServerSideProps`               | Server Component reading `cookies()` / `headers()` / dynamic `searchParams`    |
+| `getInitialProps` (`_app`/page)    | Server Component fetch, or layout for shared data; no per-request props plumbing |
+| Built-in `i18n` config (`next.config`) | Removed in App Router - use a `[lang]` segment + middleware locale routing (no config-based i18n) |
 | `revalidate: N` (ISR)              | `next: { revalidate: N }` per fetch, or route-level `export const revalidate = N` |
 | `_app.tsx`                         | Root `app/layout.tsx` (shared shell) + per-segment layouts                      |
 | `_document.tsx`                    | `app/layout.tsx` (`<html>` / `<body>` live there)                              |
@@ -270,17 +272,27 @@ Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-
 
 Migration order: shared shell (`_app` -> root layout, `_document` -> `<html>`/`<body>`) first, then leaf routes one at a time, then `pages/api/*` to Route Handlers or Server Actions. Don't mix `getServerSideProps` with App Router patterns inside the same route - the App Router version owns the path once it exists.
 
+Gotcha: `next/router` route events (`routeChangeStart`/`routeChangeComplete`) have no `next/navigation` equivalent - replace with `usePathname`/`useSearchParams` effects or `next/navigation`'s navigation hooks.
+
 ## Output Format
 
 When auditing, emit one block per finding. Consuming workflows synthesize the route/mutation summary; do not produce one here.
 
 ```
 - Location: <file>:<line>
-  Issue: {RscBoundary | ClientLeak | ServerOnlyImport | UseClientAtRoot | ServerActionAuth | ServerActionValidation | ServerOnlyExport | OrmRowToClient | CachingMisuse | DynamicWithoutSuspense | PprConflict | MetadataManual | ImageRaw | NavigationPush | ParamsNotAwaited}
+  Issue: {RscBoundary | ClientLeak | ServerOnlyImport | UseClientAtRoot | ServerActionAuth | ServerActionValidation | ServerOnlyExport | OrmRowToClient | CachingMisuse | MissingRevalidation | DynamicWithoutSuspense | PprConflict | MetadataManual | ImageRaw | NavigationPush | ParamsNotAwaited}
   Severity: {Blocker | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
 ```
+
+`CachingMisuse` is a wrong caching choice (`force-dynamic` for periodic data, `no-store` on cacheable data, missing TTL). `MissingRevalidation` is a write (Server Action / Route Handler) that mutates data without a following `revalidatePath`/`revalidateTag`, so cached views stay stale.
+
+Severity guide:
+- **Blocker**: server-only import or ORM/secret leak into a client bundle; missing auth on a mutating Server Action; `params`/`searchParams` used without `await` (silent-breaks on Next 15); `"use server"` file exporting a non-action.
+- **High**: `"use client"` at a page/layout root that needs no interactivity; missing input validation on an action; `MissingRevalidation` after a write; dynamic subtree not wrapped in `<Suspense>` under PPR.
+- **Medium**: wrong caching choice (`CachingMisuse`); manual `<head>` instead of Metadata API; raw `<img>` instead of `next/image`.
+- **Low**: `router.push` where `<Link>` fits; minor convention drift.
 
 If the project is not Next.js App Router, emit `No Next.js findings (not App Router).` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent).
 

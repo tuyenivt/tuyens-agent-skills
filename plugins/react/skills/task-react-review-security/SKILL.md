@@ -200,6 +200,10 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 [Same structure. Omit sections with no findings. If all empty, state "No security issues found."]
 
+## Could Not Verify From Diff
+
+[Items that are likely findings but depend on code/infra outside the diff (e.g., a path moved out of the `middleware.ts` matcher whose handler is not in scope - cannot confirm it has its own in-handler `auth()`). State the issue, the severity it would carry if unmitigated, and what to check. Mirror each as a `[Delegate]` Next Step. Do not assign these a confirmed severity in the Findings counts; track them on a separate "+N unverifiable" line. Omit the section when empty.]
+
 ## Recommendations
 
 [Prioritized hardening that is not a specific finding - e.g., "Add `nonce`-based CSP via middleware", "Replace `localStorage` token with httpOnly cookie", "Migrate Pages Router auth to Auth.js v5", "Add `pnpm audit` to CI".]
@@ -226,7 +230,7 @@ Aligns 1:1 with the Workflow steps above.
 - [ ] **Step 6**: Diff-specific checks applied for authn/authz, input validation / mass assignment, common React vulnerability patterns, data protection; severity rubric applied consistently; Combined-finding rule applied where two findings compose on the same handler; every finding has an attack scenario, regression-risk, or topology-dependent label
 - [ ] **Step 7**: Report written to file via `review-report-writer`; confirmation line printed
 
-**Requires repo / infra access (note as "could not verify from diff alone - flag for separate audit" when not visible):**
+**Requires repo / infra access (when not visible in the diff, list under `## Could Not Verify From Diff` and mirror as a `[Delegate]` Next Step):**
 
 - [ ] Auth library config (Auth.js / Clerk / Lucia) reviewed - applies when auth module is in scope
 - [ ] CSP / HSTS / cookie flags verified - applies when middleware or `next.config.js` `headers()` in scope
