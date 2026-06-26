@@ -7,6 +7,8 @@ metadata:
 user-invocable: false
 ---
 
+# Django/DRF Patterns
+
 > Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
@@ -73,7 +75,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         return attrs
 ```
 
-Avoid `depth=N` for nested reads - declare explicit nested serializer classes. `ModelSerializer` does not support writable nested input out of the box; override `create()`/`update()`.
+Avoid `depth=N` for nested reads - declare explicit nested serializer classes. `ModelSerializer` does not support writable nested input out of the box; override `create()` and `bulk_create` the children inside `transaction.atomic()`:
+
+```python
+class OrderCreateSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True)
+
+    class Meta:
+        model = Order
+        fields = ["items"]
+
+    def create(self, validated_data):
+        items = validated_data.pop("items")
+        with transaction.atomic():
+            order = Order.objects.create(user=self.context["request"].user, **validated_data)
+            OrderItem.objects.bulk_create([OrderItem(order=order, **i) for i in items])
+        return order
+```
+
+`bulk_create` skips per-row signals - acceptable for child rows whose side effects fire from the order. Scope owned resources in `get_queryset()` (`for_user(self.request.user)`), not just object permissions, so list and detail are both filtered.
 
 ### QuerySet Optimization
 

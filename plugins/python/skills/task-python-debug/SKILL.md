@@ -70,7 +70,7 @@ Match the error, then load the listed atomic skill.
 
 ## STEP 4 - ROOT CAUSE
 
-Explain **why**, not just what. State confidence: **HIGH** (reproduced or obvious), **MEDIUM** (pattern match), **LOW** (multiple candidates).
+Explain **why**, not just what. State confidence: **HIGH** (reproduced or obvious), **MEDIUM** (pattern match), **LOW** (multiple candidates). Behavioral bugs with no traceback cap at **MEDIUM** until the STEP 1 diagnostic confirms the boundary. When the report spans distinct boundaries (e.g., double-dispatch *and* a vanished task), emit one ROOT CAUSE block per boundary - do not merge them.
 
 ```
 ROOT CAUSE: [HIGH] MissingGreenlet at services/order.py:42 - `order.items`

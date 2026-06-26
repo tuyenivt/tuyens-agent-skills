@@ -110,7 +110,11 @@ Must run outside a transaction. If the build fails (e.g., unique violation), an 
 ```python
 # Alembic: env.py -> context.configure(..., transaction_per_migration=True)
 op.execute(sa.text("CREATE INDEX CONCURRENTLY ix_orders_status ON orders (status)"))
+# Composite index - leftmost-prefix order matters; do not set lock_timeout (it can abort the build)
+op.execute(sa.text("CREATE INDEX CONCURRENTLY ix_events_acct_created ON events (account_id, created_at)"))
 ```
+
+**Unique constraint on an existing table** may have pre-existing duplicates - a unique index build fails on the first one and leaves an `INVALID` index behind. Resolve dupes first (batched data migration), then `CREATE UNIQUE INDEX CONCURRENTLY`, then adopt it as a constraint without a rebuild: `ALTER TABLE t ADD CONSTRAINT c UNIQUE USING INDEX ix` (Django: `AddConstraint` under `SeparateDatabaseAndState` so the concurrent index satisfies the state op).
 
 ```python
 # Django
@@ -124,7 +128,7 @@ class Migration(migrations.Migration):
 
 ### Enum Changes (PostgreSQL)
 
-`ALTER TYPE ... ADD VALUE IF NOT EXISTS 'refunded'` is safe and non-transactional. Removing or renaming a value is not supported - create a new type, migrate the column, drop the old type (expand-contract).
+First decide the storage: a Django `CharField(choices=...)` has **no DB enum type** - adding a value is a code-only `choices` change, and removing one only needs a data migration moving existing rows off the value before the code drops it. A native PostgreSQL `ENUM` type is stricter: `ALTER TYPE ... ADD VALUE IF NOT EXISTS 'refunded'` is safe and non-transactional, but removing or renaming a value is unsupported - create a new type, migrate the column, drop the old type (expand-contract).
 
 ### Column Rename (Expand-Contract)
 
@@ -164,7 +168,9 @@ Never rename directly. Across releases: (1) add new nullable column, (2) backfil
 2. ...
 
 ### Rollback Plan
-[Downgrade / reverse_sql notes]
+| Step | Reversible? | Reverse action |
+|------|-------------|----------------|
+[per step: clean reverse (drop column/constraint, `DROP INDEX CONCURRENTLY IF EXISTS`), or forward-only (backfills, `ADD VALUE`, dropped data) with reason]
 ```
 
 ## Avoid

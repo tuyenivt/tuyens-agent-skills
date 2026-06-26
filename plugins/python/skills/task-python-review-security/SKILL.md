@@ -161,7 +161,7 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 - [ ] **`eval` / `exec` on user input** - critical regardless of "controlled" framing
 - [ ] **`requests.get(verify=False)` / `httpx.AsyncClient(verify=False)`** flagged unless documented test fixture
 - [ ] **Open redirect**: `RedirectResponse(url=user_input)` / `HttpResponseRedirect(user_input)` validated against allowlist or relative-path check
-- [ ] **SQL injection via dynamic ORDER BY**: `order_by(text(user_field))` / `Order.objects.order_by(user_input)` - allowlist `user_field`
+- [ ] **Dynamic ORDER BY**: `order_by(text(user_field))` is SQLi; Django `Order.objects.order_by(user_input)` is column-name-based so the risk is field enumeration / data exposure (and related-field traversal), not raw SQLi - allowlist `user_field`, or in DRF use `OrderingFilter` with explicit `ordering_fields`
 - [ ] **SSTI**: `Jinja2.Template(user_input).render(...)` = critical RCE; templates from disk only
 - [ ] **`SECRET_KEY` / JWT signing key** from env / Vault, never committed; rotated on leak
 - [ ] **Debug exposure**: `DEBUG=True` flagged in any non-dev settings; debug toolbar dep flagged in prod builds

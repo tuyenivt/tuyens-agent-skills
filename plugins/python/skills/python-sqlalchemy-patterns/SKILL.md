@@ -25,6 +25,7 @@ user-invocable: false
 - Load relations eagerly inside session scope; `lazy="raise"` in dev to catch N+1
 - `joinedload` on collections requires `.unique()` on the result
 - `commit()` at service/request boundary; repositories use `flush()` only
+- One `AsyncSession` is **not** concurrency-safe - never run `asyncio.gather` over queries on a single session, and never share a session across requests or processes (web -> Celery worker); give each concurrent unit its own session
 - Never mix sync and async engines
 
 ## Patterns
@@ -62,7 +63,9 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 # await session.execute(select(...)) for rows; await session.scalars(...) for single column
 ```
 
-`pool_recycle=3600` prevents PostgreSQL idle timeouts. Pool size = workers x tasks-per-worker.
+`pool_recycle=3600` prevents PostgreSQL idle timeouts. `pool_size` + `max_overflow` is **per process**; total peak connections = `N_processes x (pool_size + max_overflow)`. Keep that under PostgreSQL `max_connections` minus a reserve (e.g., 4 uvicorn workers x (10+5) = 60 against `max_connections=100`). Celery workers run their own engine - budget them separately.
+
+Multi-level eager loads chain by nesting loaders: `selectinload(Order.items).selectinload(OrderItem.product)` loads items, then each item's product, in 2 extra `IN` queries regardless of N.
 
 ### N+1 Prevention
 
@@ -123,18 +126,42 @@ Composite PK: `session.get(Model, (pk1, pk2))` - passing a single value silently
 ### Pagination and Bulk Ops
 
 ```python
-# Offset pagination with total
+# Offset pagination with total - simple, but OFFSET skips/duplicates under concurrent inserts
 base = select(Order).where(Order.status == status)
 total = await session.scalar(select(func.count()).select_from(base.subquery()))
 result = await session.execute(
     base.options(selectinload(Order.items)).offset(off).limit(lim).order_by(Order.created_at.desc()))
 
-# Bulk insert/update bypass ORM listeners
-await session.execute(insert(OrderItem), [{"order_id": oid, "quantity": q} for q in qtys])
-await session.execute(update(Order).where(Order.status == "expired").values(status="cancelled"))
+# Keyset pagination - stable feed under concurrent writes. Cursor = (created_at, id) for a total order.
+from sqlalchemy import and_, or_
+stmt = select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(lim)
+if cursor:                                       # cursor = (last_created_at, last_id)
+    c_ts, c_id = cursor
+    stmt = stmt.where(or_(Order.created_at < c_ts,
+                          and_(Order.created_at == c_ts, Order.id < c_id)))
+rows = (await session.execute(stmt)).scalars().all()
+next_cursor = (rows[-1].created_at, rows[-1].id) if len(rows) == lim else None
+# needs a (created_at DESC, id DESC) index; encode next_cursor opaquely for the client
 
-# Upsert (async-safe): use insert().on_conflict_do_update() + execute() - not session.add()
+# Bulk insert/update bypass ORM listeners; batch large updates by keyset + commit per batch
+await session.execute(insert(OrderItem), [{"order_id": oid, "quantity": q} for q in qtys])
+# 50k-row update as one statement = one long lock; loop in batches:
+while ids := (await session.scalars(
+        select(Order.id).where(Order.status == "expired").limit(5000))).all():
+    await session.execute(
+        update(Order).where(Order.id.in_(ids)).values(status="cancelled")
+        .execution_options(synchronize_session=False))
+    await session.commit()
+
+# Upsert (async-safe): insert().on_conflict_do_update() + execute() - never session.merge()
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+stmt = pg_insert(StockItem).values(warehouse_id=wid, sku=sku, quantity=qty)
+stmt = stmt.on_conflict_do_update(
+    index_elements=["warehouse_id", "sku"], set_={"quantity": stmt.excluded.quantity})
+await session.execute(stmt)
 ```
+
+Tenant scoping: filter every query by `tenant_id`. To make it un-bypassable across eager-loaded relations too, register `with_loader_criteria(Model, Model.tenant_id == tid, include_aliases=True)` as a query option rather than relying on per-`where` filters.
 
 ### MissingGreenlet Debugging
 

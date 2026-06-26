@@ -106,9 +106,22 @@ workflow = chord(
 
 `handle_pipeline_error(request, exc, traceback)` logs and marks failure. Guard chord callbacks against empty group headers (callback fires with `[]`).
 
+Nest for sequential-then-parallel-then-join (charge -> parallel fulfillment -> confirm): a chord member inside a chain. Each upstream task's return value is injected as the first positional arg of the next:
+
+```python
+pipeline = chain(
+    charge_payment.s(order_id),                              # returns order_id
+    chord(group(generate_invoice.s(), reserve_inventory.s()),  # both receive order_id
+          send_confirmation.s(order_id=order_id)),           # receives [results], order_id pinned
+)
+pipeline.apply_async(link_error=handle_pipeline_error.s(order_id=order_id))
+```
+
+Idempotency guards need durable state - a `processed` row keyed by a business key (unique constraint) or a Redis key with TTL, not an in-memory flag. Large fan-out (thousands of tasks): chunk with `group(...).skew()` or `task.chunks(iterable, n)` to bound dispatch and chord result-backend pressure (every header result buffers in the backend until the callback fires).
+
 ### Rate Limiting & Fire-and-Forget
 
-`rate_limit="10/m"` for external APIs (per-worker). `ignore_result=True` when no result is consumed - skips backend writes.
+`rate_limit="10/m"` for external APIs is **per-worker** - a global cap across N workers means running one worker for that queue, dividing the limit (`10/m` over 2 workers = `5/m` each), or a distributed limiter (Redis token bucket). `ignore_result=True` when no result is consumed - skips backend writes.
 
 ### Integration
 

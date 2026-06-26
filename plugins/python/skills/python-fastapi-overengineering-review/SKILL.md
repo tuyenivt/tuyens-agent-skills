@@ -19,7 +19,7 @@ user-invocable: false
 - Every finding cites the constraint that makes the code redundant: FK name, `nullable=False` column, unique index, SQLAlchemy `Mapped[T]` non-Optional type, Pydantic field constraint, Python type annotation, or framework guarantee.
 - Intent:
   - **`[Recommend]`** default. Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, bare `except` / `except Exception` defeating the global exception handler, sync I/O hidden in `async def` via broad except, or `Protocol` / `ABC` + single concrete subclass.
-  - **`[Question]`** when justification is plausible but not visible in the diff.
+  - **`[Question]`** when justification is plausible but not visible in the diff, **or when the constraint that would make the code redundant lives outside the diff** (unique index not shown, settings read-site elsewhere). Recommend confirming it rather than asserting `[Must]`.
 - A redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns

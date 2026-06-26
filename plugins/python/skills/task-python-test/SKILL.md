@@ -118,6 +118,7 @@ Run before scaffolding when coverage is below ~50%. Alphabetic or by-file order 
 
 **Which deliverable:**
 
+- "review existing tests" / "test quality" -> Coverage Assessment, run the Review Checklist and report each failing item under **Test-quality issues** (steps 3-8 are reference context only, not produced output)
 - "what tests are missing?" / "review coverage" -> Coverage Assessment
 - "write tests for X" / "scaffold tests" -> Test Scaffolds
 - "test strategy" / "test plan" / coverage < 50% with no scaffolds requested -> Strategy Doc
@@ -140,6 +141,10 @@ Run before scaffolding when coverage is below ~50%. Alphabetic or by-file order 
 - **Auth:** [endpoints without authorization tests; missing JWT / OAuth2 flow tests]
 - **Celery:** [tasks without tests; tasks without idempotency / retry]
 - **Contract:** [OpenAPI / Pact contracts without verification]
+
+**Test-quality issues** _(review mode; Review Checklist failures)_
+
+- [SQLite on a Postgres app; internal `session.commit` mocks; dict literals over factories; `CELERY_TASK_ALWAYS_EAGER` as the only acks_late coverage; wrong test type for subject]
 
 **Recommended pyramid balance:**
 

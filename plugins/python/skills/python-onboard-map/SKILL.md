@@ -19,7 +19,8 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 
 - Detect dependency manager first - lockfile and command set differ.
 - Detect framework: FastAPI, Django, Flask, Starlette, Litestar - layout and entry points differ.
-- Detect Python version (`requires-python`, `.python-version`, `runtime.txt`); 3.11+ standard.
+- Detect Python version from `requires-python`, `.python-version`, `runtime.txt`, **and** `setup.cfg`; flag divergence against the CI config (e.g., `setup.cfg` 3.9 vs CI 3.12). 3.11+ standard.
+- Conflicting managers (both `requirements.txt` and a Poetry/uv `pyproject.toml`, or no lockfile committed): name both, treat the `pyproject.toml` as the forward state and `requirements.txt` as legacy export, and flag that no reproducible install exists until a lockfile lands.
 - Detect async vs sync: `async def` endpoints, asyncio, async DB drivers (asyncpg, aiomysql, motor) vs sync.
 
 ## Patterns
@@ -73,6 +74,10 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 | `<app>/migrations/`          | Auto-generated migrations                                      |
 | `<app>/admin.py`             | Admin registration                                             |
 | `requirements/`              | Often split: `base.txt`, `dev.txt`, `prod.txt`                 |
+
+**Flask** (legacy / blueprints): `app.py` / `wsgi.py` (app factory + `create_app`), `blueprints/` or per-feature `views.py`, sync `SessionLocal`, config via `app.config` / env. No async unless ASGI-wrapped.
+
+If a `Makefile` is present, treat it as the authoritative command source - `make <target>` usually wraps install / migrate / run / test with the correct `DJANGO_SETTINGS_MODULE` and env already set. Read it before suggesting raw commands. Point new engineers at `.env.example` for required env/secrets.
 
 ### Package Layout
 

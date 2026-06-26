@@ -71,6 +71,7 @@ Plus every changed file calling `logger.*`, registering a metric, defining middl
 
 ### Step 4 - Structured Logging (structlog / stdlib logging)
 
+- [ ] **A logger is configured at all**: `print(...)` in application/production paths is the greenfield-logging finding - no levels, no structure, goes to stdout unmanaged. Replace with a configured logger
 - [ ] **JSON output** in prod: `structlog` `JSONRenderer`, or stdlib `logging` + `python-json-logger` `JsonFormatter`. No raw text
 - [ ] **Correlation fields** every line: `trace_id`, `span_id`, `request_id`, `user_id`, `tenant_id`, business IDs. FastAPI: middleware + `structlog.contextvars.bind_contextvars`. Django: request-id middleware + `logging.Filter` injecting `LogRecord.request_id`
 - [ ] **OTel log correlation**: `LoggingInstrumentor().instrument(set_logging_format=True)` injects `trace_id` / `span_id` into every record

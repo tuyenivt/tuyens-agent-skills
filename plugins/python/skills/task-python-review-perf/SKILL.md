@@ -41,7 +41,7 @@ Python-aware performance review naming SQLAlchemy 2.0+ async session, Django ORM
 |------|---------|
 | `/task-python-review-perf` | Current branch vs base; fails fast on trunk |
 | `/task-python-review-perf <branch>` | `<branch>` vs base (3-dot) |
-| `/task-python-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` |
+| `/task-python-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
 
 When invoked as subagent of `task-code-review-perf` / `task-python-review`, Step 2 is skipped and pre-read diff is reused.
 

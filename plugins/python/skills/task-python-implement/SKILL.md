@@ -11,7 +11,7 @@ user-invocable: true
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
 >
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. Follow its contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts; surface conflicts as proposed amendments.
+> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. Follow its contract; skip GATHER (and DESIGN when `plan.md` is present). When DESIGN is skipped, still load STEP 3's pattern skills (implementation needs them) and present `plan.md` as the design for one approval before generating code - the approval gate is not skipped. Never edit spec artifacts; surface conflicts as proposed amendments.
 
 # Implement Python Feature
 
@@ -94,7 +94,7 @@ SQLAlchemy 2.0 (`Mapped[]`, `mapped_column`) or Django models. Include:
 Business logic layer.
 
 ```python
-# CORRECT: dispatch after commit
+# FastAPI: dispatch after commit
 async def create_order(self, order_in: OrderCreate) -> Order:
     order = Order(**order_in.model_dump())
     self._session.add(order)
@@ -102,9 +102,16 @@ async def create_order(self, order_in: OrderCreate) -> Order:
     await self._session.commit()
     process_order.delay(order.id)  # after commit - worker will find the row
     return order
+
+# Django: dispatch via transaction.on_commit so it never fires before commit
+def create_order(self, **data) -> Order:
+    with transaction.atomic():
+        order = Order.objects.create(**data)
+        transaction.on_commit(lambda: process_order.delay(order.id))
+    return order
 ```
 
-External service calls: `httpx.AsyncClient` with timeout; classify errors (timeout -> 503, 404 -> not-found, 5xx -> retry). Never use `requests` in async context.
+External service calls: in async FastAPI use `httpx.AsyncClient` with timeout (never `requests`); a sync Django/Celery path uses `requests` or `httpx.Client`. Classify errors (timeout -> 503, 404 -> not-found, 5xx -> retry).
 
 ### STEP 7 - ENDPOINTS
 
@@ -137,6 +144,7 @@ Use skill: `python-testing-patterns`. Generate:
 - Service unit tests (business logic, edge cases)
 - Celery task tests (if applicable)
 - Factory classes for test data
+- Spec-aware mode: one test per acceptance criterion (tag `# Satisfies: AC<N>`); cover every NFR from `plan.md`
 
 ### STEP 10 - VALIDATE
 

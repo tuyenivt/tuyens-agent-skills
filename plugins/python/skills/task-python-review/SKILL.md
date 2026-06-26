@@ -173,7 +173,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 Output risk level and blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and produce a streamlined output with Phase B only.
+**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and run **B + E only** (E still covers naming/clarity, the common content of low-risk PRs). On an incremental round, Step 6.5 reconciliation still runs.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
@@ -326,7 +326,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_

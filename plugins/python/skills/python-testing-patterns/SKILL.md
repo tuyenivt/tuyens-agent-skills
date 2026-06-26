@@ -119,7 +119,23 @@ def api_client(user):
 def test_create_order(api_client):
     response = api_client.post("/api/orders/", {"total": "49.99", "items": [...]}, format="json")
     assert response.status_code == 201
+
+# IDOR on owned resources: return 404 (not 403) so existence isn't leaked
+@pytest.mark.django_db
+def test_other_user_gets_404_for_foreign_order(api_client, other_user):
+    order = OrderFactory(owner=other_user)
+    response = api_client.get(f"/api/orders/{order.pk}/")  # api_client authed as a different user
+    assert response.status_code == 404
+
+# ORM constraint: IntegrityError poisons the transaction - isolate the failing insert
+@pytest.mark.django_db
+def test_duplicate_reference_rejected(user):
+    OrderFactory(owner=user, reference="DUP")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        OrderFactory(owner=user, reference="DUP")
 ```
+
+Django factories use `factory.django.DjangoModelFactory` (not `SQLAlchemyModelFactory`); `model_bakery` (`baker.make(Order, ...)`) is the lighter alternative.
 
 ### Database Testing
 
@@ -170,11 +186,27 @@ def test_order_triggers_notification(mocker):
     mock_delay.assert_called_once_with(1)
 ```
 
-`CELERY_TASK_ALWAYS_EAGER=True` skips serialization; pair with at least one real-broker test to catch pickle/JSON bugs.
+`CELERY_TASK_ALWAYS_EAGER=True` skips serialization; pair with at least one real-broker test (`pytest-celery` `celery_worker` fixture) to catch pickle/JSON bugs, `acks_late` redelivery, and real retry scheduling. Retry sequences need `CELERY_TASK_EAGER_PROPAGATES=False` for `self.retry` to re-run the body under EAGER:
+
+```python
+# Post-commit dispatch: assert it fires after commit, not before
+def test_dispatch_after_commit(mocker):
+    delay = mocker.patch("app.orders.service.process_payment.delay")
+    with django_capture_on_commit_callbacks(execute=True):
+        order = OrderService.create(...)
+        delay.assert_not_called()         # still inside the transaction
+    delay.assert_called_once_with(order.id)  # fired by on_commit
+
+# Retry fail-fail-success
+def test_retries_then_succeeds(mocker, order):
+    mocker.patch("app.tasks.gateway.charge", side_effect=[Timeout(), Timeout(), {"id": "ch_1"}])
+    result = process_payment.apply(args=[order.id])  # EAGER_PROPAGATES=False
+    assert result.successful()
+```
 
 ### Mocking
 
-`respx` for httpx (FastAPI), `responses` for requests (Django), `pytest-mock` `mocker` for general patching. Prefer DI over patching.
+Key the HTTP stub to the **client**, not the framework: `respx` / `pytest-httpx` for `httpx` (whether FastAPI or a Django app calling httpx), `responses` for `requests`. `pytest-mock` `mocker` for general patching. Prefer DI over patching.
 
 ```python
 import respx

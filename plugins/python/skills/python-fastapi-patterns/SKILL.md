@@ -122,6 +122,7 @@ async def validation_handler(_req: Request, exc: RequestValidationError):
 | Not found          | 404  |
 | Conflict           | 409  |
 | Invalid transition | 422  |
+| Webhook bad signature | 400  |
 
 ### Pagination
 
@@ -183,7 +184,30 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 ### Async and Background Tasks
 
-`BackgroundTasks` runs after the response - the request-scoped session is already closed. Pass entity **IDs**, not ORM objects, and open a fresh session inside the task. Use Celery/queue for reliable delivery. `UploadFile` parameters cannot be inside a Pydantic body - pass them as separate `File(...)` args.
+`BackgroundTasks` runs after the response - the request-scoped session is already closed. Pass entity **IDs**, not ORM objects, and open a fresh session inside the task. Use Celery/queue for reliable delivery.
+
+### File Upload with Metadata
+
+A request has one content type, so a file forces `multipart/form-data` - metadata cannot ride alongside as a JSON body. `UploadFile` and metadata both go as form fields; validate the metadata via a Pydantic model:
+
+```python
+@router.post("/", status_code=202)
+async def upload(
+    file: Annotated[UploadFile, File()],
+    project_id: Annotated[int, Form()],          # flat scalars as Form fields
+    db: DbSession,
+):
+    meta = UploadMetadata(project_id=project_id)  # Pydantic validation
+    job = await svc.accept(file, meta)            # stream to storage, return a job id
+    process_upload.delay(str(job.id))             # Celery re-reads from storage; UploadFile is closed after the response
+    return {"job_id": str(job.id), "status": "accepted"}
+```
+
+For nested metadata, pass one `metadata: Annotated[str, Form()]` JSON-string field and `UploadMetadata.model_validate_json(metadata)`.
+
+### Webhook Receivers
+
+Signature verification needs the **raw bytes** (`await request.body()`), never `request.json()` - parsing breaks the HMAC. Verify in a dependency so the handler only runs on authentic events; verification failure returns 400 (so the provider retries), not 422. Webhooks are at-least-once: persist the provider event id under a unique constraint and short-circuit duplicates inside the same transaction as the handler effect.
 
 ## Output Format
 

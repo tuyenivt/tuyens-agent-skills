@@ -40,14 +40,17 @@ user-invocable: false
 | `open()` on large files | `aiofiles.open()`          |
 | Sync DB driver          | async SQLAlchemy / asyncpg |
 
-Unavoidable sync code:
+Unavoidable sync code - pick the executor by workload:
 
 ```python
 loop = asyncio.get_running_loop()
-result = await loop.run_in_executor(None, partial(legacy_sync_function, data))
+# I/O-bound (blocking HTTP SDK, blocking file): default thread pool releases the GIL while waiting
+result = await loop.run_in_executor(None, partial(legacy_sync_io, data))
+# CPU-bound (image resize, hashing): a thread pool stays GIL-serialized - use a ProcessPoolExecutor
+result = await loop.run_in_executor(cpu_pool, partial(legacy_cpu_work, data))  # args/return must pickle
 ```
 
-Executor threads have no request-context thread-locals (Flask/Django, SQLAlchemy scoped session) - pass data as arguments.
+Executor threads have no request-context thread-locals (Flask/Django, SQLAlchemy scoped session) - pass data as arguments. Create pools once at startup; never per request.
 
 ### Concurrent Fetch with gather
 
@@ -77,7 +80,7 @@ async def fetch_with_timeout(client, url, timeout=5.0):
 results = await asyncio.gather(*(fetch_with_timeout(client, u) for u in urls))
 ```
 
-When combining `asyncio.timeout` with `httpx.Timeout`, the stricter wins - use httpx for per-request, asyncio for the overall budget.
+For partial results, put the timeout **inside each task** (above) so every task returns a slot - do **not** wrap `asyncio.timeout` around the outer `gather`: on expiry it cancels the gather and discards already-completed results. When combining `asyncio.timeout` with `httpx.Timeout`, the stricter wins - use httpx for the per-request cap, the per-task `asyncio.timeout` for the call budget.
 
 ### TaskGroup (3.11+)
 
@@ -118,6 +121,23 @@ class AsyncDBConn:
     async def __aexit__(self, *_):
         await self.conn.close()
 ```
+
+### Fire-and-Forget Tasks
+
+`asyncio.create_task(...)` without keeping a reference can be garbage-collected mid-flight, and its exception is swallowed until GC. Hold a strong reference and surface failures:
+
+```python
+_background: set[asyncio.Task] = set()
+
+def fire(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background.add(task)                          # strong ref - GC can kill orphan tasks
+    task.add_done_callback(_background.discard)
+    task.add_done_callback(lambda t: t.cancelled() or t.exception() and
+                           logger.error("background task failed", exc_info=t.exception()))
+```
+
+Catch un-awaited coroutines early: run tests with `-W error::RuntimeWarning` (turns "coroutine was never awaited" into a failure) and `asyncio.run(main(), debug=True)`; Ruff `ASYNC`/`RUF006` flags un-stored `create_task`.
 
 ### Async Iteration
 
