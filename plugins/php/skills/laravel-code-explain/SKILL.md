@@ -37,8 +37,8 @@ Global middleware lives in `app/Http/Kernel.php` (Laravel 10) or `bootstrap/app.
 ### Eloquent Models
 
 - `find` returns null; `findOrFail` throws `ModelNotFoundException` (auto-404).
-- `$casts` coerces on access (`'array'`, `'boolean'`, `'datetime'` -> `Carbon`, enum class -> backed enum).
-- Events (`creating`, `created`, `updating`, `updated`, `saving`, `saved`, `deleting`, `deleted`, `retrieved`) fire synchronously inside the transaction. Observers consolidate handlers; register in a provider's `boot()`.
+- `$casts` coerces on access (`'array'`, `'boolean'`, `'datetime'` -> `Carbon`, enum class -> backed enum). Class-based casts (`AsCollection`, `AsArrayObject`, `AsEnumCollection`) return objects, not arrays - switching from `'array'` changes the accessor's return type and breaks array-function callers.
+- Events (`creating`, `created`, `updating`, `updated`, `saving`, `saved`, `deleting`, `deleted`, `retrieved`) fire synchronously inside the transaction - non-queued listener side effects are NOT rolled back on failure unless the event/listener sets `$afterCommit` (or `DB::afterCommit()`). Observers consolidate handlers; register in a provider's `boot()`.
 - `$fillable` allowlists mass assignment; `$guarded = []` opens everything. `$hidden` / `$visible` control JSON serialization.
 
 ### Relationships and N+1

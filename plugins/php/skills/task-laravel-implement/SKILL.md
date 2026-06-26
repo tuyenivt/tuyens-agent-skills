@@ -73,7 +73,7 @@ Use skill: `laravel-eloquent-patterns`. Typed relationships, `$fillable` whiteli
 
 ### STEP 6 - SERVICES
 
-Use skill: `laravel-service-patterns`. Multi-step writes wrapped in `DB::transaction()`. Events dispatched inside the transaction; listeners use `$afterCommit = true` so queue jobs see committed state.
+Use skill: `laravel-service-patterns`. Multi-step writes wrapped in `DB::transaction()`. Concurrent decrements (balances, inventory, counters) use `lockForUpdate()` or an atomic conditional `UPDATE` inside the transaction - a bare transaction does not prevent lost updates. Events dispatched inside the transaction; listeners use `$afterCommit = true` so queue jobs see committed state.
 
 ### STEP 7 - CONTROLLERS AND FORM REQUESTS
 
@@ -121,7 +121,7 @@ Run `php artisan test` and `php artisan route:list`. Fix failures before reporti
 - [ ] STEP 3: Design approved before code; webhook/state-machine patterns included if applicable
 - [ ] STEP 4: Migration indexes FKs and filtered/sorted columns; safety patterns applied
 - [ ] STEP 5: Models have typed relationships, `$fillable`, `casts()`, backed enums
-- [ ] STEP 6: Business logic in services with `DB::transaction()`; listeners use `afterCommit`
+- [ ] STEP 6: Business logic in services with `DB::transaction()`; concurrent decrements use `lockForUpdate()`/atomic update; listeners use `afterCommit`
 - [ ] STEP 7: Thin controllers + Form Requests; domain errors mapped centrally; list endpoints paginated with `per_page` cap
 - [ ] STEP 8: API Resources used everywhere; `whenLoaded()` for relationships
 - [ ] STEP 9: Queue jobs pass IDs; `$tries`/`$backoff`/`$timeout`/`failed()` set

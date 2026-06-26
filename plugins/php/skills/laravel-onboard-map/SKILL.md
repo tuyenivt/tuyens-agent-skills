@@ -30,7 +30,7 @@ user-invocable: false
 | File | What it tells you |
 | ---- | ----------------- |
 | `composer.json` / `composer.lock` | PHP deps; Laravel version range and locked versions |
-| `package.json` + `vite.config.js` / `webpack.mix.js` | Frontend assets; Vite (9.19+) vs legacy Mix |
+| `package.json` + `vite.config.js` / `webpack.mix.js` | Frontend assets; Vite (Laravel 9.19+ default) vs legacy Mix |
 | `phpunit.xml` | PHPUnit + test DB settings; flag SQLite for prod-MySQL apps |
 | `phpstan.neon` / `psalm.xml` / `pint.json` | Static analysis and formatter config |
 | `docker-compose.yml` / Sail | Local services; `./vendor/bin/sail up` if Sail is installed |
@@ -42,7 +42,7 @@ user-invocable: false
 3. `cp .env.example .env && php artisan key:generate`; edit DB/queue/mail.
 4. `php artisan migrate` (or `migrate:fresh --seed`).
 5. Local services: `compose.yml` (Sail provides one) for MySQL/Postgres/Redis/MailPit.
-6. Run: `php artisan serve` (backend), `npm run dev` (Vite), `php artisan queue:work` (if not sync), `php artisan schedule:work` (dev scheduler).
+6. Run: `php artisan serve` (backend), `npm run dev` (Vite), `php artisan queue:work` (if not sync; `php artisan horizon` when Horizon is installed), `php artisan schedule:work` (dev scheduler).
 7. Verify: `http://127.0.0.1:8000`; `/up` (Laravel 11+) or custom `/health`.
 
 ### Key File Inventory

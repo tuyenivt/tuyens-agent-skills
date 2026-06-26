@@ -38,9 +38,10 @@ class OrderController extends Controller {
         return OrderResource::collection($this->orders->listForUser($request));
     }
 
-    public function store(StoreOrderRequest $request): OrderResource {
+    public function store(StoreOrderRequest $request): JsonResponse {
         $order = $this->orders->create(CreateOrderDTO::fromRequest($request));
-        return new OrderResource($order->load('items'));
+        return (new OrderResource($order->load('items')))
+            ->response()->setStatusCode(201);   // Resources default to 200; create returns 201
     }
 
     public function show(Order $order): OrderResource {

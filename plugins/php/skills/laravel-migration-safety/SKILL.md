@@ -35,7 +35,7 @@ user-invocable: false
 | Rename column    | Expand-contract     | Expand-contract      | Expand-contract                    |
 | Drop column      | Direct              | Direct               | Remove code first, then drop       |
 
-MySQL 8.0+: NOT NULL with constant DEFAULT is `ALGORITHM=INSTANT`. Use `pt-osc` only when INSTANT/INPLACE aren't possible (column type change, PRIMARY restructure).
+MySQL 8.0+: *adding* a NOT NULL column with constant DEFAULT is `ALGORITHM=INSTANT`; converting an *existing* column NULL -> NOT NULL (the 3-step release 3) is an INPLACE rebuild that validates every row - schedule it like a large alter. Use `pt-osc` only when INSTANT/INPLACE aren't possible (column type change, PRIMARY restructure).
 
 ### Adding columns - 3-step pattern
 
@@ -59,7 +59,7 @@ DB::table('orders')
 $t->string('tracking_number', 100)->nullable(false)->change();
 ```
 
-`->change()` requires `doctrine/dbal` on Laravel < 11.
+`->change()` needs `doctrine/dbal` only on Laravel < 11. Altering a column DEFAULT alone is `ALGORITHM=INSTANT` (metadata-only); a type or nullability change rebuilds the table.
 
 ### Indexes
 

@@ -20,7 +20,7 @@ user-invocable: false
 - Pass scalar IDs to constructors - models serialize stale snapshots and bloat payloads
 - Set `$tries`, `$backoff`, `$timeout` on every job; implement `failed()`
 - Dispatch inside `DB::transaction` via `afterCommit()` (or `$afterCommit = true` on job/listener)
-- `handle()` is idempotent (retries re-run on transient failure) - guard on persisted state
+- `handle()` is idempotent (retries re-run on transient failure) - guard on persisted state; pass an idempotency key to external APIs so a retry after a lost ack does not double-charge
 - No `sync` driver in production
 
 ## Patterns
@@ -98,7 +98,7 @@ public function middleware(): array {
     return [(new WithoutOverlapping($this->accountId))->releaseAfter(30)];
 }
 
-// Third-party API rate limit
+// Third-party API rate limit - throttled jobs are released back and consume a $tries attempt; raise $tries or ->dontRelease()
 RateLimiter::for('stripe', fn() => Limit::perMinute(100));
 public function middleware(): array { return [new RateLimited('stripe')]; }
 ```
@@ -124,6 +124,13 @@ Bus::chain([
     new ProcessPayment($order->id),
     new SendConfirmation($order->id),
 ])->onQueue('orders')->dispatch();
+
+// Fan-out inside a chain: charge, then parallel emails (nested array = batch step), then analytics
+Bus::chain([
+    new ChargePayment($order->id),
+    [new SendCustomerMail($order->id), new SendWarehouseMail($order->id)],
+    new UpdateAnalytics($order->id),
+])->dispatch();
 ```
 
 ### Driver selection

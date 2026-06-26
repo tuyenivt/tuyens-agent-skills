@@ -170,7 +170,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 | Lifecycle / health       | wired / partial / absent | [...]                                          |
 | Error tracker            | wired / partial / absent | [...]                                          |
 
-> Use **Greenfield** as the `Overall:` headline when 3+ rows are `absent`. Use `absent` vocabulary consistently.
+> Use **Greenfield** as the `Overall:` headline only when 3+ rows are `absent` AND the reviewed change touches no existing instrumentation (no `wired` or `partial` surface - a new/uninstrumented service); a brownfield PR that merely leaves some surfaces `absent` reports `Gaps Found` and lists them as findings. Use `absent` vocabulary consistently.
 
 ## Findings
 

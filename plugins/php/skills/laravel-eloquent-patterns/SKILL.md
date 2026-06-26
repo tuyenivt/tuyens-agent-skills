@@ -76,7 +76,7 @@ $orders->loadMissing('items');
 
 ```php
 public function scopeActive(Builder $q): Builder {
-    return $q->where('status', OrderStatus::Active)->whereNull('cancelled_at');
+    return $q->whereNotIn('status', [OrderStatus::Delivered, OrderStatus::Cancelled]);
 }
 Order::active()->createdBetween($from, $to)->get();
 
@@ -170,7 +170,7 @@ if ($affected === 0) throw new InsufficientStockException(...);
 ### Index design (consumed by Output Format)
 
 - Every column in `WHERE`, `ORDER BY`, `GROUP BY` is indexed; leftmost-prefix for composites
-- Cursor pagination: index on the cursor column (usually `id` or `(created_at, id)`)
+- Cursor pagination: index on the cursor column (`id` or `(created_at, id)`); prefix with any global-scope column (e.g. `(tenant_id, id)`)
 - Soft-deleted hot tables: include `deleted_at` in composite
 - FK columns get an index automatically via `->constrained()`
 

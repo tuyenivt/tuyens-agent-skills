@@ -227,7 +227,7 @@ _Omit if no actionable findings._
 - [ ] Step 5 - `laravel-eloquent-patterns` consulted; N+1, wide eager-load, `Model::all()`, pagination, aggregates checked
 - [ ] Step 6 - `laravel-migration-safety` consulted when migrations present; reasoning rule + migration impact template applied
 - [ ] Step 7 - `laravel-queue-patterns` consulted when queue files present; sync-in-prod, retry discipline, scalar IDs, `afterCommit`, middleware audited
-- [ ] Steps 8-10 - skipped or applied per diff signals; gating recorded explicitly
+- [ ] Steps 8-10 - skipped or applied per diff signals; gating recorded; `Cache::remember` TTL/tag-driver and `Http::*` timeouts checked when present
 - [ ] Step 11 - observability hand-off captured for any slow path lacking instrumentation
 - [ ] Step 12 - report written via `review-report-writer`; confirmation printed
 - [ ] Severity rubric applied consistently; every finding states impact; Next Steps tagged and ordered

@@ -81,7 +81,7 @@ Sanctum SPA (same-site cookie auth):
 'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', 'localhost:3000')),
 // config/cors.php
 'supports_credentials' => true,
-// config/session.php (cross-site SPA needs same_site=none + secure=true)
+// config/session.php - same-domain SPA: same_site=lax; cross-site SPA: same_site=none + secure=true
 'secure' => true, 'http_only' => true, 'same_site' => 'lax',
 ```
 
