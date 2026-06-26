@@ -218,12 +218,16 @@ The `kotlin("plugin.jpa")` plugin generates the no-arg constructor; `kotlin("plu
 
 ## Output Format
 
+One block per optimization (emit several for a multi-fix answer):
+
 ```
-Optimization: {N+1 Fix | Projection | Batch Fetch | Specification | Cache | Pagination}
+Optimization: {N+1 Fix | Projection | Batch Fetch | Bulk Write | Specification | Cache | Pagination | Locking}
 Entity: {name}
 Change: {description}
-Query Count: {before} -> {after}
+Query Count: {before} -> {after}    // for Locking, state the concurrency guarantee instead
 ```
+
+`Bulk Write` = insert/update batching (`SEQUENCE` vs `IDENTITY`, `batch_size`, chunk+flush+clear). `Locking` = pessimistic/optimistic concurrency control.
 
 ## Avoid
 

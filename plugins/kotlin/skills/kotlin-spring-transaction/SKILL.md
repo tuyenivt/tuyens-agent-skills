@@ -54,7 +54,11 @@ fun placeOrder(req: OrderRequest): Order {
 @Transactional internal fun markPaid(id: Long, receipt: Receipt): Order = ...
 ```
 
-Pair with idempotency (next pattern) and `@TransactionalEventListener(AFTER_COMMIT)` (see `kotlin-spring-async-processing`) when a side effect must fire only after commit.
+Ordering depends on whether a failed external call may leave a persisted row:
+- **No row may survive failure** (e.g. order must not exist if the charge fails): run the external call first, persist only on success.
+- **A durable record is needed before the call** (audit trail, idempotency key, retry bookkeeping): persist a pending row in tx 1, call externally, then commit the outcome in tx 2 - the pending row is reconciled by a sweeper or the idempotency check on retry.
+
+Pair with idempotency (next pattern) and `@TransactionalEventListener(AFTER_COMMIT)` (see `kotlin-spring-async-processing`) when a side effect must fire only after commit. When an external call sits in an idempotent flow, the idempotency pre-check and the committing write are `@Transactional`; the external call runs between them in a non-transactional orchestrator.
 
 ### Self-invocation bypass
 
@@ -159,7 +163,7 @@ suspend fun placeOrderWithInventory(req: PlaceOrderRequest): Order {
 }
 ```
 
-**No `withContext(...)` inside** - the new dispatcher has no transaction attached and writes there escape the transaction.
+**No `withContext(...)` inside** - the new dispatcher has no transaction attached and writes there escape the transaction. If the work needs a dispatcher switch or an external call, the transactional method should not be `suspend`: keep a `suspend` non-transactional coordinator that does the I/O, and delegate the DB-only writes to a separate blocking `@Transactional` bean.
 
 ## Output Format
 

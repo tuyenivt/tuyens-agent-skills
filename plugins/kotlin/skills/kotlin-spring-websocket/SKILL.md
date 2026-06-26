@@ -45,6 +45,10 @@ class WebSocketConfig(
         // registry.enableStompBrokerRelay("/topic", "/queue")
         //     .setRelayHost("rabbitmq").setRelayPort(61613)
         //     .setClientLogin("app").setClientPasscode("\${broker.password}")
+        //     // REQUIRED for cross-instance convertAndSendToUser - without these a private
+        //     // message from instance A to a user on instance B is silently dropped:
+        //     .setUserRegistryBroadcast("/topic/user-registry")
+        //     .setUserDestinationBroadcast("/queue/user-unresolved")
         registry.setApplicationDestinationPrefixes("/app")
         registry.setUserDestinationPrefix("/user")
     }
@@ -125,8 +129,12 @@ class ChatController(
     }
 
     @MessageMapping("/chat.private")
-    fun privateMessage(@Payload m: PrivateMessageDTO) {
-        template.convertAndSendToUser(m.recipientId, "/queue/messages", m)
+    fun privateMessage(@Payload m: PrivateMessageDTO, principal: Principal) {
+        // Derive the sender from the authenticated Principal, never from the payload (anti-spoofing).
+        // Authorize the target: a destination-prefix rule can't stop A from messaging an arbitrary recipientId.
+        require(chatService.canMessage(principal.name, m.recipientId)) { "not allowed" }
+        val outbound = m.copy(senderId = principal.name)
+        template.convertAndSendToUser(m.recipientId, "/queue/messages", outbound)
     }
 
     @MessageExceptionHandler
@@ -147,10 +155,10 @@ class RoomController(private val rooms: RoomService) {
 
     @MessageMapping("/room.join")
     suspend fun join(@Payload req: JoinRequest, principal: Principal) {
-        mutex.withLock {
-            active[req.roomId] = (active[req.roomId].orEmpty() + principal.name)
+        val members = mutex.withLock {                       // snapshot inside the lock; never read `active` outside it
+            (active[req.roomId].orEmpty() + principal.name).also { active[req.roomId] = it }
         }
-        rooms.publishPresence(req.roomId, active[req.roomId].orEmpty())
+        rooms.publishPresence(req.roomId, members)           // suspend broadcast OUTSIDE the lock
     }
 }
 ```
@@ -231,3 +239,5 @@ Multi-instance: {yes via relay | single instance only}
 - Swallowing exceptions instead of `@MessageExceptionHandler` (session dies silently)
 - `GlobalScope.launch` for broadcaster fan-out - use a managed scope bean
 - JWT in handshake query parameters (leaks to proxy logs)
+- Targeting `convertAndSendToUser` at a `recipientId` taken from the payload without an authz check, or trusting a payload `senderId` over `Principal` (impersonation)
+- A STOMP relay without `setUserRegistryBroadcast` / `setUserDestinationBroadcast` - cross-instance `convertAndSendToUser` silently fails

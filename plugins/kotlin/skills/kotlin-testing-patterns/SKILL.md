@@ -24,7 +24,7 @@ Not for production debugging (`task-kotlin-debug`) or coroutine design (`kotlin-
 - `@MockkBean` (springmockk) over `@MockBean` in Spring slices.
 - `runTest { }` for all coroutine test bodies. Virtual time, no real waits, no flakes.
 - Kotest matchers (`shouldBe`, `shouldThrow`) over JUnit assertions for readability.
-- `clearAllMocks()` in `@AfterEach` (or `@BeforeEach` for `@MockkBean` - Spring caches contexts and mocks carry stub state between tests).
+- `clearAllMocks()` in `@AfterEach` for plain MockK; **`@BeforeEach` for `@MockkBean`** (Spring caches contexts and mocks carry stub state between tests) - `@BeforeEach` also runs after a prior test throws before its cleanup.
 - Testcontainers for persistence tests - never H2 for Postgres-feature apps.
 
 ## Patterns

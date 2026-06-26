@@ -85,6 +85,19 @@ class OrderControllerTest {
 }
 ```
 
+**Method security is a no-op in `@WebMvcTest` unless imported.** `@PreAuthorize` on a controller is enforced by the `@EnableMethodSecurity` advisor, which the slice does not load by default - so a non-admin silently passes and the test goes green without ever enforcing the rule. `@Import` the method-security config and always assert the negative case:
+
+```kotlin
+@WebMvcTest(OrderController::class)
+@Import(MethodSecurityConfig::class)        // brings in @EnableMethodSecurity; without it @PreAuthorize is inert
+class OrderControllerAuthTest {
+    @Test fun `non-admin DELETE is forbidden`() {
+        mockMvc.delete("/api/orders/1") { with(user("bob").roles("USER")) }
+            .andExpect { status { isForbidden() } }    // proves the rule is wired, not just the happy path
+    }
+}
+```
+
 ### Singleton container base class
 
 `withReuse(true)` plus `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` for fast local re-runs. CI typically leaves reuse off.

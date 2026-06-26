@@ -91,6 +91,20 @@ suspend fun getProfile(uid: Long): Profile = supervisorScope {
 }
 ```
 
+**Mixed required + optional in one fan-out:** use the strict `coroutineScope` for the required children and guard each optional child individually with `runCatching` (rethrowing `CancellationException`). Don't reach for `supervisorScope` at the top - it would also stop a required child's failure from aborting the request.
+
+```kotlin
+suspend fun getDashboard(uid: Long): Dashboard = coroutineScope {
+    val user = async { userService.find(uid) }                 // required
+    val orders = async { orderService.recent(uid) }            // required
+    val recs = async {                                         // optional
+        runCatching { recService.get(uid) }
+            .getOrElse { if (it is CancellationException) throw it else emptyList() }
+    }
+    Dashboard(user.await(), orders.await(), recs.await())
+}
+```
+
 ### `@Transactional` on `suspend`
 
 Works in Spring Boot 3.x. Keep the body on the inherited dispatcher - **no `withContext` inside the transactional body** (the new thread has no transaction attached, writes escape silently):
@@ -111,7 +125,7 @@ suspend fun placeOrder(req: PlaceOrderRequest): Order {
 class CoroutineConfig {
     @Bean
     fun applicationScope(): CoroutineScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t ->
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, t ->   // IO: notifier does blocking I/O, VTs off
             log.error("unhandled coroutine exception", t)
         }
     )
@@ -119,7 +133,11 @@ class CoroutineConfig {
     @Bean
     fun shutdownScope(scope: CoroutineScope) = DisposableBean { scope.cancel() }
 }
+```
 
+Pick the scope's dispatcher by the work it runs, same as `withContext`: omit it (or `Dispatchers.IO`) for blocking I/O like email/push when Virtual Threads are off; `Dispatchers.Default` only when the background work is CPU-bound. `Default` for blocking I/O starves its small fixed pool.
+
+```kotlin
 @Service
 class OrderEventPublisher(private val scope: CoroutineScope, private val notifier: NotificationService) {
     fun publishCreated(order: Order) = scope.launch {

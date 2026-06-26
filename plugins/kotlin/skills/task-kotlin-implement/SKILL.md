@@ -169,7 +169,7 @@ Verify: tests pass, no unsafe-cast warnings, detekt / ktlint clean (if configure
 - [ ] Repository: `src/main/kotlin/.../repository/{Name}Repository.kt`
 - [ ] Service: `src/main/kotlin/.../service/{Name}Service.kt`
 - [ ] Controller: `src/main/kotlin/.../controller/{Name}Controller.kt`
-- [ ] Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql`
+- [ ] Migration: `src/main/resources/db/migration/V{timestamp}__{create_{table}|add_{column}_to_{table}}.sql` (new aggregate -> `create_`; additive change to an existing entity -> `add_..._to_`)
 - [ ] Unit test, integration test, API test
 
 ## Endpoints

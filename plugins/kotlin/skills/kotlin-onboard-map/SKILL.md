@@ -44,10 +44,11 @@ user-invocable: false
 ### Bootstrap path
 
 1. JVM toolchain: `kotlinOptions.jvmTarget` / `kotlin { jvmToolchain(...) }` / `java.toolchain.languageVersion`. Common: 17 or 21. With `jvmToolchain(...)` confirm `foojay-resolver-convention` is applied in `settings.gradle.kts` (otherwise CI fails on first run).
-2. Local services: `compose.yml` / `docker-compose.yml` or external connections in `application-*.yml`.
-3. Migrations: `src/main/resources/db/migration/` (Flyway) or `db/changelog/` (Liquibase). Both present = misconfiguration.
-4. Run: `./gradlew bootRun`. Port `server.port` (default 8080).
-5. Verify: actuator at `/actuator/health`; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
+2. Multi-module (`settings.gradle.kts` has `include(...)`): state which module is the boot app (`./gradlew :app:bootRun`, qualified) and where entities / repositories / migrations live. A domain/library module holding `@Entity` needs `kotlin-jpa` applied there; `@EntityScan` / `@EnableJpaRepositories` on the app must point at the domain package or those beans go missing. Migration resources (`db/migration/`) only run if they're on the boot module's runtime classpath - find which module packages them (often the app, sometimes alongside the entities).
+3. Local services: `compose.yml` / `docker-compose.yml` or external connections in `application-*.yml`.
+4. Migrations: `src/main/resources/db/migration/` (Flyway) or `db/changelog/` (Liquibase). Both present = misconfiguration.
+5. Run: `./gradlew bootRun` (qualify with the module for multi-module). Port `server.port` (default 8080).
+6. Verify: actuator at `/actuator/health`; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
 
 ### Configuration axes
 

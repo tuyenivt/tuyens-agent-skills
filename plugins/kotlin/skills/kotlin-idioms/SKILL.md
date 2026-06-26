@@ -106,12 +106,17 @@ data class CreateUserRequest(
     @field:Size(min = 3, max = 50)
     val username: String,
 
-    @get:JsonProperty("created_at")  // Jackson on getter
+    @field:Positive
+    val age: Int,                    // any jakarta.validation constraint works: @Email, @Pattern, @Min...
+
+    @get:JsonProperty("created_at")  // per-field Jackson rename
     val createdAt: Instant,
 )
 ```
 
 Targets: `@field:`, `@get:` / `@set:`, `@param:`, `@property:`. Missing target = annotation silently lands on the wrong element and frameworks ignore it.
+
+For whole-DTO snake_case, set `PropertyNamingStrategies.SNAKE_CASE` on the `ObjectMapper` once instead of `@get:JsonProperty` per field. A non-null type (`val email: String`) with `@field:NotBlank` enforces presence at the boundary - don't also add a `require(email != null)` guard in the service; pick one.
 
 ### Scope functions
 
@@ -209,17 +214,19 @@ Gradle plugins: kotlin-spring {yes|no|n/a}, kotlin-jpa {yes|no|n/a}
 Platform types treated nullable: {yes | no}
 
 ### Conversions
-| Java pattern              | Kotlin idiom                       | Files |
-| ------------------------- | ---------------------------------- | ----- |
-| Optional<T>               | T?                                 |       |
-| @Data DTO                 | data class                         |       |
-| @Data Entity              | class + ID-based equals/hashCode   |       |
-| Java streams              | Kotlin stdlib                      |       |
-| Lombok @Builder           | named args + defaults              |       |
-| Utility class             | extension functions                |       |
-| if/throw guard            | require / check / checkNotNull     |       |
-| Bean Validation on entity | @field: target on val parameters   |       |
+| Java pattern              | Kotlin idiom                            | Files |
+| ------------------------- | --------------------------------------- | ----- |
+| Optional<T>               | T?                                      |       |
+| @Data DTO                 | data class                              |       |
+| @Data Entity              | class + ID-based equals/hashCode (see `kotlin-spring-jpa-performance`) |  |
+| Java streams              | Kotlin stdlib                           |       |
+| Lombok @Builder           | named args + defaults                   |       |
+| Utility class             | extension functions                     |       |
+| if/throw guard            | require / check / checkNotNull          |       |
+| Bean Validation on entity | @field: target on val parameters        |       |
 ```
+
+For greenfield authoring (no Java to convert), leave the Conversions table out and report idiom decisions inline; `!! count` and platform-type lines still apply to any code you produce.
 
 ## Avoid
 

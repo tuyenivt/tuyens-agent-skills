@@ -58,7 +58,7 @@ If no existing tests, propose conventions explicitly rather than inventing silen
 | Contract            | Spring Cloud Contract / Pact                                                     | API consumer/provider contracts                                               |
 | E2E                 | `@SpringBootTest(RANDOM_PORT)` + WebTestClient / REST Assured                    | Critical user journeys only                                                    |
 
-Many unit, some slice, few full-context / E2E.
+Many unit, some slice, few full-context / E2E. Default balance when nothing else dictates: ~60-70% unit, ~20-30% slice, <10% full-context + E2E - use these to fill the Strategy Doc's `{x}%/{y}%/{z}%` fields, adjusting for the service's risk profile.
 
 ### Step 5 - Apply patterns
 

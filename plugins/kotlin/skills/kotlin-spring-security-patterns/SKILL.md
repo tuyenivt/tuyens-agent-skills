@@ -41,7 +41,7 @@ Multiple chains for different path groups, ordered by `@Order`:
 class SecurityConfig {
 
     @Bean @Order(1)
-    fun apiChain(http: HttpSecurity): SecurityFilterChain {
+    fun apiChain(http: HttpSecurity, jwtAuthConverter: JwtAuthenticationConverter): SecurityFilterChain {
         http {
             securityMatcher("/api/**")
             authorizeHttpRequests {
@@ -49,7 +49,9 @@ class SecurityConfig {
                 authorize("/api/admin/**", hasRole("ADMIN"))
                 authorize(anyRequest, authenticated)
             }
-            oauth2ResourceServer { jwt { } }
+            oauth2ResourceServer {
+                jwt { jwtAuthenticationConverter = jwtAuthConverter }   // wire the converter, else the roles claim is ignored
+            }
             sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
             csrf { disable() }
             cors { }
@@ -151,12 +153,27 @@ csrf { disable() }
 sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
 
 // Stateful SPA - XSRF-TOKEN cookie + X-XSRF-TOKEN header
-// SpaCsrfTokenRequestHandler: project-defined extending CsrfTokenRequestAttributeHandler that resolves from the header
 csrf {
     csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
     csrfTokenRequestHandler = SpaCsrfTokenRequestHandler()
 }
 ```
+
+The handler is the load-bearing part. `CookieCsrfTokenRepository.withHttpOnlyFalse()` alone is broken for SPAs: SS6 defers token loading (the cookie isn't written until something reads the token) and `XorCsrfTokenRequestAttributeHandler` BREACH-encodes the request value, so a raw header token never matches. The fix delegates rendering (write) to the XOR handler but resolves the incoming header value as the plain token:
+
+```kotlin
+class SpaCsrfTokenRequestHandler : CsrfTokenRequestAttributeHandler() {
+    private val xor = XorCsrfTokenRequestAttributeHandler()
+    override fun handle(req: HttpServletRequest, res: HttpServletResponse, token: Supplier<CsrfToken>) =
+        xor.handle(req, res, token)                              // BREACH-safe rendering into the cookie
+    override fun resolveCsrfTokenValue(req: HttpServletRequest, token: CsrfToken): String =
+        if (req.getHeader(token.headerName) != null)
+            super.resolveCsrfTokenValue(req, token)             // header -> plain value
+        else xor.resolveCsrfTokenValue(req, token)              // form param -> XOR-decoded
+}
+```
+
+To force the cookie to be written on every response (no deferred loading), add a filter that calls `csrfToken.token` once, or set `requireCsrfProtectionMatcher` so the SPA's first GET materializes it.
 
 ### Security headers
 

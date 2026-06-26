@@ -281,7 +281,7 @@ Spawn subagents in parallel:
 | Core + Obs           | `task-kotlin-review-observability`                                                                 |
 | Full                 | All three in parallel                                                                              |
 
-Each subagent prompt includes: resolved review target (`base_ref`, `head_ref`) + pre-read diff + log, depth, pre-confirmed stack, instruction to use its own Output Format.
+Each subagent prompt includes: resolved review target (`base_ref`, `head_ref`) + pre-read diff + log, depth, pre-confirmed stack, instruction to use its own Output Format, and an explicit instruction to **return findings inline and not call `review-report-writer`** (this workflow owns the single report - see each subagent's Step 8/11/12 carve-out).
 
 If a subagent fails: continue with remaining results. Note `Scope incomplete: <scope>` in Summary.
 
@@ -322,7 +322,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Kotlin <version> / Spring Boot <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted, append `auto-promoted from standard; Blast Radius: <level>`)_

@@ -147,7 +147,9 @@ _Deep only._ Critical journeys have a Micrometer SLI (filtered `http.server.requ
 
 ### Step 12 - Write report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation.
+**Subagent carve-out:** when spawned by a parent review (`task-kotlin-review` / `task-code-review-observability`), do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return the findings inline (Output Format below) for the parent to synthesize, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation.
 
 ## Output Format
 
@@ -203,7 +205,7 @@ _Omit empty sections._
 - [ ] Library scope respected; infra explicitly deferred
 - [ ] Depth honored
 - [ ] Next Steps ordered Must > Recommend > Question
-- [ ] Report written; confirmation printed
+- [ ] Standalone: report written + confirmation printed. Subagent: findings returned inline, `review-report-writer` not called
 
 ## Avoid
 

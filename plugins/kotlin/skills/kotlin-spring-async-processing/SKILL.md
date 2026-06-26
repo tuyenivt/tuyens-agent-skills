@@ -208,7 +208,7 @@ When the surrounding code is suspend-based, use a managed scope bean instead of 
 
 ```
 Operation: {what runs async}
-Mechanism: {@Async | CoroutineScope.launch | @TransactionalEventListener}
+Mechanism: {@Async | CoroutineScope.launch | coroutineScope + async/withTimeout | @TransactionalEventListener}
 Executor: {bean name | dispatcher}
 Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
 Error Handling: {AsyncUncaughtExceptionHandler | exceptionally | @Recover | CoroutineExceptionHandler}

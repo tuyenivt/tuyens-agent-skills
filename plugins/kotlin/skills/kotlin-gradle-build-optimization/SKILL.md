@@ -156,6 +156,7 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+    maxHeapSize = "1g"     // each fork is its own JVM; bumping forks without bounding heap risks OOM
 }
 ```
 
@@ -171,10 +172,15 @@ plugins {
 dependencies { implementation(project(":domain")) }
 ```
 
-Library module:
+Library module (apply `kotlin.spring` / `kotlin.jpa` wherever the entities or Spring stereotypes actually live - a domain library holding `@Entity` needs `kotlin.jpa` here, not only on the app, or it fails with `No default constructor for entity`):
 
 ```kotlin
-plugins { id("kotlin-conventions"); `java-library` }
+plugins {
+    id("kotlin-conventions")
+    `java-library`
+    alias(libs.plugins.kotlin.spring)           // if the module has @Service / @Transactional
+    alias(libs.plugins.kotlin.jpa)              // if the module holds @Entity / @Embeddable
+}
 // No Spring Boot plugin - libraries don't produce bootJar
 dependencies {
     api(libs.spring.boot.starter.data.jpa)      // api() only when types leak into public API

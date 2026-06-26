@@ -203,10 +203,11 @@ Each step must be:
 
 **Replace `synchronized` on VT paths**: confirm `spring.threads.virtual.enabled=true` → swap for `ReentrantLock` (or `Mutex` for coroutine paths) → concurrency test → audit other `synchronized` in module.
 
-**Move external I/O out of `@Transactional`** - pick one based on rollback need:
+**Move external I/O out of `@Transactional`** - pick one based on how the I/O relates to the commit (see `kotlin-spring-transaction` for the ordering rule):
 
-- **A - No rollback needed**: publish a domain event from the service; handle in `@TransactionalEventListener(AFTER_COMMIT)`. Failure-mode warning: post-commit listener exceptions are swallowed/logged by default. Assert via `@RecordApplicationEvents`.
-- **B - Rollback required**: write an `OutboxEntry(intent, payload)` row in the same transaction; a separate poller drains with at-least-once + idempotency key. Don't move to `BEFORE_COMMIT` (still holds I/O + listener exception rolls back, rarely the intent).
+- **A - Side effect, no rollback needed**: publish a domain event from the service; handle in `@TransactionalEventListener(AFTER_COMMIT)`. Failure-mode warning: post-commit listener exceptions are swallowed/logged by default. Assert via `@RecordApplicationEvents`.
+- **B - Side effect, must survive the commit**: write an `OutboxEntry(intent, payload)` row in the same transaction; a separate poller drains with at-least-once + idempotency key. Don't move to `BEFORE_COMMIT` (still holds I/O + listener exception rolls back, rarely the intent).
+- **C - I/O gates the commit** (e.g. payment must succeed before the order persists): the call is a precondition, not a side effect - run it first in a non-transactional coordinator, then persist in a short transaction only on success. No row survives a failed charge. Pair with an idempotency key so a retry after a successful charge doesn't double-charge.
 
 **Fix `@Transactional` self-invocation** - pick by cohesion: extract to a separate bean (preferred), self-injection (`@Lazy private val self: ThisService` - document why), or `TransactionTemplate` (single use site).
 

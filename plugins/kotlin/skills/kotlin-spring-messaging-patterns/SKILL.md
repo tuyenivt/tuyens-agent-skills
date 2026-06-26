@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Consumers idempotent - any message can be redelivered.
+- Consumers idempotent - any message can be redelivered. `markProcessed(key)` does a unique-PK insert and returns `true` when the key is new (proceed) / `false` when already seen (skip). Proceed iff `true` at every call site.
 - DLT / DLQ configured for every listener; permanent failures excluded from retry.
 - Use the **transactional outbox** whenever a publish must atomically follow a DB commit. Never call `send()` inside `@Transactional` without it - rollback leaves phantom events.
 - Payloads are `data class` / primitives with explicit Jackson use-site targets (`@field:JsonProperty`). Never serialize JPA entities (lazy proxies, schema coupling).
@@ -180,34 +180,44 @@ class OrderService(
     }
 }
 
-// One unpublished event per row, per tx -> one failure doesn't block siblings.
-// SKIP LOCKED lets multiple instances poll without double-publishing.
 @Component
 class OutboxDrainer(
+    private val publisher: OutboxBatchPublisher,   // separate bean: @Transactional must cross the proxy
+) {
+    @Scheduled(fixedDelay = 1000)
+    fun drain() = publisher.publishBatch()
+}
+
+@Component
+class OutboxBatchPublisher(
     private val outboxRepo: OutboxRepository,
     private val kafka: KafkaTemplate<String, String>,
 ) {
-    @Scheduled(fixedDelay = 1000)
-    fun drain() {
-        outboxRepo.claimBatch(100).forEach(::publishOne)
-    }
-
+    // Claim + publish + mark in ONE transaction so the SKIP LOCKED lock is held across the
+    // whole span - that lock is what stops a sibling instance from claiming the same rows.
     @Transactional
-    fun publishOne(id: UUID) {
-        val e = outboxRepo.findById(id).orElseThrow()
-        kafka.send(e.topic, e.aggregateId, e.payload).join()   // fail tx on send error
-        e.published = true
+    fun publishBatch() {
+        outboxRepo.claimBatch(100).forEach { e ->
+            kafka.send(e.topic, e.aggregateId, e.payload).join()   // send failure aborts the tx; rows stay published=false
+            e.published = true
+        }
     }
 }
 ```
 
+Two traps the naive version hides:
+- **Lock must span claim->publish.** If `claimBatch` runs in its own short transaction and `publishOne` in another, the `FOR UPDATE SKIP LOCKED` lock is released between them and a sibling instance can claim and double-publish the same rows. Keep them in one `@Transactional`.
+- **`@Transactional` is bypassed by self-invocation.** Calling `publishOne` from `drain()` in the same bean skips the proxy, so no transaction starts. The publish method lives in a separate injected bean.
+
 ```sql
--- Native query (JPQL lacks SKIP LOCKED):
-SELECT id FROM outbox_events
+-- claimBatch native query (JPQL lacks SKIP LOCKED) returns whole rows so the same tx can mark them:
+SELECT * FROM outbox_events
 WHERE published = false
 ORDER BY created_at
 LIMIT :n FOR UPDATE SKIP LOCKED;
 ```
+
+A failed `.join()` is at-least-once, not lost: the row stays `published = false` and a later drain retries it - the consumer's idempotency (above) absorbs the duplicate.
 
 ### Spring Application Events (in-process, same JVM)
 
@@ -253,7 +263,7 @@ class StripeWebhookController(
     ): ResponseEntity<Void> {
         webhooks.verify(raw, sig)
         val event = webhooks.parse(raw)
-        if (processed.markProcessed(event.id)) webhooks.process(event)
+        if (processed.markProcessed(event.id)) webhooks.process(event)   // true = new = process; redelivery is a no-op
         return ResponseEntity.ok().build()
     }
 }

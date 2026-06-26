@@ -39,7 +39,7 @@ Kotlin-aware perf review for JPA / Hibernate, Spring Data, coroutines, Virtual T
 | `/task-kotlin-review-perf <branch>` | `<branch>` vs base (3-dot diff)               |
 | `/task-kotlin-review-perf pr-<N>`   | PR head in `pr-<N>`                            |
 
-When invoked as a subagent of `task-code-review-perf`, Step 2 skipped and parent's read-once artifacts reused.
+When invoked as a subagent of `task-kotlin-review` or `task-code-review-perf`, Step 2 skipped and parent's read-once artifacts reused.
 
 ## Workflow
 
@@ -147,7 +147,9 @@ Only the perf-relevant slice. Full instrumentation review lives in `task-kotlin-
 
 ### Step 11 - Write report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation.
+**Subagent carve-out:** when spawned by a parent review (`task-kotlin-review` / `task-code-review-perf`), do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return the findings inline (Output Format below) for the parent to synthesize, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation.
 
 ## Output Format
 
@@ -198,7 +200,7 @@ _Omit empty sections._
 - [ ] `behavioral-principles` loaded as Step 1
 - [ ] Depth honored
 - [ ] Next Steps with `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
-- [ ] Report written; confirmation printed
+- [ ] Standalone: report written + confirmation printed. Subagent: findings returned inline, `review-report-writer` not called
 
 ## Avoid
 

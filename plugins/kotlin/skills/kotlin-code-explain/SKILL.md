@@ -35,7 +35,7 @@ user-invocable: false
 | `coroutineScope { }`          | Structured: failure cancels siblings, awaits children           | `supervisorScope { }` changes failure isolation - each child fails independently                       |
 | `launch { }`                  | Fire-and-forget, returns `Job`                                  | Exceptions propagate to parent scope                                                                  |
 | `async { }`                   | Returns `Deferred<T>`; exceptions deferred to `.await()`        | No `await` = swallowed exception                                                                       |
-| `Flow<T>`                     | Cold stream; operators on collector's context unless `flowOn`   | Blocking inside `collect` breaks back-pressure                                                         |
+| `Flow<T>`                     | Cold stream; operators on collector's context unless `flowOn`   | Blocking inside `collect` breaks back-pressure; `suspend fun foo(): Flow<T>` is a smell - building a cold Flow never suspends, only collecting does |
 | `Channel<T>`                  | Hot buffered / rendezvous                                       | Forgetting `close()` leaves consumers suspended forever                                                |
 | `runBlocking { }`             | Bridges blocking / suspend                                      | Inside another coroutine context: bug (blocks thread)                                                  |
 
@@ -99,7 +99,7 @@ Definitive table in `kotlin-idioms`. When explaining code, name the one used and
 - `AFTER_ROLLBACK`: compensating actions.
 - `AFTER_COMPLETION`: always runs.
 
-Listener starting a new `@Transactional` in `AFTER_COMMIT` / `AFTER_ROLLBACK` needs `propagation = REQUIRES_NEW` - the original is gone. `@Async` listener runs on the executor pool; SecurityContext / MDC don't propagate without setup.
+Listener starting a new `@Transactional` in `AFTER_COMMIT` / `AFTER_ROLLBACK` needs `propagation = REQUIRES_NEW` - the original is gone. `@Async` listener runs on the executor pool; SecurityContext / MDC don't propagate without setup. The listener method must live on a registered Spring bean (`@Component` / `@Service`) - a top-level or unregistered function is never wired in.
 
 ## Output Format
 

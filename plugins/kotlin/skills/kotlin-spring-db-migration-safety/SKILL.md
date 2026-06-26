@@ -69,8 +69,8 @@ ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 -- V1: add new column
 ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 
--- V2: backfill (and keep in sync via app code or trigger)
-UPDATE orders SET customer_id = customer_ref;
+-- V2: backfill in batches (and keep in sync via app code / @PrePersist) - NOT a single UPDATE
+-- on a large table; use the key-paged loop from "Add NOT NULL column" V2.
 
 -- V3 (next release, after old column unused): drop
 ALTER TABLE orders DROP COLUMN customer_ref;
@@ -92,6 +92,13 @@ ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLAC
 -- V20250213_1100__create_index.sql
 -- flyway:executeInTransaction=false
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+```
+
+**Failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index.** It still exists in the catalog and is maintained on writes, but is unusable - and `IF NOT EXISTS` silently skips it on retry, so the index never actually gets built. Drop it before re-running (then `flyway.repair()` to clear the failed history row):
+
+```sql
+SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE NOT i.indisvalid;
+DROP INDEX CONCURRENTLY IF EXISTS idx_orders_customer;
 ```
 
 ### Unique constraint via concurrent index
@@ -214,7 +221,7 @@ Operation: {ADD COLUMN | ADD INDEX | BACKFILL | DROP COLUMN | RENAME | CONSTRAIN
 Table: {name}
 Locks Table: {yes | no}
 Backward Compatible: {yes | no - why}
-Rollback: {auto-reversible | manual rollback provided | N/A}
+Rollback: {auto-reversible | manual rollback provided | destructive (data loss) | N/A}
 ```
 
 ## Checklist

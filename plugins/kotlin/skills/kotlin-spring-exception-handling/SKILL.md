@@ -93,52 +93,51 @@ Spring picks the most specific `@ExceptionHandler` by exception-type hierarchy -
 class GlobalExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @ExceptionHandler(NotFoundException::class)
-    fun handleNotFound(ex: NotFoundException): ProblemDetail =
-        problem(HttpStatus.NOT_FOUND, "Resource Not Found", ex.message ?: "Not found")
-
-    @ExceptionHandler(DomainException::class)
+    @ExceptionHandler(DomainException::class)                        // covers every subclass via type resolution
     fun handleDomain(ex: DomainException): ProblemDetail =
         problem(ex.status, ex.errorCode, ex.message ?: "Error")
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleBeanValidation(ex: MethodArgumentNotValidException): ProblemDetail =
-        problem(HttpStatus.BAD_REQUEST, "Validation Failed", "Invalid request body").apply {
+        problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Invalid request body").apply {
             setProperty("fieldErrors",
                 ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "invalid") })
         }
 
     @ExceptionHandler(HandlerMethodValidationException::class)        // Spring 6 path/query validation
     fun handleParamValidation(ex: HandlerMethodValidationException): ProblemDetail =
-        problem(HttpStatus.BAD_REQUEST, "Validation Failed", "Invalid request parameters")
+        problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Invalid request parameters")
 
     @ExceptionHandler(DataIntegrityViolationException::class)
     fun handleDataIntegrity(ex: DataIntegrityViolationException): ProblemDetail {
         log.warn("integrity violation: {}", ex.mostSpecificCause.message)
-        return problem(HttpStatus.CONFLICT, "Conflict", "A record with this value already exists")
+        return problem(HttpStatus.CONFLICT, "DATA_INTEGRITY", "A record with this value already exists")
     }
 
     @ExceptionHandler(OptimisticLockingFailureException::class)       // includes ObjectOptimisticLockingFailureException
     fun handleOptimisticLock(ex: OptimisticLockingFailureException): ProblemDetail {
         log.warn("optimistic lock: {}", ex.message)
-        return problem(HttpStatus.CONFLICT, "Concurrent Modification",
+        return problem(HttpStatus.CONFLICT, "CONCURRENT_MODIFICATION",
             "The resource was modified concurrently. Reload and retry.")
             .apply { setProperty("retryable", true) }
     }
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadable(ex: HttpMessageNotReadableException): ProblemDetail =
-        problem(HttpStatus.BAD_REQUEST, "Bad Request", "Request body is missing or malformed")
+        problem(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "Request body is missing or malformed")
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ProblemDetail {
         log.error("unexpected error", ex)
-        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Server Error", "An unexpected error occurred")
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred")
     }
 
-    private fun problem(status: HttpStatus, title: String, detail: String): ProblemDetail =
+    // RFC 9457: type = machine identifier, title = human-readable status phrase, code = machine code for clients.
+    private fun problem(status: HttpStatus, code: String, detail: String): ProblemDetail =
         ProblemDetail.forStatusAndDetail(status, detail).apply {
-            this.title = title
+            type = URI.create("urn:problem:" + code.lowercase().replace('_', '-'))
+            title = status.reasonPhrase
+            setProperty("code", code)
             setProperty("traceId", MDC.get("traceId"))
         }
 }
@@ -179,14 +178,17 @@ class UpstreamTimeoutException(svc: String) : RetryableException("Upstream timeo
 class PaymentDeclinedException(orderId: Long, declineCode: String) : PermanentException("Payment declined: $declineCode (order $orderId)", HttpStatus.PAYMENT_REQUIRED, "PAYMENT_DECLINED")
 
 @ExceptionHandler(RetryableException::class)
-fun handleRetryable(ex: RetryableException): ProblemDetail =
-    problem(HttpStatus.SERVICE_UNAVAILABLE, "Retryable", ex.message ?: "Try again").apply { setProperty("retryable", true) }
+fun handleRetryable(ex: RetryableException): ProblemDetail {
+    log.warn("retryable upstream failure: {}", ex.message)   // transient, not a system bug: WARN, no stack trace
+    return problem(HttpStatus.SERVICE_UNAVAILABLE, ex.errorCode, ex.message ?: "Try again")
+        .apply { setProperty("retryable", true) }
+}
 
 @ExceptionHandler(PermanentException::class)
 fun handlePermanent(ex: PermanentException): ProblemDetail = problem(ex.status, ex.errorCode, ex.message ?: "Failed")
 ```
 
-One advice per axis (retryable vs permanent) replaces N advice methods grepping `ex.message` for "timeout" / "rate".
+One advice per axis (retryable vs permanent) replaces N advice methods grepping `ex.message` for "timeout" / "rate". The "5xx logs with stack trace" rule is for *unexpected* system failures; a known transient upstream timeout returned as 503 logs at WARN without a stack trace.
 
 ## Output Format
 

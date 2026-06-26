@@ -32,7 +32,7 @@ Kotlin-aware security review for Spring Security 6.x Kotlin DSL `SecurityFilterC
 | `/task-kotlin-review-security <branch>` | `<branch>` vs base (3-dot)                     |
 | `/task-kotlin-review-security pr-<N>`   | PR head in `pr-<N>`                            |
 
-When invoked as a subagent of `task-code-review-security`, Step 3 skipped.
+When invoked as a subagent of `task-kotlin-review` or `task-code-review-security`, Step 3 skipped (parent passes the precondition handle).
 
 ## Workflow
 
@@ -146,7 +146,9 @@ Use skill: `kotlin-spring-messaging-patterns`.
 
 ### Step 8 - Write report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation.
+**Subagent carve-out:** when spawned by a parent review (`task-kotlin-review` / `task-code-review-security`), do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return the findings inline (Output Format below) for the parent to synthesize, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation.
 
 ## Rules
 
@@ -210,7 +212,7 @@ _Omit empty severities. If all empty: "No security issues found."_
 - [ ] Every finding includes attack scenario
 - [ ] If no findings: "No issues found" per category
 - [ ] Next Steps ordered Must > Recommend > Question
-- [ ] Report written; confirmation printed
+- [ ] Standalone: report written + confirmation printed. Subagent: findings returned inline, `review-report-writer` not called
 
 ## Avoid
 
