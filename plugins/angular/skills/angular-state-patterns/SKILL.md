@@ -138,7 +138,7 @@ For per-user state (wishlist, profile), AuthService coordinates lifecycle: `effe
 
 ### URL State (signals bridge)
 
-Route query params own filter/sort/page; bridge via `toSignal` and react via `toObservable`.
+Route query params own filter/sort/page; bridge them to signals via `toSignal`, then drive fetching with `resource()` (or `toObservable` for an RxJS pipeline).
 
 ```typescript
 @Component({...})
@@ -228,7 +228,7 @@ Unbounded caches leak memory across long sessions - always cap.
 ```
 ## Angular State Architecture
 
-**State library:** {Signals | NgRx Store | ComponentStore | Services}
+**State library:** {Signals | Signal services | NgRx Signal Store | NgRx Store | ComponentStore}
 
 ### State Map
 

@@ -139,7 +139,9 @@ Read the files that configure observability so findings cite real lines: `app.co
 
 ### Step 12 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation line.
+**Subagent mode:** when spawned by `task-angular-review`, do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return findings inline (Output Format below) for the parent to merge, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-observability`. Print confirmation line.
 
 ## Self-Check
 
@@ -148,8 +150,8 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Prin
 - [ ] Surface Map produced with `wired | partial | absent` per surface; absent collapsed into one finding each, partials emit per-misuse findings
 - [ ] Web Vitals (INP, transport, route correlation), Error tracker (`createErrorHandler`, `TraceService`, PII, Replay/CSP), OTel (browser + SSR `NodeSDK`), Structured logging, Identity, RUM checked; SLI/SLO at `deep`
 - [ ] Findings name Angular / SDK idioms (`Sentry.createErrorHandler`, `web-vitals` `onINP`); library-scoped, infra deferred
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered High > Medium > Low
-- [ ] Report written; confirmation line printed
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
+- [ ] Standalone: report written via `review-report-writer`, confirmation printed. Subagent: findings returned inline, writer not called
 
 ## Output Format
 

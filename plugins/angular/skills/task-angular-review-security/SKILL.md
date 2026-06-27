@@ -110,7 +110,7 @@ Triage pass only - produces one signal verdict per category (`yes` / `no signal 
 **Angular SSR:**
 
 - [ ] **No shared per-user SSR cache** - per-user data must verify cookie/token on server-side fetch
-- [ ] **`TransferState` / hydration payload** - server resolvers project to a DTO (`select: { id, name, email }`); never serialize entire ORM rows
+- [ ] **`TransferState` scoped to the requesting user** - per-user data placed in `TransferState` must be authorized for that session (row-serialization itself is Step 9)
 
 ### Step 7 - Authorization
 
@@ -166,7 +166,9 @@ _Skipped on SPA-only._
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation line.
+**Subagent mode:** when spawned by `task-angular-review`, do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return findings inline (Output Format below) for the parent to merge, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-security`. Print confirmation line.
 
 ## Rules
 
@@ -239,7 +241,7 @@ _Omit if no security issues found._
 - [ ] Severity rubric applied consistently; Combined-finding rule applied where two findings compose on same path
 - [ ] Every finding has attack scenario, regression risk, or topology framing labelled
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
-- [ ] Report written; confirmation line printed
+- [ ] Standalone: report written via `review-report-writer`, confirmation printed. Subagent: findings returned inline, writer not called
 
 ## Avoid
 

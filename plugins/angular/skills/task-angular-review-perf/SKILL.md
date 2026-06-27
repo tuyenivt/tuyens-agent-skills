@@ -145,7 +145,9 @@ Presence check only - depth belongs to `task-angular-review-observability`. Conf
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation line.
+**Subagent mode:** when spawned by `task-angular-review`, do **not** call `review-report-writer` - the parent owns the single report and passes no checkpoint fields. Return findings inline (Output Format below) for the parent to merge, and skip the rest of this step.
+
+Standalone: Use skill: `review-report-writer` with `report_type: review-perf`. Print confirmation line.
 
 ## Output Format
 
@@ -191,7 +193,7 @@ _Omit if no actionable findings._
 - [ ] Performance surface read directly before checklists
 - [ ] Steps 5-10 applied per depth; every finding states measured or estimated impact
 - [ ] Findings ordered by impact; Next Steps tagged `[Implement]`/`[Delegate]`
-- [ ] Report written; confirmation line printed
+- [ ] Standalone: report written via `review-report-writer`, confirmation printed. Subagent: findings returned inline, writer not called
 
 ## Avoid
 

@@ -1,6 +1,6 @@
 ---
 name: angular-rxjs-patterns
-description: Review Angular RxJS - subscription cleanup, flattening operators, error handling, multicasting, signals interop.
+description: Angular RxJS - subscription cleanup, flattening operators, error handling, multicasting, signals interop.
 metadata:
   category: frontend
   tags: [angular, rxjs, async-pipe, takeUntilDestroyed, switchmap, observables, subscription]
@@ -152,6 +152,8 @@ forkJoin({ users: users$, categories: categories$ }); // waits for all to comple
 
 ```
 ## RxJS Assessment
+
+**Angular version:** {detected}
 
 ### Observable Patterns
 

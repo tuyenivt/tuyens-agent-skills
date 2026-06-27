@@ -159,6 +159,7 @@ Apply atomic skills - each owns canonical patterns:
 - `angular-routing-patterns` - `canMatch` on lazy routes, functional guards, `withComponentInputBinding`, SSR hydration (when diff touches route config)
 - `angular-nx-patterns` - tags + `enforce-module-boundaries`, library taxonomy, `nx affected` (when workspace is Nx)
 - `angular-styling-patterns` - tokens, hybrid Tailwind+Material, M3 theming (when diff touches styles)
+- `angular-i18n-patterns` - untranslated user-facing strings/attributes, ICU vs string-concat plurals, stable `@@` IDs, locale-aware pipes (when i18n is configured and the diff touches templates/strings)
 - `angular-testing-patterns` - coverage for changes (when diff adds logic)
 
 **Orphan checks (no atomic owns - cross-cutting only):**
@@ -269,7 +270,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack:** Angular <version> / <CD mode> / SSR: <enabled|disabled>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted; Blast Radius: <level>` if applicable)_
@@ -341,7 +342,7 @@ Drop Architecture Notes, Maintainability Notes, and any C/D-only sections. Keep 
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Auto-escalation evaluated; promotions logged with firing signals
 - [ ] Phase A: risk + blast radius stated before findings; low-risk short-circuit applied when applicable
-- [ ] Phase B: atomic skills applied (component/signals/rxjs/service/data-fetching/state/forms/routing/nx/styling/testing); orphan checks (module-level mutable state, `[innerHTML]`/`bypassSecurityTrust*` upstream audit, env-ts secrets, open redirect, a11y, tests) raised
+- [ ] Phase B: atomic skills applied (component/signals/rxjs/service/data-fetching/state/forms/routing/nx/styling/i18n/testing); orphan checks (module-level mutable state, `[innerHTML]`/`bypassSecurityTrust*` upstream audit, env-ts secrets, open redirect, a11y, tests) raised
 - [ ] Phase C-D-E: layering, AI smells, naming/length/logging applied (skipped if short-circuit)
 - [ ] Every finding has label + `file:line` + actionable fix; every Must cites system risk
 - [ ] Extra scopes ran in parallel with pre-resolved diff handle; failures noted as `Scope incomplete`

@@ -74,7 +74,7 @@ Tokens live in CSS; Tailwind config and Material theme both reference them.
 ```css
 /* styles.css */
 :root {
-  --brand-50: #eff6ff;
+  --brand-50: 239 246 255; /* channels: rgb(var() / <alpha-value>) needs a triplet, not hex */
   --brand-600: #2563eb;
   --brand-700: #1d4ed8;
   --surface: #ffffff;

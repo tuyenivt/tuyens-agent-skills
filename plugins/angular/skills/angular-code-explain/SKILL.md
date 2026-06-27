@@ -21,7 +21,7 @@ user-invocable: false
 - For DI, name the providing scope (`root`, `platform`, route, component) - it determines instance lifetime.
 - For async, name the cleanup mechanism (`async` pipe, `toSignal`, `takeUntilDestroyed`, manual).
 - Flag standalone vs NgModule. Standalone is default on Angular 19+ - flag missing `standalone: true` only on older versions.
-- Note version gates: signals (16+), `inject()` (14+), control flow `@if/@for/@switch` (17+), `model()` (17+), zoneless (18+), `linkedSignal`/`resource()` (19+), `afterNextRender` (16+).
+- Note version gates: signals (16+), `inject()` (14+), control flow `@if/@for/@switch` (17+), `model()` (17+), zoneless (18+ experimental, 20+ stable), `linkedSignal`/`resource()` (19+), `afterNextRender` (16+).
 
 ## Patterns
 

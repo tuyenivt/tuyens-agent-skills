@@ -69,30 +69,37 @@ export const routes: Routes = [
 ### Functional Guards
 
 ```typescript
-export const authGuard: CanActivateFn = (route, state) => {
+// CanMatchFn gates the lazy chunk - receives (route, segments), no RouterStateSnapshot.
+export const authGuard: CanMatchFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.isAuthenticated()
-    ? true
-    : router.createUrlTree(["/auth/login"], { queryParams: { returnUrl: state.url } });
+  return auth.isAuthenticated() ? true : router.createUrlTree(["/auth/login"]);
 };
 
 // Parameterised guard
-export const roleGuard = (role: string): CanActivateFn => () => inject(AuthService).hasRole(role);
+export const roleGuard = (role: string): CanMatchFn => () => inject(AuthService).hasRole(role);
+
+// returnUrl needs RouterStateSnapshot, which only CanActivateFn receives - use this form when you need it.
+export const authActivate: CanActivateFn = (_route, state) =>
+  inject(AuthService).isAuthenticated()
+    ? true
+    : inject(Router).createUrlTree(["/auth/login"], { queryParams: { returnUrl: state.url } });
 ```
 
 Return `true`, `false`, or a `UrlTree` for redirects. Never call `router.navigate()` inside a guard.
 
-`CanMatchFn` is identical in shape but prevents the lazy chunk from loading - prefer it for auth-gated lazy routes.
+`CanMatchFn` prevents the lazy chunk from loading - prefer it for auth-gated lazy routes. It is **not** assignable from `CanActivateFn`: a `canMatch` guard receives `(route, segments)`, so type each guard for the slot it occupies.
 
 ### Functional Resolvers
 
 ```typescript
 export const teamResolver: ResolveFn<Team> = (route) => {
+  const router = inject(Router);
   const teamId = route.paramMap.get("teamId");
-  if (!teamId) return inject(Router).createUrlTree(["/dashboard"]);
+  // Resolvers redirect by returning a RedirectCommand (18+), never by calling router.navigate().
+  if (!teamId) return new RedirectCommand(router.parseUrl("/dashboard"));
   return inject(TeamService).getTeam(teamId).pipe(
-    catchError(() => { inject(Router).navigate(["/dashboard"]); return EMPTY; }),
+    catchError(() => of(new RedirectCommand(router.parseUrl("/dashboard")))),
   );
 };
 

@@ -279,13 +279,13 @@ _Include `CD stance` and `Subscription stance` only for steps that touch them._
 
 ## Self-Check
 
-- [ ] Principles loaded; stack confirmed; CD mode and SSR recorded
-- [ ] Target + tests read directly; sibling smells captured
-- [ ] Coverage gate evaluated (Adequate / Thin / Inadequate); happy-path-only = Inadequate; preview catalog runs if Inadequate
-- [ ] Primary recipe named; plan ≤~8 steps or split
-- [ ] Step 0 included if Thin; CD/subscription stance stated only when steps touch them
-- [ ] Steps ordered low-risk first; no bundled unrelated cleanup
-- [ ] Goal explicitly maps to end state
+- [ ] Steps 1-2: principles loaded; stack confirmed; CD mode and SSR recorded
+- [ ] Step 3: target + tests read directly; sweep vs single-target routed; sibling smells captured
+- [ ] Step 4: coverage gate evaluated (Adequate / Thin / Inadequate); happy-path-only = Inadequate; internal-coupled tests pinned to Step 0; preview catalog runs if Inadequate
+- [ ] Step 5: smells classified using the catalog (component, state/RxJS, service/DI/routing)
+- [ ] Step 6: blast radius stated (Narrow / Moderate / Wide / Critical)
+- [ ] Step 7: primary recipe named; plan <=~8 steps or split; Step 0 included if Thin; CD/subscription stance stated only when steps touch them; steps ordered low-risk first; no bundled unrelated cleanup
+- [ ] Step 8: goal explicitly maps to end state
 
 ## Avoid
 

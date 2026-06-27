@@ -119,6 +119,10 @@ Run `ng build` + `ng test` + `ng lint`. For features touching user-facing surfac
 - Service tests: {count}
 - Integration tests: {count}
 - E2E candidates: {list of critical paths}
+
+## Bundle Delta (if lazy chunks or new deps added)
+
+- {chunk}: {+X KB gzip} (budget: {limit}; {within | exceeds})
 ```
 
 ## Self-Check
@@ -134,7 +138,7 @@ Run `ng build` + `ng test` + `ng lint`. For features touching user-facing surfac
 - [ ] WCAG 2.1 AA audit passed
 - [ ] i18n strategy applied when multi-locale, or step skipped
 - [ ] Tests cover components, services, integration, and critical flows
-- [ ] `ng build`, `ng test`, `ng lint` all pass
+- [ ] `ng build`, `ng test`, `ng lint` all pass; `axe` scan run on new user-facing routes; bundle delta reported when lazy chunks or new deps added
 
 ## Avoid
 
